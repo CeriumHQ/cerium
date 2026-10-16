@@ -13,3 +13,4 @@ All notable changes to Cerium are recorded here. The format follows
 - Agent skills for design grilling, retros, wizards and writing agent docs.
 - `bun run vendor:effect` fetches the pinned Effect source as a reference for coding agents.
 - Architecture decision record and auto-router design in `docs/`.
+- Agent guidelines in `AGENTS.md`, including git and changelog rules.
