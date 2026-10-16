@@ -25,6 +25,10 @@ export default defineConfig({
         files: ["**/test/**", "**/*.test.ts"],
         plugins: ["vitest"],
       },
+      {
+        files: ["apps/ui/**"],
+        plugins: ["react", "jsx-a11y"],
+      },
     ],
   },
   fmt: {

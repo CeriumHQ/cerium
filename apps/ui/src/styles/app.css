@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "./tokens.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--fg-primary);
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  overflow: hidden;
+}
+
+/*
+ * The browser preview has no OS Acrylic behind the page, so it paints a stand-in desktop and blurs
+ * it like Acrylic does. In Electron the body stays transparent and Windows provides the real thing.
+ */
+html[data-shell="browser"] body {
+  background:
+    radial-gradient(60% 80% at 15% 20%, oklch(0.55 0.2 265 / 0.9), transparent 70%),
+    radial-gradient(50% 70% at 85% 30%, oklch(0.6 0.19 320 / 0.75), transparent 70%),
+    radial-gradient(70% 60% at 60% 95%, oklch(0.55 0.16 220 / 0.85), transparent 70%), oklch(0.22 0.05 270);
+}
+
+html[data-shell="browser"] #root {
+  backdrop-filter: blur(70px) saturate(150%);
+}
+
+::selection {
+  background: var(--selection);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

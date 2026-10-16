@@ -16,7 +16,8 @@
     "typecheck": "tsc -b",
     "verify": "vp check && tsc -b && vp test --run",
     "vendor:effect": "node scripts/vendor-effect.ts",
-    "prepare": "effect-tsgo patch --typescript --oxlint"
+    "prepare": "effect-tsgo patch --typescript --oxlint",
+    "dev:ui": "vp -C apps/ui dev"
   },
   "devDependencies": {
     "@effect/tsgo": "0.53.3",
