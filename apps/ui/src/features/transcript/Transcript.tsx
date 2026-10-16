@@ -88,7 +88,8 @@ export function Transcript({ blocks, agent, childState }: TranscriptProps) {
   const roleOf = (agentId: string) => roles.get(agentId) ?? "An agent";
 
   return (
-    <ScrollArea className="h-full">
+    // Content fades out where the floating composer sits instead of showing through its glass.
+    <ScrollArea className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)]">
       <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40">
         {layout(blocks).map((item) => {
           switch (item.kind) {

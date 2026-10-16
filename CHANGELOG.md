@@ -31,6 +31,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/ui`: React app with Cerium's design tokens (monochrome translucent glass over Acrylic, with colour reserved for status and provider logos; dark and light themes) and the window frame: a titlebar over the thread sidebar and the transcript, with the agent inspector opening beside it on demand from a titlebar control that shows the thread's agents.
 - UI: thread sidebar with collapsible project groups, colour-coded thread status, official provider logos (in their own colours where available) for active multi-agent threads, relative times, and harness status in the footer.
 - UI: thread transcript built from canonical events: user messages and markdown replies (streaming-safe) under one header per response, collapsible reasoning, compact grouped tool calls with inputs and outputs, chips for spawned agents, child results inline in the lead's response, inline approval cards, and per-turn usage.
+- UI: composer floating over the transcript, with grouped model picker (provider logos), reasoning effort and access mode pickers, Enter to send and a stop button while a turn runs.
 
 ### Changed
 

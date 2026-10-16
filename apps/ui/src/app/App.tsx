@@ -3,6 +3,7 @@ import { useState } from "react";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { threadFixtures } from "../dev/fixtures.ts";
 import { leadFixture, transcriptFixture } from "../dev/transcriptFixture.ts";
+import { Composer } from "../features/composer/Composer.tsx";
 import { Sidebar } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -21,11 +22,14 @@ export function App() {
         inspector={inspectorOpen ? <div /> : undefined}
         onToggleInspector={() => setInspectorOpen((open) => !open)}
       >
-        <Transcript
-          blocks={buildTranscript(transcriptFixture)}
-          agent={leadFixture}
-          childState={() => "idle"}
-        />
+        <div className="relative h-full">
+          <Transcript
+            blocks={buildTranscript(transcriptFixture)}
+            agent={leadFixture}
+            childState={() => "idle"}
+          />
+          <Composer running={false} onSend={() => undefined} onStop={() => undefined} />
+        </div>
       </AppFrame>
     </TooltipProvider>
   );
