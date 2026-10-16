@@ -19,3 +19,4 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/harness`: the adapter contract every provider implements, plus version range checks.
 - Claude adapter: translates Claude Agent SDK messages into canonical events, tested against a recorded session.
 - Claude adapter: detects the installed Claude Code version and login status, and runs live sessions with approvals, file change tracking, per-turn usage, and mid-session model and effort switching.
+- `@cerium/protocol`: orchestration events (turn inputs, spawned agents, agent state, spawn approvals) and the rule that a child's access only narrows.

@@ -37,6 +37,27 @@ describe("AgentEvent", () => {
         { _tag: "TurnCompleted", stopReason: "completed" },
         { _tag: "AuthRequired", provider: "codex", reason: "Not logged in", loginCommand: "codex login" },
         { _tag: "AgentError", kind: "rateLimit", message: "429", retryable: true },
+        { _tag: "ReasoningCompleted", messageId: "m1", text: "because" },
+        {
+          _tag: "TurnInput",
+          items: [
+            { _tag: "FromUser", text: "hi" },
+            { _tag: "ChildFinishedTurn", agentId: "agt_2", role: "reviewer", text: "LGTM" },
+            { _tag: "FromAgent", agentId: "agt_3", threadId: "thr_2", text: "ping" },
+            { _tag: "SystemNotice", text: "budget exceeded" },
+          ],
+        },
+        {
+          _tag: "AgentSpawned",
+          childId: "agt_2",
+          role: "reviewer",
+          provider: "claude",
+          model: "haiku",
+          access: "readOnly",
+        },
+        { _tag: "AgentStateChanged", state: "idle" },
+        { _tag: "SpawnApprovalRequested", requestId: "s1", role: "ci", provider: "codex", model: "gpt-6" },
+        { _tag: "SpawnApprovalResolved", requestId: "s1", decision: "deny" },
       ];
 
       for (const payload of payloads) {
@@ -47,6 +68,15 @@ describe("AgentEvent", () => {
         const reparsed = yield* decodeEvent(JSON.parse(JSON.stringify(encoded)));
         assert.deepStrictEqual(reparsed, event);
       }
+    }),
+  );
+
+  it.effect("rejects a turn input with no items", () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        decodeEvent({ ...envelope, payload: { _tag: "TurnInput", items: [] } }),
+      );
+      assert.isTrue(Exit.isFailure(exit));
     }),
   );
 
