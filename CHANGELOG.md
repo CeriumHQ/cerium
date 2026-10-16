@@ -12,3 +12,4 @@ All notable changes to Cerium are recorded here. The format follows
 - Apache-2.0 license.
 - Agent skills for design grilling, retros, wizards and writing agent docs.
 - `bun run vendor:effect` fetches the pinned Effect source as a reference for coding agents.
+- Architecture decision record and auto-router design in `docs/`.
