@@ -14,3 +14,4 @@ All notable changes to Cerium are recorded here. The format follows
 - `bun run vendor:effect` fetches the pinned Effect source as a reference for coding agents.
 - Architecture decision record and auto-router design in `docs/`.
 - Agent guidelines in `AGENTS.md`, including git and changelog rules.
+- `@cerium/protocol`: canonical agent events, capability manifests and harness status schemas.

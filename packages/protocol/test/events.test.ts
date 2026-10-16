@@ -1,0 +1,108 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Exit, Schema } from "effect";
+
+import { AgentEvent, CapabilityManifest } from "../src/index.ts";
+
+const decodeEvent = Schema.decodeUnknownEffect(AgentEvent);
+const encodeEvent = Schema.encodeEffect(AgentEvent);
+
+const envelope = {
+  id: "evt_1",
+  threadId: "thr_1",
+  agentId: "agt_1",
+  sequence: 0,
+  at: 1_760_000_000_000,
+};
+
+describe("AgentEvent", () => {
+  it.effect("decodes every payload kind and survives a JSON round trip", () =>
+    Effect.gen(function* () {
+      const payloads = [
+        {
+          _tag: "SessionStarted",
+          provider: "claude",
+          providerSessionId: "s1",
+          model: "claude-opus-5-5",
+          effort: "high",
+        },
+        { _tag: "MessageDelta", messageId: "m1", text: "Hel" },
+        { _tag: "MessageCompleted", messageId: "m1", text: "Hello" },
+        { _tag: "ReasoningDelta", messageId: "m1", text: "thinking" },
+        { _tag: "ToolCallStarted", callId: "c1", toolName: "Read", input: { path: "a.ts" } },
+        { _tag: "ToolCallCompleted", callId: "c1", output: "contents", isError: false },
+        { _tag: "FileChanged", path: "a.ts", change: "modified" },
+        { _tag: "PermissionRequested", requestId: "p1", toolName: "Bash", summary: "Run tests", input: {} },
+        { _tag: "PermissionResolved", requestId: "p1", decision: "allow", scope: "once" },
+        { _tag: "UsageReported", inputTokens: 10, outputTokens: 5, cachedInputTokens: 2, costUsd: 0.01 },
+        { _tag: "TurnCompleted", stopReason: "completed" },
+        { _tag: "AuthRequired", provider: "codex", reason: "Not logged in", loginCommand: "codex login" },
+        { _tag: "AgentError", kind: "rateLimit", message: "429", retryable: true },
+      ];
+
+      for (const payload of payloads) {
+        const event = yield* decodeEvent({ ...envelope, payload, raw: { original: true } });
+        assert.strictEqual(event.payload._tag, payload._tag);
+
+        const encoded = yield* encodeEvent(event);
+        const reparsed = yield* decodeEvent(JSON.parse(JSON.stringify(encoded)));
+        assert.deepStrictEqual(reparsed, event);
+      }
+    }),
+  );
+
+  it.effect("rejects unknown payload kinds", () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(decodeEvent({ ...envelope, payload: { _tag: "Telepathy" } }));
+      assert.isTrue(Exit.isFailure(exit));
+    }),
+  );
+
+  it.effect("rejects negative and fractional sequence numbers", () =>
+    Effect.gen(function* () {
+      const payload = { _tag: "TurnCompleted", stopReason: "completed" };
+      for (const sequence of [-1, 1.5]) {
+        const exit = yield* Effect.exit(decodeEvent({ ...envelope, sequence, payload }));
+        assert.isTrue(Exit.isFailure(exit));
+      }
+    }),
+  );
+
+  it.effect("rejects empty identifiers", () =>
+    Effect.gen(function* () {
+      const payload = { _tag: "TurnCompleted", stopReason: "completed" };
+      const exit = yield* Effect.exit(decodeEvent({ ...envelope, agentId: "", payload }));
+      assert.isTrue(Exit.isFailure(exit));
+    }),
+  );
+});
+
+describe("CapabilityManifest", () => {
+  const manifest = {
+    provider: "claude",
+    harnessVersion: { minimum: "2.1.63", testedMaximum: "2.2.0" },
+    session: { resume: true, fork: true },
+    switching: { model: true, effort: false, cacheSafeEffort: false },
+    input: { images: true },
+    permissions: { approvals: "callback", readOnlyMode: true },
+    mcpInjection: true,
+    nativeSubagents: "disableable",
+    usageReporting: "tokensAndCost",
+    defaultConcurrency: 6,
+  };
+
+  it.effect("decodes a complete manifest", () =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeUnknownEffect(CapabilityManifest)(manifest);
+      assert.strictEqual(decoded.defaultConcurrency, 6);
+    }),
+  );
+
+  it.effect("requires a concurrency cap of at least one", () =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Schema.decodeUnknownEffect(CapabilityManifest)({ ...manifest, defaultConcurrency: 0 }),
+      );
+      assert.isTrue(Exit.isFailure(exit));
+    }),
+  );
+});
