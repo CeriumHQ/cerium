@@ -39,6 +39,20 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/orchestrator": {
+      "name": "@cerium/orchestrator",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "@cerium/store": "workspace:*",
+        "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
     "packages/protocol": {
       "name": "@cerium/protocol",
       "version": "0.0.0",
@@ -99,6 +113,8 @@
     "@cerium/adapter-claude": ["@cerium/adapter-claude@workspace:packages/adapters/claude"],
 
     "@cerium/harness": ["@cerium/harness@workspace:packages/harness"],
+
+    "@cerium/orchestrator": ["@cerium/orchestrator@workspace:packages/orchestrator"],
 
     "@cerium/protocol": ["@cerium/protocol@workspace:packages/protocol"],
 

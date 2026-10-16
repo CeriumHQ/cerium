@@ -25,6 +25,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/store`: SQLite persistence for threads, agents and the append-only event log, using Drizzle on Node's built-in `node:sqlite` with generated migrations and an FTS5 startup check.
 - `@cerium/harness`: sessions can mark injected MCP servers as trusted so their tools skip approval prompts.
 - Claude adapter: trusted MCP servers' tools run without permission prompts.
+- `@cerium/orchestrator`: threads with a lead and depth-1 children; inbox delivery that batches notices into one turn and never interrupts a running turn; per-provider and global concurrency caps; catalog spawns with access narrowing and user approval for other models; lead/child/cross-thread messaging rules with per-pair budgets; child results delivered to the lead; persisted, live-streamed event log.
 
 ### Changed
 
