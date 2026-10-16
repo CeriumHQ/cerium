@@ -1,0 +1,19 @@
+{
+  "name": "@cerium/backend",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cerium/adapter-claude": "workspace:*",
+    "@cerium/bus": "workspace:*",
+    "@cerium/orchestrator": "workspace:*",
+    "@cerium/protocol": "workspace:*",
+    "@cerium/store": "workspace:*",
+    "@effect/platform-node": "4.0.5",
+    "effect": "4.0.5"
+  }
+}

@@ -6,6 +6,7 @@
     { "path": "./packages/store" },
     { "path": "./packages/orchestrator" },
     { "path": "./packages/bus" },
-    { "path": "./packages/adapters/claude" }
+    { "path": "./packages/adapters/claude" },
+    { "path": "./apps/backend" }
   ]
 }
