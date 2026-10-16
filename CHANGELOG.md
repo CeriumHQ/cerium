@@ -33,3 +33,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/harness` takes `AccessMode` from `@cerium/protocol` instead of defining its own.
 - The scripted fake harness adapter used in tests is shared from `@cerium/harness/testing`.
 - `@cerium/store` applies its own bundled migrations unless given another folder.
+
+### Fixed
+
+- Claude adapter: trusted bus tools are approved inside the permission callback instead of through `allowedTools`, which bypassed the callback and triggered an SDK warning.

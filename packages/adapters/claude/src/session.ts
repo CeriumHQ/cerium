@@ -50,8 +50,6 @@ const toSdkOptions = (executablePath: string, options: SessionOptions, canUseToo
   // Load the user's own Claude configuration (CLAUDE.md, settings, skills) like their CLI does.
   settingSources: ["user", "project", "local"],
   disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
-  // `mcp__<server>` allows every tool of that server without a permission prompt.
-  allowedTools: (options.trustedMcpServers ?? []).map((name) => `mcp__${name}`),
   ...(options.access === "readOnly" ? { tools: READ_ONLY_TOOLS } : {}),
   permissionMode: options.access === "acceptEdits" ? "acceptEdits" : "default",
   mcpServers: Object.fromEntries(
@@ -109,9 +107,16 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
       return yield* Effect.raceFirst(Deferred.await(decision), aborted);
     }).pipe(Effect.ensuring(Effect.sync(() => pendingPermissions.delete(requestId))));
 
+  // Trusted servers' tools (Cerium's own bus) are allowed here rather than through `allowedTools`, which
+  // would bypass this callback for the whole server.
+  const trustedPrefixes = (options.trustedMcpServers ?? []).map((name) => `mcp__${name}__`);
+  const isTrusted = (toolName: string) => trustedPrefixes.some((prefix) => toolName.startsWith(prefix));
+
   const canUseTool: CanUseTool = (toolName, toolInput, details) =>
     run(
       Effect.gen(function* () {
+        if (isTrusted(toolName))
+          return { behavior: "allow", updatedInput: toolInput } satisfies PermissionResult;
         const requestId = details.toolUseID;
         yield* Queue.offer(sideEvents, {
           payload: {
