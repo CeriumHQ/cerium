@@ -50,6 +50,8 @@ const toSdkOptions = (executablePath: string, options: SessionOptions, canUseToo
   // Load the user's own Claude configuration (CLAUDE.md, settings, skills) like their CLI does.
   settingSources: ["user", "project", "local"],
   disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
+  // `mcp__<server>` allows every tool of that server without a permission prompt.
+  allowedTools: (options.trustedMcpServers ?? []).map((name) => `mcp__${name}`),
   ...(options.access === "readOnly" ? { tools: READ_ONLY_TOOLS } : {}),
   permissionMode: options.access === "acceptEdits" ? "acceptEdits" : "default",
   mcpServers: Object.fromEntries(
