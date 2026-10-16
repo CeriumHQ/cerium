@@ -21,6 +21,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Claude adapter: detects the installed Claude Code version and login status, and runs live sessions with approvals, file change tracking, per-turn usage, and mid-session model and effort switching.
 - `@cerium/protocol`: orchestration events (turn inputs, spawned agents, agent state, spawn approvals) and the rule that a child's access only narrows.
 - Claude adapter: reports completed reasoning blocks alongside streamed reasoning.
+- `@cerium/protocol`: thread and agent record schemas.
 
 ### Changed
 
