@@ -73,7 +73,7 @@ export const describeTool = (
 /** Consecutive tool calls, shown as one activity card with a row per call. */
 export function ToolGroup({ tools }: { tools: ReadonlyArray<ToolBlock> }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line-subtle bg-surface-hover/50">
+    <div className="overflow-hidden rounded-lg border border-line-subtle">
       {tools.map((tool, index) => (
         <ToolRow key={tool.id} tool={tool} divider={index > 0} />
       ))}
@@ -85,11 +85,11 @@ function ToolRow({ tool, divider }: { tool: ToolBlock; divider: boolean }) {
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
   return (
     <Collapsible.Root className={divider ? "border-t border-line-subtle" : ""}>
-      <Collapsible.Trigger className="group flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
-        <Icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+      <Collapsible.Trigger className="group flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
+        <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         <span className="shrink-0 font-medium text-fg-primary capitalize">{verb}</span>
         {detail ? (
-          <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[12px]" : ""}`}>
+          <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
             {detail}
           </span>
         ) : null}
@@ -117,9 +117,9 @@ function ToolRow({ tool, divider }: { tool: ToolBlock; divider: boolean }) {
 }
 
 function ToolStatus({ status }: { status: ToolBlock["status"] }) {
-  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-fg-tertiary" />;
-  if (status === "error") return <X size={13} strokeWidth={2.25} className="text-fg-secondary" />;
-  return <Check size={13} strokeWidth={2.25} className="text-fg-tertiary" />;
+  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running" />;
+  if (status === "error") return <X size={13} strokeWidth={2.25} className="text-error" />;
+  return <Check size={13} strokeWidth={2.25} className="text-success/80" />;
 }
 
 function Payload({ label, value }: { label: string; value: unknown }) {

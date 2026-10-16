@@ -28,14 +28,11 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   const verb =
     item._tag === "ChildFinishedTurn" ? "finished" : item._tag === "FromAgent" ? "wrote" : "notice";
   return (
-    <div className="flex w-full gap-2.5 rounded-xl border border-line-subtle bg-surface-hover/50 px-3 py-2.5">
-      <CornerDownRight size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-fg-tertiary" />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-xs text-fg-tertiary">
-          <span className="font-medium text-fg-secondary">{from}</span> {verb}
-        </span>
-        <p className="text-[13px] leading-[1.55] text-fg-secondary select-text">{item.text}</p>
-      </div>
+    <div className="flex gap-2 text-[12.5px] leading-[1.55]">
+      <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
+      <p className="min-w-0 text-fg-tertiary select-text">
+        <span className="font-medium text-fg-secondary">{from}</span> {verb}: {item.text}
+      </p>
     </div>
   );
 }
@@ -43,8 +40,8 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   return (
     <Collapsible.Root>
-      <Collapsible.Trigger className="group flex items-center gap-1.5 text-[13px] text-fg-tertiary transition-colors hover:text-fg-secondary">
-        <Brain size={14} strokeWidth={1.75} />
+      <Collapsible.Trigger className="group flex items-center gap-1.5 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+        <Brain size={13} strokeWidth={1.75} />
         {block.streaming ? "Thinking…" : "Thought"}
         <ChevronRight
           size={13}
@@ -52,7 +49,7 @@ export function Reasoning({ block }: { block: Block<"reasoning"> }) {
         />
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <p className="mt-2 border-l border-line-strong pl-3 text-[13px] leading-[1.6] text-fg-tertiary select-text">
+        <p className="mt-1.5 border-l border-line-strong pl-3 text-[12.5px] leading-[1.6] text-fg-tertiary select-text">
           {block.text}
         </p>
       </Collapsible.Panel>
@@ -64,16 +61,12 @@ const accessLabel = { readOnly: "Read only", ask: "Asks to edit", acceptEdits: "
 
 export function SpawnCard({ block, state }: { block: Block<"spawn">; state: "running" | "idle" | "failed" }) {
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-raised">
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-hover text-fg-primary">
-        <ProviderLogo provider={block.provider} size={15} />
+    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-[12.5px]">
+      <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
+      <span className="truncate font-medium text-fg-primary">{block.role}</span>
+      <span className="min-w-0 flex-1 truncate text-fg-tertiary">
+        {block.model} · {accessLabel[block.access]}
       </span>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] font-medium text-fg-primary">{block.role}</span>
-        <span className="truncate text-xs text-fg-tertiary">
-          {block.model} · {accessLabel[block.access]}
-        </span>
-      </div>
       <AgentState state={state} />
     </div>
   );
@@ -81,16 +74,16 @@ export function SpawnCard({ block, state }: { block: Block<"spawn">; state: "run
 
 function AgentState({ state }: { state: "running" | "idle" | "failed" }) {
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-tertiary">
+    <span className="flex shrink-0 items-center gap-1 text-2xs text-fg-tertiary">
       {state === "running" ? (
         <span className="relative grid size-2 place-items-center">
-          <span className="absolute size-2 animate-ping rounded-full bg-accent/40" />
-          <span className="size-1.5 rounded-full bg-accent" />
+          <span className="absolute size-2 animate-ping rounded-full bg-running/45" />
+          <span className="size-1.5 rounded-full bg-running" />
         </span>
       ) : state === "failed" ? (
-        <X size={12} strokeWidth={2.5} />
+        <X size={11} strokeWidth={2.5} className="text-error" />
       ) : (
-        <Check size={12} strokeWidth={2.5} />
+        <Check size={11} strokeWidth={2.5} className="text-success" />
       )}
       {{ running: "Working", idle: "Done", failed: "Failed" }[state]}
     </span>
@@ -120,25 +113,25 @@ export function PermissionCard({ block }: { block: Block<"permission"> }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-raised p-3.5 shadow-raised">
-      <div className="flex items-center gap-2 text-xs font-medium text-fg-secondary">
-        <ShieldQuestion size={14} strokeWidth={1.75} />
-        Approval needed
+    <div className="flex flex-col gap-2.5 rounded-lg border border-attention/35 bg-surface-raised p-3 shadow-raised">
+      <div className="flex items-center gap-1.5 text-[12.5px] text-fg-secondary">
+        <ShieldQuestion size={13} strokeWidth={1.75} className="text-attention" />
+        <span className="font-medium text-fg-primary">{block.summary}</span>
+        <span className="text-attention">needs approval</span>
       </div>
-      <p className="text-[14px] text-fg-primary">{block.summary}</p>
       {typeof command === "string" ? (
-        <pre className="overflow-x-auto rounded-lg border border-line-subtle bg-surface-window px-3 py-2 font-mono text-[12.5px] text-fg-primary select-text">
+        <pre className="overflow-x-auto rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-[12px] text-fg-primary select-text">
           {command}
         </pre>
       ) : null}
-      <div className="flex items-center gap-2">
-        <Button className="h-8 rounded-lg bg-accent px-3 text-[13px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80">
+      <div className="flex items-center gap-1.5">
+        <Button className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80">
           Allow once
         </Button>
-        <Button className="h-8 rounded-lg border border-line-strong px-3 text-[13px] font-medium text-fg-primary transition-colors hover:bg-surface-hover">
+        <Button className="h-7 rounded-md border border-line-strong px-2.5 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover">
           Allow for session
         </Button>
-        <Button className="ml-auto h-8 rounded-lg px-3 text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
+        <Button className="ml-auto h-7 rounded-md px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
           Deny
         </Button>
       </div>

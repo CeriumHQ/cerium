@@ -52,16 +52,18 @@ const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Transcri
   });
 };
 
-/** Turns blocks into display items: inputs, a header per response, and grouped tools and spawns. */
+/** Turns blocks into display items: user inputs, a header per response, and grouped tools and spawns. */
 const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => {
   const items: Array<Item> = [];
   for (const block of visible(blocks)) {
     const last = items.at(-1);
-    if (block.kind === "user" || block.kind === "notice") {
+    if (block.kind === "user") {
       if (last?.kind === "input") items[items.length - 1] = { ...last, blocks: [...last.blocks, block] };
       else items.push({ kind: "input", id: block.id, blocks: [block] });
       continue;
     }
+    // One header per response: only the user's own messages start a new one. Results from child
+    // agents arrive mid-response and stay inside it.
     if (last === undefined || last.kind === "input") items.push({ kind: "header", id: `header:${block.id}` });
     const previous = items.at(-1);
     if (block.kind === "tool") {
@@ -87,18 +89,14 @@ export function Transcript({ blocks, agent, childState }: TranscriptProps) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex max-w-[46rem] flex-col gap-4 px-8 pt-8 pb-40">
+      <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40">
         {layout(blocks).map((item) => {
           switch (item.kind) {
             case "input":
               return (
-                <div key={item.id} className="flex flex-col items-end gap-2 py-2">
+                <div key={item.id} className="flex flex-col items-end gap-2 py-3">
                   {item.blocks.map((block) =>
-                    block.kind === "user" ? (
-                      <UserMessage key={block.id} block={block} />
-                    ) : block.kind === "notice" ? (
-                      <Notice key={block.id} block={block} roleOf={roleOf} />
-                    ) : null,
+                    block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
                   )}
                 </div>
               );
@@ -108,14 +106,14 @@ export function Transcript({ blocks, agent, childState }: TranscriptProps) {
               return <ToolGroup key={item.id} tools={item.tools} />;
             case "spawns":
               return (
-                <div key={item.id} className="flex flex-wrap gap-2">
+                <div key={item.id} className="flex flex-wrap gap-1.5">
                   {item.spawns.map((spawn) => (
                     <SpawnCard key={spawn.id} block={spawn} state={childState(spawn.childId)} />
                   ))}
                 </div>
               );
             case "block":
-              return <ResponseBlock key={item.id} block={item.block} />;
+              return <ResponseBlock key={item.id} block={item.block} roleOf={roleOf} />;
           }
         })}
       </div>
@@ -134,8 +132,10 @@ function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
   );
 }
 
-function ResponseBlock({ block }: { block: TranscriptBlock }) {
+function ResponseBlock({ block, roleOf }: { block: TranscriptBlock; roleOf: (agentId: string) => string }) {
   switch (block.kind) {
+    case "notice":
+      return <Notice block={block} roleOf={roleOf} />;
     case "message":
       return (
         <div className="select-text">
