@@ -69,7 +69,7 @@ export function Composer({ running, onSend, onStop }: ComposerProps) {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
-      <div className="pointer-events-auto mx-auto max-w-[42rem] rounded-2xl border border-line-strong bg-surface-raised shadow-overlay backdrop-blur-2xl transition-colors focus-within:border-fg-tertiary/50">
+      <div className="pointer-events-auto mx-auto max-w-[42rem] rounded-2xl border border-line-subtle bg-surface-raised backdrop-blur-2xl transition-colors focus-within:border-line-strong">
         <textarea
           rows={1}
           value={text}
