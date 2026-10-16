@@ -29,6 +29,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/bus`: Cerium's MCP server on a loopback port, injected into every session with its own bearer token, exposing `list_models`, `spawn_agent`, `list_agents`, `list_threads`, `send_message` and `kill_agent`.
 - `@cerium/backend`: composes the store, orchestrator, Claude adapter and MCP bus into one layer, with a live check where a Claude lead spawns a Claude child through the bus and relays its answer.
 - `@cerium/ui`: React app with Cerium's design tokens (translucent glass surfaces over Acrylic, dark and light themes) and the window frame: a titlebar over the sidebar, conversation and inspector regions.
+- UI: thread sidebar with collapsible project groups, live thread status, provider markers for active multi-agent threads, relative times, and harness status in the footer.
 
 ### Changed
 
