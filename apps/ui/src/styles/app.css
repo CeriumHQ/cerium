@@ -27,17 +27,11 @@ body {
 }
 
 /*
- * The browser preview has no OS Acrylic behind the page, so it paints a stand-in desktop and blurs
- * it like Acrylic does. In Electron the body stays transparent and Windows provides the real thing.
+ * The browser preview has no OS Acrylic behind the page, so it stands in a flat, neutral desktop.
+ * In Electron the body stays transparent and Windows provides the real backdrop.
  */
 html[data-shell="browser"] body {
-  background:
-    radial-gradient(70% 90% at 20% 10%, oklch(0.42 0 0), transparent 70%),
-    radial-gradient(60% 80% at 90% 80%, oklch(0.32 0 0), transparent 70%), oklch(0.16 0 0);
-}
-
-html[data-shell="browser"] #root {
-  backdrop-filter: blur(70px);
+  background: oklch(0.24 0 0);
 }
 
 /* Acrylic's grain, which keeps large translucent areas from looking flat. */
