@@ -17,6 +17,7 @@ export function App() {
         sidebar={
           <Sidebar threads={threadFixtures} selectedId={selectedThread} onSelect={setSelectedThread} />
         }
+        agents={["claude", "muse", "muse"]}
         inspector={inspectorOpen ? <div /> : undefined}
         onToggleInspector={() => setInspectorOpen((open) => !open)}
       >
