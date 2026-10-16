@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+.tsbuild/
+*.tsbuildinfo
+coverage/
+.vite/
+.vite-plus/
+
+# Pinned Effect source, fetched by `bun run vendor:effect`
+vendor/effect/
+
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,3 @@
+[install]
+# Every dependency is pinned to an exact version (see AGENTS.md).
+exact = true
