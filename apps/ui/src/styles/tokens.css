@@ -96,6 +96,16 @@
   --shadow-raised: var(--shadow-raised);
   --shadow-overlay: var(--shadow-overlay);
 
+  /* Names Streamdown's markdown components style with, mapped onto Cerium's tokens. */
+  --color-background: var(--surface-panel);
+  --color-foreground: var(--fg-primary);
+  --color-muted: var(--surface-hover);
+  --color-muted-foreground: var(--fg-tertiary);
+  --color-border: var(--line-subtle);
+  --color-sidebar: var(--surface-raised);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "Cascadia Code", monospace;
 

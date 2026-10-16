@@ -30,6 +30,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/backend`: composes the store, orchestrator, Claude adapter and MCP bus into one layer, with a live check where a Claude lead spawns a Claude child through the bus and relays its answer.
 - `@cerium/ui`: React app with Cerium's design tokens (monochrome translucent glass over Acrylic, dark and light themes) and the window frame: a titlebar over the thread sidebar and the transcript, with the agent inspector opening beside it on demand.
 - UI: thread sidebar with collapsible project groups, monochrome thread status, official provider logos for active multi-agent threads, relative times, and harness status in the footer.
+- UI: thread transcript built from canonical events: user messages and markdown replies (streaming-safe), collapsible reasoning, grouped tool calls with inputs and outputs, cards for spawned agents, child results delivered back to the lead, inline approval cards, and per-turn usage.
 
 ### Changed
 

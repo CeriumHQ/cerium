@@ -2,6 +2,10 @@
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 @import "./tokens.css";
+@import "streamdown/styles.css";
+
+/* Streamdown renders agent markdown; Tailwind must see the classes it uses. */
+@source "../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
