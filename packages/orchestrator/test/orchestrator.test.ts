@@ -4,7 +4,9 @@ import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Exit } from "effect";
 
 import { Orchestrator, type CatalogEntry } from "../src/index.ts";
-import { makeFakeAdapter, recordEvents, testLayer } from "./fakes.ts";
+import { makeFakeAdapter } from "@cerium/harness/testing";
+
+import { recordEvents, testLayer } from "./fakes.ts";
 
 const haiku: CatalogEntry = {
   alias: "scout",

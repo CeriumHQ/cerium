@@ -30,3 +30,4 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - `@cerium/harness` takes `AccessMode` from `@cerium/protocol` instead of defining its own.
+- The scripted fake harness adapter used in tests is shared from `@cerium/harness/testing`.
