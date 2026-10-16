@@ -1,4 +1,5 @@
 import type {
+  AccessMode,
   CapabilityManifest,
   EventPayload,
   HarnessStatus,
@@ -29,14 +30,6 @@ export interface AdapterEvent {
   readonly payload: EventPayload;
   readonly raw?: unknown;
 }
-
-/**
- * What an agent may do without asking:
- * - `readOnly`: read/search/web tools only; writes are unavailable (chat mode, read-only children).
- * - `ask`: every write or command goes through Cerium's approval flow.
- * - `acceptEdits`: file edits in the workspace are auto-approved; commands still ask.
- */
-export type AccessMode = "readOnly" | "ask" | "acceptEdits";
 
 export type McpServerSpec =
   | {
