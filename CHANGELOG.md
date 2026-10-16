@@ -15,3 +15,4 @@ All notable changes to Cerium are recorded here. The format follows
 - Architecture decision record and auto-router design in `docs/`.
 - Agent guidelines in `AGENTS.md`, including git and changelog rules.
 - `@cerium/protocol`: canonical agent events, capability manifests and harness status schemas.
+- `@cerium/harness`: the adapter contract every provider implements, plus version range checks.
