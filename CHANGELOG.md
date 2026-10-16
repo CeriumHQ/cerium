@@ -16,3 +16,4 @@ All notable changes to Cerium are recorded here. The format follows
 - Agent guidelines in `AGENTS.md`, including git and changelog rules.
 - `@cerium/protocol`: canonical agent events, capability manifests and harness status schemas.
 - `@cerium/harness`: the adapter contract every provider implements, plus version range checks.
+- Claude adapter: translates Claude Agent SDK messages into canonical events, tested against a recorded session.
