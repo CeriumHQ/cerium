@@ -22,6 +22,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/protocol`: orchestration events (turn inputs, spawned agents, agent state, spawn approvals) and the rule that a child's access only narrows.
 - Claude adapter: reports completed reasoning blocks alongside streamed reasoning.
 - `@cerium/protocol`: thread and agent record schemas.
+- `@cerium/store`: SQLite persistence for threads, agents and the append-only event log, using Drizzle on Node's built-in `node:sqlite` with generated migrations and an FTS5 startup check.
 
 ### Changed
 

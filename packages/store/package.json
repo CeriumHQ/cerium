@@ -1,0 +1,22 @@
+{
+  "name": "@cerium/store",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@cerium/protocol": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.5",
+    "drizzle-kit": "0.31.11"
+  }
+}

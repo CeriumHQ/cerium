@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/protocol" },
     { "path": "./packages/harness" },
+    { "path": "./packages/store" },
     { "path": "./packages/adapters/claude" }
   ]
 }
