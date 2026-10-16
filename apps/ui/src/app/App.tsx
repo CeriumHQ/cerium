@@ -8,15 +8,24 @@ import { Sidebar } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { AppFrame } from "./AppFrame.tsx";
+import type { AppMode } from "./ModeSwitch.tsx";
 
 export function App() {
   const [selectedThread, setSelectedThread] = useState<string | undefined>("t1");
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [mode, setMode] = useState<AppMode>("work");
   return (
     <TooltipProvider delay={400}>
       <AppFrame
+        mode={mode}
+        onModeChange={setMode}
         sidebar={
-          <Sidebar threads={threadFixtures} selectedId={selectedThread} onSelect={setSelectedThread} />
+          <Sidebar
+            mode={mode}
+            threads={threadFixtures}
+            selectedId={selectedThread}
+            onSelect={setSelectedThread}
+          />
         }
         agents={["claude", "muse", "muse"]}
         inspector={inspectorOpen ? <div /> : undefined}

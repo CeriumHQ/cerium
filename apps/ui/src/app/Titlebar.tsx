@@ -5,24 +5,29 @@ import { ChevronDown, Minus, PanelLeft, Square, X } from "lucide-react";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
+import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 
 /** Windows draws its minimize / maximize / close buttons here (Electron's titleBarOverlay). */
 const CAPTION_BUTTON_WIDTH = 46;
 
 interface TitlebarProps {
+  readonly mode: AppMode;
+  readonly onModeChange: (mode: AppMode) => void;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
 }
 
-export function Titlebar({ agents, inspectorOpen, onToggleInspector }: TitlebarProps) {
+export function Titlebar({ mode, onModeChange, agents, inspectorOpen, onToggleInspector }: TitlebarProps) {
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
       <div className="flex items-center gap-2">
         <CeriumMark />
         <span className="text-[13px] font-medium tracking-tight text-fg-primary">Cerium</span>
       </div>
+      <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
+      <ModeSwitch mode={mode} onChange={onModeChange} />
       <div className="[app-region:no-drag]">
         <IconButton icon={PanelLeft} label="Toggle sidebar" shortcut="Ctrl B" />
       </div>

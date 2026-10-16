@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronRight, MessagesSquare, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronRight, FolderGit2, Search, Settings, SquarePen } from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -11,6 +11,8 @@ import { shortAgo } from "../../lib/time.ts";
 import { providerName, type ThreadSummary } from "./model.ts";
 
 interface SidebarProps {
+  /** Only this mode's threads are listed. */
+  readonly mode: "work" | "chat";
   readonly threads: ReadonlyArray<ThreadSummary>;
   readonly selectedId: string | undefined;
   readonly onSelect: (threadId: string) => void;
@@ -22,34 +24,59 @@ interface ThreadGroupData {
   readonly threads: ReadonlyArray<ThreadSummary>;
 }
 
-/** Work threads grouped by project folder, then chats; newest first within each group. */
-const groupThreads = (threads: ReadonlyArray<ThreadSummary>): ReadonlyArray<ThreadGroupData> => {
-  const byKey = new Map<string, ThreadGroupData>();
-  for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
-    const key = thread.mode === "chat" ? "chat" : `project:${thread.project ?? "Untitled"}`;
-    const label = thread.mode === "chat" ? "Chats" : (thread.project ?? "Untitled");
-    const group = byKey.get(key) ?? { key, label, threads: [] };
-    byKey.set(key, { ...group, threads: [...group.threads, thread] });
-  }
-  return [...byKey.values()].sort((a, b) => Number(a.key === "chat") - Number(b.key === "chat"));
+const DAY = 86_400_000;
+
+/** Chats have no folder, so they group by how recent they are. */
+const recency = (updatedAt: number, now: number): string => {
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  if (updatedAt >= startOfToday) return "Today";
+  if (updatedAt >= startOfToday - DAY) return "Yesterday";
+  if (updatedAt >= startOfToday - 6 * DAY) return "Previous 7 days";
+  return "Older";
 };
 
-export function Sidebar({ threads, selectedId, onSelect }: SidebarProps) {
+/** Work threads grouped by project folder, chats by recency; newest first within each group. */
+const groupThreads = (
+  threads: ReadonlyArray<ThreadSummary>,
+  mode: SidebarProps["mode"],
+): ReadonlyArray<ThreadGroupData> => {
+  const now = Date.now();
+  const byKey = new Map<string, ThreadGroupData>();
+  for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    if (thread.mode !== mode) continue;
+    const label = mode === "work" ? (thread.project ?? "Untitled") : recency(thread.updatedAt, now);
+    const group = byKey.get(label) ?? { key: label, label, threads: [] };
+    byKey.set(label, { ...group, threads: [...group.threads, thread] });
+  }
+  return [...byKey.values()];
+};
+
+export function Sidebar({ mode, threads, selectedId, onSelect }: SidebarProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
         <Button className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active">
           <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary" />
-          New thread
+          {mode === "work" ? "New thread" : "New chat"}
           <kbd className="ml-auto font-sans text-2xs text-fg-tertiary">Ctrl N</kbd>
         </Button>
-        <IconButton icon={Search} label="Search threads" shortcut="Ctrl K" />
+        <IconButton
+          icon={Search}
+          label={mode === "work" ? "Search threads" : "Search chats"}
+          shortcut="Ctrl K"
+        />
       </div>
 
       <ScrollArea className="flex-1">
-        <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Threads">
-          {groupThreads(threads).map((group) => (
-            <ThreadGroup key={group.key} group={group} selectedId={selectedId} onSelect={onSelect} />
+        <nav className="flex flex-col gap-3 px-2 pb-3" aria-label={mode === "work" ? "Threads" : "Chats"}>
+          {groupThreads(threads, mode).map((group) => (
+            <ThreadGroup
+              key={group.key}
+              group={group}
+              mode={mode}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
           ))}
         </nav>
       </ScrollArea>
@@ -61,10 +88,12 @@ export function Sidebar({ threads, selectedId, onSelect }: SidebarProps) {
 
 function ThreadGroup({
   group,
+  mode,
   selectedId,
   onSelect,
 }: {
   group: ThreadGroupData;
+  mode: SidebarProps["mode"];
   selectedId: string | undefined;
   onSelect: (threadId: string) => void;
 }) {
@@ -76,7 +105,7 @@ function ThreadGroup({
           strokeWidth={2}
           className="transition-transform duration-200 ease-out-soft group-data-panel-open:rotate-90"
         />
-        {group.key === "chat" ? <MessagesSquare size={12} strokeWidth={2} /> : null}
+        {mode === "work" ? <FolderGit2 size={12} strokeWidth={2} /> : null}
         {group.label}
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
