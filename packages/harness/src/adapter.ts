@@ -53,6 +53,8 @@ export interface SessionOptions {
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
   /** Also load the MCP servers the user configured in the harness itself. */
   readonly includeUserMcpServers: boolean;
+  /** Injected servers whose tools run without approval prompts (Cerium's own bus). */
+  readonly trustedMcpServers?: ReadonlyArray<string>;
   /** The harness's session id to resume. */
   readonly resume?: string;
   /** Instructions appended to the harness's own system prompt. */
