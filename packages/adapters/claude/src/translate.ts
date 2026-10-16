@@ -18,10 +18,10 @@ const AUTH_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "
  */
 export class ClaudeTranslator {
   #streamingMessageId: string | undefined;
-  /** Text block indexes seen streaming, per API message, waiting for their completed block. */
-  readonly #pendingTextBlocks = new Map<string, Array<number>>();
-  /** Fallback block numbering when partial messages are off. */
-  readonly #completedTextBlocks = new Map<string, number>();
+  /** Block indexes seen streaming, keyed by `<api message id>|<block type>`, awaiting their completion. */
+  readonly #pendingBlocks = new Map<string, Array<number>>();
+  /** Fallback block numbering when partial messages are off, keyed like `#pendingBlocks`. */
+  readonly #completedBlocks = new Map<string, number>();
   readonly #toolNames = new Map<string, string>();
   /** Claude Code repeats `init` every turn; only the first starts the session. */
   #started = false;
@@ -85,13 +85,14 @@ export class ClaudeTranslator {
       case "message_start":
         this.#streamingMessageId = event.message.id;
         return [];
-      case "content_block_start":
-        if (event.content_block.type === "text" && this.#streamingMessageId !== undefined) {
-          const pending = this.#pendingTextBlocks.get(this.#streamingMessageId) ?? [];
-          pending.push(event.index);
-          this.#pendingTextBlocks.set(this.#streamingMessageId, pending);
+      case "content_block_start": {
+        const { type } = event.content_block;
+        if ((type === "text" || type === "thinking") && this.#streamingMessageId !== undefined) {
+          const key = `${this.#streamingMessageId}|${type}`;
+          this.#pendingBlocks.set(key, [...(this.#pendingBlocks.get(key) ?? []), event.index]);
         }
         return [];
+      }
       case "content_block_delta": {
         if (this.#streamingMessageId === undefined) return [];
         const messageId = `${this.#streamingMessageId}:${event.index}`;
@@ -126,7 +127,15 @@ export class ClaudeTranslator {
     return message.message.content.flatMap((block): ReadonlyArray<EventPayload> => {
       switch (block.type) {
         case "text":
-          return [{ _tag: "MessageCompleted", messageId: this.#textBlockId(apiMessageId), text: block.text }];
+          return [
+            { _tag: "MessageCompleted", messageId: this.#blockId(apiMessageId, "text"), text: block.text },
+          ];
+        case "thinking": {
+          const messageId = this.#blockId(apiMessageId, "thinking");
+          return block.thinking === ""
+            ? []
+            : [{ _tag: "ReasoningCompleted", messageId, text: block.thinking }];
+        }
         case "tool_use":
         case "server_tool_use":
         case "mcp_tool_use":
@@ -138,12 +147,13 @@ export class ClaudeTranslator {
     });
   }
 
-  #textBlockId(apiMessageId: string): string {
-    const index = this.#pendingTextBlocks.get(apiMessageId)?.shift();
+  #blockId(apiMessageId: string, type: "text" | "thinking"): string {
+    const key = `${apiMessageId}|${type}`;
+    const index = this.#pendingBlocks.get(key)?.shift();
     if (index !== undefined) return `${apiMessageId}:${index}`;
-    const completed = this.#completedTextBlocks.get(apiMessageId) ?? 0;
-    this.#completedTextBlocks.set(apiMessageId, completed + 1);
-    return `${apiMessageId}:t${completed}`;
+    const completed = this.#completedBlocks.get(key) ?? 0;
+    this.#completedBlocks.set(key, completed + 1);
+    return `${apiMessageId}:${type === "text" ? "t" : "r"}${completed}`;
   }
 
   #toolResults(message: Extract<SDKMessage, { type: "user" }>): ReadonlyArray<EventPayload> {

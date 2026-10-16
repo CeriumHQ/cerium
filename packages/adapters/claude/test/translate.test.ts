@@ -148,6 +148,26 @@ describe("ClaudeTranslator edge cases", () => {
     expect(costs[1]).toBeCloseTo(0.05);
   });
 
+  it("pairs streamed reasoning with its completed thinking block", () => {
+    const translator = new ClaudeTranslator();
+    const stream = (event: object) =>
+      ({ type: "stream_event", parent_tool_use_id: null, event }) as unknown as SDKMessage;
+    const payloads = [
+      stream({ type: "message_start", message: { id: "msg_3" } }),
+      stream({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
+      stream({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "hmm" } }),
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { id: "msg_3", content: [{ type: "thinking", thinking: "hmm" }] },
+      } as unknown as SDKMessage,
+    ].flatMap((message) => translator.translate(message).map((event) => event.payload));
+    expect(payloads).toEqual([
+      { _tag: "ReasoningDelta", messageId: "msg_3:0", text: "hmm" },
+      { _tag: "ReasoningCompleted", messageId: "msg_3:0", text: "hmm" },
+    ]);
+  });
+
   it("numbers completed text blocks when partial messages are off", () => {
     const translator = new ClaudeTranslator();
     const block = (text: string) =>
