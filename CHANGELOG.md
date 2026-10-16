@@ -10,3 +10,4 @@ All notable changes to Cerium are recorded here. The format follows
 
 - Bun workspace with Vite+ for build, lint, format and test, TypeScript 7, and Effect language service diagnostics.
 - Apache-2.0 license.
+- Agent skills for design grilling, retros, wizards and writing agent docs.
