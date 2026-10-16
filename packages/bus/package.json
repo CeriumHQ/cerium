@@ -1,0 +1,21 @@
+{
+  "name": "@cerium/bus",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cerium/orchestrator": "workspace:*",
+    "@cerium/protocol": "workspace:*",
+    "@effect/platform-node": "4.0.5",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@cerium/harness": "workspace:*",
+    "@cerium/store": "workspace:*",
+    "@effect/vitest": "4.0.5"
+  }
+}

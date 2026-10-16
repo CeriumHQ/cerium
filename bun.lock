@@ -28,6 +28,21 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/bus": {
+      "name": "@cerium/bus",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/orchestrator": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "@effect/platform-node": "4.0.5",
+        "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/store": "workspace:*",
+        "@effect/vitest": "4.0.5",
+      },
+    },
     "packages/harness": {
       "name": "@cerium/harness",
       "version": "0.0.0",
@@ -111,6 +126,8 @@
     "@blazediff/core": ["@blazediff/core@1.10.0", "", {}, "sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ=="],
 
     "@cerium/adapter-claude": ["@cerium/adapter-claude@workspace:packages/adapters/claude"],
+
+    "@cerium/bus": ["@cerium/bus@workspace:packages/bus"],
 
     "@cerium/harness": ["@cerium/harness@workspace:packages/harness"],
 
