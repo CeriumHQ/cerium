@@ -1,12 +1,12 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronRight, MessagesSquare, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronRight, MessagesSquare, Search, Settings, SquarePen, X } from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { ProviderDot } from "../../components/ProviderDot.tsx";
+import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { providerName, type ThreadSummary } from "./model.ts";
 
@@ -132,18 +132,19 @@ function StatusIndicator({ status, unread }: { status: ThreadSummary["status"]; 
     failed: "An agent failed",
     idle: unread ? "Unread" : "Idle",
   }[status];
+  // Monochrome: each state differs by shape and motion, not colour.
   return (
     <span className="relative grid size-3 shrink-0 place-items-center">
       <span className="sr-only">{label}</span>
       {status === "running" ? (
         <>
-          <span className="absolute size-2 animate-ping rounded-full bg-accent/50" />
+          <span className="absolute size-2.5 animate-ping rounded-full bg-accent/40" />
           <span className="size-1.5 rounded-full bg-accent" />
         </>
       ) : status === "awaitingApproval" ? (
-        <span className="size-1.5 rounded-full bg-warning shadow-[0_0_0_3px_color-mix(in_oklch,var(--warning)_25%,transparent)]" />
+        <span className="size-2 animate-pulse rounded-full border-[1.5px] border-accent" />
       ) : status === "failed" ? (
-        <span className="size-1.5 rounded-full bg-danger" />
+        <X size={11} strokeWidth={2.5} className="text-fg-secondary" />
       ) : unread ? (
         <span className="size-1.5 rounded-full bg-fg-secondary" />
       ) : null}
@@ -151,13 +152,16 @@ function StatusIndicator({ status, unread }: { status: ThreadSummary["status"]; 
   );
 }
 
-/** Overlapping markers for the harnesses a multi-agent thread uses. */
+/** The logos of the harnesses an active multi-agent thread uses. */
 function ProviderStack({ providers }: { providers: ReadonlyArray<ProviderId> }) {
   const distinct = [...new Set(providers)];
   return (
-    <span className="flex shrink-0 items-center -space-x-0.5" aria-label={`${providers.length} agents`}>
+    <span
+      className="flex shrink-0 items-center gap-0.5 text-fg-tertiary"
+      aria-label={`${providers.length} agents`}
+    >
       {distinct.map((provider) => (
-        <ProviderDot key={provider} provider={provider} className="ring-2 ring-surface-window" />
+        <ProviderLogo key={provider} provider={provider} size={11} />
       ))}
     </span>
   );
@@ -170,30 +174,25 @@ const harnesses: ReadonlyArray<{ provider: ProviderId; state: "ready" | "loggedO
   { provider: "cursor", state: "missing" },
 ];
 
+const harnessState = { ready: "ready", loggedOut: "not logged in", missing: "not installed" };
+
 function SidebarFooter() {
   return (
     <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5">
       <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," />
-      <div
-        className="ml-auto flex items-center rounded-lg border border-line-subtle bg-surface-hover px-0.5"
-        aria-label="Harnesses"
-      >
+      <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
         {harnesses.map(({ provider, state }) => (
-          <Tooltip
-            key={provider}
-            side="top"
-            label={`${providerName[provider]}: ${{ ready: "ready", loggedOut: "not logged in", missing: "not installed" }[state]}`}
-          >
+          <Tooltip key={provider} side="top" label={`${providerName[provider]}: ${harnessState[state]}`}>
             <Button
               aria-label={`${providerName[provider]} status`}
-              className={`grid size-6 place-items-center rounded-md transition-colors hover:bg-surface-hover ${state === "ready" ? "" : "opacity-45"}`}
+              className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover ${
+                state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-disabled"
+              }`}
             >
-              <ProviderDot
-                provider={provider}
-                className={
-                  state === "loggedOut" ? "ring-1 ring-warning ring-offset-1 ring-offset-transparent" : ""
-                }
-              />
+              <ProviderLogo provider={provider} size={14} />
+              {state === "loggedOut" ? (
+                <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-accent" />
+              ) : null}
             </Button>
           </Tooltip>
         ))}

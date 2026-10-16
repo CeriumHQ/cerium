@@ -28,8 +28,8 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: threads with a lead and depth-1 children; inbox delivery that batches notices into one turn and never interrupts a running turn; per-provider and global concurrency caps; catalog spawns with access narrowing and user approval for other models; lead/child/cross-thread messaging rules with per-pair budgets; child results delivered to the lead; persisted, live-streamed event log.
 - `@cerium/bus`: Cerium's MCP server on a loopback port, injected into every session with its own bearer token, exposing `list_models`, `spawn_agent`, `list_agents`, `list_threads`, `send_message` and `kill_agent`.
 - `@cerium/backend`: composes the store, orchestrator, Claude adapter and MCP bus into one layer, with a live check where a Claude lead spawns a Claude child through the bus and relays its answer.
-- `@cerium/ui`: React app with Cerium's design tokens (translucent glass surfaces over Acrylic, dark and light themes) and the window frame: a titlebar over the sidebar, conversation and inspector regions.
-- UI: thread sidebar with collapsible project groups, live thread status, provider markers for active multi-agent threads, relative times, and harness status in the footer.
+- `@cerium/ui`: React app with Cerium's design tokens (monochrome translucent glass over Acrylic, dark and light themes) and the window frame: a titlebar over the thread sidebar and the transcript.
+- UI: thread sidebar with collapsible project groups, monochrome thread status, official provider logos for active multi-agent threads, relative times, and harness status in the footer.
 
 ### Changed
 

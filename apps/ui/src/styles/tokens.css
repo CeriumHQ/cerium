@@ -2,97 +2,77 @@
  * Cerium's design tokens. Components use only these (through the Tailwind theme below), so the whole
  * look lives here: themes, and later macOS vibrancy, are token swaps.
  *
- * Surfaces are translucent tints layered over the window's Acrylic backdrop, from the window itself up
- * to floating overlays; each step is a little more opaque.
+ * Cerium is monochrome. Surfaces are neutral translucent tints layered over the window's Acrylic,
+ * from the window itself up to floating overlays, each a little more opaque. Emphasis comes from
+ * contrast, weight and motion rather than hue; provider identity comes from their logos.
  */
 
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --surface-window: oklch(0.16 0.012 275 / 0.42);
-  --surface-sidebar: oklch(0.14 0.012 275 / 0.3);
-  --surface-panel: oklch(0.2 0.012 275 / 0.62);
-  --surface-raised: oklch(0.24 0.014 275 / 0.72);
-  --surface-overlay: oklch(0.21 0.014 275 / 0.9);
+  --surface-window: oklch(0.17 0 0 / 0.62);
+  --surface-panel: oklch(0.2 0 0 / 0.66);
+  --surface-raised: oklch(0.255 0 0 / 0.78);
+  --surface-overlay: oklch(0.22 0 0 / 0.94);
   --surface-hover: oklch(1 0 0 / 0.05);
   --surface-active: oklch(1 0 0 / 0.085);
-  --surface-selected: oklch(0.74 0.15 282 / 0.16);
+  --surface-selected: oklch(1 0 0 / 0.09);
 
   --line-subtle: oklch(1 0 0 / 0.07);
-  --line-strong: oklch(1 0 0 / 0.13);
+  --line-strong: oklch(1 0 0 / 0.14);
 
-  --fg-primary: oklch(0.96 0.004 275);
-  --fg-secondary: oklch(0.79 0.01 275);
-  --fg-tertiary: oklch(0.62 0.012 275);
-  --fg-disabled: oklch(0.48 0.01 275);
+  --fg-primary: oklch(0.96 0 0);
+  --fg-secondary: oklch(0.78 0 0);
+  --fg-tertiary: oklch(0.6 0 0);
+  --fg-disabled: oklch(0.46 0 0);
 
-  --accent: oklch(0.74 0.15 282);
-  --accent-strong: oklch(0.67 0.19 282);
-  --accent-soft: oklch(0.74 0.15 282 / 0.14);
-  --accent-fg: oklch(0.15 0.03 282);
+  /* The "accent" is the strongest contrast available: near-white on dark. */
+  --accent: oklch(0.95 0 0);
+  --accent-strong: oklch(1 0 0);
+  --accent-soft: oklch(1 0 0 / 0.1);
+  --accent-fg: oklch(0.17 0 0);
 
-  --success: oklch(0.76 0.15 155);
-  --warning: oklch(0.82 0.14 80);
-  --danger: oklch(0.68 0.19 25);
+  --selection: oklch(1 0 0 / 0.22);
+  --focus-ring: oklch(1 0 0 / 0.55);
 
-  --selection: oklch(0.74 0.15 282 / 0.35);
-  --focus-ring: oklch(0.74 0.15 282 / 0.8);
-
-  /* Identity colours for each harness, used for small markers only (never logos). */
-  --provider-claude: oklch(0.74 0.13 45);
-  --provider-codex: oklch(0.82 0.03 240);
-  --provider-muse: oklch(0.7 0.15 250);
-  --provider-cursor: oklch(0.82 0.12 95);
-
-  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 8px 24px -12px oklch(0 0 0 / 0.5);
-  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 24px 48px -16px oklch(0 0 0 / 0.65);
+  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.045) inset, 0 8px 24px -12px oklch(0 0 0 / 0.55);
+  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 24px 48px -16px oklch(0 0 0 / 0.7);
 }
 
 [data-theme="light"] {
   color-scheme: light;
 
-  --surface-window: oklch(0.985 0.004 275 / 0.62);
-  --surface-sidebar: oklch(0.97 0.006 275 / 0.35);
-  --surface-panel: oklch(0.99 0.004 275 / 0.55);
-  --surface-raised: oklch(1 0 0 / 0.78);
-  --surface-overlay: oklch(1 0 0 / 0.92);
+  --surface-window: oklch(0.96 0 0 / 0.62);
+  --surface-panel: oklch(0.985 0 0 / 0.7);
+  --surface-raised: oklch(1 0 0 / 0.82);
+  --surface-overlay: oklch(1 0 0 / 0.95);
   --surface-hover: oklch(0 0 0 / 0.04);
   --surface-active: oklch(0 0 0 / 0.07);
-  --surface-selected: oklch(0.6 0.19 282 / 0.12);
+  --surface-selected: oklch(0 0 0 / 0.07);
 
   --line-subtle: oklch(0 0 0 / 0.07);
-  --line-strong: oklch(0 0 0 / 0.13);
+  --line-strong: oklch(0 0 0 / 0.14);
 
-  --fg-primary: oklch(0.2 0.012 275);
-  --fg-secondary: oklch(0.38 0.012 275);
-  --fg-tertiary: oklch(0.52 0.012 275);
-  --fg-disabled: oklch(0.66 0.01 275);
+  --fg-primary: oklch(0.18 0 0);
+  --fg-secondary: oklch(0.38 0 0);
+  --fg-tertiary: oklch(0.54 0 0);
+  --fg-disabled: oklch(0.68 0 0);
 
-  --accent: oklch(0.58 0.2 282);
-  --accent-strong: oklch(0.52 0.22 282);
-  --accent-soft: oklch(0.58 0.2 282 / 0.12);
-  --accent-fg: oklch(0.99 0.004 282);
+  --accent: oklch(0.2 0 0);
+  --accent-strong: oklch(0.1 0 0);
+  --accent-soft: oklch(0 0 0 / 0.08);
+  --accent-fg: oklch(0.98 0 0);
 
-  --success: oklch(0.58 0.15 155);
-  --warning: oklch(0.66 0.15 70);
-  --danger: oklch(0.56 0.2 25);
+  --selection: oklch(0 0 0 / 0.14);
+  --focus-ring: oklch(0 0 0 / 0.5);
 
-  --selection: oklch(0.58 0.2 282 / 0.25);
-  --focus-ring: oklch(0.58 0.2 282 / 0.7);
-
-  --provider-claude: oklch(0.62 0.15 45);
-  --provider-codex: oklch(0.5 0.03 240);
-  --provider-muse: oklch(0.55 0.17 250);
-  --provider-cursor: oklch(0.66 0.14 85);
-
-  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 8px 24px -12px oklch(0.2 0.02 275 / 0.25);
-  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.8) inset, 0 24px 48px -16px oklch(0.2 0.02 275 / 0.35);
+  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 8px 24px -12px oklch(0 0 0 / 0.2);
+  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.8) inset, 0 24px 48px -16px oklch(0 0 0 / 0.3);
 }
 
 @theme inline {
   --color-surface-window: var(--surface-window);
-  --color-surface-sidebar: var(--surface-sidebar);
   --color-surface-panel: var(--surface-panel);
   --color-surface-raised: var(--surface-raised);
   --color-surface-overlay: var(--surface-overlay);
@@ -112,15 +92,6 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
   --color-accent-fg: var(--accent-fg);
-
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
-
-  --color-provider-claude: var(--provider-claude);
-  --color-provider-codex: var(--provider-codex);
-  --color-provider-muse: var(--provider-muse);
-  --color-provider-cursor: var(--provider-cursor);
 
   --shadow-raised: var(--shadow-raised);
   --shadow-overlay: var(--shadow-overlay);

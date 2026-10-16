@@ -28,13 +28,22 @@ body {
  */
 html[data-shell="browser"] body {
   background:
-    radial-gradient(60% 80% at 15% 20%, oklch(0.55 0.2 265 / 0.9), transparent 70%),
-    radial-gradient(50% 70% at 85% 30%, oklch(0.6 0.19 320 / 0.75), transparent 70%),
-    radial-gradient(70% 60% at 60% 95%, oklch(0.55 0.16 220 / 0.85), transparent 70%), oklch(0.22 0.05 270);
+    radial-gradient(70% 90% at 20% 10%, oklch(0.42 0 0), transparent 70%),
+    radial-gradient(60% 80% at 90% 80%, oklch(0.32 0 0), transparent 70%), oklch(0.16 0 0);
 }
 
 html[data-shell="browser"] #root {
-  backdrop-filter: blur(70px) saturate(150%);
+  backdrop-filter: blur(70px);
+}
+
+/* Acrylic's grain, which keeps large translucent areas from looking flat. */
+html[data-shell="browser"] #root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 ::selection {
