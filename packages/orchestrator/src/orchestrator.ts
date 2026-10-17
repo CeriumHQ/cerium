@@ -107,6 +107,7 @@ export class Orchestrator extends Context.Service<
     createThread(
       input: CreateThreadInput,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    /** Delivers the user's message to a lead, resuming its harness session if it stopped or failed. */
     sendUserMessage(agentId: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
     respondToPermission(
       agentId: AgentId,
@@ -163,9 +164,12 @@ export class Orchestrator extends Context.Service<
       const pendingPermissions = new Map<AgentId, Set<string>>();
       const feed = yield* PubSub.unbounded<AgentEvent>();
 
-      // Sessions don't survive a restart, so agents a previous run left live are stopped.
+      // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
+      // resumes its harness session when the user next messages it.
       yield* store.stopLiveAgents(yield* Clock.currentTimeMillis).pipe(Effect.mapError(unavailable));
       const globalPermits = yield* Semaphore.make(config.globalConcurrency);
+      /** One resume at a time, so messages sent together don't start two sessions for one lead. */
+      const resumePermit = yield* Semaphore.make(1);
       const providerPermits = new Map(
         [...adapters].map(([provider, adapter]) => [
           provider,
@@ -303,7 +307,11 @@ export class Orchestrator extends Context.Service<
           Effect.forever,
         );
 
-      const startRuntime = (info: AgentInfo, cwd: string, initial?: InputItem) =>
+      const startRuntime = (
+        info: AgentInfo,
+        cwd: string,
+        options: { readonly initial?: InputItem; readonly resume?: string } = {},
+      ) =>
         Effect.gen(function* () {
           const adapter = adapters.get(info.provider);
           if (adapter === undefined) {
@@ -322,6 +330,7 @@ export class Orchestrator extends Context.Service<
                 cwd,
                 model: info.model,
                 ...(info.effort ? { effort: info.effort } : {}),
+                ...(options.resume ? { resume: options.resume } : {}),
                 access: info.access,
                 mcpServers: { [bus.serverName]: busSpec },
                 includeUserMcpServers,
@@ -348,7 +357,7 @@ export class Orchestrator extends Context.Service<
             runtimes.set(info.id, rt);
             yield* Effect.forkIn(consumeEvents(rt), scope);
             yield* Effect.forkIn(turnLoop(rt), scope);
-            if (initial !== undefined) yield* Queue.offer(rt.inbox, initial);
+            if (options.initial !== undefined) yield* Queue.offer(rt.inbox, options.initial);
             return rt;
           });
           return yield* started.pipe(Effect.onError(() => Scope.close(scope, Exit.void)));
@@ -386,10 +395,12 @@ export class Orchestrator extends Context.Service<
           });
           const cwd = threadDirectories.get(lead.info.threadId) ?? ".";
           yield* startRuntime(child, cwd, {
-            _tag: "FromAgent",
-            agentId: lead.info.id,
-            threadId: lead.info.threadId,
-            text: request.prompt,
+            initial: {
+              _tag: "FromAgent",
+              agentId: lead.info.id,
+              threadId: lead.info.threadId,
+              text: request.prompt,
+            },
           });
           return child.id;
         });
@@ -415,6 +426,92 @@ export class Orchestrator extends Context.Service<
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
         });
+
+      /**
+       * Starts a stopped or failed lead again on its harness session, so the thread carries on with
+       * the context it had. Returns notices the lead's next turn should carry.
+       */
+      const resumeLead = Effect.fn("Orchestrator.resumeLead")(function* (agentId: AgentId) {
+        const previous = runtimes.get(agentId);
+        const info =
+          previous?.info ??
+          Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+        if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+        if (info.parentId !== undefined) {
+          return yield* notAllowed(`${info.model} has stopped; only a thread's lead can be resumed.`);
+        }
+        const adapter = adapters.get(info.provider);
+        if (adapter !== undefined && !adapter.manifest.session.resume) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: `${info.provider} sessions can't be resumed.`,
+          });
+        }
+        if (info.providerSessionId === undefined) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: `${info.model} ended before its session started, so there is nothing to resume.`,
+          });
+        }
+        const thread = Option.getOrUndefined(
+          yield* store.getThread(info.threadId).pipe(Effect.mapError(unavailable)),
+        );
+        if (thread === undefined) return yield* notFound(`Thread ${info.threadId} does not exist.`);
+        const directory =
+          thread.mode === "work" && thread.cwd !== undefined
+            ? thread.cwd
+            : path.join(config.chatDirectory, thread.id);
+        threadDirectories.set(thread.id, directory);
+        threadModes.set(thread.id, thread.mode);
+
+        // A failed lead still holds its ended session and bus registration; release them first.
+        if (previous !== undefined) {
+          runtimes.delete(agentId);
+          yield* Scope.close(previous.scope, Exit.void);
+        }
+        pendingPermissions.delete(agentId);
+        const history = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const rt = yield* startRuntime(info, directory, { resume: info.providerSessionId });
+        // Approvals the old session was waiting on died with it.
+        const unanswered = new Set<string>();
+        for (const { payload } of history) {
+          if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
+          if (payload._tag === "PermissionResolved") unanswered.delete(payload.requestId);
+        }
+        yield* Effect.forEach(
+          unanswered,
+          (requestId) => emit(rt, { _tag: "PermissionResolved", requestId, decision: "deny", scope: "once" }),
+          { discard: true },
+        );
+        yield* setState(rt, "idle");
+
+        const gone = (yield* store.listAgents(thread.id).pipe(Effect.mapError(unavailable))).filter(
+          (agent) => agent.parentId === agentId && !runtimes.has(agent.id),
+        );
+        const notices: Array<InputItem> =
+          gone.length === 0
+            ? []
+            : [
+                {
+                  _tag: "SystemNotice",
+                  text: `Your session was resumed after it ended. The agents you spawned before (${gone
+                    .map((agent) => `${agent.id} "${agent.role}"`)
+                    .join(", ")}) are no longer running; spawn new ones if you still need them.`,
+                },
+              ];
+        return { rt, notices };
+      });
+
+      /** The lead's live runtime, resuming its session first when it has stopped or failed. */
+      const liveLead = (agentId: AgentId) =>
+        resumePermit.withPermits(1)(
+          Effect.suspend(() => {
+            const live = runtimes.get(agentId);
+            return live !== undefined && !live.ended
+              ? Effect.succeed({ rt: live, notices: [] as ReadonlyArray<InputItem> })
+              : resumeLead(agentId);
+          }),
+        );
 
       const childrenOf = (leadId: AgentId) =>
         [...runtimes.values()].filter((candidate) => candidate.info.parentId === leadId);
@@ -476,7 +573,13 @@ export class Orchestrator extends Context.Service<
         }),
 
         sendUserMessage: (agentId, text) =>
-          runtime(agentId).pipe(Effect.flatMap((rt) => Queue.offer(rt.inbox, { _tag: "FromUser", text }))),
+          liveLead(agentId).pipe(
+            // Offered together, so the user's message and any notices make one turn.
+            Effect.flatMap(({ rt, notices }) =>
+              Queue.offerAll(rt.inbox, [{ _tag: "FromUser", text }, ...notices]),
+            ),
+            Effect.asVoid,
+          ),
 
         respondToPermission: (agentId, requestId, decision) =>
           runtime(agentId).pipe(Effect.flatMap((rt) => rt.session.respondToPermission(requestId, decision))),

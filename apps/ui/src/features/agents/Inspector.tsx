@@ -210,7 +210,7 @@ function AgentDetails({
         </div>
       ) : null}
 
-      {/* An agent that has stopped or failed can't be resumed yet, so there is nothing left to do. */}
+      {/* An ended lead resumes from the message box; an ended child can't restart. Nothing to do here. */}
       {ended ? null : (
         <div className="flex items-center gap-1.5">
           {onMessage ? (
@@ -247,7 +247,7 @@ function AgentDetails({
             title={isLead ? "Stop the lead?" : `Stop ${agent.role}?`}
             description={
               isLead
-                ? `${agent.model} will stop and this thread will take no more messages: Cerium can't resume a thread yet.`
+                ? `${agent.model} will stop. Your next message in this thread starts it again where it left off.`
                 : `${agent.model} will stop and can't be restarted. The lead carries on without it.`
             }
             confirmLabel="Stop agent"

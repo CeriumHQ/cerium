@@ -116,6 +116,8 @@ function Workspace() {
     agents.find((agent) => agent.id === lead?.id)?.model ?? (lead ? modelLabel(lead.model) : "");
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
+  // A lead whose harness session started can be resumed by messaging it.
+  const leadResumable = lead?.providerSessionId !== undefined;
   /** Opens this mode's new thread, ready to type the first message. */
   const startNew = () => {
     setSettingsOpen(false);
@@ -296,7 +298,7 @@ function Workspace() {
                   kind: "thread",
                   provider: lead.provider,
                   model: leadModel,
-                  ...(leadEnded ? { ended: leadEnded } : {}),
+                  ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
                   onStartNew: startNew,
                 }
               : { kind: "new", mode, folder, onPickFolder: chooseFolder, available }

@@ -56,6 +56,47 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("resumes a stopped lead's harness session on the user's next message", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      const outcome = yield* orchestrator.spawn(lead.id, { role: "scout", model: "scout", prompt: "go" });
+      const childId = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === lead.id && event.payload._tag === "TurnCompleted"),
+      );
+      yield* orchestrator.killChild(lead.id, childId);
+      yield* orchestrator.stopAgent(lead.id);
+
+      const refused = yield* Effect.flip(orchestrator.sendUserMessage(childId, "back?"));
+      assert.strictEqual(refused.reason, "notAllowed", "only leads resume");
+
+      yield* Effect.all(
+        [
+          orchestrator.sendUserMessage(lead.id, "still there?"),
+          orchestrator.sendUserMessage(lead.id, "hello?"),
+        ],
+        { concurrency: "unbounded" },
+      );
+      const resumed = fake.sessions.filter((session) => session.options.resume === "fake-1");
+      assert.strictEqual(resumed.length, 1, "concurrent messages share one resumed session");
+      const items = yield* waitFor((events) =>
+        turnInputs(events, lead.id).find((turn) => turn.some((item) => item._tag === "FromUser")),
+      );
+      const notice = items.find((item) => item._tag === "SystemNotice");
+      assert.include(notice?._tag === "SystemNotice" ? notice.text : "", childId);
+      yield* waitFor((events) => {
+        const turns = events.filter(
+          (event) => event.agentId === lead.id && event.payload._tag === "TurnCompleted",
+        );
+        return turns.length >= 2 ? turns : undefined;
+      });
+      assert.strictEqual((yield* orchestrator.agent(lead.id)).providerSessionId, "fake-1");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
+  });
+
   it.live("spawns catalog children with narrowed access and delivers their result to the lead", () => {
     const fake = makeFakeAdapter("claude", {
       reply: (text, session) => (session.model === "haiku" ? "Paris" : `lead saw: ${text}`),

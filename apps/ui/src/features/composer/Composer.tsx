@@ -57,8 +57,10 @@ export type ComposerTarget =
       readonly kind: "thread";
       readonly provider: ProviderId;
       readonly model: string;
-      /** The lead stopped or failed: Cerium can't resume it yet, so the thread takes no more messages. */
+      /** The lead stopped or failed. */
       readonly ended?: "stopped" | "failed";
+      /** The ended lead's harness session can be resumed: the next message picks the thread back up. */
+      readonly resumable?: boolean;
       readonly onStartNew: () => void;
     }
   /** The first message starts a thread with the chosen setup. */
@@ -143,7 +145,9 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
     }
   };
 
-  if (target.kind === "thread" && target.ended) {
+  const resumes = target.kind === "thread" && target.ended !== undefined && target.resumable === true;
+
+  if (target.kind === "thread" && target.ended && !resumes) {
     return (
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
         <div className="pointer-events-auto mx-auto flex max-w-[42rem] items-center gap-2.5 rounded-2xl border border-line-subtle bg-surface-raised py-2 pr-2 pl-4 backdrop-blur-2xl">
@@ -154,7 +158,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
           )}
           <p className="min-w-0 flex-1 text-[13px] text-fg-secondary">
             <span className="font-medium text-fg-primary">{target.model}</span>{" "}
-            {target.ended === "failed" ? "failed" : "has stopped"}, and Cerium can't resume a thread yet.
+            {target.ended === "failed" ? "failed" : "stopped"} before its session started, so there is nothing to resume.
           </p>
           <Button
             onClick={target.onStartNew}
@@ -180,9 +184,11 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
           placeholder={
             needsFolder
               ? "Choose a folder to work in first"
-              : isNew && target.mode === "chat"
-                ? `Ask ${recipient} anything`
-                : `Message ${recipient}`
+              : resumes
+                ? `Message ${recipient} to pick this thread back up`
+                : isNew && target.mode === "chat"
+                  ? `Ask ${recipient} anything`
+                  : `Message ${recipient}`
           }
           aria-label="Message"
           className="block max-h-60 min-h-12 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] leading-[1.6] text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary"

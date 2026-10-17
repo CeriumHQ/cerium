@@ -50,7 +50,7 @@ export const makeFakeAdapter = (
           payload: {
             _tag: "SessionStarted",
             provider,
-            providerSessionId: `fake-${sessions.length}`,
+            providerSessionId: sessionOptions.resume ?? `fake-${sessions.length}`,
             model: sessionOptions.model,
           },
         });
