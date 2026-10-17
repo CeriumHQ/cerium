@@ -1,0 +1,14 @@
+{
+  "name": "@cerium/rpc",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cerium/protocol": "workspace:*",
+    "effect": "4.0.5"
+  }
+}

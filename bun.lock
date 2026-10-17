@@ -19,6 +19,7 @@
         "@cerium/bus": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
+        "@cerium/rpc": "workspace:*",
         "@cerium/store": "workspace:*",
         "@effect/platform-node": "4.0.5",
         "effect": "4.0.5",
@@ -126,6 +127,14 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/rpc": {
+      "name": "@cerium/rpc",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+      },
+    },
     "packages/store": {
       "name": "@cerium/store",
       "version": "0.0.0",
@@ -217,6 +226,8 @@
     "@cerium/orchestrator": ["@cerium/orchestrator@workspace:packages/orchestrator"],
 
     "@cerium/protocol": ["@cerium/protocol@workspace:packages/protocol"],
+
+    "@cerium/rpc": ["@cerium/rpc@workspace:packages/rpc"],
 
     "@cerium/store": ["@cerium/store@workspace:packages/store"],
 
