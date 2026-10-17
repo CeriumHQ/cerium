@@ -1,0 +1,178 @@
+/*
+ * Agent markdown, rendered by Streamdown, sized for a 14px conversation column. Streamdown's own
+ * utilities are written for documents (30px headings, boxed code and tables), so these rules restyle
+ * its parts through the `data-streamdown` attributes it puts on each one. They stay unlayered so they
+ * win over those utilities.
+ */
+
+[data-streamdown^="heading-"] {
+  margin-block: 1.25rem 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--fg-primary);
+}
+[data-streamdown="heading-1"] {
+  font-size: 18px;
+}
+[data-streamdown="heading-2"] {
+  font-size: 16px;
+}
+[data-streamdown="heading-3"] {
+  font-size: 14.5px;
+}
+[data-streamdown="heading-4"],
+[data-streamdown="heading-5"],
+[data-streamdown="heading-6"] {
+  font-size: 14px;
+  color: var(--fg-secondary);
+}
+/* A heading reads as the start of what follows it. */
+[data-streamdown^="heading-"] + :not([data-streamdown^="heading-"]) {
+  margin-top: 0.375rem;
+}
+[data-streamdown^="heading-"]:first-child {
+  margin-top: 0;
+}
+:is([data-streamdown="code-block"], [data-streamdown="table-wrapper"]):first-child {
+  margin-top: 0;
+}
+
+[data-streamdown="unordered-list"],
+[data-streamdown="ordered-list"] {
+  list-style-position: outside;
+  padding-left: 1.25em;
+}
+[data-streamdown="list-item"] {
+  padding-block: 0.125rem;
+}
+[data-streamdown="list-item"]::marker {
+  color: var(--fg-tertiary);
+}
+[data-streamdown="list-item"] > :is([data-streamdown="unordered-list"], [data-streamdown="ordered-list"]) {
+  margin-top: 0.125rem;
+  padding-left: 1.25em;
+}
+
+[data-streamdown="blockquote"] {
+  margin-bottom: 0;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 0.875rem;
+  font-style: normal;
+  color: var(--fg-secondary);
+}
+
+[data-streamdown="horizontal-rule"] {
+  margin-block: 1.25rem 0;
+  border-color: var(--line-subtle);
+}
+
+[data-streamdown="link"] {
+  font-weight: inherit;
+  color: var(--fg-primary);
+  text-decoration-color: var(--fg-tertiary);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+[data-streamdown="link"]:hover {
+  text-decoration-color: var(--fg-primary);
+}
+
+/* Inline code sits at the text's size: monospace at full size towers over the words around it. */
+[data-streamdown="inline-code"] {
+  border: 1px solid var(--line-subtle);
+  border-radius: 0.3125rem;
+  background: var(--surface-hover);
+  padding: 0.0625rem 0.3125rem;
+  font-size: 0.857em;
+}
+
+/* Code blocks: one recessed card, the language and copy button in a slim header. */
+[data-streamdown="code-block"] {
+  gap: 0;
+  margin-block: 1rem 0;
+  overflow: hidden;
+  border: 1px solid var(--line-subtle);
+  border-radius: 0.625rem;
+  background: var(--surface-window);
+  padding: 0;
+}
+[data-streamdown="code-block-header"] {
+  height: 2rem;
+  border-bottom: 1px solid var(--line-subtle);
+  padding-inline: 0.75rem;
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+[data-streamdown="code-block-header"] > span {
+  margin-left: 0;
+}
+[data-streamdown="code-block"] > :has(> [data-streamdown="code-block-actions"]) {
+  top: 0.25rem;
+  right: 0.375rem;
+}
+[data-streamdown="code-block-actions"] {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  backdrop-filter: none;
+}
+[data-streamdown="code-block-actions"] button {
+  border-radius: 0.375rem;
+  color: var(--fg-tertiary);
+}
+[data-streamdown="code-block-actions"] button:hover {
+  background: var(--surface-hover);
+  color: var(--fg-primary);
+}
+[data-streamdown="code-block-body"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.625rem 0.875rem;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* Tables: one card with a tinted header row; the copy and fullscreen controls appear on hover. */
+[data-streamdown="table-wrapper"] {
+  position: relative;
+  gap: 0;
+  margin-block: 1rem 0;
+  overflow: hidden;
+  border: 1px solid var(--line-subtle);
+  border-radius: 0.625rem;
+  background: transparent;
+  padding: 0;
+}
+[data-streamdown="table-wrapper"] > :first-child:not(:has(table)) {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.375rem;
+  z-index: 1;
+  border-radius: 0.375rem;
+  background: var(--surface-overlay);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+[data-streamdown="table-wrapper"]:is(:hover, :focus-within) > :first-child:not(:has(table)) {
+  opacity: 1;
+}
+[data-streamdown="table-wrapper"] > :has(> table) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+[data-streamdown="table-header"] {
+  background: var(--surface-hover);
+}
+[data-streamdown="table-header-cell"] {
+  padding: 0.4375rem 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-secondary);
+}
+[data-streamdown="table-cell"] {
+  padding: 0.4375rem 0.75rem;
+  font-size: 13px;
+}
