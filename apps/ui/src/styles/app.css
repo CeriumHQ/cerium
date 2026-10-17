@@ -37,11 +37,7 @@ html[data-shell="electron"][data-theme="dark"] {
 }
 
 html[data-shell="browser"] body {
-  background: oklch(0.24 0 0);
-}
-
-html[data-shell="browser"][data-theme="light"] body {
-  background: oklch(0.88 0 0);
+  background: var(--backdrop);
 }
 
 /* Acrylic's grain, which keeps large translucent areas from looking flat. */

@@ -1,9 +1,11 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
+import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage, Working } from "./Blocks.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
@@ -116,6 +118,8 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
   const items = layout(blocks);
   const last = items.at(-1);
   const working = activity === "running" && !showsProgress(last);
+  // The chosen text size scales the whole column, so icons and spacing keep their proportions.
+  const scale = textScale(useAtomValue(textSizeAtom));
 
   return (
     <div className="relative h-full">
@@ -124,7 +128,7 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
         viewportRef={viewport}
         className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
       >
-        <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40">
+        <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40" style={{ zoom: scale }}>
           {items.map((item) => {
             switch (item.kind) {
               case "input":
@@ -178,7 +182,7 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
   );
 }
 
-function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
+export function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
   return (
     <div className="flex items-center gap-2 pt-2 text-xs text-fg-tertiary">
       <span className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">

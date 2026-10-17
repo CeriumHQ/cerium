@@ -14,6 +14,8 @@ const CAPTION_BUTTON_WIDTH = 46;
 interface TitlebarProps {
   /** The selected thread, if any. */
   readonly thread?: { readonly title: string; readonly project?: string };
+  /** Settings replace the thread's title and controls. */
+  readonly settingsOpen: boolean;
   readonly mode: AppMode;
   readonly onModeChange: (mode: AppMode) => void;
   readonly sidebarOpen: boolean;
@@ -28,6 +30,7 @@ interface TitlebarProps {
 
 export function Titlebar({
   thread,
+  settingsOpen,
   mode,
   onModeChange,
   sidebarOpen,
@@ -45,7 +48,10 @@ export function Titlebar({
       </div>
       <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
       <ModeSwitch mode={mode} onChange={onModeChange} />
-      <div className="flex items-center [app-region:no-drag]">
+      <div
+        inert={settingsOpen}
+        className={`flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}
+      >
         <IconButton
           icon={PanelLeft}
           label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
@@ -64,7 +70,9 @@ export function Titlebar({
 
       <div className="flex min-w-0 flex-1 justify-center">
         {/* Plain text until the thread has actions to offer, so it also drags the window. */}
-        {thread ? (
+        {settingsOpen ? (
+          <p className="px-2.5 text-[13px] font-medium text-fg-primary">Settings</p>
+        ) : thread ? (
           <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
             <span className="truncate font-medium text-fg-primary">{thread.title}</span>
             {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
@@ -72,7 +80,7 @@ export function Titlebar({
         ) : null}
       </div>
 
-      {agents.length > 0 ? (
+      {agents.length > 0 && !settingsOpen ? (
         <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
       ) : null}
       <CaptionButtons />

@@ -1,0 +1,59 @@
+import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import { Atom } from "effect/reactivity";
+
+import { remember, stored } from "../../lib/storage.ts";
+import { accessOptions, effortLabel, modelOptions } from "../composer/models.ts";
+
+// Preferences that only change this window, kept in its local storage. Each is an atom, so the
+// settings view and the parts of the window a preference changes stay in step.
+
+const preference = <A extends string>(key: string, options: ReadonlyArray<A>, fallback: A) =>
+  Atom.writable(
+    () => options.find((option) => option === stored(key)) ?? fallback,
+    (context, value: A) => {
+      context.setSelf(value);
+      remember(key, value);
+    },
+  ).pipe(Atom.keepAlive);
+
+export type Theme = "system" | "dark" | "light";
+export const THEME_KEY = "cerium:theme";
+export const themes: ReadonlyArray<Theme> = ["system", "dark", "light"];
+export const themeAtom = preference<Theme>(THEME_KEY, themes, "dark");
+
+/** The conversation's text sizes, smallest first; the transcript scales to match. */
+export const textSizes = [
+  { id: "small", label: "Small", px: 13 },
+  { id: "default", label: "Default", px: 14 },
+  { id: "large", label: "Large", px: 15 },
+  { id: "larger", label: "Larger", px: 16 },
+] as const;
+export type TextSize = (typeof textSizes)[number]["id"];
+export const textSizeAtom = preference<TextSize>(
+  "cerium:textSize",
+  textSizes.map((size) => size.id),
+  "default",
+);
+/** How much the conversation is scaled from its 14px design. */
+export const textScale = (size: TextSize) => (textSizes.find((each) => each.id === size)?.px ?? 14) / 14;
+
+/** Which key sends a message; the other way of pressing Enter starts a new line. */
+export type SendKey = "enter" | "ctrlEnter";
+export const sendKeyAtom = preference<SendKey>("cerium:sendKey", ["enter", "ctrlEnter"], "enter");
+
+// What a new thread starts with. The composer offers the same choices and remembers the last one.
+export const modelAtom = preference(
+  "cerium:model",
+  modelOptions.map((option) => option.id),
+  modelOptions[0]!.id,
+);
+export const effortAtom = preference<ReasoningEffort>(
+  "cerium:effort",
+  Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>,
+  "high",
+);
+export const accessAtom = preference<AccessMode>(
+  "cerium:access",
+  accessOptions.map((option) => option.value),
+  "ask",
+);

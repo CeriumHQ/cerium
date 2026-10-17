@@ -1,6 +1,7 @@
 import type { ProviderId } from "@cerium/protocol";
 import type { ReactNode } from "react";
 
+import { ViewStack } from "../components/ViewStack.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Titlebar } from "./Titlebar.tsx";
 
@@ -17,13 +18,18 @@ interface AppFrameProps {
   /** The agent inspector, shown beside the transcript only while open. */
   readonly inspector: ReactNode | undefined;
   readonly onToggleInspector: () => void;
+  /**
+   * Settings take the sidebar's place with their categories and the main panel's with the open
+   * category. The thread views stay mounted underneath, so leaving settings returns to them as they were.
+   */
+  readonly settings: { readonly open: boolean; readonly nav: ReactNode; readonly page: ReactNode };
   readonly children: ReactNode;
 }
 
 /**
  * The window: a titlebar over the thread sidebar, which sits directly on the window's glass, and the
- * transcript, which floats above it as an inset card. The sidebar folds away on demand; the inspector
- * opens beside the transcript on demand.
+ * transcript, which floats above it as an inset card. The sidebar folds away on demand (settings always
+ * show theirs); the inspector opens beside the transcript on demand.
  */
 export function AppFrame({
   thread,
@@ -36,12 +42,16 @@ export function AppFrame({
   agents,
   inspector,
   onToggleInspector,
+  settings,
   children,
 }: AppFrameProps) {
+  const view = settings.open ? "settings" : "threads";
+  const showSidebar = sidebarOpen || settings.open;
   return (
     <div className="flex h-full flex-col bg-surface-window">
       <Titlebar
         {...(thread ? { thread } : {})}
+        settingsOpen={settings.open}
         mode={mode}
         onModeChange={onModeChange}
         sidebarOpen={sidebarOpen}
@@ -54,17 +64,31 @@ export function AppFrame({
       <div className="flex min-h-0 flex-1 pr-1.5 pb-1.5">
         {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
         <aside
-          inert={!sidebarOpen}
+          inert={!showSidebar}
           className={`shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out-soft ${
-            sidebarOpen ? "w-69.5 opacity-100" : "w-1.5 opacity-0"
+            showSidebar ? "w-69.5 opacity-100" : "w-1.5 opacity-0"
           }`}
         >
-          <div className="h-full w-68">{sidebar}</div>
+          <div className="h-full w-68">
+            <ViewStack
+              active={view}
+              views={[
+                ["threads", sidebar],
+                ["settings", settings.nav],
+              ]}
+            />
+          </div>
         </aside>
         <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
-          {children}
+          <ViewStack
+            active={view}
+            views={[
+              ["threads", children],
+              ["settings", settings.page],
+            ]}
+          />
         </main>
-        {inspector === undefined ? null : (
+        {inspector === undefined || settings.open ? null : (
           <aside className="ml-1.5 w-80 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
             {inspector}
           </aside>

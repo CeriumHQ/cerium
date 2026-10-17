@@ -56,6 +56,8 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the composer keeps a draft per thread (and per mode for a new one), puts the cursor in the message box when a thread opens, gives back a message that failed to send, and stops a running turn with Esc. The access menu shows each mode's icon, and the placeholder no longer promises @ mentions that don't exist yet.
 - UI: a new thread starts with the model, reasoning effort and access the last one was given, as it already did with the folder.
 - UI: the sidebar folds away from the titlebar or with Ctrl B (remembered across launches), leaving a new-thread button in the titlebar; Ctrl N opens a new thread and Ctrl J toggles the agent inspector, as their tooltips promised.
+- UI: settings, opened from the sidebar's gear or with Ctrl ,: the sidebar turns into the list of categories and the main panel shows the open one. Esc or "Back to threads" returns to the thread exactly as it was left, scroll position and draft included.
+- UI: Appearance settings: the theme (system, dark or light), picked from miniatures of the window drawn in each theme, and the conversation's text size, previewed on a sample conversation as the slider moves.
 
 ### Changed
 

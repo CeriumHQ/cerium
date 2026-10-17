@@ -11,6 +11,8 @@ export interface ShellBridge {
   /** The packaged app's backend; in development the UI asks the dev server instead. */
   readonly backend?: BackendConnection;
   readonly pickFolder?: () => Promise<string | undefined>;
+  /** Windows tints the window's Acrylic and draws its caption buttons in this theme. */
+  readonly setTheme?: (theme: "system" | "dark" | "light") => void;
 }
 
 declare global {

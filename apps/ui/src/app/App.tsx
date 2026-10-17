@@ -21,6 +21,9 @@ import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backen
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { themeAtom } from "../features/settings/preferences.ts";
+import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
+import { useTheme } from "../features/settings/theme.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -60,7 +63,12 @@ function Workspace() {
   const [folder, setFolder] = useState(() => stored(FOLDER_KEY));
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The category settings open on: the last one visited. */
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
   const composerInput = useRef<HTMLTextAreaElement>(null);
+
+  useTheme(useAtomValue(themeAtom));
 
   const connection = useAtomValue(connectionAtom);
   const threadsResult = useAtomValue(threadsAtom);
@@ -110,9 +118,19 @@ function Workspace() {
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   /** Opens this mode's new thread, ready to type the first message. */
   const startNew = () => {
+    setSettingsOpen(false);
     setOpenThread((current) => ({ ...current, [mode]: undefined }));
     composerInput.current?.focus();
   };
+
+  const openSettings = (category?: SettingsCategory) => {
+    if (category) setSettingsCategory(category);
+    setSettingsOpen(true);
+  };
+  // Back from settings, the cursor returns to the message box.
+  useEffect(() => {
+    if (!settingsOpen) composerInput.current?.focus();
+  }, [settingsOpen]);
 
   const chooseFolder = () => {
     void pickFolder().then((picked) => {
@@ -129,16 +147,25 @@ function Workspace() {
 
   // The shortcuts the window's buttons advertise in their tooltips.
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
+    // Esc backs out of settings, unless something inside them (an open menu) already used it.
+    if (event.key === "Escape" && settingsOpen && !event.defaultPrevented) {
+      setSettingsOpen(false);
+      return;
+    }
     if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
     switch (event.key.toLowerCase()) {
+      case ",":
+        setSettingsOpen(!settingsOpen);
+        break;
       case "b":
+        if (settingsOpen) return;
         toggleSidebar();
         break;
       case "n":
         startNew();
         break;
       case "j":
-        if (selected === undefined) return;
+        if (selected === undefined || settingsOpen) return;
         setInspectorOpen((open) => !open);
         break;
       default:
@@ -177,7 +204,10 @@ function Workspace() {
           }
         : {})}
       mode={mode}
-      onModeChange={setMode}
+      onModeChange={(next) => {
+        setSettingsOpen(false);
+        setMode(next);
+      }}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={toggleSidebar}
       onNewThread={startNew}
@@ -189,8 +219,22 @@ function Workspace() {
           onSelect={(threadId) => setOpenThread((current) => ({ ...current, [mode]: threadId }))}
           onNewThread={startNew}
           harnesses={indicators}
+          onOpenSettings={() => openSettings()}
         />
       }
+      settings={{
+        open: settingsOpen,
+        nav: (
+          <SettingsNav
+            category={settingsCategory}
+            onSelect={setSettingsCategory}
+            backLabel={mode === "work" ? "Back to threads" : "Back to chats"}
+            onBack={() => setSettingsOpen(false)}
+            active={settingsOpen}
+          />
+        ),
+        page: <SettingsView category={settingsCategory} />,
+      }}
       agents={selected ? selected.agents.map((agent) => agent.provider) : []}
       inspector={
         inspectorOpen && selected ? (

@@ -11,6 +11,8 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
+  /* What the glass sits on where Windows' Acrylic doesn't reach: the browser preview, theme samples. */
+  --backdrop: oklch(0.24 0 0);
   --surface-window: oklch(0.17 0 0 / 0.62);
   --surface-panel: oklch(0.2 0 0 / 0.66);
   --surface-raised: oklch(0.255 0 0 / 0.78);
@@ -51,6 +53,7 @@
 [data-theme="light"] {
   color-scheme: light;
 
+  --backdrop: oklch(0.88 0 0);
   --surface-window: oklch(0.96 0 0 / 0.62);
   --surface-panel: oklch(0.985 0 0 / 0.7);
   --surface-raised: oklch(1 0 0 / 0.82);
@@ -86,6 +89,7 @@
 }
 
 @theme inline {
+  --color-backdrop: var(--backdrop);
   --color-surface-window: var(--surface-window);
   --color-surface-panel: var(--surface-panel);
   --color-surface-raised: var(--surface-raised);

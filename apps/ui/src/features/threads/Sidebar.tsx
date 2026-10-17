@@ -18,6 +18,7 @@ interface SidebarProps {
   readonly onSelect: (threadId: string) => void;
   readonly onNewThread: () => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
+  readonly onOpenSettings: () => void;
 }
 
 export interface HarnessIndicator {
@@ -58,7 +59,15 @@ const groupThreads = (
   return [...byKey.values()];
 };
 
-export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harnesses }: SidebarProps) {
+export function Sidebar({
+  mode,
+  threads,
+  selectedId,
+  onSelect,
+  onNewThread,
+  harnesses,
+  onOpenSettings,
+}: SidebarProps) {
   const groups = groupThreads(threads, mode);
   return (
     <div className="flex h-full flex-col">
@@ -99,7 +108,7 @@ export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harn
         </nav>
       </ScrollArea>
 
-      <SidebarFooter harnesses={harnesses} />
+      <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
     </div>
   );
 }
@@ -220,10 +229,16 @@ const harnessState: Record<HarnessIndicator["state"], string> = {
   unsupported: "not supported yet",
 };
 
-function SidebarFooter({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
+function SidebarFooter({
+  harnesses,
+  onOpenSettings,
+}: {
+  harnesses: ReadonlyArray<HarnessIndicator>;
+  onOpenSettings: () => void;
+}) {
   return (
     <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5">
-      <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," />
+      <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," onClick={onOpenSettings} />
       <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
         {harnesses.map(({ provider, state }) => (
           <Tooltip key={provider} side="top" label={`${providerName[provider]}: ${harnessState[state]}`}>
