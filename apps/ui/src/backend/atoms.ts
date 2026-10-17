@@ -1,0 +1,88 @@
+import type { AgentEvent, ThreadId } from "@cerium/protocol";
+import { Effect, Schedule, Stream } from "effect";
+import { Atom } from "effect/reactivity";
+
+import { Backend, connectionAtom } from "./client.ts";
+
+/** Live feeds end when the connection drops; this picks them back up once it returns. */
+const resubscribe = Stream.retry(Schedule.spaced("1 second"));
+
+const liveEvents = Stream.unwrap(Backend.use((client) => Effect.succeed(client("WatchEvents", undefined))));
+
+const isDelta = (event: AgentEvent) =>
+  event.payload._tag === "MessageDelta" || event.payload._tag === "ReasoningDelta";
+
+/** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
+const activityAtom = Backend.runtime.atom(
+  liveEvents.pipe(
+    resubscribe,
+    Stream.filter((event) => !isDelta(event)),
+    Stream.scan(
+      () => 0,
+      (count: number) => count + 1,
+    ),
+  ),
+);
+
+/** Every thread with its agents and whether it waits on the user. Refreshes as agents work. */
+export const threadsAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  get(activityAtom);
+  return Backend.use((client) => client("ListThreads", undefined));
+});
+
+export const harnessesAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  return Backend.use((client) => client("HarnessStatuses", undefined));
+});
+
+type EventSource =
+  | { readonly _tag: "History"; readonly events: ReadonlyArray<AgentEvent> }
+  | { readonly _tag: "Live"; readonly event: AgentEvent };
+
+const byTime = (a: AgentEvent, b: AgentEvent) => a.at - b.at || a.sequence - b.sequence;
+
+/**
+ * A thread's events: persisted history merged with live events, including streamed text. History
+ * and the live feed start together and are de-duplicated by event id, so nothing falls in between,
+ * including across a reconnect, which fetches the history again.
+ */
+export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
+  Backend.runtime.atom(
+    Stream.unwrap(
+      Backend.use((client) =>
+        Effect.succeed(
+          Stream.merge(
+            client("WatchEvents", undefined).pipe(
+              Stream.filter((event) => event.threadId === threadId),
+              Stream.map((event): EventSource => ({ _tag: "Live", event })),
+            ),
+            Stream.fromEffect(
+              client("ThreadEvents", { threadId }).pipe(
+                Effect.map((events): EventSource => ({ _tag: "History", events })),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ).pipe(
+      resubscribe,
+      Stream.scan(
+        () => new Map<string, AgentEvent>(),
+        (seen: ReadonlyMap<string, AgentEvent>, source: EventSource) => {
+          const next = new Map(seen);
+          for (const event of source._tag === "History" ? source.events : [source.event])
+            next.set(event.id, event);
+          return next;
+        },
+      ),
+      Stream.map((seen) => [...seen.values()].sort(byTime)),
+    ),
+  ),
+);
+
+export const createThread = Backend.mutation("CreateThread");
+export const sendMessage = Backend.mutation("SendMessage");
+export const respondToPermission = Backend.mutation("RespondToPermission");
+export const interruptAgent = Backend.mutation("InterruptAgent");
+export const stopAgent = Backend.mutation("StopAgent");
