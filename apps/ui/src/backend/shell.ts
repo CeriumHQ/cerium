@@ -8,8 +8,11 @@ export interface BackendConnection {
 export interface ShellBridge {
   readonly shell: "electron";
   readonly platform: string;
-  /** The packaged app's backend; in development the UI asks the dev server instead. */
-  readonly backend?: BackendConnection;
+  /**
+   * Where the shell's own backend listens, once it does; asked on every connect, since a restarted
+   * backend has a new port and token. Undefined in development, where the UI asks the dev server.
+   */
+  readonly backendConnection?: () => Promise<BackendConnection | undefined>;
   readonly pickFolder?: () => Promise<string | undefined>;
   /**
    * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether

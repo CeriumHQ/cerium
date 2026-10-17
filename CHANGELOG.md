@@ -73,6 +73,8 @@ All notable changes to Cerium are recorded here. The format follows
 - Cursor adapter: runs Cursor's agent in-process through `@cursor/sdk`: models, sessions with Cerium's bus injected and native subagents off, file change tracking, per-turn usage, model and effort switching, interrupt and resume, and signs in from Harnesses settings with the SDK's own browser login. Cursor can't ask before using a tool, so modes that ask hold back the tools that would need it.
 - `@cerium/backend`: registers the Codex, Muse and Cursor adapters beside Claude; until onboarding builds the catalog, a lead may spawn any model a logged-in harness offers.
 - UI: tool calls from Codex, Muse and Cursor read like Claude's, naming the file read or edited, the command run or the pattern searched, and Harnesses settings say how each harness is signed in.
+- `bun run build` builds every workspace package that has a build, and `scripts/check-commits.ts` checks a range of commit messages locally.
+- Desktop: `bun run package` builds an unsigned Windows installer with electron-builder. The installed app starts its own backend in the background, keeps its data in the app's data folder, restarts the backend if it stops, and shuts it down cleanly on quit.
 
 ### Changed
 

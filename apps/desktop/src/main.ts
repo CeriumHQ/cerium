@@ -1,13 +1,19 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
 
+import { startBackend } from "./backend.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell (docs/architecture.md §7): a window with Windows Acrylic and native caption buttons
-// around the UI. Everything else lives in the UI and the backend.
+// around the UI, and the backend's launcher. Everything else lives in the UI and the backend.
 
-/** `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files. */
+/**
+ * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files. The development
+ * backend then runs on its own (`bun run dev`) and the UI finds it through the dev server.
+ */
 const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
+
+let backend: ReturnType<typeof startBackend> | undefined;
 
 /** Matches the UI titlebar's height so the caption buttons line up with it. */
 const TITLEBAR_HEIGHT = 40;
@@ -67,6 +73,9 @@ const createWindow = () => {
   }
 };
 
+/** Where the UI connects to the backend this shell runs; nothing in development. */
+ipcMain.handle("cerium:backend-connection", () => backend?.connection());
+
 /** The folder a work thread runs in, chosen with the native dialog. */
 ipcMain.handle("cerium:pick-folder", async (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
@@ -94,9 +103,21 @@ nativeTheme.on("updated", () => {
 });
 
 void app.whenReady().then(() => {
+  if (devUrl === undefined) backend = startBackend();
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();
 });
 
 app.on("window-all-closed", () => app.quit());
+
+// Quitting waits for the backend to shut down, so it closes its harness sessions and database.
+let backendStopped = false;
+app.on("will-quit", (event) => {
+  if (backend === undefined || backendStopped) return;
+  event.preventDefault();
+  void backend.stop().then(() => {
+    backendStopped = true;
+    app.quit();
+  });
+});

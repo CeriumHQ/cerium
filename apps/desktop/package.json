@@ -7,12 +7,15 @@
   "main": "dist/main.mjs",
   "scripts": {
     "build": "vp pack",
-    "dev": "vp pack && electron . --dev-url=http://localhost:5173"
+    "dev": "vp pack && electron . --dev-url=http://localhost:5173",
+    "package": "electron-builder --win --publish never"
   },
   "dependencies": {
+    "@cerium/backend": "workspace:*",
     "koffi": "3.3.3"
   },
   "devDependencies": {
-    "electron": "44.8.0"
+    "electron": "44.8.0",
+    "electron-builder": "26.17.0"
   }
 }

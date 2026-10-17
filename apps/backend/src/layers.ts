@@ -26,6 +26,8 @@ export interface BackendOptions {
   readonly catalog: ReadonlyArray<CatalogEntry>;
   /** This launch's secret; the UI must present it to use the RPC endpoint. */
   readonly token: string;
+  /** The store's migrations, when they don't sit beside `@cerium/store` (a bundled backend). */
+  readonly migrationsFolder?: string;
 }
 
 /** Every harness adapter in this build. */
@@ -103,7 +105,10 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(
       Layer.mergeAll(
-        Store.layer({ filename: join(options.dataDirectory, "cerium.db") }),
+        Store.layer({
+          filename: join(options.dataDirectory, "cerium.db"),
+          ...(options.migrationsFolder === undefined ? {} : { migrationsFolder: options.migrationsFolder }),
+        }),
         AdaptersLive,
         CatalogLive(options.catalog),
         OrchestratorConfig.layer({ chatDirectory: join(options.dataDirectory, "chats") }),

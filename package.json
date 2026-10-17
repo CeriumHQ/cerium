@@ -14,6 +14,8 @@
     "fix": "vp check --fix",
     "test": "vp test",
     "typecheck": "tsc -b",
+    "build": "vp run -r build",
+    "package": "vp run -r build && bun run --cwd apps/desktop package",
     "verify": "vp check && tsc -b && vp test --run",
     "vendor:effect": "node scripts/vendor-effect.ts",
     "prepare": "effect-tsgo patch --typescript --oxlint",

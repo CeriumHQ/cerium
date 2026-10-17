@@ -37,6 +37,8 @@ const devBackendConnection = (): Plugin => ({
 });
 
 export default defineConfig({
+  // The packaged shell loads the built UI from a file, so asset URLs stay relative to index.html.
+  base: "./",
   plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss(), devBackendConnection()],
   server: { port: 5173, strictPort: true },
 });

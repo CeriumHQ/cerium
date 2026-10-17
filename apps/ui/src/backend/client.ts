@@ -13,7 +13,7 @@ export class BackendUnreachable extends Schema.TaggedError<BackendUnreachable>()
 /** The packaged app gets its connection from the shell; development asks the Vite dev server. */
 const connection = Effect.tryPromise({
   try: async (): Promise<BackendConnection> => {
-    const fromShell = shellBridge()?.backend;
+    const fromShell = await shellBridge()?.backendConnection?.();
     if (fromShell) return fromShell;
     const response = await fetch("/__cerium/connection", { cache: "no-store" });
     if (!response.ok) throw new BackendUnreachable({ message: await response.text() });
