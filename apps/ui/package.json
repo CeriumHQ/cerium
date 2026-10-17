@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@cerium/artifacts": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "@cerium/rpc": "workspace:*",
     "@effect/atom-react": "4.0.5",

@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@cerium/artifacts": "workspace:*",
     "@cerium/orchestrator": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "@effect/platform-node": "4.0.5",

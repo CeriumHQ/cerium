@@ -1,3 +1,4 @@
+import { artifactGuide } from "@cerium/artifacts";
 import { Orchestrator, OrchestratorError } from "@cerium/orchestrator";
 import { AccessMode, AgentId, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
@@ -101,6 +102,14 @@ export const KillAgent = Tool.make("kill_agent", {
   failure: OrchestratorError,
 });
 
+export const ArtifactGuide = Tool.make("artifact_guide", {
+  description:
+    "How to write an artifact: the HTML building blocks, tokens and rules for visuals Cerium renders" +
+    " inline in your reply. Read it before writing your first artifact.",
+  success: Schema.Struct({ guide: Schema.String }),
+  failure: OrchestratorError,
+});
+
 export const BusToolkit = Toolkit.make(
   ListModels,
   SpawnAgent,
@@ -108,6 +117,7 @@ export const BusToolkit = Toolkit.make(
   ListThreads,
   SendMessage,
   KillAgent,
+  ArtifactGuide,
 );
 
 const BEARER = /^Bearer\s+(.+)$/i;
@@ -196,6 +206,8 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
         yield* orchestrator.killChild(yield* caller, agentId);
         return { stopped: true };
       }),
+
+      artifact_guide: () => Effect.succeed({ guide: artifactGuide }),
     });
   }),
 );

@@ -5,6 +5,9 @@
       "path": "./packages/protocol"
     },
     {
+      "path": "./packages/artifacts"
+    },
+    {
       "path": "./packages/harness"
     },
     {

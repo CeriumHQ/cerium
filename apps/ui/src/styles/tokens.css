@@ -4,7 +4,7 @@
  *
  * The chrome is monochrome: neutral translucent tints layered over the window's Acrylic, from the
  * window itself up to floating overlays, each a little more opaque. Colour is reserved for meaning:
- * status (running, attention, error, success) and providers' own logos.
+ * status (running, attention, error, success), providers' own logos, and data in agents' artifacts.
  */
 
 :root,
@@ -46,6 +46,19 @@
   --status-error: oklch(0.7 0.19 25);
   --status-success: oklch(0.78 0.15 152);
 
+  /*
+   * Categorical colours for data in agents' artifacts, never for chrome. Validated as a set for
+   * colour-blind separation in this order, so assign them in order and keep the hex steps as they are.
+   */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
   --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.045) inset, 0 8px 24px -12px oklch(0 0 0 / 0.55);
   --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 24px 48px -16px oklch(0 0 0 / 0.7);
 }
@@ -83,6 +96,15 @@
   --status-attention: oklch(0.68 0.16 65);
   --status-error: oklch(0.56 0.21 25);
   --status-success: oklch(0.58 0.15 152);
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
 
   --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 8px 24px -12px oklch(0 0 0 / 0.2);
   --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.8) inset, 0 24px 48px -16px oklch(0 0 0 / 0.3);

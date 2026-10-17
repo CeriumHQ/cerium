@@ -1,3 +1,4 @@
+import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import type { AgentInfo, InputItem } from "@cerium/protocol";
 
 // Text Cerium hands to harnesses. Agents learn about the bus from these instructions, and every
@@ -38,6 +39,9 @@ export const systemPrompt = (agent: AgentInfo, busServer: string): string => {
       "Delegate with `spawn_agent` (see `list_models` for the models you may use). Spawning returns" +
         " immediately; each child's result arrives later as a message, so end your turn instead of waiting.",
       "Stop a child you no longer need with `kill_agent`.",
+      "When a visual would explain better than prose or a markdown table (a timeline, a before/after, a" +
+        ` pipeline, a comparison, metrics), write an artifact: a \`\`\`${ARTIFACT_LANGUAGE} code block of HTML` +
+        " that Cerium renders inline. Call `artifact_guide` first for its building blocks.",
     ].join("\n");
   }
   return [

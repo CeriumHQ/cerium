@@ -34,7 +34,7 @@
 [data-streamdown^="heading-"]:first-child {
   margin-top: 0;
 }
-:is([data-streamdown="code-block"], [data-streamdown="table-wrapper"]):first-child {
+:is([data-streamdown="code-block"], [data-streamdown="table-wrapper"], [data-artifact]):first-child {
   margin-top: 0;
 }
 
@@ -175,4 +175,9 @@
 [data-streamdown="table-cell"] {
   padding: 0.4375rem 0.75rem;
   font-size: 13px;
+}
+
+/* Artifacts: agents' HTML visuals. They sit on the column with no card of their own. */
+[data-artifact] {
+  margin-block: 1rem 0;
 }

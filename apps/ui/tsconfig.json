@@ -10,6 +10,9 @@
   "include": ["src", "test", "vite.config.ts"],
   "references": [
     {
+      "path": "../../packages/artifacts"
+    },
+    {
       "path": "../../packages/protocol"
     },
     {

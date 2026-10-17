@@ -98,7 +98,15 @@ describe("Cerium MCP bus", () => {
       const tools = yield* leadClient.request("tools/list", {});
       assert.sameMembers(
         (tools?.result?.tools ?? []).map((tool: { name: string }) => tool.name),
-        ["list_models", "spawn_agent", "list_agents", "list_threads", "send_message", "kill_agent"],
+        [
+          "list_models",
+          "spawn_agent",
+          "list_agents",
+          "list_threads",
+          "send_message",
+          "kill_agent",
+          "artifact_guide",
+        ],
       );
 
       const models = yield* leadClient.callTool("list_models");

@@ -1,0 +1,14 @@
+{
+  "name": "@cerium/artifacts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./artifact.css": "./src/artifact.css"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.5"
+  }
+}

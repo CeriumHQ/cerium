@@ -46,6 +46,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@base-ui/react": "1.9.0",
+        "@cerium/artifacts": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@cerium/rpc": "workspace:*",
         "@effect/atom-react": "4.0.5",
@@ -129,10 +130,18 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/artifacts": {
+      "name": "@cerium/artifacts",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@effect/vitest": "4.0.5",
+      },
+    },
     "packages/bus": {
       "name": "@cerium/bus",
       "version": "0.0.0",
       "dependencies": {
+        "@cerium/artifacts": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@effect/platform-node": "4.0.5",
@@ -159,6 +168,7 @@
       "name": "@cerium/orchestrator",
       "version": "0.0.0",
       "dependencies": {
+        "@cerium/artifacts": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@cerium/store": "workspace:*",
@@ -277,6 +287,8 @@
     "@cerium/adapter-cursor": ["@cerium/adapter-cursor@workspace:packages/adapters/cursor"],
 
     "@cerium/adapter-muse": ["@cerium/adapter-muse@workspace:packages/adapters/muse"],
+
+    "@cerium/artifacts": ["@cerium/artifacts@workspace:packages/artifacts"],
 
     "@cerium/backend": ["@cerium/backend@workspace:apps/backend"],
 

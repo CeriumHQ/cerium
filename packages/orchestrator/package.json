@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@cerium/artifacts": "workspace:*",
     "@cerium/harness": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "@cerium/store": "workspace:*",
