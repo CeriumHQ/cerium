@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { AccessMode, ProviderId, ReasoningEffort } from "@cerium/protocol";
-import { useAtom } from "@effect/atom-react";
+import { useAtom, useAtomValue } from "@effect/atom-react";
 import {
   ArrowUp,
   CircleAlert,
@@ -29,7 +29,7 @@ import {
   SelectTrigger,
 } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { accessAtom, effortAtom, modelAtom } from "../settings/preferences.ts";
+import { accessAtom, effortAtom, isSendKey, modelAtom, sendKeyAtom } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import { accessOptions, effortLabel, modelOptions } from "./models.ts";
 
@@ -95,6 +95,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
   const [modelId, setModelId] = useAtom(modelAtom);
   const [effort, setEffort] = useAtom(effortAtom);
   const [access, setAccess] = useAtom(accessAtom);
+  const sendKey = useAtomValue(sendKeyAtom);
   const choose =
     <A extends string>(set: (value: A) => void) =>
     (value: A | null) => {
@@ -133,7 +134,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
     });
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (isSendKey(event, sendKey)) {
       event.preventDefault();
       send();
     } else if (event.key === "Escape" && running) {
@@ -297,7 +298,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                 </Button>
               </Tooltip>
             ) : (
-              <Tooltip label="Send" shortcut="Enter">
+              <Tooltip label="Send" shortcut={sendKey === "enter" ? "Enter" : "Ctrl Enter"}>
                 <Button
                   onClick={send}
                   disabled={!canSend}

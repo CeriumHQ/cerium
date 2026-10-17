@@ -58,15 +58,27 @@ export function SettingsCard({ className, children }: { className?: string; chil
   return <div className={`rounded-xl border border-line-subtle ${className ?? ""}`}>{children}</div>;
 }
 
-/** A keyboard key, or a combination of them, drawn as keycaps. */
-export function Keys({ keys, size = "md" }: { keys: string; size?: "sm" | "md" }) {
+/** A keyboard key, or a combination of them, drawn as keycaps that can be shown pressed. */
+export function Keys({
+  keys,
+  size = "md",
+  pressed = false,
+}: {
+  keys: string;
+  size?: "sm" | "md";
+  pressed?: boolean;
+}) {
   return (
     <span className="flex shrink-0 items-center gap-1">
       {keys.split(" ").map((key) => (
         <kbd
           key={key}
-          className={`grid place-items-center rounded-md border border-b-2 border-line-strong bg-surface-raised font-sans font-medium text-fg-secondary ${
+          className={`grid place-items-center rounded-md border font-sans font-medium transition-[translate,border-width,background-color,color] duration-100 ${
             size === "sm" ? "h-5 min-w-5 px-1 text-2xs" : "h-6 min-w-6 px-1.5 text-xs"
+          } ${
+            pressed
+              ? "translate-y-px border-b border-accent bg-accent text-accent-fg"
+              : "border-b-2 border-line-strong bg-surface-raised text-fg-secondary"
           }`}
         >
           {key}

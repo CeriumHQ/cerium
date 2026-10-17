@@ -41,6 +41,25 @@ export const textScale = (size: TextSize) => (textSizes.find((each) => each.id =
 export type SendKey = "enter" | "ctrlEnter";
 export const sendKeyAtom = preference<SendKey>("cerium:sendKey", ["enter", "ctrlEnter"], "enter");
 
+/**
+ * Whether a key press in a message box sends it. With Enter, Ctrl Enter sends too; with Ctrl Enter,
+ * a plain Enter starts a new line. Shift Enter always starts one, and Enter confirming an IME
+ * composition never sends.
+ */
+export const isSendKey = (
+  event: {
+    readonly key: string;
+    readonly shiftKey: boolean;
+    readonly ctrlKey: boolean;
+    readonly nativeEvent: { readonly isComposing: boolean };
+  },
+  sendKey: SendKey,
+): boolean =>
+  event.key === "Enter" &&
+  !event.shiftKey &&
+  !event.nativeEvent.isComposing &&
+  (sendKey === "enter" || event.ctrlKey);
+
 // What a new thread starts with. The composer offers the same choices and remembers the last one.
 export const modelAtom = preference(
   "cerium:model",
