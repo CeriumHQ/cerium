@@ -81,6 +81,7 @@ const program = Effect.gen(function* () {
   Effect.provide(
     backendLayer({
       dataDirectory,
+      token: "live-spawn",
       catalog: [{ alias: "scout", provider: "claude", model: "haiku", description: "Fast, cheap lookups" }],
     }),
   ),

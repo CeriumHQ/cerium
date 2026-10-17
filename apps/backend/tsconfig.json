@@ -2,11 +2,26 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src", "scripts"],
   "references": [
-    { "path": "../../packages/protocol" },
-    { "path": "../../packages/harness" },
-    { "path": "../../packages/store" },
-    { "path": "../../packages/orchestrator" },
-    { "path": "../../packages/bus" },
-    { "path": "../../packages/adapters/claude" }
+    {
+      "path": "../../packages/protocol"
+    },
+    {
+      "path": "../../packages/harness"
+    },
+    {
+      "path": "../../packages/store"
+    },
+    {
+      "path": "../../packages/orchestrator"
+    },
+    {
+      "path": "../../packages/bus"
+    },
+    {
+      "path": "../../packages/adapters/claude"
+    },
+    {
+      "path": "../../packages/rpc"
+    }
   ]
 }

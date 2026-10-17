@@ -7,6 +7,9 @@ coverage/
 .vite/
 .vite-plus/
 
+# Development backend data and its connection file
+.cerium-dev/
+
 # Pinned Effect source, fetched by `bun run vendor:effect`
 vendor/effect/
 

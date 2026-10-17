@@ -1,15 +1,20 @@
 import { ClaudeAdapter } from "@cerium/adapter-claude";
-import { BusHttpServer, BusRegistryLive, BusServer } from "@cerium/bus";
+import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
 import { Adapters, Catalog, Orchestrator, OrchestratorConfig, type CatalogEntry } from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import { Effect, Layer } from "effect";
+import { HttpRouter } from "effect/http";
 import { join } from "node:path";
+
+import { rpcRoutes } from "./rpc.ts";
 
 export interface BackendOptions {
   /** Where Cerium keeps its database and chat-thread folders (the app's user-data directory). */
   readonly dataDirectory: string;
   /** Until onboarding builds it, the catalog is passed in. */
   readonly catalog: ReadonlyArray<CatalogEntry>;
+  /** This launch's secret; the UI must present it to use the RPC endpoint. */
+  readonly token: string;
 }
 
 /** Every installed harness adapter. */
@@ -21,12 +26,18 @@ const AdaptersLive = Layer.effect(
   }),
 ).pipe(Layer.provide(ClaudeAdapter.layer));
 
-/** The whole backend: store, orchestrator, harness adapters and the MCP bus on a loopback port. */
+/**
+ * The whole backend: store, orchestrator and harness adapters, with the MCP bus and the UI's RPC
+ * endpoint served on one loopback port.
+ */
 export const backendLayer = (options: BackendOptions) =>
-  BusServer.pipe(
+  HttpRouter.serve(Layer.mergeAll(BusRoutes, rpcRoutes(options.token)), {
+    disableListenLog: true,
+    disableLogger: true,
+  }).pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(BusRegistryLive),
-    Layer.provide(
+    Layer.provideMerge(
       Layer.mergeAll(
         Store.layer({ filename: join(options.dataDirectory, "cerium.db") }),
         AdaptersLive,

@@ -18,7 +18,8 @@
     "vendor:effect": "node scripts/vendor-effect.ts",
     "prepare": "effect-tsgo patch --typescript --oxlint",
     "dev:ui": "vp -C apps/ui dev",
-    "dev:desktop": "bun run --cwd apps/desktop dev"
+    "dev:desktop": "bun run --cwd apps/desktop dev",
+    "dev:backend": "node --watch apps/backend/src/main.ts --data-dir=.cerium-dev --connection-file=.cerium-dev/connection.json"
   },
   "devDependencies": {
     "@effect/tsgo": "0.53.3",
