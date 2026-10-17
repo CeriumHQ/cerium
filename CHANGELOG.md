@@ -49,6 +49,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: a shimmering "Working…" line shows the lead is busy while nothing else on screen moves: before its first output and between steps. A reasoning block shimmers while it streams.
 - UI: an approval card for a file edit shows the change as a compact diff, so it can be judged before it's allowed, and an edit's tool row expands to the same diff instead of raw JSON.
 - UI: the composer keeps a draft per thread (and per mode for a new one), puts the cursor in the message box when a thread opens, gives back a message that failed to send, and stops a running turn with Esc. The access menu shows each mode's icon, and the placeholder no longer promises @ mentions that don't exist yet.
+- UI: a new thread starts with the model, reasoning effort and access the last one was given, as it already did with the folder.
 - UI: the sidebar folds away from the titlebar or with Ctrl B (remembered across launches), leaving a new-thread button in the titlebar; Ctrl N opens a new thread and Ctrl J toggles the agent inspector, as their tooltips promised.
 
 ### Changed

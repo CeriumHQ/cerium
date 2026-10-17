@@ -24,6 +24,7 @@ import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
+import { remember, stored } from "../lib/storage.ts";
 import { AppFrame } from "./AppFrame.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
@@ -33,22 +34,6 @@ const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
 const SIDEBAR_KEY = "cerium:sidebar";
-
-// Remembered window preferences are a convenience only: storage failing must never break the app.
-const stored = (key: string) => {
-  try {
-    return localStorage.getItem(key) ?? undefined;
-  } catch {
-    return undefined;
-  }
-};
-const remember = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Not remembered this time.
-  }
-};
 
 const messageOf = (error: unknown) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"

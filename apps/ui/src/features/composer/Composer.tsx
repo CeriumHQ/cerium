@@ -28,6 +28,7 @@ import {
   SelectTrigger,
 } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { remember, stored } from "../../lib/storage.ts";
 import { providerName } from "../threads/model.ts";
 import { accessOptions, effortLabel, modelOptions } from "./models.ts";
 
@@ -38,6 +39,14 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
 };
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+
+/** New threads start with the model, effort and access the last one was given. */
+const MODEL_KEY = "cerium:model";
+const EFFORT_KEY = "cerium:effort";
+const ACCESS_KEY = "cerium:access";
+
+const storedChoice = <A extends string>(key: string, options: ReadonlyArray<A>, fallback: A): A =>
+  options.find((option) => option === stored(key)) ?? fallback;
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -88,9 +97,30 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
   const ownRef = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? ownRef;
-  const [modelId, setModelId] = useState(modelOptions[0]!.id);
-  const [effort, setEffort] = useState<ReasoningEffort>("high");
-  const [access, setAccess] = useState<AccessMode>("ask");
+  const [modelId, setModelId] = useState(() =>
+    storedChoice(
+      MODEL_KEY,
+      modelOptions.map((option) => option.id),
+      modelOptions[0]!.id,
+    ),
+  );
+  const [effort, setEffort] = useState(() =>
+    storedChoice(EFFORT_KEY, Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>, "high"),
+  );
+  const [access, setAccess] = useState(() =>
+    storedChoice(
+      ACCESS_KEY,
+      accessOptions.map((option) => option.value),
+      "ask",
+    ),
+  );
+  const choose =
+    <A extends string>(key: string, set: (value: A) => void) =>
+    (value: A | null) => {
+      if (value === null) return;
+      set(value);
+      remember(key, value);
+    };
 
   const model = modelOptions.find((option) => option.id === modelId) ?? modelOptions[0]!;
   // Keep the effort valid when switching to a model with fewer levels.
@@ -203,7 +233,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                 </Tooltip>
               ) : null}
 
-              <SelectRoot value={model.id} onValueChange={(value) => value && setModelId(value)}>
+              <SelectRoot value={model.id} onValueChange={choose(MODEL_KEY, setModelId)}>
                 <SelectTrigger label="Model">
                   <ProviderLogo provider={model.provider} size={13} />
                   <span className="font-medium text-fg-primary">{model.label}</span>
@@ -239,10 +269,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                 </SelectPopup>
               </SelectRoot>
 
-              <SelectRoot
-                value={activeEffort}
-                onValueChange={(value) => value && setEffort(value as ReasoningEffort)}
-              >
+              <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(EFFORT_KEY, setEffort)}>
                 <SelectTrigger label="Reasoning effort">
                   <Gauge size={13} strokeWidth={1.75} />
                   {effortLabel[activeEffort]}
@@ -257,7 +284,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
               </SelectRoot>
 
               {target.mode === "work" ? (
-                <SelectRoot value={access} onValueChange={(value) => value && setAccess(value as AccessMode)}>
+                <SelectRoot value={access} onValueChange={choose<AccessMode>(ACCESS_KEY, setAccess)}>
                   <SelectTrigger label="Access">
                     <AccessIcon size={13} strokeWidth={1.75} />
                     {accessOptions.find((option) => option.value === access)?.label}
