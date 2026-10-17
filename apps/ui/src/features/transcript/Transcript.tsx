@@ -2,7 +2,7 @@ import type { ProviderId } from "@cerium/protocol";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage } from "./Blocks.tsx";
+import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage, Working } from "./Blocks.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
 import { ToolGroup } from "./ToolGroup.tsx";
@@ -88,12 +88,30 @@ const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => 
   return items;
 };
 
+/** Whether the end of the transcript already shows the agent at work, or waiting on the user. */
+const showsProgress = (item: Item | undefined): boolean => {
+  switch (item?.kind) {
+    case "tools":
+      return item.tools.some((tool) => tool.status === "running");
+    case "block":
+      return (
+        ((item.block.kind === "message" || item.block.kind === "reasoning") && item.block.streaming) ||
+        (item.block.kind === "permission" && item.block.resolution === undefined)
+      );
+    default:
+      return false;
+  }
+};
+
 export function Transcript({ blocks, agent, activity, childState, onAnswerPermission }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
   const roleOf = (agentId: string) => roles.get(agentId) ?? "An agent";
   const viewport = useStickToBottom(blocks.findLast((block) => block.kind === "user")?.id);
+  const items = layout(blocks);
+  const last = items.at(-1);
+  const working = activity === "running" && !showsProgress(last);
 
   return (
     // Content fades out where the floating composer sits instead of showing through its glass.
@@ -102,7 +120,7 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
       className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
     >
       <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40">
-        {layout(blocks).map((item) => {
+        {items.map((item) => {
           switch (item.kind) {
             case "input":
               return (
@@ -136,6 +154,8 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
               );
           }
         })}
+        {working && (last === undefined || last.kind === "input") ? <ResponseHeader agent={agent} /> : null}
+        {working ? <Working /> : null}
       </div>
     </ScrollArea>
   );

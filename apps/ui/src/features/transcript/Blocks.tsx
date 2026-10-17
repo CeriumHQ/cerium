@@ -38,12 +38,21 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   );
 }
 
+/** Shown while the agent works with nothing on screen moving: before its first output, between steps. */
+export function Working() {
+  return (
+    <output className="block text-[12.5px]">
+      <span className="text-shimmer">Working…</span>
+    </output>
+  );
+}
+
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   return (
     <Collapsible.Root>
       <Collapsible.Trigger className="group flex items-center gap-1.5 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
         <Brain size={13} strokeWidth={1.75} />
-        {block.streaming ? "Thinking…" : "Thought"}
+        {block.streaming ? <span className="text-shimmer">Thinking…</span> : "Thought"}
         <ChevronRight
           size={13}
           className="transition-transform duration-200 group-data-panel-open:rotate-90"

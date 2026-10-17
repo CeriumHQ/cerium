@@ -54,6 +54,28 @@ html[data-shell="browser"] #root::before {
   background: var(--selection);
 }
 
+/* Text a light sweeps across while something is in progress. */
+@utility text-shimmer {
+  background: linear-gradient(90deg, var(--fg-tertiary) 40%, var(--fg-primary) 50%, var(--fg-tertiary) 60%) 0
+    0 / 250% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
 /* In the base layer so a component with its own focus style can opt out with `outline-none`. */
 @layer base {
   :focus-visible {
