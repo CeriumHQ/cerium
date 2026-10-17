@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { ChevronDown, Minus, PanelLeft, Square, X } from "lucide-react";
 
+import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
@@ -23,7 +24,7 @@ export function Titlebar({ mode, onModeChange, agents, inspectorOpen, onToggleIn
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
       <div className="flex items-center gap-2">
-        <CeriumMark />
+        <CeriumMark size={16} className="text-fg-primary" />
         <span className="text-[13px] font-medium tracking-tight text-fg-primary">Cerium</span>
       </div>
       <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
@@ -106,21 +107,5 @@ function CaptionButtons() {
         </span>
       ))}
     </div>
-  );
-}
-
-/** Cerium's mark: a cut gem, after cerium oxide, the compound that polishes glass. */
-function CeriumMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" className="text-fg-primary">
-      <path d="M12 2.5 20.5 8v8L12 21.5 3.5 16V8Z" fill="currentColor" opacity="0.92" />
-      <path
-        d="M12 2.5V12l8.5-4M12 12 3.5 8M12 12v9.5"
-        stroke="var(--surface-window)"
-        strokeWidth="1.1"
-        strokeOpacity="0.9"
-        fill="none"
-      />
-    </svg>
   );
 }
