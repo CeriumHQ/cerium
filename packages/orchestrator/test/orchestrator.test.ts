@@ -285,13 +285,14 @@ describe("Orchestrator", () => {
 
       const fetching = yield* startChat("claude");
       yield* orchestrator.sendUserMessage(fetching.lead.id, "look it up");
-      const resolved = yield* waitFor((events) =>
-        events.find(
-          (event) => event.agentId === fetching.lead.id && event.payload._tag === "PermissionResolved",
-        ),
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === fetching.lead.id && event.payload._tag === "TurnCompleted"),
       );
-      assert.deepInclude(resolved.payload, { decision: "allow" });
-      assert.isFalse(orchestrator.awaitingApproval(fetching.thread.id));
+      const recorded = (yield* orchestrator.threadEvents(fetching.thread.id)).map(
+        (event) => event.payload._tag,
+      );
+      assert.notInclude(recorded, "PermissionRequested", "nobody was asked, so nothing shows a request");
+      assert.notInclude(recorded, "PermissionResolved");
 
       const posting = yield* startChat("codex");
       yield* orchestrator.sendUserMessage(posting.lead.id, "post it");

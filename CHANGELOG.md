@@ -111,7 +111,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the thread title in the titlebar is plain text instead of a button that opened nothing, so it drags the window like the rest of the titlebar.
 - UI: the browser preview stands a light backdrop behind the light theme instead of the dark one.
 - UI: notice bars carry a faint tint of their status colour, so they read as banners rather than stray lines over the transcript.
-- `@cerium/orchestrator`: read-only agents no longer wait on approvals: Cerium approves their requests itself (web searches and fetches, reads outside the folder), for every provider, since each harness already keeps them from writing. Tools of the user's own MCP servers still ask.
+- `@cerium/orchestrator`: read-only agents no longer wait on approvals: Cerium approves their requests itself (web searches and fetches, reads outside the folder), for every provider, since each harness already keeps them from writing. These requests are never shown, not even briefly. Tools of the user's own MCP servers still ask.
 - `@cerium/orchestrator`: stopping a subagent tells its lead, which otherwise waited for a result that would never come.
 - Claude adapter: a permission request is ready for its answer before it is announced, so an immediate answer is no longer lost.
 - UI: approval requests from subagents appear in a tray above the message box, one card per waiting agent with who is asking and how many requests are queued, and in the agent inspector when the subagent is selected. Before, they were counted as "Needs you" but could not be answered anywhere. A subagent's card in the transcript also says "Needs you" instead of "Working" while it waits.

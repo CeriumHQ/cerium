@@ -233,11 +233,24 @@ export class Orchestrator extends Context.Service<
       const finishTurn = (rt: Runtime) =>
         rt.turn === undefined ? Effect.void : Deferred.succeed(rt.turn, undefined);
 
-      const consumeEvents = (rt: Runtime) =>
-        rt.session.events.pipe(
+      const consumeEvents = (rt: Runtime) => {
+        /** Requests Cerium approved itself: nobody was asked, so neither end is recorded or shown. */
+        const approvedByCerium = new Set<string>();
+        return rt.session.events.pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               const { payload } = event;
+              if (
+                payload._tag === "PermissionRequested" &&
+                approvesItself(rt.info.access, payload.toolName)
+              ) {
+                approvedByCerium.add(payload.requestId);
+                return yield* rt.session.respondToPermission(payload.requestId, {
+                  decision: "allow",
+                  scope: "once",
+                });
+              }
+              if (payload._tag === "PermissionResolved" && approvedByCerium.delete(payload.requestId)) return;
               yield* emit(rt, payload, event.raw);
               switch (payload._tag) {
                 case "SessionStarted": {
@@ -252,12 +265,6 @@ export class Orchestrator extends Context.Service<
                   rt.lastMessage = payload.text;
                   return;
                 case "PermissionRequested": {
-                  if (approvesItself(rt.info.access, payload.toolName)) {
-                    return yield* rt.session.respondToPermission(payload.requestId, {
-                      decision: "allow",
-                      scope: "once",
-                    });
-                  }
                   const pending = pendingPermissions.get(rt.info.id) ?? new Set<string>();
                   pendingPermissions.set(rt.info.id, pending.add(payload.requestId));
                   return;
@@ -281,6 +288,7 @@ export class Orchestrator extends Context.Service<
             }),
           ),
         );
+      };
 
       const runTurn = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
         Effect.gen(function* () {
