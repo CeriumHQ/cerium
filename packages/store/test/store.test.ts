@@ -119,6 +119,34 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("lists a thread's events across agents and stops agents left live by a previous run", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const child: AgentInfo = { ...lead, id: "agt_child" as AgentId, parentId: lead.id, role: "scout" };
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        yield* store.createAgent(child);
+        yield* store.appendEvents([
+          event(0),
+          { ...event(0), id: "evt_child" as EventId, agentId: child.id, at: 11 },
+        ]);
+        yield* store.appendEvents([event(1)]);
+
+        const history = yield* store.listThreadEvents(thread.id);
+        assert.deepStrictEqual(
+          history.map((stored) => stored.id),
+          ["evt_0", "evt_child", "evt_1"],
+        );
+
+        yield* store.updateAgent(child.id, { state: "failed", updatedAt: 20 });
+        yield* store.stopLiveAgents(30);
+        const states = (yield* store.listAgents(thread.id)).map((agent) => agent.state);
+        assert.deepStrictEqual(states, ["stopped", "failed"]);
+      }),
+    ),
+  );
+
   it.effect("stores a batch atomically", () =>
     withStore(
       Effect.gen(function* () {

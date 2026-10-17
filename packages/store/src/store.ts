@@ -1,5 +1,5 @@
 import { AgentEvent, AgentInfo, ThreadInfo, type AgentId, type ThreadId } from "@cerium/protocol";
-import { and, asc, eq, gt, max } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, max } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { join } from "node:path";
 
@@ -36,6 +36,10 @@ export class Store extends Context.Service<
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** The highest stored sequence for an agent, so a restarted agent continues after it. */
     lastSequence(agentId: AgentId): Effect.Effect<Option.Option<number>, StoreError>;
+    /** Every agent's events in a thread, in the order they happened. */
+    listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /** Marks agents that were live when the app last exited as stopped: their sessions are gone. */
+    stopLiveAgents(updatedAt: number): Effect.Effect<void, StoreError>;
   }
 >()("cerium/store/Store") {
   /** `migrationsFolder` defaults to the migrations shipped with this package. */
@@ -149,6 +153,21 @@ export class Store extends Context.Service<
                 .from(events)
                 .where(eq(events.agentId, agentId)),
             ).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0]?.last))),
+          listThreadEvents: (threadId) =>
+            query("Could not list thread events", () =>
+              db
+                .select()
+                .from(events)
+                .where(eq(events.threadId, threadId))
+                .orderBy(asc(events.at), asc(events.sequence)),
+            ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+          stopLiveAgents: (updatedAt) =>
+            query("Could not stop live agents", () =>
+              db
+                .update(agents)
+                .set({ state: "stopped", updatedAt })
+                .where(inArray(agents.state, ["queued", "running", "idle"])),
+            ),
         });
       }),
     );
