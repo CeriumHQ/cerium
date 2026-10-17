@@ -2,10 +2,10 @@ import { Button } from "@base-ui/react/button";
 import type { HarnessStatus, ProviderId } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Check, Copy, RefreshCw } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
+import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
-import { harnessesAtom, modelsAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
@@ -61,6 +61,7 @@ export function HarnessSettings() {
               <HarnessRow
                 provider={provider}
                 status={statuses.find((status) => status.provider === provider)}
+                onSignedIn={refresh}
                 {...(AsyncResult.isSuccess(result) ? {} : { unknown: true })}
               />
             </li>
@@ -74,11 +75,13 @@ export function HarnessSettings() {
 function HarnessRow({
   provider,
   status,
+  onSignedIn,
   unknown = false,
 }: {
   provider: ProviderId;
   /** Absent when Cerium has no adapter for the provider yet. */
   status: HarnessStatus | undefined;
+  onSignedIn: () => void;
   /** The backend hasn't answered, so nothing is known yet. */
   unknown?: boolean;
 }) {
@@ -117,7 +120,9 @@ function HarnessRow({
             )}
           </span>
         </div>
-        {status?._tag === "HarnessInstalled" ? <InstalledDetails status={status} /> : null}
+        {status?._tag === "HarnessInstalled" ? (
+          <InstalledDetails status={status} onSignedIn={onSignedIn} />
+        ) : null}
         {status?._tag === "HarnessMissing" ? (
           <p className="text-[12.5px] leading-relaxed text-fg-secondary">
             <RichHint text={status.installHint} />
@@ -128,7 +133,7 @@ function HarnessRow({
   );
 }
 
-function InstalledDetails({ status }: { status: Installed }) {
+function InstalledDetails({ status, onSignedIn }: { status: Installed; onSignedIn: () => void }) {
   const { auth } = status;
   return (
     <div className="flex flex-col gap-1.5 text-[12.5px]">
@@ -158,11 +163,14 @@ function InstalledDetails({ status }: { status: Installed }) {
       >
         {status.executablePath}
       </p>
-      {auth._tag === "LoggedOut" ? (
+      {auth._tag === "LoggedOut" && auth.loginCommand ? (
         <div className="mt-1 flex flex-col gap-1.5">
           <p className="text-fg-secondary">Log in with the harness's own command, then check again:</p>
           <Command text={auth.loginCommand} />
         </div>
+      ) : null}
+      {auth._tag === "LoggedOut" && auth.browserLogin ? (
+        <BrowserSignIn provider={status.provider} onSignedIn={onSignedIn} />
       ) : null}
     </div>
   );
@@ -200,6 +208,111 @@ function State({
       ) : null}
       {children}
     </span>
+  );
+}
+
+/**
+ * Starts the harness SDK's own sign-in page in the browser. The SDK keeps the key the sign-in creates,
+ * so all Cerium learns is that the sign-in finished.
+ */
+function BrowserSignIn({ provider, onSignedIn }: { provider: ProviderId; onSignedIn: () => void }) {
+  const [signingIn, setSigningIn] = useState(false);
+  return (
+    <div className="mt-1 flex flex-col gap-2.5">
+      <p className="leading-relaxed text-fg-secondary">
+        {harnessName[provider]} signs in on its own page in your browser. It keeps the key it creates on this
+        computer, where Cerium never reads it, and you can revoke it from your {harnessName[provider]}{" "}
+        dashboard.
+      </p>
+      {signingIn ? (
+        <SignInProgress
+          provider={provider}
+          onCancel={() => setSigningIn(false)}
+          onSignedIn={() => {
+            setSigningIn(false);
+            onSignedIn();
+          }}
+        />
+      ) : (
+        <Button
+          onClick={() => setSigningIn(true)}
+          className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+        >
+          <LogIn size={13} strokeWidth={2} />
+          Sign in with {harnessName[provider]}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** A running sign-in. Unmounting it lets go of the sign-in, which cancels it. */
+function SignInProgress({
+  provider,
+  onCancel,
+  onSignedIn,
+}: {
+  provider: ProviderId;
+  onCancel: () => void;
+  onSignedIn: () => void;
+}) {
+  const result = useAtomValue(loginAtom(provider));
+  const retry = useAtomRefresh(loginAtom(provider));
+  const step = AsyncResult.isSuccess(result) ? result.value : undefined;
+  const url = step?._tag === "OpenUrl" ? step.url : undefined;
+
+  // The page opens by itself once the harness has it; the link below opens it again.
+  useEffect(() => {
+    if (url !== undefined) window.open(url, "_blank", "noopener,noreferrer");
+  }, [url]);
+  const signedIn = useEffectEvent(onSignedIn);
+  useEffect(() => {
+    if (step?._tag === "SignedIn") signedIn();
+  }, [step]);
+
+  if (AsyncResult.isFailure(result)) {
+    return (
+      <div className="flex items-center gap-3">
+        <p className="min-w-0 flex-1 text-error">The sign-in didn't finish. Try again when you're ready.</p>
+        <QuietButton onClick={retry}>Try again</QuietButton>
+        <QuietButton onClick={onCancel}>Cancel</QuietButton>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface-window py-1.5 pr-1.5 pl-3">
+      <RefreshCw size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
+      <p className="min-w-0 flex-1 text-fg-secondary">
+        {url === undefined
+          ? "Starting the sign-in…"
+          : step?._tag === "SignedIn"
+            ? "Signed in. Checking again…"
+            : "Finish signing in using your browser."}
+      </p>
+      {url !== undefined ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+        >
+          <ExternalLink size={12} strokeWidth={1.75} />
+          Open it again
+        </a>
+      ) : null}
+      <QuietButton onClick={onCancel}>Cancel</QuietButton>
+    </div>
+  );
+}
+
+function QuietButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <Button
+      onClick={onClick}
+      className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+    >
+      {children}
+    </Button>
   );
 }
 

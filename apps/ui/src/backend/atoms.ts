@@ -83,6 +83,16 @@ export const modelsAtom = Backend.runtime.atom(
   { initialValue: cachedModels() },
 );
 
+/**
+ * A harness's browser sign-in, running while something reads it: letting go of it cancels the
+ * sign-in. Its value is the latest step.
+ */
+export const loginAtom = Atom.family((provider: ProviderId) =>
+  Backend.runtime.atom(
+    Stream.unwrap(Backend.use((client) => Effect.succeed(client("LoginHarness", { provider })))),
+  ),
+);
+
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {
   get(connectionAtom);

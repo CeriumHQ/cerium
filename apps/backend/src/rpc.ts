@@ -1,6 +1,6 @@
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
 import { CeriumError, CeriumRpcs } from "@cerium/rpc";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
@@ -53,6 +53,14 @@ const Handlers = CeriumRpcs.toLayer(
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+      LoginHarness: ({ provider }) =>
+        Stream.unwrap(
+          Effect.fromNullishOr(adapters.get(provider)?.login).pipe(
+            Effect.mapError(
+              () => new CeriumError({ message: `${provider} has no sign-in Cerium can start.` }),
+            ),
+          ),
+        ).pipe(Stream.mapError((error) => new CeriumError({ message: error.message }))),
       ListModels: ({ provider }) =>
         Effect.fromNullishOr(adapters.get(provider)).pipe(
           Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),

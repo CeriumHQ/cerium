@@ -4,6 +4,7 @@ import {
   AgentId,
   AgentInfo,
   HarnessStatus,
+  LoginProgress,
   ModelInfo,
   ProviderId,
   ReasoningEffort,
@@ -94,6 +95,16 @@ export const CeriumRpcs = RpcGroup.make(
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
+  /**
+   * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the
+   * harness's SDK keeps the credential and Cerium never sees it.
+   */
+  Rpc.make("LoginHarness", {
+    payload: { provider: ProviderId },
+    success: LoginProgress,
+    stream: true,
+    error: CeriumError,
+  }),
   /** The models one provider's harness offers; refused while that harness isn't usable. */
   Rpc.make("ListModels", {
     payload: { provider: ProviderId },

@@ -3,6 +3,7 @@ import type {
   CapabilityManifest,
   EventPayload,
   HarnessStatus,
+  LoginProgress,
   ModelInfo,
   ProviderId,
   ReasoningEffort,
@@ -85,6 +86,11 @@ export interface HarnessAdapter {
   readonly probe: Effect.Effect<HarnessStatus, HarnessFailure>;
   /** The models the user's installed, logged-in harness offers right now. */
   readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, HarnessUnavailable | HarnessFailure>;
+  /**
+   * The SDK's own browser sign-in, for harnesses whose status offers `browserLogin`. It ends after
+   * `SignedIn`; interrupting it cancels the sign-in. The SDK stores the credential it gets.
+   */
+  readonly login?: Stream.Stream<LoginProgress, HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

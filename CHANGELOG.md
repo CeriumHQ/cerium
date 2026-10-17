@@ -67,6 +67,8 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/rpc`: each harness's models.
 - Codex adapter: drives the user's installed `codex app-server` over JSON-RPC, with types generated from it: login and plan, the picker's models, threads with Cerium's bus injected and native subagents off, approvals for commands, file changes, MCP tools and permissions, file change tracking, per-turn usage, mid-session model and effort switching, interrupt and resume. Tested against a recorded session and verified live.
 - Muse adapter: drives the user's installed `muse serve` through `@muse-code/sdk` with its schema pinned: login status, models, sessions with Cerium's bus injected and native subagents off, approvals answered with Muse's own choices, file change tracking, per-turn usage (and cost where Muse prices it), model and effort switching, interrupt and resume. Tested against a session recorded on Muse's offline provider.
+- `@cerium/harness`: adapters can run their harness SDK's own browser sign-in, and `@cerium/rpc` starts it.
+- UI: Harnesses settings sign in a harness whose SDK has its own browser sign-in: the button opens the harness's page in the browser, waits for you to finish there, then checks again. The SDK keeps the key it creates.
 
 ### Changed
 
@@ -77,6 +79,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: sessions load the user's own MCP servers only while that setting is on (default on); it was always on.
 - UI: the composer and Agents settings offer the models each installed harness actually lists, remembered by provider and model, instead of a fixed list. The last lists are kept so the pickers fill in before the harnesses answer, and "Check again" in Harnesses settings re-reads them.
 - UI: Agents settings picks the lead model with one row per harness and a menu of its models, instead of a chip for every model.
+- `@cerium/protocol`: a logged-out harness may offer a browser sign-in instead of a login command.
 
 ### Fixed
 
