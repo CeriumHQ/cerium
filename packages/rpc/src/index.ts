@@ -10,7 +10,7 @@ import {
   ThreadInfo,
   ThreadMode,
 } from "@cerium/protocol";
-import { Schema } from "effect";
+import { Schema, Struct } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 
 // The contract between the UI and the backend, served over a localhost WebSocket
@@ -20,6 +20,14 @@ import { Rpc, RpcGroup } from "effect/rpc";
 export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError", {
   message: Schema.String,
 }) {}
+
+/**
+ * An event as the UI receives it. The provider's original message stays in the store: the UI never
+ * reads it, and it isn't always strict JSON (SDKs leave `undefined` fields in), which would fail the
+ * whole response. Encoding drops keys a struct doesn't declare.
+ */
+export const UiEvent = AgentEvent.mapFields(Struct.omit(["raw"]));
+export type UiEvent = typeof UiEvent.Type;
 
 /** What the sidebar needs about one thread. */
 export const ThreadOverview = Schema.Struct({
@@ -46,11 +54,11 @@ export const CeriumRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: Schema.Array(ThreadOverview), error: CeriumError }),
   Rpc.make("ThreadEvents", {
     payload: { threadId: ThreadId },
-    success: Schema.Array(AgentEvent),
+    success: Schema.Array(UiEvent),
     error: CeriumError,
   }),
   /** Every agent's events as they happen, streaming deltas included. */
-  Rpc.make("WatchEvents", { success: AgentEvent, stream: true }),
+  Rpc.make("WatchEvents", { success: UiEvent, stream: true }),
   Rpc.make("CreateThread", {
     payload: CreateThreadPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
