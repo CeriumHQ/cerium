@@ -69,3 +69,4 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the inspector only offers what an agent can do: "Message" moves to the composer for a live lead, "Interrupt turn" is only enabled mid-turn, and an agent that has stopped or failed has no actions. The "Open" button, which did nothing, is gone until agents get their own views.
 - UI: stopping an agent from the inspector asks first, and says what stopping costs: a stopped lead ends its thread.
 - UI: an empty sidebar explains where threads or chats will appear, and project groups use a plain folder icon, since a work folder needn't be a git repository.
+- UI: the thread title in the titlebar is plain text instead of a button that opened nothing, so it drags the window like the rest of the titlebar.

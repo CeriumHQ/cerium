@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronDown, Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
+import { Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
@@ -63,15 +63,12 @@ export function Titlebar({
       </div>
 
       <div className="flex min-w-0 flex-1 justify-center">
+        {/* Plain text until the thread has actions to offer, so it also drags the window. */}
         {thread ? (
-          <button
-            type="button"
-            className="flex min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary"
-          >
+          <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
             <span className="truncate font-medium text-fg-primary">{thread.title}</span>
             {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
-            <ChevronDown size={13} className="shrink-0 text-fg-tertiary" />
-          </button>
+          </p>
         ) : null}
       </div>
 
