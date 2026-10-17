@@ -132,6 +132,10 @@ export class Orchestrator extends Context.Service<
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /** The agent record for a live agent. */
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
+    /** Every persisted event in a thread, in order. */
+    threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
+    /** Whether any agent in the thread is waiting for the user to approve something. */
+    awaitingApproval(threadId: ThreadId): boolean;
   }
 >()("cerium/orchestrator/Orchestrator") {
   static readonly layer = Layer.effect(
@@ -153,7 +157,12 @@ export class Orchestrator extends Context.Service<
       const pendingSpawns = new Map<string, { readonly leadId: AgentId; readonly request: SpawnRequest }>();
       /** Send times per `from->to` pair, for the message budget. */
       const sentMessages = new Map<string, Array<number>>();
+      /** Permission requests each agent is waiting on. */
+      const pendingPermissions = new Map<AgentId, Set<string>>();
       const feed = yield* PubSub.unbounded<AgentEvent>();
+
+      // Sessions don't survive a restart, so agents a previous run left live are stopped.
+      yield* store.stopLiveAgents(yield* Clock.currentTimeMillis).pipe(Effect.mapError(unavailable));
       const globalPermits = yield* Semaphore.make(config.globalConcurrency);
       const providerPermits = new Map(
         [...adapters].map(([provider, adapter]) => [
@@ -227,6 +236,14 @@ export class Orchestrator extends Context.Service<
                 }
                 case "MessageCompleted":
                   rt.lastMessage = payload.text;
+                  return;
+                case "PermissionRequested": {
+                  const pending = pendingPermissions.get(rt.info.id) ?? new Set<string>();
+                  pendingPermissions.set(rt.info.id, pending.add(payload.requestId));
+                  return;
+                }
+                case "PermissionResolved":
+                  pendingPermissions.get(rt.info.id)?.delete(payload.requestId);
                   return;
                 case "TurnCompleted":
                   return yield* finishTurn(rt);
@@ -390,6 +407,7 @@ export class Orchestrator extends Context.Service<
       const stopRuntime = (rt: Runtime) =>
         Effect.gen(function* () {
           runtimes.delete(rt.info.id);
+          pendingPermissions.delete(rt.info.id);
           yield* setState(rt, "stopped").pipe(Effect.ignore);
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
@@ -599,6 +617,13 @@ export class Orchestrator extends Context.Service<
         }),
 
         agent: (agentId) => runtime(agentId).pipe(Effect.map((rt) => rt.info)),
+
+        threadEvents: (threadId) => store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable)),
+
+        awaitingApproval: (threadId) =>
+          [...runtimes.values()].some(
+            (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
+          ),
       });
     }),
   );

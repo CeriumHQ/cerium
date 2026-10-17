@@ -200,6 +200,35 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("knows which threads wait on the user and serves their history", () => {
+    const fake = makeFakeAdapter("claude", { askPermission: true });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startWorkThread;
+      assert.isFalse(orchestrator.awaitingApproval(thread.id));
+
+      yield* orchestrator.sendUserMessage(lead.id, "run the tests");
+      const request = yield* waitFor((events) =>
+        events.find((event) => event.payload._tag === "PermissionRequested"),
+      );
+      assert.isTrue(orchestrator.awaitingApproval(thread.id));
+
+      const requestId = request.payload._tag === "PermissionRequested" ? request.payload.requestId : "";
+      yield* orchestrator.respondToPermission(lead.id, requestId, { decision: "allow", scope: "once" });
+      yield* waitFor((events) => events.find((event) => event.payload._tag === "TurnCompleted"));
+      assert.isFalse(orchestrator.awaitingApproval(thread.id));
+
+      const history = (yield* orchestrator.threadEvents(thread.id)).map((event) => event.payload._tag);
+      assert.includeMembers(history, [
+        "TurnInput",
+        "PermissionRequested",
+        "PermissionResolved",
+        "TurnCompleted",
+      ]);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("keeps chat threads read-only and requires a folder for work threads", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {

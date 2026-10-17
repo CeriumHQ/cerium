@@ -1,7 +1,7 @@
 import type { CapabilityManifest, ProviderId } from "@cerium/protocol";
-import { Duration, Effect, Queue, Stream, type Cause } from "effect";
+import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 
-import type { AdapterEvent, HarnessAdapter, SessionOptions } from "./adapter.ts";
+import type { AdapterEvent, HarnessAdapter, PermissionDecision, SessionOptions } from "./adapter.ts";
 
 // Test support shared by every package that drives harness sessions without a real provider.
 
@@ -17,6 +17,8 @@ export const makeFakeAdapter = (
     readonly concurrency?: number;
     readonly turnDuration?: Duration.Input;
     readonly reply?: (text: string, session: SessionOptions) => string;
+    /** Each turn asks to run a command and waits for the decision before replying. */
+    readonly askPermission?: boolean;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
@@ -42,6 +44,7 @@ export const makeFakeAdapter = (
         const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
         yield* Effect.addFinalizer(() => Queue.end(events));
         const session: FakeSession = { options: sessionOptions, sent: [] };
+        const decisions = new Map<string, Deferred.Deferred<PermissionDecision>>();
         sessions.push(session);
         yield* Queue.offer(events, {
           payload: {
@@ -57,6 +60,24 @@ export const makeFakeAdapter = (
             running.max = Math.max(running.max, running.now);
             yield* Effect.sleep(options.turnDuration ?? 0);
             running.now--;
+            if (options.askPermission) {
+              const requestId = `p${session.sent.length}`;
+              const decision = yield* Deferred.make<PermissionDecision>();
+              decisions.set(requestId, decision);
+              yield* Queue.offer(events, {
+                payload: {
+                  _tag: "PermissionRequested",
+                  requestId,
+                  toolName: "Bash",
+                  summary: "Run tests",
+                  input: {},
+                },
+              });
+              const { decision: verdict, scope } = yield* Deferred.await(decision);
+              yield* Queue.offer(events, {
+                payload: { _tag: "PermissionResolved", requestId, decision: verdict, scope },
+              });
+            }
             const messageId = `m${session.sent.length}`;
             const reply = options.reply?.(text, sessionOptions) ?? `reply to: ${text.slice(0, 40)}`;
             yield* Queue.offer(events, { payload: { _tag: "MessageDelta", messageId, text: reply } });
@@ -70,7 +91,13 @@ export const makeFakeAdapter = (
               Effect.andThen(Effect.forkDetach(turn(text))),
               Effect.asVoid,
             ),
-          respondToPermission: () => Effect.void,
+          respondToPermission: (requestId: string, decision: PermissionDecision) =>
+            Effect.suspend(() => {
+              const pending = decisions.get(requestId);
+              return pending === undefined
+                ? Effect.void
+                : Deferred.succeed(pending, decision).pipe(Effect.asVoid);
+            }),
           interrupt: Effect.void,
           setModel: () => Effect.void,
           setEffort: () => Effect.void,
