@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronRight, FolderGit2, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronRight, Folder, Search, Settings, SquarePen } from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -59,6 +59,7 @@ const groupThreads = (
 };
 
 export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harnesses }: SidebarProps) {
+  const groups = groupThreads(threads, mode);
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
@@ -79,7 +80,7 @@ export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harn
 
       <ScrollArea className="flex-1">
         <nav className="flex flex-col gap-3 px-2 pb-3" aria-label={mode === "work" ? "Threads" : "Chats"}>
-          {groupThreads(threads, mode).map((group) => (
+          {groups.map((group) => (
             <ThreadGroup
               key={group.key}
               group={group}
@@ -88,6 +89,13 @@ export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harn
               onSelect={onSelect}
             />
           ))}
+          {groups.length === 0 ? (
+            <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
+              {mode === "work"
+                ? "Threads you start show up here, grouped by the folder they work in."
+                : "Chats you start show up here, newest first."}
+            </p>
+          ) : null}
         </nav>
       </ScrollArea>
 
@@ -115,7 +123,7 @@ function ThreadGroup({
           strokeWidth={2}
           className="transition-transform duration-200 ease-out-soft group-data-panel-open:rotate-90"
         />
-        {mode === "work" ? <FolderGit2 size={12} strokeWidth={2} /> : null}
+        {mode === "work" ? <Folder size={12} strokeWidth={2} /> : null}
         {group.label}
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
