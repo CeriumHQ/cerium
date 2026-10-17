@@ -31,14 +31,55 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
         : "Cerium";
   const verb =
     item._tag === "ChildFinishedTurn" ? "finished" : item._tag === "FromAgent" ? "wrote" : "notice";
+  const text = item.text.trim();
+  const preview = previewLine(text);
+
+  // A one-liner reads best as it is; anything longer folds behind its first line.
+  if (preview === text) {
+    return (
+      <div className="flex gap-2 text-[12.5px] leading-[1.55]">
+        <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
+        <p className="min-w-0 text-fg-tertiary select-text">
+          <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex gap-2 text-[12.5px] leading-[1.55]">
-      <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
-      <p className="min-w-0 text-fg-tertiary select-text">
-        <span className="font-medium text-fg-secondary">{from}</span> {verb}: {item.text}
-      </p>
-    </div>
+    <Collapsible.Root>
+      <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+        <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
+        <span className="shrink-0">
+          <span className="font-medium text-fg-secondary">{from}</span> {verb}
+        </span>
+        <span className="min-w-0 truncate group-data-panel-open:hidden">{preview}</span>
+        <ChevronRight
+          size={13}
+          className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+        />
+      </Collapsible.Trigger>
+      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+        <div className="mt-2 ml-[5.5px] border-l border-line-strong pl-[14px] select-text">
+          <Markdown text={text} streaming={false} compact />
+        </div>
+      </Collapsible.Panel>
+    </Collapsible.Root>
   );
+}
+
+const previewMax = 160;
+
+/** The first line of agent markdown as plain text, cut short, for a folded notice's header. */
+function previewLine(text: string) {
+  const first = text.split("\n").find((line) => line.trim() !== "") ?? "";
+  const plain = first
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*(#{1,6}|[-*+>]|\d+\.)\s+/, "")
+    .replace(/[*_`~]+/g, "")
+    .trim();
+  if (first === text && plain === text && text.length <= previewMax) return text;
+  return plain.length > previewMax ? `${plain.slice(0, previewMax).trimEnd()}…` : plain;
 }
 
 /** Shown while the agent works with nothing on screen moving: before its first output, between steps. */

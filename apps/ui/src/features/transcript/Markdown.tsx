@@ -13,7 +13,16 @@ const controls = {
 const plugins = { renderers: [{ language: ARTIFACT_LANGUAGE, component: Artifact }] };
 
 /** Agent-written markdown. Streamdown completes unterminated syntax while text streams and sanitizes it. */
-export function Markdown({ text, streaming }: { text: string; streaming: boolean }) {
+export function Markdown({
+  text,
+  streaming,
+  compact = false,
+}: {
+  text: string;
+  streaming: boolean;
+  /** Smaller type for markdown nested inside another block, such as a child agent's report. */
+  compact?: boolean;
+}) {
   return (
     <Streamdown
       mode={streaming ? "streaming" : "static"}
@@ -21,7 +30,7 @@ export function Markdown({ text, streaming }: { text: string; streaming: boolean
       controls={controls}
       plugins={plugins}
       lineNumbers={false}
-      className="text-[14px] leading-[1.65] text-fg-primary [&_code]:font-mono [&_strong]:font-semibold [&_strong]:text-fg-primary [&>*+*]:mt-3"
+      className={`${compact ? "text-[13px] leading-[1.6] text-fg-secondary [&>*+*]:mt-2.5" : "text-[14px] leading-[1.65] text-fg-primary [&>*+*]:mt-3"} [&_code]:font-mono [&_strong]:font-semibold [&_strong]:text-fg-primary`}
     >
       {text}
     </Streamdown>

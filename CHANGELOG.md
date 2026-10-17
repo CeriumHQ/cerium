@@ -115,3 +115,4 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: stopping a subagent tells its lead, which otherwise waited for a result that would never come.
 - Claude adapter: a permission request is ready for its answer before it is announced, so an immediate answer is no longer lost.
 - UI: approval requests from subagents appear in a tray above the message box, one card per waiting agent with who is asking and how many requests are queued, and in the agent inspector when the subagent is selected. Before, they were counted as "Needs you" but could not be answered anywhere. A subagent's card in the transcript also says "Needs you" instead of "Working" while it waits.
+- UI: a child agent's report or another agent's message longer than one line folds behind its first line, and opens as rendered markdown instead of one run of raw text.
