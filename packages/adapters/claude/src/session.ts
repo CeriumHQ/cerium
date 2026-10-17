@@ -4,6 +4,7 @@ import {
   type EffortLevel,
   type McpServerConfig,
   type Options,
+  type PermissionMode,
   type PermissionResult,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -15,7 +16,7 @@ import {
   type PermissionDecision,
   type SessionOptions,
 } from "@cerium/harness";
-import type { ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 
 import { NATIVE_SUBAGENT_TOOLS } from "./manifest.ts";
@@ -40,7 +41,24 @@ const toMcpConfig = (spec: McpServerSpec): McpServerConfig =>
         ...(spec.env ? { env: { ...spec.env } } : {}),
       };
 
-const toSdkOptions = (executablePath: string, options: SessionOptions, canUseTool: CanUseTool): Options => ({
+/** Claude Code's own permission mode for each access; `readOnly` and `ask` differ only in their tools. */
+const permissionMode = (access: AccessMode): PermissionMode => {
+  switch (access) {
+    case "readOnly":
+    case "ask":
+      return "default";
+    case "acceptEdits":
+      return "acceptEdits";
+    case "fullAccess":
+      return "bypassPermissions";
+  }
+};
+
+export const toSdkOptions = (
+  executablePath: string,
+  options: SessionOptions,
+  canUseTool: CanUseTool,
+): Options => ({
   pathToClaudeCodeExecutable: executablePath,
   cwd: options.cwd,
   model: options.model,
@@ -51,7 +69,10 @@ const toSdkOptions = (executablePath: string, options: SessionOptions, canUseToo
   settingSources: ["user", "project", "local"],
   disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
   ...(options.access === "readOnly" ? { tools: READ_ONLY_TOOLS } : {}),
-  permissionMode: options.access === "acceptEdits" ? "acceptEdits" : "default",
+  permissionMode: permissionMode(options.access),
+  // The SDK refuses `bypassPermissions` without this explicit opt-in, and never consults `canUseTool`
+  // under it (passing one makes it warn).
+  ...(options.access === "fullAccess" ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
   mcpServers: Object.fromEntries(
     Object.entries(options.mcpServers).map(([name, spec]) => [name, toMcpConfig(spec)]),
   ),
@@ -59,7 +80,6 @@ const toSdkOptions = (executablePath: string, options: SessionOptions, canUseToo
   ...(options.appendSystemPrompt
     ? { systemPrompt: { type: "preset", preset: "claude_code", append: options.appendSystemPrompt } }
     : {}),
-  canUseTool,
 });
 
 const toPermissionResult = (
@@ -94,10 +114,12 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
   const sideEvents = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
   const pendingPermissions = new Map<string, Deferred.Deferred<PermissionDecision>>();
 
-  const awaitDecision = (requestId: string, signal: AbortSignal) =>
+  const awaitDecision = (
+    requestId: string,
+    decision: Deferred.Deferred<PermissionDecision>,
+    signal: AbortSignal,
+  ) =>
     Effect.gen(function* () {
-      const decision = yield* Deferred.make<PermissionDecision>();
-      pendingPermissions.set(requestId, decision);
       const aborted = Effect.callback<PermissionDecision>((resume) => {
         const onAbort = () => resume(Effect.succeed({ decision: "deny", scope: "once" }));
         if (signal.aborted) onAbort();
@@ -118,6 +140,9 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
         if (isTrusted(toolName))
           return { behavior: "allow", updatedInput: toolInput } satisfies PermissionResult;
         const requestId = details.toolUseID;
+        // Registered before the request is announced: the orchestrator may answer it at once.
+        const pending = yield* Deferred.make<PermissionDecision>();
+        pendingPermissions.set(requestId, pending);
         yield* Queue.offer(sideEvents, {
           payload: {
             _tag: "PermissionRequested",
@@ -130,7 +155,7 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
           },
           raw: { toolName, input: toolInput, title: details.title, decisionReason: details.decisionReason },
         });
-        const decision = yield* awaitDecision(requestId, details.signal);
+        const decision = yield* awaitDecision(requestId, pending, details.signal);
         yield* Queue.offer(sideEvents, {
           payload: {
             _tag: "PermissionResolved",

@@ -19,6 +19,7 @@ import { connectionAtom } from "../backend/client.ts";
 import { pickFolder } from "../backend/shell.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
+import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { useModels } from "../features/composer/models.ts";
@@ -64,6 +65,8 @@ function Workspace() {
   const [folder, setFolder] = useState(() => stored(FOLDER_KEY));
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
+  /** How tall the approval tray above the message box is, so the transcript's end stays visible. */
+  const [trayHeight, setTrayHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** The category settings open on: the last one visited. */
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
@@ -121,6 +124,8 @@ function Workspace() {
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   // A lead whose harness session started can be resumed by messaging it.
   const leadResumable = lead?.providerSessionId !== undefined;
+  const answerApproval: AnswerApproval = (agentId, requestId, decision, scope) =>
+    void attempt(respond({ payload: { agentId: agentId as AgentId, requestId, decision, scope } }));
   /** Opens this mode's new thread, ready to type the first message. */
   const startNew = () => {
     setSettingsOpen(false);
@@ -249,6 +254,7 @@ function Workspace() {
             onMessageLead={() => composerInput.current?.focus()}
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
+            onAnswerApproval={answerApproval}
           />
         ) : undefined
       }
@@ -281,13 +287,16 @@ function Workspace() {
               blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
               agent={{ provider: lead.provider, model: leadModel }}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
+              bottomInset={trayHeight}
               childState={(childId) => {
-                const state = selected.agents.find((agent) => agent.id === childId)?.state;
-                return state === "running" || state === "queued"
-                  ? "running"
-                  : state === "failed"
-                    ? "failed"
-                    : "idle";
+                const child = agents.find((agent) => agent.id === childId);
+                return child?.awaitingApproval
+                  ? "needsYou"
+                  : child?.state === "running" || child?.state === "queued"
+                    ? "running"
+                    : child?.state === "failed"
+                      ? "failed"
+                      : "idle";
               }}
               onAnswerPermission={(requestId, decision, scope) =>
                 attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
@@ -313,6 +322,7 @@ function Workspace() {
               : { kind: "new", mode, folder, onPickFolder: chooseFolder, available }
           }
           running={leadRunning}
+          above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}
           onSend={(text, setup) =>
             attempt(
               selected && lead ? send({ payload: { agentId: lead.id, text } }) : startThread(text, setup),

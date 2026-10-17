@@ -27,6 +27,7 @@ export interface AccessPolicy {
  *   (`untrusted` would also ask before each read: on Windows it asked for `Get-Content`.)
  * - `acceptEdits`: as `ask`, with workspace file changes approved by the adapter.
  * An approved command runs outside the sandbox, as it does in Codex itself.
+ * - `fullAccess`: Codex's own "Full access" preset: no sandbox, and Codex never asks.
  */
 export const accessPolicy = (access: AccessMode): AccessPolicy => {
   switch (access) {
@@ -48,6 +49,8 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
       return { sandbox: "read-only", approvalPolicy: "on-request", approveWorkspaceEdits: false };
     case "acceptEdits":
       return { sandbox: "read-only", approvalPolicy: "on-request", approveWorkspaceEdits: true };
+    case "fullAccess":
+      return { sandbox: "danger-full-access", approvalPolicy: "never", approveWorkspaceEdits: true };
   }
 };
 

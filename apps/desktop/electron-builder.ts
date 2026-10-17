@@ -20,7 +20,8 @@ export default {
     productName,
     ...(version === undefined ? {} : { version }),
   },
-  directories: { output: "out" },
+  // The icon and installer artwork, drawn by scripts/build-icons.mjs.
+  directories: { output: "out", buildResources: "build" },
   // The backend's npm packages come along as @cerium/backend's dependencies. Its own code is bundled
   // into dist/backend.mjs, so Cerium's TypeScript packages stay out, and so do the Claude Agent SDK's
   // bundled `claude` binaries: Cerium always runs the user's own.
@@ -38,7 +39,18 @@ export default {
   asar: false,
   // koffi ships prebuilt for Electron's Node-API, so nothing needs rebuilding.
   npmRebuild: false,
-  win: { target: "nsis" },
-  nsis: { artifactName: `${nightly ? "Cerium-Nightly" : "Cerium"}-Setup-\${version}.\${ext}` },
+  win: { target: "nsis", icon: "build/icon.ico" },
+  // The guided installer, not the one-click one: only it shows the welcome and finish pages' artwork.
+  nsis: {
+    artifactName: `${nightly ? "Cerium-Nightly" : "Cerium"}-Setup-\${version}.\${ext}`,
+    oneClick: false,
+    allowToChangeInstallationDirectory: true,
+    installerIcon: "build/icon.ico",
+    uninstallerIcon: "build/icon.ico",
+    installerHeaderIcon: "build/icon.ico",
+    installerSidebar: "build/installerSidebar.bmp",
+    uninstallerSidebar: "build/installerSidebar.bmp",
+    installerHeader: "build/installerHeader.bmp",
+  },
   publish: null,
 } satisfies Configuration;

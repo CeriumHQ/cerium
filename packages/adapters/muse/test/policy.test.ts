@@ -51,6 +51,15 @@ describe("access modes", () => {
     expect(accessPolicy("ask").permissionProfile).toBe(":ask-me");
     expect(accessPolicy("acceptEdits")).toEqual(accessPolicy("ask"));
   });
+
+  it("runs full access unrestricted, unasked and unsandboxed", () => {
+    expect(accessPolicy("fullAccess")).toEqual({
+      permissionProfile: ":unrestricted",
+      approvalMode: "allowAll",
+      serveFlags: ["--disable-sandbox"],
+    });
+    expect(serveArgs({ access: "fullAccess" })).toContain("--disable-sandbox");
+  });
 });
 
 describe("serveArgs", () => {

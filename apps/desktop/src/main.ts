@@ -40,6 +40,9 @@ const createWindow = () => {
     backgroundColor: "#00000000",
     titleBarStyle: "hidden",
     titleBarOverlay: titleBarOverlay(),
+    // The installed app takes its icon from its executable; this is for `bun run dev`, which runs
+    // Electron's own.
+    ...(devUrl === undefined ? {} : { icon: join(import.meta.dirname, "..", "build", "icon.png") }),
     webPreferences: {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,

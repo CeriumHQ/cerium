@@ -350,6 +350,11 @@ describe("Session option mapping", () => {
       approvalPolicy: "on-request",
       approveWorkspaceEdits: true,
     });
+    expect(accessPolicy("fullAccess")).toEqual({
+      sandbox: "danger-full-access",
+      approvalPolicy: "never",
+      approveWorkspaceEdits: true,
+    });
   });
 
   it("injects Cerium's servers, trusts only the bus and switches the user's servers off", () => {

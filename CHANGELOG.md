@@ -78,6 +78,8 @@ All notable changes to Cerium are recorded here. The format follows
 - Desktop: `bun run package` builds an unsigned Windows installer with electron-builder. The installed app starts its own backend in the background, keeps its data in the app's data folder, restarts the backend if it stops, and shuts it down cleanly on quit.
 - `bun run dev` starts the backend, the UI's dev server and the desktop window together in one terminal, each line labelled with where it came from; closing the window or pressing Ctrl+C stops all three. `bun run dev --browser` leaves out the window.
 - Automatic releases: each push to main that changes the app publishes a nightly installer once CI passes (Cerium Nightly, which installs beside the stable app with its own data), and once a day the newest nightly is rebuilt as a stable release, versioned from its Conventional Commits, with this changelog's new entries as its notes.
+- Desktop: the app, its window and the installer carry Cerium's Prism C mark instead of Electron's default icon. `bun run --cwd apps/desktop icons` redraws the icon from the mark.
+- Desktop: the installer is a guided setup with a welcome page, a choice of install folder and Cerium's own artwork and icon, replacing the one-click installer.
 
 ### Changed
 
@@ -90,6 +92,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Agents settings picks the lead model with one row per harness and a menu of its models, instead of a chip for every model.
 - `@cerium/protocol`: a logged-out harness may offer a browser sign-in instead of a login command.
 - `@cerium/protocol`: an adapter can declare that its harness has no approvals.
+- UI: the tool calls and reasoning between two of the agent's messages fold into one line that counts what they did ("3 files read, 2 commands run"), opening on click. The stretch the agent is still working through stays open until it moves on.
 
 ### Fixed
 
@@ -108,3 +111,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the thread title in the titlebar is plain text instead of a button that opened nothing, so it drags the window like the rest of the titlebar.
 - UI: the browser preview stands a light backdrop behind the light theme instead of the dark one.
 - UI: notice bars carry a faint tint of their status colour, so they read as banners rather than stray lines over the transcript.
+- `@cerium/orchestrator`: read-only agents no longer wait on approvals: Cerium approves their requests itself (web searches and fetches, reads outside the folder), for every provider, since each harness already keeps them from writing. Tools of the user's own MCP servers still ask.
+- `@cerium/orchestrator`: stopping a subagent tells its lead, which otherwise waited for a result that would never come.
+- Claude adapter: a permission request is ready for its answer before it is announced, so an immediate answer is no longer lost.
+- UI: approval requests from subagents appear in a tray above the message box, one card per waiting agent with who is asking and how many requests are queued, and in the agent inspector when the subagent is selected. Before, they were counted as "Needs you" but could not be answered anywhere. A subagent's card in the transcript also says "Needs you" instead of "Working" while it waits.

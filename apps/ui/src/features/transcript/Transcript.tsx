@@ -2,14 +2,24 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
-import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage, Working } from "./Blocks.tsx";
+import {
+  Notice,
+  PermissionCard,
+  Reasoning,
+  SpawnCard,
+  TurnFooter,
+  UserMessage,
+  Working,
+  type ChildState,
+} from "./Blocks.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
-import { ToolGroup } from "./ToolGroup.tsx";
+import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
 interface TranscriptProps {
@@ -17,7 +27,9 @@ interface TranscriptProps {
   readonly agent: { readonly provider: ProviderId; readonly model: string };
   readonly activity: AgentActivity;
   /** Live state of a spawned child, for its card. */
-  readonly childState: (childId: string) => "running" | "idle" | "failed";
+  readonly childState: (childId: string) => ChildState;
+  /** Extra room at the end for what floats above the message box, in pixels. */
+  readonly bottomInset?: number;
   readonly onAnswerPermission?: (
     requestId: string,
     decision: "allow" | "deny",
@@ -36,7 +48,8 @@ type Item =
   | { readonly kind: "header"; readonly id: string }
   | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
   | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
-  | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock };
+  | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock }
+  | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> };
 
 /**
  * A permission request shares its id with the tool call it gates. While pending, the approval card
@@ -89,12 +102,40 @@ const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => 
       items.push({ kind: "block", id: block.id, block });
     }
   }
-  return items;
+  return fold(items);
+};
+
+const isStep = (item: Item) =>
+  item.kind === "tools" || (item.kind === "block" && item.block.kind === "reasoning");
+
+/** Folds each stretch of tool calls, and the reasoning between them, into one run. */
+const fold = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
+  const folded: Array<Item> = [];
+  let steps: Array<Item> = [];
+  const flush = () => {
+    // Reasoning alone is already one line.
+    if (steps.some((step) => step.kind === "tools"))
+      folded.push({ kind: "run", id: `run:${steps[0]!.id}`, steps });
+    else folded.push(...steps);
+    steps = [];
+  };
+  for (const item of items) {
+    if (isStep(item)) {
+      steps.push(item);
+    } else {
+      flush();
+      folded.push(item);
+    }
+  }
+  flush();
+  return folded;
 };
 
 /** Whether the end of the transcript already shows the agent at work, or waiting on the user. */
 const showsProgress = (item: Item | undefined): boolean => {
   switch (item?.kind) {
+    case "run":
+      return showsProgress(item.steps.at(-1));
     case "tools":
       return item.tools.some((tool) => tool.status === "running");
     case "block":
@@ -107,7 +148,14 @@ const showsProgress = (item: Item | undefined): boolean => {
   }
 };
 
-export function Transcript({ blocks, agent, activity, childState, onAnswerPermission }: TranscriptProps) {
+export function Transcript({
+  blocks,
+  agent,
+  activity,
+  childState,
+  bottomInset = 0,
+  onAnswerPermission,
+}: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
@@ -121,6 +169,52 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
   const scale = textScale(useAtomValue(textSizeAtom));
 
+  const render = (item: Item): ReactNode => {
+    switch (item.kind) {
+      case "input":
+        return (
+          <div key={item.id} className="flex flex-col items-end gap-2 py-3">
+            {item.blocks.map((block) =>
+              block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
+            )}
+          </div>
+        );
+      case "header":
+        return <ResponseHeader key={item.id} agent={agent} />;
+      case "run":
+        return (
+          <ToolRun
+            key={item.id}
+            tools={item.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
+            live={item === last && activity === "running"}
+            activity={activity}
+          >
+            {item.steps.map(render)}
+          </ToolRun>
+        );
+      case "tools":
+        return <ToolGroup key={item.id} tools={item.tools} activity={activity} />;
+      case "spawns":
+        return (
+          <div key={item.id} className="flex flex-wrap gap-1.5">
+            {item.spawns.map((spawn) => (
+              <SpawnCard key={spawn.id} block={spawn} state={childState(spawn.childId)} />
+            ))}
+          </div>
+        );
+      case "block":
+        return (
+          <ResponseBlock
+            key={item.id}
+            block={item.block}
+            roleOf={roleOf}
+            activity={activity}
+            {...(onAnswerPermission ? { onAnswerPermission } : {})}
+          />
+        );
+    }
+  };
+
   return (
     <div className="relative h-full">
       {/* Content fades out where the floating composer sits instead of showing through its glass. */}
@@ -128,41 +222,12 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
         viewportRef={viewport}
         className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
       >
-        <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40" style={{ zoom: scale }}>
-          {items.map((item) => {
-            switch (item.kind) {
-              case "input":
-                return (
-                  <div key={item.id} className="flex flex-col items-end gap-2 py-3">
-                    {item.blocks.map((block) =>
-                      block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
-                    )}
-                  </div>
-                );
-              case "header":
-                return <ResponseHeader key={item.id} agent={agent} />;
-              case "tools":
-                return <ToolGroup key={item.id} tools={item.tools} activity={activity} />;
-              case "spawns":
-                return (
-                  <div key={item.id} className="flex flex-wrap gap-1.5">
-                    {item.spawns.map((spawn) => (
-                      <SpawnCard key={spawn.id} block={spawn} state={childState(spawn.childId)} />
-                    ))}
-                  </div>
-                );
-              case "block":
-                return (
-                  <ResponseBlock
-                    key={item.id}
-                    block={item.block}
-                    roleOf={roleOf}
-                    activity={activity}
-                    {...(onAnswerPermission ? { onAnswerPermission } : {})}
-                  />
-                );
-            }
-          })}
+        <div
+          className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8"
+          // The inset is in screen pixels; the column's zoom would scale it.
+          style={{ zoom: scale, paddingBottom: `calc(10rem + ${bottomInset / scale}px)` }}
+        >
+          {items.map(render)}
           {working && (last === undefined || last.kind === "input") ? <ResponseHeader agent={agent} /> : null}
           {working ? <Working /> : null}
         </div>
@@ -172,7 +237,8 @@ export function Transcript({ blocks, agent, activity, childState, onAnswerPermis
         onClick={toEnd}
         aria-label="Jump to latest"
         inert={following}
-        className={`absolute bottom-31 left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
+        style={{ bottom: `calc(7.75rem + ${bottomInset}px)` }}
+        className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
           following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
         }`}
       >

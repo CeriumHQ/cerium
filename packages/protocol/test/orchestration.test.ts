@@ -7,10 +7,12 @@ describe("narrowAccess", () => {
     expect(narrowAccess("acceptEdits", "ask")).toBe("ask");
     expect(narrowAccess("ask", "readOnly")).toBe("readOnly");
     expect(narrowAccess("ask", "ask")).toBe("ask");
+    expect(narrowAccess("fullAccess", "acceptEdits")).toBe("acceptEdits");
   });
 
   it("caps requests above the lead's access", () => {
     expect(narrowAccess("readOnly", "acceptEdits")).toBe("readOnly");
     expect(narrowAccess("ask", "acceptEdits")).toBe("ask");
+    expect(narrowAccess("acceptEdits", "fullAccess")).toBe("acceptEdits");
   });
 });

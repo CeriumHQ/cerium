@@ -26,7 +26,8 @@ export interface AccessPolicy {
  * Muse auto-approves in-workspace `write_file`/`edit_file` in every approval mode, so `ask` and
  * `acceptEdits` behave the same: edits apply, while shell stages without an allow rule, new network
  * targets, protected and out-of-workspace writes and MCP tools ask (`promptUnmatched`, the CLI's
- * `untrusted`). `:ask-me` keeps a human, not the LLM judge, as the reviewer.
+ * `untrusted`). `:ask-me` keeps a human, not the LLM judge, as the reviewer. `fullAccess` is Muse's
+ * `:unrestricted` profile (no reviewer) with nothing asking, on a host without the shell sandbox.
  */
 export const accessPolicy = (access: AccessMode): AccessPolicy => {
   switch (access) {
@@ -39,6 +40,12 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
     case "ask":
     case "acceptEdits":
       return { permissionProfile: ":ask-me", approvalMode: "promptUnmatched", serveFlags: [] };
+    case "fullAccess":
+      return {
+        permissionProfile: ":unrestricted",
+        approvalMode: "allowAll",
+        serveFlags: ["--disable-sandbox"],
+      };
   }
 };
 

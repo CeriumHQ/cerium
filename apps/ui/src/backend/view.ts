@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentInfo, ModelInfo, ProviderId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
-import type { AgentSummary } from "../features/agents/model.ts";
+import type { AgentSummary, PendingApproval } from "../features/agents/model.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 
 // Maps backend records onto the view models the components render.
@@ -60,7 +60,7 @@ export const toAgentSummaries = (
     let costUsd: number | undefined;
     let lastMessage: string | undefined;
     let model = agent.model;
-    const pending = new Set<string>();
+    const pending = new Map<string, PendingApproval>();
     for (const { agentId, payload } of events) {
       if (agentId !== agent.id) continue;
       switch (payload._tag) {
@@ -76,13 +76,20 @@ export const toAgentSummaries = (
           model = payload.model;
           break;
         case "PermissionRequested":
-          pending.add(payload.requestId);
+          pending.set(payload.requestId, {
+            requestId: payload.requestId,
+            toolName: payload.toolName,
+            summary: payload.summary,
+            input: payload.input,
+          });
           break;
         case "PermissionResolved":
           pending.delete(payload.requestId);
           break;
       }
     }
+    // An agent that stopped or failed can't act on an answer: its requests ended with its session.
+    const approvals = agent.state === "stopped" || agent.state === "failed" ? [] : [...pending.values()];
     return {
       id: agent.id,
       ...(agent.parentId ? { parentId: agent.parentId } : {}),
@@ -92,7 +99,8 @@ export const toAgentSummaries = (
       ...(agent.effort ? { effort: agent.effort } : {}),
       access: agent.access,
       state: agent.state,
-      awaitingApproval: pending.size > 0 && agent.state !== "stopped",
+      awaitingApproval: approvals.length > 0,
+      approvals,
       usage: { inputTokens, outputTokens, ...(costUsd === undefined ? {} : { costUsd }) },
       ...(lastMessage ? { lastMessage } : {}),
       startedAt: agent.createdAt,

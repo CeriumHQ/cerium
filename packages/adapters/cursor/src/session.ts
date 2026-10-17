@@ -4,6 +4,7 @@ import {
   NetworkError,
   RateLimitError,
   type AgentOptions,
+  type LocalAgentOptions,
   type McpServerConfig,
   type ModelListItem,
   type ModelSelection,
@@ -49,7 +50,8 @@ const COMMAND_TOOLS = ["shell", "piBash"];
 /**
  * Local runs execute every tool call without asking, and Cursor's hooks load only from files in the
  * user's repo or home, so nothing that needs an approval is offered: `ask` runs read-only and
- * `acceptEdits` edits without commands. The SDK sends both lists with every request; deny wins.
+ * `acceptEdits` edits without commands. `fullAccess` has every tool. The SDK sends both lists with
+ * every request; deny wins.
  */
 export const toolRestrictions = (access: AccessMode): Pick<AgentOptions, "tools" | "disallowedTools"> => {
   switch (access) {
@@ -58,8 +60,14 @@ export const toolRestrictions = (access: AccessMode): Pick<AgentOptions, "tools"
       return { tools: [...READ_ONLY_TOOLS], disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
     case "acceptEdits":
       return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...COMMAND_TOOLS] };
+    case "fullAccess":
+      return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
   }
 };
+
+/** `fullAccess` turns Cursor's sandbox off; other modes keep the user's own sandbox setting. */
+export const sandboxOptions = (access: AccessMode): Pick<LocalAgentOptions, "sandboxOptions"> =>
+  access === "fullAccess" ? { sandboxOptions: { enabled: false } } : {};
 
 /**
  * The user's own configuration (rules, skills, hooks), as their CLI loads it. Cursor also reads Claude
@@ -146,7 +154,7 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
   // Every MCP call runs without a prompt (local runs never ask), which covers `trustedMcpServers`.
   const agentOptions: AgentOptions = {
     model: selection,
-    local: { cwd: resolve(options.cwd), settingSources: SETTING_SOURCES },
+    local: { cwd: resolve(options.cwd), settingSources: SETTING_SOURCES, ...sandboxOptions(options.access) },
     ...toolRestrictions(options.access),
     ...(options.includeUserMcpServers ? { mcpServers } : {}),
   };

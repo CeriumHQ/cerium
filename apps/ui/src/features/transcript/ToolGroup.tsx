@@ -16,6 +16,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
@@ -136,6 +137,95 @@ export const describeTool = (
     }
   }
 };
+
+const count = (n: number, one: string, many: string, done = "") =>
+  `${n} ${n === 1 ? one : many}${done ? ` ${done}` : ""}`;
+
+const normalPath = (path: string) => path.replaceAll("\\", "/");
+
+/** What a stretch of tool calls did, counted by kind: "3 files read, 2 commands run". */
+export const summarizeTools = (tools: ReadonlyArray<ToolBlock>): string => {
+  const read = new Set<string>();
+  const edited = new Set<string>();
+  const deleted = new Set<string>();
+  const calls = { search: 0, list: 0, run: 0, fetch: 0, webSearch: 0, other: 0 };
+  for (const tool of tools) {
+    const kind = toolKinds[tool.toolName];
+    const path = field(tool.input, "file_path") ?? field(tool.input, "path");
+    // A call whose file can't be told apart still counts once.
+    const files = kind === "patch" ? patchedFiles(tool.input) : path ? [path] : tool.changedFiles;
+    const keys = files.length > 0 ? files.map(normalPath) : [tool.id];
+    switch (kind) {
+      case "read":
+        for (const key of keys) read.add(key);
+        break;
+      case "edit":
+      case "write":
+      case "patch":
+        for (const key of keys) edited.add(key);
+        break;
+      case "delete":
+        for (const key of keys) deleted.add(key);
+        break;
+      case undefined:
+        calls.other++;
+        break;
+      default:
+        calls[kind]++;
+    }
+  }
+  return [
+    read.size > 0 && count(read.size, "file", "files", "read"),
+    calls.search > 0 && count(calls.search, "search", "searches"),
+    calls.list > 0 && count(calls.list, "folder", "folders", "listed"),
+    calls.fetch > 0 && count(calls.fetch, "page", "pages", "fetched"),
+    calls.webSearch > 0 && count(calls.webSearch, "web search", "web searches"),
+    edited.size > 0 && count(edited.size, "file", "files", "edited"),
+    deleted.size > 0 && count(deleted.size, "file", "files", "deleted"),
+    calls.run > 0 && count(calls.run, "command", "commands", "run"),
+    calls.other > 0 && count(calls.other, "other tool", "other tools", "used"),
+  ]
+    .filter((part) => part !== false)
+    .join(", ");
+};
+
+/**
+ * The steps between two of the agent's messages, folded to one line that counts what they did.
+ * Open while the agent is still on them, so live progress stays visible; it folds once the agent
+ * moves on, unless the reader has opened or closed it themselves.
+ */
+export function ToolRun({
+  tools,
+  live,
+  activity,
+  children,
+}: {
+  tools: ReadonlyArray<ToolBlock>;
+  live: boolean;
+  activity: AgentActivity;
+  children: ReactNode;
+}) {
+  const [toggled, setToggled] = useState<boolean>();
+  const failed = tools.filter((tool) => tool.status === "error").length;
+  const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
+  return (
+    <Collapsible.Root open={toggled ?? live} onOpenChange={setToggled}>
+      <Collapsible.Trigger className="group flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+        <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
+        <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
+        {failed > 0 ? <span className="shrink-0 text-error">· {failed} failed</span> : null}
+        {interrupted > 0 ? <span className="shrink-0">· {interrupted} interrupted</span> : null}
+        <ChevronRight
+          size={13}
+          className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+        />
+      </Collapsible.Trigger>
+      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+        <div className="flex flex-col gap-3 pt-2.5">{children}</div>
+      </Collapsible.Panel>
+    </Collapsible.Root>
+  );
+}
 
 /** Consecutive tool calls, shown as one activity card with a row per call. */
 export function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {

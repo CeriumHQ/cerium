@@ -19,6 +19,8 @@ export const makeFakeAdapter = (
     readonly reply?: (text: string, session: SessionOptions) => string;
     /** Each turn asks to run a command and waits for the decision before replying. */
     readonly askPermission?: boolean;
+    /** The tool those requests are for (default `Bash`). */
+    readonly permissionTool?: string;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
@@ -71,7 +73,7 @@ export const makeFakeAdapter = (
                 payload: {
                   _tag: "PermissionRequested",
                   requestId,
-                  toolName: "Bash",
+                  toolName: options.permissionTool ?? "Bash",
                   summary: "Run tests",
                   input: {},
                 },

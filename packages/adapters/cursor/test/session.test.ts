@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { NATIVE_SUBAGENT_TOOLS } from "../src/manifest.ts";
-import { READ_ONLY_TOOLS, toolRestrictions, withInstructions } from "../src/session.ts";
+import { READ_ONLY_TOOLS, sandboxOptions, toolRestrictions, withInstructions } from "../src/session.ts";
 
 describe("access modes", () => {
   it("runs readOnly and ask with read-only tools, since Cursor cannot ask", () => {
@@ -21,8 +21,16 @@ describe("access modes", () => {
     expect(disallowedTools).toEqual([...NATIVE_SUBAGENT_TOOLS, "shell", "piBash"]);
   });
 
-  it("disables native subagents in every mode", () => {
+  it("gives fullAccess every tool, outside the sandbox", () => {
+    expect(toolRestrictions("fullAccess")).toEqual({ disallowedTools: [...NATIVE_SUBAGENT_TOOLS] });
+    expect(sandboxOptions("fullAccess")).toEqual({ sandboxOptions: { enabled: false } });
     for (const access of ["readOnly", "ask", "acceptEdits"] as const) {
+      expect(sandboxOptions(access)).toEqual({});
+    }
+  });
+
+  it("disables native subagents in every mode", () => {
+    for (const access of ["readOnly", "ask", "acceptEdits", "fullAccess"] as const) {
       expect(toolRestrictions(access).disallowedTools).toContain("task");
     }
   });

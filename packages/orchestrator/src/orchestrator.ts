@@ -98,6 +98,14 @@ interface Runtime {
 const isDelta = (payload: EventPayload) =>
   payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta";
 
+/**
+ * Read-only agents never wait on the user (architecture §2.2): each harness already keeps them from
+ * writing, so Cerium approves what they ask itself. Tools of the user's own MCP servers still ask,
+ * since those can change things outside Cerium; every adapter names them `mcp__<server>…`.
+ */
+const approvesItself = (access: AccessMode, toolName: string) =>
+  access === "readOnly" && !toolName.startsWith("mcp__");
+
 const unavailable = (error: StoreError) =>
   new OrchestratorError({ reason: "unavailable", message: error.message });
 
@@ -244,6 +252,12 @@ export class Orchestrator extends Context.Service<
                   rt.lastMessage = payload.text;
                   return;
                 case "PermissionRequested": {
+                  if (approvesItself(rt.info.access, payload.toolName)) {
+                    return yield* rt.session.respondToPermission(payload.requestId, {
+                      decision: "allow",
+                      scope: "once",
+                    });
+                  }
                   const pending = pendingPermissions.get(rt.info.id) ?? new Set<string>();
                   pendingPermissions.set(rt.info.id, pending.add(payload.requestId));
                   return;
@@ -635,7 +649,17 @@ export class Orchestrator extends Context.Service<
           }
         }),
 
-        stopAgent: (agentId) => runtime(agentId).pipe(Effect.flatMap(stopRuntime)),
+        stopAgent: Effect.fn("Orchestrator.stopAgent")(function* (agentId: AgentId) {
+          const rt = yield* runtime(agentId);
+          yield* stopRuntime(rt);
+          // A lead waiting on this child would otherwise wait for a result that never comes.
+          if (rt.info.parentId !== undefined) {
+            yield* deliver(rt.info.parentId, {
+              _tag: "SystemNotice",
+              text: `The user stopped agent ${rt.info.id} "${rt.info.role}"; it will not report back. Carry on without it, or spawn a new agent if you still need that work.`,
+            });
+          }
+        }),
 
         listThreads: store.listThreads.pipe(Effect.mapError(unavailable)),
 

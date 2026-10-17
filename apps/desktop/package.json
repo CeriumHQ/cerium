@@ -8,7 +8,8 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack && electron . --dev-url=http://localhost:5173",
-    "package": "electron-builder --win --publish never"
+    "package": "electron-builder --win --publish never",
+    "icons": "electron scripts/build-icons.mjs"
   },
   "dependencies": {
     "@cerium/backend": "workspace:*",

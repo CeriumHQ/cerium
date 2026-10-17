@@ -23,7 +23,7 @@ export const agents = sqliteTable(
     provider: text("provider", { enum: ["claude", "codex", "muse", "cursor"] }).notNull(),
     model: text("model").notNull(),
     effort: text("effort", { enum: ["minimal", "low", "medium", "high", "xhigh", "max"] }),
-    access: text("access", { enum: ["readOnly", "ask", "acceptEdits"] }).notNull(),
+    access: text("access", { enum: ["readOnly", "ask", "acceptEdits", "fullAccess"] }).notNull(),
     state: text("state", { enum: ["queued", "running", "idle", "stopped", "failed"] }).notNull(),
     providerSessionId: text("provider_session_id"),
     createdAt: integer("created_at").notNull(),

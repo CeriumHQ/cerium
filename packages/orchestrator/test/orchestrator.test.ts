@@ -270,6 +270,59 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("approves read-only agents' requests itself, except the user's MCP tools", () => {
+    const web = makeFakeAdapter("claude", { askPermission: true, permissionTool: "WebFetch" });
+    const mcp = makeFakeAdapter("codex", { askPermission: true, permissionTool: "mcp__slack__post" });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const startChat = (provider: "claude" | "codex") =>
+        orchestrator.createThread({
+          title: "Research",
+          mode: "chat",
+          lead: { provider, model: "fake-model", access: "readOnly" },
+        });
+
+      const fetching = yield* startChat("claude");
+      yield* orchestrator.sendUserMessage(fetching.lead.id, "look it up");
+      const resolved = yield* waitFor((events) =>
+        events.find(
+          (event) => event.agentId === fetching.lead.id && event.payload._tag === "PermissionResolved",
+        ),
+      );
+      assert.deepInclude(resolved.payload, { decision: "allow" });
+      assert.isFalse(orchestrator.awaitingApproval(fetching.thread.id));
+
+      const posting = yield* startChat("codex");
+      yield* orchestrator.sendUserMessage(posting.lead.id, "post it");
+      yield* waitFor((events) =>
+        events.find(
+          (event) => event.agentId === posting.lead.id && event.payload._tag === "PermissionRequested",
+        ),
+      );
+      assert.isTrue(orchestrator.awaitingApproval(posting.thread.id), "MCP tools still ask the user");
+    }).pipe(Effect.provide(testLayer([web.adapter, mcp.adapter])), Effect.scoped);
+  });
+
+  it.live("tells the lead when the user stops one of its agents", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      const outcome = yield* orchestrator.spawn(lead.id, { role: "scout", model: "scout", prompt: "go" });
+      const childId = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
+
+      yield* orchestrator.stopAgent(childId);
+      const notice = yield* waitFor((events) =>
+        turnInputs(events, lead.id)
+          .flat()
+          .find((item) => item._tag === "SystemNotice"),
+      );
+      assert.include(notice._tag === "SystemNotice" ? notice.text : "", childId);
+    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
+  });
+
   it.live("keeps chat threads read-only and requires a folder for work threads", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {

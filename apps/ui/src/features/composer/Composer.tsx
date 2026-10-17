@@ -10,12 +10,13 @@ import {
   FolderOpen,
   Gauge,
   Paperclip,
+  ShieldOff,
   ShieldQuestion,
   Square,
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -37,6 +38,7 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
   ask: ShieldQuestion,
   acceptEdits: FilePen,
+  fullAccess: ShieldOff,
 };
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
@@ -87,10 +89,12 @@ interface ComposerProps {
   /** Resolves false when the message didn't go through, so the box can give the text back. */
   readonly onSend: (text: string, setup: ThreadSetup) => Promise<boolean>;
   readonly onStop: () => void;
+  /** Shown just above the box, such as requests waiting on the user. */
+  readonly above?: ReactNode;
 }
 
 /** The message box, floating over the bottom of the transcript. */
-export function Composer({ target, draftKey, inputRef, running, onSend, onStop }: ComposerProps) {
+export function Composer({ target, draftKey, inputRef, running, onSend, onStop, above }: ComposerProps) {
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
   const ownRef = useRef<HTMLTextAreaElement>(null);
   const input = inputRef ?? ownRef;
@@ -153,6 +157,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
   if (target.kind === "thread" && target.ended && !resumes) {
     return (
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
+        {above}
         <div className="pointer-events-auto mx-auto flex max-w-[42rem] items-center gap-2.5 rounded-2xl border border-line-subtle bg-surface-raised py-2 pr-2 pl-4 backdrop-blur-2xl">
           {target.ended === "failed" ? (
             <CircleAlert size={14} strokeWidth={1.75} className="shrink-0 text-error" />
@@ -178,6 +183,7 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
+      {above}
       <div className="pointer-events-auto mx-auto max-w-[42rem] rounded-2xl border border-line-subtle bg-surface-raised backdrop-blur-2xl transition-colors focus-within:border-line-strong">
         <textarea
           ref={input}

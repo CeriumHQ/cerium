@@ -8,6 +8,7 @@ import {
   FilePen,
   MessageSquareText,
   Pause,
+  ShieldOff,
   ShieldQuestion,
   Square,
   X,
@@ -24,12 +25,14 @@ import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
 import { shortAgo } from "../../lib/time.ts";
 import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
+import { AgentApproval, type AnswerApproval } from "./ApprovalTray.tsx";
 import { accessLabel, displayState, displayStateLabel, type AgentSummary } from "./model.ts";
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
   ask: ShieldQuestion,
   acceptEdits: FilePen,
+  fullAccess: ShieldOff,
 };
 
 interface InspectorProps {
@@ -39,10 +42,19 @@ interface InspectorProps {
   readonly onMessageLead?: () => void;
   readonly onInterrupt?: (agentId: string) => void;
   readonly onStop?: (agentId: string) => void;
+  /** Answers a request a child is waiting on; the lead's own are answered in the transcript. */
+  readonly onAnswerApproval?: AnswerApproval;
 }
 
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
-export function Inspector({ agents, onClose, onMessageLead, onInterrupt, onStop }: InspectorProps) {
+export function Inspector({
+  agents,
+  onClose,
+  onMessageLead,
+  onInterrupt,
+  onStop,
+  onAnswerApproval,
+}: InspectorProps) {
   const lead = agents.find((agent) => agent.parentId === undefined);
   const [selectedId, setSelectedId] = useState(lead?.id);
   if (lead === undefined) return null;
@@ -76,6 +88,7 @@ export function Inspector({ agents, onClose, onMessageLead, onInterrupt, onStop 
           {...(selected.id === lead.id && onMessageLead ? { onMessage: onMessageLead } : {})}
           onInterrupt={() => onInterrupt?.(selected.id)}
           onStop={() => onStop?.(selected.id)}
+          {...(selected.id !== lead.id && onAnswerApproval ? { onAnswerApproval } : {})}
         />
         <UsageSummary agents={agents} />
       </ScrollArea>
@@ -161,12 +174,14 @@ function AgentDetails({
   onMessage,
   onInterrupt,
   onStop,
+  onAnswerApproval,
 }: {
   agent: AgentSummary;
   /** Absent where Cerium can't message this agent from here yet. */
   onMessage?: () => void;
   onInterrupt: () => void;
   onStop: () => void;
+  onAnswerApproval?: AnswerApproval;
 }) {
   const AccessIcon = accessIcon[agent.access];
   const [confirmingStop, setConfirmingStop] = useState(false);
@@ -200,6 +215,16 @@ function AgentDetails({
         </Detail>
         <Detail label="Started">{started === "now" ? "Just now" : `${started} ago`}</Detail>
       </dl>
+
+      {onAnswerApproval && agent.approvals.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <span className="text-2xs text-fg-tertiary">
+            Waiting for you
+            {agent.approvals.length > 1 ? ` · 1 of ${agent.approvals.length}` : ""}
+          </span>
+          <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />
+        </div>
+      ) : null}
 
       {agent.lastMessage ? (
         <div className="flex flex-col gap-1">

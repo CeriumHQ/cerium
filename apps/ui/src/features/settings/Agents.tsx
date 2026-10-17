@@ -4,7 +4,17 @@ import { Switch } from "@base-ui/react/switch";
 import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Bot, Check, Eye, FilePen, Minus, Plug, ShieldQuestion, type LucideIcon } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Eye,
+  FilePen,
+  Minus,
+  Plug,
+  ShieldOff,
+  ShieldQuestion,
+  type LucideIcon,
+} from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { settingsAtom, updateSettings } from "../../backend/atoms.ts";
@@ -44,6 +54,7 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
   ask: ShieldQuestion,
   acceptEdits: FilePen,
+  fullAccess: ShieldOff,
 };
 
 type Permission = "yes" | "asks" | "no";
@@ -52,6 +63,7 @@ const accessMatrix: Record<AccessMode, readonly [read: Permission, edit: Permiss
   readOnly: ["yes", "no", "no"],
   ask: ["yes", "asks", "asks"],
   acceptEdits: ["yes", "yes", "asks"],
+  fullAccess: ["yes", "yes", "yes"],
 };
 const abilities = ["Read and search", "Edit files", "Run commands"] as const;
 
@@ -244,7 +256,7 @@ function AccessPicker({ value, onChange }: { value: AccessMode; onChange: (acces
       value={value}
       onValueChange={(next) => onChange(next as AccessMode)}
       aria-label="Access"
-      className="grid grid-cols-3 gap-3"
+      className="grid grid-cols-4 gap-3"
     >
       {accessOptions.map((option) => {
         const Icon = accessIcon[option.value];

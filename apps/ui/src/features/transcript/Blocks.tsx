@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Ban, Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
@@ -69,9 +70,17 @@ export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   );
 }
 
-const accessLabel = { readOnly: "Read only", ask: "Asks to edit", acceptEdits: "Edits freely" } as const;
+const accessLabel = {
+  readOnly: "Read only",
+  ask: "Asks to edit",
+  acceptEdits: "Edits freely",
+  fullAccess: "Full access",
+} as const;
 
-export function SpawnCard({ block, state }: { block: Block<"spawn">; state: "running" | "idle" | "failed" }) {
+/** A spawned agent as its card shows it; `needsYou` while a request of its waits on the user. */
+export type ChildState = "running" | "needsYou" | "idle" | "failed";
+
+export function SpawnCard({ block, state }: { block: Block<"spawn">; state: ChildState }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-[12.5px]">
       <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
@@ -84,20 +93,24 @@ export function SpawnCard({ block, state }: { block: Block<"spawn">; state: "run
   );
 }
 
-function AgentState({ state }: { state: "running" | "idle" | "failed" }) {
+function AgentState({ state }: { state: ChildState }) {
   return (
-    <span className="flex shrink-0 items-center gap-1 text-2xs text-fg-tertiary">
+    <span
+      className={`flex shrink-0 items-center gap-1 text-2xs ${state === "needsYou" ? "text-attention" : "text-fg-tertiary"}`}
+    >
       {state === "running" ? (
         <span className="relative grid size-2 place-items-center">
           <span className="absolute size-2 animate-ping rounded-full bg-running/45" />
           <span className="size-1.5 rounded-full bg-running" />
         </span>
+      ) : state === "needsYou" ? (
+        <span className="mx-px size-1.5 rounded-full bg-attention" />
       ) : state === "failed" ? (
         <X size={11} strokeWidth={2.5} className="text-error" />
       ) : (
         <Check size={11} strokeWidth={2.5} className="text-success" />
       )}
-      {{ running: "Working", idle: "Done", failed: "Failed" }[state]}
+      {{ running: "Working", needsYou: "Needs you", idle: "Done", failed: "Failed" }[state]}
     </span>
   );
 }
@@ -107,9 +120,12 @@ export type PermissionAnswer = (decision: "allow" | "deny", scope: "once" | "ses
 export function PermissionCard({
   block,
   expired,
+  from,
   onAnswer,
 }: {
   block: Block<"permission">;
+  /** Who is asking, when it isn't the agent whose transcript this is. */
+  from?: ReactNode;
   /** The agent stopped before anyone answered, so the request can't be answered any more. */
   expired: boolean;
   onAnswer?: PermissionAnswer;
@@ -146,6 +162,7 @@ export function PermissionCard({
 
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border border-attention/35 bg-surface-raised p-3 shadow-raised">
+      {from}
       <div className="flex items-center gap-1.5 text-[12.5px] text-fg-secondary">
         <ShieldQuestion size={13} strokeWidth={1.75} className="text-attention" />
         <span className="font-medium text-fg-primary">{block.summary}</span>
