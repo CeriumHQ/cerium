@@ -33,6 +33,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: thread transcript built from canonical events: user messages and markdown replies (streaming-safe) under one header per response, collapsible reasoning, compact grouped tool calls with inputs and outputs, chips for spawned agents, child results inline in the lead's response, inline approval cards, and per-turn usage.
 - UI: composer floating over the transcript, with grouped model picker (provider logos), reasoning effort and access mode pickers, Enter to send and a stop button while a turn runs.
 - UI: separate Work and Chat modes, switched from the titlebar; the sidebar lists only the active mode's threads, work grouped by project and chats by recency.
+- UI: agent inspector: the lead and its children as a tree with colour-coded state, the selected agent's model, effort, access, tokens, cost and latest message, actions to open, message, interrupt or stop it, and the thread's usage per provider.
 - UI: Cerium's "Prism C" mark in the titlebar and as the favicon.
 
 ### Changed

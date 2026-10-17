@@ -1,8 +1,10 @@
 import { useState } from "react";
 
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
+import { agentsFixture } from "../dev/agentsFixture.ts";
 import { threadFixtures } from "../dev/fixtures.ts";
 import { leadFixture, transcriptFixture } from "../dev/transcriptFixture.ts";
+import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer } from "../features/composer/Composer.tsx";
 import { Sidebar } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
@@ -27,8 +29,12 @@ export function App() {
             onSelect={setSelectedThread}
           />
         }
-        agents={["claude", "muse", "muse"]}
-        inspector={inspectorOpen ? <div /> : undefined}
+        agents={agentsFixture.map((agent) => agent.provider)}
+        inspector={
+          inspectorOpen ? (
+            <Inspector agents={agentsFixture} onClose={() => setInspectorOpen(false)} />
+          ) : undefined
+        }
         onToggleInspector={() => setInspectorOpen((open) => !open)}
       >
         <div className="relative h-full">
