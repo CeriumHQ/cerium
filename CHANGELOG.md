@@ -75,3 +75,4 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: an empty sidebar explains where threads or chats will appear, and project groups use a plain folder icon, since a work folder needn't be a git repository.
 - UI: the thread title in the titlebar is plain text instead of a button that opened nothing, so it drags the window like the rest of the titlebar.
 - UI: the browser preview stands a light backdrop behind the light theme instead of the dark one.
+- UI: notice bars carry a faint tint of their status colour, so they read as banners rather than stray lines over the transcript.
