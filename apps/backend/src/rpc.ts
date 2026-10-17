@@ -1,4 +1,4 @@
-import { Adapters, Orchestrator, type OrchestratorError } from "@cerium/orchestrator";
+import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
 import { CeriumError, CeriumRpcs } from "@cerium/rpc";
 import { Effect, Layer, Option } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -13,6 +13,7 @@ const Handlers = CeriumRpcs.toLayer(
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     const adapters = yield* Adapters;
+    const settings = yield* UserSettings;
 
     return CeriumRpcs.of({
       ListThreads: () =>
@@ -52,6 +53,8 @@ const Handlers = CeriumRpcs.toLayer(
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+      Settings: () => settings.get,
+      UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
     });
   }),
 );
@@ -73,7 +76,7 @@ const requireToken = (token: string) =>
     }),
   ).layer;
 
-/** The UI's RPC endpoint. Requires the Orchestrator, Adapters and an HttpRouter. */
+/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings and an HttpRouter. */
 export const rpcRoutes = (token: string) =>
   RpcServer.layer(CeriumRpcs).pipe(
     Layer.provide(Handlers),

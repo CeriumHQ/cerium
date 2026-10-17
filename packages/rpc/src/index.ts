@@ -6,6 +6,8 @@ import {
   HarnessStatus,
   ProviderId,
   ReasoningEffort,
+  Settings,
+  SettingsPatch,
   ThreadId,
   ThreadInfo,
   ThreadMode,
@@ -91,4 +93,7 @@ export const CeriumRpcs = RpcGroup.make(
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
+  Rpc.make("Settings", { success: Settings }),
+  /** Changes the given settings; resolves with all of them. */
+  Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
 );

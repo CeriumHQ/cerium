@@ -33,6 +33,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: tracks which threads wait on the user's approval, serves thread history, and stops agents left live by a previous run at startup.
 - `@cerium/bus`: Cerium's MCP server on a loopback port, injected into every session with its own bearer token, exposing `list_models`, `spawn_agent`, `list_agents`, `list_threads`, `send_message` and `kill_agent`.
 - `@cerium/rpc`: the RPC contract between the UI and the backend: thread overviews, thread history, a live event stream, harness status, and actions to create threads, send messages, answer approvals and spawn requests, and interrupt or stop agents.
+- `@cerium/rpc`: reading and changing the user's settings.
 - `@cerium/backend`: composes the store, orchestrator, Claude adapter and MCP bus into one layer, with a live check where a Claude lead spawns a Claude child through the bus and relays its answer.
 - `@cerium/backend`: an entry point serving the MCP bus and the UI's RPC endpoint on one loopback port; the RPC WebSocket only upgrades for this launch's token. `bun run dev:backend` runs it with a development data folder and writes the connection details for the UI.
 - `@cerium/ui`: React app with Cerium's design tokens (monochrome translucent glass over Acrylic, with colour reserved for status and provider logos; dark and light themes) and the window frame: a titlebar over the thread sidebar and the transcript, with the agent inspector opening beside it on demand from a titlebar control that shows the thread's agents.
