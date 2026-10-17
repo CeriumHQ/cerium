@@ -53,6 +53,12 @@ const Handlers = CeriumRpcs.toLayer(
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+      ListModels: ({ provider }) =>
+        Effect.fromNullishOr(adapters.get(provider)).pipe(
+          Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),
+          Effect.flatMap((adapter) => adapter.listModels),
+          Effect.mapError((error) => new CeriumError({ message: error.message })),
+        ),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
     });

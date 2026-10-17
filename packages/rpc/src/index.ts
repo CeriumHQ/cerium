@@ -4,6 +4,7 @@ import {
   AgentId,
   AgentInfo,
   HarnessStatus,
+  ModelInfo,
   ProviderId,
   ReasoningEffort,
   Settings,
@@ -93,6 +94,12 @@ export const CeriumRpcs = RpcGroup.make(
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
+  /** The models one provider's harness offers; refused while that harness isn't usable. */
+  Rpc.make("ListModels", {
+    payload: { provider: ProviderId },
+    success: Schema.Array(ModelInfo),
+    error: CeriumError,
+  }),
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
