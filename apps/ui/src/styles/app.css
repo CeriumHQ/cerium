@@ -32,7 +32,7 @@ body {
  */
 /* Real Acrylic already tints and blurs the desktop, so the window tint can be lighter. */
 html[data-shell="electron"][data-theme="dark"] {
-  --surface-window: oklch(0.17 0 0 / 0.35);
+  --surface-window: oklch(0.17 0 0 / 0.45);
 }
 
 html[data-shell="browser"] body {
