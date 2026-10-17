@@ -75,6 +75,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: tool calls from Codex, Muse and Cursor read like Claude's, naming the file read or edited, the command run or the pattern searched, and Harnesses settings say how each harness is signed in.
 - `bun run build` builds every workspace package that has a build, and `scripts/check-commits.ts` checks a range of commit messages locally.
 - Desktop: `bun run package` builds an unsigned Windows installer with electron-builder. The installed app starts its own backend in the background, keeps its data in the app's data folder, restarts the backend if it stops, and shuts it down cleanly on quit.
+- `bun run dev` starts the backend, the UI's dev server and the desktop window together in one terminal, each line labelled with where it came from; closing the window or pressing Ctrl+C stops all three. `bun run dev --browser` leaves out the window.
 
 ### Changed
 

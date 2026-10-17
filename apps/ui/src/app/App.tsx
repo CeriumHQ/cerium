@@ -257,7 +257,13 @@ function Workspace() {
       <div className="relative flex h-full flex-col">
         {connection === "unreachable" ? (
           <Notice tone="attention">
-            Reconnecting to Cerium's backend… In development, start it with <code>bun run dev:backend</code>.
+            Reconnecting to Cerium's backend…
+            {import.meta.env.DEV ? (
+              <>
+                {" "}
+                In development, <code>bun run dev</code> starts it.
+              </>
+            ) : null}
           </Notice>
         ) : AsyncResult.isFailure(threadsResult) ? (
           <Notice tone="error">{messageOf(Cause.squash(threadsResult.cause))}</Notice>

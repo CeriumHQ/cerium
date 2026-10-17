@@ -19,6 +19,7 @@
     "verify": "vp check && tsc -b && vp test --run",
     "vendor:effect": "node scripts/vendor-effect.ts",
     "prepare": "effect-tsgo patch --typescript --oxlint",
+    "dev": "node scripts/dev.ts",
     "dev:ui": "vp -C apps/ui dev",
     "dev:desktop": "bun run --cwd apps/desktop dev",
     "dev:backend": "node --watch apps/backend/src/main.ts --data-dir=.cerium-dev --connection-file=.cerium-dev/connection.json"
