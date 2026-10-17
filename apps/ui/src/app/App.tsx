@@ -219,7 +219,7 @@ function Workspace() {
           onSelect={(threadId) => setOpenThread((current) => ({ ...current, [mode]: threadId }))}
           onNewThread={startNew}
           harnesses={indicators}
-          onOpenSettings={() => openSettings()}
+          onOpenSettings={openSettings}
         />
       }
       settings={{

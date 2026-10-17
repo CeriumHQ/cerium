@@ -59,6 +59,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: settings, opened from the sidebar's gear or with Ctrl ,: the sidebar turns into the list of categories and the main panel shows the open one. Esc or "Back to threads" returns to the thread exactly as it was left, scroll position and draft included.
 - UI: Appearance settings: the theme (system, dark or light), picked from miniatures of the window drawn in each theme, and the conversation's text size, previewed on a sample conversation as the slider moves.
 - UI: Agents settings: the lead model for new threads, picked from the models of each harness that can run; its reasoning effort on a rising gauge that says what the chosen level means; the access a work thread's lead starts with, each mode showing what it may read, edit and run; and whether agents also get your own MCP servers, with a diagram of where their tools come from. The composer offers the same model, effort and access, so a change in either shows in both.
+- UI: Harnesses settings: each harness's installed version and whether Cerium has tested it, how you're signed in and where it's installed; when one needs you, its own login command to copy or how to install it. "Check again" probes them afresh, and the harness icons at the foot of the sidebar open this page.
 
 ### Changed
 

@@ -8,6 +8,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { shortAgo } from "../../lib/time.ts";
+import type { SettingsCategory } from "../settings/Settings.tsx";
 import { providerName, type ThreadSummary } from "./model.ts";
 
 interface SidebarProps {
@@ -18,7 +19,7 @@ interface SidebarProps {
   readonly onSelect: (threadId: string) => void;
   readonly onNewThread: () => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
-  readonly onOpenSettings: () => void;
+  readonly onOpenSettings: (category?: SettingsCategory) => void;
 }
 
 export interface HarnessIndicator {
@@ -234,15 +235,16 @@ function SidebarFooter({
   onOpenSettings,
 }: {
   harnesses: ReadonlyArray<HarnessIndicator>;
-  onOpenSettings: () => void;
+  onOpenSettings: SidebarProps["onOpenSettings"];
 }) {
   return (
     <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5">
-      <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," onClick={onOpenSettings} />
+      <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," onClick={() => onOpenSettings()} />
       <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
         {harnesses.map(({ provider, state }) => (
           <Tooltip key={provider} side="top" label={`${providerName[provider]}: ${harnessState[state]}`}>
             <Button
+              onClick={() => onOpenSettings("harnesses")}
               aria-label={`${providerName[provider]} status`}
               className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover ${
                 state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-secondary"

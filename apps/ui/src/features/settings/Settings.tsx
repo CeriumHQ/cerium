@@ -1,12 +1,13 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowLeft, Bot, Palette, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Blocks, Bot, Palette, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
+import { HarnessSettings } from "./Harnesses.tsx";
 
-export type SettingsCategory = "appearance" | "agents";
+export type SettingsCategory = "appearance" | "agents" | "harnesses";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
@@ -15,6 +16,7 @@ const categories: ReadonlyArray<{
 }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "harnesses", label: "Harnesses", icon: Blocks },
 ];
 
 interface SettingsNavProps {
@@ -105,5 +107,7 @@ export function SettingsView({
       return <AppearanceSettings key={category} />;
     case "agents":
       return <AgentSettings key={category} harnesses={harnesses} />;
+    case "harnesses":
+      return <HarnessSettings key={category} />;
   }
 }
