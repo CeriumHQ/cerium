@@ -14,7 +14,7 @@ import {
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -72,15 +72,22 @@ export type ComposerTarget =
 
 interface ComposerProps {
   readonly target: ComposerTarget;
+  /** Which draft the box shows: each thread, and each mode's new thread, keeps its own. */
+  readonly draftKey: string;
+  /** The message box, for callers that move focus to it. */
+  readonly inputRef?: RefObject<HTMLTextAreaElement | null>;
   /** A turn is in progress: the send button becomes stop. */
   readonly running: boolean;
-  readonly onSend: (text: string, setup: ThreadSetup) => void;
+  /** Resolves false when the message didn't go through, so the box can give the text back. */
+  readonly onSend: (text: string, setup: ThreadSetup) => Promise<boolean>;
   readonly onStop: () => void;
 }
 
 /** The message box, floating over the bottom of the transcript. */
-export function Composer({ target, running, onSend, onStop }: ComposerProps) {
-  const [text, setText] = useState("");
+export function Composer({ target, draftKey, inputRef, running, onSend, onStop }: ComposerProps) {
+  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
+  const ownRef = useRef<HTMLTextAreaElement>(null);
+  const input = inputRef ?? ownRef;
   const [modelId, setModelId] = useState(modelOptions[0]!.id);
   const [effort, setEffort] = useState<ReasoningEffort>("high");
   const [access, setAccess] = useState<AccessMode>("ask");
@@ -91,23 +98,38 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
   const AccessIcon = accessIcon[access];
   const isNew = target.kind === "new";
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
+  const text = drafts[draftKey] ?? "";
   const canSend = text.trim() !== "" && !needsFolder;
   const recipient = target.kind === "thread" ? target.model : model.label;
 
+  // Opening a thread, or a new one, puts the cursor where the next message goes.
+  useEffect(() => {
+    input.current?.focus();
+  }, [input, draftKey]);
+
+  const setText = (value: string) => setDrafts((current) => ({ ...current, [draftKey]: value }));
   const send = () => {
     if (!canSend) return;
-    onSend(text.trim(), {
+    const key = draftKey;
+    const sent = text.trim();
+    setText("");
+    void onSend(sent, {
       provider: model.provider,
       model: model.id,
       effort: activeEffort,
       access: isNew && target.mode === "chat" ? "readOnly" : access,
+    }).then((delivered) => {
+      // Give an undelivered message back, unless the user has started typing another.
+      if (!delivered) setDrafts((current) => (current[key] ? current : { ...current, [key]: sent }));
     });
-    setText("");
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
+    } else if (event.key === "Escape" && running) {
+      event.preventDefault();
+      onStop();
     }
   };
 
@@ -140,6 +162,7 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
     <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
       <div className="pointer-events-auto mx-auto max-w-[42rem] rounded-2xl border border-line-subtle bg-surface-raised backdrop-blur-2xl transition-colors focus-within:border-line-strong">
         <textarea
+          ref={input}
           rows={1}
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -147,7 +170,9 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
           placeholder={
             needsFolder
               ? "Choose a folder to work in first"
-              : `Message ${recipient}, or @ to mention an agent or file`
+              : isNew && target.mode === "chat"
+                ? `Ask ${recipient} anything`
+                : `Message ${recipient}`
           }
           aria-label="Message"
           className="block max-h-60 min-h-12 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] leading-[1.6] text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary"
@@ -239,7 +264,12 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
                   </SelectTrigger>
                   <SelectPopup>
                     {accessOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value} description={option.description}>
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        icon={accessIcon[option.value]}
+                        description={option.description}
+                      >
                         {option.label}
                       </SelectItem>
                     ))}

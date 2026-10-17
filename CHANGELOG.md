@@ -46,6 +46,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: runs on live backend data: the sidebar lists real threads with their status and the installed harnesses; the transcript streams the open thread's lead and answers its approval cards; the composer starts new threads in a chosen folder with the picked model, effort and access (unavailable harnesses greyed out) and then messages the thread's lead; the inspector interrupts or stops agents; a slim notice reports a lost connection or a failed action. The hand-written fixtures are gone.
 - UI: the transcript follows new output while you're at the end, stays put while you scroll back to read, and returns to the end when you send a message.
 - UI: a shimmering "Working…" line shows the lead is busy while nothing else on screen moves: before its first output and between steps. A reasoning block shimmers while it streams.
+- UI: the composer keeps a draft per thread (and per mode for a new one), puts the cursor in the message box when a thread opens, gives back a message that failed to send, and stops a running turn with Esc. The access menu shows each mode's icon, and the placeholder no longer promises @ mentions that don't exist yet.
 
 ### Changed
 

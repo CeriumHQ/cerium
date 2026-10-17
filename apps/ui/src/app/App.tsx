@@ -3,7 +3,7 @@ import type { ThreadOverview } from "@cerium/rpc";
 import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   createThread,
@@ -65,6 +65,7 @@ function Workspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [folder, setFolder] = useState(storedFolder);
   const [actionError, setActionError] = useState<string>();
+  const composerInput = useRef<HTMLTextAreaElement>(null);
 
   const connection = useAtomValue(connectionAtom);
   const threadsResult = useAtomValue(threadsAtom);
@@ -84,9 +85,16 @@ function Workspace() {
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
-  const attempt = (action: Promise<unknown>) => {
+  /** Runs a backend action, reporting a failure in the notice bar; resolves whether it worked. */
+  const attempt = (action: Promise<unknown>): Promise<boolean> => {
     setActionError(undefined);
-    action.catch((error: unknown) => setActionError(messageOf(error)));
+    return action.then(
+      () => true,
+      (error: unknown) => {
+        setActionError(messageOf(error));
+        return false;
+      },
+    );
   };
 
   const indicators: ReadonlyArray<HarnessIndicator> = providers.map((provider) => {
@@ -207,6 +215,8 @@ function Workspace() {
         </div>
 
         <Composer
+          draftKey={selected ? selected.thread.id : `new:${mode}`}
+          inputRef={composerInput}
           target={
             selected && lead
               ? {
@@ -225,7 +235,7 @@ function Workspace() {
             )
           }
           onStop={() => {
-            if (lead) attempt(interrupt({ payload: { agentId: lead.id } }));
+            if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
           }}
         />
       </div>

@@ -1,5 +1,5 @@
 import { Select as BaseSelect } from "@base-ui/react/select";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 // Cerium-styled parts over Base UI's Select. Compose them like Base UI's own anatomy.
@@ -50,11 +50,13 @@ export function SelectGroupLabel({ children }: { children: ReactNode }) {
 export function SelectItem({
   value,
   children,
+  icon: Icon,
   description,
   disabled,
 }: {
   value: string;
   children: ReactNode;
+  icon?: LucideIcon;
   description?: string;
   disabled?: boolean;
 }) {
@@ -62,9 +64,14 @@ export function SelectItem({
     <BaseSelect.Item
       value={value}
       {...(disabled ? { disabled } : {})}
-      className="grid cursor-default grid-cols-[1fr_auto] items-center gap-x-6 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:opacity-40"
+      className={`grid cursor-default items-center gap-x-2 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:opacity-40 ${
+        Icon ? "grid-cols-[auto_1fr_auto]" : "grid-cols-[1fr_auto]"
+      }`}
     >
-      <span className="flex min-w-0 flex-col">
+      {Icon ? (
+        <Icon size={14} strokeWidth={1.75} className={`self-start ${description ? "mt-[3px]" : ""}`} />
+      ) : null}
+      <span className="mr-4 flex min-w-0 flex-col">
         <BaseSelect.ItemText className="truncate">{children}</BaseSelect.ItemText>
         {description ? <span className="truncate text-2xs text-fg-tertiary">{description}</span> : null}
       </span>
