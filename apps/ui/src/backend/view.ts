@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentInfo } from "@cerium/protocol";
+import type { AgentEvent, AgentInfo, ModelInfo, ProviderId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
 import type { AgentSummary } from "../features/agents/model.ts";
@@ -6,17 +6,20 @@ import type { ThreadSummary } from "../features/threads/model.ts";
 
 // Maps backend records onto the view models the components render.
 
-const modelLabels: Record<string, string> = {
-  opus: "Opus 5.5",
+// Harnesses report the model a session resolved to, which can differ from the alias it was started
+// with and from what the harness lists.
+const resolvedLabels: Record<string, string> = {
   "claude-opus-5-5": "Opus 5.5",
-  sonnet: "Sonnet 5.5",
   "claude-sonnet-5-5": "Sonnet 5.5",
-  haiku: "Haiku 5.5",
   "claude-haiku-5-5": "Haiku 5.5",
+  "claude-fable-5-1": "Fable 5.1",
 };
 
-/** A model id or alias as people say it. */
-export const modelLabel = (model: string) => modelLabels[model] ?? model;
+/** A model as people know it: the harness's own label when it lists the model. */
+export const modelLabel = (models: ReadonlyArray<ModelInfo>, provider: ProviderId, model: string) =>
+  models.find((candidate) => candidate.provider === provider && candidate.id === model)?.label ??
+  resolvedLabels[model] ??
+  model;
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -49,6 +52,7 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
 export const toAgentSummaries = (
   agents: ReadonlyArray<AgentInfo>,
   events: ReadonlyArray<AgentEvent>,
+  models: ReadonlyArray<ModelInfo>,
 ): ReadonlyArray<AgentSummary> =>
   agents.map((agent) => {
     let inputTokens = 0;
@@ -84,7 +88,7 @@ export const toAgentSummaries = (
       ...(agent.parentId ? { parentId: agent.parentId } : {}),
       role: agent.role,
       provider: agent.provider,
-      model: modelLabel(model),
+      model: modelLabel(models, agent.provider, model),
       ...(agent.effort ? { effort: agent.effort } : {}),
       access: agent.access,
       state: agent.state,

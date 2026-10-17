@@ -1,7 +1,8 @@
-import type { AgentEvent, ThreadId } from "@cerium/protocol";
-import { Effect, Schedule, Stream } from "effect";
+import { ModelInfo, type AgentEvent, type ProviderId, type ThreadId } from "@cerium/protocol";
+import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
+import { remember, stored } from "../lib/storage.ts";
 import { Backend, connectionAtom } from "./client.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
@@ -35,6 +36,52 @@ export const harnessesAtom = Backend.runtime.atom((get) => {
   get(connectionAtom);
   return Backend.use((client) => client("HarnessStatuses", undefined));
 });
+
+const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+const MODELS_KEY = "cerium:models";
+const CachedModels = Schema.fromJsonString(Schema.Array(ModelInfo));
+
+/** The last lists the harnesses gave, so the model pickers fill in before they answer again. */
+const cachedModels = (): ReadonlyArray<ModelInfo> =>
+  Schema.decodeUnknownOption(CachedModels)(stored(MODELS_KEY)).pipe(Option.getOrElse(() => []));
+
+/**
+ * Every harness's models, in provider order. Each provider's list replaces its cached one as soon as
+ * that harness answers; one that can't be used offers none. Re-read after a reconnect.
+ */
+export const modelsAtom = Backend.runtime.atom(
+  (get) => {
+    get(connectionAtom);
+    return Stream.unwrap(
+      Backend.use((client) =>
+        Effect.succeed(
+          Stream.mergeAll(
+            providers.map((provider) =>
+              Stream.fromEffect(
+                client("ListModels", { provider }).pipe(
+                  Effect.orElseSucceed((): ReadonlyArray<ModelInfo> => []),
+                  Effect.map((models) => ({ provider, models })),
+                ),
+              ),
+            ),
+            { concurrency: "unbounded" },
+          ),
+        ),
+      ),
+    ).pipe(
+      Stream.scan(cachedModels, (current, answer) => {
+        const next = providers.flatMap((provider) =>
+          provider === answer.provider
+            ? answer.models
+            : current.filter((model) => model.provider === provider),
+        );
+        remember(MODELS_KEY, Schema.encodeSync(CachedModels)(next));
+        return next;
+      }),
+    );
+  },
+  { initialValue: cachedModels() },
+);
 
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {

@@ -21,6 +21,7 @@ import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backen
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
 import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
@@ -74,6 +75,7 @@ function Workspace() {
   const threadsResult = useAtomValue(threadsAtom);
   const refreshThreads = useAtomRefresh(threadsAtom);
   const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
+  const models = useModels();
   const overviews = AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []);
   const selected = overviews.find(
     (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
@@ -111,9 +113,10 @@ function Workspace() {
   );
 
   const lead = selected ? leadOf(selected.agents) : undefined;
-  const agents = selected ? toAgentSummaries(selected.agents, events) : [];
+  const agents = selected ? toAgentSummaries(selected.agents, events, models) : [];
   const leadModel =
-    agents.find((agent) => agent.id === lead?.id)?.model ?? (lead ? modelLabel(lead.model) : "");
+    agents.find((agent) => agent.id === lead?.id)?.model ??
+    (lead ? modelLabel(models, lead.provider, lead.model) : "");
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   // A lead whose harness session started can be resumed by messaging it.

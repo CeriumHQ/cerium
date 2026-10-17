@@ -5,7 +5,7 @@ import { AsyncResult } from "effect/reactivity";
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { harnessesAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, modelsAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
@@ -26,7 +26,13 @@ type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 
 export function HarnessSettings() {
   const result = useAtomValue(harnessesAtom);
-  const refresh = useAtomRefresh(harnessesAtom);
+  const refreshHarnesses = useAtomRefresh(harnessesAtom);
+  const refreshModels = useAtomRefresh(modelsAtom);
+  // A harness just logged in or updated may offer different models too.
+  const refresh = () => {
+    refreshHarnesses();
+    refreshModels();
+  };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> => []);
   const checking = result.waiting;
 

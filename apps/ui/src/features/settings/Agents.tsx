@@ -1,7 +1,7 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { Switch } from "@base-ui/react/switch";
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Bot, Check, Eye, FilePen, Minus, Plug, ShieldQuestion, type LucideIcon } from "lucide-react";
@@ -10,7 +10,16 @@ import { useId, useState, type ReactNode } from "react";
 import { settingsAtom, updateSettings } from "../../backend/atoms.ts";
 import { CeriumMark } from "../../components/CeriumMark.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { accessOptions, effortLabel, modelOptions } from "../composer/models.ts";
+import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import {
+  accessOptions,
+  defaultModel,
+  effortFor,
+  effortLabel,
+  modelKey,
+  pickModel,
+  useModels,
+} from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
@@ -50,9 +59,13 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
   const [modelId, setModelId] = useAtom(modelAtom);
   const [effort, setEffort] = useAtom(effortAtom);
   const [access, setAccess] = useAtom(accessAtom);
-  const model = modelOptions.find((option) => option.id === modelId) ?? modelOptions[0]!;
-  // Like the composer, a level the model lacks reads as its strongest one.
-  const activeEffort = model.efforts.includes(effort) ? effort : model.efforts.at(-1)!;
+  const models = useModels();
+  const available = new Set(
+    harnesses.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])),
+  );
+  const model = pickModel(models, modelId, available);
+  // Like the composer, a level the model lacks reads as its default or strongest one.
+  const activeEffort = model ? effortFor(model, effort) : undefined;
 
   return (
     <SettingsPage title="Agents" description="How new threads start, and what their agents can reach.">
@@ -60,15 +73,17 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
         title="Lead model"
         description="The model that leads a new thread. The composer offers the same choice and remembers the last one picked."
       >
-        <ModelPicker value={model.id} onChange={setModelId} harnesses={harnesses} />
+        <ModelPicker value={model} onChange={setModelId} models={models} harnesses={harnesses} />
       </SettingsSection>
 
-      <SettingsSection
-        title="Reasoning effort"
-        description={`How long ${model.label} thinks before it answers.`}
-      >
-        <EffortGauge levels={model.efforts} value={activeEffort} onChange={setEffort} />
-      </SettingsSection>
+      {model && activeEffort ? (
+        <SettingsSection
+          title="Reasoning effort"
+          description={`How long ${model.label} thinks before it answers.`}
+        >
+          <EffortGauge levels={model.efforts} value={activeEffort} onChange={setEffort} />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title="Access"
@@ -84,57 +99,77 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
   );
 }
 
+/**
+ * One row per harness: the radio picks the provider, the menu picks among its models. Harnesses offer
+ * many models, so only the chosen one shows.
+ */
 function ModelPicker({
   value,
   onChange,
+  models,
   harnesses,
 }: {
-  value: string;
+  value: ModelInfo | undefined;
   onChange: (model: string) => void;
+  models: ReadonlyArray<ModelInfo>;
   harnesses: ReadonlyArray<HarnessIndicator>;
 }) {
+  const choose = (provider: ProviderId) => {
+    const model = defaultModel(models, provider);
+    if (model !== undefined) onChange(modelKey(model));
+  };
   return (
     <RadioGroup
-      value={value}
-      onValueChange={(next) => onChange(next as string)}
+      value={value?.provider ?? null}
+      onValueChange={(next) => choose(next as ProviderId)}
       aria-label="Lead model"
       className="divide-y divide-line-subtle rounded-xl border border-line-subtle"
     >
       {harnesses.map(({ provider, state }) => {
-        const ready = state === "ready";
+        const offered = models.filter((model) => model.provider === provider);
+        const ready = state === "ready" && offered.length > 0;
+        const shown = value?.provider === provider ? value : defaultModel(models, provider);
         return (
-          <div key={provider} className="flex min-h-12 items-center gap-3 px-3.5 py-2">
-            <span
-              className={`flex w-20 shrink-0 items-center gap-2 text-[13px] ${ready ? "text-fg-primary" : "text-fg-tertiary"}`}
+          <div key={provider} className="flex min-h-12 items-center gap-3 py-2 pr-2.5 pl-3.5">
+            <Radio.Root
+              value={provider}
+              disabled={!ready}
+              nativeButton
+              render={<button type="button" aria-label={providerName[provider]} />}
+              className="group flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-md text-left text-[13px] text-fg-secondary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:text-fg-primary data-disabled:text-fg-tertiary"
             >
+              <span className="grid size-3.5 shrink-0 place-items-center rounded-full border border-line-strong transition-colors group-hover:border-fg-tertiary group-data-checked:border-accent group-data-checked:bg-accent group-data-disabled:border-line-subtle">
+                <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
+              </span>
               <ProviderLogo
                 provider={provider}
                 size={14}
                 {...(ready ? {} : { className: "opacity-35 grayscale" })}
               />
-              {providerName[provider]}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-              {modelOptions
-                .filter((option) => option.provider === provider)
-                .map((option) => (
-                  <Radio.Root
-                    key={option.id}
-                    value={option.id}
-                    disabled={!ready}
-                    nativeButton
-                    render={<button type="button" aria-label={option.label} />}
-                    className="flex h-7 items-center gap-1.5 rounded-lg border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors duration-150 outline-none hover:border-line-strong hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:border-accent data-checked:bg-accent data-checked:font-medium data-checked:text-accent-fg data-disabled:pointer-events-none data-disabled:text-fg-disabled"
-                  >
-                    <Radio.Indicator className="-ml-0.5">
-                      <Check size={12} strokeWidth={2.5} />
-                    </Radio.Indicator>
-                    {option.label}
-                  </Radio.Root>
-                ))}
-            </span>
-            {ready ? null : (
-              <span className="shrink-0 text-xs text-fg-disabled">{unavailableReason[state]}</span>
+              <span className="group-data-checked:font-medium">{providerName[provider]}</span>
+              {value?.provider === provider && value.description ? (
+                <span className="truncate text-xs text-fg-tertiary">{value.description}</span>
+              ) : null}
+            </Radio.Root>
+            {ready && shown ? (
+              <SelectRoot value={modelKey(shown)} onValueChange={(next) => next !== null && onChange(next)}>
+                <SelectTrigger label={`${providerName[provider]} model`}>
+                  <span className={value?.provider === provider ? "font-medium text-fg-primary" : ""}>
+                    {shown.label}
+                  </span>
+                </SelectTrigger>
+                <SelectPopup>
+                  {offered.map((model) => (
+                    <SelectItem key={model.id} value={modelKey(model)}>
+                      {model.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </SelectRoot>
+            ) : (
+              <span className="shrink-0 pr-1 text-xs text-fg-disabled">
+                {state === "ready" ? "No models offered" : unavailableReason[state]}
+              </span>
             )}
           </div>
         );

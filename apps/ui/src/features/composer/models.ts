@@ -1,42 +1,44 @@
-import type { AccessMode, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 
-export interface ModelOption {
-  readonly id: string;
-  readonly provider: ProviderId;
-  readonly label: string;
-  readonly efforts: ReadonlyArray<ReasoningEffort>;
-}
+import { modelsAtom } from "../../backend/atoms.ts";
 
-// Development list; the real one comes from each adapter's model listing.
-export const modelOptions: ReadonlyArray<ModelOption> = [
-  {
-    id: "claude-opus-5-5",
-    provider: "claude",
-    label: "Opus 5.5",
-    efforts: ["low", "medium", "high", "xhigh", "max"],
-  },
-  {
-    id: "claude-sonnet-5-5",
-    provider: "claude",
-    label: "Sonnet 5.5",
-    efforts: ["low", "medium", "high", "max"],
-  },
-  { id: "claude-haiku-5-5", provider: "claude", label: "Haiku 5.5", efforts: ["low", "medium", "high"] },
-  {
-    id: "gpt-6.1-sol",
-    provider: "codex",
-    label: "GPT-6.1 Sol",
-    efforts: ["minimal", "low", "medium", "high", "xhigh"],
-  },
-  { id: "gpt-6.1-terra", provider: "codex", label: "GPT-6.1 Terra", efforts: ["low", "medium", "high"] },
-  {
-    id: "muse-spark-1.3",
-    provider: "muse",
-    label: "Muse Spark 1.3",
-    efforts: ["low", "medium", "high", "max"],
-  },
-  { id: "cursor-composer", provider: "cursor", label: "Cursor Composer", efforts: ["medium"] },
-];
+/** Model ids are only unique within a provider, so choices are remembered by both. */
+export const modelKey = (model: Pick<ModelInfo, "provider" | "id">) => `${model.provider}/${model.id}`;
+
+/** Every model the installed harnesses offer, in provider order. */
+export const useModels = (): ReadonlyArray<ModelInfo> =>
+  AsyncResult.getOrElse(useAtomValue(modelsAtom), () => []);
+
+/** The model a provider's harness uses when none is named, or its first. */
+export const defaultModel = (
+  models: ReadonlyArray<ModelInfo>,
+  provider: ProviderId,
+): ModelInfo | undefined => {
+  const offered = models.filter((model) => model.provider === provider);
+  return offered.find((model) => model.isDefault === true) ?? offered[0];
+};
+
+/**
+ * The chosen model while its harness can run it; otherwise the first usable harness's own default.
+ * Undefined until some harness has offered a model.
+ */
+export const pickModel = (
+  models: ReadonlyArray<ModelInfo>,
+  key: string,
+  available: ReadonlySet<ProviderId>,
+): ModelInfo | undefined => {
+  const usable = models.filter((model) => available.has(model.provider));
+  const chosen = models.find((model) => modelKey(model) === key);
+  if (chosen !== undefined && (available.has(chosen.provider) || usable.length === 0)) return chosen;
+  const provider = (usable[0] ?? models[0])?.provider;
+  return provider === undefined ? undefined : defaultModel(models, provider);
+};
+
+/** The effort a model runs at: the chosen one when it has it, else its default or strongest. */
+export const effortFor = (model: ModelInfo, effort: ReasoningEffort): ReasoningEffort | undefined =>
+  model.efforts.includes(effort) ? effort : (model.defaultEffort ?? model.efforts.at(-1));
 
 export const effortLabel: Record<ReasoningEffort, string> = {
   minimal: "Minimal",

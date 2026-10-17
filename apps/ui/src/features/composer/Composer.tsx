@@ -31,7 +31,7 @@ import {
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { accessAtom, effortAtom, isSendKey, modelAtom, sendKeyAtom } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
-import { accessOptions, effortLabel, modelOptions } from "./models.ts";
+import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "./models.ts";
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
@@ -40,6 +40,7 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
 };
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+const allProviders: ReadonlySet<ProviderId> = new Set(providers);
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -47,7 +48,8 @@ const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ??
 export interface ThreadSetup {
   readonly provider: ProviderId;
   readonly model: string;
-  readonly effort: ReasoningEffort;
+  /** Absent for models the harness offers no effort setting for. */
+  readonly effort?: ReasoningEffort;
   readonly access: AccessMode;
 }
 
@@ -104,15 +106,16 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
       if (value !== null) set(value);
     };
 
-  const model = modelOptions.find((option) => option.id === modelId) ?? modelOptions[0]!;
+  const models = useModels();
+  const model = pickModel(models, modelId, target.kind === "new" ? target.available : allProviders);
   // Keep the effort valid when switching to a model with fewer levels.
-  const activeEffort = model.efforts.includes(effort) ? effort : model.efforts.at(-1)!;
+  const activeEffort = model ? effortFor(model, effort) : undefined;
   const AccessIcon = accessIcon[access];
   const isNew = target.kind === "new";
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = drafts[draftKey] ?? "";
-  const canSend = text.trim() !== "" && !needsFolder;
-  const recipient = target.kind === "thread" ? target.model : model.label;
+  const canSend = text.trim() !== "" && !needsFolder && (!isNew || model !== undefined);
+  const recipient = target.kind === "thread" ? target.model : (model?.label ?? "an agent");
 
   // Opening a thread, or a new one, puts the cursor where the next message goes.
   useEffect(() => {
@@ -121,14 +124,14 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
 
   const setText = (value: string) => setDrafts((current) => ({ ...current, [draftKey]: value }));
   const send = () => {
-    if (!canSend) return;
+    if (!canSend || model === undefined) return;
     const key = draftKey;
     const sent = text.trim();
     setText("");
     void onSend(sent, {
       provider: model.provider,
       model: model.id,
-      effort: activeEffort,
+      ...(activeEffort ? { effort: activeEffort } : {}),
       access: isNew && target.mode === "chat" ? "readOnly" : access,
     }).then((delivered) => {
       // Give an undelivered message back, unless the user has started typing another.
@@ -158,7 +161,8 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
           )}
           <p className="min-w-0 flex-1 text-[13px] text-fg-secondary">
             <span className="font-medium text-fg-primary">{target.model}</span>{" "}
-            {target.ended === "failed" ? "failed" : "stopped"} before its session started, so there is nothing to resume.
+            {target.ended === "failed" ? "failed" : "stopped"} before its session started, so there is nothing
+            to resume.
           </p>
           <Button
             onClick={target.onStartNew}
@@ -219,10 +223,16 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                 </Tooltip>
               ) : null}
 
-              <SelectRoot value={model.id} onValueChange={choose(setModelId)}>
+              <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>
                 <SelectTrigger label="Model">
-                  <ProviderLogo provider={model.provider} size={13} />
-                  <span className="font-medium text-fg-primary">{model.label}</span>
+                  {model ? (
+                    <>
+                      <ProviderLogo provider={model.provider} size={13} />
+                      <span className="font-medium text-fg-primary">{model.label}</span>
+                    </>
+                  ) : (
+                    <span className="text-fg-tertiary">Finding models…</span>
+                  )}
                 </SelectTrigger>
                 <SelectPopup>
                   {providers.map((provider, index) => (
@@ -239,12 +249,12 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                           <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>
                         )}
                       </SelectGroupLabel>
-                      {modelOptions
+                      {models
                         .filter((option) => option.provider === provider)
                         .map((option) => (
                           <SelectItem
                             key={option.id}
-                            value={option.id}
+                            value={modelKey(option)}
                             disabled={!target.available.has(provider)}
                           >
                             {option.label}
@@ -255,19 +265,21 @@ export function Composer({ target, draftKey, inputRef, running, onSend, onStop }
                 </SelectPopup>
               </SelectRoot>
 
-              <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(setEffort)}>
-                <SelectTrigger label="Reasoning effort">
-                  <Gauge size={13} strokeWidth={1.75} />
-                  {effortLabel[activeEffort]}
-                </SelectTrigger>
-                <SelectPopup>
-                  {model.efforts.map((level) => (
-                    <SelectItem key={level} value={level}>
-                      {effortLabel[level]}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </SelectRoot>
+              {model && activeEffort ? (
+                <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(setEffort)}>
+                  <SelectTrigger label="Reasoning effort">
+                    <Gauge size={13} strokeWidth={1.75} />
+                    {effortLabel[activeEffort]}
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {model.efforts.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {effortLabel[level]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </SelectRoot>
+              ) : null}
 
               {target.mode === "work" ? (
                 <SelectRoot value={access} onValueChange={choose<AccessMode>(setAccess)}>

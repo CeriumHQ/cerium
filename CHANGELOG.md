@@ -73,6 +73,8 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/store` applies its own bundled migrations unless given another folder.
 - UI: agent markdown is sized for the conversation: compact headings, hanging list markers, inline code at the text's size, quiet blockquotes and links, and code blocks and tables as single cards with a copy button, without line numbers or download buttons.
 - `@cerium/orchestrator`: sessions load the user's own MCP servers only while that setting is on (default on); it was always on.
+- UI: the composer and Agents settings offer the models each installed harness actually lists, remembered by provider and model, instead of a fixed list. The last lists are kept so the pickers fill in before the harnesses answer, and "Check again" in Harnesses settings re-reads them.
+- UI: Agents settings picks the lead model with one row per harness and a menu of its models, instead of a chip for every model.
 
 ### Fixed
 

@@ -2,7 +2,7 @@ import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Atom } from "effect/reactivity";
 
 import { remember, stored } from "../../lib/storage.ts";
-import { accessOptions, effortLabel, modelOptions } from "../composer/models.ts";
+import { accessOptions, effortLabel } from "../composer/models.ts";
 
 // Preferences that only change this window, kept in its local storage. Each is an atom, so the
 // settings view and the parts of the window a preference changes stay in step.
@@ -15,6 +15,8 @@ const preference = <A extends string>(key: string, options: ReadonlyArray<A>, fa
       remember(key, value);
     },
   ).pipe(Atom.keepAlive);
+
+const MODEL_KEY = "cerium:model";
 
 export type Theme = "system" | "dark" | "light";
 export const THEME_KEY = "cerium:theme";
@@ -61,11 +63,14 @@ export const isSendKey = (
   (sendKey === "enter" || event.ctrlKey);
 
 // What a new thread starts with. The composer offers the same choices and remembers the last one.
-export const modelAtom = preference(
-  "cerium:model",
-  modelOptions.map((option) => option.id),
-  modelOptions[0]!.id,
-);
+/** The chosen model's `modelKey`; the harnesses decide which models exist, so any value is kept. */
+export const modelAtom = Atom.writable(
+  () => stored(MODEL_KEY) ?? "",
+  (context, value: string) => {
+    context.setSelf(value);
+    remember(MODEL_KEY, value);
+  },
+).pipe(Atom.keepAlive);
 export const effortAtom = preference<ReasoningEffort>(
   "cerium:effort",
   Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>,
