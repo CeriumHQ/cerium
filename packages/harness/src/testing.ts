@@ -39,6 +39,9 @@ export const makeFakeAdapter = (
     provider,
     manifest,
     probe: Effect.die("unused"),
+    listModels: Effect.succeed([
+      { provider, id: "fake-model", label: "Fake model", efforts: ["low", "medium", "high"] },
+    ]),
     startSession: (sessionOptions) =>
       Effect.gen(function* () {
         const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();

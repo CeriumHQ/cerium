@@ -3,6 +3,7 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
+import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
 import { startClaudeSession } from "./session.ts";
 
@@ -18,7 +19,8 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
       >();
       const probe = probeClaude.pipe(Effect.provide(platform));
 
-      const startSession = Effect.fn("ClaudeAdapter.startSession")(function* (options: SessionOptions) {
+      /** The installed executable, once it is known to be usable. */
+      const ready = Effect.gen(function* () {
         const status = yield* probe;
         if (status._tag === "HarnessMissing") {
           return yield* new HarnessUnavailable({
@@ -41,10 +43,20 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
             message: `Claude Code is not logged in. Run \`${LOGIN_COMMAND}\`.`,
           });
         }
-        return yield* startClaudeSession(status.executablePath, options);
+        return status.executablePath;
       });
 
-      return ClaudeAdapter.of({ provider: "claude", manifest: claudeManifest, probe, startSession });
+      const startSession = Effect.fn("ClaudeAdapter.startSession")(function* (options: SessionOptions) {
+        return yield* startClaudeSession(yield* ready, options);
+      });
+
+      return ClaudeAdapter.of({
+        provider: "claude",
+        manifest: claudeManifest,
+        probe,
+        listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
+        startSession,
+      });
     }),
   );
 }

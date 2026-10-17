@@ -3,6 +3,7 @@ import type {
   CapabilityManifest,
   EventPayload,
   HarnessStatus,
+  ModelInfo,
   ProviderId,
   ReasoningEffort,
 } from "@cerium/protocol";
@@ -82,6 +83,8 @@ export interface HarnessAdapter {
   readonly provider: ProviderId;
   readonly manifest: CapabilityManifest;
   readonly probe: Effect.Effect<HarnessStatus, HarnessFailure>;
+  /** The models the user's installed, logged-in harness offers right now. */
+  readonly listModels: Effect.Effect<ReadonlyArray<ModelInfo>, HarnessUnavailable | HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

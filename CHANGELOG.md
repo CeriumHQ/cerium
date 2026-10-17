@@ -63,6 +63,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Keyboard settings: whether Enter or Ctrl Enter sends a message (the other way of pressing Enter starts a new line), with a box to try it in whose keycaps light up as you press them, and the window's shortcuts. The composer and its Send tooltip follow the choice.
 - `@cerium/orchestrator`: a stopped or failed lead, including any after a restart, resumes its harness session when the user messages it again; approvals its old session left open are closed as denied, and the lead is told when the agents it spawned are gone.
 - UI: a thread whose lead has stopped keeps its message box, and the next message picks the thread back up; only a lead that ended before its session started still offers a new thread.
+- `@cerium/harness`: adapters list the models their harness offers; the Claude adapter asks the installed Claude Code.
 
 ### Changed
 
