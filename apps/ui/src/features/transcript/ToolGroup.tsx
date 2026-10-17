@@ -15,6 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { fileEdits } from "./diff.ts";
+import { EditDiff } from "./EditDiff.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
 
 type ToolBlock = Extract<TranscriptBlock, { kind: "tool" }>;
@@ -116,8 +118,15 @@ function ToolRow({
         </span>
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <div className="flex flex-col gap-2 px-3 pb-3">
-          <Payload label="Input" value={tool.input} />
+        <div className="flex flex-col gap-2 px-3 pt-1 pb-3">
+          {fileEdits(tool.input).length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs font-medium tracking-wide text-fg-tertiary uppercase">Change</span>
+              <EditDiff edits={fileEdits(tool.input)} />
+            </div>
+          ) : (
+            <Payload label="Input" value={tool.input} />
+          )}
           {tool.output === undefined ? null : <Payload label="Output" value={tool.output} />}
         </div>
       </Collapsible.Panel>

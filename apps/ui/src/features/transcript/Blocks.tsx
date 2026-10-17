@@ -4,6 +4,8 @@ import { Ban, Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } f
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
+import { fileEdits } from "./diff.ts";
+import { EditDiff } from "./EditDiff.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { TranscriptBlock } from "./model.ts";
 
@@ -116,6 +118,7 @@ export function PermissionCard({
     typeof block.input === "object" && block.input !== null
       ? (block.input as Record<string, unknown>)["command"]
       : undefined;
+  const edits = fileEdits(block.input);
 
   if (block.resolution !== undefined || expired) {
     const { decision, scope } = block.resolution ?? {};
@@ -148,10 +151,13 @@ export function PermissionCard({
         <span className="font-medium text-fg-primary">{block.summary}</span>
         <span className="text-attention">needs approval</span>
       </div>
+      {/* What the agent wants to do, so the answer is an informed one. */}
       {typeof command === "string" ? (
         <pre className="overflow-x-auto rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-[12px] text-fg-primary select-text">
           {command}
         </pre>
+      ) : edits.length > 0 ? (
+        <EditDiff edits={edits} />
       ) : null}
       <div className="flex items-center gap-1.5">
         <Button
