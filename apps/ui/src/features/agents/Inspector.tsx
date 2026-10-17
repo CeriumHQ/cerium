@@ -20,6 +20,7 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
 import { shortAgo } from "../../lib/time.ts";
 import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
@@ -30,9 +31,6 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   ask: ShieldQuestion,
   acceptEdits: FilePen,
 };
-
-const compact = (value: number) =>
-  value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : `${value}`;
 
 interface InspectorProps {
   readonly agents: ReadonlyArray<AgentSummary>;
@@ -178,9 +176,9 @@ function AgentDetails({
           {accessLabel[agent.access]}
         </Detail>
         <Detail label="Tokens">
-          {compact(inputTokens)} in · {compact(outputTokens)} out
+          {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
         </Detail>
-        <Detail label="Cost">{costUsd === undefined ? "Not reported" : `$${costUsd.toFixed(2)}`}</Detail>
+        <Detail label="Cost">{costUsd === undefined ? "Not reported" : usd(costUsd)}</Detail>
         <Detail label="Started">{shortAgo(agent.startedAt)} ago</Detail>
       </dl>
 
@@ -188,7 +186,7 @@ function AgentDetails({
         <div className="flex flex-col gap-1">
           <span className="text-2xs text-fg-tertiary">Latest message</span>
           <p className="line-clamp-4 border-l border-line-strong pl-2.5 text-[12.5px] leading-[1.55] text-fg-secondary select-text">
-            {agent.lastMessage}
+            {plainExcerpt(agent.lastMessage)}
           </p>
         </div>
       ) : null}
@@ -254,16 +252,16 @@ function UsageSummary({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
     >
       <div className="flex items-baseline justify-between text-2xs text-fg-tertiary">
         <span>Thread usage</span>
-        <span className="text-[12.5px] text-fg-primary tabular-nums">${totalCost.toFixed(2)}</span>
+        <span className="text-[12.5px] text-fg-primary tabular-nums">{usd(totalCost)}</span>
       </div>
       {[...byProvider].map(([provider, { input, output, cost }]) => (
         <div key={provider} className="flex items-center gap-2 text-[12.5px]">
           <ProviderLogo provider={provider} size={12} />
           <span className="text-fg-secondary">{providerName[provider]}</span>
           <span className="ml-auto text-fg-tertiary tabular-nums">
-            {compact(input)} · {compact(output)}
+            {compactTokens(input)} · {compactTokens(output)}
           </span>
-          <span className="w-10 text-right text-fg-secondary tabular-nums">${cost.toFixed(2)}</span>
+          <span className="w-10 text-right text-fg-secondary tabular-nums">{usd(cost)}</span>
         </div>
       ))}
     </section>

@@ -3,6 +3,7 @@ import { Collapsible } from "@base-ui/react/collapsible";
 import { Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { compactTokens, usd } from "../../lib/format.ts";
 import { Markdown } from "./Markdown.tsx";
 import type { TranscriptBlock } from "./model.ts";
 
@@ -156,17 +157,14 @@ export function PermissionCard({
   );
 }
 
-const compact = (value: number) =>
-  value >= 1000 ? `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}k` : `${value}`;
-
 export function TurnFooter({ block }: { block: Block<"turnEnd"> }) {
   if (block.usage === undefined) return null;
   const { inputTokens, outputTokens, costUsd } = block.usage;
   return (
     <div className="flex items-center gap-2 text-2xs text-fg-disabled tabular-nums">
-      <span>{compact(inputTokens)} in</span>
-      <span>{compact(outputTokens)} out</span>
-      {costUsd === undefined ? null : <span>${costUsd.toFixed(2)}</span>}
+      <span>{compactTokens(inputTokens)} in</span>
+      <span>{compactTokens(outputTokens)} out</span>
+      {costUsd === undefined ? null : <span>{usd(costUsd)}</span>}
     </div>
   );
 }
