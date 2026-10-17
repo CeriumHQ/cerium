@@ -1,0 +1,15 @@
+{
+  "name": "@cerium/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/main.mjs",
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack && electron . --dev-url=http://localhost:5173"
+  },
+  "devDependencies": {
+    "electron": "44.8.0"
+  }
+}
