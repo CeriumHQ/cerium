@@ -41,6 +41,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/desktop`: Electron shell with Windows Acrylic behind the UI, Windows' own caption buttons over the custom titlebar, a sandboxed preload, and links opening in the browser. `bun run dev:desktop` runs it against the UI dev server.
 - UI: inside the Electron shell the titlebar reserves exactly the caption-button area Windows reports, and the window tint is lighter so the real Acrylic shows.
 - UI: Cerium's "Prism C" mark in the titlebar and as the favicon.
+- Desktop: the UI can open Windows' folder picker to choose where a work thread runs.
 
 ### Changed
 

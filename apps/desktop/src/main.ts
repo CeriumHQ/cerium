@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
 
 import { restoreNativeFrame } from "./windowFrame.ts";
@@ -59,6 +59,14 @@ const createWindow = () => {
     void window.loadURL(devUrl);
   }
 };
+
+/** The folder a work thread runs in, chosen with the native dialog. */
+ipcMain.handle("cerium:pick-folder", async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const options = { properties: ["openDirectory" as const, "createDirectory" as const] };
+  const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+  return result.canceled ? undefined : result.filePaths[0];
+});
 
 void app.whenReady().then(() => {
   nativeTheme.themeSource = "dark";
