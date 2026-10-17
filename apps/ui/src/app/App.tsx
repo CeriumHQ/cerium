@@ -3,7 +3,7 @@ import type { ThreadOverview } from "@cerium/rpc";
 import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   createThread,
@@ -32,12 +32,21 @@ import { Notice } from "./Notice.tsx";
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
+const SIDEBAR_KEY = "cerium:sidebar";
 
-const storedFolder = () => {
+// Remembered window preferences are a convenience only: storage failing must never break the app.
+const stored = (key: string) => {
   try {
-    return localStorage.getItem(FOLDER_KEY) ?? undefined;
+    return localStorage.getItem(key) ?? undefined;
   } catch {
     return undefined;
+  }
+};
+const remember = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Not remembered this time.
   }
 };
 
@@ -63,7 +72,8 @@ function Workspace() {
   /** The open thread per mode; none means "start a new one". */
   const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>({});
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [folder, setFolder] = useState(storedFolder);
+  const [folder, setFolder] = useState(() => stored(FOLDER_KEY));
+  const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   const composerInput = useRef<HTMLTextAreaElement>(null);
 
@@ -113,19 +123,49 @@ function Workspace() {
     agents.find((agent) => agent.id === lead?.id)?.model ?? (lead ? modelLabel(lead.model) : "");
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const startNew = () => setOpenThread((current) => ({ ...current, [mode]: undefined }));
+  /** Opens this mode's new thread, ready to type the first message. */
+  const startNew = () => {
+    setOpenThread((current) => ({ ...current, [mode]: undefined }));
+    composerInput.current?.focus();
+  };
 
   const chooseFolder = () => {
     void pickFolder().then((picked) => {
       if (picked === undefined) return;
       setFolder(picked);
-      try {
-        localStorage.setItem(FOLDER_KEY, picked);
-      } catch {
-        // Remembering the folder is a convenience only.
-      }
+      remember(FOLDER_KEY, picked);
     });
   };
+
+  const toggleSidebar = () => {
+    remember(SIDEBAR_KEY, sidebarOpen ? "hidden" : "shown");
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  // The shortcuts the window's buttons advertise in their tooltips.
+  const onShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+    switch (event.key.toLowerCase()) {
+      case "b":
+        toggleSidebar();
+        break;
+      case "n":
+        startNew();
+        break;
+      case "j":
+        if (selected === undefined) return;
+        setInspectorOpen((open) => !open);
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onShortcut(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
   const startThread = async (text: string, setup: ThreadSetup) => {
     const { thread, lead: newLead } = await create({
@@ -153,6 +193,9 @@ function Workspace() {
         : {})}
       mode={mode}
       onModeChange={setMode}
+      sidebarOpen={sidebarOpen}
+      onToggleSidebar={toggleSidebar}
+      onNewThread={startNew}
       sidebar={
         <Sidebar
           mode={mode}

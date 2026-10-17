@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronDown, Minus, PanelLeft, Square, X } from "lucide-react";
+import { ChevronDown, Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
@@ -16,6 +16,10 @@ interface TitlebarProps {
   readonly thread?: { readonly title: string; readonly project?: string };
   readonly mode: AppMode;
   readonly onModeChange: (mode: AppMode) => void;
+  readonly sidebarOpen: boolean;
+  readonly onToggleSidebar: () => void;
+  /** Offered here while the sidebar, which has the main button for it, is folded away. */
+  readonly onNewThread: () => void;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
   readonly inspectorOpen: boolean;
@@ -26,6 +30,9 @@ export function Titlebar({
   thread,
   mode,
   onModeChange,
+  sidebarOpen,
+  onToggleSidebar,
+  onNewThread,
   agents,
   inspectorOpen,
   onToggleInspector,
@@ -38,8 +45,21 @@ export function Titlebar({
       </div>
       <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
       <ModeSwitch mode={mode} onChange={onModeChange} />
-      <div className="[app-region:no-drag]">
-        <IconButton icon={PanelLeft} label="Toggle sidebar" shortcut="Ctrl B" />
+      <div className="flex items-center [app-region:no-drag]">
+        <IconButton
+          icon={PanelLeft}
+          label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          shortcut="Ctrl B"
+          onClick={onToggleSidebar}
+        />
+        {sidebarOpen ? null : (
+          <IconButton
+            icon={SquarePen}
+            label={mode === "work" ? "New thread" : "New chat"}
+            shortcut="Ctrl N"
+            onClick={onNewThread}
+          />
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 justify-center">

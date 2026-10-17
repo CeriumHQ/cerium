@@ -47,6 +47,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the transcript follows new output while you're at the end, stays put while you scroll back to read, and returns to the end when you send a message.
 - UI: a shimmering "Working…" line shows the lead is busy while nothing else on screen moves: before its first output and between steps. A reasoning block shimmers while it streams.
 - UI: the composer keeps a draft per thread (and per mode for a new one), puts the cursor in the message box when a thread opens, gives back a message that failed to send, and stops a running turn with Esc. The access menu shows each mode's icon, and the placeholder no longer promises @ mentions that don't exist yet.
+- UI: the sidebar folds away from the titlebar or with Ctrl B (remembered across launches), leaving a new-thread button in the titlebar; Ctrl N opens a new thread and Ctrl J toggles the agent inspector, as their tooltips promised.
 
 ### Changed
 
