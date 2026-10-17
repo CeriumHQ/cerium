@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import { Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
+import { Ban, Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
@@ -95,9 +95,12 @@ export type PermissionAnswer = (decision: "allow" | "deny", scope: "once" | "ses
 
 export function PermissionCard({
   block,
+  expired,
   onAnswer,
 }: {
   block: Block<"permission">;
+  /** The agent stopped before anyone answered, so the request can't be answered any more. */
+  expired: boolean;
   onAnswer?: PermissionAnswer;
 }) {
   const command =
@@ -105,16 +108,24 @@ export function PermissionCard({
       ? (block.input as Record<string, unknown>)["command"]
       : undefined;
 
-  if (block.resolution !== undefined) {
-    const { decision, scope } = block.resolution;
+  if (block.resolution !== undefined || expired) {
+    const { decision, scope } = block.resolution ?? {};
     return (
       <div className="flex items-center gap-2 text-xs text-fg-tertiary">
-        {decision === "allow" ? <Check size={12} strokeWidth={2.5} /> : <X size={12} strokeWidth={2.5} />}
-        {decision === "allow"
-          ? scope === "session"
-            ? "Allowed for this session"
-            : "Allowed once"
-          : "Denied"}
+        {decision === "allow" ? (
+          <Check size={12} strokeWidth={2.5} />
+        ) : decision === "deny" ? (
+          <X size={12} strokeWidth={2.5} />
+        ) : (
+          <Ban size={12} strokeWidth={2} />
+        )}
+        {decision === undefined
+          ? "Not answered before the agent stopped"
+          : decision === "allow"
+            ? scope === "session"
+              ? "Allowed for this session"
+              : "Allowed once"
+            : "Denied"}
         <span className="text-fg-disabled">·</span>
         {block.summary}
       </div>

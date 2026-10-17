@@ -62,3 +62,4 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: picker labels in the composer stay on one line when space is tight.
 - UI: logos of harnesses that can't run dim the same way whether the logo is in colour or not, in the sidebar and the model picker.
 - UI: costs under a cent read "<$0.01" instead of "$0.00", and the inspector's latest message preview is plain text instead of raw markdown.
+- UI: a thread whose lead has stopped or failed no longer offers a message box that can only fail; the composer says so and offers to start a new thread. Approval cards it left unanswered read as expired instead of offering buttons, and tool calls cut off mid-run read as interrupted instead of spinning forever.

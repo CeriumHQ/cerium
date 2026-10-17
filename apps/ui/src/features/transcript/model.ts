@@ -46,6 +46,9 @@ export type TranscriptBlock =
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string };
 
+/** Whether the agent is mid-turn, waiting for input, or gone for good (stopped or failed). */
+export type AgentActivity = "running" | "idle" | "ended";
+
 export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArray<TranscriptBlock> => {
   const blocks: Array<TranscriptBlock> = [];
   const indexOf = new Map<string, number>();

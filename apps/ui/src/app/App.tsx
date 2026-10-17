@@ -104,6 +104,8 @@ function Workspace() {
   const leadModel =
     agents.find((agent) => agent.id === lead?.id)?.model ?? (lead ? modelLabel(lead.model) : "");
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
+  const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
+  const startNew = () => setOpenThread((current) => ({ ...current, [mode]: undefined }));
 
   const chooseFolder = () => {
     void pickFolder().then((picked) => {
@@ -149,7 +151,7 @@ function Workspace() {
           threads={overviews.map(toThreadSummary)}
           selectedId={selected?.thread.id}
           onSelect={(threadId) => setOpenThread((current) => ({ ...current, [mode]: threadId }))}
-          onNewThread={() => setOpenThread((current) => ({ ...current, [mode]: undefined }))}
+          onNewThread={startNew}
           harnesses={indicators}
         />
       }
@@ -186,6 +188,7 @@ function Workspace() {
               key={selected.thread.id}
               blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
               agent={{ provider: lead.provider, model: leadModel }}
+              activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
               childState={(childId) => {
                 const state = selected.agents.find((agent) => agent.id === childId)?.state;
                 return state === "running" || state === "queued"
@@ -206,7 +209,13 @@ function Workspace() {
         <Composer
           target={
             selected && lead
-              ? { kind: "thread", provider: lead.provider, model: leadModel }
+              ? {
+                  kind: "thread",
+                  provider: lead.provider,
+                  model: leadModel,
+                  ...(leadEnded ? { ended: leadEnded } : {}),
+                  onStartNew: startNew,
+                }
               : { kind: "new", mode, folder, onPickFolder: chooseFolder, available }
           }
           running={leadRunning}

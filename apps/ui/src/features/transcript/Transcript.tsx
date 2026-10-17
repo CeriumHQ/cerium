@@ -4,13 +4,14 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage } from "./Blocks.tsx";
 import { Markdown } from "./Markdown.tsx";
-import type { TranscriptBlock } from "./model.ts";
+import type { AgentActivity, TranscriptBlock } from "./model.ts";
 import { ToolGroup } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
   readonly agent: { readonly provider: ProviderId; readonly model: string };
+  readonly activity: AgentActivity;
   /** Live state of a spawned child, for its card. */
   readonly childState: (childId: string) => "running" | "idle" | "failed";
   readonly onAnswerPermission?: (
@@ -87,7 +88,7 @@ const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => 
   return items;
 };
 
-export function Transcript({ blocks, agent, childState, onAnswerPermission }: TranscriptProps) {
+export function Transcript({ blocks, agent, activity, childState, onAnswerPermission }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
@@ -114,7 +115,7 @@ export function Transcript({ blocks, agent, childState, onAnswerPermission }: Tr
             case "header":
               return <ResponseHeader key={item.id} agent={agent} />;
             case "tools":
-              return <ToolGroup key={item.id} tools={item.tools} />;
+              return <ToolGroup key={item.id} tools={item.tools} activity={activity} />;
             case "spawns":
               return (
                 <div key={item.id} className="flex flex-wrap gap-1.5">
@@ -129,6 +130,7 @@ export function Transcript({ blocks, agent, childState, onAnswerPermission }: Tr
                   key={item.id}
                   block={item.block}
                   roleOf={roleOf}
+                  activity={activity}
                   {...(onAnswerPermission ? { onAnswerPermission } : {})}
                 />
               );
@@ -153,10 +155,12 @@ function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
 function ResponseBlock({
   block,
   roleOf,
+  activity,
   onAnswerPermission,
 }: {
   block: TranscriptBlock;
   roleOf: (agentId: string) => string;
+  activity: AgentActivity;
   onAnswerPermission?: TranscriptProps["onAnswerPermission"];
 }) {
   switch (block.kind) {
@@ -174,6 +178,7 @@ function ResponseBlock({
       return (
         <PermissionCard
           block={block}
+          expired={activity === "ended"}
           onAnswer={(decision, scope) =>
             onAnswerPermission?.(block.id.replace(/^permission:/, ""), decision, scope)
           }

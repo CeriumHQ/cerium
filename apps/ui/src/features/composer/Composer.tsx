@@ -2,6 +2,8 @@ import { Button } from "@base-ui/react/button";
 import type { AccessMode, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import {
   ArrowUp,
+  CircleAlert,
+  CircleStop,
   Eye,
   FilePen,
   FolderOpen,
@@ -9,6 +11,7 @@ import {
   Paperclip,
   ShieldQuestion,
   Square,
+  SquarePen,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
@@ -48,7 +51,14 @@ export interface ThreadSetup {
 
 export type ComposerTarget =
   /** Messages go to an existing thread's lead. */
-  | { readonly kind: "thread"; readonly provider: ProviderId; readonly model: string }
+  | {
+      readonly kind: "thread";
+      readonly provider: ProviderId;
+      readonly model: string;
+      /** The lead stopped or failed: Cerium can't resume it yet, so the thread takes no more messages. */
+      readonly ended?: "stopped" | "failed";
+      readonly onStartNew: () => void;
+    }
   /** The first message starts a thread with the chosen setup. */
   | {
       readonly kind: "new";
@@ -100,6 +110,31 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
       send();
     }
   };
+
+  if (target.kind === "thread" && target.ended) {
+    return (
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">
+        <div className="pointer-events-auto mx-auto flex max-w-[42rem] items-center gap-2.5 rounded-2xl border border-line-subtle bg-surface-raised py-2 pr-2 pl-4 backdrop-blur-2xl">
+          {target.ended === "failed" ? (
+            <CircleAlert size={14} strokeWidth={1.75} className="shrink-0 text-error" />
+          ) : (
+            <CircleStop size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+          )}
+          <p className="min-w-0 flex-1 text-[13px] text-fg-secondary">
+            <span className="font-medium text-fg-primary">{target.model}</span>{" "}
+            {target.ended === "failed" ? "failed" : "has stopped"}, and Cerium can't resume a thread yet.
+          </p>
+          <Button
+            onClick={target.onStartNew}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+          >
+            <SquarePen size={13} strokeWidth={2} />
+            Start a new one
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 px-8 pb-5">

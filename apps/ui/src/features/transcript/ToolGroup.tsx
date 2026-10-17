@@ -1,5 +1,6 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import {
+  Ban,
   Check,
   ChevronRight,
   FilePen,
@@ -14,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { TranscriptBlock } from "./model.ts";
+import type { AgentActivity, TranscriptBlock } from "./model.ts";
 
 type ToolBlock = Extract<TranscriptBlock, { kind: "tool" }>;
 
@@ -71,17 +72,25 @@ export const describeTool = (
 };
 
 /** Consecutive tool calls, shown as one activity card with a row per call. */
-export function ToolGroup({ tools }: { tools: ReadonlyArray<ToolBlock> }) {
+export function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
   return (
     <div className="overflow-hidden rounded-lg border border-line-subtle">
       {tools.map((tool, index) => (
-        <ToolRow key={tool.id} tool={tool} divider={index > 0} />
+        <ToolRow key={tool.id} tool={tool} divider={index > 0} activity={activity} />
       ))}
     </div>
   );
 }
 
-function ToolRow({ tool, divider }: { tool: ToolBlock; divider: boolean }) {
+function ToolRow({
+  tool,
+  divider,
+  activity,
+}: {
+  tool: ToolBlock;
+  divider: boolean;
+  activity: AgentActivity;
+}) {
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
   return (
     <Collapsible.Root className={divider ? "border-t border-line-subtle" : ""}>
@@ -99,7 +108,7 @@ function ToolRow({ tool, divider }: { tool: ToolBlock; divider: boolean }) {
           </span>
         ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-2">
-          <ToolStatus status={tool.status} />
+          <ToolStatus status={tool.status} activity={activity} />
           <ChevronRight
             size={13}
             className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100"
@@ -116,7 +125,16 @@ function ToolRow({ tool, divider }: { tool: ToolBlock; divider: boolean }) {
   );
 }
 
-function ToolStatus({ status }: { status: ToolBlock["status"] }) {
+function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activity: AgentActivity }) {
+  // A call still open after its agent's turn ended was cut off, not slow.
+  if (status === "running" && activity !== "running") {
+    return (
+      <span className="flex items-center gap-1 text-2xs text-fg-tertiary">
+        <Ban size={11} strokeWidth={2} />
+        Interrupted
+      </span>
+    );
+  }
   if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running" />;
   if (status === "error") return <X size={13} strokeWidth={2.25} className="text-error" />;
   return <Check size={13} strokeWidth={2.25} className="text-success/80" />;
