@@ -174,6 +174,8 @@ function AgentDetails({
   const busy = agent.state === "running" || agent.state === "queued";
   const isLead = agent.parentId === undefined;
   const { inputTokens, outputTokens, costUsd } = agent.usage;
+  const reported = inputTokens + outputTokens > 0;
+  const started = shortAgo(agent.startedAt);
   return (
     <section className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3" aria-label="Agent details">
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[12.5px]">
@@ -185,11 +187,18 @@ function AgentDetails({
           <AccessIcon size={12} strokeWidth={1.75} className="text-fg-tertiary" />
           {accessLabel[agent.access]}
         </Detail>
+        {/* Usage arrives when a turn ends; until then there is nothing to count. */}
         <Detail label="Tokens">
-          {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
+          {reported ? (
+            `${compactTokens(inputTokens)} in · ${compactTokens(outputTokens)} out`
+          ) : (
+            <Absent>None yet</Absent>
+          )}
         </Detail>
-        <Detail label="Cost">{costUsd === undefined ? "Not reported" : usd(costUsd)}</Detail>
-        <Detail label="Started">{shortAgo(agent.startedAt)} ago</Detail>
+        <Detail label="Cost">
+          {costUsd !== undefined ? usd(costUsd) : <Absent>{reported ? "Not reported" : "None yet"}</Absent>}
+        </Detail>
+        <Detail label="Started">{started === "now" ? "Just now" : `${started} ago`}</Detail>
       </dl>
 
       {agent.lastMessage ? (
@@ -250,6 +259,11 @@ function AgentDetails({
   );
 }
 
+/** A value that isn't there yet, quieter than a real one. */
+function Absent({ children }: { children: React.ReactNode }) {
+  return <span className="text-fg-tertiary">{children}</span>;
+}
+
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
@@ -271,6 +285,7 @@ function UsageSummary({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
     });
   }
   const totalCost = [...byProvider.values()].reduce((sum, { cost }) => sum + cost, 0);
+  const used = [...byProvider].filter(([, { input, output }]) => input + output > 0);
   return (
     <section
       className="flex flex-col gap-1.5 border-t border-line-subtle px-3 py-3"
@@ -278,9 +293,13 @@ function UsageSummary({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
     >
       <div className="flex items-baseline justify-between text-2xs text-fg-tertiary">
         <span>Thread usage</span>
-        <span className="text-[12.5px] text-fg-primary tabular-nums">{usd(totalCost)}</span>
+        {used.length > 0 ? (
+          <span className="text-[12.5px] text-fg-primary tabular-nums">{usd(totalCost)}</span>
+        ) : (
+          <span>None yet</span>
+        )}
       </div>
-      {[...byProvider].map(([provider, { input, output, cost }]) => (
+      {used.map(([provider, { input, output, cost }]) => (
         <div key={provider} className="flex items-center gap-2 text-[12.5px]">
           <ProviderLogo provider={provider} size={12} />
           <span className="text-fg-secondary">{providerName[provider]}</span>
