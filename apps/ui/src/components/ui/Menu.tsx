@@ -35,17 +35,20 @@ export function MenuItem({
   icon: Icon,
   children,
   onClick,
+  disabled,
   tone = "default",
 }: {
   icon?: LucideIcon;
   children: ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
   tone?: "default" | "danger";
 }) {
   return (
     <BaseMenu.Item
       {...(onClick ? { onClick } : {})}
-      className={`flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] outline-none select-none data-highlighted:bg-surface-hover ${
+      {...(disabled ? { disabled } : {})}
+      className={`flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover ${
         tone === "danger"
           ? "text-error data-highlighted:text-error"
           : "text-fg-secondary data-highlighted:text-fg-primary"

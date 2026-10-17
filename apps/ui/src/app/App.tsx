@@ -212,6 +212,7 @@ function Workspace() {
           <Inspector
             agents={agents}
             onClose={() => setInspectorOpen(false)}
+            onMessageLead={() => composerInput.current?.focus()}
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
           />

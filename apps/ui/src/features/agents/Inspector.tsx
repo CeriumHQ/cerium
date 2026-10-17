@@ -7,7 +7,6 @@ import {
   Eye,
   FilePen,
   MessageSquareText,
-  PanelRightOpen,
   Pause,
   ShieldQuestion,
   Square,
@@ -35,12 +34,14 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
 interface InspectorProps {
   readonly agents: ReadonlyArray<AgentSummary>;
   readonly onClose: () => void;
+  /** Moves to the composer, which messages the lead. */
+  readonly onMessageLead?: () => void;
   readonly onInterrupt?: (agentId: string) => void;
   readonly onStop?: (agentId: string) => void;
 }
 
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
-export function Inspector({ agents, onClose, onInterrupt, onStop }: InspectorProps) {
+export function Inspector({ agents, onClose, onMessageLead, onInterrupt, onStop }: InspectorProps) {
   const lead = agents.find((agent) => agent.parentId === undefined);
   const [selectedId, setSelectedId] = useState(lead?.id);
   if (lead === undefined) return null;
@@ -71,6 +72,7 @@ export function Inspector({ agents, onClose, onInterrupt, onStop }: InspectorPro
 
         <AgentDetails
           agent={selected}
+          {...(selected.id === lead.id && onMessageLead ? { onMessage: onMessageLead } : {})}
           onInterrupt={() => onInterrupt?.(selected.id)}
           onStop={() => onStop?.(selected.id)}
         />
@@ -155,14 +157,19 @@ function StateBadge({ agent }: { agent: AgentSummary }) {
 
 function AgentDetails({
   agent,
+  onMessage,
   onInterrupt,
   onStop,
 }: {
   agent: AgentSummary;
+  /** Absent where Cerium can't message this agent from here yet. */
+  onMessage?: () => void;
   onInterrupt: () => void;
   onStop: () => void;
 }) {
   const AccessIcon = accessIcon[agent.access];
+  const ended = agent.state === "stopped" || agent.state === "failed";
+  const busy = agent.state === "running" || agent.state === "queued";
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   return (
     <section className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3" aria-label="Agent details">
@@ -191,35 +198,39 @@ function AgentDetails({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-1.5">
-        <Button className="flex h-7 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-[12.5px] text-fg-primary transition-colors hover:bg-surface-hover">
-          <PanelRightOpen size={13} strokeWidth={1.75} />
-          Open
-        </Button>
-        <Button className="flex h-7 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-[12.5px] text-fg-primary transition-colors hover:bg-surface-hover">
-          <MessageSquareText size={13} strokeWidth={1.75} />
-          Message
-        </Button>
-        <MenuRoot>
-          <MenuTrigger>
+      {/* An agent that has stopped or failed can't be resumed yet, so there is nothing left to do. */}
+      {ended ? null : (
+        <div className="flex items-center gap-1.5">
+          {onMessage ? (
             <Button
-              aria-label="More actions"
-              className="ml-auto grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active"
+              onClick={onMessage}
+              className="flex h-7 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-[12.5px] text-fg-primary transition-colors hover:bg-surface-hover"
             >
-              <Ellipsis size={15} />
+              <MessageSquareText size={13} strokeWidth={1.75} />
+              Message
             </Button>
-          </MenuTrigger>
-          <MenuPopup>
-            <MenuItem icon={Pause} onClick={onInterrupt}>
-              Interrupt turn
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem icon={CircleStop} tone="danger" onClick={onStop}>
-              Stop agent
-            </MenuItem>
-          </MenuPopup>
-        </MenuRoot>
-      </div>
+          ) : null}
+          <MenuRoot>
+            <MenuTrigger>
+              <Button
+                aria-label="More actions"
+                className="ml-auto grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active"
+              >
+                <Ellipsis size={15} />
+              </Button>
+            </MenuTrigger>
+            <MenuPopup>
+              <MenuItem icon={Pause} onClick={onInterrupt} disabled={!busy}>
+                Interrupt turn
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={CircleStop} tone="danger" onClick={onStop}>
+                Stop agent
+              </MenuItem>
+            </MenuPopup>
+          </MenuRoot>
+        </div>
+      )}
     </section>
   );
 }
