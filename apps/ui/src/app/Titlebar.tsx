@@ -98,7 +98,15 @@ function AgentsToggle({
  */
 function CaptionButtons() {
   const width = CAPTION_BUTTON_WIDTH * 3;
-  if (document.documentElement.dataset["shell"] === "electron") return <div style={{ width }} />;
+  if (document.documentElement.dataset["shell"] === "electron") {
+    // Window Controls Overlay reports the free titlebar area; everything right of it is Windows'.
+    return (
+      <div
+        className="shrink-0"
+        style={{ width: "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))" }}
+      />
+    );
+  }
   return (
     <div className="flex h-full text-fg-secondary" style={{ width }} aria-hidden="true">
       {[Minus, Square, X].map((Icon, index) => (

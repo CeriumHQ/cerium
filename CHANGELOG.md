@@ -35,6 +35,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: separate Work and Chat modes, switched from the titlebar; the sidebar lists only the active mode's threads, work grouped by project and chats by recency.
 - UI: agent inspector: the lead and its children as a tree with colour-coded state, the selected agent's model, effort, access, tokens, cost and latest message, actions to open, message, interrupt or stop it, and the thread's usage per provider.
 - `@cerium/desktop`: Electron shell with Windows Acrylic behind the UI, Windows' own caption buttons over the custom titlebar, a sandboxed preload, and links opening in the browser. `bun run dev:desktop` runs it against the UI dev server.
+- UI: inside the Electron shell the titlebar reserves exactly the caption-button area Windows reports, and the window tint is lighter so the real Acrylic shows.
 - UI: Cerium's "Prism C" mark in the titlebar and as the favicon.
 
 ### Changed

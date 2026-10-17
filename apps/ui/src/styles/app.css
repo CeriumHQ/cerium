@@ -30,6 +30,11 @@ body {
  * The browser preview has no OS Acrylic behind the page, so it stands in a flat, neutral desktop.
  * In Electron the body stays transparent and Windows provides the real backdrop.
  */
+/* Real Acrylic already tints and blurs the desktop, so the window tint can be lighter. */
+html[data-shell="electron"][data-theme="dark"] {
+  --surface-window: oklch(0.17 0 0 / 0.35);
+}
+
 html[data-shell="browser"] body {
   background: oklch(0.24 0 0);
 }
