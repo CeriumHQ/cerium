@@ -19,7 +19,14 @@ const harnessName: Record<ProviderId, string> = {
   cursor: "Cursor",
 };
 
-const authMethod: Record<string, string> = { "claude.ai": "a Claude account", apiKey: "an API key" };
+/** How each harness reports its sign-in, as people say it. */
+const authMethod: Record<string, string> = {
+  "claude.ai": "a Claude account",
+  chatgpt: "a ChatGPT account",
+  "meta.ai": "a Meta account",
+  cursorLogin: "a Cursor account",
+  apiKey: "an API key",
+};
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
@@ -43,7 +50,7 @@ export function HarnessSettings() {
     >
       <SettingsSection
         title="On this computer"
-        description="Cerium uses the versions you have installed and never bundles its own."
+        description="Cerium drives the harnesses you have installed and never bundles their CLIs. Cursor runs inside Cerium, through its own SDK."
         action={
           <Button
             onClick={refresh}

@@ -5,10 +5,12 @@ import {
   ChevronRight,
   FilePen,
   FileText,
+  FolderOpen,
   Globe,
   LoaderCircle,
   Search,
   SquareTerminal,
+  Trash2,
   Workflow,
   Wrench,
   X,
@@ -29,6 +31,63 @@ const field = (input: unknown, key: string): string | undefined => {
 
 const baseName = (path: string) => path.split(/[\\/]/).at(-1) ?? path;
 
+/** The files a patch touches: Codex reports its changes, Muse passes the patch text itself. */
+const patchedFiles = (input: unknown): ReadonlyArray<string> => {
+  const changes =
+    typeof input === "object" && input !== null ? (input as { changes?: unknown }).changes : undefined;
+  if (Array.isArray(changes)) return changes.flatMap((change) => field(change, "path") ?? []);
+  const patch = field(input, "patch") ?? (typeof input === "string" ? input : "");
+  return [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]!.trim());
+};
+
+const filesDetail = (files: ReadonlyArray<string>) =>
+  files.length === 1 ? baseName(files[0]!) : files.length > 1 ? `${files.length} files` : undefined;
+
+type ToolKind =
+  | "read"
+  | "edit"
+  | "write"
+  | "delete"
+  | "patch"
+  | "search"
+  | "list"
+  | "run"
+  | "fetch"
+  | "webSearch";
+
+/** Each harness's built-in tools by what they do: Claude Code, Codex, Muse Code and Cursor name them differently. */
+const toolKinds: Readonly<Record<string, ToolKind>> = {
+  Read: "read",
+  read: "read",
+  read_file: "read",
+  Edit: "edit",
+  MultiEdit: "edit",
+  NotebookEdit: "edit",
+  edit: "edit",
+  edit_file: "edit",
+  Write: "write",
+  write: "write",
+  write_file: "write",
+  delete: "delete",
+  apply_patch: "patch",
+  Grep: "search",
+  Glob: "search",
+  grep: "search",
+  glob: "search",
+  semSearch: "search",
+  ls: "list",
+  list_dir: "list",
+  Bash: "run",
+  PowerShell: "run",
+  shell: "run",
+  exec_command: "run",
+  WebFetch: "fetch",
+  webFetch: "fetch",
+  WebSearch: "webSearch",
+  webSearch: "webSearch",
+  web_search: "webSearch",
+};
+
 /** A verb, an icon and the one detail that identifies what a tool call did. */
 export const describeTool = (
   tool: ToolBlock,
@@ -38,32 +97,37 @@ export const describeTool = (
   readonly detail?: string;
   readonly mono?: boolean;
 } => {
-  const path = field(tool.input, "file_path") ?? field(tool.input, "path");
-  switch (tool.toolName) {
-    case "Read":
-      return { icon: FileText, verb: "Read", ...(path ? { detail: baseName(path) } : {}) };
-    case "Edit":
-    case "MultiEdit":
-    case "Write":
-    case "NotebookEdit":
+  const { input } = tool;
+  const path = field(input, "file_path") ?? field(input, "path");
+  const named = path ? { detail: baseName(path) } : {};
+  switch (toolKinds[tool.toolName]) {
+    case "read":
+      return { icon: FileText, verb: "Read", ...named };
+    case "edit":
+      return { icon: FilePen, verb: "Edit", ...named };
+    case "write":
+      return { icon: FilePen, verb: "Write", ...named };
+    case "delete":
+      return { icon: Trash2, verb: "Delete", ...named };
+    case "patch": {
+      const detail = filesDetail(patchedFiles(input));
+      return { icon: FilePen, verb: "Edit", ...(detail ? { detail } : {}) };
+    }
+    case "search":
       return {
-        icon: FilePen,
-        verb: tool.toolName === "Write" ? "Write" : "Edit",
-        ...(path ? { detail: baseName(path) } : {}),
+        icon: Search,
+        verb: "Search",
+        detail: field(input, "pattern") ?? field(input, "globPattern") ?? field(input, "query") ?? "",
+        mono: true,
       };
-    case "Grep":
-    case "Glob":
-      return { icon: Search, verb: "Search", detail: field(tool.input, "pattern") ?? "", mono: true };
-    case "Bash":
-    case "PowerShell":
-      return { icon: SquareTerminal, verb: "Run", detail: field(tool.input, "command") ?? "", mono: true };
-    case "WebFetch":
-    case "WebSearch":
-      return {
-        icon: Globe,
-        verb: tool.toolName === "WebFetch" ? "Fetch" : "Search the web",
-        detail: field(tool.input, "url") ?? field(tool.input, "query") ?? "",
-      };
+    case "list":
+      return { icon: FolderOpen, verb: "List", ...(path ? { detail: path } : {}), mono: true };
+    case "run":
+      return { icon: SquareTerminal, verb: "Run", detail: field(input, "command") ?? "", mono: true };
+    case "fetch":
+      return { icon: Globe, verb: "Fetch", detail: field(input, "url") ?? "" };
+    case "webSearch":
+      return { icon: Globe, verb: "Search the web", detail: field(input, "query") ?? "" };
     default: {
       const [, server, name] = /^mcp__(.+?)__(.+)$/.exec(tool.toolName) ?? [];
       return server && name
