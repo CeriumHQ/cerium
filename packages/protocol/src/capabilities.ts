@@ -32,8 +32,11 @@ export const CapabilityManifest = Schema.Struct({
     images: Schema.Boolean,
   }),
   permissions: Schema.Struct({
-    /** How approval requests reach Cerium. */
-    approvals: Schema.Literals(["callback", "protocol", "hookBridge"]),
+    /**
+     * How approval requests reach Cerium. `none`: the harness cannot ask, so the adapter withholds the
+     * tools that would need approval instead.
+     */
+    approvals: Schema.Literals(["callback", "protocol", "hookBridge", "none"]),
     readOnlyMode: Schema.Boolean,
   }),
   mcpInjection: Schema.Boolean,

@@ -1,0 +1,31 @@
+{"type":"agent","agentId":"agent-3f6b2c1e-8d4a-4c55-9a7e-2b1d0c9e8f71","model":{"id":"composer-2.5"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"user-message-appended","userMessage":{"type":"user_message","session_id":"agent-3f6b2c1e-8d4a-4c55-9a7e-2b1d0c9e8f71","text":"Read hello.txt, then create out.txt containing its contents in uppercase. Finally reply with just the uppercase text."}}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-started","stepId":1}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"thinking-delta","text":"Read hello.txt first,"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"thinking-delta","text":" then write the uppercase copy."}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"thinking-completed","thinkingDurationMs":812}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"text-delta","text":"Reading the file."}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"partial-tool-call","callId":"call_read_1","toolCall":{"type":"read","args":{"path":"<workspace>\\hello.txt"}},"modelCallId":"mc_1"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-started","callId":"call_read_1","toolCall":{"type":"read","args":{"path":"<workspace>\\hello.txt"}},"modelCallId":"mc_1"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-completed","callId":"call_read_1","toolCall":{"type":"read","args":{"path":"<workspace>\\hello.txt"},"result":{"status":"success","value":{"content":"hello from cerium\n","totalLines":1,"fileSize":18}}},"modelCallId":"mc_1"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-completed","stepId":1,"stepDurationMs":1490}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-started","stepId":2}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-started","callId":"call_edit_2","toolCall":{"type":"edit","args":{"path":"<workspace>\\out.txt"}},"modelCallId":"mc_2"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-completed","callId":"call_edit_2","toolCall":{"type":"edit","args":{"path":"<workspace>\\out.txt"},"result":{"status":"success","value":{"linesAdded":1,"linesRemoved":0,"diffString":"+HELLO FROM CERIUM"}}},"modelCallId":"mc_2"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-started","callId":"call_mcp_3","toolCall":{"type":"mcp","args":{"providerIdentifier":"cerium","toolName":"list_agents","args":{}}},"modelCallId":"mc_3"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"tool-call-completed","callId":"call_mcp_3","toolCall":{"type":"mcp","args":{"providerIdentifier":"cerium","toolName":"list_agents","args":{}},"result":{"status":"success","value":{"content":[{"text":{"text":"[]"}}],"isError":false}}},"modelCallId":"mc_3"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-completed","stepId":2,"stepDurationMs":2210}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-started","stepId":3}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"text-delta","text":"HELLO "}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"text-delta","text":"FROM CERIUM"}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"step-completed","stepId":3,"stepDurationMs":640}}
+{"type":"update","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","update":{"type":"turn-ended","usage":{"inputTokens":1180,"outputTokens":86,"cacheReadTokens":29840,"cacheWriteTokens":412}}}
+{"type":"result","turn":"6a1d4f0e-2c3b-4e5f-8a9b-0c1d2e3f4a5b","result":{"id":"run-0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b","requestId":"1f2a3b4c-5d6e-4f70-8b9c-0d1e2f3a4b5c","status":"finished","result":"Reading the file.HELLO FROM CERIUM","model":{"id":"composer-2.5"},"durationMs":5310,"usage":{"inputTokens":1180,"outputTokens":86,"cacheReadTokens":29840,"cacheWriteTokens":412,"totalTokens":31518}}}
+{"type":"update","turn":"7b2e5a1f-3d4c-4f60-9bac-1d2e3f4a5b6c","update":{"type":"user-message-appended","userMessage":{"type":"user_message","session_id":"agent-3f6b2c1e-8d4a-4c55-9a7e-2b1d0c9e8f71","text":"Wait 30 seconds, then reply DONE."}}}
+{"type":"update","turn":"7b2e5a1f-3d4c-4f60-9bac-1d2e3f4a5b6c","update":{"type":"step-started","stepId":1}}
+{"type":"update","turn":"7b2e5a1f-3d4c-4f60-9bac-1d2e3f4a5b6c","update":{"type":"text-delta","text":"Waiting."}}
+{"type":"update","turn":"7b2e5a1f-3d4c-4f60-9bac-1d2e3f4a5b6c","update":{"type":"tool-call-started","callId":"call_shell_1","toolCall":{"type":"shell","args":{"command":"Start-Sleep -Seconds 30","workingDirectory":"<workspace>"}},"modelCallId":"mc_4"}}
+{"type":"result","turn":"7b2e5a1f-3d4c-4f60-9bac-1d2e3f4a5b6c","result":{"id":"run-1f2a3b4c-5d6e-4f70-9b8c-0d1e2f3a4b5c","requestId":"2a3b4c5d-6e7f-4081-9cad-1e2f3a4b5c6d","status":"cancelled","model":{"id":"composer-2.5"},"durationMs":1204}}
+{"type":"result","turn":"8c3f6b2a-4e5d-4071-acbd-2e3f4a5b6c7d","result":{"id":"run-2a3b4c5d-6e7f-4081-acbd-1e2f3a4b5c6d","requestId":"3b4c5d6e-7f80-4192-bdce-2f3a4b5c6d7e","status":"error","error":{"message":"[unknown] Invalid User API Key"},"model":{"id":"composer-2.5"},"durationMs":15461}}
+{"type":"sendFailed","turn":"9d4a7c3b-5f6e-4182-bdce-3f4a5b6c7d8e","error":{"message":"Usage limit exceeded","kind":"rateLimit","code":"resource_exhausted","isRetryable":true}}

@@ -69,6 +69,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Muse adapter: drives the user's installed `muse serve` through `@muse-code/sdk` with its schema pinned: login status, models, sessions with Cerium's bus injected and native subagents off, approvals answered with Muse's own choices, file change tracking, per-turn usage (and cost where Muse prices it), model and effort switching, interrupt and resume. Tested against a session recorded on Muse's offline provider.
 - `@cerium/harness`: adapters can run their harness SDK's own browser sign-in, and `@cerium/rpc` starts it.
 - UI: Harnesses settings sign in a harness whose SDK has its own browser sign-in: the button opens the harness's page in the browser, waits for you to finish there, then checks again. The SDK keeps the key it creates.
+- Cursor adapter: runs Cursor's agent in-process through `@cursor/sdk`: models, sessions with Cerium's bus injected and native subagents off, file change tracking, per-turn usage, model and effort switching, interrupt and resume, and signs in from Harnesses settings with the SDK's own browser login. Cursor can't ask before using a tool, so modes that ask hold back the tools that would need it.
 
 ### Changed
 
@@ -80,6 +81,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the composer and Agents settings offer the models each installed harness actually lists, remembered by provider and model, instead of a fixed list. The last lists are kept so the pickers fill in before the harnesses answer, and "Check again" in Harnesses settings re-reads them.
 - UI: Agents settings picks the lead model with one row per harness and a menu of its models, instead of a chip for every model.
 - `@cerium/protocol`: a logged-out harness may offer a browser sign-in instead of a login command.
+- `@cerium/protocol`: an adapter can declare that its harness has no approvals.
 
 ### Fixed
 
