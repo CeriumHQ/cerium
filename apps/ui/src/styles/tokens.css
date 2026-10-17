@@ -35,6 +35,8 @@
 
   --selection: oklch(1 0 0 / 0.22);
   --focus-ring: oklch(1 0 0 / 0.55);
+  /* Dims the window behind a modal dialog. */
+  --scrim: oklch(0 0 0 / 0.45);
 
   /* Status colours: the only hues in the chrome, each with one meaning. */
   --status-running: oklch(0.72 0.14 245);
@@ -72,6 +74,7 @@
 
   --selection: oklch(0 0 0 / 0.14);
   --focus-ring: oklch(0 0 0 / 0.5);
+  --scrim: oklch(0 0 0 / 0.2);
 
   --status-running: oklch(0.56 0.17 250);
   --status-attention: oklch(0.68 0.16 65);
@@ -103,6 +106,7 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
   --color-accent-fg: var(--accent-fg);
+  --color-scrim: var(--scrim);
 
   --color-running: var(--status-running);
   --color-attention: var(--status-attention);

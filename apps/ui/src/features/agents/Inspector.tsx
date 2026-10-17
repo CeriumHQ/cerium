@@ -16,6 +16,7 @@ import {
 import { useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -168,8 +169,10 @@ function AgentDetails({
   onStop: () => void;
 }) {
   const AccessIcon = accessIcon[agent.access];
+  const [confirmingStop, setConfirmingStop] = useState(false);
   const ended = agent.state === "stopped" || agent.state === "failed";
   const busy = agent.state === "running" || agent.state === "queued";
+  const isLead = agent.parentId === undefined;
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   return (
     <section className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3" aria-label="Agent details">
@@ -224,11 +227,23 @@ function AgentDetails({
                 Interrupt turn
               </MenuItem>
               <MenuSeparator />
-              <MenuItem icon={CircleStop} tone="danger" onClick={onStop}>
-                Stop agent
+              <MenuItem icon={CircleStop} tone="danger" onClick={() => setConfirmingStop(true)}>
+                Stop agent…
               </MenuItem>
             </MenuPopup>
           </MenuRoot>
+          <ConfirmDialog
+            open={confirmingStop}
+            onOpenChange={setConfirmingStop}
+            title={isLead ? "Stop the lead?" : `Stop ${agent.role}?`}
+            description={
+              isLead
+                ? `${agent.model} will stop and this thread will take no more messages: Cerium can't resume a thread yet.`
+                : `${agent.model} will stop and can't be restarted. The lead carries on without it.`
+            }
+            confirmLabel="Stop agent"
+            onConfirm={onStop}
+          />
         </div>
       )}
     </section>
