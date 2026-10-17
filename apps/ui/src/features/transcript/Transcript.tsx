@@ -6,6 +6,7 @@ import { Notice, PermissionCard, Reasoning, SpawnCard, TurnFooter, UserMessage }
 import { Markdown } from "./Markdown.tsx";
 import type { TranscriptBlock } from "./model.ts";
 import { ToolGroup } from "./ToolGroup.tsx";
+import { useStickToBottom } from "./useStickToBottom.ts";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
@@ -91,10 +92,14 @@ export function Transcript({ blocks, agent, childState, onAnswerPermission }: Tr
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
   const roleOf = (agentId: string) => roles.get(agentId) ?? "An agent";
+  const viewport = useStickToBottom(blocks.findLast((block) => block.kind === "user")?.id);
 
   return (
     // Content fades out where the floating composer sits instead of showing through its glass.
-    <ScrollArea className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)]">
+    <ScrollArea
+      viewportRef={viewport}
+      className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
+    >
       <div className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8 pb-40">
         {layout(blocks).map((item) => {
           switch (item.kind) {
