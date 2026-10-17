@@ -7,5 +7,11 @@ contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
-  setTheme: (theme: "system" | "dark" | "light"): void => ipcRenderer.send("cerium:set-theme", theme),
+  setTheme: (theme: "system" | "dark" | "light"): Promise<boolean> =>
+    ipcRenderer.invoke("cerium:set-theme", theme),
+  onDarkColorsChange: (listener: (dark: boolean) => void): (() => void) => {
+    const forward = (_event: unknown, dark: unknown) => listener(dark === true);
+    ipcRenderer.on("cerium:dark-colors", forward);
+    return () => ipcRenderer.off("cerium:dark-colors", forward);
+  },
 });

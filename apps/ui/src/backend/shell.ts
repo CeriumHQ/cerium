@@ -11,8 +11,13 @@ export interface ShellBridge {
   /** The packaged app's backend; in development the UI asks the dev server instead. */
   readonly backend?: BackendConnection;
   readonly pickFolder?: () => Promise<string | undefined>;
-  /** Windows tints the window's Acrylic and draws its caption buttons in this theme. */
-  readonly setTheme?: (theme: "system" | "dark" | "light") => void;
+  /**
+   * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether
+   * that means dark colours, which for "system" is Windows' own choice.
+   */
+  readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
+  /** Calls back whenever Windows' colours turn dark or light; returns how to stop. */
+  readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
 }
 
 declare global {

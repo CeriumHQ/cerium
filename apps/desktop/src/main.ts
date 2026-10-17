@@ -76,15 +76,21 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
 });
 
 /**
- * The UI's theme choice. Windows tints Acrylic from the native theme, so it follows the UI; "system"
- * also makes the page's `prefers-color-scheme` track Windows.
+ * The UI's theme choice. Windows tints Acrylic from the native theme, so it follows the UI. Answers
+ * whether that means dark colours: after a forced theme, the page's `prefers-color-scheme` doesn't
+ * return to Windows' own when the choice goes back to "system", so the UI asks here instead.
  */
-ipcMain.on("cerium:set-theme", (_event, theme: unknown) => {
+ipcMain.handle("cerium:set-theme", (_event, theme: unknown) => {
   if (theme === "system" || theme === "dark" || theme === "light") nativeTheme.themeSource = theme;
+  return nativeTheme.shouldUseDarkColors;
 });
 
+// Windows switching between light and dark, or the UI changing the theme.
 nativeTheme.on("updated", () => {
-  for (const window of BrowserWindow.getAllWindows()) window.setTitleBarOverlay(titleBarOverlay());
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.setTitleBarOverlay(titleBarOverlay());
+    window.webContents.send("cerium:dark-colors", nativeTheme.shouldUseDarkColors);
+  }
 });
 
 void app.whenReady().then(() => {
