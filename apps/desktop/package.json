@@ -9,6 +9,9 @@
     "build": "vp pack",
     "dev": "vp pack && electron . --dev-url=http://localhost:5173"
   },
+  "dependencies": {
+    "koffi": "3.3.3"
+  },
   "devDependencies": {
     "electron": "44.8.0"
   }

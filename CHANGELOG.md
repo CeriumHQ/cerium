@@ -46,4 +46,5 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Desktop: Acrylic now shows through the window (the window is transparent), with edge resizing, Snap and Windows 11 rounded corners restored natively since Electron removes them from transparent windows.
 - Claude adapter: trusted bus tools are approved inside the permission callback instead of through `allowedTools`, which bypassed the callback and triggered an SDK warning.
