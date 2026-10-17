@@ -58,3 +58,4 @@ All notable changes to Cerium are recorded here. The format follows
 - Claude adapter: trusted bus tools are approved inside the permission callback instead of through `allowedTools`, which bypassed the callback and triggered an SDK warning.
 - `@cerium/rpc`: events reach the UI without the provider's original message, which isn't always strict JSON and ended the live event stream.
 - UI: the message box no longer draws a second focus outline inside the composer's own focus border; components with their own focus style can opt out of the global ring.
+- UI: picker labels in the composer stay on one line when space is tight.

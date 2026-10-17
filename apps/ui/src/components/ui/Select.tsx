@@ -12,7 +12,7 @@ export function SelectTrigger({ children, label }: { children: ReactNode; label:
   return (
     <BaseSelect.Trigger
       aria-label={label}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
+      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
     >
       {children}
       <BaseSelect.Icon className="text-fg-tertiary">
