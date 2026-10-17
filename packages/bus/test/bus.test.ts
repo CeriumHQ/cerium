@@ -1,5 +1,5 @@
 import type { McpServerSpec } from "@cerium/harness";
-import { Adapters, Catalog, Orchestrator, OrchestratorConfig } from "@cerium/orchestrator";
+import { Adapters, Catalog, Orchestrator, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
 import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
@@ -15,6 +15,7 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
   BusServer.pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(BusRegistryLive),
+    Layer.provideMerge(UserSettings.layer),
     Layer.provide(
       Layer.mergeAll(
         Store.layer({

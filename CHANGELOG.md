@@ -25,6 +25,8 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/store`: SQLite persistence for threads, agents and the append-only event log, using Drizzle on Node's built-in `node:sqlite` with generated migrations and an FTS5 startup check.
 - `@cerium/store`: per-thread event history, and stopping agents a previous run left live.
 - `@cerium/store`: a `settings` table that keeps the user's settings as JSON values by key.
+- `@cerium/protocol`: the user's settings the backend applies, starting with whether sessions load the user's own MCP servers.
+- `@cerium/orchestrator`: the user's settings, saved in the store and read when a session starts; a stored value that no longer decodes falls back to its default.
 - `@cerium/harness`: sessions can mark injected MCP servers as trusted so their tools skip approval prompts.
 - Claude adapter: trusted MCP servers' tools run without permission prompts.
 - `@cerium/orchestrator`: threads with a lead and depth-1 children; inbox delivery that batches notices into one turn and never interrupts a running turn; per-provider and global concurrency caps; catalog spawns with access narrowing and user approval for other models; lead/child/cross-thread messaging rules with per-pair budgets; child results delivered to the lead; persisted, live-streamed event log.
@@ -59,6 +61,7 @@ All notable changes to Cerium are recorded here. The format follows
 - The scripted fake harness adapter used in tests is shared from `@cerium/harness/testing`.
 - `@cerium/store` applies its own bundled migrations unless given another folder.
 - UI: agent markdown is sized for the conversation: compact headings, hanging list markers, inline code at the text's size, quiet blockquotes and links, and code blocks and tables as single cards with a copy button, without line numbers or download buttons.
+- `@cerium/orchestrator`: sessions load the user's own MCP servers only while that setting is on (default on); it was always on.
 
 ### Fixed
 

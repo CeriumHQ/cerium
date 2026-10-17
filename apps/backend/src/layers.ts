@@ -1,6 +1,13 @@
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
-import { Adapters, Catalog, Orchestrator, OrchestratorConfig, type CatalogEntry } from "@cerium/orchestrator";
+import {
+  Adapters,
+  Catalog,
+  Orchestrator,
+  OrchestratorConfig,
+  UserSettings,
+  type CatalogEntry,
+} from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import { Effect, Layer } from "effect";
 import { HttpRouter } from "effect/http";
@@ -37,6 +44,7 @@ export const backendLayer = (options: BackendOptions) =>
   }).pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(BusRegistryLive),
+    Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(
       Layer.mergeAll(
         Store.layer({ filename: join(options.dataDirectory, "cerium.db") }),

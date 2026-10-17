@@ -14,3 +14,4 @@ export {
   type CatalogEntry,
   type OrchestratorSettings,
 } from "./services.ts";
+export { UserSettings } from "./settings.ts";

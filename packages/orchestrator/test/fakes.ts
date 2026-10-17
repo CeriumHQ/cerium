@@ -13,6 +13,7 @@ import {
   Catalog,
   Orchestrator,
   OrchestratorConfig,
+  UserSettings,
   type CatalogEntry,
 } from "../src/index.ts";
 
@@ -27,6 +28,7 @@ export const testLayer = (
   options: { readonly catalog?: ReadonlyArray<CatalogEntry>; readonly messageLimit?: number } = {},
 ) =>
   Orchestrator.layer.pipe(
+    Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(
       Store.layer({
         filename: ":memory:",

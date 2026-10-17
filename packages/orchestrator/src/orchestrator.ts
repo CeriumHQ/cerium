@@ -39,6 +39,7 @@ import {
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { renderTurn, systemPrompt, truncate } from "./prompts.ts";
 import { Adapters, BusEndpoint, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
+import { UserSettings } from "./settings.ts";
 
 export interface CreateThreadInput {
   readonly title: string;
@@ -146,6 +147,7 @@ export class Orchestrator extends Context.Service<
       const { entries: catalog } = yield* Catalog;
       const bus = yield* BusEndpoint;
       const config = yield* OrchestratorConfig;
+      const settings = yield* UserSettings;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -312,6 +314,7 @@ export class Orchestrator extends Context.Service<
           }
           const scope = yield* Scope.fork(layerScope);
           const started = Effect.gen(function* () {
+            const { includeUserMcpServers } = yield* settings.get;
             const busSpec = yield* bus.register(info.id);
             yield* Scope.addFinalizer(scope, bus.unregister(info.id));
             const session = yield* adapter
@@ -321,7 +324,7 @@ export class Orchestrator extends Context.Service<
                 ...(info.effort ? { effort: info.effort } : {}),
                 access: info.access,
                 mcpServers: { [bus.serverName]: busSpec },
-                includeUserMcpServers: true,
+                includeUserMcpServers,
                 trustedMcpServers: [bus.serverName],
                 appendSystemPrompt: systemPrompt(info, bus.serverName),
               })
