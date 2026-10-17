@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/nonlooped/cerium/discussions
+    about: Ask a question or talk an idea through before it becomes an issue.
+  - name: Report a security problem
+    url: https://github.com/nonlooped/cerium/security/advisories/new
+    about: Report vulnerabilities privately, never in public issues.

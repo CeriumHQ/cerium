@@ -1,5 +1,5 @@
 # Workflow actions are pinned to commit SHAs; Dependabot keeps them current in one monthly pull request.
-# npm dependencies stay out: they are upgraded on purpose, one package family at a time (AGENTS.md).
+# npm dependencies stay out: they are upgraded on purpose, one package family at a time (CONTRIBUTING.md).
 version: 2
 updates:
   - package-ecosystem: github-actions

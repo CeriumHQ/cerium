@@ -1,5 +1,6 @@
-// Checks commit messages against the git rules in AGENTS.md: one Conventional Commits subject line
-// (`type(scope): summary`) with no body and no trailers. CI runs it on every push and pull request.
+// Checks commit messages against the rules in CONTRIBUTING.md: one Conventional Commits subject
+// line (`type(scope): summary`) with no body and no trailers. CI runs it on every push and pull
+// request.
 //
 // Usage: node scripts/check-commits.ts <base> [head]
 // Checks base..head, or only head when base is empty, all zeros (a new branch) or not in the history.
@@ -64,8 +65,8 @@ for (const { hash, parents, email, lines } of commits) {
 }
 
 if (failed > 0) {
-  console.error(`Commit messages: ${failed} of ${checked} checked break the rules in AGENTS.md.`);
+  console.error(`Commit messages: ${failed} of ${checked} checked break the rules in CONTRIBUTING.md.`);
   process.exitCode = 1;
 } else {
-  console.log(`Commit messages: ${checked} checked, all follow the rules in AGENTS.md.`);
+  console.log(`Commit messages: ${checked} checked, all follow the rules in CONTRIBUTING.md.`);
 }

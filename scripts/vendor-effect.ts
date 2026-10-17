@@ -1,5 +1,5 @@
 // Fetches the Effect source at the exact version Cerium depends on into vendor/effect,
-// so agents can read the real v4 APIs instead of recalling v3 ones (see AGENTS.md).
+// so contributors and coding agents can read the real v4 APIs instead of recalling v3 ones.
 //
 // Usage: bun run vendor:effect [--force]
 

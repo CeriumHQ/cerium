@@ -73,13 +73,14 @@ All notable changes to Cerium are recorded here. The format follows
 - Cursor adapter: runs Cursor's agent in-process through `@cursor/sdk`: models, sessions with Cerium's bus injected and native subagents off, file change tracking, per-turn usage, model and effort switching, interrupt and resume, and signs in from Harnesses settings with the SDK's own browser login. Cursor can't ask before using a tool, so modes that ask hold back the tools that would need it.
 - `@cerium/backend`: registers the Codex, Muse and Cursor adapters beside Claude; until onboarding builds the catalog, a lead may spawn any model a logged-in harness offers.
 - UI: tool calls from Codex, Muse and Cursor read like Claude's, naming the file read or edited, the command run or the pattern searched, and Harnesses settings say how each harness is signed in.
-- CI on GitHub Actions for every push to main and every pull request: commit messages are checked against the rules in `AGENTS.md`, formatting, lint, types and tests run on Linux, then the tests run and the installer is built on Windows. Dependabot keeps the workflows' pinned actions current.
+- CI on GitHub Actions for every push to main and every pull request: commit messages are checked against the rules in `CONTRIBUTING.md`, formatting, lint, types and tests run on Linux, then the tests run and the installer is built on Windows. Dependabot keeps the workflows' pinned actions current.
 - `bun run build` builds every workspace package that has a build, and `scripts/check-commits.ts` checks a range of commit messages locally.
 - Desktop: `bun run package` builds an unsigned Windows installer with electron-builder. The installed app starts its own backend in the background, keeps its data in the app's data folder, restarts the backend if it stops, and shuts it down cleanly on quit.
 - `bun run dev` starts the backend, the UI's dev server and the desktop window together in one terminal, each line labelled with where it came from; closing the window or pressing Ctrl+C stops all three. `bun run dev --browser` leaves out the window.
 - Automatic releases: each push to main that changes the app publishes a nightly installer once CI passes (Cerium Nightly, which installs beside the stable app with its own data), and once a day the newest nightly is rebuilt as a stable release, versioned from its Conventional Commits, with this changelog's new entries as its notes.
 - Desktop: the app, its window and the installer carry Cerium's Prism C mark instead of Electron's default icon. `bun run --cwd apps/desktop icons` redraws the icon from the mark.
 - Desktop: the installer is a guided setup with a welcome page, a choice of install folder and Cerium's own artwork and icon, replacing the one-click installer.
+- A README with screenshots of Cerium at work, a contributing guide, code of conduct, security policy and support page, and issue and pull request templates.
 
 ### Changed
 

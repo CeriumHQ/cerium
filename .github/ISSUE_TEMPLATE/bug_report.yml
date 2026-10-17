@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in Cerium doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Security problems go through [SECURITY.md](https://github.com/nonlooped/cerium/blob/main/SECURITY.md), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a work thread with …
+        2. Ask the lead to …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Cerium version
+      description: From the installer or the release you downloaded, e.g. 0.1.0-nightly.3.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: checkboxes
+    id: harnesses
+    attributes:
+      label: Harnesses involved
+      options:
+        - label: Claude Code
+        - label: Codex
+        - label: Muse Code
+        - label: Cursor
+  - type: textarea
+    id: harness-versions
+    attributes:
+      label: Harness versions
+      description: Shown in Settings → Harnesses.
+      placeholder: "Claude Code 2.1.302, Codex 0.162.1"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Anything else that helps. Remove anything private first.
