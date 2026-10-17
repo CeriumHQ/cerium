@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request cancels its running checks. Every other run gets a group of its own,
+# so each push to main is checked and can publish its nightly.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Older nightlies are deleted, with their tags, once a newer one is published.
+  NIGHTLIES_KEPT: 10
+
+jobs:
+  commits:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node scripts/check-commits.ts "$BASE" "$HEAD"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  # The platform-independent gates run once, on the fastest and cheapest runner. Each step after
+  # setup runs even when an earlier one fails, so one run reports every problem.
+  check:
+    name: Check (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup
+      - name: Format and lint
+        run: bun run check
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run typecheck
+      - name: Test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run test --run
+
+  # Windows is the shipping platform: its tests cover paths and processes, and it builds the
+  # installer. It waits for the Linux gates so a change that fails them spends no Windows minutes.
+  # A push to main that changes the app publishes its installer as a nightly (scripts/release.ts).
+  windows:
+    name: Test and package (Windows)
+    needs: [commits, check]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release plan reads the release tags and the commits since them.
+          fetch-depth: 0
+          persist-credentials: false
+      - id: setup
+        uses: ./.github/actions/setup
+      - name: Test
+        run: bun run test --run
+      - name: Build
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run build
+      - id: plan
+        name: Plan the nightly
+        run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER" --notes="$RUNNER_TEMP/notes.md"
+      - name: Package
+        uses: ./.github/actions/package
+        with:
+          channel: nightly
+          version: ${{ steps.plan.outputs.version }}
+      - name: Publish the nightly
+        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          TITLE: ${{ steps.plan.outputs.title }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
+        run: |
+          gh release create "$TAG" apps/desktop/out/*.exe --target "$COMMIT" --title "$TITLE" \
+            --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
+      - name: Prune old nightlies
+        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.createdAt) | reverse | .[].tagName' |
+            tail -n +"$((NIGHTLIES_KEPT + 1))" |
+            while read -r tag; do
+              gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"
+            done

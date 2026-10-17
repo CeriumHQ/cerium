@@ -1,0 +1,31 @@
+name: Set up the workspace
+description: Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile.
+
+runs:
+  using: composite
+  steps:
+    # Bun is the package manager only; the version comes from package.json's packageManager field.
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+    # Code runs on Node 24, the Node that Electron bundles in production.
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+
+    - id: bun-cache
+      shell: bash
+      run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.bun-cache.outputs.dir }}
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    # Installing also runs the root `prepare` script, which patches the Effect diagnostics into
+    # TypeScript and Oxlint.
+    - shell: bash
+      run: bun install --frozen-lockfile
+      env:
+        # Nothing in CI starts Electron, so its binary download is skipped.
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"

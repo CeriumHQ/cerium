@@ -1,0 +1,29 @@
+name: Package the installer
+description: Builds the unsigned Windows installer for a release channel into apps/desktop/out. Run after the build.
+
+inputs:
+  channel:
+    description: The release channel, stable or nightly; a nightly installs beside the stable app.
+    required: true
+  version:
+    description: The version the installer carries, from scripts/release.ts.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # electron-builder downloads Electron, NSIS and its other tools into these folders.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/AppData/Local/electron/Cache
+          ~/AppData/Local/electron-builder/Cache
+        key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json') }}
+
+    # makensis now and then fails with "Can't open output file" while writing the installer; seen in
+    # fresh checkouts, and a second attempt has always succeeded.
+    - shell: bash
+      run: bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
+      env:
+        CERIUM_CHANNEL: ${{ inputs.channel }}
+        CERIUM_VERSION: ${{ inputs.version }}

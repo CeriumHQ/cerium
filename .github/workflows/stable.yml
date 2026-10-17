@@ -1,0 +1,88 @@
+name: Stable release
+
+# Once a day the newest nightly's commit, which passed CI, is rebuilt and published as a stable
+# release when anything that ships changed since the last one (scripts/release.ts).
+on:
+  schedule:
+    - cron: "17 1 * * *" # 04:17 at UTC+3
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release this version instead of the computed one, e.g. 1.0.0
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-release
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Deciding runs on Linux, so a day with nothing to release never starts a Windows runner.
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.plan.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: plan
+        run: node scripts/release.ts stable --version="$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
+  release:
+    name: Package and publish (Windows)
+    needs: plan
+    if: ${{ needs.plan.outputs.publish == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build
+        run: bun run build
+      - id: notes
+        name: Write the release notes
+        run: node scripts/release.ts stable --commit="$COMMIT" --version="$VERSION" --notes="$RUNNER_TEMP/notes.md"
+        env:
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          VERSION: ${{ needs.plan.outputs.version }}
+      # The notes step re-checks the plan, in case a stable was released from this commit meanwhile.
+      - name: Package
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: ./.github/actions/package
+        with:
+          channel: stable
+          version: ${{ needs.plan.outputs.version }}
+      - name: Publish
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          TITLE: ${{ steps.notes.outputs.title }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+        run: |
+          gh release create "$TAG" apps/desktop/out/*.exe --target "$COMMIT" --title "$TITLE" \
+            --notes-file "$RUNNER_TEMP/notes.md" --latest
