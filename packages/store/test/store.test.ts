@@ -167,6 +167,24 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("stores settings as JSON values, replacing earlier ones", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        assert.deepStrictEqual(yield* store.readSettings, {});
+
+        yield* store.writeSettings({ includeUserMcpServers: false, nested: { a: [1, 2] } });
+        yield* store.writeSettings({ includeUserMcpServers: true });
+        yield* store.writeSettings({});
+
+        assert.deepStrictEqual(yield* store.readSettings, {
+          includeUserMcpServers: true,
+          nested: { a: [1, 2] },
+        });
+      }),
+    ),
+  );
+
   it.effect("enforces foreign keys", () =>
     withStore(
       Effect.gen(function* () {

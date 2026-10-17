@@ -54,3 +54,9 @@ export const events = sqliteTable(
     index("events_thread_at").on(table.threadId, table.at),
   ],
 );
+
+/** The user's settings the backend applies, one JSON value per key. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull(),
+});
