@@ -26,6 +26,9 @@
       "path": "./packages/adapters/codex"
     },
     {
+      "path": "./packages/adapters/muse"
+    },
+    {
       "path": "./apps/backend"
     },
     {

@@ -66,6 +66,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/harness`: adapters list the models their harness offers; the Claude adapter asks the installed Claude Code.
 - `@cerium/rpc`: each harness's models.
 - Codex adapter: drives the user's installed `codex app-server` over JSON-RPC, with types generated from it: login and plan, the picker's models, threads with Cerium's bus injected and native subagents off, approvals for commands, file changes, MCP tools and permissions, file change tracking, per-turn usage, mid-session model and effort switching, interrupt and resume. Tested against a recorded session and verified live.
+- Muse adapter: drives the user's installed `muse serve` through `@muse-code/sdk` with its schema pinned: login status, models, sessions with Cerium's bus injected and native subagents off, approvals answered with Muse's own choices, file change tracking, per-turn usage (and cost where Muse prices it), model and effort switching, interrupt and resume. Tested against a session recorded on Muse's offline provider.
 
 ### Changed
 
