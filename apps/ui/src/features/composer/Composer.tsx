@@ -153,7 +153,11 @@ export function Composer({ target, running, onSend, onStop }: ComposerProps) {
                     <SelectGroup key={provider}>
                       {index > 0 ? <SelectSeparator /> : null}
                       <SelectGroupLabel>
-                        <ProviderLogo provider={provider} size={11} />
+                        <ProviderLogo
+                          provider={provider}
+                          size={11}
+                          {...(target.available.has(provider) ? {} : { className: "opacity-35 grayscale" })}
+                        />
                         {providerName[provider]}
                         {target.available.has(provider) ? null : (
                           <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>

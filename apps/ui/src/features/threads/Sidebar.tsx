@@ -222,10 +222,15 @@ function SidebarFooter({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicato
             <Button
               aria-label={`${providerName[provider]} status`}
               className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover ${
-                state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-disabled"
+                state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-secondary"
               }`}
             >
-              <ProviderLogo provider={provider} size={14} />
+              {/* Colour marks dim the same way as single-colour ones when the harness can't run. */}
+              <ProviderLogo
+                provider={provider}
+                size={14}
+                {...(state === "ready" ? {} : { className: "opacity-35 grayscale" })}
+              />
               {state === "loggedOut" ? (
                 <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-attention" />
               ) : null}

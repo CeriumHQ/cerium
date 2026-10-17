@@ -59,3 +59,4 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/rpc`: events reach the UI without the provider's original message, which isn't always strict JSON and ended the live event stream.
 - UI: the message box no longer draws a second focus outline inside the composer's own focus border; components with their own focus style can opt out of the global ring.
 - UI: picker labels in the composer stay on one line when space is tight.
+- UI: logos of harnesses that can't run dim the same way whether the logo is in colour or not, in the sidebar and the model picker.
