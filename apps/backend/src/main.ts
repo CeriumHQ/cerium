@@ -25,7 +25,8 @@ const connectionFile = flag("connection-file");
 const token = randomBytes(32).toString("hex");
 mkdirSync(dataDirectory, { recursive: true });
 
-// Until onboarding builds the catalog with the user, every installed Claude model is fair game.
+// Until onboarding builds the catalog with the user, these lead it, followed by every model the
+// logged-in harnesses offer (`catalogFrom`).
 const catalog: ReadonlyArray<CatalogEntry> = [
   { alias: "opus", provider: "claude", model: "opus", description: "Hard problems, design and review" },
   { alias: "sonnet", provider: "claude", model: "sonnet", description: "Everyday coding" },

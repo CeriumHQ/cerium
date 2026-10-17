@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src", "scripts"],
+  "include": ["src", "scripts", "test"],
   "references": [
     {
       "path": "../../packages/protocol"
@@ -19,6 +19,15 @@
     },
     {
       "path": "../../packages/adapters/claude"
+    },
+    {
+      "path": "../../packages/adapters/codex"
+    },
+    {
+      "path": "../../packages/adapters/muse"
+    },
+    {
+      "path": "../../packages/adapters/cursor"
     },
     {
       "path": "../../packages/rpc"

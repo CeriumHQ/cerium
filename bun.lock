@@ -16,6 +16,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@cerium/adapter-claude": "workspace:*",
+        "@cerium/adapter-codex": "workspace:*",
+        "@cerium/adapter-cursor": "workspace:*",
+        "@cerium/adapter-muse": "workspace:*",
         "@cerium/bus": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
@@ -23,6 +26,9 @@
         "@cerium/store": "workspace:*",
         "@effect/platform-node": "4.0.5",
         "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@effect/vitest": "4.0.5",
       },
     },
     "apps/desktop": {
