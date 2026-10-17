@@ -90,7 +90,15 @@ function AgentState({ state }: { state: "running" | "idle" | "failed" }) {
   );
 }
 
-export function PermissionCard({ block }: { block: Block<"permission"> }) {
+export type PermissionAnswer = (decision: "allow" | "deny", scope: "once" | "session") => void;
+
+export function PermissionCard({
+  block,
+  onAnswer,
+}: {
+  block: Block<"permission">;
+  onAnswer?: PermissionAnswer;
+}) {
   const command =
     typeof block.input === "object" && block.input !== null
       ? (block.input as Record<string, unknown>)["command"]
@@ -125,13 +133,22 @@ export function PermissionCard({ block }: { block: Block<"permission"> }) {
         </pre>
       ) : null}
       <div className="flex items-center gap-1.5">
-        <Button className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80">
+        <Button
+          onClick={() => onAnswer?.("allow", "once")}
+          className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+        >
           Allow once
         </Button>
-        <Button className="h-7 rounded-md border border-line-strong px-2.5 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover">
+        <Button
+          onClick={() => onAnswer?.("allow", "session")}
+          className="h-7 rounded-md border border-line-strong px-2.5 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover"
+        >
           Allow for session
         </Button>
-        <Button className="ml-auto h-7 rounded-md px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
+        <Button
+          onClick={() => onAnswer?.("deny", "once")}
+          className="ml-auto h-7 rounded-md px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+        >
           Deny
         </Button>
       </div>

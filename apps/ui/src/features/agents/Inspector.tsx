@@ -37,10 +37,12 @@ const compact = (value: number) =>
 interface InspectorProps {
   readonly agents: ReadonlyArray<AgentSummary>;
   readonly onClose: () => void;
+  readonly onInterrupt?: (agentId: string) => void;
+  readonly onStop?: (agentId: string) => void;
 }
 
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
-export function Inspector({ agents, onClose }: InspectorProps) {
+export function Inspector({ agents, onClose, onInterrupt, onStop }: InspectorProps) {
   const lead = agents.find((agent) => agent.parentId === undefined);
   const [selectedId, setSelectedId] = useState(lead?.id);
   if (lead === undefined) return null;
@@ -69,7 +71,11 @@ export function Inspector({ agents, onClose }: InspectorProps) {
           ))}
         </div>
 
-        <AgentDetails agent={selected} />
+        <AgentDetails
+          agent={selected}
+          onInterrupt={() => onInterrupt?.(selected.id)}
+          onStop={() => onStop?.(selected.id)}
+        />
         <UsageSummary agents={agents} />
       </ScrollArea>
     </div>
@@ -149,7 +155,15 @@ function StateBadge({ agent }: { agent: AgentSummary }) {
   );
 }
 
-function AgentDetails({ agent }: { agent: AgentSummary }) {
+function AgentDetails({
+  agent,
+  onInterrupt,
+  onStop,
+}: {
+  agent: AgentSummary;
+  onInterrupt: () => void;
+  onStop: () => void;
+}) {
   const AccessIcon = accessIcon[agent.access];
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   return (
@@ -198,9 +212,11 @@ function AgentDetails({ agent }: { agent: AgentSummary }) {
             </Button>
           </MenuTrigger>
           <MenuPopup>
-            <MenuItem icon={Pause}>Interrupt turn</MenuItem>
+            <MenuItem icon={Pause} onClick={onInterrupt}>
+              Interrupt turn
+            </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={CircleStop} tone="danger">
+            <MenuItem icon={CircleStop} tone="danger" onClick={onStop}>
               Stop agent
             </MenuItem>
           </MenuPopup>

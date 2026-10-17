@@ -12,6 +12,11 @@ interface TranscriptProps {
   readonly agent: { readonly provider: ProviderId; readonly model: string };
   /** Live state of a spawned child, for its card. */
   readonly childState: (childId: string) => "running" | "idle" | "failed";
+  readonly onAnswerPermission?: (
+    requestId: string,
+    decision: "allow" | "deny",
+    scope: "once" | "session",
+  ) => void;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -81,7 +86,7 @@ const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => 
   return items;
 };
 
-export function Transcript({ blocks, agent, childState }: TranscriptProps) {
+export function Transcript({ blocks, agent, childState, onAnswerPermission }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
@@ -114,7 +119,14 @@ export function Transcript({ blocks, agent, childState }: TranscriptProps) {
                 </div>
               );
             case "block":
-              return <ResponseBlock key={item.id} block={item.block} roleOf={roleOf} />;
+              return (
+                <ResponseBlock
+                  key={item.id}
+                  block={item.block}
+                  roleOf={roleOf}
+                  {...(onAnswerPermission ? { onAnswerPermission } : {})}
+                />
+              );
           }
         })}
       </div>
@@ -133,7 +145,15 @@ function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
   );
 }
 
-function ResponseBlock({ block, roleOf }: { block: TranscriptBlock; roleOf: (agentId: string) => string }) {
+function ResponseBlock({
+  block,
+  roleOf,
+  onAnswerPermission,
+}: {
+  block: TranscriptBlock;
+  roleOf: (agentId: string) => string;
+  onAnswerPermission?: TranscriptProps["onAnswerPermission"];
+}) {
   switch (block.kind) {
     case "notice":
       return <Notice block={block} roleOf={roleOf} />;
@@ -146,7 +166,14 @@ function ResponseBlock({ block, roleOf }: { block: TranscriptBlock; roleOf: (age
     case "reasoning":
       return <Reasoning block={block} />;
     case "permission":
-      return <PermissionCard block={block} />;
+      return (
+        <PermissionCard
+          block={block}
+          onAnswer={(decision, scope) =>
+            onAnswerPermission?.(block.id.replace(/^permission:/, ""), decision, scope)
+          }
+        />
+      );
     case "turnEnd":
       return <TurnFooter block={block} />;
     case "error":

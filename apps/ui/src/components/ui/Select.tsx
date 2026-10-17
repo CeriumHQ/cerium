@@ -51,15 +51,18 @@ export function SelectItem({
   value,
   children,
   description,
+  disabled,
 }: {
   value: string;
   children: ReactNode;
   description?: string;
+  disabled?: boolean;
 }) {
   return (
     <BaseSelect.Item
       value={value}
-      className="grid cursor-default grid-cols-[1fr_auto] items-center gap-x-6 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary"
+      {...(disabled ? { disabled } : {})}
+      className="grid cursor-default grid-cols-[1fr_auto] items-center gap-x-6 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:opacity-40"
     >
       <span className="flex min-w-0 flex-col">
         <BaseSelect.ItemText className="truncate">{children}</BaseSelect.ItemText>

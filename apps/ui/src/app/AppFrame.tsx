@@ -5,6 +5,7 @@ import type { AppMode } from "./ModeSwitch.tsx";
 import { Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
+  readonly thread?: { readonly title: string; readonly project?: string };
   readonly mode: AppMode;
   readonly onModeChange: (mode: AppMode) => void;
   readonly sidebar: ReactNode;
@@ -21,6 +22,7 @@ interface AppFrameProps {
  * transcript, which floats above it as an inset card. The inspector opens beside it on demand.
  */
 export function AppFrame({
+  thread,
   mode,
   onModeChange,
   sidebar,
@@ -32,6 +34,7 @@ export function AppFrame({
   return (
     <div className="flex h-full flex-col bg-surface-window">
       <Titlebar
+        {...(thread ? { thread } : {})}
         mode={mode}
         onModeChange={onModeChange}
         agents={agents}

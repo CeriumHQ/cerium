@@ -16,6 +16,13 @@ interface SidebarProps {
   readonly threads: ReadonlyArray<ThreadSummary>;
   readonly selectedId: string | undefined;
   readonly onSelect: (threadId: string) => void;
+  readonly onNewThread: () => void;
+  readonly harnesses: ReadonlyArray<HarnessIndicator>;
+}
+
+export interface HarnessIndicator {
+  readonly provider: ProviderId;
+  readonly state: "ready" | "loggedOut" | "missing" | "unsupported";
 }
 
 interface ThreadGroupData {
@@ -51,11 +58,14 @@ const groupThreads = (
   return [...byKey.values()];
 };
 
-export function Sidebar({ mode, threads, selectedId, onSelect }: SidebarProps) {
+export function Sidebar({ mode, threads, selectedId, onSelect, onNewThread, harnesses }: SidebarProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
-        <Button className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active">
+        <Button
+          onClick={onNewThread}
+          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active"
+        >
           <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary" />
           {mode === "work" ? "New thread" : "New chat"}
           <kbd className="ml-auto font-sans text-2xs text-fg-tertiary">Ctrl N</kbd>
@@ -81,7 +91,7 @@ export function Sidebar({ mode, threads, selectedId, onSelect }: SidebarProps) {
         </nav>
       </ScrollArea>
 
-      <SidebarFooter />
+      <SidebarFooter harnesses={harnesses} />
     </div>
   );
 }
@@ -195,16 +205,14 @@ function ProviderStack({ providers }: { providers: ReadonlyArray<ProviderId> }) 
   );
 }
 
-const harnesses: ReadonlyArray<{ provider: ProviderId; state: "ready" | "loggedOut" | "missing" }> = [
-  { provider: "claude", state: "ready" },
-  { provider: "codex", state: "ready" },
-  { provider: "muse", state: "loggedOut" },
-  { provider: "cursor", state: "missing" },
-];
+const harnessState: Record<HarnessIndicator["state"], string> = {
+  ready: "ready",
+  loggedOut: "not logged in",
+  missing: "not installed",
+  unsupported: "not supported yet",
+};
 
-const harnessState = { ready: "ready", loggedOut: "not logged in", missing: "not installed" };
-
-function SidebarFooter() {
+function SidebarFooter({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
   return (
     <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5">
       <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," />

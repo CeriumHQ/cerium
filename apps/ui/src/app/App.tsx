@@ -1,51 +1,225 @@
+import type { AgentEvent, AgentId, ProviderId } from "@cerium/protocol";
+import type { ThreadOverview } from "@cerium/rpc";
+import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Cause } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useState } from "react";
 
+import {
+  createThread,
+  harnessesAtom,
+  interruptAgent,
+  respondToPermission,
+  sendMessage,
+  stopAgent,
+  threadEventsAtom,
+  threadsAtom,
+} from "../backend/atoms.ts";
+import { connectionAtom } from "../backend/client.ts";
+import { pickFolder } from "../backend/shell.ts";
+import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
-import { agentsFixture } from "../dev/agentsFixture.ts";
-import { threadFixtures } from "../dev/fixtures.ts";
-import { leadFixture, transcriptFixture } from "../dev/transcriptFixture.ts";
 import { Inspector } from "../features/agents/Inspector.tsx";
-import { Composer } from "../features/composer/Composer.tsx";
-import { Sidebar } from "../features/threads/Sidebar.tsx";
+import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { AppFrame } from "./AppFrame.tsx";
+import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
+import { Notice } from "./Notice.tsx";
+
+const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
+const FOLDER_KEY = "cerium:lastFolder";
+
+const storedFolder = () => {
+  try {
+    return localStorage.getItem(FOLDER_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const messageOf = (error: unknown) =>
+  typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message
+    : "Something went wrong.";
+
+const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
 export function App() {
-  const [selectedThread, setSelectedThread] = useState<string | undefined>("t1");
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [mode, setMode] = useState<AppMode>("work");
   return (
-    <TooltipProvider delay={400}>
-      <AppFrame
-        mode={mode}
-        onModeChange={setMode}
-        sidebar={
-          <Sidebar
-            mode={mode}
-            threads={threadFixtures}
-            selectedId={selectedThread}
-            onSelect={setSelectedThread}
+    <RegistryProvider>
+      <TooltipProvider delay={400}>
+        <Workspace />
+      </TooltipProvider>
+    </RegistryProvider>
+  );
+}
+
+function Workspace() {
+  const [mode, setMode] = useState<AppMode>("work");
+  /** The open thread per mode; none means "start a new one". */
+  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>({});
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [folder, setFolder] = useState(storedFolder);
+  const [actionError, setActionError] = useState<string>();
+
+  const connection = useAtomValue(connectionAtom);
+  const threadsResult = useAtomValue(threadsAtom);
+  const refreshThreads = useAtomRefresh(threadsAtom);
+  const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
+  const overviews = AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []);
+  const selected = overviews.find(
+    (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
+  );
+  const events = AsyncResult.getOrElse(
+    useAtomValue(selected ? threadEventsAtom(selected.thread.id) : noEvents),
+    (): ReadonlyArray<AgentEvent> => [],
+  );
+
+  const create = useAtomSet(createThread, { mode: "promise" });
+  const send = useAtomSet(sendMessage, { mode: "promise" });
+  const respond = useAtomSet(respondToPermission, { mode: "promise" });
+  const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
+  const stop = useAtomSet(stopAgent, { mode: "promise" });
+  const attempt = (action: Promise<unknown>) => {
+    setActionError(undefined);
+    action.catch((error: unknown) => setActionError(messageOf(error)));
+  };
+
+  const indicators: ReadonlyArray<HarnessIndicator> = providers.map((provider) => {
+    const status = harnesses.find((candidate) => candidate.provider === provider);
+    if (status === undefined) return { provider, state: "unsupported" };
+    if (status._tag === "HarnessMissing") return { provider, state: "missing" };
+    return { provider, state: status.auth._tag === "LoggedIn" ? "ready" : "loggedOut" };
+  });
+  const available = new Set(
+    indicators.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])),
+  );
+
+  const lead = selected ? leadOf(selected.agents) : undefined;
+  const agents = selected ? toAgentSummaries(selected.agents, events) : [];
+  const leadModel =
+    agents.find((agent) => agent.id === lead?.id)?.model ?? (lead ? modelLabel(lead.model) : "");
+  const leadRunning = lead?.state === "running" || lead?.state === "queued";
+
+  const chooseFolder = () => {
+    void pickFolder().then((picked) => {
+      if (picked === undefined) return;
+      setFolder(picked);
+      try {
+        localStorage.setItem(FOLDER_KEY, picked);
+      } catch {
+        // Remembering the folder is a convenience only.
+      }
+    });
+  };
+
+  const startThread = async (text: string, setup: ThreadSetup) => {
+    const { thread, lead: newLead } = await create({
+      payload: {
+        title: text.split("\n")[0]!.slice(0, 80),
+        mode,
+        ...(mode === "work" && folder ? { cwd: folder } : {}),
+        lead: setup,
+      },
+    });
+    setOpenThread((current) => ({ ...current, [mode]: thread.id }));
+    refreshThreads();
+    await send({ payload: { agentId: newLead.id, text } });
+  };
+
+  return (
+    <AppFrame
+      {...(selected
+        ? {
+            thread: {
+              title: selected.thread.title,
+              ...(selected.thread.cwd ? { project: baseName(selected.thread.cwd) } : {}),
+            },
+          }
+        : {})}
+      mode={mode}
+      onModeChange={setMode}
+      sidebar={
+        <Sidebar
+          mode={mode}
+          threads={overviews.map(toThreadSummary)}
+          selectedId={selected?.thread.id}
+          onSelect={(threadId) => setOpenThread((current) => ({ ...current, [mode]: threadId }))}
+          onNewThread={() => setOpenThread((current) => ({ ...current, [mode]: undefined }))}
+          harnesses={indicators}
+        />
+      }
+      agents={selected ? selected.agents.map((agent) => agent.provider) : []}
+      inspector={
+        inspectorOpen && selected ? (
+          <Inspector
+            agents={agents}
+            onClose={() => setInspectorOpen(false)}
+            onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
+            onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
           />
-        }
-        agents={agentsFixture.map((agent) => agent.provider)}
-        inspector={
-          inspectorOpen ? (
-            <Inspector agents={agentsFixture} onClose={() => setInspectorOpen(false)} />
-          ) : undefined
-        }
-        onToggleInspector={() => setInspectorOpen((open) => !open)}
-      >
-        <div className="relative h-full">
-          <Transcript
-            blocks={buildTranscript(transcriptFixture)}
-            agent={leadFixture}
-            childState={() => "idle"}
-          />
-          <Composer running={false} onSend={() => undefined} onStop={() => undefined} />
+        ) : undefined
+      }
+      onToggleInspector={() => setInspectorOpen((open) => !open)}
+    >
+      <div className="relative flex h-full flex-col">
+        {connection === "unreachable" ? (
+          <Notice tone="attention">
+            Reconnecting to Cerium's backend… In development, start it with <code>bun run dev:backend</code>.
+          </Notice>
+        ) : AsyncResult.isFailure(threadsResult) ? (
+          <Notice tone="error">{messageOf(Cause.squash(threadsResult.cause))}</Notice>
+        ) : null}
+        {actionError ? (
+          <Notice tone="error" onDismiss={() => setActionError(undefined)}>
+            {actionError}
+          </Notice>
+        ) : null}
+
+        <div className="min-h-0 flex-1">
+          {selected && lead ? (
+            <Transcript
+              key={selected.thread.id}
+              blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
+              agent={{ provider: lead.provider, model: leadModel }}
+              childState={(childId) => {
+                const state = selected.agents.find((agent) => agent.id === childId)?.state;
+                return state === "running" || state === "queued"
+                  ? "running"
+                  : state === "failed"
+                    ? "failed"
+                    : "idle";
+              }}
+              onAnswerPermission={(requestId, decision, scope) =>
+                attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
+              }
+            />
+          ) : (
+            <EmptyThread mode={mode} folder={folder} />
+          )}
         </div>
-      </AppFrame>
-    </TooltipProvider>
+
+        <Composer
+          target={
+            selected && lead
+              ? { kind: "thread", provider: lead.provider, model: leadModel }
+              : { kind: "new", mode, folder, onPickFolder: chooseFolder, available }
+          }
+          running={leadRunning}
+          onSend={(text, setup) =>
+            attempt(
+              selected && lead ? send({ payload: { agentId: lead.id, text } }) : startThread(text, setup),
+            )
+          }
+          onStop={() => {
+            if (lead) attempt(interrupt({ payload: { agentId: lead.id } }));
+          }}
+        />
+      </div>
+    </AppFrame>
   );
 }

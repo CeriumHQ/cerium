@@ -12,6 +12,8 @@ import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 const CAPTION_BUTTON_WIDTH = 46;
 
 interface TitlebarProps {
+  /** The selected thread, if any. */
+  readonly thread?: { readonly title: string; readonly project?: string };
   readonly mode: AppMode;
   readonly onModeChange: (mode: AppMode) => void;
   /** Providers of the selected thread's agents, lead first. */
@@ -20,7 +22,14 @@ interface TitlebarProps {
   readonly onToggleInspector: () => void;
 }
 
-export function Titlebar({ mode, onModeChange, agents, inspectorOpen, onToggleInspector }: TitlebarProps) {
+export function Titlebar({
+  thread,
+  mode,
+  onModeChange,
+  agents,
+  inspectorOpen,
+  onToggleInspector,
+}: TitlebarProps) {
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
       <div className="flex items-center gap-2">
@@ -33,15 +42,17 @@ export function Titlebar({ mode, onModeChange, agents, inspectorOpen, onToggleIn
         <IconButton icon={PanelLeft} label="Toggle sidebar" shortcut="Ctrl B" />
       </div>
 
-      <div className="flex flex-1 justify-center">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary"
-        >
-          <span className="font-medium text-fg-primary">Fix flaky auth test</span>
-          <span className="text-fg-tertiary">cerium</span>
-          <ChevronDown size={13} className="text-fg-tertiary" />
-        </button>
+      <div className="flex min-w-0 flex-1 justify-center">
+        {thread ? (
+          <button
+            type="button"
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary"
+          >
+            <span className="truncate font-medium text-fg-primary">{thread.title}</span>
+            {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
+            <ChevronDown size={13} className="shrink-0 text-fg-tertiary" />
+          </button>
+        ) : null}
       </div>
 
       {agents.length > 0 ? (
