@@ -53,7 +53,10 @@ html[data-shell="browser"] #root::before {
   background: var(--selection);
 }
 
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+/* In the base layer so a component with its own focus style can opt out with `outline-none`. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }
