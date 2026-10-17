@@ -1,16 +1,21 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowLeft, Palette, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bot, Palette, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 
-export type SettingsCategory = "appearance";
+export type SettingsCategory = "appearance" | "agents";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
   readonly label: string;
   readonly icon: LucideIcon;
-}> = [{ id: "appearance", label: "Appearance", icon: Palette }];
+}> = [
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "agents", label: "Agents", icon: Bot },
+];
 
 interface SettingsNavProps {
   readonly category: SettingsCategory;
@@ -87,9 +92,18 @@ export function SettingsNav({ category, onSelect, backLabel, onBack, active }: S
 }
 
 /** The open category's page, filling the main panel. */
-export function SettingsView({ category }: { category: SettingsCategory }) {
+export function SettingsView({
+  category,
+  harnesses,
+}: {
+  category: SettingsCategory;
+  /** Which harnesses can run, for the choices that depend on them. */
+  harnesses: ReadonlyArray<HarnessIndicator>;
+}) {
   switch (category) {
     case "appearance":
       return <AppearanceSettings key={category} />;
+    case "agents":
+      return <AgentSettings key={category} harnesses={harnesses} />;
   }
 }

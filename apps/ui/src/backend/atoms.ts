@@ -36,6 +36,12 @@ export const harnessesAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("HarnessStatuses", undefined));
 });
 
+/** The user's settings the backend applies, re-read after a reconnect. */
+export const settingsAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  return Backend.use((client) => client("Settings", undefined));
+});
+
 type EventSource =
   | { readonly _tag: "History"; readonly events: ReadonlyArray<AgentEvent> }
   | { readonly _tag: "Live"; readonly event: AgentEvent };
@@ -86,3 +92,4 @@ export const sendMessage = Backend.mutation("SendMessage");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const interruptAgent = Backend.mutation("InterruptAgent");
 export const stopAgent = Backend.mutation("StopAgent");
+export const updateSettings = Backend.mutation("UpdateSettings");

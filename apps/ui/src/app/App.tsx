@@ -233,7 +233,7 @@ function Workspace() {
             active={settingsOpen}
           />
         ),
-        page: <SettingsView category={settingsCategory} />,
+        page: <SettingsView category={settingsCategory} harnesses={indicators} />,
       }}
       agents={selected ? selected.agents.map((agent) => agent.provider) : []}
       inspector={

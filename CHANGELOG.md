@@ -58,6 +58,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the sidebar folds away from the titlebar or with Ctrl B (remembered across launches), leaving a new-thread button in the titlebar; Ctrl N opens a new thread and Ctrl J toggles the agent inspector, as their tooltips promised.
 - UI: settings, opened from the sidebar's gear or with Ctrl ,: the sidebar turns into the list of categories and the main panel shows the open one. Esc or "Back to threads" returns to the thread exactly as it was left, scroll position and draft included.
 - UI: Appearance settings: the theme (system, dark or light), picked from miniatures of the window drawn in each theme, and the conversation's text size, previewed on a sample conversation as the slider moves.
+- UI: Agents settings: the lead model for new threads, picked from the models of each harness that can run; its reasoning effort on a rising gauge that says what the chosen level means; the access a work thread's lead starts with, each mode showing what it may read, edit and run; and whether agents also get your own MCP servers, with a diagram of where their tools come from. The composer offers the same model, effort and access, so a change in either shows in both.
 
 ### Changed
 
