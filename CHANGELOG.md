@@ -65,6 +65,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: a thread whose lead has stopped keeps its message box, and the next message picks the thread back up; only a lead that ended before its session started still offers a new thread.
 - `@cerium/harness`: adapters list the models their harness offers; the Claude adapter asks the installed Claude Code.
 - `@cerium/rpc`: each harness's models.
+- Codex adapter: drives the user's installed `codex app-server` over JSON-RPC, with types generated from it: login and plan, the picker's models, threads with Cerium's bus injected and native subagents off, approvals for commands, file changes, MCP tools and permissions, file change tracking, per-turn usage, mid-session model and effort switching, interrupt and resume. Tested against a recorded session and verified live.
 
 ### Changed
 

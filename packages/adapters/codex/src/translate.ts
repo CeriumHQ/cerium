@@ -1,0 +1,392 @@
+import type { AdapterEvent } from "@cerium/harness";
+import type { EventPayload } from "@cerium/protocol";
+
+import { fromCodexEffort } from "./config.ts";
+import { LOGIN_COMMAND } from "./manifest.ts";
+import type { ServerNotification } from "./protocol/ServerNotification.ts";
+import type { CodexErrorInfo } from "./protocol/v2/CodexErrorInfo.ts";
+import type { ThreadItem } from "./protocol/v2/ThreadItem.ts";
+import type { ThreadResumeResponse } from "./protocol/v2/ThreadResumeResponse.ts";
+import type { ThreadStartResponse } from "./protocol/v2/ThreadStartResponse.ts";
+import type { ThreadTokenUsage } from "./protocol/v2/ThreadTokenUsage.ts";
+import type { TurnError } from "./protocol/v2/TurnError.ts";
+
+type ToolItem = Extract<
+  ThreadItem,
+  {
+    type:
+      | "commandExecution"
+      | "fileChange"
+      | "mcpToolCall"
+      | "dynamicToolCall"
+      | "collabAgentToolCall"
+      | "webSearch"
+      | "imageView"
+      | "imageGeneration"
+      | "sleep";
+  }
+>;
+type McpToolCall = Extract<ThreadItem, { type: "mcpToolCall" }>;
+type Reasoning = Extract<ThreadItem, { type: "reasoning" }>;
+
+const TOOL_TYPES: ReadonlySet<ThreadItem["type"]> = new Set([
+  "commandExecution",
+  "fileChange",
+  "mcpToolCall",
+  "dynamicToolCall",
+  "collabAgentToolCall",
+  "webSearch",
+  "imageView",
+  "imageGeneration",
+  "sleep",
+]);
+const isToolItem = (item: ThreadItem): item is ToolItem => TOOL_TYPES.has(item.type);
+
+/**
+ * Translates one app-server thread's notifications into canonical events.
+ *
+ * Items carry stable ids across `item/started`, their deltas and `item/completed`, so those ids are
+ * the canonical `messageId`s and `callId`s. Token usage arrives once per model response as running
+ * thread totals; each turn reports its own difference.
+ */
+export class CodexTranslator {
+  #threadId: string | undefined;
+  /** Items between `item/started` and `item/completed`: approval requests only name the item. */
+  readonly #items = new Map<string, { readonly item: ThreadItem; readonly turnId: string }>();
+  /** Which reasoning stream an item's deltas come from, and the summary part they are in. */
+  readonly #reasoning = new Map<string, { readonly source: "summary" | "content"; readonly part: number }>();
+  /** The first and latest usage update of each running turn. */
+  readonly #usage = new Map<string, { readonly first: ThreadTokenUsage; latest: ThreadTokenUsage }>();
+  /** Turns whose failure was already reported by an `error` notification. */
+  readonly #reportedErrors = new Set<string>();
+
+  /** The `thread/start` or `thread/resume` response starts the session. */
+  started(response: ThreadStartResponse | ThreadResumeResponse): ReadonlyArray<AdapterEvent> {
+    if (this.#threadId !== undefined) return [];
+    this.#threadId = response.thread.id;
+    const effort = fromCodexEffort(response.reasoningEffort);
+    return [
+      {
+        payload: {
+          _tag: "SessionStarted",
+          provider: "codex",
+          providerSessionId: response.thread.id,
+          model: response.model,
+          ...(effort ? { effort } : {}),
+        },
+        raw: response,
+      },
+    ];
+  }
+
+  translate(notification: ServerNotification): ReadonlyArray<AdapterEvent> {
+    return this.#payloads(notification).map((payload) => ({ payload, raw: notification }));
+  }
+
+  /** A tool item that has started and not completed. */
+  item(itemId: string): ThreadItem | undefined {
+    return this.#items.get(itemId)?.item;
+  }
+
+  /** The latest running MCP tool call on `server`, which an approval elicitation is about. */
+  runningMcpCall(server: string): McpToolCall | undefined {
+    let found: McpToolCall | undefined;
+    for (const { item } of this.#items.values()) {
+      if (item.type === "mcpToolCall" && item.server === server) found = item;
+    }
+    return found;
+  }
+
+  #payloads(notification: ServerNotification): ReadonlyArray<EventPayload> {
+    const { params } = notification;
+    // One app-server process hosts one Cerium session; other threads (if any) are not ours.
+    if (
+      this.#threadId !== undefined &&
+      typeof params === "object" &&
+      params !== null &&
+      "threadId" in params &&
+      typeof params.threadId === "string" &&
+      params.threadId !== this.#threadId
+    ) {
+      return [];
+    }
+
+    switch (notification.method) {
+      case "item/started": {
+        const { item, turnId } = notification.params;
+        if (!isToolItem(item)) return [];
+        this.#items.set(item.id, { item, turnId });
+        return [toolStarted(item)];
+      }
+      case "item/completed":
+        return this.#itemCompleted(notification.params.item);
+      case "item/agentMessage/delta": {
+        const { itemId, delta } = notification.params;
+        return delta === "" ? [] : [{ _tag: "MessageDelta", messageId: itemId, text: delta }];
+      }
+      case "item/reasoning/summaryTextDelta":
+        return this.#reasoningDelta(
+          notification.params.itemId,
+          "summary",
+          notification.params.summaryIndex,
+          notification.params.delta,
+        );
+      case "item/reasoning/textDelta":
+        return this.#reasoningDelta(
+          notification.params.itemId,
+          "content",
+          notification.params.contentIndex,
+          notification.params.delta,
+        );
+      case "thread/tokenUsage/updated": {
+        const { turnId, tokenUsage } = notification.params;
+        const usage = this.#usage.get(turnId);
+        if (usage === undefined) this.#usage.set(turnId, { first: tokenUsage, latest: tokenUsage });
+        else usage.latest = tokenUsage;
+        return [];
+      }
+      case "error": {
+        const { error, willRetry, turnId } = notification.params;
+        if (willRetry) return [];
+        this.#reportedErrors.add(turnId);
+        return [turnError(error)];
+      }
+      case "turn/completed":
+        return this.#turnCompleted(notification.params.turn);
+      case "account/updated":
+        return notification.params.authMode === null
+          ? [{ _tag: "AuthRequired", provider: "codex", reason: "loggedOut", loginCommand: LOGIN_COMMAND }]
+          : [];
+      default:
+        return [];
+    }
+  }
+
+  #itemCompleted(item: ThreadItem): ReadonlyArray<EventPayload> {
+    switch (item.type) {
+      case "agentMessage":
+        return [{ _tag: "MessageCompleted", messageId: item.id, text: item.text }];
+      case "reasoning": {
+        const text = this.#reasoningText(item);
+        this.#reasoning.delete(item.id);
+        return text === "" ? [] : [{ _tag: "ReasoningCompleted", messageId: item.id, text }];
+      }
+      default: {
+        if (!isToolItem(item)) return [];
+        const started = this.#items.delete(item.id) ? [] : [toolStarted(item)];
+        return [...started, toolCompleted(item), ...fileChanges(item)];
+      }
+    }
+  }
+
+  /**
+   * Reasoning arrives as summary parts or (for models that expose it) raw content; an item streams
+   * from whichever arrives first. Parts are separated like the completed item's text.
+   */
+  #reasoningDelta(
+    itemId: string,
+    source: "summary" | "content",
+    part: number,
+    delta: string,
+  ): ReadonlyArray<EventPayload> {
+    const state = this.#reasoning.get(itemId);
+    if (state !== undefined && state.source !== source) return [];
+    const separator = state !== undefined && state.part !== part ? "\n\n" : "";
+    this.#reasoning.set(itemId, { source, part });
+    const text = `${separator}${delta}`;
+    return text === "" ? [] : [{ _tag: "ReasoningDelta", messageId: itemId, text }];
+  }
+
+  #reasoningText(item: Reasoning): string {
+    const source = this.#reasoning.get(item.id)?.source;
+    const summary = item.summary.join("\n\n");
+    const content = item.content.join("\n\n");
+    if (source === "content") return content;
+    return summary === "" ? content : summary;
+  }
+
+  #turnCompleted(turn: {
+    readonly id: string;
+    readonly status: string;
+    readonly error: TurnError | null;
+  }): ReadonlyArray<EventPayload> {
+    // Tool calls an interruption cut short never complete on their own.
+    const unfinished: Array<EventPayload> = [];
+    for (const [callId, entry] of this.#items) {
+      if (entry.turnId !== turn.id) continue;
+      this.#items.delete(callId);
+      unfinished.push({ _tag: "ToolCallCompleted", callId, output: { status: turn.status }, isError: true });
+    }
+
+    const failed = turn.status === "failed" && turn.error !== null && !this.#reportedErrors.has(turn.id);
+    this.#reportedErrors.delete(turn.id);
+    const usage = this.#usage.get(turn.id);
+    this.#usage.delete(turn.id);
+
+    return [
+      ...unfinished,
+      ...(failed && turn.error !== null ? [turnError(turn.error)] : []),
+      turnUsage(usage),
+      { _tag: "TurnCompleted", stopReason: stopReason(turn.status) },
+    ];
+  }
+}
+
+const stopReason = (status: string) => {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "interrupted":
+      return "interrupted";
+    default:
+      return "error";
+  }
+};
+
+/**
+ * Usage notifications carry running thread totals plus the latest response's own (`last`) counts, so
+ * a turn's usage is its final total minus the total before its first response. That stays right
+ * after a resume, where the totals include earlier sessions. Codex's input count includes cache reads.
+ */
+const turnUsage = (
+  usage: { readonly first: ThreadTokenUsage; readonly latest: ThreadTokenUsage } | undefined,
+): EventPayload => {
+  if (usage === undefined) return { _tag: "UsageReported", inputTokens: 0, outputTokens: 0 };
+  const { first, latest } = usage;
+  const delta = (key: "inputTokens" | "cachedInputTokens" | "outputTokens") =>
+    Math.max(0, latest.total[key] - (first.total[key] - first.last[key]));
+  const cached = delta("cachedInputTokens");
+  return {
+    _tag: "UsageReported",
+    inputTokens: Math.max(0, delta("inputTokens") - cached),
+    outputTokens: delta("outputTokens"),
+    cachedInputTokens: cached,
+  };
+};
+
+const RETRYABLE_ERRORS: ReadonlySet<string> = new Set([
+  "serverOverloaded",
+  "internalServerError",
+  "httpConnectionFailed",
+  "responseStreamConnectionFailed",
+  "responseStreamDisconnected",
+  "responseTooManyFailedAttempts",
+]);
+
+const errorCode = (info: CodexErrorInfo | null): string | undefined => {
+  if (info === null) return undefined;
+  if (typeof info === "string") return info;
+  return Object.keys(info)[0];
+};
+
+const turnError = (error: TurnError): EventPayload => {
+  const code = errorCode(error.codexErrorInfo);
+  const message = error.additionalDetails ? `${error.message} (${error.additionalDetails})` : error.message;
+  if (code === "unauthorized") {
+    return { _tag: "AuthRequired", provider: "codex", reason: message, loginCommand: LOGIN_COMMAND };
+  }
+  if (code === "usageLimitExceeded" || code === "rateLimitExceeded") {
+    return { _tag: "AgentError", kind: "rateLimit", message, retryable: true };
+  }
+  if (code !== undefined && RETRYABLE_ERRORS.has(code)) {
+    return { _tag: "AgentError", kind: "transient", message, retryable: true };
+  }
+  return { _tag: "AgentError", kind: "unknown", message, retryable: false };
+};
+
+/**
+ * The command as the agent wrote it. Codex wraps it in the user's shell (`pwsh -Command '…'`) and
+ * parses it into actions; a single action is the unwrapped command.
+ */
+const displayCommand = (item: Extract<ThreadItem, { type: "commandExecution" }>) => {
+  const [only, ...rest] = item.commandActions;
+  return only !== undefined && rest.length === 0 ? only.command : item.command;
+};
+
+/** Tool names follow the model-facing Codex tools, and Claude's `mcp__<server>__<tool>` for MCP. */
+const toolCall = (item: ToolItem): { readonly toolName: string; readonly input: unknown } => {
+  switch (item.type) {
+    case "commandExecution":
+      return {
+        toolName: "exec_command",
+        input: { command: displayCommand(item), cwd: item.cwd, actions: item.commandActions },
+      };
+    case "fileChange":
+      return { toolName: "apply_patch", input: { changes: item.changes } };
+    case "mcpToolCall":
+      return { toolName: `mcp__${item.server}__${item.tool}`, input: item.arguments };
+    case "dynamicToolCall":
+      return {
+        toolName: item.namespace ? `${item.namespace}.${item.tool}` : item.tool,
+        input: item.arguments,
+      };
+    case "collabAgentToolCall":
+      return { toolName: `collaboration.${item.tool}`, input: { prompt: item.prompt, model: item.model } };
+    case "webSearch":
+      return { toolName: "web_search", input: { query: item.query, action: item.action } };
+    case "imageView":
+      return { toolName: "view_image", input: { path: item.path } };
+    case "imageGeneration":
+      return { toolName: "image_generation", input: { prompt: item.revisedPrompt } };
+    case "sleep":
+      return { toolName: "sleep", input: { durationMs: item.durationMs } };
+  }
+};
+
+const toolStarted = (item: ToolItem): EventPayload => ({
+  _tag: "ToolCallStarted",
+  callId: item.id,
+  ...toolCall(item),
+});
+
+const toolResult = (item: ToolItem): { readonly output: unknown; readonly isError: boolean } => {
+  switch (item.type) {
+    case "commandExecution":
+      return {
+        output: { output: item.aggregatedOutput, exitCode: item.exitCode },
+        isError: item.status !== "completed" || (item.exitCode ?? 0) !== 0,
+      };
+    case "fileChange":
+      return { output: { status: item.status }, isError: item.status !== "completed" };
+    case "mcpToolCall":
+      return { output: item.error ?? item.result, isError: item.status !== "completed" };
+    case "dynamicToolCall":
+      return { output: item.contentItems, isError: item.status !== "completed" || item.success === false };
+    case "collabAgentToolCall":
+      return { output: item.agentsStates, isError: item.status === "failed" };
+    case "webSearch":
+      return { output: item.results ?? item.action, isError: false };
+    case "imageView":
+      return { output: { path: item.path }, isError: false };
+    case "imageGeneration":
+      // The image itself (`result`) is base64 data; the saved path identifies it.
+      return { output: { savedPath: item.savedPath, failure: item.failure }, isError: item.failure !== null };
+    case "sleep":
+      return { output: null, isError: false };
+  }
+};
+
+const toolCompleted = (item: ToolItem): EventPayload => ({
+  _tag: "ToolCallCompleted",
+  callId: item.id,
+  ...toolResult(item),
+});
+
+const fileChanges = (item: ToolItem): ReadonlyArray<EventPayload> => {
+  if (item.type !== "fileChange" || item.status !== "completed") return [];
+  return item.changes.flatMap((change): ReadonlyArray<EventPayload> => {
+    switch (change.kind.type) {
+      case "add":
+        return [{ _tag: "FileChanged", path: change.path, change: "created" }];
+      case "delete":
+        return [{ _tag: "FileChanged", path: change.path, change: "deleted" }];
+      case "update":
+        return change.kind.move_path
+          ? [
+              { _tag: "FileChanged", path: change.path, change: "deleted" },
+              { _tag: "FileChanged", path: change.kind.move_path, change: "created" },
+            ]
+          : [{ _tag: "FileChanged", path: change.path, change: "modified" }];
+    }
+  });
+};
