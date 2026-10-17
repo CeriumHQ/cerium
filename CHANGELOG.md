@@ -46,6 +46,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: inside the Electron shell the titlebar reserves exactly the caption-button area Windows reports, and the window tint is lighter so the real Acrylic shows.
 - UI: Cerium's "Prism C" mark in the titlebar and as the favicon.
 - Desktop: the UI can open Windows' folder picker to choose where a work thread runs.
+- Desktop: the UI can set the window's theme; Windows tints the Acrylic and draws the caption buttons to match, and "system" follows Windows' own light or dark mode.
 - UI: an Effect RPC client for the backend, wired into atoms: thread overviews and harness status that refresh as agents work, and each thread's history merged with its live events. In development the UI dev server hands the page the backend's connection; after a backend restart the client reconnects and picks the live feeds back up.
 - UI: runs on live backend data: the sidebar lists real threads with their status and the installed harnesses; the transcript streams the open thread's lead and answers its approval cards; the composer starts new threads in a chosen folder with the picked model, effort and access (unavailable harnesses greyed out) and then messages the thread's lead; the inspector interrupts or stops agents; a slim notice reports a lost connection or a failed action. The hand-written fixtures are gone.
 - UI: the transcript follows new output while you're at the end, stays put while you scroll back to read, and returns to the end when you send a message.

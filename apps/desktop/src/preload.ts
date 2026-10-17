@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 // Sandboxed preload: the UI talks to the backend over its own RPC connection, so the bridge only
-// tells the page it is running inside Cerium's shell and offers the native dialogs it can't open.
+// tells the page it is running inside Cerium's shell, offers the native dialogs it can't open, and
+// passes on the theme Windows should draw the window's glass and caption buttons in.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
+  setTheme: (theme: "system" | "dark" | "light"): void => ipcRenderer.send("cerium:set-theme", theme),
 });

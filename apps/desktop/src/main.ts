@@ -12,6 +12,13 @@ const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("
 /** Matches the UI titlebar's height so the caption buttons line up with it. */
 const TITLEBAR_HEIGHT = 40;
 
+/** Windows draws the caption buttons; their symbols follow the theme like the UI's own text. */
+const titleBarOverlay = () => ({
+  color: "#00000000",
+  symbolColor: nativeTheme.shouldUseDarkColors ? "#e6e6e6" : "#262626",
+  height: TITLEBAR_HEIGHT,
+});
+
 const createWindow = () => {
   const window = new BrowserWindow({
     width: 1280,
@@ -26,7 +33,7 @@ const createWindow = () => {
     backgroundMaterial: "acrylic",
     backgroundColor: "#00000000",
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#00000000", symbolColor: "#e6e6e6", height: TITLEBAR_HEIGHT },
+    titleBarOverlay: titleBarOverlay(),
     webPreferences: {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,
@@ -68,7 +75,20 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
   return result.canceled ? undefined : result.filePaths[0];
 });
 
+/**
+ * The UI's theme choice. Windows tints Acrylic from the native theme, so it follows the UI; "system"
+ * also makes the page's `prefers-color-scheme` track Windows.
+ */
+ipcMain.on("cerium:set-theme", (_event, theme: unknown) => {
+  if (theme === "system" || theme === "dark" || theme === "light") nativeTheme.themeSource = theme;
+});
+
+nativeTheme.on("updated", () => {
+  for (const window of BrowserWindow.getAllWindows()) window.setTitleBarOverlay(titleBarOverlay());
+});
+
 void app.whenReady().then(() => {
+  // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();
 });
