@@ -123,8 +123,8 @@ interface ComposerProps {
   readonly onStop: () => void;
   /** Shown just above the box, such as requests waiting on the user. */
   readonly above?: ReactNode;
-  /** Reports how much taller attached files make the box, so the transcript's end stays in view. */
-  readonly onAttachmentsHeight?: (height: number) => void;
+  /** Reports how tall the box stands over the transcript, with what sits above it, so the transcript's end stays in view. */
+  readonly onHeight?: (height: number) => void;
 }
 
 /** The message box, floating over the bottom of the transcript. */
@@ -137,7 +137,7 @@ export function Composer({
   onSend,
   onStop,
   above,
-  onAttachmentsHeight,
+  onHeight,
 }: ComposerProps) {
   const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({});
   /** Bumped when the box itself replaces a draft (sent, or given back), so the editor shows it. */
@@ -200,6 +200,20 @@ export function Composer({
     menuTrigger !== undefined &&
     (menuTrigger.char === "@" || menuTrigger.query === "" || results.options.length > 0);
   const activeIndex = Math.min(active, Math.max(0, results.options.length - 1));
+
+  // A long draft, attached files and waiting approvals all grow the box over the transcript's end.
+  // An effect rather than a ref callback: reporting re-renders the box, which would re-run the callback.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = box.current;
+    if (element === null || onHeight === undefined) return;
+    const observer = new ResizeObserver(() => onHeight(element.offsetHeight));
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onHeight(0);
+    };
+  }, [onHeight]);
 
   // Opening a thread, or a new one, puts the cursor where the next message goes.
   useEffect(() => {
@@ -399,6 +413,7 @@ export function Composer({
 
   return (
     <div
+      ref={box}
       className={`pointer-events-none absolute inset-x-0 bottom-0 px-3 md:px-8 md:pb-5 ${
         oneLine ? "pb-2" : "pb-[max(env(safe-area-inset-bottom),0.75rem)]"
       }`}
@@ -439,11 +454,7 @@ export function Composer({
               focus, and the keyboard with it. */}
           {draft.attachments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
-              <AttachmentTray
-                attachments={draft.attachments}
-                onRemove={removeAttachment}
-                onHeight={onAttachmentsHeight}
-              />
+              <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
             </div>
           ) : null}
           {oneLine ? attachButton : null}

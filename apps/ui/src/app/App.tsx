@@ -138,10 +138,8 @@ function Workspace() {
   }
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
-  /** How tall the approval tray above the message box is, so the transcript's end stays visible. */
-  const [trayHeight, setTrayHeight] = useState(0);
-  /** How much taller files attached to the draft make the message box, for the same reason. */
-  const [attachmentsHeight, setAttachmentsHeight] = useState(0);
+  /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
+  const [composerHeight, setComposerHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const compact = useCompact();
   /** The narrow window's pane (§14.10): the threads, or the open (or new) thread. */
@@ -606,7 +604,7 @@ function Workspace() {
               agent={{ provider: lead.provider, model: leadModel }}
               {...(cloudSelected ? {} : { messageBox })}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
-              bottomInset={trayHeight + attachmentsHeight}
+              bottomInset={composerHeight}
               childState={(childId) => {
                 const child = agents.find((agent) => agent.id === childId);
                 return child?.awaitingApproval
@@ -660,8 +658,8 @@ function Workspace() {
                 : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
             }
             running={leadRunning}
-            above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}
-            onAttachmentsHeight={setAttachmentsHeight}
+            above={<ApprovalTray agents={agents} onAnswer={answerApproval} />}
+            onHeight={setComposerHeight}
             onSend={(message, setup) =>
               attempt(
                 selected && lead

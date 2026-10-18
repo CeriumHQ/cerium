@@ -12,24 +12,12 @@ import type { DraftAttachment } from "./draft.ts";
 export function AttachmentTray({
   attachments,
   onRemove,
-  onHeight,
 }: {
   attachments: ReadonlyArray<DraftAttachment>;
   onRemove: (id: string) => void;
-  /** Reports the space the tray adds to the message box, so the transcript can keep its end clear of it. */
-  onHeight?: ((height: number) => void) | undefined;
 }) {
-  const measure = (element: HTMLDivElement | null) => {
-    if (element === null) return;
-    const observer = new ResizeObserver(() => onHeight?.(element.offsetHeight));
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      onHeight?.(0);
-    };
-  };
   return (
-    <div ref={measure} className="flex flex-wrap gap-2 px-3 pt-3">
+    <div className="flex flex-wrap gap-2 px-3 pt-3">
       {attachments.map((attachment) => (
         <div key={attachment.id} className="group/tile relative">
           {attachment.preview ? (

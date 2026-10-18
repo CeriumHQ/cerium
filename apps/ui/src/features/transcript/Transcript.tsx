@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -45,7 +45,7 @@ interface TranscriptProps {
   readonly childAgent: (childId: string) => AgentSummary | undefined;
   /** What a spawn card's click and menu do. */
   readonly agentActions: AgentActions;
-  /** Extra room at the end for what floats above the message box, in pixels. */
+  /** How tall the message box floating over the transcript's end stands, in pixels; the end stays clear of it. */
   readonly bottomInset?: number;
   readonly onAnswerPermission?: (
     requestId: string,
@@ -252,14 +252,14 @@ export function Transcript({
 
   return (
     <ThreadContext folder={folder} messageBox={messageBox}>
-      <div className="relative h-full">
+      <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
         {/* Content fades out where the floating composer sits instead of showing through its glass. */}
         <ScrollArea
           viewportRef={viewport}
           className={`h-full [&_*]:[overflow-anchor:none] ${
             oneLine
-              ? "mask-b-from-[calc(100%-4.5rem)] mask-b-to-[calc(100%-1rem)]"
-              : "mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)]"
+              ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
+              : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
           }`}
         >
           <div
@@ -267,7 +267,7 @@ export function Transcript({
             // The inset is in screen pixels; the column's zoom would scale it.
             style={{
               zoom: scale,
-              paddingBottom: `calc(${oneLine ? "5rem" : "10rem"} + ${bottomInset / scale}px)`,
+              paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
             }}
           >
             {items.map(render)}
@@ -292,7 +292,9 @@ export function Transcript({
           onClick={toEnd}
           aria-label="Jump to latest"
           inert={following}
-          style={{ bottom: `calc(${oneLine ? "4.5rem" : "7.75rem"} + ${bottomInset}px)` }}
+          style={{
+            bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
+          }}
           className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
             following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
           }`}

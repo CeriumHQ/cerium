@@ -59,26 +59,14 @@ export function AgentApproval({
 export function ApprovalTray({
   agents,
   onAnswer,
-  onHeight,
 }: {
   agents: ReadonlyArray<AgentSummary>;
   onAnswer: AnswerApproval;
-  /** Reports the space the tray takes, so the transcript can keep its end clear of it. */
-  onHeight?: (height: number) => void;
 }) {
   const waiting = agents.filter((agent) => agent.parentId !== undefined && agent.approvals.length > 0);
   if (waiting.length === 0) return null;
-  const measure = (element: HTMLElement) => {
-    const observer = new ResizeObserver(() => onHeight?.(element.offsetHeight));
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      onHeight?.(0);
-    };
-  };
   return (
     <section
-      ref={measure}
       aria-label="Agents waiting for you"
       className="pointer-events-auto mx-auto flex max-h-[45vh] max-w-[46.2rem] flex-col gap-2 overflow-y-auto pb-2"
     >

@@ -155,6 +155,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- A long draft no longer hides the end of the conversation: the transcript keeps room for the message box at whatever height it grows to, and the jump-to-latest button sits just above it.
 - Cursor: turns in long workspace paths on Windows (chat threads, temp and deeply nested folders) now finish. The SDK could not save their conversation there, so a turn never ended and Cursor replayed it, commands and all, every half minute; those workspaces now keep their agents in files the SDK can write, and a run still going 15 seconds after its turn ended is stopped.
 - Muse: on Windows, before its sandbox is set up, Ask first, Accept edits and Auto sessions say so (in the thread and to the agent) instead of failing every command and retrying for minutes. The fix is a one-time `muse sandbox windows setup` in an administrator terminal, or Full access.
 
