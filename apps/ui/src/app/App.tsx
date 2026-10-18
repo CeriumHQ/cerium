@@ -2,6 +2,7 @@ import type {
   AccountState,
   AccountThreads,
   AgentEvent,
+  DeviceId,
   DeviceInfo,
   AgentId,
   ProviderId,
@@ -43,7 +44,11 @@ import { saveProject } from "../backend/projects.ts";
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
-import { DeviceRequestNotice, useShellPresence } from "../features/account/AccountNotice.tsx";
+import {
+  DeviceRequestNotice,
+  useAccountPresence,
+  useShellPresence,
+} from "../features/account/AccountNotice.tsx";
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
 import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
@@ -62,10 +67,12 @@ import {
 import { useTheme } from "../features/settings/theme.ts";
 import { CloudThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
+import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { remember, stored } from "../lib/storage.ts";
+import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
 import { useCompact } from "./compact.ts";
@@ -259,11 +266,44 @@ function Workspace() {
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
   const cloudDevice = cloudSelected ? deviceOf(cloudSelected.machine) : undefined;
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
-  const openOn = (device: DeviceInfo, threadId: string) => {
-    setOpenAfterSwitch({ mode, id: threadId });
+  const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
+    setOpenAfterSwitch({ mode: threadMode, id: threadId });
     setPane("main");
     driveMachine(registry, device.id === thisComputer ? undefined : { id: device.id, name: device.name });
   };
+  /** Opens a thread of the inbox: another machine's there when it can, else here (read-only when it's another's). */
+  const openSummary = (summary: ThreadSummary) => {
+    setHeldUnread(summary.unread ? summary.id : undefined);
+    const home = summary.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
+    if (home && home.id !== drivenId && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
+      openOn(home, summary.id, summary.mode);
+      return;
+    }
+    setOpenThread((current) => ({ ...current, [summary.mode]: summary.id }));
+    setPane("main");
+  };
+
+  // A tapped notification (§14.11) opens its thread, once the inbox lists it.
+  useNotificationOpens(
+    (threadId) => summaries.find((summary) => summary.id === threadId),
+    (summary) => {
+      setSettingsOpen(false);
+      setMode(summary.mode);
+      openSummary(summary);
+    },
+  );
+  useRenewPush(account);
+  // Nobody is told about the thread this window shows (§14.11), unless settings or the narrow
+  // window's inbox cover it.
+  useAccountPresence(
+    account,
+    viewed && drivenId !== undefined && !settingsOpen && (!compact || pane === "main")
+      ? {
+          machine: (cloudSelected?.machine ?? drivenId) as DeviceId,
+          threadId: viewed.thread.id,
+        }
+      : undefined,
+  );
 
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
@@ -424,19 +464,7 @@ function Workspace() {
           selectedId={viewed?.thread.id}
           onSelect={(threadId) => {
             const summary = summaries.find((candidate) => candidate.id === threadId);
-            setHeldUnread(summary?.unread ? threadId : undefined);
-            const home = summary?.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
-            // Another machine's thread opens there; one that can't be reached opens here, read-only.
-            if (
-              home &&
-              home.id !== drivenId &&
-              (home.id === thisComputer || reachOf(home).kind === "reachable")
-            ) {
-              openOn(home, threadId);
-              return;
-            }
-            setOpenThread((current) => ({ ...current, [mode]: threadId }));
-            setPane("main");
+            if (summary) openSummary(summary);
           }}
           onNewThread={newThread}
           onMarkRead={(threads) => {

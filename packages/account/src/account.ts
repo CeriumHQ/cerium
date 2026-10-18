@@ -17,6 +17,7 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceMessage,
+  type PushMessage,
   type SyncNotice,
   type ThreadId,
   type TunnelMessage,
@@ -105,6 +106,9 @@ const reconnectDelay = (failures: number) => {
   return Math.round(base * (0.8 + Math.random() * 0.4));
 };
 
+/** What this device's window shows (docs/architecture.md §14.11). */
+export type Presence = Omit<Extract<PushMessage, { readonly _tag: "Presence" }>, "_tag">;
+
 /** The relay ended this device's sign-in: it was removed, or its credential isn't valid. */
 class SignedOff extends Data.TaggedError("SignedOff")<{ readonly reason: "removed" | "invalid" }> {}
 
@@ -132,6 +136,11 @@ export class Account extends Context.Service<
     remove(deviceId: DeviceId): Effect.Effect<void, AccountError>;
     /** Sends a message through the relay; fails while this device isn't connected. */
     send(message: DeviceMessage): Effect.Effect<void, AccountError>;
+    /**
+     * Tells the relay what this device's window shows, now and again whenever it reconnects, so
+     * nobody is notified about what they're looking at (§14.11).
+     */
+    reportPresence(presence: Presence): Effect.Effect<void>;
     /** What the relay says from now on, for as long as the scope lasts. */
     readonly relayEvents: Effect.Effect<PubSub.Subscription<RelayEvent>, never, Scope.Scope>;
     /** Another machine's thread from the cloud copy (§14.9), undecoded. */
@@ -160,6 +169,8 @@ export class Account extends Context.Service<
         const live = yield* Ref.make<Option.Option<Socket.Writer>>(Option.none());
         const tunnelEvents = yield* PubSub.unbounded<RelayEvent>();
         const ownChannels = new Set<string>();
+        /** What the window shows, as last reported; sent again on every connection. */
+        let presence: Presence | undefined;
         const relay = options.relayUrl.replace(/\/+$/, "");
 
         // ---- The relay's HTTP API ------------------------------------------------------------
@@ -263,6 +274,9 @@ export class Account extends Context.Service<
               ),
             );
             yield* writer.write("ping").pipe(Effect.delay(PING_EVERY), Effect.forever, Effect.forkScoped);
+            if (presence !== undefined) {
+              yield* writer.write(JSON.stringify({ _tag: "Presence", ...presence } satisfies DeviceMessage));
+            }
             while (true) {
               const frames = yield* pull.pipe(
                 Effect.timeoutOrElse({
@@ -490,6 +504,12 @@ export class Account extends Context.Service<
 
         return Account.of({
           send: sendFrame,
+          reportPresence: (next) =>
+            Effect.suspend(() => {
+              presence = next;
+              // Offline, it goes when the connection comes back.
+              return sendFrame({ _tag: "Presence", ...next }).pipe(Effect.ignore);
+            }),
           relayEvents: PubSub.subscribe(tunnelEvents),
           readThread: (machine, threadId) =>
             Effect.gen(function* () {

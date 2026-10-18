@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { DeviceId, EpochMillis } from "./ids.ts";
+import { NotificationKind, PushMessage } from "./push.ts";
 import { SyncMessage, SyncNotice } from "./sync.ts";
 
 // Cerium accounts (docs/architecture.md §14): what a signed-in machine and Cerium's relay say to each
@@ -58,6 +59,8 @@ export const DeviceInfo = Schema.Struct({
   createdAt: EpochMillis,
   /** When its last connection opened or closed; absent until it first connects. */
   lastSeenAt: Schema.optionalKey(EpochMillis),
+  /** For a browser that gets push notifications (§14.11): which kinds. */
+  notifications: Schema.optionalKey(Schema.Array(NotificationKind)),
 });
 export type DeviceInfo = typeof DeviceInfo.Type;
 
@@ -162,9 +165,10 @@ export type TunnelAddress = typeof TunnelAddress.Type;
 export const TunnelPeer = Schema.Struct({ device: DeviceId, connection: ConnectionId });
 export type TunnelPeer = typeof TunnelPeer.Type;
 
-/** What a device sends its relay socket, besides `ping`: tunnel frames, and sync (§14.9). */
+/** What a device sends its relay socket, besides `ping`: tunnel frames, sync (§14.9) and push (§14.11). */
 export const DeviceMessage = Schema.Union([
   ...SyncMessage.members,
+  ...PushMessage.members,
   /** One RPC frame for the other end, as text. */
   Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String }),
   /** This end of the channel is done. */

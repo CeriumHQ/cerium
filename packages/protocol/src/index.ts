@@ -5,6 +5,7 @@ export * from "./harness.ts";
 export * from "./ids.ts";
 export * from "./models.ts";
 export * from "./orchestration.ts";
+export * from "./push.ts";
 export * from "./settings.ts";
 export * from "./sync.ts";
 export * from "./workspace.ts";

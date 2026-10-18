@@ -223,3 +223,7 @@ export const approveDevice = LocalBackend.mutation("ApproveDevice");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");
+// Push notifications (docs/architecture.md §14.11): what the window shows, and a browser's subscription.
+export const reportPresence = LocalBackend.mutation("ReportPresence");
+export const subscribePush = LocalBackend.mutation("SubscribePush");
+export const unsubscribePush = LocalBackend.mutation("UnsubscribePush");

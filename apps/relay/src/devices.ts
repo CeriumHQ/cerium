@@ -5,6 +5,7 @@ import type {
   DeviceId,
   DeviceInfo,
   DeviceKind,
+  NotificationKind,
   RelayMessage,
 } from "@cerium/protocol";
 
@@ -26,7 +27,11 @@ export type DeviceRow = {
   readonly last_seen_at: number | null;
 };
 
-export const toDeviceInfo = (row: DeviceRow, online: boolean): DeviceInfo => ({
+export const toDeviceInfo = (
+  row: DeviceRow,
+  online: boolean,
+  notifications?: ReadonlyArray<NotificationKind>,
+): DeviceInfo => ({
   id: row.id as DeviceId,
   kind: row.kind,
   name: row.name,
@@ -38,6 +43,7 @@ export const toDeviceInfo = (row: DeviceRow, online: boolean): DeviceInfo => ({
   online,
   createdAt: row.created_at,
   ...(row.last_seen_at === null ? {} : { lastSeenAt: row.last_seen_at }),
+  ...(notifications === undefined ? {} : { notifications }),
 });
 
 /** A newly linked device is approved at once only while the account has no approved device. */
@@ -53,17 +59,23 @@ export type DeviceAction = "approve" | "rename" | "remove";
 export const mayManage = (actor: DeviceRow, target: DeviceRow, action: DeviceAction): boolean =>
   actor.approved_at !== null || (action === "remove" && actor.id === target.id);
 
-/** The state a device's socket is sent: every device once it's approved, only itself until then. */
+/**
+ * The state a device's socket is sent: every device once it's approved, only itself until then.
+ * `notifications` holds the kinds each browser with push on gets (§14.11).
+ */
 export const stateFor = (
   self: DeviceRow,
   rows: ReadonlyArray<DeviceRow>,
   online: ReadonlySet<string>,
   account: AccountProfile,
   connection?: string,
+  notifications?: ReadonlyMap<string, ReadonlyArray<NotificationKind>>,
 ): Extract<RelayMessage, { readonly _tag: "State" }> => ({
   _tag: "State",
   account,
   self: self.id as DeviceId,
   ...(connection === undefined ? {} : { connection: connection as ConnectionId }),
-  devices: (self.approved_at === null ? [self] : rows).map((row) => toDeviceInfo(row, online.has(row.id))),
+  devices: (self.approved_at === null ? [self] : rows).map((row) =>
+    toDeviceInfo(row, online.has(row.id), notifications?.get(row.id)),
+  ),
 });

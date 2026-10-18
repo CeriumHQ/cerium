@@ -32,6 +32,10 @@ export const deviceHandlers = <R>(working: Effect.Effect<Stream.Stream<boolean>,
           cloud.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),
         MarkThreadsRead: ({ entries }) => cloud.markRead(entries).pipe(Effect.mapError(refuse)),
         WatchWorking: () => workingNow,
+        ReportPresence: (presence) => account.reportPresence(presence),
+        SubscribePush: ({ subscription, kinds }) =>
+          account.send({ _tag: "PushSubscribe", subscription, kinds }).pipe(Effect.mapError(refuse)),
+        UnsubscribePush: () => account.send({ _tag: "PushUnsubscribe" }).pipe(Effect.mapError(refuse)),
       });
     }),
   );

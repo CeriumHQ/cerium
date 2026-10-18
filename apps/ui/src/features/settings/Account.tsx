@@ -1,5 +1,4 @@
 import { Button } from "@base-ui/react/button";
-import { Switch } from "@base-ui/react/switch";
 import { MAX_DEVICE_NAME, type AccountState, type DeviceId, type DeviceInfo } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -40,7 +39,7 @@ import {
   selfNoun,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
 
 type SignedIn = Extract<AccountState, { _tag: "SignedIn" }>;
 
@@ -481,15 +480,12 @@ function ThisComputerSection() {
             </p>
             {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
           </div>
-          <Switch.Root
+          <SettingsSwitch
             checked={startAtLogin?.enabled ?? false}
             onCheckedChange={change}
             disabled={startAtLogin?.available !== true}
-            aria-labelledby={labelId}
-            className="relative mt-0.5 flex h-5 w-9 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
-          >
-            <Switch.Thumb className="size-4 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-4 data-checked:bg-accent-fg" />
-          </Switch.Root>
+            labelledBy={labelId}
+          />
         </SettingsCard>
       ) : null}
     </SettingsSection>

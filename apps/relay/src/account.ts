@@ -11,6 +11,9 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceId,
+  type NotificationKind,
+  type PushMessage,
+  type PushPayload,
   type ReadEntry,
   type RelayMessage,
   type SyncMessage,
@@ -22,15 +25,26 @@ import { DurableObject } from "cloudflare:workers";
 import { Option, Schema } from "effect";
 
 import { approvedOnLink, mayManage, stateFor, type DeviceAction, type DeviceRow } from "./devices.ts";
-import type { Env } from "./env.ts";
+import { vapidKeys, type Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
+import {
+  isShowing,
+  kindsOf,
+  notificationBody,
+  recipients,
+  threadKey,
+  type Presence,
+  type PushRow,
+} from "./notify.ts";
 import { appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
+import { pushTopic, sendPush } from "./webPush.ts";
 
 // One Cerium account (docs/architecture.md §14.4): its devices, and every device's WebSocket. The
 // sockets hibernate between messages and `ping` is answered without waking the object, so an idle
 // connection costs nothing. Frames one device tunnels to another pass through here unread (§14.8),
-// and every desktop's threads are kept here, so every device sees them all (§14.9).
+// every desktop's threads are kept here, so every device sees them all (§14.9), and browsers that
+// asked for them are sent push notifications about those threads (§14.11).
 
 /** What a refused action reports to the Worker, which answers with it. */
 export type Outcome =
@@ -40,8 +54,11 @@ export type Outcome =
 const done: Outcome = { ok: true };
 const refused = (status: number, message: string): Outcome => ({ ok: false, status, message });
 
-/** What each device socket carries through hibernation. */
-type Attachment = Live;
+/** What each device socket carries through hibernation: who it is, and what its window shows. */
+type Attachment = Live & Presence;
+
+/** How long a push service keeps a notification for a phone that's off or out of reach. */
+const PUSH_TTL_S = 24 * 60 * 60;
 
 const decodeDeviceMessage = Schema.decodeUnknownOption(Schema.fromJsonString(DeviceMessage));
 
@@ -105,6 +122,15 @@ export class Account extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS read_state (
       thread TEXT PRIMARY KEY,
       seen_at INTEGER NOT NULL
+    )`);
+    // Browsers' push subscriptions, one per browser, with the kinds of notification each wants.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS push (
+      device TEXT PRIMARY KEY,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      kinds TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     )`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -192,13 +218,24 @@ export class Account extends DurableObject<Env> {
     });
   }
 
-  /** A tunnelled frame, passed on unread to the connection it's for (§14.8). */
-  override webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
+  /** A tunnelled frame, passed on unread to the connection it's for (§14.8); or sync, or push. */
+  override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== "string" || message === "ping") return;
     const frame = Option.getOrUndefined(decodeDeviceMessage(message));
     const self = this.attachment(socket);
     if (frame === undefined || self === undefined) return;
-    if (frame._tag !== "Send" && frame._tag !== "Close") return this.sync(socket, self, frame);
+    switch (frame._tag) {
+      case "Send":
+      case "Close":
+        break;
+      case "Presence":
+      case "Notify":
+      case "PushSubscribe":
+      case "PushUnsubscribe":
+        return this.push(socket, self, frame);
+      default:
+        return this.sync(socket, self, frame);
+    }
     const rows = this.rows();
     const live = this.live();
     const route = routeFrame(
@@ -260,6 +297,7 @@ export class Account extends DurableObject<Env> {
   async remove(credential: Credential, targetId: DeviceId): Promise<Outcome> {
     return this.manage(credential, targetId, "remove", (target) => {
       this.write("DELETE FROM devices WHERE id = ?", target.id);
+      this.sql.exec("DELETE FROM push WHERE device = ?", target.id);
       for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
       // A machine leaving takes its threads out of the cloud; they stay on the machine.
       const threads = this.sql
@@ -415,6 +453,105 @@ export class Account extends DurableObject<Env> {
     }
   }
 
+  /** A window saying what it shows, a machine saying a thread needs the user, a browser's push settings. */
+  private async push(socket: WebSocket, self: Attachment, message: PushMessage) {
+    const sender = this.row(self.deviceId);
+    if (sender === undefined || sender.approved_at === null) return;
+    switch (message._tag) {
+      case "Presence": {
+        socket.serializeAttachment({
+          deviceId: self.deviceId,
+          connection: self.connection,
+          connectedAt: self.connectedAt,
+          visible: message.visible,
+          ...(message.viewing === undefined
+            ? {}
+            : { viewing: threadKey(message.viewing.machine, message.viewing.threadId) }),
+          presenceAt: Date.now(),
+        } satisfies Attachment);
+        return;
+      }
+      case "PushSubscribe": {
+        if (sender.kind !== "browser") return;
+        const before = this.pushRows().find((row) => row.device === sender.id);
+        const kinds = JSON.stringify(message.kinds);
+        this.sql.exec(
+          `INSERT INTO push (device, endpoint, p256dh, auth, kinds, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (device) DO UPDATE SET endpoint = excluded.endpoint, p256dh = excluded.p256dh,
+             auth = excluded.auth, kinds = excluded.kinds, updated_at = excluded.updated_at`,
+          sender.id,
+          message.subscription.endpoint,
+          message.subscription.keys.p256dh,
+          message.subscription.keys.auth,
+          kinds,
+          Date.now(),
+        );
+        // A browser renews its subscription each time it opens; only a change of kinds is news.
+        if (before?.kinds !== kinds) this.broadcast();
+        return;
+      }
+      case "PushUnsubscribe": {
+        if (this.sql.exec("DELETE FROM push WHERE device = ?", sender.id).rowsWritten > 0) this.broadcast();
+        return;
+      }
+      case "Notify": {
+        if (sender.kind !== "desktop") return;
+        return this.notify(sender, message);
+      }
+    }
+  }
+
+  /** Sends a thread's notification to every browser that wants it and isn't looking already. */
+  private async notify(machine: DeviceRow, message: Extract<PushMessage, { readonly _tag: "Notify" }>) {
+    const vapid = vapidKeys(this.env);
+    if (vapid === undefined) return;
+    const now = Date.now();
+    const rows = this.rows();
+    const showing = this.live().flatMap(({ socket, attachment }) =>
+      isShowing(attachment, this.ctx.getWebSocketAutoResponseTimestamp(socket)?.getTime() ?? 0, now)
+        ? [attachment]
+        : [],
+    );
+    const key = threadKey(machine.id, message.threadId);
+    const targets = recipients(message.kind, key, this.pushRows(), rows, showing);
+    if (targets.length === 0) return;
+    // The computer is named once the account has more than one.
+    const desktops = rows.filter((row) => row.kind === "desktop" && row.approved_at !== null);
+    const payload = JSON.stringify({
+      kind: message.kind,
+      machine: machine.id as DeviceId,
+      threadId: message.threadId,
+      title: message.title.trim() || "Untitled thread",
+      body: notificationBody(message.kind, message.detail, desktops.length > 1 ? machine.name : undefined),
+    } satisfies PushPayload);
+    const options = {
+      ttl: PUSH_TTL_S,
+      urgency: message.kind === "needsYou" ? "high" : "normal",
+      topic: await pushTopic(key),
+    } as const;
+    const results = await Promise.all(
+      targets.map((row) =>
+        sendPush(
+          { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+          payload,
+          vapid,
+          options,
+        ).catch((error: unknown) => {
+          console.error("A push failed", error);
+          return "failed" as const;
+        }),
+      ),
+    );
+    // A subscription its push service no longer knows is gone for good: the browser turned it off.
+    const gone = targets.filter((_, index) => results[index] === "gone");
+    for (const row of gone) this.sql.exec("DELETE FROM push WHERE device = ?", row.device);
+    if (gone.length > 0) this.broadcast();
+  }
+
+  private pushRows(): Array<PushRow> {
+    return this.sql.exec<PushRow>("SELECT * FROM push").toArray();
+  }
+
   /** What an approved device gets on connecting: the account's threads, and for a desktop, its cursors. */
   private welcome(socket: WebSocket, device: DeviceRow) {
     const threads = this.sql
@@ -501,6 +638,9 @@ export class Account extends DurableObject<Env> {
     const profile = this.profile();
     if (profile === undefined) return;
     const rows = this.rows();
+    const notifications = new Map<string, ReadonlyArray<NotificationKind>>(
+      this.pushRows().map((row) => [row.device, kindsOf(row)]),
+    );
     const attached = this.live(closing);
     const online = new Set(attached.map(({ attachment }) => attachment.deviceId));
     for (const { socket, attachment } of attached) {
@@ -509,7 +649,7 @@ export class Account extends DurableObject<Env> {
         signOut(socket, "removed");
         continue;
       }
-      send(socket, stateFor(self, rows, online, profile, attachment.connection));
+      send(socket, stateFor(self, rows, online, profile, attachment.connection, notifications));
     }
   }
 }

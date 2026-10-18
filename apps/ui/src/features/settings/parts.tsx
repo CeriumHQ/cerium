@@ -1,3 +1,4 @@
+import { Switch } from "@base-ui/react/switch";
 import { useAtomValue } from "@effect/atom-react";
 import { Monitor } from "lucide-react";
 import type { ReactNode } from "react";
@@ -70,6 +71,31 @@ export function SettingsSection({
       </div>
       {children}
     </section>
+  );
+}
+
+/** A setting's on/off switch, named by the element `labelledBy` points at. */
+export function SettingsSwitch({
+  checked,
+  onCheckedChange,
+  disabled = false,
+  labelledBy,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+  labelledBy: string;
+}) {
+  return (
+    <Switch.Root
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      aria-labelledby={labelledBy}
+      className="relative mt-0.5 flex h-5 w-9 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
+    >
+      <Switch.Thumb className="size-4 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-4 data-checked:bg-accent-fg" />
+    </Switch.Root>
   );
 }
 

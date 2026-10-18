@@ -23,6 +23,10 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Account", "Link"] }],
   "observability": { "enabled": true },
   "send_metrics": false,
-  "vars": { "PUBLIC_ORIGIN": "https://cerium.nonlooped.xyz" },
+  "vars": {
+    "PUBLIC_ORIGIN": "https://cerium.nonlooped.xyz",
+    // How push services reach whoever runs the relay (§14.11); its VAPID keys are secrets.
+    "VAPID_SUBJECT": "https://cerium.nonlooped.xyz",
+  },
   "dev": { "port": 8787 },
 }

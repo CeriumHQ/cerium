@@ -12,7 +12,9 @@ import {
   LoginProgress,
   Mention,
   ModelInfo,
+  NotificationKind,
   ProjectInfo,
+  PushSubscriptionInfo,
   ProviderId,
   ReasoningEffort,
   Settings,
@@ -22,6 +24,7 @@ import {
   ThreadInfo,
   ThreadMode,
   ThreadOverview,
+  ThreadRef,
   UiEvent,
   WorkspaceEntry,
   ReadEntry,
@@ -229,6 +232,20 @@ export const DeviceRpcs = RpcGroup.make(
    * browser. The shell keeps a desktop awake for them while its window drives another machine.
    */
   Rpc.make("WatchWorking", { success: Schema.Boolean, stream: true }),
+  /**
+   * Whether this device's window shows, and the thread open in it: nobody is notified about a
+   * thread someone is looking at (§14.11).
+   */
+  Rpc.make("ReportPresence", {
+    payload: { visible: Schema.Boolean, viewing: Schema.optionalKey(ThreadRef) },
+  }),
+  /** Sends this browser these kinds of push notifications from now on, at its subscription. */
+  Rpc.make("SubscribePush", {
+    payload: { subscription: PushSubscriptionInfo, kinds: Schema.Array(NotificationKind) },
+    error: CeriumError,
+  }),
+  /** Sends this browser no more push notifications. */
+  Rpc.make("UnsubscribePush", { error: CeriumError }),
 );
 
 /** A desktop backend's own endpoint, for its own UI: the machine and the device. */

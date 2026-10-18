@@ -1,6 +1,5 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
-import { Switch } from "@base-ui/react/switch";
 import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -32,7 +31,7 @@ import {
 } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
 import { accessAtom, effortAtom, modelAtom } from "./preferences.ts";
 
 const unavailableReason: Record<Exclude<HarnessIndicator["state"], "ready">, string> = {
@@ -353,15 +352,12 @@ function McpServersSetting() {
           </p>
           {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
         </div>
-        <Switch.Root
+        <SettingsSwitch
           checked={on}
           onCheckedChange={change}
           disabled={saved === undefined}
-          aria-labelledby={labelId}
-          className="relative mt-0.5 flex h-5 w-9 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
-        >
-          <Switch.Thumb className="size-4 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-4 data-checked:bg-accent-fg" />
-        </Switch.Root>
+          labelledBy={labelId}
+        />
       </div>
       <ToolSources connected={on} />
     </SettingsCard>

@@ -20,6 +20,7 @@ import { Socket } from "effect/socket";
 import { join } from "node:path";
 
 import { thisMachine } from "./device.ts";
+import { Notifier } from "./notify.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
@@ -121,8 +122,9 @@ export const backendLayer = (options: BackendOptions) =>
       disableLogger: true,
     },
   ).pipe(
-    // Keeps the cloud copy of this machine's threads current, and knows the account's (§14.9).
-    Layer.provideMerge(Layer.merge(CloudCopy, CloudThreads.layer)),
+    // Keeps the cloud copy of this machine's threads current, knows the account's (§14.9), and
+    // tells the account's browsers when a thread here needs the user, finished or failed (§14.11).
+    Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifier)),
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),

@@ -51,6 +51,15 @@ const artifactScript = async () => {
   return `(() => {\n${code.replace(/^export /gm, "").trim()}\nartifactRuntime(HEIGHT_MESSAGE);\n})();`;
 };
 
+const serviceWorkerFile = fileURLToPath(new URL("src/web/serviceWorker.ts", import.meta.url));
+
+/** The web client's service worker (src/web/serviceWorker.ts) as one script, served at /sw.js. */
+const serviceWorkerScript = async () => {
+  const source = await readFile(serviceWorkerFile, "utf8");
+  const { code } = await transformWithOxc(source, serviceWorkerFile, { lang: "ts" });
+  return `${code.replace(/^export /gm, "").trim()}\nserviceWorker(self);\n`;
+};
+
 /**
  * The web client's Content-Security-Policy (docs/architecture.md §14.10): every script is the app's
  * own, or an artifact frame's runtime, which the frame inherits this policy for.
@@ -95,25 +104,37 @@ const webHead = `
 `;
 
 /**
- * The web client (`--mode web`): its page head, its files, and the relay's `_headers` with the
- * policy, which scripts/assets.ts in apps/relay merges with the relay's own.
+ * The web client (`--mode web`): its page head, its files and service worker, and the relay's
+ * `_headers` with the policy, which scripts/assets.ts in apps/relay merges with the relay's own.
  */
 const webClient = (artifact: string): Plugin => ({
   name: "cerium-web-client",
   transformIndexHtml: (html) => html.replace("</head>", `${webHead}  </head>`),
+  configureServer(server) {
+    server.middlewares.use("/sw.js", (_request, response) => {
+      void serviceWorkerScript().then((script) => {
+        response.setHeader("content-type", "text/javascript");
+        response.setHeader("cache-control", "no-cache");
+        response.end(script);
+      });
+    });
+  },
   async generateBundle() {
     for (const fileName of webFiles) {
       this.emitFile({ type: "asset", fileName, source: await readFile(`${webFolder}${fileName}`) });
     }
+    this.emitFile({ type: "asset", fileName: "sw.js", source: await serviceWorkerScript() });
     const rules = [
       `Content-Security-Policy: ${contentPolicy(artifact)}`,
       "X-Content-Type-Options: nosniff",
       "Referrer-Policy: no-referrer",
       "Permissions-Policy: camera=(), microphone=(), geolocation=()",
     ];
-    const headers = ["/", "/index.html"].map((path) =>
-      [path, ...rules.map((rule) => `  ${rule}`)].join("\n"),
-    );
+    const headers = [
+      ...["/", "/index.html"].map((path) => [path, ...rules.map((rule) => `  ${rule}`)].join("\n")),
+      // Browsers check for a newer worker at each visit.
+      "/sw.js\n  Cache-Control: no-cache",
+    ];
     this.emitFile({ type: "asset", fileName: "_headers", source: `${headers.join("\n\n")}\n` });
   },
 });

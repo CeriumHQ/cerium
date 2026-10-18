@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App.tsx";
 import { WEB } from "./backend/target.ts";
+import { registerServiceWorker } from "./web/push.ts";
 import { followVisualViewport } from "./web/viewport.ts";
 
 // Electron's preload exposes `window.cerium`; anywhere else this is the browser preview.
@@ -14,6 +15,8 @@ document.documentElement.dataset["theme"] ??= "dark";
 if (WEB) {
   document.documentElement.dataset["target"] = "web";
   followVisualViewport();
+  // Shows push notifications and opens their threads (docs/architecture.md §14.11).
+  if ("serviceWorker" in navigator) void registerServiceWorker().catch(() => undefined);
 }
 
 createRoot(document.getElementById("root")!).render(

@@ -14,7 +14,7 @@ import {
 
 import type { Outcome } from "./account.ts";
 import { clerkUser } from "./clerk.ts";
-import type { Env } from "./env.ts";
+import { vapidKeys, type Env } from "./env.ts";
 import { bearer, json, param, readBody, refuse, refusedSocket } from "./http.ts";
 
 export { Account } from "./account.ts";
@@ -40,7 +40,11 @@ const route = async (request: Request, env: Env): Promise<Response> => {
   const method = request.method;
 
   if (resource === "config" && method === "GET" && id === undefined) {
-    return json({ publishableKey: env.CLERK_PUBLISHABLE_KEY });
+    const vapid = vapidKeys(env);
+    return json({
+      publishableKey: env.CLERK_PUBLISHABLE_KEY,
+      ...(vapid === undefined ? {} : { vapidPublicKey: vapid.publicKey }),
+    });
   }
 
   // A machine starts signing in.

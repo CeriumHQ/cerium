@@ -20,4 +20,18 @@ export interface Env {
   readonly CLERK_PUBLISHABLE_KEY: string;
   /** The Clerk instance's JWT public key (PEM), for verifying session tokens without a network call. */
   readonly CLERK_JWT_KEY: string;
+  /**
+   * The relay's VAPID key pair for push notifications (§14.11), as `scripts/vapid.ts` makes it.
+   * Without both, the relay sends none and the web client doesn't offer them.
+   */
+  readonly VAPID_PUBLIC_KEY?: string;
+  readonly VAPID_PRIVATE_KEY?: string;
+  /** How push services reach whoever runs the relay: an `https:` or `mailto:` URL. */
+  readonly VAPID_SUBJECT: string;
 }
+
+/** The relay's VAPID keys, when it has them. */
+export const vapidKeys = (env: Env) =>
+  env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+    ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT }
+    : undefined;
