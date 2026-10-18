@@ -7,6 +7,7 @@ import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
+import { WEB } from "../backend/target.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 
 /** Windows draws its minimize / maximize / close buttons here (Electron's titleBarOverlay). */
@@ -94,7 +95,7 @@ export function Titlebar({
 }
 
 /** The thread's agents at a glance; opens the agent inspector. */
-function AgentsToggle({
+export function AgentsToggle({
   agents,
   open,
   onToggle,
@@ -139,6 +140,8 @@ function AgentsToggle({
  */
 function CaptionButtons() {
   const width = CAPTION_BUTTON_WIDTH * 3;
+  // A browser window has its own.
+  if (WEB) return <div className="w-1.5 shrink-0" />;
   if (document.documentElement.dataset["shell"] === "electron") {
     // Window Controls Overlay reports the free titlebar area; everything right of it is Windows'.
     return (

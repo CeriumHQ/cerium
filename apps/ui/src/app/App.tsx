@@ -17,7 +17,7 @@ import {
 } from "@effect/atom-react";
 import { Cause } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
 import {
   accountAtom,
@@ -38,8 +38,9 @@ import {
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
-import { driveMachine, machineAtom, machineKey } from "../backend/machine.ts";
+import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject } from "../backend/projects.ts";
+import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { DeviceRequestNotice, useShellPresence } from "../features/account/AccountNotice.tsx";
@@ -52,15 +53,22 @@ import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/co
 import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
-import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
+import {
+  settingsLabel,
+  SettingsNav,
+  SettingsView,
+  type SettingsCategory,
+} from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
-import { CloudThreadBar } from "../features/threads/CloudThread.tsx";
+import { CloudThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { remember, stored } from "../lib/storage.ts";
+import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
+import { useCompact } from "./compact.ts";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
@@ -82,11 +90,21 @@ export function App() {
   return (
     <RegistryProvider>
       <TooltipProvider delay={400}>
-        <Workspace />
+        <Themed>
+          <WebGate>
+            <Workspace />
+          </WebGate>
+        </Themed>
         <TextMenu />
       </TooltipProvider>
     </RegistryProvider>
   );
+}
+
+/** Keeps the page on the chosen theme, the web client's sign-in included. */
+function Themed({ children }: { children: ReactNode }) {
+  useTheme(useAtomValue(themeAtom));
+  return children;
 }
 
 function Workspace() {
@@ -117,19 +135,26 @@ function Workspace() {
   /** How much taller files attached to the draft make the message box, for the same reason. */
   const [attachmentsHeight, setAttachmentsHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const compact = useCompact();
+  /** The narrow window's pane (§14.10): the threads, or the open (or new) thread. */
+  const [pane, setPane] = useState<"list" | "main">("list");
+  /** Its settings pane: the categories, or the open category's page. */
+  const [settingsPane, setSettingsPane] = useState<"nav" | "page">("nav");
   /** The category settings open on: the last one visited. */
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
   const composerInput = useRef<HTMLDivElement>(null);
   const [messageBoxRef, messageBox] = useMessageBoxHandle();
-
-  useTheme(useAtomValue(themeAtom));
 
   const connection = useAtomValue(connectionAtom);
   const threadsResult = useAtomValue(threadsAtom);
   const refreshThreads = useAtomRefresh(threadsAtom);
   const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
   const models = useModels();
-  const overviews = AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []);
+  // Another machine that can't be reached shows the threads it last listed no more: they read from
+  // the cloud copy instead, until it answers again. This computer's own list stays while it reconnects.
+  const live =
+    AsyncResult.isSuccess(threadsResult) && !(connection === "unreachable" && driven !== undefined);
+  const overviews = live ? AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []) : [];
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
     _tag: "SignedOut",
   }));
@@ -143,10 +168,11 @@ function Workspace() {
   const drivenId = driven?.id ?? thisComputer;
   const deviceOf = (id: string) => devices.find((device) => device.id === id);
   const nameOf = (id: string) => deviceOf(id)?.name ?? "another computer";
+  // Until the driven machine answers, or while it can't, its threads read from the copy too.
   const elsewhere = accountThreads.threads.filter(
     (each) =>
       drivenId !== undefined &&
-      each.machine !== drivenId &&
+      (each.machine !== drivenId || !live) &&
       !overviews.some((overview) => overview.thread.id === each.overview.thread.id),
   );
   const selected = overviews.find(
@@ -208,6 +234,16 @@ function Workspace() {
     driven === undefined || account._tag !== "SignedIn"
       ? undefined
       : account.devices.find((device) => device.id === driven.id);
+  // The web client always drives one of the account's desktops (§14.10): the one it drove last,
+  // else the first that can be reached, once one can.
+  const reachable = devices.filter(
+    (device) => device.kind === "desktop" && device.approved && reachOf(device).kind === "reachable",
+  );
+  const toDrive = WEB && driven === undefined ? machineToDrive(reachable) : undefined;
+  const driveChosen = useEffectEvent(() => {
+    if (toDrive !== undefined) driveMachine(registry, toDrive);
+  });
+  useEffect(() => driveChosen(), [toDrive?.id]);
   const markSeen = useEffectEvent(() => {
     if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
       readState.markRead([selectedSummary]);
@@ -225,6 +261,7 @@ function Workspace() {
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string) => {
     setOpenAfterSwitch({ mode, id: threadId });
+    setPane("main");
     driveMachine(registry, device.id === thisComputer ? undefined : { id: device.id, name: device.name });
   };
 
@@ -286,14 +323,21 @@ function Workspace() {
     composerInput.current?.focus();
   };
 
+  /** The user asked for a new thread: in the narrow window, that's its pane. */
+  const newThread = () => {
+    startNew();
+    setPane("main");
+  };
+
   const openSettings = (category?: SettingsCategory) => {
     if (category) setSettingsCategory(category);
+    setSettingsPane(category ? "page" : "nav");
     setSettingsOpen(true);
   };
-  // Back from settings, the cursor returns to the message box.
+  // Back from settings, the cursor returns to the message box; a phone's keyboard stays down.
   useEffect(() => {
-    if (!settingsOpen) composerInput.current?.focus();
-  }, [settingsOpen]);
+    if (!settingsOpen && !compact) composerInput.current?.focus();
+  }, [settingsOpen, compact]);
 
   const chooseFolder = (picked: string) => {
     setFolder(picked);
@@ -322,7 +366,7 @@ function Workspace() {
         toggleSidebar();
         break;
       case "n":
-        startNew();
+        newThread();
         break;
       case "j":
         if (selected === undefined || settingsOpen) return;
@@ -370,7 +414,9 @@ function Workspace() {
       }}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={toggleSidebar}
-      onNewThread={startNew}
+      onNewThread={newThread}
+      pane={pane}
+      onBack={() => setPane("list")}
       sidebar={
         <Sidebar
           mode={mode}
@@ -381,13 +427,18 @@ function Workspace() {
             setHeldUnread(summary?.unread ? threadId : undefined);
             const home = summary?.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
             // Another machine's thread opens there; one that can't be reached opens here, read-only.
-            if (home && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
+            if (
+              home &&
+              home.id !== drivenId &&
+              (home.id === thisComputer || reachOf(home).kind === "reachable")
+            ) {
               openOn(home, threadId);
               return;
             }
             setOpenThread((current) => ({ ...current, [mode]: threadId }));
+            setPane("main");
           }}
-          onNewThread={startNew}
+          onNewThread={newThread}
           onMarkRead={(threads) => {
             if (threads.some((thread) => thread.id === heldUnread)) setHeldUnread(undefined);
             readState.markRead(threads);
@@ -399,7 +450,7 @@ function Workspace() {
           onNewThreadIn={(picked) => {
             chooseFolder(picked);
             void save({ payload: { path: picked } }).catch(() => undefined);
-            startNew();
+            newThread();
           }}
           onRename={(threadId, title) =>
             attempt(rename({ payload: { threadId: threadId as ThreadId, title } })).then((renamed) => {
@@ -442,13 +493,21 @@ function Workspace() {
         nav: (
           <SettingsNav
             category={settingsCategory}
-            onSelect={setSettingsCategory}
+            onSelect={(category) => {
+              setSettingsCategory(category);
+              setSettingsPane("page");
+            }}
             backLabel={mode === "work" ? "Back to threads" : "Back to chats"}
             onBack={() => setSettingsOpen(false)}
             active={settingsOpen}
+            compact={compact}
           />
         ),
         page: <SettingsView category={settingsCategory} harnesses={indicators} />,
+        pane: settingsPane,
+        title: settingsLabel(settingsCategory),
+        onBackToNav: () => setSettingsPane("nav"),
+        onClose: () => setSettingsOpen(false),
       }}
       agents={selected ? selected.agents.map((agent) => agent.provider) : []}
       inspector={
@@ -472,16 +531,21 @@ function Workspace() {
           <Notice tone="attention">
             Can't reach {driven.name}
             {drivenDevice && !drivenDevice.online ? ` (${presenceLabel(drivenDevice).toLowerCase()})` : ""}.
-            Cerium keeps trying.{" "}
-            <button
-              type="button"
-              onClick={() => driveMachine(registry, undefined)}
-              className="font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
-            >
-              Back to this computer
-            </button>
+            Cerium keeps trying.
+            {WEB ? null : (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => driveMachine(registry, undefined)}
+                  className="font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
+                >
+                  Back to this computer
+                </button>
+              </>
+            )}
           </Notice>
-        ) : connection === "unreachable" ? (
+        ) : connection === "unreachable" && !WEB ? (
           <Notice tone="attention">
             Reconnecting to Cerium's backend…
             {import.meta.env.DEV ? (
@@ -535,10 +599,13 @@ function Workspace() {
           )}
         </div>
 
-        {cloudSelected ? (
+        {WEB && driven === undefined && !cloudSelected ? (
+          <NoComputerBar />
+        ) : cloudSelected ? (
           <CloudThreadBar
             machine={nameOf(cloudSelected.machine)}
             reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
+            connecting={cloudSelected.machine === drivenId}
             onOpen={() => {
               if (cloudDevice) openOn(cloudDevice, cloudSelected.overview.thread.id);
             }}

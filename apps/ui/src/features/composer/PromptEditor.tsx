@@ -314,12 +314,12 @@ export function PromptEditor({
             placeCaretAtEnd(root.current);
         }}
         onBlur={() => onTrigger(undefined)}
-        className="block max-h-60 min-h-12 w-full overflow-y-auto px-4 pt-3 pb-1 text-[14px] leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none"
+        className="block max-h-60 min-h-12 w-full overflow-y-auto px-4 pt-3 pb-1 text-[14px] leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:max-h-40 max-md:text-base"
       />
       {segments.length === 0 ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute top-3 left-4 text-[14px] leading-[1.6] text-fg-tertiary select-none"
+          className="pointer-events-none absolute top-3 left-4 text-[14px] leading-[1.6] text-fg-tertiary select-none max-md:text-base"
         >
           {placeholder}
         </span>

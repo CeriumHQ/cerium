@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Blocks,
   Bot,
+  ChevronRight,
   CircleUserRound,
   Keyboard,
   Palette,
@@ -34,6 +35,10 @@ const categories: ReadonlyArray<{
   { id: "archived", label: "Archived", icon: Archive },
 ];
 
+/** A category's name, as the narrow window's top bar shows it over its page. */
+export const settingsLabel = (category: SettingsCategory) =>
+  categories.find((each) => each.id === category)?.label ?? "Settings";
+
 interface SettingsNavProps {
   readonly category: SettingsCategory;
   readonly onSelect: (category: SettingsCategory) => void;
@@ -42,10 +47,22 @@ interface SettingsNavProps {
   readonly onBack: () => void;
   /** Settings are showing: the current category takes focus, ready for the arrow keys. */
   readonly active: boolean;
+  /**
+   * The narrow window's list of categories, each opening its page; its top bar has the way back.
+   * Keyboard shortcuts are left out: a phone has no keyboard to speak of.
+   */
+  readonly compact?: boolean;
 }
 
 /** The sidebar while settings are open: the way back, and the categories. */
-export function SettingsNav({ category, onSelect, backLabel, onBack, active }: SettingsNavProps) {
+export function SettingsNav({
+  category,
+  onSelect,
+  backLabel,
+  onBack,
+  active,
+  compact = false,
+}: SettingsNavProps) {
   const nav = useRef<HTMLElement>(null);
   const current = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -62,6 +79,28 @@ export function SettingsNav({ category, onSelect, backLabel, onBack, active }: S
     const next = categories[(index + offset + categories.length) % categories.length];
     if (next) onSelect(next.id);
   };
+
+  if (compact) {
+    return (
+      <nav aria-label="Settings" className="flex flex-col px-3 pt-2">
+        <div className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-xl border border-line-subtle bg-surface-raised">
+          {categories
+            .filter(({ id }) => id !== "keyboard")
+            .map(({ id, label, icon: Icon }) => (
+              <Button
+                key={id}
+                onClick={() => onSelect(id)}
+                className="flex h-12 items-center gap-3 px-3.5 text-left text-[15px] text-fg-primary transition-colors active:bg-surface-active"
+              >
+                <Icon size={18} strokeWidth={1.75} className="text-fg-secondary" />
+                <span className="flex-1">{label}</span>
+                <ChevronRight size={17} strokeWidth={1.75} className="text-fg-tertiary" />
+              </Button>
+            ))}
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

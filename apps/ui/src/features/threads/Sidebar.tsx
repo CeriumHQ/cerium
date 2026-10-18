@@ -65,16 +65,17 @@ export function Sidebar({
       <div className="flex items-center gap-1 px-2 pb-2">
         <Button
           onClick={onNewThread}
-          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active"
+          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active max-md:h-10 max-md:gap-2.5 max-md:rounded-xl max-md:px-3 max-md:text-[15px]"
         >
-          <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary" />
+          <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary max-md:size-4" />
           {mode === "work" ? "New thread" : "New chat"}
-          <kbd className="ml-auto font-sans text-2xs text-fg-tertiary">Ctrl N</kbd>
+          <kbd className="ml-auto font-sans text-2xs text-fg-tertiary max-md:hidden">Ctrl N</kbd>
         </Button>
         <IconButton
           icon={Search}
           label={mode === "work" ? "Search threads" : "Search chats"}
           shortcut="Ctrl K"
+          className="max-md:size-10"
         />
       </div>
 
@@ -138,7 +139,7 @@ function ChatList({ threads, ...actions }: { threads: ReadonlyArray<ThreadSummar
 function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection } & ChatActions) {
   return (
     <Collapsible.Root defaultOpen>
-      <Collapsible.Trigger className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary">
+      <Collapsible.Trigger className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary max-md:py-2 max-md:text-[13px]">
         <ChevronRight
           size={12}
           strokeWidth={2}
@@ -169,7 +170,7 @@ function ThreadRow({
 }: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
   const [deleting, setDeleting] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
-  const rowClass = `group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover ${
+  const rowClass = `group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-2.5 max-md:rounded-lg max-md:text-[15px] ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -276,15 +277,21 @@ function SidebarFooter({
   onOpenSettings: SidebarProps["onOpenSettings"];
 }) {
   return (
-    <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5">
-      <IconButton icon={Settings} label="Settings" shortcut="Ctrl ," onClick={() => onOpenSettings()} />
+    <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5 max-md:pb-1">
+      <IconButton
+        icon={Settings}
+        label="Settings"
+        shortcut="Ctrl ,"
+        onClick={() => onOpenSettings()}
+        className="max-md:size-10"
+      />
       <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
         {harnesses.map(({ provider, state }) => (
           <Tooltip key={provider} side="top" label={`${providerName[provider]}: ${harnessState[state]}`}>
             <Button
               onClick={() => onOpenSettings("harnesses")}
               aria-label={`${providerName[provider]} status`}
-              className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover ${
+              className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover max-md:size-10 ${
                 state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-secondary"
               }`}
             >

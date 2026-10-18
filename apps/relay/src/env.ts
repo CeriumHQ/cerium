@@ -11,6 +11,11 @@ export interface Env {
    * than read from requests, since `wrangler dev` rewrites their host to the production route.
    */
   readonly PUBLIC_ORIGIN: string;
+  /**
+   * Development only: other origins that may sign devices in, comma-separated, such as the web UI's
+   * dev server (`http://localhost:5174`), which proxies the relay.
+   */
+  readonly DEV_ORIGINS?: string;
   /** The Clerk instance's publishable key; the sign-in page loads Clerk with it. */
   readonly CLERK_PUBLISHABLE_KEY: string;
   /** The Clerk instance's JWT public key (PEM), for verifying session tokens without a network call. */

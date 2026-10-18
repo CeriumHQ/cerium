@@ -77,10 +77,18 @@ export function Inspector({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle pr-1.5 pl-3">
-        <span className="text-[13px] font-medium text-fg-primary">Agents</span>
-        <span className="text-xs text-fg-tertiary tabular-nums">{agents.length}</span>
-        <IconButton icon={X} label="Close" shortcut="Ctrl J" onClick={onClose} className="ml-auto" />
+      <header className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 max-md:pl-4">
+        <span className="text-[13px] font-medium text-fg-primary max-md:text-[15px] max-md:font-semibold">
+          Agents
+        </span>
+        <span className="text-xs text-fg-tertiary tabular-nums max-md:text-[13px]">{agents.length}</span>
+        <IconButton
+          icon={X}
+          label="Close"
+          shortcut="Ctrl J"
+          onClick={onClose}
+          className="ml-auto max-md:size-10"
+        />
       </header>
 
       <ScrollArea className="flex-1">

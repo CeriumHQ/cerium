@@ -10,7 +10,7 @@ import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
-import { Backend, connectionAtom, LocalBackend, localConnectionAtom } from "./client.ts";
+import { Backend, connectionAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
@@ -150,20 +150,8 @@ export const cloudEventsAtom = Atom.family((key: string) => {
  */
 export const localWorkingAtom = LocalBackend.runtime.atom((get) => {
   if (get(machineAtom) === undefined) return Stream.succeed<boolean | undefined>(undefined);
-  get(localConnectionAtom);
-  return Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchEvents", undefined)))).pipe(
+  return Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchWorking", undefined)))).pipe(
     resubscribe,
-    Stream.filter((event) => !isDelta(event)),
-    Stream.mapEffect(() =>
-      LocalBackend.use((client) => client("ListThreads", undefined)).pipe(
-        Effect.map((threads) =>
-          threads.some((thread) =>
-            thread.agents.some((agent) => agent.state === "running" || agent.state === "queued"),
-          ),
-        ),
-        Effect.orElseSucceed(() => false),
-      ),
-    ),
   );
 });
 

@@ -1,6 +1,7 @@
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Atom } from "effect/reactivity";
 
+import { WEB } from "../../backend/target.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import { accessOptions, effortLabel } from "../composer/models.ts";
 
@@ -21,7 +22,8 @@ const MODEL_KEY = "cerium:model";
 export type Theme = "system" | "dark" | "light";
 export const THEME_KEY = "cerium:theme";
 export const themes: ReadonlyArray<Theme> = ["system", "dark", "light"];
-export const themeAtom = preference<Theme>(THEME_KEY, themes, "dark");
+/** The desktop is dark until changed; a phone follows its own setting. */
+export const themeAtom = preference<Theme>(THEME_KEY, themes, WEB ? "system" : "dark");
 
 /** The conversation's text sizes, smallest first; the transcript scales to match. */
 export const textSizes = [

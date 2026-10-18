@@ -83,12 +83,12 @@ export function Inbox({ threads, archived, onRestore, ...actions }: InboxProps) 
   return (
     <>
       <div className="flex items-center gap-2 pr-2 pb-1.5 pl-4">
-        <h2 className="text-[13px] font-semibold text-fg-primary">Inbox</h2>
+        <h2 className="text-[13px] font-semibold text-fg-primary max-md:text-[15px]">Inbox</h2>
         <MenuRoot>
           <MenuTrigger>
             <Button
               aria-label="Projects shown"
-              className="ml-auto flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-xs text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary"
+              className="ml-auto flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-xs text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary max-md:h-9 max-md:px-2 max-md:text-[13px]"
             >
               <span className="truncate">{project?.name ?? "All projects"}</span>
               <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
@@ -203,12 +203,12 @@ function InboxRow({
   const unread = thread.unread && !selected;
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const { folder, project } = thread;
-  const rowClass = `flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors duration-150 data-popup-open:bg-surface-hover ${
+  const rowClass = `flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors duration-150 data-popup-open:bg-surface-hover max-md:gap-3 max-md:rounded-lg max-md:py-2.5 ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
   }`;
-  const titleClass = `min-w-0 flex-1 truncate text-[13px] leading-5 ${unread ? "font-medium text-fg-primary" : ""}`;
+  const titleClass = `min-w-0 flex-1 truncate text-[13px] leading-5 max-md:text-[15px] max-md:leading-6 ${unread ? "font-medium text-fg-primary" : ""}`;
   const content = (
     <>
       <span className="relative mt-px shrink-0">
@@ -226,11 +226,11 @@ function InboxRow({
           ) : (
             <span className={titleClass}>{title}</span>
           )}
-          <span className="shrink-0 text-2xs text-fg-tertiary tabular-nums">
+          <span className="shrink-0 text-2xs text-fg-tertiary tabular-nums max-md:text-xs">
             {shortAgo(thread.updatedAt)}
           </span>
         </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-tertiary">
+        <span className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-tertiary max-md:text-xs">
           {thread.machine ? (
             <MachineLabel name={thread.machine} online={thread.elsewhere?.online ?? true} />
           ) : null}

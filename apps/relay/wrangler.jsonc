@@ -1,5 +1,6 @@
 // Cerium's relay (docs/architecture.md §14.4). `bun run --cwd apps/relay dev` runs it locally with
-// the Clerk keys in .dev.vars (see .dev.vars.example); `deploy` needs `wrangler login` first.
+// the Clerk keys in .dev.vars (see .dev.vars.example); `deploy` needs `wrangler login` first. It
+// serves public/ and the web UI (§14.10), which scripts/assets.ts puts together in dist/assets.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "cerium-relay",
@@ -7,8 +8,9 @@
   "compatibility_date": "2026-09-28",
   "workers_dev": false,
   "routes": [{ "pattern": "cerium.nonlooped.xyz", "custom_domain": true }],
+  "build": { "command": "node scripts/assets.ts", "watch_dir": "public" },
   "assets": {
-    "directory": "./public",
+    "directory": "./dist/assets",
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"],
   },

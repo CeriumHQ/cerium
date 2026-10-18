@@ -27,7 +27,7 @@ export function ModeSwitch({ mode, onChange }: { mode: AppMode; onChange: (mode:
         <Toggle
           key={value}
           value={value}
-          className="rounded-md px-1.5 py-0.5 text-[13px] text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:font-medium data-pressed:text-fg-primary"
+          className="rounded-md px-1.5 py-0.5 text-[13px] text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:font-medium data-pressed:text-fg-primary max-md:px-2 max-md:py-1.5 max-md:text-[15px]"
         >
           {label}
         </Toggle>

@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "icons": "node scripts/build-file-icons.ts"
+    "icons": "node scripts/build-file-icons.ts",
+    "dev:web": "vp dev --mode web",
+    "build:web": "vp build --mode web"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@cerium/account": "workspace:*",
     "@cerium/artifacts": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "@cerium/rpc": "workspace:*",

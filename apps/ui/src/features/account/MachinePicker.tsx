@@ -6,12 +6,14 @@ import { Check, ChevronDown, Monitor } from "lucide-react";
 import { useContext } from "react";
 
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
+import { WEB } from "../../backend/target.ts";
 import { isApproved, platformLabel, thisDevice, whyUnreachable } from "./model.ts";
 
 /**
  * Chooses which of the account's computers the window drives (docs/architecture.md §14.8): this one,
  * or another that's online, whose threads, projects and harnesses then fill the window. Shown once
- * the account has more than one approved computer.
+ * the account has more than one approved computer. The web client, which has no computer of its own,
+ * always drives one of them (§14.10).
  */
 export function MachinePicker({ account }: { account: AccountState }) {
   const registry = useContext(RegistryContext);
@@ -21,7 +23,10 @@ export function MachinePicker({ account }: { account: AccountState }) {
   const others = account.devices.filter(
     (device) => device.kind === "desktop" && device.approved && device.id !== account.deviceId,
   );
-  if (others.length === 0 && driven === undefined) return null;
+  if (others.length === 0 && (driven === undefined || WEB)) return null;
+  const label = driven?.name ?? (WEB ? "Choose a computer" : (self?.name ?? "This computer"));
+  // Driving another computer from one's own window stands out; the web client always drives one.
+  const elsewhere = driven !== undefined && !WEB;
 
   const choose = (id: string) => {
     if (id === account.deviceId) return driveMachine(registry, undefined);
@@ -36,9 +41,9 @@ export function MachinePicker({ account }: { account: AccountState }) {
       <Menu.Trigger
         render={
           <Button
-            aria-label={`Computer: ${driven?.name ?? self?.name ?? "this computer"}`}
-            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md px-1.5 text-[12.5px] transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active ${
-              driven
+            aria-label={`Computer: ${label}`}
+            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md px-1.5 text-[12.5px] transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[13.5px] ${
+              elsewhere
                 ? "bg-accent-soft font-medium text-fg-primary hover:bg-surface-active"
                 : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
             }`}
@@ -46,7 +51,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
         }
       >
         <Monitor size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="truncate">{driven?.name ?? self?.name ?? "This computer"}</span>
+        <span className="truncate">{label}</span>
         <ChevronDown size={12} strokeWidth={2} className="shrink-0 opacity-70" />
       </Menu.Trigger>
       <Menu.Portal>
@@ -57,10 +62,10 @@ export function MachinePicker({ account }: { account: AccountState }) {
                 Work on
               </Menu.GroupLabel>
               <Menu.RadioGroup
-                value={driven?.id ?? account.deviceId}
+                value={driven?.id ?? (WEB ? "" : account.deviceId)}
                 onValueChange={(id: string) => choose(id)}
               >
-                {self ? (
+                {self && !WEB ? (
                   <MachineItem
                     value={self.id}
                     name={self.name}

@@ -52,6 +52,38 @@ html[data-shell="browser"] #root::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/*
+ * The web client (docs/architecture.md §14.10). The window follows the part of the page a phone
+ * shows, above its keyboard (web/viewport.ts), and doesn't bounce. Touch gets no grey flash on tap
+ * and no callout on a long press, which opens the row's own menu.
+ */
+html[data-target="web"] #root {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--app-top, 0);
+  height: var(--app-height, 100%);
+}
+
+html[data-target="web"] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+html[data-target="web"] body {
+  overscroll-behavior: none;
+}
+
+html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
+  -webkit-touch-callout: none;
+}
+
+/* iOS zooms into a field set smaller than 16px when it takes focus. */
+@media (pointer: coarse) {
+  html[data-target="web"] :is(input, textarea, select, [contenteditable="true"]) {
+    font-size: max(16px, 1em);
+  }
+}
+
 ::selection {
   background: var(--selection);
 }

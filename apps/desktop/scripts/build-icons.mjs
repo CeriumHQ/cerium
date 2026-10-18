@@ -1,6 +1,7 @@
 // Draws Cerium's app icon and the installer's artwork from the mark the UI's titlebar shows
-// (apps/ui/src/components/CeriumMark.tsx), into apps/desktop/build/. The results are committed; run
-// this only when the mark or the artwork changes:
+// (apps/ui/src/components/CeriumMark.tsx), into apps/desktop/build/, and the web client's Home Screen
+// icons into apps/ui/web/. The results are committed; run this only when the mark or the artwork
+// changes:
 //
 //   bun run --cwd apps/desktop icons
 //
@@ -11,6 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const out = join(import.meta.dirname, "..", "build");
+const web = join(import.meta.dirname, "..", "..", "ui", "web");
 
 // The chrome's near-black and near-white (apps/ui/src/styles/tokens.css, dark theme).
 const INK = "#171717";
@@ -34,6 +36,21 @@ const tile = (
   <rect x="1" y="1" width="46" height="46" rx="11" fill="url(#g)"/>
   <rect x="1.5" y="1.5" width="45" height="45" rx="10.5" fill="none" stroke="#ffffff" stroke-opacity="0.1"/>
   <g transform="translate(24 24) scale(0.78) translate(-24.5 -24)">${mark(size, PAPER)}</g>
+</svg>`;
+
+/**
+ * The Home Screen's icon: full-bleed, since iOS and Android cut their own shape. Android's maskable
+ * icon keeps the mark smaller, inside the safe zone its masks never cut.
+ */
+const bleed = (
+  size,
+  scale,
+) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="${INK_LIFT}"/><stop offset="1" stop-color="${INK}"/>
+  </linearGradient></defs>
+  <rect width="48" height="48" fill="url(#g)"/>
+  <g transform="translate(24 24) scale(${scale}) translate(-24.5 -24)">${mark(size, PAPER)}</g>
 </svg>`;
 
 app.disableHardwareAcceleration();
@@ -137,8 +154,8 @@ void app.whenReady().then(async () => {
   await page.loadURL(`data:text/html,<script>var FONT = ${JSON.stringify(font)};</script>`);
   mkdirSync(out, { recursive: true });
 
-  const png = async (size) => {
-    const image = await render(page, size, size, [tile(size)], (ctx, w, h, [icon]) => {
+  const png = async (size, svg = tile(size)) => {
+    const image = await render(page, size, size, [svg], (ctx, w, h, [icon]) => {
       ctx.drawImage(icon, 0, 0, w, h);
     });
     return image.toPNG();
@@ -153,6 +170,12 @@ void app.whenReady().then(async () => {
   writeFileSync(join(out, "installerSidebar.bmp"), bmp(await sidebar(page)));
   writeFileSync(join(out, "installerHeader.bmp"), bmp(await header(page)));
 
-  console.log(`Wrote icons and installer artwork to ${out}`);
+  mkdirSync(web, { recursive: true });
+  writeFileSync(join(web, "apple-touch-icon.png"), await png(180, bleed(180, 0.68)));
+  writeFileSync(join(web, "icon-192.png"), await png(192));
+  writeFileSync(join(web, "icon-512.png"), await png(512));
+  writeFileSync(join(web, "icon-maskable-512.png"), await png(512, bleed(512, 0.6)));
+
+  console.log(`Wrote icons and installer artwork to ${out}, and Home Screen icons to ${web}`);
   app.quit();
 });

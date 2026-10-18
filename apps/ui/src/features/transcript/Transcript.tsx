@@ -247,7 +247,7 @@ export function Transcript({
           className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
         >
           <div
-            className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-8 pt-8"
+            className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
             // The inset is in screen pixels; the column's zoom would scale it.
             style={{ zoom: scale, paddingBottom: `calc(10rem + ${bottomInset / scale}px)` }}
           >

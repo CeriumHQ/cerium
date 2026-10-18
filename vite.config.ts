@@ -4,6 +4,7 @@ import { defineConfig } from "vite-plus";
 const ignored = [
   "**/node_modules/**",
   "**/dist/**",
+  "**/dist-web/**",
   "**/.tsbuild/**",
   "vendor/**",
   ".agents/**",

@@ -23,10 +23,13 @@ export function SettingsPage({
   const driven = useAtomValue(machineAtom);
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex max-w-[42rem] flex-col gap-10 px-10 pt-12 pb-20 transition-[opacity,translate] duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
+      <div className="mx-auto flex max-w-[42rem] flex-col gap-8 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] transition-[opacity,translate] md:gap-10 md:px-10 md:pt-12 md:pb-20 duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
         <header className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary">{title}</h1>
+            {/* The narrow window's top bar already names the page. */}
+            <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary max-md:hidden">
+              {title}
+            </h1>
             {perMachine && driven ? (
               <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-[12px] font-medium text-fg-primary">
                 <Monitor size={12} strokeWidth={1.75} className="shrink-0" />

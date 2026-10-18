@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "check:bundle": "wrangler deploy --dry-run --outdir dist"
+    "build": "bun run --cwd ../ui build:web && node scripts/assets.ts",
+    "deploy": "bun run build && wrangler deploy",
+    "check:bundle": "wrangler deploy --dry-run --outdir dist/bundle"
   },
   "dependencies": {
     "@cerium/protocol": "workspace:*",

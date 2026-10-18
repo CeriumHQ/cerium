@@ -1,6 +1,7 @@
 // The page a machine opens in the user's browser to join their Cerium account
-// (docs/architecture.md §14.2). It signs in with Clerk, shows which machine is asking, and confirms
-// it with the user's session token. The link's id rides in the URL's fragment, so it never reaches
+// (docs/architecture.md §14.2), and the web client opens in its own tab (§14.10). It signs in with
+// Clerk, shows which device is asking, and confirms it with the user's session token; a browser goes
+// back to the app afterwards. The link's id rides in the URL's fragment, so it never reaches
 // a server log; it's kept for the tab in case a sign-in redirect drops it.
 
 const CLERK_JS_VERSION = "6.37.0";
@@ -13,9 +14,13 @@ const panel = document.getElementById("panel");
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
-// Lucide's monitor, check, clock and link-2-off.
+// Lucide's monitor, smartphone, globe, check, clock and link-2-off.
 const icons = {
   desktop: svg('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
+  phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
+  browser: svg(
+    '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  ),
   success: svg('<path d="M20 6 9 17l-5-5"/>'),
   attention: svg('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
   muted: svg(
@@ -29,18 +34,35 @@ const escapeHtml = (text) =>
     (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
   );
 
-const PLATFORMS = { win32: "Windows", darwin: "macOS", linux: "Linux" };
+const PLATFORMS = { win32: "Windows", darwin: "macOS", linux: "Linux", ios: "iOS", android: "Android" };
 const CHANNELS = { nightly: "Nightly", dev: "Development build" };
 
-/** "Windows · Nightly · 0.4.0": enough to recognise the machine. */
+/** "Windows · Nightly · 0.4.0", or "iOS · Web app": enough to recognise the device. */
 const describe = (device) =>
-  [PLATFORMS[device.platform] ?? device.platform, CHANNELS[device.channel], device.version]
+  [
+    PLATFORMS[device.platform] ?? device.platform,
+    device.kind === "browser" ? "Web app" : undefined,
+    CHANNELS[device.channel],
+    device.version,
+  ]
     .filter((part) => part !== undefined && part !== "dev")
     .join(" · ");
 
+const isBrowser = (device) => device.kind === "browser";
+
+/** What the page calls the device: a computer joining, or this browser or phone. */
+const noun = (device) => (isBrowser(device) ? "device" : "machine");
+
+const iconFor = (device) =>
+  !isBrowser(device)
+    ? icons.desktop
+    : device.platform === "ios" || device.platform === "android"
+      ? icons.phone
+      : icons.browser;
+
 const machineCard = (device) => `
   <div class="machine">
-    ${icons.desktop}
+    ${iconFor(device)}
     <div>
       <div class="machine-name">${escapeHtml(device.name)}</div>
       <div class="machine-meta">${escapeHtml(describe(device))}</div>
@@ -175,6 +197,7 @@ const main = async () => {
   }
   const device = link.body.device;
   if (link.body.status === "confirmed") {
+    if (isBrowser(device)) return location.replace("/");
     return showOutcome(
       "success",
       "Already connected",
@@ -208,8 +231,8 @@ const main = async () => {
     if (!user) {
       if (signInMount?.isConnected) return;
       panel.innerHTML = `
-        <h1>Connect a machine</h1>
-        <p class="lead">Sign in to your Cerium account to connect this machine to it.</p>
+        <h1>Connect a ${noun(device)}</h1>
+        <p class="lead">Sign in to your Cerium account to connect this ${noun(device)} to it.</p>
         ${machineCard(device)}
         <div id="sign-in"></div>`;
       signInMount = document.getElementById("sign-in");
@@ -226,13 +249,19 @@ const main = async () => {
     const who = user.primaryEmailAddress?.emailAddress ?? user.fullName ?? user.username ?? "your account";
     panel.innerHTML = `
       <h1>Connect ${escapeHtml(device.name)}?</h1>
-      <p class="lead">It joins your Cerium account, so your other devices can see and drive it.</p>
+      <p class="lead">${
+        isBrowser(device)
+          ? "It joins your Cerium account, so it can see and drive your computers."
+          : "It joins your Cerium account, so your other devices can see and drive it."
+      }</p>
       ${machineCard(device)}
       <div class="account">
         <span>Signed in as <strong>${escapeHtml(who)}</strong></span>
         <button type="button" class="link-button" id="switch">Use another account</button>
       </div>
-      <p class="caution">Only continue if you just started signing in from this machine yourself.</p>
+      <p class="caution">Only continue if you just started signing in ${
+        isBrowser(device) ? "on this device" : "from this machine"
+      } yourself.</p>
       <button type="button" class="button" id="connect" ${busy ? "disabled" : ""}>
         ${busy ? "Connecting…" : "Connect"}
       </button>
@@ -264,7 +293,7 @@ const main = async () => {
         return showExpired();
       }
       if (!result.ok) {
-        error = result.body.message ?? "The relay couldn't connect this machine. Try again.";
+        error = result.body.message ?? `The relay couldn't connect this ${noun(device)}. Try again.`;
         return;
       }
       finished = true;
@@ -272,6 +301,11 @@ const main = async () => {
         sessionStorage.removeItem(STORED_LINK);
       } catch {
         // Storage is off; nothing was kept.
+      }
+      // A browser signs in from its own tab: back to the app, which finishes signing in.
+      if (isBrowser(device)) {
+        location.replace("/");
+        return;
       }
       if (result.body.approved) {
         showOutcome(

@@ -1,6 +1,7 @@
 import type { AccountState, DeviceInfo } from "@cerium/protocol";
 import { MIN_RPC_VERSION } from "@cerium/rpc";
 
+import { WEB } from "../../backend/target.ts";
 import { whenAgo } from "../../lib/time.ts";
 
 // What the UI says about the account and its devices (docs/architecture.md §14), as plain functions.
@@ -21,11 +22,15 @@ export const platformLabel = (platform: string) => PLATFORMS[platform] ?? platfo
 export const deviceDetails = (device: DeviceInfo): string =>
   [
     platformLabel(device.platform),
+    device.kind === "browser" ? "Web app" : undefined,
     device.channel === "nightly" ? "Nightly" : device.channel === "dev" ? "Development build" : undefined,
     device.version === "dev" ? undefined : device.version,
   ]
     .filter((part) => part !== undefined)
     .join(" · ");
+
+/** What the UI calls the device it runs on: a desktop's UI runs on a computer, the web client doesn't. */
+export const selfNoun = WEB ? "device" : "computer";
 
 /** This machine, among the account's devices. */
 export const thisDevice = (account: SignedIn): DeviceInfo | undefined =>

@@ -6,6 +6,7 @@ import { AsyncResult } from "effect/reactivity";
 import {
   Ellipsis,
   ExternalLink,
+  Globe,
   LogIn,
   Monitor,
   MonitorSmartphone,
@@ -26,9 +27,18 @@ import {
   signOut,
 } from "../../backend/atoms.ts";
 import { shellBridge, type StartAtLogin } from "../../backend/shell.ts";
+import { openSignIn, signInHref } from "../../backend/signIn.ts";
+import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
-import { deviceDetails, initials, isApproved, orderedDevices, presenceLabel } from "../account/model.ts";
+import {
+  deviceDetails,
+  initials,
+  isApproved,
+  orderedDevices,
+  presenceLabel,
+  selfNoun,
+} from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 
@@ -46,7 +56,11 @@ export function AccountSettings() {
   return (
     <SettingsPage
       title="Account"
-      description="Sign in to reach this computer from your phone and your other computers. It's optional: signed out, nothing leaves this computer."
+      description={
+        WEB
+          ? "Your Cerium account and its devices. This device reaches your computers through it."
+          : "Sign in to reach this computer from your phone and your other computers. It's optional: signed out, nothing leaves this computer."
+      }
     >
       <SettingsSection title="Cerium account">
         {account === undefined ? (
@@ -58,7 +72,7 @@ export function AccountSettings() {
         )}
       </SettingsSection>
       {account?._tag === "SignedIn" && isApproved(account) ? <DevicesSection account={account} /> : null}
-      {account?._tag === "SignedIn" ? <ThisComputerSection /> : null}
+      {account?._tag === "SignedIn" && !WEB ? <ThisComputerSection /> : null}
     </SettingsPage>
   );
 }
@@ -76,7 +90,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
     void start({ payload: undefined }).then(
       ({ url }) => {
         setStarting(false);
-        window.open(url, "_blank", "noopener,noreferrer");
+        openSignIn(url);
       },
       (failure: unknown) => {
         setStarting(false);
@@ -93,15 +107,15 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[13.5px] font-medium text-fg-primary">Connect this computer</span>
+          <span className="text-[13.5px] font-medium text-fg-primary">Connect this {selfNoun}</span>
           <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
-            You'll sign in on Cerium's page in your browser, with Google, GitHub, X or an email and password.
-            Cerium never sees your password.
+            You'll sign in on Cerium's page{WEB ? "" : " in your browser"}, with Google, GitHub, X or an email
+            and password. Cerium never sees your password.
           </p>
         </div>
         {account._tag === "SigningIn" ? (
           <Progress url={account.url} onCancel={() => void cancel({ payload: undefined })}>
-            Finish signing in using your browser.
+            {WEB ? "Finish signing in on Cerium's page." : "Finish signing in using your browser."}
           </Progress>
         ) : (
           <div className="flex items-center gap-3">
@@ -128,9 +142,8 @@ function Progress({ url, onCancel, children }: { url: string; onCancel: () => vo
       <RefreshCw size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-fg-secondary">{children}</p>
       <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
+        href={signInHref(url)}
+        {...(WEB ? {} : { target: "_blank", rel: "noreferrer" })}
         className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
       >
         <ExternalLink size={12} strokeWidth={1.75} />
@@ -140,6 +153,11 @@ function Progress({ url, onCancel, children }: { url: string; onCancel: () => vo
     </div>
   );
 }
+
+/** What signing this device out does. */
+const signOutDescription = WEB
+  ? "This device leaves your account and forgets its sign-in. Your computers and their threads aren't touched."
+  : "This computer leaves your account: your other devices won't see it or reach it until you sign in again. Its threads stay here.";
 
 const connectionLabel: Record<SignedIn["connection"], string> = {
   online: "Connected",
@@ -157,7 +175,7 @@ function AccountCard({ account }: { account: SignedIn }) {
 
   return (
     <SettingsCard className="flex flex-col">
-      <div className="flex items-center gap-3.5 p-4">
+      <div className="flex items-center gap-3.5 p-4 max-md:flex-wrap max-md:gap-y-2">
         <Avatar name={name} email={email} imageUrl={imageUrl} />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[13.5px] font-medium text-fg-primary">
@@ -167,13 +185,16 @@ function AccountCard({ account }: { account: SignedIn }) {
             <span className="truncate text-[12.5px] text-fg-tertiary">{email}</span>
           ) : null}
         </div>
-        <ConnectionState connection={account.connection} />
-        <QuietButton onClick={() => setConfirming(true)}>Sign out</QuietButton>
+        {/* A phone has the width for the name, or for these: they go under it. */}
+        <div className="flex shrink-0 items-center gap-3 max-md:basis-full max-md:justify-between max-md:pl-12.5">
+          <ConnectionState connection={account.connection} />
+          <QuietButton onClick={() => setConfirming(true)}>Sign out</QuietButton>
+        </div>
       </div>
       {account.connection === "online" && !approved ? (
         <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] leading-relaxed text-attention">
-          Waiting for approval. Allow this computer from a device that's already connected to your account;
-          until then it sees nothing, and nothing can reach it.
+          Waiting for approval. Allow this {selfNoun} from a device that's already connected to your account;
+          until then it sees nothing{WEB ? "" : ", and nothing can reach it"}.
         </p>
       ) : null}
       {error ? (
@@ -183,7 +204,7 @@ function AccountCard({ account }: { account: SignedIn }) {
         open={confirming}
         onOpenChange={setConfirming}
         title="Sign out of Cerium?"
-        description="This computer leaves your account: your other devices won't see it or reach it until you sign in again. Its threads stay here."
+        description={signOutDescription}
         confirmLabel="Sign out"
         onConfirm={() => {
           setError(undefined);
@@ -293,7 +314,12 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const deviceId = device.id as DeviceId;
-  const Icon = device.kind === "browser" ? Smartphone : Monitor;
+  const Icon =
+    device.kind === "desktop"
+      ? Monitor
+      : device.platform === "ios" || device.platform === "android"
+        ? Smartphone
+        : Globe;
 
   const run = (action: Promise<unknown>) => {
     setBusy(true);
@@ -343,7 +369,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
             )}
             {self && !editing ? (
               <span className="shrink-0 rounded-full border border-line-subtle px-1.5 text-2xs leading-4 text-fg-tertiary">
-                This computer
+                This {selfNoun}
               </span>
             ) : null}
           </div>
@@ -407,7 +433,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
         title={self ? "Sign out of Cerium?" : `Remove ${device.name}?`}
         description={
           self
-            ? "This computer leaves your account: your other devices won't see it or reach it until you sign in again. Its threads stay here."
+            ? signOutDescription
             : `${device.name} leaves your account and is signed out. To come back, it signs in again and waits for you to allow it.`
         }
         confirmLabel={self ? "Sign out" : "Remove"}
