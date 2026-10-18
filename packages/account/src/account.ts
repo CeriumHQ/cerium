@@ -30,6 +30,7 @@ import {
   Layer,
   Option,
   PubSub,
+  Queue,
   Ref,
   Schema,
   Stream,
@@ -68,6 +69,11 @@ export interface AccountOptions {
   readonly relayUrl: string;
   /** How this device describes itself when it signs in. */
   readonly device: DeviceDraft;
+  /**
+   * Calls `check` whenever the relay connection may have died unnoticed, such as a page shown again
+   * or a network back, and returns how to stop. Sleep is noticed anyway, from timers running late.
+   */
+  readonly wakes?: (check: () => void) => () => void;
 }
 
 /** What the vault keeps once signed in: the credential and what the relay said about the account. */
@@ -95,8 +101,16 @@ const SavedJson = Schema.fromJsonString(Schema.Union([Linked, Pending]));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(RelayMessage));
 
 /** How often a connected device pings the relay, and how long a silent connection is trusted. */
-const PING_EVERY = "25 seconds";
-const SILENT_FOR = "70 seconds";
+const PING_EVERY = "15 seconds";
+const SILENT_FOR = "40 seconds";
+/**
+ * How long a check waits for the relay's answer. A suspended page or a sleeping machine often finds
+ * its socket still open but dead, which only an unanswered ping tells.
+ */
+const CHECK_WITHIN = "4 seconds";
+/** A timer running this late means the device slept or its page was suspended. */
+const ASLEEP_AFTER_MS = 15_000;
+const TICK = "5 seconds";
 /** How often a device waiting for the browser asks whether the user confirmed. */
 const CLAIM_EVERY = "2 seconds";
 
@@ -169,6 +183,27 @@ export class Account extends Context.Service<
         const live = yield* Ref.make<Option.Option<Socket.Writer>>(Option.none());
         const tunnelEvents = yield* PubSub.unbounded<RelayEvent>();
         const ownChannels = new Set<string>();
+        /** Asks for the connection to be checked now; one waiting check stands for any number. */
+        const checks = yield* Queue.sliding<void>(1);
+        const check = () => {
+          Queue.offerUnsafe(checks, undefined);
+        };
+        const { wakes } = options;
+        if (wakes !== undefined) {
+          yield* Effect.acquireRelease(
+            Effect.sync(() => wakes(check)),
+            (stop) => Effect.sync(stop),
+          );
+        }
+        yield* Effect.gen(function* () {
+          let last = Date.now();
+          while (true) {
+            yield* Effect.sleep(TICK);
+            const now = Date.now();
+            if (now - last > ASLEEP_AFTER_MS) check();
+            last = now;
+          }
+        }).pipe(Effect.forkScoped);
         /** What the window shows, as last reported; sent again on every connection. */
         let presence: Presence | undefined;
         const relay = options.relayUrl.replace(/\/+$/, "");
@@ -277,34 +312,57 @@ export class Account extends Context.Service<
             if (presence !== undefined) {
               yield* writer.write(JSON.stringify({ _tag: "Presence", ...presence } satisfies DeviceMessage));
             }
-            while (true) {
-              const frames = yield* pull.pipe(
-                Effect.timeoutOrElse({
-                  duration: SILENT_FOR,
-                  orElse: () =>
-                    Effect.fail(
-                      new Socket.SocketError({ reason: new Socket.SocketReadError({ cause: "silent" }) }),
-                    ),
-                }),
-              );
-              for (const frame of frames) {
-                if (frame === "pong") continue;
-                const message = Option.getOrUndefined(decodeMessage(frame));
-                if (message === undefined) continue;
-                if (message._tag === "SignedOut") return yield* new SignedOff({ reason: message.reason });
-                if (message._tag !== "State") {
-                  yield* PubSub.publish(tunnelEvents, message);
-                  continue;
+            // A connection this new needs no check.
+            yield* Queue.clear(checks);
+            // Only a pong answers a check: other frames may have been on their way already.
+            let answered = Date.now();
+            const checking = Effect.gen(function* () {
+              while (true) {
+                yield* Queue.take(checks);
+                const asked = Date.now();
+                yield* writer.write("ping");
+                yield* Effect.sleep(CHECK_WITHIN);
+                if (answered < asked) {
+                  return yield* new Socket.SocketError({
+                    reason: new Socket.SocketReadError({ cause: "unanswered" }),
+                  });
                 }
-                yield* SubscriptionRef.set(state, {
-                  _tag: "SignedIn",
-                  account: message.account,
-                  deviceId: linked.deviceId,
-                  connection: "online",
-                  devices: message.devices,
-                });
               }
-            }
+            });
+            const reading = Effect.gen(function* () {
+              while (true) {
+                const frames = yield* pull.pipe(
+                  Effect.timeoutOrElse({
+                    duration: SILENT_FOR,
+                    orElse: () =>
+                      Effect.fail(
+                        new Socket.SocketError({ reason: new Socket.SocketReadError({ cause: "silent" }) }),
+                      ),
+                  }),
+                );
+                for (const frame of frames) {
+                  if (frame === "pong") {
+                    answered = Date.now();
+                    continue;
+                  }
+                  const message = Option.getOrUndefined(decodeMessage(frame));
+                  if (message === undefined) continue;
+                  if (message._tag === "SignedOut") return yield* new SignedOff({ reason: message.reason });
+                  if (message._tag !== "State") {
+                    yield* PubSub.publish(tunnelEvents, message);
+                    continue;
+                  }
+                  yield* SubscriptionRef.set(state, {
+                    _tag: "SignedIn",
+                    account: message.account,
+                    deviceId: linked.deviceId,
+                    connection: "online",
+                    devices: message.devices,
+                  });
+                }
+              }
+            });
+            return yield* Effect.raceFirst(reading, checking);
           }).pipe(
             Effect.scoped,
             Effect.provideService(Socket.WebSocketConstructor, webSockets),
@@ -341,7 +399,8 @@ export class Account extends Context.Service<
               );
               failures = wasOnline ? 1 : failures + 1;
               yield* setConnection("offline");
-              yield* Effect.sleep(reconnectDelay(failures));
+              // A check meanwhile, such as the page shown again, tries again at once.
+              yield* Effect.raceFirst(Effect.sleep(reconnectDelay(failures)), Queue.take(checks));
             }
           });
 

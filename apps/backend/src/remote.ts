@@ -1,5 +1,6 @@
 import { Account, CLOSE_UNREACHABLE, openTunnel, unreachableReason, type RelayEvent } from "@cerium/account";
 import { DeviceId, type ChannelId, type TunnelAddress } from "@cerium/protocol";
+import { TUNNEL_HELLO } from "@cerium/rpc";
 import { Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { NetAddress } from "effect/net";
@@ -126,7 +127,8 @@ export const TunnelSocketServer = Layer.effect(
  * `GET /remote?machine=<device>`: this machine's UI driving another machine. The UI speaks its usual
  * RPC over the socket, and each frame goes through a tunnel (`openTunnel`); the socket closes with
  * the tunnel's code and reason when it ends: `CLOSE_UNREACHABLE` when the machine can't be reached
- * and `CLOSE_ENDED` when it ends the channel.
+ * and `CLOSE_ENDED` when it ends the channel. The UI's socket opens only once the machine has
+ * answered, so an open socket means the machine is there.
  */
 const pipe = Effect.gen(function* () {
   const account = yield* Account;
@@ -147,10 +149,12 @@ const pipe = Effect.gen(function* () {
       (device) => device.id === machine && device.approved && device.online && device.kind === "desktop",
     );
   if (!reachable) return HttpServerResponse.text(unreachableReason.offline, { status: 503 });
+  const opened = yield* openTunnel(account, machine, { hello: TUNNEL_HELLO }).pipe(Effect.result);
+  if (opened._tag === "Failure") return HttpServerResponse.text(unreachableReason.silent, { status: 503 });
 
   const socket = yield* Effect.orDie(request.upgrade);
   const toUi = yield* socket.writer;
-  const tunnel = yield* Socket.fromWebSocket(openTunnel(account, machine));
+  const tunnel = yield* Socket.fromWebSocket(Effect.succeed(opened.success));
   const toMachine = yield* tunnel.writer;
 
   const fromMachine = Effect.gen(function* () {
@@ -179,7 +183,7 @@ const pipe = Effect.gen(function* () {
 
   yield* Effect.raceFirst(fromMachine, fromUi);
   return HttpServerResponse.empty();
-});
+}).pipe(Effect.scoped);
 
 /** The `/remote` route, behind the same per-launch token as the UI's RPC (`requireToken`). */
 export const remoteRoutes = (requireToken: Layer.Layer<never>) =>

@@ -76,12 +76,32 @@ export const thisBrowser = (): DeviceDraft => {
 };
 
 /**
+ * When the relay connection may have died unnoticed: iOS suspends a Home Screen app that leaves the
+ * screen, and its socket often comes back open but dead; a network can also come back.
+ */
+const browserWakes = (check: () => void) => {
+  const shown = () => {
+    if (document.visibilityState === "visible") check();
+  };
+  document.addEventListener("visibilitychange", shown);
+  window.addEventListener("pageshow", check);
+  window.addEventListener("online", check);
+  return () => {
+    document.removeEventListener("visibilitychange", shown);
+    window.removeEventListener("pageshow", check);
+    window.removeEventListener("online", check);
+  };
+};
+
+/**
  * This page as a device: `Account` and `CloudThreads`, on the relay that served it. Read from the page
  * only once built, which only the web client does.
  */
 export const WebDevice = Layer.suspend(() =>
   CloudThreads.layer.pipe(
-    Layer.provideMerge(Account.layer({ relayUrl: location.origin, device: thisBrowser() })),
+    Layer.provideMerge(
+      Account.layer({ relayUrl: location.origin, device: thisBrowser(), wakes: browserWakes }),
+    ),
     Layer.provide(browserVault),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(Socket.layerWebSocketConstructorGlobal),

@@ -30,7 +30,7 @@ import {
   ReadEntry,
 } from "@cerium/protocol";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/rpc";
+import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 // The contract between the UI and the backend, served over a localhost WebSocket
 // (docs/architecture.md §7). Payloads and results are protocol schemas, so both sides validate them.
@@ -44,6 +44,12 @@ export const RPC_VERSION = 1;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
+
+/**
+ * What a tunnel to another machine says first (`openTunnel`'s `hello`): an RPC ping, which every
+ * backend answers with one pong, so the tunnel opens only once the machine is there.
+ */
+export const TUNNEL_HELLO = JSON.stringify(RpcMessage.constPing);
 
 /** A request the backend refused; `message` is written for the user. */
 export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError", {

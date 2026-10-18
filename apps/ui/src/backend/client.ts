@@ -1,5 +1,5 @@
 import { Account, deviceHandlers, openTunnel } from "@cerium/account";
-import { DeviceRpcs, MachineRpcs } from "@cerium/rpc";
+import { DeviceRpcs, MachineRpcs, TUNNEL_HELLO } from "@cerium/rpc";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { Atom, AtomRpc, type AtomRegistry } from "effect/reactivity";
 import { RpcClient, RpcSerialization, RpcTest } from "effect/rpc";
@@ -68,27 +68,61 @@ const openSocket = (target: Target) =>
 
 /**
  * The web client reaches the machine it drives through a tunnel on its own relay connection
- * (§14.10); with none chosen yet, there's nothing to open.
+ * (§14.10), open once the machine answers; with none chosen yet, there's nothing to open.
  */
 const openTunnelSocket = Effect.gen(function* () {
   const machine = drivenMachine();
   if (machine === undefined) return yield* openFailed("No computer is chosen.");
-  return yield* openTunnel(yield* Account, machine.id);
+  return yield* openTunnel(yield* Account, machine.id, { hello: TUNNEL_HELLO });
 });
 
 /** Closed to switch machines; the client then reopens on the new one. */
 const SWITCHING = 4000;
-/** How long a switch may take before the machine counts as unreachable. */
-const SWITCH_TIMEOUT_MS = 10_000;
+/**
+ * How long a connection may stay lost, or a switch take, before the machine counts as unreachable.
+ * Reconnecting after a dropped line, or a phone coming back to the app, usually takes a moment that
+ * says nothing about the machine.
+ */
+const UNREACHABLE_AFTER_MS = 8_000;
+/**
+ * How long the driven machine may stay silent before the connection counts as lost. Another machine
+ * answers through the relay, where a moment's stall on either computer is no reason to give up.
+ */
+const DRIVEN_PING_TIMEOUT = "15 seconds";
 
-/** Whether the driven connection is closing to switch machines, which isn't losing it. */
-let switching = false;
+/** A connection's state, which only turns unreachable once it has stayed lost for a while. */
+const liveness = (registry: AtomRegistry.AtomRegistry, state: Atom.Writable<ConnectionState>) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const lost = () => {
+    if (timer !== undefined || registry.get(state) === "unreachable") return;
+    registry.set(state, "connecting");
+    timer = setTimeout(() => {
+      timer = undefined;
+      registry.set(state, "unreachable");
+    }, UNREACHABLE_AFTER_MS);
+  };
+  return {
+    connected: () => {
+      clearTimeout(timer);
+      timer = undefined;
+      registry.set(state, "connected");
+    },
+    lost,
+    /** Starts over, as for a machine just switched to. */
+    restart: () => {
+      clearTimeout(timer);
+      timer = undefined;
+      registry.set(state, "connecting");
+      lost();
+    },
+  };
+};
+type Liveness = ReturnType<typeof liveness>;
 
 const backendSocket = <R>(
   open: Effect.Effect<Socket.WebSocketLike, Socket.SocketError, R>,
   target: Target,
-  registry: AtomRegistry.AtomRegistry,
-  state: Atom.Writable<ConnectionState>,
+  live: Liveness,
 ) =>
   Layer.effect(
     Socket.Socket,
@@ -96,15 +130,8 @@ const backendSocket = <R>(
       let current: Socket.WebSocketLike | undefined;
       if (target === "driven") {
         const stop = onMachineChange(() => {
-          switching = true;
-          registry.set(state, "connecting");
+          live.restart();
           current?.close(SWITCHING, "Switching machines");
-          // A machine that can't be reached never connects: say so after a while.
-          setTimeout(() => {
-            if (!switching) return;
-            switching = false;
-            registry.set(state, "unreachable");
-          }, SWITCH_TIMEOUT_MS);
         });
         yield* Effect.addFinalizer(() => Effect.sync(stop));
       }
@@ -120,33 +147,25 @@ const backendSocket = <R>(
  * A desktop's UI opens WebSockets to its backend; the web client opens tunnels on the page's relay
  * connection, which every client shares.
  */
-const socketLayer = (
-  target: Target,
-  registry: AtomRegistry.AtomRegistry,
-  state: Atom.Writable<ConnectionState>,
-) =>
+const socketLayer = (target: Target, live: Liveness) =>
   WEB
-    ? backendSocket(openTunnelSocket, target, registry, state).pipe(Layer.provide(WebDevice))
-    : backendSocket(openSocket(target), target, registry, state).pipe(
+    ? backendSocket(openTunnelSocket, target, live).pipe(Layer.provide(WebDevice))
+    : backendSocket(openSocket(target), target, live).pipe(
         Layer.provide(Socket.layerWebSocketConstructorGlobal),
       );
 
 const protocol = (target: Target, registry: AtomRegistry.AtomRegistry) => {
-  const state = target === "local" ? localConnectionAtom : connectionAtom;
-  return RpcClient.layerProtocolSocket({ retryTransientErrors: true }).pipe(
-    Layer.provide(socketLayer(target, registry, state)),
+  const live = liveness(registry, target === "local" ? localConnectionAtom : connectionAtom);
+  return RpcClient.layerProtocolSocket({
+    retryTransientErrors: true,
+    ...(target === "driven" ? { pingTimeout: DRIVEN_PING_TIMEOUT } : {}),
+  }).pipe(
+    Layer.provide(socketLayer(target, live)),
     Layer.provide(RpcSerialization.layerJson),
     Layer.provide(
       Layer.succeed(RpcClient.ConnectionHooks, {
-        onConnect: Effect.sync(() => {
-          if (target === "driven") switching = false;
-          registry.set(state, "connected");
-        }),
-        onDisconnect: Effect.sync(() => {
-          // A switch already said it's connecting again.
-          if (target === "driven" && switching) return;
-          registry.set(state, "unreachable");
-        }),
+        onConnect: Effect.sync(live.connected),
+        onDisconnect: Effect.sync(live.lost),
       }),
     ),
   );

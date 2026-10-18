@@ -1,6 +1,6 @@
 import type { ConnectionId, DeviceId, TunnelAddress } from "@cerium/protocol";
-import { Effect, PubSub, Queue, type Scope } from "effect";
-import type { Socket } from "effect/socket";
+import { Deferred, Effect, Exit, PubSub, Queue, Stream, type Scope } from "effect";
+import { Socket } from "effect/socket";
 
 import type { Account } from "./account.ts";
 
@@ -13,11 +13,27 @@ export const CLOSE_UNREACHABLE = 4100;
 export const CLOSE_ENDED = 4101;
 
 /** Why a tunnel couldn't reach its machine, written for the user. */
-export const unreachableReason: Record<"offline" | "forbidden" | "lost", string> = {
+export const unreachableReason: Record<"offline" | "forbidden" | "lost" | "silent", string> = {
   offline: "That computer isn't connected to Cerium's cloud right now.",
   forbidden: "That computer isn't an approved computer of your account.",
   lost: "Lost the connection to Cerium's cloud.",
+  silent: "That computer didn't answer.",
 };
+
+/** How long opening a tunnel waits for this device's relay connection, and then for the machine. */
+const OPEN_WITHIN = "8 seconds";
+
+export interface TunnelOptions {
+  /**
+   * A frame the machine answers with exactly one frame, such as an RPC ping. When given, the tunnel
+   * opens only once that answer arrives, which isn't passed on, so an open tunnel means the machine
+   * is there rather than that a frame could be sent.
+   */
+  readonly hello?: string;
+}
+
+const openFailed = (reason: string, kind: "Unknown" | "Timeout" = "Unknown") =>
+  new Socket.SocketError({ reason: new Socket.SocketOpenError({ kind, cause: new Error(reason) }) });
 
 type Listener = (event: Socket.WebSocketEvent) => void;
 type EventType = "open" | "message" | "error" | "close";
@@ -87,13 +103,24 @@ class TunnelChannel implements Socket.WebSocketLike {
  * A channel to `machine` for as long as the scope lasts, which tells the machine this end is done
  * when it closes. Frames go to the machine's newest connection until it answers, then to that
  * connection only; the channel closes with `CLOSE_UNREACHABLE` when the machine can't be reached and
- * `CLOSE_ENDED` when it ends the channel.
+ * `CLOSE_ENDED` when it ends the channel. Opening waits for this device's relay connection, and with
+ * a `hello` for the machine's answer, and fails when either doesn't come.
  */
 export const openTunnel = (
   account: Account["Service"],
   machine: DeviceId,
-): Effect.Effect<Socket.WebSocketLike, never, Scope.Scope> =>
+  options?: TunnelOptions,
+): Effect.Effect<Socket.WebSocketLike, Socket.SocketError, Scope.Scope> =>
   Effect.gen(function* () {
+    // Reconnecting to the relay, a frame would only be lost: wait for it instead.
+    yield* account.changes.pipe(
+      Stream.filter((state) => state._tag === "SignedIn" && state.connection === "online"),
+      Stream.runHead,
+      Effect.timeoutOrElse({
+        duration: OPEN_WITHIN,
+        orElse: () => Effect.fail(openFailed(unreachableReason.lost, "Timeout")),
+      }),
+    );
     const channel = yield* account.openChannel;
     // Subscribed before the first frame goes out, so no answer slips past.
     const events = yield* account.relayEvents;
@@ -107,6 +134,13 @@ export const openTunnel = (
     const tunnel = new TunnelChannel(
       (data) => Queue.offerUnsafe(outgoing, data),
       () => Effect.runFork(sendClose),
+    );
+    const answered = yield* Deferred.make<void, Socket.SocketError>();
+    let greeted = options?.hello === undefined;
+    tunnel.addEventListener(
+      "close",
+      (event) => Deferred.doneUnsafe(answered, Exit.fail(openFailed(String(event.reason)))),
+      { once: true },
     );
 
     // Frames go out in order; one the relay won't take means this device lost it.
@@ -138,7 +172,11 @@ export const openTunnel = (
           case "Receive":
             if (event.channel !== channel) break;
             host ??= event.from.connection;
-            tunnel.received(event.data);
+            if (greeted) tunnel.received(event.data);
+            else {
+              greeted = true;
+              Deferred.doneUnsafe(answered, Exit.void);
+            }
             break;
           default:
             break;
@@ -147,5 +185,14 @@ export const openTunnel = (
     }).pipe(Effect.forkScoped);
 
     yield* Effect.addFinalizer(() => (tunnel.readyState === 1 ? sendClose : Effect.void));
+    if (options?.hello !== undefined) {
+      tunnel.send(options.hello);
+      yield* Deferred.await(answered).pipe(
+        Effect.timeoutOrElse({
+          duration: OPEN_WITHIN,
+          orElse: () => Effect.fail(openFailed(unreachableReason.silent, "Timeout")),
+        }),
+      );
+    }
     return tunnel;
   });
