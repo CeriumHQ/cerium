@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cerium/backend": "workspace:*",
+    "electron-updater": "6.8.10",
     "koffi": "3.3.3"
   },
   "devDependencies": {

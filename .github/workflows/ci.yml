@@ -91,7 +91,6 @@ jobs:
       - name: Package
         uses: ./.github/actions/package
         with:
-          channel: nightly
           version: ${{ steps.plan.outputs.version }}
           publish: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
       - name: Publish the nightly
@@ -103,7 +102,8 @@ jobs:
           TITLE: ${{ steps.plan.outputs.title }}
           COMMIT: ${{ steps.plan.outputs.commit }}
         run: |
-          gh release create "$TAG" apps/desktop/out/*.exe --target "$COMMIT" --title "$TITLE" \
+          gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/nightly.yml \
+            --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
       - name: Prune old nightlies
         if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}

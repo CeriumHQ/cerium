@@ -71,6 +71,7 @@ import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
+import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { remember, stored } from "../lib/storage.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
@@ -587,6 +588,7 @@ function Workspace() {
           <Notice tone="error">{messageOf(Cause.squash(threadsResult.cause))}</Notice>
         ) : null}
         <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
+        {WEB ? null : <UpdateNotice onOpenSettings={() => openSettings("updates")} />}
         {actionError ? (
           <Notice tone="error" onDismiss={() => setActionError(undefined)}>
             {actionError}

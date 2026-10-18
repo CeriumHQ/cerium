@@ -80,11 +80,45 @@ export interface ShellBridge {
   /** Whether Cerium starts when the user signs in to Windows; only the installed app can. */
   readonly startAtLogin?: () => Promise<StartAtLogin>;
   readonly setStartAtLogin?: (enabled: boolean) => Promise<StartAtLogin>;
+  /** The update channel the user follows and what it offers (apps/desktop/src/updater.ts). */
+  readonly updates?: () => Promise<Updates>;
+  readonly checkForUpdates?: () => Promise<Updates>;
+  /** Follows another channel and checks it at once. */
+  readonly setUpdateChannel?: (channel: UpdateChannel) => Promise<Updates>;
+  /** Downloads the update a check found; progress arrives through `onUpdatesChange`. */
+  readonly downloadUpdate?: () => Promise<void>;
+  /** Quits, installs the downloaded update and starts it. */
+  readonly installUpdate?: () => Promise<void>;
+  /** Calls back whenever what the updater knows changes; returns how to stop. */
+  readonly onUpdatesChange?: (listener: (updates: Updates) => void) => () => void;
 }
 
 export interface StartAtLogin {
   readonly available: boolean;
   readonly enabled: boolean;
+}
+
+export type UpdateChannel = "stable" | "nightly";
+
+/** Mirrors the shell's own type in apps/desktop/src/updater.ts. */
+export type UpdateStatus =
+  /** A development build: only the installed app updates. */
+  | { readonly kind: "unsupported" }
+  | { readonly kind: "checking" }
+  | { readonly kind: "current"; readonly checkedAt: number }
+  | { readonly kind: "available"; readonly version: string }
+  | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
+  | { readonly kind: "ready"; readonly version: string }
+  /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
+  | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
+  | { readonly kind: "failed"; readonly version: string };
+
+export interface Updates {
+  readonly channel: UpdateChannel;
+  /** The running build's version and channel. */
+  readonly version: string;
+  readonly buildChannel: UpdateChannel;
+  readonly status: UpdateStatus;
 }
 
 declare global {

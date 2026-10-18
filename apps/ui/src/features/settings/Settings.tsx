@@ -6,6 +6,7 @@ import {
   Blocks,
   Bot,
   ChevronRight,
+  CircleArrowUp,
   CircleUserRound,
   Keyboard,
   Palette,
@@ -22,6 +23,7 @@ import { ArchivedSettings } from "./Archived.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
+import { UpdateSettings } from "./Updates.tsx";
 
 export type SettingsCategory =
   | "account"
@@ -30,7 +32,8 @@ export type SettingsCategory =
   | "agents"
   | "harnesses"
   | "keyboard"
-  | "archived";
+  | "archived"
+  | "updates";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
@@ -45,6 +48,10 @@ const categories: ReadonlyArray<{
   { id: "harnesses", label: "Harnesses", icon: Blocks },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "archived", label: "Archived", icon: Archive },
+  // The installed app updates itself through the shell (apps/desktop/src/updater.ts).
+  ...(!WEB && window.cerium?.updates
+    ? [{ id: "updates" as const, label: "Updates", icon: CircleArrowUp }]
+    : []),
 ];
 
 /** A category's name, as the narrow window's top bar shows it over its page. */
@@ -183,5 +190,7 @@ export function SettingsView({
       return <KeyboardSettings key={category} />;
     case "archived":
       return <ArchivedSettings key={category} />;
+    case "updates":
+      return <UpdateSettings key={category} />;
   }
 }

@@ -5,11 +5,12 @@ import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin 
 import { startBackend } from "./backend.ts";
 import { saveImage } from "./saveImage.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
+import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell (docs/architecture.md §7): a window with Windows Acrylic and native caption buttons
 // around the UI, the backend's launcher, and the tray that keeps a signed-in machine reachable
-// (background.ts). Everything else lives in the UI and the backend.
+// (background.ts), and the updater (updater.ts). Everything else lives in the UI and the backend.
 
 // One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -21,6 +22,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 
 let backend: ReturnType<typeof startBackend> | undefined;
+let updater: ReturnType<typeof startUpdater> | undefined;
 let mainWindow: BrowserWindow | undefined;
 
 /** Started at login: straight to the tray, unless the UI says this machine isn't signed in. */
@@ -129,6 +131,15 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
 
 app.on("second-instance", () => background.show());
 
+/** Updating Cerium: the chosen channel, what it offers, and downloading and installing it. */
+ipcMain.handle("cerium:updates", () => updater?.updates());
+ipcMain.handle("cerium:check-for-updates", () => updater?.check());
+ipcMain.handle("cerium:set-update-channel", (_event, channel: unknown) =>
+  isUpdateChannel(channel) ? updater?.setChannel(channel) : updater?.updates(),
+);
+ipcMain.handle("cerium:download-update", () => updater?.download());
+ipcMain.handle("cerium:install-update", () => updater?.install());
+
 /** Where the UI connects to the backend this shell runs; nothing in development. */
 ipcMain.handle("cerium:backend-connection", () => backend?.connection());
 
@@ -173,6 +184,7 @@ nativeTheme.on("updated", () => {
 
 void app.whenReady().then(() => {
   if (devUrl === undefined) backend = startBackend();
+  updater = startUpdater();
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();

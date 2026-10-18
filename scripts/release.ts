@@ -179,7 +179,7 @@ const planNightly = (build: number): Plan => {
     title: `Cerium Nightly ${version}`,
     commit,
     notes: [
-      `Nightly build of ${commit.slice(0, 7)} for testing. It installs beside the stable app as **Cerium Nightly**, with its own data.`,
+      `Nightly build of ${commit.slice(0, 7)} for testing. Cerium updates to it in place when Settings → Updates follows the nightly channel.`,
       unsignedNote,
       `### Commits since ${previous ?? "the first commit"}`,
       commitList(previous, commit),

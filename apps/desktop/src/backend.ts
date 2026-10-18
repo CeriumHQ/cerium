@@ -2,6 +2,7 @@ import { app, utilityProcess, type UtilityProcess } from "electron";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { buildChannel } from "./updater.ts";
 import { answerVault, isVaultRequest } from "./vault.ts";
 
 // The packaged app's backend (docs/architecture.md §7): the bundled dist/backend.mjs, run in an
@@ -46,8 +47,7 @@ export const startBackend = () => {
       [
         `--data-dir=${app.getPath("userData")}`,
         `--migrations-dir=${join(app.getAppPath(), "migrations")}`,
-        // Nightlies are packaged under their own name (electron-builder.ts), and show as such.
-        `--channel=${app.getName() === "cerium-nightly" ? "nightly" : "stable"}`,
+        `--channel=${buildChannel()}`,
         `--app-version=${app.getVersion()}`,
         // Another relay than Cerium's own, such as `wrangler dev` while developing.
         ...(process.env["CERIUM_RELAY_URL"] ? [`--relay-url=${process.env["CERIUM_RELAY_URL"]}`] : []),

@@ -182,7 +182,7 @@ flowchart LR
 
 > [!NOTE]
 > Cerium is in early development and currently ships **nightly** builds for **Windows**. macOS and
-> Linux are planned. Nightlies install beside stable releases and keep their own data.
+> Linux are planned. Nightlies and stable releases are the same app: pick a channel in Settings → Updates.
 
 ## Build from source
 

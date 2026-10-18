@@ -1,10 +1,7 @@
 name: Package the installer
-description: Builds the unsigned Windows installer for a release channel into apps/desktop/out. Run after the build.
+description: Builds the unsigned Windows installer, its blockmap and its update file into apps/desktop/out. Run after the build.
 
 inputs:
-  channel:
-    description: The release channel, stable or nightly; a nightly installs beside the stable app.
-    required: true
   version:
     description: The version the installer carries, from scripts/release.ts.
     required: true
@@ -35,6 +32,5 @@ runs:
         if [ "$PUBLISH" != true ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
         bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
       env:
-        CERIUM_CHANNEL: ${{ inputs.channel }}
         CERIUM_VERSION: ${{ inputs.version }}
         PUBLISH: ${{ inputs.publish }}

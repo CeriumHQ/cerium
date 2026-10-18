@@ -1,23 +1,22 @@
 import type { Configuration } from "electron-builder";
 
 // Packages the desktop shell and its backend into an unsigned Windows installer
-// (docs/architecture.md §10). The release workflows set CERIUM_CHANNEL and CERIUM_VERSION from
-// scripts/release.ts; without them this builds a stable-named installer at the package's own version.
+// (docs/architecture.md §10). The release workflows set CERIUM_VERSION from scripts/release.ts;
+// without it this builds an installer at the package's own version. Stable and nightly builds are the
+// same app: a nightly's version (`-nightly.<run>`) is all that tells them apart, and the updater
+// follows whichever channel the user picks.
 
-const nightly = process.env["CERIUM_CHANNEL"] === "nightly";
 const version = process.env["CERIUM_VERSION"];
-
-// Nightlies install beside the stable app, under their own name, app id and data folder.
-const productName = nightly ? "Cerium Nightly" : "Cerium";
+const nightly = version?.includes("-nightly.") === true;
 
 export default {
-  appId: nightly ? "app.cerium.desktop.nightly" : "app.cerium.desktop",
-  productName,
+  appId: "app.cerium.desktop",
+  productName: "Cerium",
   // Electron names the user-data folder after the packaged package.json's productName; the installer
   // names its own folders after `name`, which mustn't be the workspace's scoped name.
   extraMetadata: {
-    name: nightly ? "cerium-nightly" : "cerium",
-    productName,
+    name: "cerium",
+    productName: "Cerium",
     ...(version === undefined ? {} : { version }),
   },
   // The icon and installer artwork, drawn by scripts/build-icons.mjs.
@@ -44,7 +43,7 @@ export default {
   win: { target: "nsis", icon: "build/icon.ico" },
   // The guided installer, not the one-click one: only it shows the welcome and finish pages' artwork.
   nsis: {
-    artifactName: `${nightly ? "Cerium-Nightly" : "Cerium"}-Setup-\${version}.\${ext}`,
+    artifactName: "Cerium-Setup-${version}.${ext}",
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     installerIcon: "build/icon.ico",
@@ -54,5 +53,13 @@ export default {
     uninstallerSidebar: "build/installerSidebar.bmp",
     installerHeader: "build/installerHeader.bmp",
   },
-  publish: null,
+  // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
+  // channel's update file beside the installer, latest.yml or nightly.yml, and the release workflows
+  // publish it with the installer and its blockmap.
+  publish: {
+    provider: "github",
+    owner: "nonlooped",
+    repo: "cerium",
+    channel: nightly ? "nightly" : "latest",
+  },
 } satisfies Configuration;

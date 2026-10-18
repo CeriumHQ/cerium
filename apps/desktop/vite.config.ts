@@ -3,12 +3,13 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   // The main process runs as ESM; Electron's sandboxed preload must be CommonJS.
   pack: [
-    // koffi is a native module and loads from node_modules at runtime.
+    // koffi is a native module and loads from node_modules at runtime; so does electron-updater,
+    // CommonJS that requires electron itself.
     {
       entry: { main: "src/main.ts" },
       format: "esm",
       platform: "node",
-      deps: { neverBundle: ["electron", "koffi"] },
+      deps: { neverBundle: ["electron", "koffi", "electron-updater"] },
       dts: false,
     },
     {

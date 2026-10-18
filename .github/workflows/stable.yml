@@ -73,7 +73,6 @@ jobs:
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: ./.github/actions/package
         with:
-          channel: stable
           version: ${{ needs.plan.outputs.version }}
       - name: Publish
         if: ${{ steps.notes.outputs.publish == 'true' }}
@@ -84,5 +83,6 @@ jobs:
           TITLE: ${{ steps.notes.outputs.title }}
           COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
-          gh release create "$TAG" apps/desktop/out/*.exe --target "$COMMIT" --title "$TITLE" \
+          gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/latest.yml \
+            --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest

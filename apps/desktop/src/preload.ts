@@ -7,7 +7,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // File Explorer, neither of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page reports whether the
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
-// or off.
+// or off. Updates come through here too: the shell checks, downloads and installs them.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
@@ -38,4 +38,15 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.invoke("cerium:start-at-login"),
   setStartAtLogin: (enabled: boolean): Promise<{ available: boolean; enabled: boolean }> =>
     ipcRenderer.invoke("cerium:set-start-at-login", enabled),
+  updates: (): Promise<unknown> => ipcRenderer.invoke("cerium:updates"),
+  checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke("cerium:check-for-updates"),
+  setUpdateChannel: (channel: "stable" | "nightly"): Promise<unknown> =>
+    ipcRenderer.invoke("cerium:set-update-channel", channel),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke("cerium:download-update"),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke("cerium:install-update"),
+  onUpdatesChange: (listener: (updates: unknown) => void): (() => void) => {
+    const forward = (_event: unknown, updates: unknown) => listener(updates);
+    ipcRenderer.on("cerium:updates", forward);
+    return () => ipcRenderer.off("cerium:updates", forward);
+  },
 });
