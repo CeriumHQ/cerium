@@ -58,6 +58,11 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run typecheck
+      # Ubuntu's AppArmor keeps unprivileged processes out of user namespaces, which Edge's sandbox
+      # needs; the bus's UI tests drive a real Edge.
+      - name: Let Edge sandbox itself
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Test
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run test --run
