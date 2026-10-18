@@ -116,6 +116,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the transcript and the message box are 10% wider.
 - UI: your messages keep their line breaks as typed, show their attachments above the text, and show tagged files and skills as chips.
 - `@cerium/orchestrator`: the lead's instructions say when to answer with an artifact (a report on several pieces of work, a comparison, a sequence, numbers) and show a working one, instead of one closing sentence; every agent learns that `@path` names a file and `$name` a skill.
+- Desktop: the installer's welcome and finish pages show the Cerium mark and name without the "Harness of harnesses" tagline.
 
 ### Fixed
 

@@ -121,9 +121,6 @@ const sidebar = (page) =>
     ctx.textAlign = "center";
     ctx.font = `600 22px ${FONT}`;
     ctx.fillText("Cerium", w / 2, 212);
-    ctx.fillStyle = "#8c8c8c";
-    ctx.font = `400 11px ${FONT}`;
-    ctx.fillText("Harness of harnesses", w / 2, 234);
   });
 
 /** The banner across the inner pages (150x57), on the white NSIS paints them with. */
