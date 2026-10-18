@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { useKeyboardOpen } from "../../web/viewport.ts";
 import type { AgentActions } from "../agents/AgentMenu.tsx";
 import type { AgentSummary } from "../agents/model.ts";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
@@ -194,6 +195,8 @@ export function Transcript({
   const working = activity === "running" && !showsProgress(last);
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
   const scale = textScale(useAtomValue(textSizeAtom));
+  // A phone's keyboard shrinks the message box to one line, so the end needs less room.
+  const oneLine = useKeyboardOpen();
 
   const render = (item: Item): ReactNode => {
     switch (item.kind) {
@@ -253,12 +256,19 @@ export function Transcript({
         {/* Content fades out where the floating composer sits instead of showing through its glass. */}
         <ScrollArea
           viewportRef={viewport}
-          className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
+          className={`h-full [&_*]:[overflow-anchor:none] ${
+            oneLine
+              ? "mask-b-from-[calc(100%-4.5rem)] mask-b-to-[calc(100%-1rem)]"
+              : "mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)]"
+          }`}
         >
           <div
             className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
             // The inset is in screen pixels; the column's zoom would scale it.
-            style={{ zoom: scale, paddingBottom: `calc(10rem + ${bottomInset / scale}px)` }}
+            style={{
+              zoom: scale,
+              paddingBottom: `calc(${oneLine ? "5rem" : "10rem"} + ${bottomInset / scale}px)`,
+            }}
           >
             {items.map(render)}
             {working && (last === undefined || last.kind === "input") ? (
@@ -282,7 +292,7 @@ export function Transcript({
           onClick={toEnd}
           aria-label="Jump to latest"
           inert={following}
-          style={{ bottom: `calc(7.75rem + ${bottomInset}px)` }}
+          style={{ bottom: `calc(${oneLine ? "4.5rem" : "7.75rem"} + ${bottomInset}px)` }}
           className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
             following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
           }`}

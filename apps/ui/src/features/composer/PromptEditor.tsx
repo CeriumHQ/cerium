@@ -39,6 +39,8 @@ interface PromptEditorProps {
   readonly onFiles: (files: ReadonlyArray<File>) => void;
   /** The suggestion highlighted in the open `@`/`$` list, which keyboard focus stays beside. */
   readonly activeOption?: string | undefined;
+  /** Sits on one row between the box's buttons, as while a phone's keyboard is up. */
+  readonly inline?: boolean;
 }
 
 const MENTION = "mention";
@@ -159,6 +161,7 @@ export function PromptEditor({
   onKeyDown,
   onFiles,
   activeOption,
+  inline = false,
 }: PromptEditorProps) {
   const root = useRef<HTMLDivElement>(null);
   /** Where the caret was last inside the editor, for chips added while the user is elsewhere. */
@@ -271,7 +274,7 @@ export function PromptEditor({
   };
 
   return (
-    <div className="relative">
+    <div className={inline ? "relative min-w-0 flex-1" : "relative"}>
       <div
         ref={(element) => {
           root.current = element;
@@ -314,12 +317,16 @@ export function PromptEditor({
             placeCaretAtEnd(root.current);
         }}
         onBlur={() => onTrigger(undefined)}
-        className="block max-h-60 min-h-12 w-full overflow-y-auto px-4 pt-3 pb-1 text-[14px] leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:max-h-40 max-md:text-base"
+        className={`block w-full overflow-y-auto text-[14px] leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-base ${
+          inline ? "max-h-32 min-h-10 px-1 py-2" : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
+        }`}
       />
       {segments.length === 0 ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute top-3 left-4 text-[14px] leading-[1.6] text-fg-tertiary select-none max-md:text-base"
+          className={`pointer-events-none absolute text-[14px] leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
+            inline ? "inset-x-1 top-2 truncate" : "top-3 left-4"
+          }`}
         >
           {placeholder}
         </span>

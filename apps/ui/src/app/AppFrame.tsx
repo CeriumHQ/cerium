@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
+import { useKeyboardOpen } from "../web/viewport.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
@@ -161,6 +162,7 @@ function CompactFrame({
   children,
 }: Omit<AppFrameProps, "sidebarOpen" | "onToggleSidebar" | "onNewThread">) {
   const listLabel = mode === "work" ? "Inbox" : "Chats";
+  const keyboardOpen = useKeyboardOpen();
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
   return (
     <div className="relative flex h-full flex-col bg-surface-window">
@@ -187,6 +189,7 @@ function CompactFrame({
             <div key="main" className="flex h-full flex-col">
               <CompactBar
                 back={{ label: listLabel, onBack }}
+                folded={keyboardOpen}
                 title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
                 {...(thread?.project ? { subtitle: thread.project } : {})}
                 {...(agents.length > 0

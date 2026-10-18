@@ -20,6 +20,7 @@ import {
   useState,
   type DragEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type Ref,
   type RefObject,
@@ -38,6 +39,7 @@ import {
   SelectTrigger,
 } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useKeyboardOpen } from "../../web/viewport.ts";
 import { accessAtom, effortAtom, isSendKey, modelAtom, sendKeyAtom } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
@@ -255,6 +257,7 @@ export function Composer({
   };
 
   const resumes = target.kind === "thread" && target.ended !== undefined;
+  const oneLine = useKeyboardOpen();
 
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
@@ -355,8 +358,51 @@ export function Composer({
 
   const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
+  const attachButton = (
+    <IconButton
+      icon={Paperclip}
+      label="Attach files"
+      onClick={() => filePicker.current?.click()}
+      {...(oneLine ? { className: "size-10" } : {})}
+    />
+  );
+  // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
+  const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
+  const sendButton = running ? (
+    <Tooltip label="Stop" shortcut="Esc">
+      <Button
+        onClick={onStop}
+        onMouseDown={keepFocus}
+        aria-label="Stop"
+        className={`grid shrink-0 place-items-center rounded-full bg-surface-active text-fg-primary transition-colors hover:bg-line-strong ${
+          oneLine ? "m-0.5 size-9" : "size-8"
+        }`}
+      >
+        <Square size={12} fill="currentColor" />
+      </Button>
+    </Tooltip>
+  ) : (
+    <Tooltip label="Send" shortcut={sendKey === "enter" ? "Enter" : "Ctrl Enter"}>
+      <Button
+        onClick={send}
+        onMouseDown={keepFocus}
+        disabled={!canSend}
+        aria-label="Send"
+        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30 ${
+          oneLine ? "m-0.5 size-9" : "size-8"
+        }`}
+      >
+        <ArrowUp size={16} strokeWidth={2.25} />
+      </Button>
+    </Tooltip>
+  );
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:px-8 md:pb-5">
+    <div
+      className={`pointer-events-none absolute inset-x-0 bottom-0 px-3 md:px-8 md:pb-5 ${
+        oneLine ? "pb-2" : "pb-[max(env(safe-area-inset-bottom),0.75rem)]"
+      }`}
+    >
       {above}
       {/* The list sits beside the box, not in it: inside the box's own blur it couldn't blur what's behind. */}
       <div className="relative mx-auto max-w-[46.2rem]">
@@ -387,16 +433,22 @@ export function Composer({
           }}
           className={`pointer-events-auto rounded-2xl border bg-surface-raised backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-subtle focus-within:border-line-strong"
-          }`}
+          } ${oneLine ? "flex flex-wrap items-end p-1" : ""}`}
         >
+          {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
+              focus, and the keyboard with it. */}
           {draft.attachments.length > 0 ? (
-            <AttachmentTray
-              attachments={draft.attachments}
-              onRemove={removeAttachment}
-              onHeight={onAttachmentsHeight}
-            />
+            <div className={oneLine ? "basis-full" : undefined}>
+              <AttachmentTray
+                attachments={draft.attachments}
+                onRemove={removeAttachment}
+                onHeight={onAttachmentsHeight}
+              />
+            </div>
           ) : null}
+          {oneLine ? attachButton : null}
           <PromptEditor
+            inline={oneLine}
             ref={input}
             handle={editor}
             resetKey={`${draftKey}:${epoch}`}
@@ -437,126 +489,110 @@ export function Composer({
               event.target.value = "";
             }}
           />
-          <div className="flex items-center gap-0.5 px-2 pb-2 max-md:flex-wrap max-md:gap-y-1">
-            <IconButton icon={Paperclip} label="Attach files" onClick={() => filePicker.current?.click()} />
+          {/* While a phone's keyboard is up the setup waits below it; the box is one line. */}
+          {oneLine ? (
+            sendButton
+          ) : (
+            <div className="flex items-center gap-0.5 px-2 pb-2 max-md:flex-wrap max-md:gap-y-1">
+              {attachButton}
 
-            {target.kind === "thread" ? (
-              <span className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">
-                <ProviderLogo provider={target.provider} size={13} />
-                <span className="font-medium text-fg-primary">{target.model}</span>
-              </span>
-            ) : (
-              <>
-                {target.mode === "work" ? (
-                  <ProjectPicker folder={target.folder} onChoose={target.onChooseFolder} />
-                ) : null}
-
-                <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>
-                  <SelectTrigger label="Model">
-                    {model ? (
-                      <>
-                        <ProviderLogo provider={model.provider} size={13} />
-                        <span className="font-medium text-fg-primary">{model.label}</span>
-                      </>
-                    ) : (
-                      <span className="text-fg-tertiary">Finding models…</span>
-                    )}
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {providers.map((provider, index) => (
-                      <SelectGroup key={provider}>
-                        {index > 0 ? <SelectSeparator /> : null}
-                        <SelectGroupLabel>
-                          <ProviderLogo
-                            provider={provider}
-                            size={11}
-                            {...(target.available.has(provider) ? {} : { className: "opacity-35 grayscale" })}
-                          />
-                          {providerName[provider]}
-                          {target.available.has(provider) ? null : (
-                            <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>
-                          )}
-                        </SelectGroupLabel>
-                        {models
-                          .filter((option) => option.provider === provider)
-                          .map((option) => (
-                            <SelectItem
-                              key={option.id}
-                              value={modelKey(option)}
-                              disabled={!target.available.has(provider)}
-                            >
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectPopup>
-                </SelectRoot>
-
-                {model && activeEffort ? (
-                  <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(setEffort)}>
-                    <SelectTrigger label="Reasoning effort">
-                      <Gauge size={13} strokeWidth={1.75} />
-                      {effortLabel[activeEffort]}
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {model.efforts.map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {effortLabel[level]}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </SelectRoot>
-                ) : null}
-
-                {target.mode === "work" ? (
-                  <SelectRoot value={access} onValueChange={choose<AccessMode>(setAccess)}>
-                    <SelectTrigger label="Access">
-                      <AccessIcon size={13} strokeWidth={1.75} />
-                      {accessOptions.find((option) => option.value === access)?.label}
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {accessOptions.map((option) => (
-                        <SelectItem
-                          key={option.value}
-                          value={option.value}
-                          icon={accessIcon[option.value]}
-                          description={option.description}
-                        >
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </SelectRoot>
-                ) : null}
-              </>
-            )}
-
-            <div className="ml-auto">
-              {running ? (
-                <Tooltip label="Stop" shortcut="Esc">
-                  <Button
-                    onClick={onStop}
-                    aria-label="Stop"
-                    className="grid size-8 place-items-center rounded-full bg-surface-active text-fg-primary transition-colors hover:bg-line-strong"
-                  >
-                    <Square size={12} fill="currentColor" />
-                  </Button>
-                </Tooltip>
+              {target.kind === "thread" ? (
+                <span className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">
+                  <ProviderLogo provider={target.provider} size={13} />
+                  <span className="font-medium text-fg-primary">{target.model}</span>
+                </span>
               ) : (
-                <Tooltip label="Send" shortcut={sendKey === "enter" ? "Enter" : "Ctrl Enter"}>
-                  <Button
-                    onClick={send}
-                    disabled={!canSend}
-                    aria-label="Send"
-                    className="grid size-8 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30"
-                  >
-                    <ArrowUp size={16} strokeWidth={2.25} />
-                  </Button>
-                </Tooltip>
+                <>
+                  {target.mode === "work" ? (
+                    <ProjectPicker folder={target.folder} onChoose={target.onChooseFolder} />
+                  ) : null}
+
+                  <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>
+                    <SelectTrigger label="Model">
+                      {model ? (
+                        <>
+                          <ProviderLogo provider={model.provider} size={13} />
+                          <span className="font-medium text-fg-primary">{model.label}</span>
+                        </>
+                      ) : (
+                        <span className="text-fg-tertiary">Finding models…</span>
+                      )}
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {providers.map((provider, index) => (
+                        <SelectGroup key={provider}>
+                          {index > 0 ? <SelectSeparator /> : null}
+                          <SelectGroupLabel>
+                            <ProviderLogo
+                              provider={provider}
+                              size={11}
+                              {...(target.available.has(provider)
+                                ? {}
+                                : { className: "opacity-35 grayscale" })}
+                            />
+                            {providerName[provider]}
+                            {target.available.has(provider) ? null : (
+                              <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>
+                            )}
+                          </SelectGroupLabel>
+                          {models
+                            .filter((option) => option.provider === provider)
+                            .map((option) => (
+                              <SelectItem
+                                key={option.id}
+                                value={modelKey(option)}
+                                disabled={!target.available.has(provider)}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectPopup>
+                  </SelectRoot>
+
+                  {model && activeEffort ? (
+                    <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(setEffort)}>
+                      <SelectTrigger label="Reasoning effort">
+                        <Gauge size={13} strokeWidth={1.75} />
+                        {effortLabel[activeEffort]}
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {model.efforts.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {effortLabel[level]}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </SelectRoot>
+                  ) : null}
+
+                  {target.mode === "work" ? (
+                    <SelectRoot value={access} onValueChange={choose<AccessMode>(setAccess)}>
+                      <SelectTrigger label="Access">
+                        <AccessIcon size={13} strokeWidth={1.75} />
+                        {accessOptions.find((option) => option.value === access)?.label}
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {accessOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            icon={accessIcon[option.value]}
+                            description={option.description}
+                          >
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </SelectRoot>
+                  ) : null}
+                </>
               )}
+
+              <div className="ml-auto">{sendButton}</div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
