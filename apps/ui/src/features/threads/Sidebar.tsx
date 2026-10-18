@@ -1,10 +1,11 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen } from "lucide-react";
+import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { ContextMenuArea, MenuItem } from "../../components/ui/Menu.tsx";
+import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -12,7 +13,8 @@ import { shortAgo } from "../../lib/time.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
 import { Inbox } from "./Inbox.tsx";
-import { canArchive, isListed, providerName, type ThreadSummary } from "./model.ts";
+import { DeleteThreadDialog } from "./Delete.tsx";
+import { archivedWork, canArchive, canDelete, isListed, providerName, type ThreadSummary } from "./model.ts";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { ProviderStack, StatusIndicator } from "./StatusIndicator.tsx";
 
@@ -29,6 +31,9 @@ interface SidebarProps {
   readonly onNewThreadIn: (folder: string) => void;
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
+  readonly onRestore: (threadId: string) => void;
+  /** Deletes a thread for good, once the user has confirmed it. */
+  readonly onDelete: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   readonly onOpenSettings: (category?: SettingsCategory) => void;
 }
@@ -49,6 +54,8 @@ export function Sidebar({
   onNewThreadIn,
   onRename,
   onArchive,
+  onRestore,
+  onDelete,
   harnesses,
   onOpenSettings,
 }: SidebarProps) {
@@ -74,6 +81,7 @@ export function Sidebar({
       {mode === "work" ? (
         <Inbox
           threads={modeThreads}
+          archived={archivedWork(threads)}
           selectedId={selectedId}
           onSelect={onSelect}
           onMarkRead={onMarkRead}
@@ -81,6 +89,8 @@ export function Sidebar({
           onNewThreadIn={onNewThreadIn}
           onRename={onRename}
           onArchive={onArchive}
+          onRestore={onRestore}
+          onDelete={onDelete}
         />
       ) : (
         <ChatList
@@ -89,6 +99,7 @@ export function Sidebar({
           onSelect={onSelect}
           onRename={onRename}
           onArchive={onArchive}
+          onDelete={onDelete}
         />
       )}
 
@@ -102,6 +113,7 @@ interface ChatActions {
   readonly onSelect: (threadId: string) => void;
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
+  readonly onDelete: (threadId: string) => void;
 }
 
 /** Chats grouped by how recent they are. */
@@ -153,7 +165,9 @@ function ThreadRow({
   onSelect,
   onRename,
   onArchive,
+  onDelete,
 }: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
+  const [deleting, setDeleting] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const rowClass = `group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover ${
     selected || editing
@@ -181,27 +195,44 @@ function ThreadRow({
   // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
   if (editing) return <div className={rowClass}>{content}</div>;
   return (
-    <ContextMenuArea
-      menu={
-        <>
-          <MenuItem icon={Pencil} onClick={start}>
-            Rename
-          </MenuItem>
-          <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
-            Archive
-          </MenuItem>
-        </>
-      }
-    >
-      <Button
-        ref={row}
-        onClick={() => onSelect(thread.id)}
-        aria-current={selected ? "page" : undefined}
-        className={rowClass}
+    <>
+      <ContextMenuArea
+        menu={
+          <>
+            <MenuItem icon={Pencil} onClick={start}>
+              Rename
+            </MenuItem>
+            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+              Archive
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={Trash2}
+              tone="danger"
+              disabled={!canDelete(thread)}
+              onClick={() => setDeleting(true)}
+            >
+              Delete
+            </MenuItem>
+          </>
+        }
       >
-        {content}
-      </Button>
-    </ContextMenuArea>
+        <Button
+          ref={row}
+          onClick={() => onSelect(thread.id)}
+          aria-current={selected ? "page" : undefined}
+          className={rowClass}
+        >
+          {content}
+        </Button>
+      </ContextMenuArea>
+      <DeleteThreadDialog
+        thread={thread}
+        open={deleting}
+        onOpenChange={setDeleting}
+        onConfirm={() => onDelete(thread.id)}
+      />
+    </>
   );
 }
 

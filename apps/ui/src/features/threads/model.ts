@@ -27,6 +27,9 @@ export const isListed = (thread: ThreadSummary): boolean =>
 export const canArchive = (thread: ThreadSummary): boolean =>
   thread.status !== "running" && thread.status !== "awaitingApproval";
 
+/** Deleting is refused on the same grounds as archiving. */
+export const canDelete = canArchive;
+
 /** The title a rename saves: trimmed and cut to fit; none when it's empty or unchanged. */
 export const renamedTitle = (current: string, typed: string): string | undefined => {
   const title = typed.trim().slice(0, MAX_THREAD_TITLE).trim();
@@ -38,6 +41,12 @@ export const archivedThreads = (threads: ReadonlyArray<ThreadSummary>): Readonly
   threads
     .filter((thread) => thread.archivedAt !== undefined)
     .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
+
+/** The work threads the sidebar's archived section lists: hidden from the inbox, latest activity first. */
+export const archivedWork = (threads: ReadonlyArray<ThreadSummary>): ReadonlyArray<ThreadSummary> =>
+  threads
+    .filter((thread) => thread.mode === "work" && !isListed(thread))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
 export const providerName: Record<ProviderId, string> = {
   claude: "Claude",

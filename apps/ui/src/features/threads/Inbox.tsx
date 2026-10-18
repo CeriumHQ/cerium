@@ -11,6 +11,7 @@ import {
   MailOpen,
   Pencil,
   SquarePen,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -30,7 +31,9 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { remember, stored } from "../../lib/storage.ts";
 import { shortAgo } from "../../lib/time.ts";
 import { inboxProjects, inboxSections, type ThreadSection } from "./sections.ts";
-import { canArchive, type ThreadSummary } from "./model.ts";
+import { ArchivedSection } from "./Archived.tsx";
+import { DeleteThreadDialog } from "./Delete.tsx";
+import { canArchive, canDelete, type ThreadSummary } from "./model.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { CornerStatus, ProviderStack } from "./StatusIndicator.tsx";
@@ -39,6 +42,9 @@ const SCOPE_KEY = "cerium:inboxScope";
 
 interface InboxProps {
   readonly threads: ReadonlyArray<ThreadSummary>;
+  /** Archived threads, listed apart at the foot. */
+  readonly archived: ReadonlyArray<ThreadSummary>;
+  readonly onRestore: (threadId: string) => void;
   readonly selectedId: string | undefined;
   readonly onSelect: (threadId: string) => void;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
@@ -47,22 +53,24 @@ interface InboxProps {
   readonly onNewThreadIn: (folder: string) => void;
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
+  readonly onDelete: (threadId: string) => void;
 }
 
-type RowProps = Omit<InboxProps, "threads"> & {
+type RowProps = Omit<InboxProps, "threads" | "archived" | "onRestore"> & {
   /** The folder the inbox is scoped to, if any. */
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
 };
 
 /** Every project's work threads in one list, what needs the user first; optionally scoped to one folder. */
-export function Inbox({ threads, ...actions }: InboxProps) {
+export function Inbox({ threads, archived, onRestore, ...actions }: InboxProps) {
   const projects = inboxProjects(threads);
   /** The folder the inbox is scoped to; empty for every project. */
   const [scope, setScope] = useState(() => stored(SCOPE_KEY) ?? "");
   // A remembered folder with no threads left falls back to every project.
   const project = projects.find((candidate) => candidate.folder === scope);
-  const scoped = project ? threads.filter((thread) => thread.folder === project.folder) : threads;
+  const inScope = (thread: ThreadSummary) => project === undefined || thread.folder === project.folder;
+  const scoped = threads.filter(inScope);
   const sections = inboxSections(scoped);
   const unread = scoped.filter((thread) => thread.unread);
 
@@ -137,6 +145,15 @@ export function Inbox({ threads, ...actions }: InboxProps) {
           ) : null}
         </nav>
       </ScrollArea>
+
+      <ArchivedSection
+        threads={archived.filter(inScope)}
+        selectedId={actions.selectedId}
+        onSelect={actions.onSelect}
+        onRename={actions.onRename}
+        onRestore={onRestore}
+        onDelete={actions.onDelete}
+      />
     </>
   );
 }
@@ -176,10 +193,12 @@ function InboxRow({
   onNewThreadIn,
   onRename,
   onArchive,
+  onDelete,
   scope,
   onScope,
 }: { thread: ThreadSummary } & RowProps) {
   const selected = thread.id === selectedId;
+  const [deleting, setDeleting] = useState(false);
   const unread = thread.unread && !selected;
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const { folder, project } = thread;
@@ -224,53 +243,70 @@ function InboxRow({
   // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
   if (editing) return <div className={rowClass}>{content}</div>;
   return (
-    <ContextMenuArea
-      menu={
-        <>
-          {thread.unread ? (
-            <MenuItem icon={MailOpen} onClick={() => onMarkRead([thread])}>
-              Mark as read
-            </MenuItem>
-          ) : (
-            <MenuItem icon={Mail} onClick={() => onMarkUnread(thread.id)}>
-              Mark as unread
-            </MenuItem>
-          )}
-          {folder && project ? (
-            <>
-              <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
-                <span className="max-w-64 truncate">New thread in {project}</span>
+    <>
+      <ContextMenuArea
+        menu={
+          <>
+            {thread.unread ? (
+              <MenuItem icon={MailOpen} onClick={() => onMarkRead([thread])}>
+                Mark as read
               </MenuItem>
-              {scope === folder ? (
-                <MenuItem icon={ListFilter} onClick={() => onScope("")}>
-                  Show all projects
+            ) : (
+              <MenuItem icon={Mail} onClick={() => onMarkUnread(thread.id)}>
+                Mark as unread
+              </MenuItem>
+            )}
+            {folder && project ? (
+              <>
+                <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
+                  <span className="max-w-64 truncate">New thread in {project}</span>
                 </MenuItem>
-              ) : (
-                <MenuItem icon={ListFilter} onClick={() => onScope(folder)}>
-                  <span className="max-w-64 truncate">Show only {project}</span>
-                </MenuItem>
-              )}
-            </>
-          ) : null}
-          <MenuSeparator />
-          <MenuItem icon={Pencil} onClick={start}>
-            Rename
-          </MenuItem>
-          <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
-            Archive
-          </MenuItem>
-        </>
-      }
-    >
-      <Button
-        ref={row}
-        onClick={() => onSelect(thread.id)}
-        aria-current={selected ? "page" : undefined}
-        className={rowClass}
+                {scope === folder ? (
+                  <MenuItem icon={ListFilter} onClick={() => onScope("")}>
+                    Show all projects
+                  </MenuItem>
+                ) : (
+                  <MenuItem icon={ListFilter} onClick={() => onScope(folder)}>
+                    <span className="max-w-64 truncate">Show only {project}</span>
+                  </MenuItem>
+                )}
+              </>
+            ) : null}
+            <MenuSeparator />
+            <MenuItem icon={Pencil} onClick={start}>
+              Rename
+            </MenuItem>
+            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+              Archive
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={Trash2}
+              tone="danger"
+              disabled={!canDelete(thread)}
+              onClick={() => setDeleting(true)}
+            >
+              Delete
+            </MenuItem>
+          </>
+        }
       >
-        {content}
-      </Button>
-    </ContextMenuArea>
+        <Button
+          ref={row}
+          onClick={() => onSelect(thread.id)}
+          aria-current={selected ? "page" : undefined}
+          className={rowClass}
+        >
+          {content}
+        </Button>
+      </ContextMenuArea>
+      <DeleteThreadDialog
+        thread={thread}
+        open={deleting}
+        onOpenChange={setDeleting}
+        onConfirm={() => onDelete(thread.id)}
+      />
+    </>
   );
 }
 

@@ -7,6 +7,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   createThread,
+  deleteThread,
   harnessesAtom,
   interruptAgent,
   renameThread,
@@ -127,6 +128,7 @@ function Workspace() {
   const stop = useAtomSet(stopAgent, { mode: "promise" });
   const rename = useAtomSet(renameThread, { mode: "promise" });
   const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
+  const remove = useAtomSet(deleteThread, { mode: "promise" });
   const save = useAtomSet(saveProject, { mode: "promise" });
   /** Runs a backend action, reporting a failure in the notice bar; resolves whether it worked. */
   const attempt = (action: Promise<unknown>): Promise<boolean> => {
@@ -301,6 +303,21 @@ function Workspace() {
                 if (threadId === selected?.thread.id) startNew();
               },
             )
+          }
+          onRestore={(threadId) =>
+            void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
+              (restored) => {
+                if (restored) refreshThreads();
+              },
+            )
+          }
+          // Deleting the open thread leaves it for a new one.
+          onDelete={(threadId) =>
+            void attempt(remove({ payload: { threadId: threadId as ThreadId } })).then((deleted) => {
+              if (!deleted) return;
+              refreshThreads();
+              if (threadId === selected?.thread.id) startNew();
+            })
           }
           harnesses={indicators}
           onOpenSettings={openSettings}
