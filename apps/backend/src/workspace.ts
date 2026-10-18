@@ -3,6 +3,8 @@ import { Cache, Context, Crypto, Effect, FileSystem, Layer, Path, Result, Schema
 import { Base64 } from "effect/encoding";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { sweepAttachments } from "./attachments.ts";
+
 // What the message box needs from the user's disk: the files it offers after `@`, a place for pasted
 // files that have no path of their own, and the images it shows.
 
@@ -141,7 +143,7 @@ export class Workspace extends Context.Service<
     readImage(path: string): Effect.Effect<ImageData, WorkspaceError>;
   }
 >()("cerium/backend/Workspace") {
-  /** Requires `FileSystem`, `Path`, `Crypto` and `ChildProcessSpawner`. */
+  /** Requires `FileSystem`, `Path`, `Crypto`, `ChildProcessSpawner` and `Store`. */
   static readonly layer = (options: { readonly attachmentsDirectory: string }) =>
     Layer.effect(
       Workspace,
@@ -150,6 +152,12 @@ export class Workspace extends Context.Service<
         const path = yield* Path.Path;
         const crypto = yield* Crypto.Crypto;
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+        // Pasted files that were never sent are cleared once per launch, without holding startup up.
+        yield* sweepAttachments(options.attachmentsDirectory).pipe(
+          Effect.ignore({ log: "Warn", message: "Couldn't clear unsent attachments" }),
+          Effect.forkScoped,
+        );
 
         /** What git tracks or would track: its own ignore rules decide. Fails outside a repository. */
         const gitFiles = Effect.fn("Workspace.gitFiles")(function* (cwd: string) {

@@ -1,4 +1,11 @@
-import { AgentEvent, AgentInfo, ThreadInfo, type AgentId, type ThreadId } from "@cerium/protocol";
+import {
+  AgentEvent,
+  AgentInfo,
+  ThreadInfo,
+  type AgentId,
+  type EventPayload,
+  type ThreadId,
+} from "@cerium/protocol";
 import { and, asc, eq, gt, inArray, max } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { join } from "node:path";
@@ -38,6 +45,8 @@ export class Store extends Context.Service<
     lastSequence(agentId: AgentId): Effect.Effect<Option.Option<number>, StoreError>;
     /** Every agent's events in a thread, in the order they happened. */
     listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /** Every thread's events of one kind, in the order they happened. */
+    listEventsByTag(tag: EventPayload["_tag"]): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** Marks agents that were live when the app last exited as stopped: their sessions are gone. */
     stopLiveAgents(updatedAt: number): Effect.Effect<void, StoreError>;
     /** Every stored setting by key; the values are whatever was written, undecoded. */
@@ -163,6 +172,14 @@ export class Store extends Context.Service<
                 .select()
                 .from(events)
                 .where(eq(events.threadId, threadId))
+                .orderBy(asc(events.at), asc(events.sequence)),
+            ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+          listEventsByTag: (tag) =>
+            query("Could not list events", () =>
+              db
+                .select()
+                .from(events)
+                .where(eq(events.tag, tag))
                 .orderBy(asc(events.at), asc(events.sequence)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
           stopLiveAgents: (updatedAt) =>

@@ -147,6 +147,34 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("lists one kind of event across threads", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const other: ThreadInfo = { ...thread, id: "thr_2" as ThreadId };
+        const otherLead: AgentInfo = { ...lead, id: "agt_other" as AgentId, threadId: other.id };
+        const input = (id: string, agent: AgentInfo, at: number): AgentEvent => ({
+          id: id as EventId,
+          threadId: agent.threadId,
+          agentId: agent.id,
+          sequence: at,
+          at,
+          payload: { _tag: "TurnInput", items: [{ _tag: "FromUser", text: id }] },
+        });
+        yield* store.createThread(thread);
+        yield* store.createThread(other);
+        yield* store.createAgent(lead);
+        yield* store.createAgent(otherLead);
+        yield* store.appendEvents([input("evt_late", lead, 30), event(1), input("evt_early", otherLead, 20)]);
+
+        assert.deepStrictEqual(
+          (yield* store.listEventsByTag("TurnInput")).map((stored) => stored.id),
+          ["evt_early", "evt_late"],
+        );
+      }),
+    ),
+  );
+
   it.effect("stores a batch atomically", () =>
     withStore(
       Effect.gen(function* () {
