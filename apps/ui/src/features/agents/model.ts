@@ -47,6 +47,7 @@ export const accessLabel: Record<AccessMode, string> = {
   readOnly: "Read only",
   ask: "Ask first",
   acceptEdits: "Accept edits",
+  auto: "Auto",
   fullAccess: "Full access",
 };
 

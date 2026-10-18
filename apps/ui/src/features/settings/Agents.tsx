@@ -10,6 +10,7 @@ import {
   FilePen,
   Minus,
   Plug,
+  ShieldCheck,
   ShieldOff,
   ShieldQuestion,
   type LucideIcon,
@@ -53,15 +54,17 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
   ask: ShieldQuestion,
   acceptEdits: FilePen,
+  auto: ShieldCheck,
   fullAccess: ShieldOff,
 };
 
-type Permission = "yes" | "asks" | "no";
+type Permission = "yes" | "reviewed" | "asks" | "no";
 /** What each access mode lets an agent do, matching the descriptions the composer gives. */
 const accessMatrix: Record<AccessMode, readonly [read: Permission, edit: Permission, run: Permission]> = {
   readOnly: ["yes", "no", "no"],
   ask: ["yes", "asks", "asks"],
   acceptEdits: ["yes", "yes", "asks"],
+  auto: ["yes", "reviewed", "reviewed"],
   fullAccess: ["yes", "yes", "yes"],
 };
 const abilities = ["Read and search", "Edit files", "Run commands"] as const;
@@ -253,60 +256,88 @@ function EffortGauge({
   );
 }
 
+/** One row per access mode, with what it allows in a column per ability. */
 function AccessPicker({ value, onChange }: { value: AccessMode; onChange: (access: AccessMode) => void }) {
+  const columns = "grid grid-cols-[minmax(0,1.25fr)_repeat(3,minmax(0,1fr))] items-center gap-3";
+  const selected = accessOptions.find((option) => option.value === value);
   return (
-    <RadioGroup
-      value={value}
-      onValueChange={(next) => onChange(next as AccessMode)}
-      aria-label="Access"
-      className="grid grid-cols-4 gap-3"
-    >
-      {accessOptions.map((option) => {
-        const Icon = accessIcon[option.value];
-        return (
-          <Radio.Root
-            key={option.value}
-            value={option.value}
-            nativeButton
-            render={<button type="button" aria-label={option.label} />}
-            className="group flex flex-col gap-3 rounded-xl border border-line-subtle p-3.5 text-left transition-[border-color,box-shadow] duration-150 outline-none hover:border-line-strong focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:border-accent data-checked:ring-1 data-checked:ring-accent"
-          >
-            <span className="flex items-center gap-2 text-[13px] font-medium text-fg-secondary group-data-checked:text-fg-primary">
-              <Icon size={15} strokeWidth={1.75} />
-              {option.label}
-            </span>
-            <span className="flex flex-col gap-1.5">
-              {abilities.map((ability, index) => (
-                <PermissionLine
-                  key={ability}
-                  ability={ability}
-                  permission={accessMatrix[option.value][index]!}
-                />
+    <div className="rounded-xl border border-line-subtle">
+      <div
+        aria-hidden
+        className={`${columns} border-b border-line-subtle py-2 pr-3.5 pl-3.5 text-2xs text-fg-tertiary`}
+      >
+        <span />
+        {abilities.map((ability) => (
+          <span key={ability}>{ability}</span>
+        ))}
+      </div>
+      <RadioGroup
+        value={value}
+        onValueChange={(next) => onChange(next as AccessMode)}
+        aria-label="Access"
+        className="divide-y divide-line-subtle"
+      >
+        {accessOptions.map((option) => {
+          const Icon = accessIcon[option.value];
+          return (
+            <Radio.Root
+              key={option.value}
+              value={option.value}
+              nativeButton
+              render={<button type="button" aria-label={`${option.label}: ${option.description}`} />}
+              className={`group ${columns} min-h-11 w-full py-2 pr-3.5 pl-3.5 text-left outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset`}
+            >
+              <span className="flex min-w-0 items-center gap-3 text-[13px] text-fg-secondary group-data-checked:text-fg-primary">
+                <span className="grid size-3.5 shrink-0 place-items-center rounded-full border border-line-strong transition-colors group-hover:border-fg-tertiary group-data-checked:border-accent group-data-checked:bg-accent">
+                  <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
+                </span>
+                <Icon size={14} strokeWidth={1.75} className="shrink-0" />
+                <span className="truncate group-data-checked:font-medium">{option.label}</span>
+              </span>
+              {accessMatrix[option.value].map((permission, index) => (
+                <PermissionCell key={abilities[index]} permission={permission} />
               ))}
-            </span>
-          </Radio.Root>
-        );
-      })}
-    </RadioGroup>
+            </Radio.Root>
+          );
+        })}
+      </RadioGroup>
+      {selected ? (
+        <p className="border-t border-line-subtle px-3.5 py-3 text-[12.5px] text-fg-secondary">
+          <span className="font-medium text-fg-primary">{selected.label}.</span> {selected.description}.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-function PermissionLine({ ability, permission }: { ability: string; permission: Permission }) {
+const permissionLabel: Record<Permission, string> = {
+  yes: "Yes",
+  reviewed: "Reviewed",
+  asks: "Asks",
+  no: "No",
+};
+
+function PermissionCell({ permission }: { permission: Permission }) {
   return (
     <span
-      className={`flex items-center gap-2 text-xs ${permission === "no" ? "text-fg-disabled" : "text-fg-secondary"}`}
+      className={`flex items-center gap-1.5 text-xs ${
+        permission === "asks"
+          ? "text-attention"
+          : permission === "no"
+            ? "text-fg-disabled"
+            : "text-fg-secondary"
+      }`}
     >
-      <span className="grid size-3.5 shrink-0 place-items-center">
-        {permission === "yes" ? (
-          <Check size={13} strokeWidth={2.25} className="text-fg-primary" />
-        ) : permission === "asks" ? (
-          <span className="size-1.5 rounded-full bg-attention" />
-        ) : (
-          <Minus size={13} strokeWidth={2} />
-        )}
-      </span>
-      {ability}
-      {permission === "asks" ? <span className="ml-auto text-2xs text-attention">Asks</span> : null}
+      {permission === "yes" ? (
+        <Check size={13} strokeWidth={2.25} className="text-fg-primary" />
+      ) : permission === "reviewed" ? (
+        <ShieldCheck size={13} strokeWidth={1.75} />
+      ) : permission === "asks" ? (
+        <span className="mx-[3.5px] size-1.5 rounded-full bg-attention" />
+      ) : (
+        <Minus size={13} strokeWidth={2} />
+      )}
+      {permission === "yes" ? null : permissionLabel[permission]}
     </span>
   );
 }

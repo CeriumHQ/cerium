@@ -8,12 +8,20 @@ import { AgentId, EpochMillis, ProviderId, ThreadId } from "./ids.ts";
  * - `readOnly`: read/search/web tools only (chat mode, read-only children).
  * - `ask`: every write or command goes through Cerium's approval flow.
  * - `acceptEdits`: file edits in the workspace are auto-approved; commands still ask.
+ * - `auto`: the harness's own reviewer model approves or refuses each edit and command, and asks the
+ *   user only where the harness does (architecture §2.2).
  * - `fullAccess`: the harness's own bypass mode: nothing asks and no sandbox applies.
  */
-export const AccessMode = Schema.Literals(["readOnly", "ask", "acceptEdits", "fullAccess"]);
+export const AccessMode = Schema.Literals(["readOnly", "ask", "acceptEdits", "auto", "fullAccess"]);
 export type AccessMode = typeof AccessMode.Type;
 
-const accessRank: Record<AccessMode, number> = { readOnly: 0, ask: 1, acceptEdits: 2, fullAccess: 3 };
+const accessRank: Record<AccessMode, number> = {
+  readOnly: 0,
+  ask: 1,
+  acceptEdits: 2,
+  auto: 3,
+  fullAccess: 4,
+};
 
 /** Permissions only narrow: a child never gets more access than its lead (architecture §3.1). */
 export const narrowAccess = (lead: AccessMode, requested: AccessMode): AccessMode =>

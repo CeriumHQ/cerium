@@ -50,6 +50,10 @@ const permissionMode = (access: AccessMode): PermissionMode => {
       return "default";
     case "acceptEdits":
       return "acceptEdits";
+    // Claude Code's classifier decides, and asks through `canUseTool` when it cannot. On a model or
+    // account without auto mode, Claude Code runs it as `default`.
+    case "auto":
+      return "auto";
     case "fullAccess":
       return "bypassPermissions";
   }

@@ -52,6 +52,14 @@ describe("access modes", () => {
     expect(accessPolicy("acceptEdits")).toEqual(accessPolicy("ask"));
   });
 
+  it("lets Muse's judge review in auto, sandboxed", () => {
+    expect(accessPolicy("auto")).toEqual({
+      permissionProfile: ":auto-review",
+      approvalMode: "promptUnmatched",
+      serveFlags: [],
+    });
+  });
+
   it("runs full access unrestricted, unasked and unsandboxed", () => {
     expect(accessPolicy("fullAccess")).toEqual({
       permissionProfile: ":unrestricted",

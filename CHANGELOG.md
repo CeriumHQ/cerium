@@ -119,6 +119,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Backend: tells the account's browsers when one of this computer's threads waits for your approval, finishes or fails, with the request, the last message or the error. A thread settles for a few seconds first, so a request answered at once, a stopped turn or a helper agent handing its answer to the lead tells nobody.
 - UI: Settings → Notifications in the web client turns notifications on for that phone, tablet or browser, and picks which: an agent needs you, a thread finishes, something fails. It works in any browser with web push; where a mobile browser notifies only web apps on the Home Screen, it shows how to add Cerium there first. Tapping a notification opens its thread. Every window tells your account which thread it shows, so you aren't notified about what you're looking at.
 - Desktop: Cerium updates itself. Settings → Updates picks the channel to follow, stable or nightly, checks it, downloads the newer build and restarts into it. Cerium checks at launch and every six hours, and a notice over the conversation offers a newer build when there is one. Nothing downloads until you say so, and a nightly that switches to stable waits for stable to pass it rather than going back. Until Cerium's releases can be read publicly, updates say they're off.
+- Auto access: each harness's own reviewer model approves or refuses an agent's edits and commands, instead of you or nobody. Claude runs in Claude Code's auto mode (asking you when its classifier can't decide, and as Ask first on models without it), Codex in "Approve for me", Muse in its `:auto-review` profile and Cursor with Auto-review. The composer and Agents settings offer it between Accept edits and Full access, and a lead in Auto can give its helpers Auto or less.
 
 ### Changed
 
@@ -143,6 +144,7 @@ All notable changes to Cerium are recorded here. The format follows
 - README: the banner is now the Cerium mark and name alone, in dark or light to follow GitHub's theme; the features and screenshots show the inbox, `@` and `$` tags, approval diffs and right-click menus; the light theme screenshot is gone.
 - `@cerium/account`: what a device does with its Cerium account (the relay connection and sign-in, the account's threads and read state, tunnels to other computers, and the RPCs its own UI calls about them) moves out of the backend into a package of its own, so the web client can run it too. `@cerium/rpc` splits into what a machine serves (`MachineRpcs`) and what a device answers about itself (`DeviceRpcs`). A sign-in waiting for the browser now picks back up after a restart.
 - UI: a calmer titlebar. The mark stands alone without the "Cerium" name and divider, the sidebar toggle sits over the sidebar's edge above search, and the machine picker moves to the right beside the agents button, opening its menu leftward.
+- UI: Agents settings shows access as a table of modes against what each may do, with the chosen mode described beneath it, instead of a card per mode.
 
 ### Fixed
 

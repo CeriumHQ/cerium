@@ -343,16 +343,25 @@ describe("Session option mapping", () => {
     expect(accessPolicy("ask")).toEqual({
       sandbox: "read-only",
       approvalPolicy: "on-request",
+      approvalsReviewer: "user",
       approveWorkspaceEdits: false,
     });
     expect(accessPolicy("acceptEdits")).toEqual({
       sandbox: "read-only",
       approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      approveWorkspaceEdits: true,
+    });
+    expect(accessPolicy("auto")).toEqual({
+      sandbox: "workspace-write",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "auto_review",
       approveWorkspaceEdits: true,
     });
     expect(accessPolicy("fullAccess")).toEqual({
       sandbox: "danger-full-access",
       approvalPolicy: "never",
+      approvalsReviewer: "user",
       approveWorkspaceEdits: true,
     });
   });

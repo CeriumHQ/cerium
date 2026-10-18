@@ -60,8 +60,8 @@ const COMMAND_TOOLS = ["shell", "piBash"];
 /**
  * Local runs execute every tool call without asking, and Cursor's hooks load only from files in the
  * user's repo or home, so nothing that needs an approval is offered: `ask` runs read-only and
- * `acceptEdits` edits without commands. `fullAccess` has every tool. The SDK sends both lists with
- * every request; deny wins.
+ * `acceptEdits` edits without commands. `auto` and `fullAccess` have every tool. The SDK sends both
+ * lists with every request; deny wins.
  */
 export const toolRestrictions = (access: AccessMode): Pick<AgentOptions, "tools" | "disallowedTools"> => {
   switch (access) {
@@ -70,14 +70,30 @@ export const toolRestrictions = (access: AccessMode): Pick<AgentOptions, "tools"
       return { tools: [...READ_ONLY_TOOLS], disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
     case "acceptEdits":
       return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...COMMAND_TOOLS] };
+    case "auto":
     case "fullAccess":
       return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
   }
 };
 
-/** `fullAccess` turns Cursor's sandbox off; other modes keep the user's own sandbox setting. */
-export const sandboxOptions = (access: AccessMode): Pick<LocalAgentOptions, "sandboxOptions"> =>
-  access === "fullAccess" ? { sandboxOptions: { enabled: false } } : {};
+/**
+ * `auto` is Cursor's own Auto-review: its classifier approves or refuses each tool call. `fullAccess`
+ * turns Cursor's sandbox off; other modes keep the user's own sandbox setting.
+ */
+export const accessOptions = (
+  access: AccessMode,
+): Pick<LocalAgentOptions, "sandboxOptions" | "autoReview"> => {
+  switch (access) {
+    case "readOnly":
+    case "ask":
+    case "acceptEdits":
+      return {};
+    case "auto":
+      return { autoReview: true };
+    case "fullAccess":
+      return { sandboxOptions: { enabled: false } };
+  }
+};
 
 /**
  * The user's own configuration (rules, skills, hooks), as their CLI loads it. Cursor also reads Claude
@@ -164,7 +180,7 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
   // Every MCP call runs without a prompt (local runs never ask), which covers `trustedMcpServers`.
   const agentOptions: AgentOptions = {
     model: selection,
-    local: { cwd: resolve(options.cwd), settingSources: SETTING_SOURCES, ...sandboxOptions(options.access) },
+    local: { cwd: resolve(options.cwd), settingSources: SETTING_SOURCES, ...accessOptions(options.access) },
     ...toolRestrictions(options.access),
     ...(options.includeUserMcpServers ? { mcpServers } : {}),
   };

@@ -45,7 +45,7 @@ export const SpawnAgent = Tool.make("spawn_agent", {
     provider: Schema.optionalKey(ProviderId),
     effort: Schema.optionalKey(ReasoningEffort),
     access: Schema.optionalKey(AccessMode).annotate({
-      description: "readOnly, ask, acceptEdits or fullAccess. Never more than your own access.",
+      description: "readOnly, ask, acceptEdits, auto or fullAccess. Never more than your own access.",
     }),
     prompt: Schema.NonEmptyString.annotate({
       description: "Everything the child needs: it sees nothing of your conversation.",

@@ -6,6 +6,7 @@ import {
   Eye,
   FilePen,
   MessageSquareText,
+  ShieldCheck,
   ShieldOff,
   ShieldQuestion,
   Square,
@@ -37,6 +38,7 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
   ask: ShieldQuestion,
   acceptEdits: FilePen,
+  auto: ShieldCheck,
   fullAccess: ShieldOff,
 };
 

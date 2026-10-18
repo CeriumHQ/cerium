@@ -57,6 +57,7 @@ export const accessOptions: ReadonlyArray<{
   { value: "readOnly", label: "Read only", description: "Reads and searches; never edits or runs commands" },
   { value: "ask", label: "Ask first", description: "Asks before every edit and command" },
   { value: "acceptEdits", label: "Accept edits", description: "Edits files freely; asks before commands" },
+  { value: "auto", label: "Auto", description: "Edits and runs what a reviewer model judges safe" },
   {
     value: "fullAccess",
     label: "Full access",

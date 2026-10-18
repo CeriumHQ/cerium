@@ -2,6 +2,7 @@ import type { McpServerSpec, SessionOptions } from "@cerium/harness";
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 
 import type { JsonValue } from "./protocol/serde_json/JsonValue.ts";
+import type { ApprovalsReviewer } from "./protocol/v2/ApprovalsReviewer.ts";
 import type { AskForApproval } from "./protocol/v2/AskForApproval.ts";
 import type { SandboxMode } from "./protocol/v2/SandboxMode.ts";
 import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
@@ -11,6 +12,7 @@ import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
 export interface AccessPolicy {
   readonly sandbox: SandboxMode;
   readonly approvalPolicy: AskForApproval;
+  readonly approvalsReviewer: ApprovalsReviewer;
   /**
    * Codex has no "edits only" policy, so `acceptEdits` runs as `ask` and the adapter approves file
    * changes inside the workspace itself.
@@ -27,6 +29,8 @@ export interface AccessPolicy {
  *   (`untrusted` would also ask before each read: on Windows it asked for `Get-Content`.)
  * - `acceptEdits`: as `ask`, with workspace file changes approved by the adapter.
  * An approved command runs outside the sandbox, as it does in Codex itself.
+ * - `auto`: Codex's own "Approve for me" preset: commands and edits run in the workspace-write sandbox,
+ *   and Codex's auto-reviewer, not the user, approves or refuses each escalation.
  * - `fullAccess`: Codex's own "Full access" preset: no sandbox, and Codex never asks.
  */
 export const accessPolicy = (access: AccessMode): AccessPolicy => {
@@ -43,14 +47,37 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
             mcp_elicitations: true,
           },
         },
+        approvalsReviewer: "user",
         approveWorkspaceEdits: false,
       };
     case "ask":
-      return { sandbox: "read-only", approvalPolicy: "on-request", approveWorkspaceEdits: false };
+      return {
+        sandbox: "read-only",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        approveWorkspaceEdits: false,
+      };
     case "acceptEdits":
-      return { sandbox: "read-only", approvalPolicy: "on-request", approveWorkspaceEdits: true };
+      return {
+        sandbox: "read-only",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        approveWorkspaceEdits: true,
+      };
+    case "auto":
+      return {
+        sandbox: "workspace-write",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        approveWorkspaceEdits: true,
+      };
     case "fullAccess":
-      return { sandbox: "danger-full-access", approvalPolicy: "never", approveWorkspaceEdits: true };
+      return {
+        sandbox: "danger-full-access",
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        approveWorkspaceEdits: true,
+      };
   }
 };
 
@@ -151,7 +178,7 @@ export const threadConfig = (
  * stay untouched.
  */
 export const threadParams = (options: SessionOptions, user: UserConfig, effort?: string) => {
-  const { sandbox, approvalPolicy } = accessPolicy(options.access);
+  const { sandbox, approvalPolicy, approvalsReviewer } = accessPolicy(options.access);
   const developerInstructions = [user.developerInstructions, options.appendSystemPrompt]
     .filter((text): text is string => text !== undefined && text.trim() !== "")
     .join("\n\n");
@@ -159,7 +186,7 @@ export const threadParams = (options: SessionOptions, user: UserConfig, effort?:
     model: options.model,
     cwd: options.cwd,
     approvalPolicy,
-    approvalsReviewer: "user",
+    approvalsReviewer,
     sandbox,
     config: threadConfig(options, user, effort),
     ...(developerInstructions === "" ? {} : { developerInstructions }),

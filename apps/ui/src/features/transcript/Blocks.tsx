@@ -177,6 +177,7 @@ const accessLabel = {
   readOnly: "Read only",
   ask: "Asks to edit",
   acceptEdits: "Edits freely",
+  auto: "Auto-reviewed",
   fullAccess: "Full access",
 } as const;
 
