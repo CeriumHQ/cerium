@@ -144,8 +144,14 @@ export const launchBrowser = async (options: {
       "--mute-audio",
       "about:blank",
     ],
-    { stdio: "ignore", windowsHide: true },
+    { stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
   );
+  // The tail of what the browser printed, to say why it failed to start. The pipe keeps draining
+  // afterwards so a chatty browser never blocks on a full buffer.
+  let output = "";
+  child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
+    output = (output + chunk).slice(-2_000);
+  });
   // The process started may only hand off to the real browser and exit (Edge on Windows does), so
   // closing goes through the browser's own debugging endpoint, then whatever still runs on the profile.
   let browserSocket: string | undefined;
@@ -178,5 +184,6 @@ export const launchBrowser = async (options: {
     await sleep(100);
   }
   close();
-  throw new Error(`${options.executable} did not start a debugging port.`);
+  const said = output.trim();
+  throw new Error(`${options.executable} did not start a debugging port.${said === "" ? "" : `\n${said}`}`);
 };
