@@ -82,7 +82,17 @@ const mcpClient = (spec: McpServerSpec | undefined) => {
   };
 };
 
-describe("Cerium MCP bus", () => {
+/** The bus endpoint of the fake's `index`th session, once that session starts behind its thread. */
+const busOf = (fake: ReturnType<typeof makeFakeAdapter>, index: number) =>
+  Effect.gen(function* () {
+    for (let waited = 0; waited < 250 && fake.sessions[index] === undefined; waited++) {
+      yield* Effect.sleep(Duration.millis(20));
+    }
+    return fake.sessions[index]?.options.mcpServers["cerium"];
+  });
+
+// Each test builds the whole stack, which takes seconds on a busy CI runner.
+describe("Cerium MCP bus", { timeout: 30_000 }, () => {
   it.live("serves the bus tools to each session under its own identity", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
@@ -93,9 +103,7 @@ describe("Cerium MCP bus", () => {
         cwd: ".",
         lead: { provider: "claude", model: "opus", access: "ask" },
       });
-      // The session starts behind the thread.
-      yield* Effect.sleep(Duration.millis(20));
-      const leadClient = mcpClient(fake.sessions[0]?.options.mcpServers["cerium"]);
+      const leadClient = mcpClient(yield* busOf(fake, 0));
       yield* leadClient.initialize;
 
       const tools = yield* leadClient.request("tools/list", {});
@@ -138,7 +146,7 @@ describe("Cerium MCP bus", () => {
         [true, false],
       );
 
-      const childClient = mcpClient(fake.sessions[1]?.options.mcpServers["cerium"]);
+      const childClient = mcpClient(yield* busOf(fake, 1));
       yield* childClient.initialize;
       const refused = yield* childClient.callTool("spawn_agent", { role: "x", model: "scout", prompt: "no" });
       assert.isTrue(refused?.result?.isError);
@@ -160,8 +168,7 @@ describe("Cerium MCP bus", () => {
         cwd,
         lead: { provider: "claude", model: "opus", access },
       });
-      yield* Effect.sleep(Duration.millis(20));
-      const client = mcpClient(fake.sessions[0]?.options.mcpServers["cerium"]);
+      const client = mcpClient(yield* busOf(fake, 0));
       yield* client.initialize;
       return { lead, client };
     });
