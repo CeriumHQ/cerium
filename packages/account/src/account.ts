@@ -1,6 +1,7 @@
 import {
   AccountProfile,
   AccountState,
+  buildQuery,
   ClaimLinkResponse,
   CLOSE_BAD_CREDENTIAL,
   CLOSE_REMOVED,
@@ -67,7 +68,7 @@ export type RelayEvent = TunnelMessage | SyncNotice | { readonly _tag: "RelayLos
 export interface AccountOptions {
   /** The relay, e.g. `https://cerium.nonlooped.xyz`. */
   readonly relayUrl: string;
-  /** How this device describes itself when it signs in. */
+  /** How this device describes itself when it signs in; its build, again each time it connects. */
   readonly device: DeviceDraft;
   /**
    * Calls `check` whenever the relay connection may have died unnoticed, such as a page shown again
@@ -296,10 +297,14 @@ export class Account extends Context.Service<
         /** One connection to the relay, until it drops or the relay signs this device off. */
         const connectOnce = (credential: Credential, linked: Linked) =>
           Effect.gen(function* () {
-            const socket = yield* Socket.makeWebSocket(`${relay.replace(/^http/, "ws")}/api/connect`, {
-              protocols: relayProtocols(credential),
-              openTimeout: "15 seconds",
-            });
+            const query = buildQuery(options.device);
+            const socket = yield* Socket.makeWebSocket(
+              `${relay.replace(/^http/, "ws")}/api/connect?${query}`,
+              {
+                protocols: relayProtocols(credential),
+                openTimeout: "15 seconds",
+              },
+            );
             const pull = yield* Socket.readerString(socket);
             const writer = yield* socket.writer;
             yield* Ref.set(live, Option.some(writer));

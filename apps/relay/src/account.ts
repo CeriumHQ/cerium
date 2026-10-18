@@ -1,4 +1,5 @@
 import {
+  buildFromQuery,
   credentialFromProtocols,
   DeviceMessage,
   hashSecret,
@@ -209,6 +210,16 @@ export class Account extends DurableObject<Env> {
       connectedAt: Date.now(),
     } satisfies Attachment);
     this.touch(row.id);
+    // A desktop may have updated since it signed in; the browsers driving it follow its build (§14.10).
+    const build = buildFromQuery(new URL(request.url).searchParams);
+    if (build !== undefined) {
+      this.write(
+        "UPDATE devices SET version = ?, rpc_version = ? WHERE id = ?",
+        build.version,
+        build.rpcVersion ?? null,
+        row.id,
+      );
+    }
     this.broadcast();
     if (row.approved_at !== null) this.welcome(server, row);
     return new Response(null, {

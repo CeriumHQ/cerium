@@ -155,6 +155,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Your other devices now see the version a computer runs after it updates, instead of the one it signed in with: each device reports its build every time it connects to Cerium's cloud.
 - Threads from a newer version of Cerium no longer disappear or fail to open on another device: an access mode, agent state or other value a version doesn't know reads as a safe fallback (an unknown access mode as Ask first), and threads or events it can't read at all are skipped instead of failing the whole list or ending the live feed.
 - A long draft no longer hides the end of the conversation: the transcript keeps room for the message box at whatever height it grows to, and the jump-to-latest button sits just above it.
 - Cursor: turns in long workspace paths on Windows (chat threads, temp and deeply nested folders) now finish. The SDK could not save their conversation there, so a turn never ended and Cursor replayed it, commands and all, every half minute; those workspaces now keep their agents in files the SDK can write, and a run still going 15 seconds after its turn ended is stopped.

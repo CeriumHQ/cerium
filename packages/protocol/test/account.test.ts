@@ -2,6 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { Option, Schema } from "effect";
 
 import {
+  buildFromQuery,
+  buildQuery,
   credentialFromProtocols,
   DeviceDraft,
   formatCredential,
@@ -74,5 +76,22 @@ describe("DeviceDraft", () => {
     expect(Option.isNone(decode({ ...draft, name: "" }))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: " Studio PC" }))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: "x".repeat(65) }))).toBe(true);
+  });
+});
+
+describe("a device's build", () => {
+  it("travels in the query it connects with", () => {
+    const build = { version: "0.3.0-nightly.14", rpcVersion: 2 };
+    expect(buildFromQuery(new URLSearchParams(buildQuery(build)))).toEqual(build);
+    expect(buildFromQuery(new URLSearchParams(buildQuery({ version: "0.3.0" })))).toEqual({
+      version: "0.3.0",
+    });
+  });
+
+  it("is left alone when a device reports none, or one that isn't valid", () => {
+    expect(buildFromQuery(new URLSearchParams())).toBeUndefined();
+    expect(buildFromQuery(new URLSearchParams("version="))).toBeUndefined();
+    expect(buildFromQuery(new URLSearchParams("version=0.3.0&rpcVersion=0"))).toBeUndefined();
+    expect(buildFromQuery(new URLSearchParams("version=0.3.0&rpcVersion=two"))).toBeUndefined();
   });
 });

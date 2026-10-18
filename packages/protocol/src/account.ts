@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema, Struct } from "effect";
 
 import { DeviceId, EpochMillis } from "./ids.ts";
 import { NotificationKind, PushMessage } from "./push.ts";
@@ -263,6 +263,31 @@ export const relayProtocols = (credential: Credential): Array<string> => [
   RELAY_PROTOCOL,
   `${AUTH_PROTOCOL_PREFIX}${formatCredential(credential)}`,
 ];
+
+/**
+ * The build a device runs now. It says so each time it connects, in the query: it may have updated
+ * since it signed in, and a browser opens the web UI built for the desktop it drives (§14.10).
+ */
+export const DeviceBuild = DeviceDraft.mapFields(Struct.pick(["version", "rpcVersion"]));
+export type DeviceBuild = typeof DeviceBuild.Type;
+
+/** The query a device connects with, reporting its build. */
+export const buildQuery = ({ version, rpcVersion }: DeviceBuild): string =>
+  new URLSearchParams({
+    version,
+    ...(rpcVersion === undefined ? {} : { rpcVersion: String(rpcVersion) }),
+  }).toString();
+
+/** The build a connecting device reported, if it reported a valid one. */
+export const buildFromQuery = (query: URLSearchParams): DeviceBuild | undefined => {
+  const rpcVersion = query.get("rpcVersion");
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(DeviceBuild)({
+      version: query.get("version") ?? undefined,
+      ...(rpcVersion === null ? {} : { rpcVersion: Number(rpcVersion) }),
+    }),
+  );
+};
 
 /** The credential a device offered in its `Sec-WebSocket-Protocol` header. */
 export const credentialFromProtocols = (header: string | null): Credential | undefined => {
