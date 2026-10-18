@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { createContext, memo, use, type CSSProperties, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -197,61 +197,16 @@ export function Transcript({
   const scale = textScale(useAtomValue(textSizeAtom));
   // A phone's keyboard shrinks the message box to one line, so the end needs less room.
   const oneLine = useKeyboardOpen();
-
-  const render = (item: Item): ReactNode => {
-    switch (item.kind) {
-      case "input":
-        return (
-          <div key={item.id} className="flex flex-col items-end gap-2 py-3">
-            {item.blocks.map((block) =>
-              block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
-            )}
-          </div>
-        );
-      case "header":
-        return <ResponseHeader key={item.id} agent={agent} />;
-      case "run":
-        return (
-          <ToolRun
-            key={item.id}
-            tools={item.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
-            live={item === last && activity === "running"}
-            activity={activity}
-          >
-            {item.steps.map(render)}
-          </ToolRun>
-        );
-      case "tools":
-        return <ToolGroup key={item.id} tools={item.tools} activity={activity} />;
-      case "spawns":
-        return (
-          <div key={item.id} className="flex flex-wrap gap-1.5">
-            {item.spawns.map((spawn) => (
-              <SpawnCard
-                key={spawn.id}
-                block={spawn}
-                state={childState(spawn.childId)}
-                agent={childAgent(spawn.childId)}
-                actions={agentActions}
-              />
-            ))}
-          </div>
-        );
-      case "block":
-        return (
-          <ResponseBlock
-            key={item.id}
-            block={item.block}
-            roleOf={roleOf}
-            activity={activity}
-            {...(onAnswerPermission ? { onAnswerPermission } : {})}
-          />
-        );
-    }
+  const actions: TranscriptActions = {
+    roleOf,
+    childState,
+    childAgent,
+    agentActions,
+    ...(onAnswerPermission ? { onAnswerPermission } : {}),
   };
 
   return (
-    <ThreadContext folder={folder} messageBox={messageBox}>
+    <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
       <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
         {/* Content fades out where the floating composer sits instead of showing through its glass. */}
         <ScrollArea
@@ -270,7 +225,16 @@ export function Transcript({
               paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
             }}
           >
-            {items.map(render)}
+            {items.map((item) => (
+              <TranscriptItem
+                key={item.id}
+                item={item}
+                last={item === last}
+                activity={activity}
+                provider={agent.provider}
+                model={agent.model}
+              />
+            ))}
             {working && (last === undefined || last.kind === "input") ? (
               <ResponseHeader agent={agent} />
             ) : null}
@@ -306,20 +270,136 @@ export function Transcript({
   );
 }
 
-/** What the transcript's chips and messages work from: the thread's folder and its message box. */
+/**
+ * What the transcript's cards ask about agents and do for the user. The window makes these afresh
+ * on every update, so they reach the few cards that use them through context rather than as props
+ * of every item, which would re-render the whole conversation for each streamed word.
+ */
+interface TranscriptActions {
+  readonly roleOf: (agentId: string) => string;
+  readonly childState: TranscriptProps["childState"];
+  readonly childAgent: TranscriptProps["childAgent"];
+  readonly agentActions: AgentActions;
+  readonly onAnswerPermission?: TranscriptProps["onAnswerPermission"];
+}
+
+const Actions = createContext<TranscriptActions>({
+  roleOf: () => "An agent",
+  childState: () => "idle",
+  childAgent: () => undefined,
+  agentActions: {},
+});
+
+/** What the transcript's chips, messages and cards work from. */
 function ThreadContext({
   folder,
   messageBox,
+  actions,
   children,
 }: {
   folder: string | undefined;
   messageBox: MessageBox | undefined;
+  actions: TranscriptActions;
   children: ReactNode;
 }) {
   return (
     <WorkspaceFolder value={folder}>
-      <MessageBoxContext value={messageBox}>{children}</MessageBoxContext>
+      <MessageBoxContext value={messageBox}>
+        <Actions value={actions}>{children}</Actions>
+      </MessageBoxContext>
     </WorkspaceFolder>
+  );
+}
+
+/**
+ * Whether two values hold the same content, looking `depth` levels in. Blocks are rebuilt from the
+ * events on every update, but what they carry (tool inputs and outputs, texts) is the events' own,
+ * so comparing a few levels down finds an unchanged item cheaply.
+ */
+const same = (a: unknown, b: unknown, depth = 6): boolean => {
+  if (Object.is(a, b)) return true;
+  if (depth === 0 || typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return false;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) =>
+    same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], depth - 1),
+  );
+};
+
+interface ItemProps {
+  readonly item: Item;
+  /** The transcript's latest item, the one a running agent is working on. */
+  readonly last: boolean;
+  readonly activity: AgentActivity;
+  readonly provider: ProviderId;
+  readonly model: string;
+}
+
+/**
+ * One item of the conversation. Only an item whose content changed renders again: while an agent
+ * streams, that's the reply at the end. Re-rendering every earlier item for each streamed word made
+ * a long thread's updates three times as slow (scratch transcript benchmark, 1,900 events).
+ */
+const TranscriptItem = memo(
+  function TranscriptItem({ item, last, activity, provider, model }: ItemProps) {
+    const render = (each: Item): ReactNode => {
+      switch (each.kind) {
+        case "input":
+          return (
+            <div key={each.id} className="flex flex-col items-end gap-2 py-3">
+              {each.blocks.map((block) =>
+                block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
+              )}
+            </div>
+          );
+        case "header":
+          return <ResponseHeader key={each.id} agent={{ provider, model }} />;
+        case "run":
+          return (
+            <ToolRun
+              key={each.id}
+              tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
+              live={last && activity === "running"}
+              activity={activity}
+            >
+              {each.steps.map(render)}
+            </ToolRun>
+          );
+        case "tools":
+          return <ToolGroup key={each.id} tools={each.tools} activity={activity} />;
+        case "spawns":
+          return <SpawnCards key={each.id} spawns={each.spawns} />;
+        case "block":
+          return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
+      }
+    };
+    return render(item);
+  },
+  (before, after) =>
+    before.last === after.last &&
+    before.activity === after.activity &&
+    before.provider === after.provider &&
+    before.model === after.model &&
+    same(before.item, after.item),
+);
+
+function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
+  const { childState, childAgent, agentActions } = use(Actions);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {spawns.map((spawn) => (
+        <SpawnCard
+          key={spawn.id}
+          block={spawn}
+          state={childState(spawn.childId)}
+          agent={childAgent(spawn.childId)}
+          actions={agentActions}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -334,20 +414,10 @@ export function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
   );
 }
 
-function ResponseBlock({
-  block,
-  roleOf,
-  activity,
-  onAnswerPermission,
-}: {
-  block: TranscriptBlock;
-  roleOf: (agentId: string) => string;
-  activity: AgentActivity;
-  onAnswerPermission?: TranscriptProps["onAnswerPermission"];
-}) {
+function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: AgentActivity }) {
   switch (block.kind) {
     case "notice":
-      return <Notice block={block} roleOf={roleOf} />;
+      return <NoticeBlock block={block} />;
     case "message":
       return (
         <MessageMenuArea text={block.text} className="select-text">
@@ -357,15 +427,7 @@ function ResponseBlock({
     case "reasoning":
       return <Reasoning block={block} />;
     case "permission":
-      return (
-        <PermissionCard
-          block={block}
-          expired={activity === "ended"}
-          onAnswer={(decision, scope) =>
-            onAnswerPermission?.(block.id.replace(/^permission:/, ""), decision, scope)
-          }
-        />
-      );
+      return <PermissionBlock block={block} expired={activity === "ended"} />;
     case "turnEnd":
       return <TurnFooter block={block} />;
     case "error":
@@ -373,4 +435,22 @@ function ResponseBlock({
     default:
       return null;
   }
+}
+
+function NoticeBlock({ block }: { block: Block<"notice"> }) {
+  const { roleOf } = use(Actions);
+  return <Notice block={block} roleOf={roleOf} />;
+}
+
+function PermissionBlock({ block, expired }: { block: Block<"permission">; expired: boolean }) {
+  const { onAnswerPermission } = use(Actions);
+  return (
+    <PermissionCard
+      block={block}
+      expired={expired}
+      onAnswer={(decision, scope) =>
+        onAnswerPermission?.(block.id.replace(/^permission:/, ""), decision, scope)
+      }
+    />
+  );
 }

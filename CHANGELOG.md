@@ -156,6 +156,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: a reply streams into a long thread with about half the work per word. Only the part of the conversation that changed renders again, instead of every earlier message, tool call and card for each streamed word.
 - Opening a thread reads its history about three times faster: the provider's original messages, kept in the store but never shown, are no longer read and parsed with it. In a thread full of screenshots that was most of the data.
 - Agents at work no longer slow the backend down as threads pile up: the thread list it re-reads after every event, for the inbox, the cloud copy and whether anything is working, takes two reads instead of one per thread (about 6× faster with 300 threads).
 - Your other devices now see the version a computer runs after it updates, instead of the one it signed in with: each device reports its build every time it connects to Cerium's cloud.
