@@ -2,7 +2,7 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 import { describe, expect, it } from "@effect/vitest";
 
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
-import { buildTranscript } from "../src/features/transcript/model.ts";
+import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
   payloads.map((payload, sequence) => ({
@@ -65,5 +65,42 @@ describe("buildTranscript", () => {
     });
     expect(blocks.at(-1)).toMatchObject({ kind: "permission", toolName: "Bash" });
     expect(blocks.at(-1)).not.toHaveProperty("resolution");
+  });
+});
+
+describe("queuedMessages", () => {
+  const first = { _tag: "FromUser", id: "msg_1", text: "Fix the build" } as const;
+  const second = { _tag: "FromUser", id: "msg_2", text: "And the tests" } as const;
+
+  it("holds the user's messages until a turn delivers them, keeping their key", () => {
+    const waiting = events({ _tag: "MessageQueued", message: first });
+    expect(queuedMessages(waiting)).toEqual({
+      messages: [{ kind: "user", id: "msg_1", text: "Fix the build", attachments: [], mentions: [] }],
+      behindTurn: false,
+    });
+    expect(buildTranscript(waiting)).toEqual([]);
+
+    const delivered = events(
+      { _tag: "MessageQueued", message: first },
+      { _tag: "TurnInput", items: [first] },
+    );
+    expect(queuedMessages(delivered).messages).toEqual([]);
+    expect(buildTranscript(delivered)).toMatchObject([{ kind: "user", id: "msg_1" }]);
+  });
+
+  it("knows when messages wait behind a running turn", () => {
+    const midTurn = events(
+      { _tag: "MessageQueued", message: first },
+      { _tag: "TurnInput", items: [first] },
+      { _tag: "MessageQueued", message: second },
+    );
+    expect(queuedMessages(midTurn)).toMatchObject({ messages: [{ id: "msg_2" }], behindTurn: true });
+
+    const afterTurn = events(
+      { _tag: "TurnInput", items: [first] },
+      { _tag: "TurnCompleted", stopReason: "completed" },
+      { _tag: "MessageQueued", message: second },
+    );
+    expect(queuedMessages(afterTurn).behindTurn).toBe(false);
   });
 });

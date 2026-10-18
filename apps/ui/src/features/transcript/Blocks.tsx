@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import { Ban, Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
+import { Ban, Brain, Check, ChevronRight, Clock, CornerDownRight, ShieldQuestion, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
@@ -15,7 +15,7 @@ import { EditDiff } from "./EditDiff.tsx";
 import { FileChip } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type { TranscriptBlock } from "./model.ts";
+import type { TranscriptBlock, UserBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
@@ -60,6 +60,23 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
         </div>
       )}
     </MessageMenuArea>
+  );
+}
+
+/** The user's messages waiting to reach the agent, with why they wait. */
+export function QueuedInput({ messages, note }: { messages: ReadonlyArray<UserBlock>; note: string }) {
+  return (
+    <div className="flex flex-col items-end gap-2 py-3">
+      <div className="flex w-full flex-col items-end gap-2 opacity-70">
+        {messages.map((block) => (
+          <UserMessage key={block.id} block={block} />
+        ))}
+      </div>
+      <p className="flex items-center gap-1.5 text-[12px] text-fg-tertiary">
+        <Clock size={12} strokeWidth={1.75} />
+        {note}
+      </p>
+    </div>
   );
 }
 

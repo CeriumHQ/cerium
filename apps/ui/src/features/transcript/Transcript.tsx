@@ -13,6 +13,7 @@ import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import {
   Notice,
   PermissionCard,
+  QueuedInput,
   Reasoning,
   SpawnCard,
   TurnFooter,
@@ -23,12 +24,14 @@ import {
 import { WorkspaceFolder } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type { AgentActivity, TranscriptBlock } from "./model.ts";
+import type { AgentActivity, QueuedMessages, TranscriptBlock } from "./model.ts";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
+  /** The user's messages that haven't reached the agent yet. */
+  readonly queued: QueuedMessages;
   readonly agent: { readonly provider: ProviderId; readonly model: string };
   /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
   readonly folder?: string | undefined;
@@ -163,6 +166,7 @@ const showsProgress = (item: Item | undefined): boolean => {
 
 export function Transcript({
   blocks,
+  queued,
   agent,
   folder,
   messageBox,
@@ -177,10 +181,15 @@ export function Transcript({
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
   );
   const roleOf = (agentId: string) => roles.get(agentId) ?? "An agent";
+  // Messages waiting for the agent's session read as sent, with its progress below them. Ones that
+  // wait behind a running turn, or for an ended agent to start again, sit after it and say so.
+  const held =
+    queued.messages.length > 0 && (activity === "ended" || (activity === "running" && queued.behindTurn));
+  const shown = held ? blocks : [...blocks, ...queued.messages];
   const { viewport, following, toEnd } = useStickToBottom(
-    blocks.findLast((block) => block.kind === "user")?.id,
+    queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
-  const items = layout(blocks);
+  const items = layout(shown);
   const last = items.at(-1);
   const working = activity === "running" && !showsProgress(last);
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
@@ -256,6 +265,16 @@ export function Transcript({
               <ResponseHeader agent={agent} />
             ) : null}
             {working ? <Working /> : null}
+            {held ? (
+              <QueuedInput
+                messages={queued.messages}
+                note={
+                  activity === "ended"
+                    ? "Not sent yet · goes with your next message"
+                    : "Queued · sends when this turn ends"
+                }
+              />
+            ) : null}
           </div>
         </ScrollArea>
         {/* Back to the latest output after scrolling up to read; sits just above the composer. */}

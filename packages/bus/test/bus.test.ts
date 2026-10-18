@@ -92,6 +92,8 @@ describe("Cerium MCP bus", () => {
         cwd: ".",
         lead: { provider: "claude", model: "opus", access: "ask" },
       });
+      // The session starts behind the thread.
+      yield* Effect.sleep(Duration.millis(20));
       const leadClient = mcpClient(fake.sessions[0]?.options.mcpServers["cerium"]);
       yield* leadClient.initialize;
 

@@ -1,7 +1,7 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Duration, Effect } from "effect";
 import { join } from "node:path";
 
 import { Orchestrator, UserSettings } from "../src/index.ts";
@@ -29,13 +29,16 @@ describe("UserSettings", () => {
       const settings = yield* UserSettings;
       const store = yield* Store;
 
+      // Sessions start behind the thread.
       yield* startWorkThread;
+      yield* Effect.sleep(Duration.millis(20));
       assert.isTrue(fake.sessions[0]?.options.includeUserMcpServers);
 
       assert.deepStrictEqual(yield* settings.update({ includeUserMcpServers: false }), {
         includeUserMcpServers: false,
       });
       yield* startWorkThread;
+      yield* Effect.sleep(Duration.millis(20));
       assert.isFalse(fake.sessions[1]?.options.includeUserMcpServers);
       assert.deepStrictEqual(yield* store.readSettings, { includeUserMcpServers: false });
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);

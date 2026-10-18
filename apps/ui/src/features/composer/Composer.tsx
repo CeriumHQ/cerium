@@ -3,8 +3,6 @@ import type { AccessMode, Attachment, Mention, ProviderId, ReasoningEffort } fro
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   ArrowUp,
-  CircleAlert,
-  CircleStop,
   Eye,
   FilePen,
   Gauge,
@@ -12,7 +10,6 @@ import {
   ShieldOff,
   ShieldQuestion,
   Square,
-  SquarePen,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -93,10 +90,8 @@ export type ComposerTarget =
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
       /** The lead stopped or failed. */
+      /** The lead stopped or failed; the next message picks the thread back up. */
       readonly ended?: "stopped" | "failed";
-      /** The ended lead's harness session can be resumed: the next message picks the thread back up. */
-      readonly resumable?: boolean;
-      readonly onStartNew: () => void;
     }
   /** The first message starts a thread with the chosen setup. */
   | {
@@ -255,41 +250,36 @@ export function Composer({
     }));
   };
 
-  const resumes = target.kind === "thread" && target.ended !== undefined && target.resumable === true;
-  const writable = !(target.kind === "thread" && target.ended && !resumes);
+  const resumes = target.kind === "thread" && target.ended !== undefined;
 
-  useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () =>
-    writable
-      ? {
-          mention: (mention) => editor.current?.mentionAtCaret(mention),
-          append: ({ segments, attachments = [] }) => {
-            const key = draftKey;
-            updateDraft(key, (current) => {
-              const attached = new Set(
-                current.attachments.flatMap((attachment) =>
-                  attachment.state._tag === "Ready" ? [attachment.state.attachment.path] : [],
-                ),
-              );
-              return {
-                ...current,
-                attachments: [
-                  ...current.attachments,
-                  ...attachments
-                    .filter((attachment) => !attached.has(attachment.path))
-                    .map((attachment): DraftAttachment => ({
-                      id: crypto.randomUUID(),
-                      name: attachment.name,
-                      mediaType: attachment.mediaType,
-                      state: { _tag: "Ready", attachment },
-                    })),
-                ],
-              };
-            });
-            editor.current?.append(segments);
-          },
-        }
-      : null,
-  );
+  useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
+    mention: (mention) => editor.current?.mentionAtCaret(mention),
+    append: ({ segments, attachments = [] }) => {
+      const key = draftKey;
+      updateDraft(key, (current) => {
+        const attached = new Set(
+          current.attachments.flatMap((attachment) =>
+            attachment.state._tag === "Ready" ? [attachment.state.attachment.path] : [],
+          ),
+        );
+        return {
+          ...current,
+          attachments: [
+            ...current.attachments,
+            ...attachments
+              .filter((attachment) => !attached.has(attachment.path))
+              .map((attachment): DraftAttachment => ({
+                id: crypto.randomUUID(),
+                name: attachment.name,
+                mediaType: attachment.mediaType,
+                state: { _tag: "Ready", attachment },
+              })),
+          ],
+        };
+      });
+      editor.current?.append(segments);
+    },
+  }));
 
   const pick = (mention: Mention) => {
     editor.current?.insertMention(mention);
@@ -358,33 +348,6 @@ export function Composer({
   };
 
   const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
-
-  if (target.kind === "thread" && target.ended && !resumes) {
-    return (
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:px-8 md:pb-5">
-        {above}
-        <div className="pointer-events-auto mx-auto flex max-w-[46.2rem] items-center gap-2.5 rounded-2xl border border-line-subtle bg-surface-raised py-2 pr-2 pl-4 backdrop-blur-2xl max-md:flex-wrap max-md:p-3">
-          {target.ended === "failed" ? (
-            <CircleAlert size={14} strokeWidth={1.75} className="shrink-0 text-error" />
-          ) : (
-            <CircleStop size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-          )}
-          <p className="min-w-0 flex-1 text-[13px] text-fg-secondary max-md:text-[14px] max-md:leading-snug">
-            <span className="font-medium text-fg-primary">{target.model}</span>{" "}
-            {target.ended === "failed" ? "failed" : "stopped"} before its session started, so there is nothing
-            to resume.
-          </p>
-          <Button
-            onClick={target.onStartNew}
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 max-md:h-10 max-md:w-full max-md:justify-center max-md:text-[14px]"
-          >
-            <SquarePen size={13} strokeWidth={2} />
-            Start a new one
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:px-8 md:pb-5">

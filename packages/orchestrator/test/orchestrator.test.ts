@@ -97,9 +97,13 @@ describe("Orchestrator", () => {
           ),
         );
         const turn = turnInputs(yield* orchestrator.threadEvents(lead.threadId), lead.id)[0];
-        assert.deepStrictEqual(turn, [
-          { _tag: "FromUser", text: "Check @src/app.ts with $review", ...message },
-        ]);
+        const { id, ...delivered } = turn?.[0]?._tag === "FromUser" ? turn[0] : { id: undefined };
+        assert.isString(id);
+        assert.deepStrictEqual(delivered, {
+          _tag: "FromUser",
+          text: "Check @src/app.ts with $review",
+          ...message,
+        });
       }
 
       assert.strictEqual(
@@ -117,6 +121,83 @@ describe("Orchestrator", () => {
       assert.include(sees.sessions[0]?.options.appendSystemPrompt ?? "", "`$name` names a skill");
       assert.include(sees.sessions[0]?.options.appendSystemPrompt ?? "", "```artifact");
     }).pipe(Effect.provide(testLayer([sees.adapter, blind.adapter])), Effect.scoped);
+  });
+
+  it.live("takes the user's message at once, while the session starts and while a turn runs", () => {
+    const fake = makeFakeAdapter("claude", {
+      startDuration: Duration.millis(150),
+      turnDuration: Duration.millis(100),
+    });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startWorkThread;
+      assert.lengthOf(fake.sessions, 0, "the thread doesn't wait for its session");
+
+      yield* orchestrator.sendUserMessage(lead.id, "first");
+      const queued = (yield* orchestrator.threadEvents(thread.id)).flatMap((event) =>
+        event.payload._tag === "MessageQueued" ? [event.payload.message] : [],
+      );
+      assert.strictEqual(queued[0]?.text, "first", "recorded before the session started");
+
+      yield* waitFor((events) =>
+        events.find(
+          (event) => event.payload._tag === "AgentStateChanged" && event.payload.state === "running",
+        ),
+      );
+      yield* orchestrator.sendUserMessage(lead.id, "second");
+      const second = yield* waitFor((events) =>
+        events.find(
+          (event) => event.payload._tag === "MessageQueued" && event.payload.message.text === "second",
+        ),
+      );
+      assert.isUndefined(
+        (yield* orchestrator.threadEvents(thread.id)).find((event) => event.payload._tag === "TurnCompleted"),
+        "recorded while the first turn still runs",
+      );
+
+      const turns = yield* waitFor((events) => {
+        const inputs = turnInputs(events, lead.id);
+        return inputs.length === 2 ? inputs : undefined;
+      });
+      assert.deepStrictEqual(fake.sessions[0]?.sent, ["first", "second"]);
+      const delivered = turns[1]?.[0];
+      assert.strictEqual(
+        delivered?._tag === "FromUser" ? delivered.id : undefined,
+        second.payload._tag === "MessageQueued" ? second.payload.message.id : "",
+        "a turn names the queued messages it delivers",
+      );
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("keeps the messages of a lead that failed to start, and sends them when it starts", () => {
+    const fake = makeFakeAdapter("claude", { startDuration: Duration.millis(50), failedStarts: 1 });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      yield* orchestrator.sendUserMessage(lead.id, "hello");
+
+      const error = yield* waitFor((events) => events.find((event) => event.payload._tag === "AgentError"));
+      assert.include(error.payload._tag === "AgentError" ? error.payload.message : "", "Not logged in");
+      yield* waitFor((events) =>
+        events.find(
+          (event) => event.payload._tag === "AgentStateChanged" && event.payload.state === "failed",
+        ),
+      );
+
+      // With no session to resume, the next message starts a new one and brings the first along.
+      yield* orchestrator.sendUserMessage(lead.id, "again");
+      const [items] = yield* waitFor((events) => {
+        const inputs = turnInputs(events, lead.id);
+        return inputs.length > 0 ? inputs : undefined;
+      });
+      assert.deepStrictEqual(
+        items?.map((item) => (item._tag === "FromUser" ? item.text : item._tag)),
+        ["hello", "again"],
+      );
+      assert.isUndefined(fake.sessions[0]?.options.resume);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
   it.live("refuses an empty message", () => {

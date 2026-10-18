@@ -11,6 +11,7 @@ import {
   type AgentState,
   type EventId,
   type EventPayload,
+  type FromUser,
   type InputItem,
   type Mention,
   type ProviderId,
@@ -91,10 +92,13 @@ interface SpawnTarget {
   readonly effort?: ReasoningEffort;
 }
 
-/** A running agent: its harness session plus the inbox Cerium delivers turns from. */
+/** A live agent: the inbox Cerium delivers turns from, and its harness session once that has started. */
 interface Runtime {
   info: AgentInfo;
-  readonly session: AgentSession;
+  /** Undefined while the harness session starts; messages wait in the inbox meanwhile. */
+  session: AgentSession | undefined;
+  /** Settles once the session has started, or failed to. */
+  readonly started: Deferred.Deferred<AgentSession, OrchestratorError>;
   readonly inbox: Queue.Queue<InputItem>;
   readonly scope: Scope.Closeable;
   sequence: number;
@@ -204,8 +208,11 @@ export class Orchestrator extends Context.Service<
       // resumes its harness session when the user next messages it.
       yield* store.stopLiveAgents(yield* Clock.currentTimeMillis).pipe(Effect.mapError(unavailable));
       const globalPermits = yield* Semaphore.make(config.globalConcurrency);
-      /** One resume at a time, so messages sent together don't start two sessions for one lead. */
-      const resumePermit = yield* Semaphore.make(1);
+      /**
+       * One user message accepted at a time, so messages sent together keep their order and don't
+       * start two sessions for one lead.
+       */
+      const acceptPermit = yield* Semaphore.make(1);
       const providerPermits = new Map(
         [...adapters].map(([provider, adapter]) => [
           provider,
@@ -261,10 +268,10 @@ export class Orchestrator extends Context.Service<
       const finishTurn = (rt: Runtime) =>
         rt.turn === undefined ? Effect.void : Deferred.succeed(rt.turn, undefined);
 
-      const consumeEvents = (rt: Runtime) => {
+      const consumeEvents = (rt: Runtime, session: AgentSession) => {
         /** Requests Cerium approved itself: nobody was asked, so neither end is recorded or shown. */
         const approvedByCerium = new Set<string>();
-        return rt.session.events.pipe(
+        return session.events.pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               const { payload } = event;
@@ -273,7 +280,7 @@ export class Orchestrator extends Context.Service<
                 approvesItself(rt.info.access, payload.toolName)
               ) {
                 approvedByCerium.add(payload.requestId);
-                return yield* rt.session.respondToPermission(payload.requestId, {
+                return yield* session.respondToPermission(payload.requestId, {
                   decision: "allow",
                   scope: "once",
                 });
@@ -351,13 +358,17 @@ export class Orchestrator extends Context.Service<
           } satisfies TurnExtras;
         });
 
-      const runTurn = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
+      const runTurn = (
+        rt: Runtime,
+        session: AgentSession,
+        items: readonly [InputItem, ...Array<InputItem>],
+      ) =>
         Effect.gen(function* () {
           yield* setState(rt, "running");
           rt.lastMessage = undefined;
           rt.turn = yield* Deferred.make<void>();
           yield* emit(rt, { _tag: "TurnInput", items });
-          yield* rt.session.send(renderTurn(items), yield* turnExtras(rt, items));
+          yield* session.send(renderTurn(items), yield* turnExtras(rt, items));
           yield* Deferred.await(rt.turn);
           rt.turn = undefined;
         });
@@ -372,8 +383,12 @@ export class Orchestrator extends Context.Service<
           if (rt.ended) return yield* Effect.interrupt;
 
           yield* setState(rt, "queued");
+          // A session that never started took nothing: what the user sent waits for the next start.
+          const session = yield* Deferred.await(rt.started).pipe(
+            Effect.tapError(() => setState(rt, "failed")),
+          );
           const permits = providerPermits.get(rt.info.provider) ?? Semaphore.makeUnsafe(1);
-          yield* runTurn(rt, items).pipe(permits.withPermits(1), globalPermits.withPermits(1));
+          yield* runTurn(rt, session, items).pipe(permits.withPermits(1), globalPermits.withPermits(1));
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
 
@@ -390,6 +405,10 @@ export class Orchestrator extends Context.Service<
           Effect.forever,
         );
 
+      /**
+       * Makes an agent live at once, so it takes messages straight away; its harness session starts
+       * behind it, and a failure to start is told in its transcript.
+       */
       const startRuntime = (
         info: AgentInfo,
         cwd: string,
@@ -403,8 +422,22 @@ export class Orchestrator extends Context.Service<
               message: `No ${info.provider} adapter is installed.`,
             });
           }
+          const last = yield* store.lastSequence(info.id).pipe(Effect.mapError(unavailable));
           const scope = yield* Scope.fork(layerScope);
-          const started = Effect.gen(function* () {
+          const rt: Runtime = {
+            info,
+            session: undefined,
+            started: yield* Deferred.make<AgentSession, OrchestratorError>(),
+            inbox: yield* Queue.unbounded<InputItem>(),
+            scope,
+            sequence: Option.match(last, { onNone: () => 0, onSome: (sequence) => sequence + 1 }),
+            turn: undefined,
+            lastMessage: undefined,
+            ended: false,
+          };
+          runtimes.set(info.id, rt);
+
+          const start = Effect.gen(function* () {
             const { includeUserMcpServers } = yield* settings.get;
             const busSpec = yield* bus.register(info.id);
             yield* Scope.addFinalizer(scope, bus.unregister(info.id));
@@ -426,24 +459,30 @@ export class Orchestrator extends Context.Service<
                   (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
                 ),
               );
-            const last = yield* store.lastSequence(info.id).pipe(Effect.mapError(unavailable));
-            const rt: Runtime = {
-              info,
-              session,
-              inbox: yield* Queue.unbounded<InputItem>(),
-              scope,
-              sequence: Option.match(last, { onNone: () => 0, onSome: (sequence) => sequence + 1 }),
-              turn: undefined,
-              lastMessage: undefined,
-              ended: false,
-            };
-            runtimes.set(info.id, rt);
-            yield* Effect.forkIn(consumeEvents(rt), scope);
-            yield* Effect.forkIn(turnLoop(rt), scope);
-            if (options.initial !== undefined) yield* Queue.offer(rt.inbox, options.initial);
-            return rt;
+            rt.session = session;
+            yield* Effect.forkIn(consumeEvents(rt, session), scope);
+            yield* Deferred.succeed(rt.started, session);
           });
-          return yield* started.pipe(Effect.onError(() => Scope.close(scope, Exit.void)));
+          yield* Effect.forkIn(
+            start.pipe(
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  rt.ended = true;
+                  yield* emit(rt, {
+                    _tag: "AgentError",
+                    kind: "unknown",
+                    message: error.message,
+                    retryable: false,
+                  });
+                  yield* setState(rt, "failed");
+                }).pipe(Effect.ensuring(Deferred.fail(rt.started, error)), Effect.ignore),
+              ),
+            ),
+            scope,
+          );
+          yield* Effect.forkIn(turnLoop(rt), scope);
+          if (options.initial !== undefined) yield* Queue.offer(rt.inbox, options.initial);
+          return rt;
         });
 
       const now = Clock.currentTimeMillis;
@@ -535,7 +574,8 @@ export class Orchestrator extends Context.Service<
 
       /**
        * Starts a stopped or failed lead again on its harness session, so the thread carries on with
-       * the context it had. Returns notices the lead's next turn should carry.
+       * the context it had; a lead whose session never started gets a new one. Returns the user's
+       * messages the old runtime never delivered, and notices the lead's next turn should carry.
        */
       const resumeLead = Effect.fn("Orchestrator.resumeLead")(function* (agentId: AgentId) {
         const previous = runtimes.get(agentId);
@@ -547,16 +587,14 @@ export class Orchestrator extends Context.Service<
           return yield* notAllowed(`${info.model} has stopped; only a thread's lead can be resumed.`);
         }
         const adapter = adapters.get(info.provider);
-        if (adapter !== undefined && !adapter.manifest.session.resume) {
+        if (
+          info.providerSessionId !== undefined &&
+          adapter !== undefined &&
+          !adapter.manifest.session.resume
+        ) {
           return yield* new OrchestratorError({
             reason: "unavailable",
             message: `${info.provider} sessions can't be resumed.`,
-          });
-        }
-        if (info.providerSessionId === undefined) {
-          return yield* new OrchestratorError({
-            reason: "unavailable",
-            message: `${info.model} ended before its session started, so there is nothing to resume.`,
           });
         }
         const thread = Option.getOrUndefined(
@@ -577,12 +615,24 @@ export class Orchestrator extends Context.Service<
         }
         pendingPermissions.delete(agentId);
         const history = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
-        const rt = yield* startRuntime(info, directory, { resume: info.providerSessionId });
-        // Approvals the old session was waiting on died with it.
+        const rt = yield* startRuntime(
+          info,
+          directory,
+          info.providerSessionId === undefined ? {} : { resume: info.providerSessionId },
+        );
+        // Approvals the old session was waiting on died with it; messages it never took go to the new one.
         const unanswered = new Set<string>();
+        const undelivered = new Map<string, InputItem>();
         for (const { payload } of history) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
           if (payload._tag === "PermissionResolved") unanswered.delete(payload.requestId);
+          if (payload._tag === "MessageQueued" && payload.message.id !== undefined) {
+            undelivered.set(payload.message.id, payload.message);
+          }
+          if (payload._tag === "TurnInput") {
+            for (const item of payload.items)
+              if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
+          }
         }
         yield* Effect.forEach(
           unanswered,
@@ -605,18 +655,26 @@ export class Orchestrator extends Context.Service<
                     .join(", ")}) are no longer running; spawn new ones if you still need them.`,
                 },
               ];
-        return { rt, notices };
+        return { rt, undelivered: [...undelivered.values()], notices };
       });
 
       /** The lead's live runtime, resuming its session first when it has stopped or failed. */
       const liveLead = (agentId: AgentId) =>
-        resumePermit.withPermits(1)(
-          Effect.suspend(() => {
-            const live = runtimes.get(agentId);
-            return live !== undefined && !live.ended
-              ? Effect.succeed({ rt: live, notices: [] as ReadonlyArray<InputItem> })
-              : resumeLead(agentId);
-          }),
+        Effect.suspend(() => {
+          const live = runtimes.get(agentId);
+          return live !== undefined && !live.ended
+            ? Effect.succeed({
+                rt: live,
+                undelivered: [] as ReadonlyArray<InputItem>,
+                notices: [] as ReadonlyArray<InputItem>,
+              })
+            : resumeLead(agentId);
+        });
+
+      /** The agent's harness session, which a live agent only lacks while it starts. */
+      const sessionOf = (rt: Runtime) =>
+        Effect.fromNullishOr(rt.session).pipe(
+          Effect.mapError(() => notFound(`${rt.info.model} is still starting.`)),
         );
 
       const childrenOf = (leadId: AgentId) =>
@@ -685,21 +743,29 @@ export class Orchestrator extends Context.Service<
               new OrchestratorError({ reason: "invalid", message: "The message is empty." }),
             );
           }
-          const message: InputItem = {
-            _tag: "FromUser",
-            text,
-            ...(attachments.length > 0 ? { attachments } : {}),
-            ...(mentions.length > 0 ? { mentions } : {}),
-          };
-          return liveLead(agentId).pipe(
-            // Offered together, so the user's message and any notices make one turn.
-            Effect.flatMap(({ rt, notices }) => Queue.offerAll(rt.inbox, [message, ...notices])),
-            Effect.asVoid,
+          return acceptPermit.withPermits(1)(
+            Effect.gen(function* () {
+              const { rt, undelivered, notices } = yield* liveLead(agentId);
+              const message: FromUser = {
+                _tag: "FromUser",
+                id: yield* makeId("msg"),
+                text,
+                ...(attachments.length > 0 ? { attachments } : {}),
+                ...(mentions.length > 0 ? { mentions } : {}),
+              };
+              // Recorded before it waits on the session or a running turn, so the user sees it at once.
+              yield* emit(rt, { _tag: "MessageQueued", message });
+              // Offered together, so the user's messages and any notices make one turn.
+              yield* Queue.offerAll(rt.inbox, [...undelivered, message, ...notices]);
+            }),
           );
         },
 
         respondToPermission: (agentId, requestId, decision) =>
-          runtime(agentId).pipe(Effect.flatMap((rt) => rt.session.respondToPermission(requestId, decision))),
+          runtime(agentId).pipe(
+            Effect.flatMap(sessionOf),
+            Effect.flatMap((session) => session.respondToPermission(requestId, decision)),
+          ),
 
         resolveSpawnApproval: Effect.fn("Orchestrator.resolveSpawnApproval")(function* (
           requestId: string,
@@ -736,7 +802,8 @@ export class Orchestrator extends Context.Service<
           options?: { readonly includeChildren?: boolean },
         ) {
           const rt = yield* runtime(agentId);
-          yield* rt.session.interrupt.pipe(
+          // A session still starting has no turn to interrupt.
+          yield* (rt.session?.interrupt ?? Effect.void).pipe(
             Effect.mapError(
               (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
             ),
@@ -744,7 +811,7 @@ export class Orchestrator extends Context.Service<
           if (options?.includeChildren ?? config.stopChildrenWithLead) {
             yield* Effect.forEach(
               childrenOf(agentId),
-              (child) => child.session.interrupt.pipe(Effect.ignore),
+              (child) => (child.session?.interrupt ?? Effect.void).pipe(Effect.ignore),
               {
                 discard: true,
               },

@@ -125,13 +125,19 @@ export type Mention = typeof Mention.Type;
 export const mentionToken = (mention: Mention): string =>
   mention._tag === "FileMention" ? `@${mention.path}${mention.folder ? "/" : ""}` : `$${mention.name}`;
 
+/** A message the user sent an agent. */
+export const FromUser = Schema.TaggedStruct("FromUser", {
+  /** Given when Cerium accepts the message, so its `TurnInput` can be matched to its `MessageQueued`. */
+  id: Schema.optionalKey(Schema.NonEmptyString),
+  text: Schema.String,
+  attachments: Schema.optionalKey(Schema.Array(Attachment)),
+  mentions: Schema.optionalKey(Schema.Array(Mention)),
+});
+export type FromUser = typeof FromUser.Type;
+
 /** Something Cerium delivered to an agent as the start of a turn. */
 export const InputItem = Schema.Union([
-  Schema.TaggedStruct("FromUser", {
-    text: Schema.String,
-    attachments: Schema.optionalKey(Schema.Array(Attachment)),
-    mentions: Schema.optionalKey(Schema.Array(Mention)),
-  }),
+  FromUser,
   Schema.TaggedStruct("ChildFinishedTurn", {
     agentId: AgentId,
     role: Schema.NonEmptyString,
@@ -150,6 +156,14 @@ export type InputItem = typeof InputItem.Type;
 /** The batch of inputs sent to the harness as one turn. */
 export const TurnInput = Schema.TaggedStruct("TurnInput", {
   items: Schema.NonEmptyArray(InputItem),
+});
+
+/**
+ * The user's message, recorded the moment Cerium accepts it. It waits for the agent's session to
+ * start and for any running turn to end; the `TurnInput` that delivers it carries the same id.
+ */
+export const MessageQueued = Schema.TaggedStruct("MessageQueued", {
+  message: FromUser,
 });
 
 export const AgentSpawned = Schema.TaggedStruct("AgentSpawned", {
@@ -193,6 +207,7 @@ export const EventPayload = Schema.Union([
   AuthRequired,
   AgentError,
   TurnInput,
+  MessageQueued,
   AgentSpawned,
   AgentStateChanged,
   SpawnApprovalRequested,

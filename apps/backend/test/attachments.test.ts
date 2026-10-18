@@ -48,6 +48,12 @@ const sent = (sequence: number, attachments: ReadonlyArray<Attachment>): AgentEv
   payload: { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "Look at these", attachments }] },
 });
 
+/** The user's message carrying `attachments`, accepted but still waiting for its turn. */
+const queued = (sequence: number, attachments: ReadonlyArray<Attachment>): AgentEvent => ({
+  ...sent(sequence, attachments),
+  payload: { _tag: "MessageQueued", message: { _tag: "FromUser", text: "And this", attachments } },
+});
+
 const TestLayer = Layer.mergeAll(Store.layer({ filename: ":memory:" }), NodeServices.layer);
 
 describe("uuidv7Time", () => {
@@ -82,6 +88,7 @@ describe("sweepAttachments", () => {
         return { path: file, name, mediaType: "image/png" } satisfies Attachment;
       });
       const sentLongAgo = yield* paste("sent.png", 72);
+      const stillQueued = yield* paste("queued.png", 30);
       const removedFromDraft = yield* paste("removed.png", 48);
       const inDraft = yield* paste("draft.png", 2);
 
@@ -95,12 +102,14 @@ describe("sweepAttachments", () => {
       yield* store.createAgent(lead);
       yield* store.appendEvents([
         sent(0, [sentLongAgo, { path: own, name: "own.png", mediaType: "image/png" }]),
+        queued(1, [stillQueued]),
       ]);
 
       yield* TestClock.setTime(NOW);
       yield* sweepAttachments(directory);
 
       assert.isTrue(yield* fs.exists(sentLongAgo.path));
+      assert.isTrue(yield* fs.exists(stillQueued.path));
       assert.isFalse(yield* fs.exists(path.dirname(removedFromDraft.path)));
       assert.isTrue(yield* fs.exists(inDraft.path));
       assert.isTrue(yield* fs.exists(stranger));

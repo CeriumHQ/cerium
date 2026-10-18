@@ -1,4 +1,12 @@
-import type { AccessMode, AgentEvent, Attachment, InputItem, Mention, ProviderId } from "@cerium/protocol";
+import type {
+  AccessMode,
+  AgentEvent,
+  Attachment,
+  FromUser,
+  InputItem,
+  Mention,
+  ProviderId,
+} from "@cerium/protocol";
 
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
@@ -52,6 +60,16 @@ export type TranscriptBlock =
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string };
 
+export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
+
+const userBlock = (item: FromUser, id: string): UserBlock => ({
+  kind: "user",
+  id,
+  text: item.text,
+  attachments: item.attachments ?? [],
+  mentions: item.mentions ?? [],
+});
+
 /** Whether the agent is mid-turn, waiting for input, or gone for good (stopped or failed). */
 export type AgentActivity = "running" | "idle" | "ended";
 
@@ -80,16 +98,9 @@ export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArra
       case "TurnInput":
         payload.items.forEach((item, index) => {
           const key = `${id}:${index}`;
+          // A message keeps the key it had while queued.
           blocks.push(
-            item._tag === "FromUser"
-              ? {
-                  kind: "user",
-                  id: key,
-                  text: item.text,
-                  attachments: item.attachments ?? [],
-                  mentions: item.mentions ?? [],
-                }
-              : { kind: "notice", id: key, item },
+            item._tag === "FromUser" ? userBlock(item, item.id ?? key) : { kind: "notice", id: key, item },
           );
         });
         break;
@@ -198,4 +209,35 @@ export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArra
     }
   }
   return blocks;
+};
+
+/** The user's messages Cerium took but hasn't delivered, and whether they wait behind a running turn. */
+export interface QueuedMessages {
+  readonly messages: ReadonlyArray<UserBlock>;
+  /** Otherwise they wait for the agent's session to start, or for its next one. */
+  readonly behindTurn: boolean;
+}
+
+export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessages => {
+  const queued = new Map<string, UserBlock>();
+  let turnOpen = false;
+  for (const { payload } of events) {
+    switch (payload._tag) {
+      case "MessageQueued":
+        if (payload.message.id !== undefined) {
+          queued.set(payload.message.id, userBlock(payload.message, payload.message.id));
+        }
+        break;
+      case "TurnInput":
+        turnOpen = true;
+        for (const item of payload.items) if (item._tag === "FromUser" && item.id) queued.delete(item.id);
+        break;
+      case "TurnCompleted":
+        turnOpen = false;
+        break;
+      default:
+        break;
+    }
+  }
+  return { messages: [...queued.values()], behindTurn: turnOpen };
 };

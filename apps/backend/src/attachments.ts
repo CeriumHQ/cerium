@@ -16,14 +16,17 @@ const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 export const uuidv7Time = (name: string): number | undefined =>
   UUID_V7.test(name) ? Number.parseInt(name.slice(0, 8) + name.slice(9, 13), 16) : undefined;
 
-/** Every attachment path the user's sent messages carry. */
+/** Every attachment path the user's sent messages carry, delivered or still queued. */
 export const sentAttachments = (events: ReadonlyArray<AgentEvent>): ReadonlyArray<string> =>
-  events.flatMap((event) =>
-    event.payload._tag === "TurnInput"
-      ? event.payload.items.flatMap((item) =>
-          item._tag === "FromUser" ? (item.attachments ?? []).map((attachment) => attachment.path) : [],
-        )
-      : [],
+  events.flatMap(({ payload }) =>
+    (payload._tag === "TurnInput"
+      ? payload.items
+      : payload._tag === "MessageQueued"
+        ? [payload.message]
+        : []
+    ).flatMap((item) =>
+      item._tag === "FromUser" ? (item.attachments ?? []).map((attachment) => attachment.path) : [],
+    ),
   );
 
 /**
@@ -38,9 +41,10 @@ export const sweepAttachments = Effect.fn("Workspace.sweepAttachments")(function
 
   // A file sent by its own path lives outside `directory`, so it names no folder here.
   const sent = new Set(
-    sentAttachments(yield* store.listEventsByTag("TurnInput")).map(
-      (file) => path.relative(directory, file).split(path.sep)[0],
-    ),
+    sentAttachments([
+      ...(yield* store.listEventsByTag("TurnInput")),
+      ...(yield* store.listEventsByTag("MessageQueued")),
+    ]).map((file) => path.relative(directory, file).split(path.sep)[0]),
   );
   const cutoff = (yield* Clock.currentTimeMillis) - UNSENT_GRACE_MS;
   const unsent = (yield* fs.readDirectory(directory)).filter((name) => {

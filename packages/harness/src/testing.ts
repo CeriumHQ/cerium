@@ -1,12 +1,13 @@
 import type { CapabilityManifest, ProviderId } from "@cerium/protocol";
 import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 
-import type {
-  AdapterEvent,
-  HarnessAdapter,
-  PermissionDecision,
-  SessionOptions,
-  TurnExtras,
+import {
+  HarnessUnavailable,
+  type AdapterEvent,
+  type HarnessAdapter,
+  type PermissionDecision,
+  type SessionOptions,
+  type TurnExtras,
 } from "./adapter.ts";
 
 // Test support shared by every package that drives harness sessions without a real provider.
@@ -31,9 +32,14 @@ export const makeFakeAdapter = (
     readonly permissionTool?: string;
     /** Whether the manifest takes images (default false). */
     readonly images?: boolean;
+    /** How long each session takes to start. */
+    readonly startDuration?: Duration.Input;
+    /** How many of the first sessions fail to start, as a logged-out harness would. */
+    readonly failedStarts?: number;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
+  let failuresLeft = options.failedStarts ?? 0;
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
     provider,
@@ -56,6 +62,11 @@ export const makeFakeAdapter = (
     ]),
     startSession: (sessionOptions) =>
       Effect.gen(function* () {
+        yield* Effect.sleep(options.startDuration ?? 0);
+        if (failuresLeft > 0) {
+          failuresLeft--;
+          return yield* new HarnessUnavailable({ provider, reason: "loggedOut", message: "Not logged in." });
+        }
         const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
         yield* Effect.addFinalizer(() => Queue.end(events));
         const session: FakeSession = { options: sessionOptions, sent: [], extras: [] };

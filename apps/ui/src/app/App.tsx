@@ -69,7 +69,7 @@ import { CloudThreadBar, NoComputerBar } from "../features/threads/CloudThread.t
 import { useReadState } from "../features/threads/readState.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
-import { buildTranscript } from "../features/transcript/model.ts";
+import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { remember, stored } from "../lib/storage.ts";
@@ -343,9 +343,9 @@ function Workspace() {
     agents.find((agent) => agent.id === lead?.id)?.model ??
     (lead ? modelLabel(models, lead.provider, lead.model) : "");
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
+  // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  // A lead whose harness session started can be resumed by messaging it.
-  const leadResumable = lead?.providerSessionId !== undefined;
+  const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
   const agentActions: AgentActions = {
     onShow: (agentId) => {
       setInspectedAgent(agentId);
@@ -600,9 +600,10 @@ function Workspace() {
             <Transcript
               key={viewed.thread.id}
               folder={viewed.thread.cwd}
-              blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
+              blocks={buildTranscript(leadEvents)}
+              queued={queuedMessages(leadEvents)}
               agent={{ provider: lead.provider, model: leadModel }}
-              {...((leadEnded && !leadResumable) || cloudSelected ? {} : { messageBox })}
+              {...(cloudSelected ? {} : { messageBox })}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
               bottomInset={trayHeight + attachmentsHeight}
               childState={(childId) => {
@@ -653,8 +654,7 @@ function Workspace() {
                     provider: lead.provider,
                     model: leadModel,
                     folder: selected.thread.cwd,
-                    ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
-                    onStartNew: startNew,
+                    ...(leadEnded ? { ended: leadEnded } : {}),
                   }
                 : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
             }
