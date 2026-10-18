@@ -8,12 +8,13 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { Account, type AccountError } from "./account.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError) =>
+const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError | AccountError) =>
   new CeriumError({ message: error.message });
 
 /** How many matches the `@` list shows. */
@@ -26,6 +27,7 @@ const Handlers = CeriumRpcs.toLayer(
     const settings = yield* UserSettings;
     const workspace = yield* Workspace;
     const projects = yield* Projects;
+    const account = yield* Account;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -129,6 +131,13 @@ const Handlers = CeriumRpcs.toLayer(
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
+      WatchAccount: () => account.changes,
+      SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
+      CancelSignIn: () => account.cancelSignIn,
+      SignOut: () => account.signOut.pipe(Effect.mapError(refuse)),
+      ApproveDevice: ({ deviceId }) => account.approve(deviceId).pipe(Effect.mapError(refuse)),
+      RenameDevice: ({ deviceId, name }) => account.rename(deviceId, name).pipe(Effect.mapError(refuse)),
+      RemoveDevice: ({ deviceId }) => account.remove(deviceId).pipe(Effect.mapError(refuse)),
     });
   }),
 );
@@ -150,7 +159,7 @@ const requireToken = (token: string) =>
     }),
   ).layer;
 
-/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects and an HttpRouter. */
+/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects, Account and an HttpRouter. */
 export const rpcRoutes = (token: string) =>
   RpcServer.layer(CeriumRpcs).pipe(
     Layer.provide(Handlers),

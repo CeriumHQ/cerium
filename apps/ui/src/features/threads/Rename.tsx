@@ -45,11 +45,16 @@ export function TitleField({
   title,
   onDone,
   className,
+  maxLength = MAX_THREAD_TITLE,
+  label = "Title",
 }: {
   title: string;
   /** The typed title, or undefined when cancelled; `byKey` when Enter or Esc ended it. */
   onDone: (typed: string | undefined, byKey: boolean) => void;
   className: string;
+  /** For names other than a thread's, such as a device's. */
+  maxLength?: number;
+  label?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   /** Enter, Esc and leaving the field can all end the edit; only the first counts. */
@@ -70,8 +75,8 @@ export function TitleField({
     <input
       ref={input}
       defaultValue={title}
-      maxLength={MAX_THREAD_TITLE}
-      aria-label="Title"
+      maxLength={maxLength}
+      aria-label={label}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();

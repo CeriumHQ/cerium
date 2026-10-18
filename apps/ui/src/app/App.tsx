@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentId, ProviderId, ThreadId } from "@cerium/protocol";
+import type { AccountState, AgentEvent, AgentId, ProviderId, ThreadId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause } from "effect";
@@ -6,6 +6,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
+  accountAtom,
   createThread,
   deleteThread,
   harnessesAtom,
@@ -22,6 +23,7 @@ import { connectionAtom } from "../backend/client.ts";
 import { saveProject } from "../backend/projects.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
+import { DeviceRequestNotice, useShellPresence } from "../features/account/AccountNotice.tsx";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
@@ -110,6 +112,13 @@ function Workspace() {
           : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
     );
   const selectedSummary = summaries.find((summary) => summary.id === selected?.thread.id);
+  const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
+    _tag: "SignedOut",
+  }));
+  useShellPresence(
+    account,
+    summaries.some((summary) => summary.status === "running"),
+  );
   const markSeen = useEffectEvent(() => {
     if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
       readState.markRead([selectedSummary]);
@@ -367,6 +376,7 @@ function Workspace() {
         ) : AsyncResult.isFailure(threadsResult) ? (
           <Notice tone="error">{messageOf(Cause.squash(threadsResult.cause))}</Notice>
         ) : null}
+        <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
         {actionError ? (
           <Notice tone="error" onDismiss={() => setActionError(undefined)}>
             {actionError}

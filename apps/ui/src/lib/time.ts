@@ -13,3 +13,24 @@ export const shortAgo = (timestamp: number, now = Date.now()): string => {
   const [, size, suffix] = units.find(([limit]) => seconds < limit) ?? units[units.length - 1]!;
   return `${Math.floor(seconds / size)}${suffix}`;
 };
+
+const MINUTE = 60_000;
+const DAY = 86_400_000;
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+/** When something happened, as people say it: "just now", "5 minutes ago", "yesterday", "on 12 Oct". */
+export const whenAgo = (at: number, now = Date.now()): string => {
+  const elapsed = Math.max(0, now - at);
+  if (elapsed < MINUTE) return "just now";
+  if (elapsed < 60 * MINUTE) return relative.format(-Math.floor(elapsed / MINUTE), "minute");
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  if (at >= startOfToday) return relative.format(-Math.floor(elapsed / (60 * MINUTE)), "hour");
+  const days = Math.ceil((startOfToday - at) / DAY);
+  if (days < 7) return relative.format(-days, "day");
+  const date = new Date(at);
+  return `on ${date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" }),
+  })}`;
+};

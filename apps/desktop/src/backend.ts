@@ -2,10 +2,13 @@ import { app, utilityProcess, type UtilityProcess } from "electron";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { answerVault, isVaultRequest } from "./vault.ts";
+
 // The packaged app's backend (docs/architecture.md §7): the bundled dist/backend.mjs, run in an
 // Electron utility process so it gets Electron's own Node and no console window. It reports where it
 // listens over the process's port, so the token stays in memory; the UI asks for it through the
-// preload bridge. Its output goes to backend.log in the app's logs folder.
+// preload bridge. Its output goes to backend.log in the app's logs folder. It keeps this machine's
+// Cerium sign-in through the shell, which encrypts it (vault.ts).
 
 export interface BackendConnection {
   readonly url: string;
@@ -40,12 +43,24 @@ export const startBackend = () => {
     const startedAt = Date.now();
     const backend = utilityProcess.fork(
       join(import.meta.dirname, "backend.mjs"),
-      [`--data-dir=${app.getPath("userData")}`, `--migrations-dir=${join(app.getAppPath(), "migrations")}`],
+      [
+        `--data-dir=${app.getPath("userData")}`,
+        `--migrations-dir=${join(app.getAppPath(), "migrations")}`,
+        // Nightlies are packaged under their own name (electron-builder.ts), and show as such.
+        `--channel=${app.getName() === "cerium-nightly" ? "nightly" : "stable"}`,
+        `--app-version=${app.getVersion()}`,
+        // Another relay than Cerium's own, such as `wrangler dev` while developing.
+        ...(process.env["CERIUM_RELAY_URL"] ? [`--relay-url=${process.env["CERIUM_RELAY_URL"]}`] : []),
+      ],
       { serviceName: "Cerium backend", stdio: "pipe" },
     );
     backend.stdout?.pipe(log, { end: false });
     backend.stderr?.pipe(log, { end: false });
     backend.on("message", (message: unknown) => {
+      if (isVaultRequest(message)) {
+        void answerVault(message).then((reply) => backend.postMessage(reply));
+        return;
+      }
       if (!isConnection(message)) return;
       connection = message;
       for (const resolve of waiting) resolve(message);

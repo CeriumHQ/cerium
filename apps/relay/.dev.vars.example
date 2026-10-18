@@ -1,0 +1,6 @@
+# Copy to .dev.vars (never committed) and fill in from your Clerk development instance, or run
+# apps/relay/scripts/setup-clerk.sh, which does it for you.
+PUBLIC_ORIGIN=http://localhost:8787
+CLERK_PUBLISHABLE_KEY=pk_test_...
+# The instance's JWT public key as one line, with \n for its line breaks.
+CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"

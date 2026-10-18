@@ -1,9 +1,12 @@
 import {
   AccessMode,
+  AccountState,
   AgentEvent,
   AgentId,
   AgentInfo,
   Attachment,
+  DeviceId,
+  DeviceName,
   HarnessStatus,
   ImageData,
   LoginProgress,
@@ -184,4 +187,16 @@ export const CeriumRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
+  /** This machine's Cerium account (docs/architecture.md §14) now, then every change. */
+  Rpc.make("WatchAccount", { success: AccountState, stream: true }),
+  /** Starts signing this machine in; the UI opens `url`, where the user confirms in their browser. */
+  Rpc.make("SignIn", { success: Schema.Struct({ url: Schema.String }), error: CeriumError }),
+  Rpc.make("CancelSignIn", {}),
+  /** Removes this machine from the account and forgets its sign-in. */
+  Rpc.make("SignOut", { error: CeriumError }),
+  /** Lets a device that's waiting for approval see and control the account's machines. */
+  Rpc.make("ApproveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
+  Rpc.make("RenameDevice", { payload: { deviceId: DeviceId, name: DeviceName }, error: CeriumError }),
+  /** Removes a device from the account: denies one waiting for approval, or signs one out. */
+  Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
 );

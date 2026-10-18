@@ -93,6 +93,14 @@ export const loginAtom = Atom.family((provider: ProviderId) =>
   ),
 );
 
+/**
+ * This machine's Cerium account (docs/architecture.md §14): signed out, signing in, or signed in with
+ * the account's devices. Picked back up after a reconnect.
+ */
+export const accountAtom = Backend.runtime.atom(
+  Stream.unwrap(Backend.use((client) => Effect.succeed(client("WatchAccount", undefined)))).pipe(resubscribe),
+);
+
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {
   get(connectionAtom);
@@ -153,3 +161,9 @@ export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const deleteThread = Backend.mutation("DeleteThread");
 export const updateSettings = Backend.mutation("UpdateSettings");
+export const signIn = Backend.mutation("SignIn");
+export const cancelSignIn = Backend.mutation("CancelSignIn");
+export const signOut = Backend.mutation("SignOut");
+export const approveDevice = Backend.mutation("ApproveDevice");
+export const renameDevice = Backend.mutation("RenameDevice");
+export const removeDevice = Backend.mutation("RemoveDevice");

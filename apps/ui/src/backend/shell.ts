@@ -70,6 +70,19 @@ export interface ShellBridge {
   readonly onTextMenu?: (listener: (request: TextMenuRequest) => void) => () => void;
   /** Runs a text menu command on the last right-click, in the focused field or frame. */
   readonly runTextCommand?: (command: TextCommand) => Promise<void>;
+  /**
+   * Whether this machine is signed in to a Cerium account and whether agents are working: signed in,
+   * closing the window hides it to the tray, and working too, the PC is kept awake.
+   */
+  readonly setPresence?: (presence: { signedIn: boolean; working: boolean }) => void;
+  /** Whether Cerium starts when the user signs in to Windows; only the installed app can. */
+  readonly startAtLogin?: () => Promise<StartAtLogin>;
+  readonly setStartAtLogin?: (enabled: boolean) => Promise<StartAtLogin>;
+}
+
+export interface StartAtLogin {
+  readonly available: boolean;
+  readonly enabled: boolean;
 }
 
 declare global {

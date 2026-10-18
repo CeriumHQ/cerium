@@ -1,11 +1,13 @@
 // Starts Cerium for development in one terminal: the backend (restarting when its code changes), the
-// UI's dev server, and the desktop shell once the UI answers. Each line is labelled with its source.
-// When any of them stops (closing the window, say) or on Ctrl+C, all of them stop.
+// UI's dev server, the desktop shell once the UI answers, and the relay when its Clerk keys are set up
+// (apps/relay/.dev.vars, written by apps/relay/scripts/setup-clerk.sh). Each line is labelled with its
+// source. When any of them stops (closing the window, say) or on Ctrl+C, all of them stop.
 //
 // Usage: bun run dev [--browser]
 //   --browser  leaves out the desktop shell, for working on the UI at http://localhost:5173
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { styleText } from "node:util";
@@ -74,6 +76,13 @@ process.on("SIGTERM", () => stopAll(0));
 
 run("backend", "cyan", "dev:backend");
 run("ui", "magenta", "dev:ui");
+if (existsSync(join(root, "apps", "relay", ".dev.vars"))) {
+  run("relay", "green", "dev:relay");
+} else {
+  console.log(
+    `${styleText("green", "relay".padEnd(8))}${styleText("dim", "not started: run bash apps/relay/scripts/setup-clerk.sh to sign in locally")}`,
+  );
+}
 if (!browserOnly) {
   await uiReady();
   if (!stopping) run("desktop", "yellow", "dev:desktop");

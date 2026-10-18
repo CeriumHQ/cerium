@@ -15,6 +15,11 @@ vendor/effect/
 
 .env
 .env.*
+
+# The relay's local secrets and Wrangler's local state
+.dev.vars
+.wrangler/
+
 *.log
 .DS_Store
 Thumbs.db

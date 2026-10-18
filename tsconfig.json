@@ -38,6 +38,9 @@
       "path": "./apps/backend"
     },
     {
+      "path": "./apps/relay"
+    },
+    {
       "path": "./apps/ui"
     },
     {

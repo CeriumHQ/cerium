@@ -1,15 +1,21 @@
 // Starts Cerium's backend.
 //
 //   node apps/backend/src/main.ts [--data-dir=<dir>] [--connection-file=<path>] [--migrations-dir=<dir>]
+//                                 [--relay-url=<url>] [--channel=<stable|nightly|dev>] [--app-version=<v>]
 //
 // --data-dir         where the database and chat folders live (default: ~/.cerium)
 // --connection-file  where to write { url, token } for the UI; used in development, removed on exit
 // --migrations-dir   the store's migrations, for a bundled backend (default: beside @cerium/store)
+// --relay-url        the Cerium relay this machine signs in to (default: Cerium's own)
+// --channel          the build this is, which the account's devices list shows (default: dev)
+// --app-version      this build's version, shown the same way (default: dev)
 //
 // The packaged app runs this bundled in an Electron utility process (apps/desktop/src/backend.ts),
-// which receives { url, token } over its parent port and sends "stop" there to shut it down.
+// which receives { url, token } over its parent port and sends "stop" there to shut it down. It
+// also keeps this machine's sign-in there, encrypted (src/vault.ts).
 
 import type { CatalogEntry } from "@cerium/orchestrator";
+import type { Channel } from "@cerium/protocol";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { HttpServer } from "effect/http";
@@ -18,8 +24,11 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { DEFAULT_RELAY_URL, thisMachine } from "./account.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
+import { parentPort as shell } from "./shell.ts";
+import { Vault } from "./vault.ts";
 
 const flag = (name: string) =>
   process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -27,15 +36,12 @@ const flag = (name: string) =>
 const dataDirectory = resolve(flag("data-dir") ?? join(homedir(), ".cerium"));
 const connectionFile = flag("connection-file");
 const migrationsFolder = flag("migrations-dir");
+const relayUrl = flag("relay-url") ?? DEFAULT_RELAY_URL;
+const channelFlag = flag("channel");
+const channel: Channel = channelFlag === "stable" || channelFlag === "nightly" ? channelFlag : "dev";
+const appVersion = flag("app-version") ?? "dev";
 const token = randomBytes(32).toString("hex");
 mkdirSync(dataDirectory, { recursive: true });
-
-/** The port Electron gives a utility process to talk to the shell; absent anywhere else. */
-interface ParentPort {
-  postMessage(message: unknown): void;
-  on(event: "message", listener: (event: { readonly data: unknown }) => void): void;
-}
-const shell = (process as { parentPort?: ParentPort }).parentPort;
 
 // Stopping goes through runMain's signal handling, so the backend's finalizers run.
 shell?.on("message", ({ data }) => {
@@ -71,6 +77,8 @@ const options = {
   catalog,
   token,
   ...(migrationsFolder === undefined ? {} : { migrationsFolder }),
+  account: { relayUrl, device: thisMachine(channel, appVersion) },
+  vault: shell === undefined ? Vault.file(join(dataDirectory, "account.json")) : Vault.shell(shell),
 };
 
 Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(NodeRuntime.runMain);

@@ -13,12 +13,15 @@ import {
 } from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import type { ModelInfo } from "@cerium/protocol";
-import { Effect, Layer } from "effect";
-import { HttpRouter } from "effect/http";
+import { Effect, Layer, type FileSystem, type Path } from "effect";
+import { FetchHttpClient, HttpRouter } from "effect/http";
+import { Socket } from "effect/socket";
 import { join } from "node:path";
 
+import { Account, DEFAULT_RELAY_URL, thisMachine, type AccountOptions } from "./account.ts";
 import { rpcRoutes } from "./rpc.ts";
 import { Projects } from "./project.ts";
+import { Vault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 
 export interface BackendOptions {
@@ -30,6 +33,10 @@ export interface BackendOptions {
   readonly token: string;
   /** The store's migrations, when they don't sit beside `@cerium/store` (a bundled backend). */
   readonly migrationsFolder?: string;
+  /** The relay this machine signs in to and how it describes itself; Cerium's own, as a development build, by default. */
+  readonly account?: AccountOptions;
+  /** Where the sign-in is kept; by default a plain file in the data folder, as a development backend keeps it. */
+  readonly vault?: Layer.Layer<Vault, never, FileSystem.FileSystem | Path.Path>;
 }
 
 /** Every harness adapter in this build. */
@@ -105,6 +112,15 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
+    Layer.provideMerge(
+      Account.layer(
+        options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") },
+      ).pipe(
+        Layer.provide(options.vault ?? Vault.file(join(options.dataDirectory, "account.json"))),
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(Socket.layerWebSocketConstructorGlobal),
+      ),
+    ),
     Layer.provideMerge(BusRegistryLive),
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(

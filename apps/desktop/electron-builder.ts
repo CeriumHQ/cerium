@@ -28,6 +28,8 @@ export default {
   files: [
     "dist/**",
     "package.json",
+    // The tray's icon (background.ts).
+    "build/icon.ico",
     { from: "../../packages/store/migrations", to: "migrations" },
     "!node_modules/@cerium/**",
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",

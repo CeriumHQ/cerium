@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { whenArchived } from "../src/features/settings/Archived.tsx";
+import { whenAgo } from "../src/lib/time.ts";
 import {
   archivedThreads,
   canArchive,
@@ -48,12 +48,12 @@ describe("archiving", () => {
   });
 
   it("says when a thread was archived the way people say it", () => {
-    expect(whenArchived(now - 20_000, now)).toBe("just now");
-    expect(whenArchived(now - 5 * MINUTE, now)).toBe("5 minutes ago");
-    expect(whenArchived(now - 3 * HOUR, now)).toBe("3 hours ago");
-    expect(whenArchived(now - 20 * HOUR, now)).toBe("yesterday");
-    expect(whenArchived(new Date(2026, 9, 2).getTime(), now)).toBe("on 2 Oct");
-    expect(whenArchived(new Date(2025, 11, 24).getTime(), now)).toBe("on 24 Dec 2025");
+    expect(whenAgo(now - 20_000, now)).toBe("just now");
+    expect(whenAgo(now - 5 * MINUTE, now)).toBe("5 minutes ago");
+    expect(whenAgo(now - 3 * HOUR, now)).toBe("3 hours ago");
+    expect(whenAgo(now - 20 * HOUR, now)).toBe("yesterday");
+    expect(whenAgo(new Date(2026, 9, 2).getTime(), now)).toBe("on 2 Oct");
+    expect(whenAgo(new Date(2025, 11, 24).getTime(), now)).toBe("on 24 Dec 2025");
   });
 });
 

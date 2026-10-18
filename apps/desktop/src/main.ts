@@ -1,13 +1,18 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { isAbsolute, join, normalize } from "node:path";
 
+import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
 import { startBackend } from "./backend.ts";
 import { saveImage } from "./saveImage.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell (docs/architecture.md §7): a window with Windows Acrylic and native caption buttons
-// around the UI, and the backend's launcher. Everything else lives in the UI and the backend.
+// around the UI, the backend's launcher, and the tray that keeps a signed-in machine reachable
+// (background.ts). Everything else lives in the UI and the backend.
+
+// One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
+if (!app.requestSingleInstanceLock()) app.quit();
 
 /**
  * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files. The development
@@ -16,6 +21,21 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 
 let backend: ReturnType<typeof startBackend> | undefined;
+let mainWindow: BrowserWindow | undefined;
+
+/** Started at login: straight to the tray, unless the UI says this machine isn't signed in. */
+const startHidden = process.argv.includes(HIDDEN_FLAG);
+/** How long a hidden start waits to hear whether it's signed in before showing the window anyway. */
+const HIDDEN_START_TIMEOUT_MS = 15_000;
+
+const background = backgroundMode({
+  icon: join(import.meta.dirname, "..", "build", "icon.ico"),
+  window: () => mainWindow,
+});
+
+/** Links the UI may open in the browser: https, and the local relay while developing. */
+const opensExternally = (url: string) =>
+  url.startsWith("https://") || (!app.isPackaged && /^http:\/\/(localhost|127\.0\.0\.1):\d+\//.test(url));
 
 /** Matches the UI titlebar's height so the caption buttons line up with it. */
 const TITLEBAR_HEIGHT = 40;
@@ -60,11 +80,19 @@ const createWindow = () => {
     window.on("unmaximize", reapply);
     window.on("restore", reapply);
   }
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => {
+    if (!startHidden) window.show();
+  });
+  window.on("close", (event) => {
+    if (background.interceptClose()) event.preventDefault();
+  });
+  window.on("closed", () => {
+    mainWindow = undefined;
+  });
 
   // Links open in the user's browser, never inside the app window.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://")) void shell.openExternal(url);
+    if (opensExternally(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, url) => {
@@ -77,7 +105,29 @@ const createWindow = () => {
   } else {
     void window.loadURL(devUrl);
   }
+  mainWindow = window;
 };
+
+/**
+ * Whether this machine is signed in and agents are working, which decide whether closing the window
+ * hides it to the tray and whether the PC may sleep. A hidden start shows the window once it hears
+ * the machine isn't signed in, since nothing would keep it reachable.
+ */
+let heardPresence = false;
+ipcMain.on("cerium:presence", (_event, presence: unknown) => {
+  if (!isPresence(presence)) return;
+  background.update(presence);
+  if (startHidden && !heardPresence && !presence.signedIn) background.show();
+  heardPresence = true;
+});
+
+/** Whether Cerium starts when the user signs in to Windows; only the installed app can. */
+ipcMain.handle("cerium:start-at-login", () => startAtLogin());
+ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
+  typeof enabled === "boolean" ? setStartAtLogin(enabled) : startAtLogin(),
+);
+
+app.on("second-instance", () => background.show());
 
 /** Where the UI connects to the backend this shell runs; nothing in development. */
 ipcMain.handle("cerium:backend-connection", () => backend?.connection());
@@ -126,6 +176,11 @@ void app.whenReady().then(() => {
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();
+  if (startHidden) {
+    setTimeout(() => {
+      if (!heardPresence) background.show();
+    }, HIDDEN_START_TIMEOUT_MS);
+  }
 });
 
 app.on("window-all-closed", () => app.quit());

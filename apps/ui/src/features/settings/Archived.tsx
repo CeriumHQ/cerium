@@ -11,28 +11,8 @@ import { toThreadSummary } from "../../backend/view.ts";
 import { DeleteThreadDialog } from "../threads/Delete.tsx";
 import { archivedThreads, canDelete, type ThreadSummary } from "../threads/model.ts";
 import { ProjectBadge } from "../threads/ProjectBadge.tsx";
+import { whenAgo } from "../../lib/time.ts";
 import { SettingsCard, SettingsPage } from "./parts.tsx";
-
-const MINUTE = 60_000;
-const DAY = 86_400_000;
-const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-/** When something happened, as people say it: "just now", "5 minutes ago", "yesterday", "on 12 Oct". */
-export const whenArchived = (at: number, now = Date.now()): string => {
-  const elapsed = Math.max(0, now - at);
-  if (elapsed < MINUTE) return "just now";
-  if (elapsed < 60 * MINUTE) return relative.format(-Math.floor(elapsed / MINUTE), "minute");
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  if (at >= startOfToday) return relative.format(-Math.floor(elapsed / (60 * MINUTE)), "hour");
-  const days = Math.ceil((startOfToday - at) / DAY);
-  if (days < 7) return relative.format(-days, "day");
-  const date = new Date(at);
-  return `on ${date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    ...(date.getFullYear() === new Date(now).getFullYear() ? {} : { year: "numeric" }),
-  })}`;
-};
 
 export function ArchivedSettings() {
   const overviews = AsyncResult.getOrElse(useAtomValue(threadsAtom), (): ReadonlyArray<ThreadOverview> => []);
@@ -107,7 +87,7 @@ function ArchivedRow({
           {thread.title}
         </span>
         <span className="truncate text-xs text-fg-tertiary">
-          {thread.project ?? "Chat"} · Archived {whenArchived(thread.archivedAt ?? 0)}
+          {thread.project ?? "Chat"} · Archived {whenAgo(thread.archivedAt ?? 0)}
         </span>
       </div>
       <Button

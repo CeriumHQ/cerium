@@ -1,0 +1,22 @@
+{
+  "name": "@cerium/relay",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check:bundle": "wrangler deploy --dry-run --outdir dist"
+  },
+  "dependencies": {
+    "@cerium/protocol": "workspace:*",
+    "@clerk/backend": "3.22.0",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261003.1",
+    "@effect/vitest": "4.0.5",
+    "wrangler": "4.147.0"
+  }
+}

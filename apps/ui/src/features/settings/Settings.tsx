@@ -1,21 +1,32 @@
 import { Button } from "@base-ui/react/button";
-import { Archive, ArrowLeft, Blocks, Bot, Keyboard, Palette, type LucideIcon } from "lucide-react";
+import {
+  Archive,
+  ArrowLeft,
+  Blocks,
+  Bot,
+  CircleUserRound,
+  Keyboard,
+  Palette,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { ArchivedSettings } from "./Archived.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 
-export type SettingsCategory = "appearance" | "agents" | "harnesses" | "keyboard" | "archived";
+export type SettingsCategory = "account" | "appearance" | "agents" | "harnesses" | "keyboard" | "archived";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
   readonly label: string;
   readonly icon: LucideIcon;
 }> = [
+  { id: "account", label: "Account", icon: CircleUserRound },
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
@@ -107,6 +118,8 @@ export function SettingsView({
   harnesses: ReadonlyArray<HarnessIndicator>;
 }) {
   switch (category) {
+    case "account":
+      return <AccountSettings key={category} />;
     case "appearance":
       return <AppearanceSettings key={category} />;
     case "agents":
