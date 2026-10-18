@@ -24,11 +24,12 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { DEFAULT_RELAY_URL, thisMachine } from "./account.ts";
+import { DEFAULT_RELAY_URL } from "@cerium/account";
+import { thisMachine } from "./device.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
 import { parentPort as shell } from "./shell.ts";
-import { Vault } from "./vault.ts";
+import { fileVault, shellVault } from "./vault.ts";
 
 const flag = (name: string) =>
   process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -78,7 +79,7 @@ const options = {
   token,
   ...(migrationsFolder === undefined ? {} : { migrationsFolder }),
   account: { relayUrl, device: thisMachine(channel, appVersion) },
-  vault: shell === undefined ? Vault.file(join(dataDirectory, "account.json")) : Vault.shell(shell),
+  vault: shell === undefined ? fileVault(join(dataDirectory, "account.json")) : shellVault(shell),
 };
 
 Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(NodeRuntime.runMain);

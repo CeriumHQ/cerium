@@ -63,7 +63,11 @@ export const CreateThreadPayload = Schema.Struct({
 });
 export type CreateThreadPayload = typeof CreateThreadPayload.Type;
 
-export const CeriumRpcs = RpcGroup.make(
+/**
+ * What a machine serves its own UI and, through tunnels, the account's other devices
+ * (docs/architecture.md §14.8): its threads, projects, harnesses and settings.
+ */
+export const MachineRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: Schema.Array(ThreadOverview), error: CeriumError }),
   Rpc.make("ThreadEvents", {
     payload: { threadId: ThreadId },
@@ -187,12 +191,20 @@ export const CeriumRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
-  /** This machine's Cerium account (docs/architecture.md §14) now, then every change. */
+);
+
+/**
+ * What a device answers its own UI about itself (§14.10): its Cerium account, the account's threads,
+ * and whether its own agents are working. Never served through a tunnel: only a device's own UI
+ * signs it in or out and manages the account's devices.
+ */
+export const DeviceRpcs = RpcGroup.make(
+  /** This device's Cerium account (docs/architecture.md §14) now, then every change. */
   Rpc.make("WatchAccount", { success: AccountState, stream: true }),
-  /** Starts signing this machine in; the UI opens `url`, where the user confirms in their browser. */
+  /** Starts signing this device in; the UI opens `url`, where the user confirms in their browser. */
   Rpc.make("SignIn", { success: Schema.Struct({ url: Schema.String }), error: CeriumError }),
   Rpc.make("CancelSignIn", {}),
-  /** Removes this machine from the account and forgets its sign-in. */
+  /** Removes this device from the account and forgets its sign-in. */
   Rpc.make("SignOut", { error: CeriumError }),
   /** Lets a device that's waiting for approval see and control the account's machines. */
   Rpc.make("ApproveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
@@ -201,7 +213,7 @@ export const CeriumRpcs = RpcGroup.make(
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
   /**
    * Every thread of the account and what has been seen of them (§14.9), now and after every change.
-   * Empty while this machine isn't signed in.
+   * Empty while this device isn't signed in.
    */
   Rpc.make("WatchAccountThreads", { success: AccountThreads, stream: true }),
   /** Another machine's thread, read from the cloud copy: its events without streamed text. */
@@ -212,4 +224,12 @@ export const CeriumRpcs = RpcGroup.make(
   }),
   /** Tells the account's other devices these threads were seen here. */
   Rpc.make("MarkThreadsRead", { payload: { entries: Schema.Array(ReadEntry) }, error: CeriumError }),
+  /**
+   * Whether this device's own agents are working, now and after every change; always false for a
+   * browser. The shell keeps a desktop awake for them while its window drives another machine.
+   */
+  Rpc.make("WatchWorking", { success: Schema.Boolean, stream: true }),
 );
+
+/** A desktop backend's own endpoint, for its own UI: the machine and the device. */
+export const CeriumRpcs = MachineRpcs.merge(DeviceRpcs);

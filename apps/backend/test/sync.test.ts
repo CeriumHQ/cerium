@@ -1,17 +1,14 @@
 import {
   MAX_SYNC_BATCH_BYTES,
-  type AccountThreads,
   type AgentEvent,
   type AgentId,
-  type DeviceId,
   type EventId,
   type ThreadId,
-  type ThreadOverview,
   type UiEvent,
 } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { applyNotice, batches, cloudEvent } from "../src/sync.ts";
+import { batches, cloudEvent } from "../src/sync.ts";
 
 const event = (sequence: number, text = "done"): AgentEvent => ({
   id: `evt_${sequence}` as EventId,
@@ -21,12 +18,6 @@ const event = (sequence: number, text = "done"): AgentEvent => ({
   at: sequence,
   payload: { _tag: "MessageCompleted", messageId: `m${sequence}`, text },
   raw: { provider: "secret" },
-});
-
-const overview = (id: string, title = id): ThreadOverview => ({
-  thread: { id: id as ThreadId, title, mode: "work", createdAt: 1, updatedAt: 1 },
-  agents: [],
-  awaitingApproval: false,
 });
 
 describe("an event's cloud copy", () => {
@@ -54,46 +45,5 @@ describe("batches", () => {
 
   it("make none of nothing", () => {
     expect(batches([])).toEqual([]);
-  });
-});
-
-describe("the account's threads", () => {
-  const desk = "desk" as DeviceId;
-  const laptop = "laptop" as DeviceId;
-  const start: AccountThreads = {
-    threads: [
-      { machine: desk, overview: overview("a") },
-      { machine: laptop, overview: overview("b") },
-    ],
-    read: [{ threadId: "a" as ThreadId, seenAt: 5 }],
-  };
-
-  it("take a snapshot whole", () => {
-    expect(applyNotice({ threads: [], read: [] }, { _tag: "AccountThreads", ...start })).toEqual(start);
-  });
-
-  it("replace changed threads and drop removed ones", () => {
-    const next = applyNotice(start, {
-      _tag: "ThreadsChanged",
-      threads: [{ machine: desk, overview: overview("a", "Renamed") }],
-      removed: [{ machine: laptop, threadId: "b" as ThreadId }],
-    });
-    expect(next.threads.map((each) => [each.machine, each.overview.thread.title])).toEqual([
-      ["desk", "Renamed"],
-    ]);
-  });
-
-  it("keep the latest time each thread was seen", () => {
-    const next = applyNotice(start, {
-      _tag: "ReadChanged",
-      entries: [
-        { threadId: "a" as ThreadId, seenAt: 3 },
-        { threadId: "b" as ThreadId, seenAt: 9 },
-      ],
-    });
-    expect(next.read).toEqual([
-      { threadId: "a", seenAt: 5 },
-      { threadId: "b", seenAt: 9 },
-    ]);
   });
 });

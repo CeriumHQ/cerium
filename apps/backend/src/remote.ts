@@ -1,10 +1,9 @@
-import { DeviceId, type ChannelId, type ConnectionId, type TunnelAddress } from "@cerium/protocol";
+import { Account, CLOSE_UNREACHABLE, openTunnel, unreachableReason, type RelayEvent } from "@cerium/account";
+import { DeviceId, type ChannelId, type TunnelAddress } from "@cerium/protocol";
 import { Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { NetAddress } from "effect/net";
 import { Socket, SocketServer } from "effect/socket";
-
-import { Account, type RelayEvent } from "./account.ts";
 
 // Driving another machine (docs/architecture.md §14.8). Through the relay, another device's UI calls
 // this machine's backend as if it were its own: each tunnel channel becomes one RPC client of the
@@ -12,10 +11,6 @@ import { Account, type RelayEvent } from "./account.ts";
 // another machine's backend through `/remote`, which pipes its RPC socket into a channel.
 
 export const REMOTE_PATH = "/remote";
-
-/** Close codes the UI sees on `/remote`: the machine can't be reached, or it ended the channel. */
-export const CLOSE_UNREACHABLE = 4100;
-export const CLOSE_ENDED = 4101;
 
 const closed = (code: number, reason?: string) =>
   new Socket.SocketError({ reason: new Socket.SocketCloseError({ code, closeReason: reason }) });
@@ -127,18 +122,11 @@ export const TunnelSocketServer = Layer.effect(
   }),
 );
 
-/** Messages the UI sees when its pipe to another machine closes. */
-const unreachableReason: Record<"offline" | "forbidden" | "lost", string> = {
-  offline: "That computer isn't connected to Cerium's cloud right now.",
-  forbidden: "This computer can't reach that one: it isn't an approved computer of your account.",
-  lost: "This computer lost its connection to Cerium's cloud.",
-};
-
 /**
  * `GET /remote?machine=<device>`: this machine's UI driving another machine. The UI speaks its usual
- * RPC over the socket; each frame goes through the relay to that machine's newest connection, and
- * once it answers, to that connection only. The socket closes with `CLOSE_UNREACHABLE` when the
- * machine can't be reached and `CLOSE_ENDED` when it ends the channel.
+ * RPC over the socket, and each frame goes through a tunnel (`openTunnel`); the socket closes with
+ * the tunnel's code and reason when it ends: `CLOSE_UNREACHABLE` when the machine can't be reached
+ * and `CLOSE_ENDED` when it ends the channel.
  */
 const pipe = Effect.gen(function* () {
   const account = yield* Account;
@@ -161,48 +149,35 @@ const pipe = Effect.gen(function* () {
   if (!reachable) return HttpServerResponse.text(unreachableReason.offline, { status: 503 });
 
   const socket = yield* Effect.orDie(request.upgrade);
-  const writer = yield* socket.writer;
-  const channel = yield* account.openChannel;
-  // Subscribed before the first frame goes out, so no answer slips past.
-  const events = yield* account.relayEvents;
-  let host: ConnectionId | undefined;
-  const target = (): TunnelAddress => (host === undefined ? { device: machine } : { connection: host });
-  const close = (code: number, reason: string) =>
-    writer.write(new Socket.CloseEvent(code, reason)).pipe(Effect.ignore);
+  const toUi = yield* socket.writer;
+  const tunnel = yield* Socket.fromWebSocket(openTunnel(account, machine));
+  const toMachine = yield* tunnel.writer;
 
   const fromMachine = Effect.gen(function* () {
-    while (true) {
-      const event = yield* PubSub.take(events);
-      if (event._tag === "RelayLost") return yield* close(CLOSE_UNREACHABLE, unreachableReason.lost);
-      if (event._tag === "Gone") {
-        if (event.connection === host) return yield* close(CLOSE_UNREACHABLE, unreachableReason.offline);
-        continue;
-      }
-      if (event._tag !== "Receive" && event._tag !== "Closed" && event._tag !== "Undeliverable") continue;
-      if (event.channel !== channel) continue;
-      if (event._tag === "Undeliverable")
-        return yield* close(CLOSE_UNREACHABLE, unreachableReason[event.reason]);
-      if (event._tag === "Closed") return yield* close(CLOSE_ENDED, "That computer ended the connection.");
-      host ??= event.from.connection;
-      yield* writer.write(event.data).pipe(Effect.ignore);
-    }
-  });
-
-  const toMachine = Effect.gen(function* () {
-    const pull = yield* Socket.readerString(socket);
-    while (true) {
-      for (const frame of yield* pull) {
-        const sent = yield* account
-          .send({ _tag: "Send", to: target(), channel, data: frame })
-          .pipe(Effect.result);
-        if (sent._tag === "Failure") return yield* close(CLOSE_UNREACHABLE, unreachableReason.lost);
-      }
-    }
-  }).pipe(Effect.catchTag("SocketError", () => Effect.void));
-
-  yield* Effect.raceFirst(fromMachine, toMachine).pipe(
-    Effect.ensuring(account.send({ _tag: "Close", to: target(), channel }).pipe(Effect.ignore)),
+    const pull = yield* Socket.readerString(tunnel);
+    while (true) for (const frame of yield* pull) yield* toUi.write(frame).pipe(Effect.ignore);
+  }).pipe(
+    Effect.scoped,
+    Effect.catchTag("SocketError", ({ reason }) =>
+      toUi
+        .write(
+          reason._tag === "SocketCloseError"
+            ? new Socket.CloseEvent(reason.code, reason.closeReason)
+            : new Socket.CloseEvent(CLOSE_UNREACHABLE, unreachableReason.lost),
+        )
+        .pipe(Effect.ignore),
+    ),
   );
+
+  const fromUi = Effect.gen(function* () {
+    const pull = yield* Socket.readerString(socket);
+    while (true) yield* toMachine.writeAll(yield* pull);
+  }).pipe(
+    Effect.scoped,
+    Effect.catchTag("SocketError", () => Effect.void),
+  );
+
+  yield* Effect.raceFirst(fromMachine, fromUi);
   return HttpServerResponse.empty();
 });
 

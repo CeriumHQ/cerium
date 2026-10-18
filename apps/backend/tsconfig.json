@@ -3,6 +3,9 @@
   "include": ["src", "scripts", "test"],
   "references": [
     {
+      "path": "../../packages/account"
+    },
+    {
       "path": "../../packages/protocol"
     },
     {

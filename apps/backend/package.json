@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@cerium/account": "workspace:*",
     "@cerium/adapter-claude": "workspace:*",
     "@cerium/adapter-codex": "workspace:*",
     "@cerium/adapter-cursor": "workspace:*",

@@ -1,6 +1,7 @@
+import { deviceHandlers } from "@cerium/account";
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
-import type { ProviderId, SkillInfo } from "@cerium/protocol";
-import { CeriumError, CeriumRpcs } from "@cerium/rpc";
+import { isStreamDelta, type ProviderId, type SkillInfo } from "@cerium/protocol";
+import { CeriumError, CeriumRpcs, MachineRpcs } from "@cerium/rpc";
 import type { StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -8,28 +9,25 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
-import { Account, type AccountError } from "./account.ts";
 import { Projects, type ProjectError } from "./project.ts";
-import { Sync } from "./sync.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError | AccountError) =>
+const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError) =>
   new CeriumError({ message: error.message });
 
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
 
-export const Handlers = CeriumRpcs.toLayer(
+/** What this machine serves its own UI and, through the relay, other devices. */
+export const Handlers = MachineRpcs.toLayer(
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     const adapters = yield* Adapters;
     const settings = yield* UserSettings;
     const workspace = yield* Workspace;
     const projects = yield* Projects;
-    const account = yield* Account;
-    const sync = yield* Sync;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -49,7 +47,7 @@ export const Handlers = CeriumRpcs.toLayer(
       },
     });
 
-    return CeriumRpcs.of({
+    return MachineRpcs.of({
       ListThreads: () =>
         orchestrator.listThreads.pipe(
           Effect.flatMap((threads) =>
@@ -133,20 +131,31 @@ export const Handlers = CeriumRpcs.toLayer(
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
-      WatchAccount: () => account.changes,
-      SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
-      CancelSignIn: () => account.cancelSignIn,
-      SignOut: () => account.signOut.pipe(Effect.mapError(refuse)),
-      ApproveDevice: ({ deviceId }) => account.approve(deviceId).pipe(Effect.mapError(refuse)),
-      RenameDevice: ({ deviceId, name }) => account.rename(deviceId, name).pipe(Effect.mapError(refuse)),
-      RemoveDevice: ({ deviceId }) => account.remove(deviceId).pipe(Effect.mapError(refuse)),
-      WatchAccountThreads: () => sync.accountThreads,
-      CloudThreadEvents: ({ machine, threadId }) =>
-        sync.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),
-      MarkThreadsRead: ({ entries }) => sync.markRead(entries).pipe(Effect.mapError(refuse)),
     });
   }),
 );
+
+/** Whether this machine's agents are working, re-checked after every event but streamed text. */
+const working = Effect.gen(function* () {
+  const orchestrator = yield* Orchestrator;
+  const busy = orchestrator.listThreads.pipe(
+    Effect.flatMap((threads) => Effect.forEach(threads, (thread) => orchestrator.listAgents(thread.id))),
+    Effect.map((agents) =>
+      agents.flat().some((agent) => agent.state === "running" || agent.state === "queued"),
+    ),
+    Effect.orElseSucceed(() => false),
+  );
+  return Stream.concat(
+    Stream.succeed(undefined),
+    orchestrator.events.pipe(Stream.filter((event) => !isStreamDelta(event.payload._tag))),
+  ).pipe(
+    Stream.mapEffect(() => busy),
+    Stream.changes,
+  );
+});
+
+/** What this machine answers its own UI about itself: its account, the account's threads, its work. */
+const DeviceHandlers = deviceHandlers(working);
 
 const sameSecret = (given: string, expected: string) =>
   given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected));
@@ -165,10 +174,13 @@ export const requireToken = (token: string) =>
     }),
   ).layer;
 
-/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects, Account, Sync and an HttpRouter. */
+/**
+ * The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects,
+ * Account, CloudThreads and an HttpRouter.
+ */
 export const rpcRoutes = (token: string) =>
   RpcServer.layer(CeriumRpcs).pipe(
-    Layer.provide(Handlers),
+    Layer.provide(Layer.merge(Handlers, DeviceHandlers)),
     Layer.provide(
       RpcServer.layerProtocolWebsocket({ path: RPC_PATH }).pipe(Layer.provide(requireToken(token))),
     ),
@@ -176,24 +188,10 @@ export const rpcRoutes = (token: string) =>
   );
 
 /**
- * What another device may call through the relay (docs/architecture.md §14.8): everything but this
- * machine's own account, which only its own UI manages.
+ * The RPC server for tunnelled channels (docs/architecture.md §14.8): the machine's RPCs, never the
+ * device's own, which only its own UI may call. Requires what the handlers do and a `SocketServer`.
  */
-export const TunnelRpcs = CeriumRpcs.omit(
-  "WatchAccount",
-  "SignIn",
-  "CancelSignIn",
-  "SignOut",
-  "ApproveDevice",
-  "RenameDevice",
-  "RemoveDevice",
-  "WatchAccountThreads",
-  "CloudThreadEvents",
-  "MarkThreadsRead",
-);
-
-/** The RPC server for tunnelled channels. Requires what the handlers do and a `SocketServer`. */
-export const tunnelRpcServer = RpcServer.layer(TunnelRpcs).pipe(
+export const tunnelRpcServer = RpcServer.layer(MachineRpcs).pipe(
   Layer.provide(Handlers),
   Layer.provide(RpcServer.layerProtocolSocketServer),
   Layer.provide(RpcSerialization.layerJson),

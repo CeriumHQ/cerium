@@ -12,18 +12,19 @@ import {
   type CatalogEntry,
 } from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
+import { Account, CloudThreads, DEFAULT_RELAY_URL, type AccountOptions, type Vault } from "@cerium/account";
 import type { ModelInfo } from "@cerium/protocol";
 import { Effect, Layer, type FileSystem, type Path } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { Socket } from "effect/socket";
 import { join } from "node:path";
 
-import { Account, DEFAULT_RELAY_URL, thisMachine, type AccountOptions } from "./account.ts";
+import { thisMachine } from "./device.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
-import { Sync } from "./sync.ts";
-import { Vault } from "./vault.ts";
+import { CloudCopy } from "./sync.ts";
+import { fileVault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 
 export interface BackendOptions {
@@ -120,8 +121,8 @@ export const backendLayer = (options: BackendOptions) =>
       disableLogger: true,
     },
   ).pipe(
-    // Keeps the cloud copy of this machine's threads current (§14.9).
-    Layer.provideMerge(Sync.layer),
+    // Keeps the cloud copy of this machine's threads current, and knows the account's (§14.9).
+    Layer.provideMerge(Layer.merge(CloudCopy, CloudThreads.layer)),
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
@@ -129,7 +130,7 @@ export const backendLayer = (options: BackendOptions) =>
       Account.layer(
         options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") },
       ).pipe(
-        Layer.provide(options.vault ?? Vault.file(join(options.dataDirectory, "account.json"))),
+        Layer.provide(options.vault ?? fileVault(join(options.dataDirectory, "account.json"))),
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(Socket.layerWebSocketConstructorGlobal),
       ),
