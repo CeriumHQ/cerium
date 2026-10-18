@@ -12,15 +12,12 @@ runs:
       with:
         node-version: 24
 
-    - id: bun-cache
-      shell: bash
-      run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
-
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ steps.bun-cache.outputs.dir }}
-        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-        restore-keys: bun-${{ runner.os }}-
+    # Bun's package cache goes on the checkout's disk. Its default home on Windows is on C:, which is
+    # much slower than the D: the checkout is on, and Bun can't hard-link packages across the two, so
+    # installing there took several times as long. The cache isn't kept between runs: restoring it took
+    # longer than downloading the packages again, on Windows several times longer.
+    - shell: bash
+      run: echo "BUN_INSTALL_CACHE_DIR=$RUNNER_TEMP/bun-cache" >> "$GITHUB_ENV"
 
     # Installing also runs the root `prepare` script, which patches the Effect diagnostics into
     # TypeScript and Oxlint.
