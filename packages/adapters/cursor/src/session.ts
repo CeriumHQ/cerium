@@ -1,6 +1,8 @@
 import {
   Agent,
   CursorSdkError,
+  getDefaultSdkStateRoot,
+  JsonlLocalAgentStore,
   NetworkError,
   RateLimitError,
   type AgentOptions,
@@ -102,6 +104,30 @@ export const accessOptions = (
  */
 const SETTING_SOURCES: Array<SettingSource> = ["project", "user"];
 
+/** Windows' classic path limit, which SQLite's files must fit in unless long paths are enabled. */
+const MAX_PATH = 259;
+/** The longest file the SDK's default store keeps under its state root: an agent's SQLite journal. */
+const LONGEST_STORE_FILE = `\\agents\\agent-${"0".repeat(64)}\\store.db-journal`.length;
+
+/**
+ * Where the SDK keeps the workspace's agents. By default that is SQLite under a folder named after the
+ * workspace; on Windows a long workspace path puts its files past 260 characters, SQLite cannot write
+ * them, the conversation is never saved and the run never finishes (Cursor's service replays its
+ * turn every half minute). Those workspaces keep their agents in JSONL files beside the default
+ * folder instead, which Node writes at any length. The choice depends on the path alone, so a resumed
+ * agent is found where it was created.
+ */
+export const localStoreFor = (
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): Pick<LocalAgentOptions, "store"> => {
+  if (platform !== "win32") return {};
+  const root = getDefaultSdkStateRoot(cwd);
+  return root.length + LONGEST_STORE_FILE <= MAX_PATH
+    ? {}
+    : { store: new JsonlLocalAgentStore(`${root}-jsonl`) };
+};
+
 const toMcpConfig = (spec: McpServerSpec): McpServerConfig =>
   spec.type === "http"
     ? { type: "http", url: spec.url, ...(spec.headers ? { headers: { ...spec.headers } } : {}) }
@@ -148,6 +174,9 @@ const toCursorError = (cause: unknown): CursorError => {
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "cursor", message, cause });
 
+/** How long a run may go on after its turn ended before the session cancels it (see `runTurn`). */
+const TURN_GRACE_MS = 15_000;
+
 /** `agent.send()` or `run.wait()` rejected; the turn ends with the error instead of failing the session. */
 class SendFailed extends Data.TaggedError("SendFailed")<{ readonly cause: unknown }> {}
 
@@ -180,7 +209,12 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
   // Every MCP call runs without a prompt (local runs never ask), which covers `trustedMcpServers`.
   const agentOptions: AgentOptions = {
     model: selection,
-    local: { cwd: resolve(options.cwd), settingSources: SETTING_SOURCES, ...accessOptions(options.access) },
+    local: {
+      cwd: resolve(options.cwd),
+      settingSources: SETTING_SOURCES,
+      ...accessOptions(options.access),
+      ...localStoreFor(resolve(options.cwd)),
+    },
     ...toolRestrictions(options.access),
     ...(options.includeUserMcpServers ? { mcpServers } : {}),
   };
@@ -218,10 +252,26 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
         instructionsDelivered || options.appendSystemPrompt === undefined
           ? text
           : withInstructions(options.appendSystemPrompt, text);
+      // `run.wait()` settles moments after `turn-ended`. When the SDK cannot save the conversation it
+      // never does, and half a minute later Cursor's service replays the whole turn, commands included
+      // (see `localStoreFor`). So a run still going `TURN_GRACE` after its turn ended is cancelled, the
+      // turn ends there, and any replayed updates are dropped.
+      let ended = false;
+      let markEnded = () => {};
+      const turnEnded = new Promise<"turnEnded">((resolve) => {
+        markEnded = () => setTimeout(() => resolve("turnEnded"), TURN_GRACE_MS).unref();
+      });
       const sendOptions: SendOptions = {
         model: selection,
         ...(options.includeUserMcpServers ? {} : { mcpServers }),
-        onDelta: ({ update }) => emit({ type: "update", turn, update }),
+        onDelta: ({ update }) => {
+          if (ended) return;
+          emit({ type: "update", turn, update });
+          if (update.type === "turn-ended") {
+            ended = true;
+            markEnded();
+          }
+        },
       };
       const record = yield* Effect.tryPromise({
         try: () => agent.send(toUserMessage(prompt, extras), sendOptions),
@@ -232,9 +282,21 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
           return interruptRequested ? cancel(run).pipe(Effect.ignore) : Effect.void;
         }),
         Effect.flatMap((run) =>
-          Effect.tryPromise({ try: () => run.wait(), catch: (cause) => new SendFailed({ cause }) }),
+          Effect.tryPromise({
+            try: () => Promise.race([run.wait(), turnEnded]),
+            catch: (cause) => new SendFailed({ cause }),
+          }).pipe(
+            Effect.flatMap((outcome) =>
+              outcome === "turnEnded"
+                ? cancel(run).pipe(
+                    Effect.ignore,
+                    Effect.timeoutOption("5 seconds"),
+                    Effect.as<CursorRecord>({ type: "turnEnded", turn }),
+                  )
+                : Effect.succeed<CursorRecord>({ type: "result", turn, result: outcome }),
+            ),
+          ),
         ),
-        Effect.map((result): CursorRecord => ({ type: "result", turn, result })),
         Effect.catchTag("SendFailed", ({ cause }) =>
           Effect.succeed<CursorRecord>({ type: "sendFailed", turn, error: toCursorError(cause) }),
         ),
@@ -243,7 +305,9 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
       interruptRequested = false;
       pending--;
       // A failed run may never have reached the model; the instructions ride along again next turn.
-      if (record.type === "result" && record.result.status !== "error") instructionsDelivered = true;
+      if (record.type === "turnEnded" || (record.type === "result" && record.result.status !== "error")) {
+        instructionsDelivered = true;
+      }
       emit(record);
     });
 

@@ -22,6 +22,11 @@ export type CursorRecord =
   | { readonly type: "update"; readonly turn: string; readonly update: InteractionUpdate }
   /** `run.wait()`: how the turn ended. */
   | { readonly type: "result"; readonly turn: string; readonly result: RunResult }
+  /**
+   * The model finished the turn (its `turn-ended` update) but the run never settled: Cursor's service
+   * would replay its turn, so the session cancelled it and ends the turn here.
+   */
+  | { readonly type: "turnEnded"; readonly turn: string }
   /** `agent.send()` or `run.wait()` rejected instead of returning a result. */
   | { readonly type: "sendFailed"; readonly turn: string; readonly error: CursorError };
 
@@ -79,6 +84,8 @@ export class CursorTranslator {
             : undefined,
           record.result.usage,
         );
+      case "turnEnded":
+        return this.#endTurn("completed", undefined, undefined);
       case "sendFailed":
         return this.#endTurn("error", record.error, undefined);
     }
@@ -204,6 +211,7 @@ const rawOf = (record: CursorRecord): unknown => {
     case "sendFailed":
       return record.error;
     case "agent":
+    case "turnEnded":
       return record;
   }
 };

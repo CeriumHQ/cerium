@@ -154,6 +154,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Cursor: turns in long workspace paths on Windows (chat threads, temp and deeply nested folders) now finish. The SDK could not save their conversation there, so a turn never ended and Cursor replayed it, commands and all, every half minute; those workspaces now keep their agents in files the SDK can write, and a run still going 15 seconds after its turn ended is stopped.
+
 - Desktop: Acrylic now shows through the window (the window is transparent), with edge resizing, Snap and Windows 11 rounded corners restored natively since Electron removes them from transparent windows.
 - Claude adapter: trusted bus tools are approved inside the permission callback instead of through `allowedTools`, which bypassed the callback and triggered an SDK warning.
 - `@cerium/rpc`: events reach the UI without the provider's original message, which isn't always strict JSON and ended the live event stream.

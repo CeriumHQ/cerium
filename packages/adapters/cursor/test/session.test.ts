@@ -1,7 +1,14 @@
+import { JsonlLocalAgentStore } from "@cursor/sdk";
 import { describe, expect, it } from "@effect/vitest";
 
 import { NATIVE_SUBAGENT_TOOLS } from "../src/manifest.ts";
-import { READ_ONLY_TOOLS, accessOptions, toolRestrictions, withInstructions } from "../src/session.ts";
+import {
+  READ_ONLY_TOOLS,
+  accessOptions,
+  localStoreFor,
+  toolRestrictions,
+  withInstructions,
+} from "../src/session.ts";
 
 describe("access modes", () => {
   it("runs readOnly and ask with read-only tools, since Cursor cannot ask", () => {
@@ -38,6 +45,22 @@ describe("access modes", () => {
     for (const access of ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"] as const) {
       expect(toolRestrictions(access).disallowedTools).toContain("task");
     }
+  });
+});
+
+describe("where agents are kept", () => {
+  it("leaves the SDK's own store alone where its files fit Windows' path limit", () => {
+    expect(localStoreFor("C:\\Users\\Ada\\code\\app", "win32")).toEqual({});
+  });
+
+  it("keeps a long Windows workspace's agents in JSONL files beside the default store", () => {
+    const deep = `C:\\Users\\Ada\\AppData\\Local\\Temp\\${"nested-folder\\".repeat(4)}workspace`;
+    const { store } = localStoreFor(deep, "win32");
+    expect(store).toBeInstanceOf(JsonlLocalAgentStore);
+  });
+
+  it("never switches stores off Windows", () => {
+    expect(localStoreFor(`/home/ada/${"nested-folder/".repeat(20)}workspace`, "linux")).toEqual({});
   });
 });
 

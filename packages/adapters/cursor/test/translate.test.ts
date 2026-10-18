@@ -325,6 +325,25 @@ describe("CursorTranslator edge cases", () => {
     });
   });
 
+  it("completes a turn the model ended while its run kept going", () => {
+    const translator = new CursorTranslator();
+    const usage = { inputTokens: 10, outputTokens: 3, cacheReadTokens: 4, cacheWriteTokens: 0 };
+    const payloads = [
+      update("t", { type: "text-delta", text: "DONE" }),
+      update("t", { type: "turn-ended", usage }),
+      { type: "turnEnded", turn: "t" } satisfies CursorRecord,
+    ]
+      .flatMap((record) => translator.translate(record))
+      .map((event) => event.payload);
+    expect(payloads.map((payload) => payload._tag)).toEqual([
+      "MessageDelta",
+      "MessageCompleted",
+      "UsageReported",
+      "TurnCompleted",
+    ]);
+    expect(payloads.at(-1)).toEqual({ _tag: "TurnCompleted", stopReason: "completed" });
+  });
+
   it("maps a thrown authentication error to AuthRequired", () => {
     const [first] = new CursorTranslator().translate({
       type: "sendFailed",
