@@ -14,11 +14,28 @@ import {
   relayProtocols,
   MAX_DEVICE_NAME,
   type Channel,
+  type ChannelId,
   type CreateLinkRequest,
   type Credential,
   type DeviceDraft,
+  type DeviceMessage,
+  type TunnelMessage,
 } from "@cerium/protocol";
-import { Context, Data, Effect, FiberHandle, Layer, Option, Schema, Stream, SubscriptionRef } from "effect";
+import { RPC_VERSION } from "@cerium/rpc";
+import {
+  Context,
+  Data,
+  Effect,
+  FiberHandle,
+  Layer,
+  Option,
+  PubSub,
+  Ref,
+  Schema,
+  Stream,
+  SubscriptionRef,
+  type Scope,
+} from "effect";
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http";
 import { Socket } from "effect/socket";
 import { hostname } from "node:os";
@@ -46,7 +63,14 @@ export const thisMachine = (channel: Channel, version: string): DeviceDraft => (
   platform: process.platform,
   channel,
   version: version.trim() || "dev",
+  rpcVersion: RPC_VERSION,
 });
+
+/**
+ * What a tunnel sees (docs/architecture.md §14.8): the relay's tunnel messages, and `RelayLost`
+ * when this machine's connection to the relay drops, which ends every channel it carried.
+ */
+export type TunnelEvent = TunnelMessage | { readonly _tag: "RelayLost" };
 
 export interface AccountOptions {
   /** The relay, e.g. `https://cerium.nonlooped.xyz`. */
@@ -104,6 +128,17 @@ export class Account extends Context.Service<
     rename(deviceId: DeviceId, name: string): Effect.Effect<void, AccountError>;
     /** Removes a device from the account; removing this one signs it out. */
     remove(deviceId: DeviceId): Effect.Effect<void, AccountError>;
+    /** Sends a tunnel frame through the relay; fails while this machine isn't connected. */
+    send(message: DeviceMessage): Effect.Effect<void, AccountError>;
+    /** Tunnel events from now on, for as long as the scope lasts. */
+    readonly tunnel: Effect.Effect<PubSub.Subscription<TunnelEvent>, never, Scope.Scope>;
+    /**
+     * A channel this machine opens to another, for as long as the scope lasts. Every machine both
+     * opens channels and answers them, so answers on its own channels mustn't look like new ones.
+     */
+    readonly openChannel: Effect.Effect<ChannelId, never, Scope.Scope>;
+    /** Whether this machine opened the channel, rather than another device. */
+    isOwnChannel(channel: ChannelId): boolean;
   }
 >()("cerium/backend/Account") {
   /** Requires `Vault`, an `HttpClient` and a `WebSocketConstructor`. */
@@ -117,6 +152,10 @@ export class Account extends Context.Service<
         const state = yield* SubscriptionRef.make<AccountState>({ _tag: "SignedOut" });
         // The one long-running task: waiting for the browser, then staying connected.
         const session = yield* FiberHandle.make<void, never>();
+        /** Writes to the relay while connected. */
+        const live = yield* Ref.make<Option.Option<Socket.Writer>>(Option.none());
+        const tunnelEvents = yield* PubSub.unbounded<TunnelEvent>();
+        const ownChannels = new Set<string>();
         const relay = options.relayUrl.replace(/\/+$/, "");
 
         // ---- The relay's HTTP API ------------------------------------------------------------
@@ -207,6 +246,12 @@ export class Account extends Context.Service<
             });
             const pull = yield* Socket.readerString(socket);
             const writer = yield* socket.writer;
+            yield* Ref.set(live, Option.some(writer));
+            yield* Effect.addFinalizer(() =>
+              Ref.set(live, Option.none()).pipe(
+                Effect.andThen(PubSub.publish(tunnelEvents, { _tag: "RelayLost" })),
+              ),
+            );
             yield* writer.write("ping").pipe(Effect.delay(PING_EVERY), Effect.forever, Effect.forkScoped);
             while (true) {
               const frames = yield* pull.pipe(
@@ -221,8 +266,12 @@ export class Account extends Context.Service<
               for (const frame of frames) {
                 if (frame === "pong") continue;
                 const message = Option.getOrUndefined(decodeMessage(frame));
-                if (message?._tag === "SignedOut") return yield* new SignedOff({ reason: message.reason });
-                if (message?._tag !== "State") continue;
+                if (message === undefined) continue;
+                if (message._tag === "SignedOut") return yield* new SignedOff({ reason: message.reason });
+                if (message._tag !== "State") {
+                  yield* PubSub.publish(tunnelEvents, message);
+                  continue;
+                }
                 yield* SubscriptionRef.set(state, {
                   _tag: "SignedIn",
                   account: message.account,
@@ -413,7 +462,28 @@ export class Account extends Context.Service<
           else yield* start(stored);
         }
 
+        const sendFrame = (message: DeviceMessage) =>
+          Ref.get(live).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.fail(unreachable()),
+                onSome: (writer) => writer.write(JSON.stringify(message)).pipe(Effect.mapError(unreachable)),
+              }),
+            ),
+          );
+
         return Account.of({
+          send: sendFrame,
+          tunnel: PubSub.subscribe(tunnelEvents),
+          openChannel: Effect.acquireRelease(
+            Effect.sync(() => {
+              const channel = randomToken(12) as ChannelId;
+              ownChannels.add(channel);
+              return channel;
+            }),
+            (channel) => Effect.sync(() => ownChannels.delete(channel)),
+          ),
+          isOwnChannel: (channel) => ownChannels.has(channel),
           changes: SubscriptionRef.changes(state),
           signIn,
           cancelSignIn,

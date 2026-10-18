@@ -44,6 +44,11 @@ export const DeviceDraft = Schema.Struct({
   platform: Schema.NonEmptyString,
   channel: Channel,
   version: Schema.NonEmptyString,
+  /**
+   * For a desktop, the UI ↔ backend RPC version its backend speaks (`RPC_VERSION` in `@cerium/rpc`),
+   * so other devices know whether they can drive it.
+   */
+  rpcVersion: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
 });
 export type DeviceDraft = typeof DeviceDraft.Type;
 
@@ -137,20 +142,70 @@ export const RenameDeviceRequest = Schema.Struct({ name: DeviceName });
 /** A refused request's body. `message` is written for the user. */
 export const RelayError = Schema.Struct({ message: Schema.String });
 
+// ---------------------------------------------------------------------------------------------
+// Tunnels (docs/architecture.md §14.8): one device drives another's backend by sending it RPC
+// frames through the relay, which passes them on without reading them.
+
+/** One of a device's connections to the relay; replies go back to the connection that asked. */
+export const ConnectionId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{8,64}$/)).pipe(
+  Schema.brand("cerium/ConnectionId"),
+);
+export type ConnectionId = typeof ConnectionId.Type;
+
+/** A conversation between two connections, named by the one that starts it. */
+export const ChannelId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{8,64}$/));
+export type ChannelId = typeof ChannelId.Type;
+
+/** Where a frame goes: a desktop (its newest connection), or the connection that wrote first. */
+export const TunnelAddress = Schema.Union([
+  Schema.Struct({ device: DeviceId }),
+  Schema.Struct({ connection: ConnectionId }),
+]);
+export type TunnelAddress = typeof TunnelAddress.Type;
+
+/** Who a frame came from. */
+export const TunnelPeer = Schema.Struct({ device: DeviceId, connection: ConnectionId });
+export type TunnelPeer = typeof TunnelPeer.Type;
+
+/** What a device sends its relay socket, besides `ping`. */
+export const DeviceMessage = Schema.Union([
+  /** One RPC frame for the other end, as text. */
+  Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String }),
+  /** This end of the channel is done. */
+  Schema.TaggedStruct("Close", { to: TunnelAddress, channel: ChannelId }),
+]);
+export type DeviceMessage = typeof DeviceMessage.Type;
+
 /**
  * What the relay sends a device's WebSocket: the account's current state after every change, and
  * `SignedOut` just before it closes the socket of a device that was removed or whose credential
- * isn't valid, so the device signs out even where the close handshake never completes.
+ * isn't valid, so the device signs out even where the close handshake never completes. Tunnelled
+ * frames arrive as `Receive` and `Closed`; `Undeliverable` says a frame found nobody to take it, and
+ * `Gone` that a connection ended, so channels with it can end too.
  */
 export const RelayMessage = Schema.Union([
   Schema.TaggedStruct("State", {
     account: AccountProfile,
     self: DeviceId,
+    /** This socket's own connection, which tunnelled replies come back to. */
+    connection: Schema.optionalKey(ConnectionId),
     /** Every device when this one is approved; only itself until then. */
     devices: Schema.Array(DeviceInfo),
   }),
   Schema.TaggedStruct("SignedOut", { reason: Schema.Literals(["removed", "invalid"]) }),
+  Schema.TaggedStruct("Receive", { from: TunnelPeer, channel: ChannelId, data: Schema.String }),
+  Schema.TaggedStruct("Closed", { from: TunnelPeer, channel: ChannelId }),
+  Schema.TaggedStruct("Undeliverable", {
+    channel: ChannelId,
+    /** `offline`: the device isn't connected; `forbidden`: it isn't one this device may reach. */
+    reason: Schema.Literals(["offline", "forbidden"]),
+  }),
+  Schema.TaggedStruct("Gone", { connection: ConnectionId }),
 ]);
+export type TunnelMessage = Extract<
+  RelayMessage,
+  { readonly _tag: "Receive" | "Closed" | "Undeliverable" | "Gone" }
+>;
 export type RelayMessage = typeof RelayMessage.Type;
 
 /** The WebSocket subprotocol the relay speaks; the credential travels as a second one. */

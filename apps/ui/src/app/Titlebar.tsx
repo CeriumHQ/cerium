@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
@@ -26,6 +27,8 @@ interface TitlebarProps {
   readonly agents: ReadonlyArray<ProviderId>;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
+  /** Which of the account's computers the window drives, once there's a choice. */
+  readonly machinePicker?: ReactNode;
 }
 
 export function Titlebar({
@@ -39,6 +42,7 @@ export function Titlebar({
   agents,
   inspectorOpen,
   onToggleInspector,
+  machinePicker,
 }: TitlebarProps) {
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
@@ -48,6 +52,7 @@ export function Titlebar({
       </div>
       <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
       <ModeSwitch mode={mode} onChange={onModeChange} />
+      {machinePicker}
       <div
         inert={settingsOpen}
         className={`flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}

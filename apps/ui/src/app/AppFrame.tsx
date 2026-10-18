@@ -23,6 +23,8 @@ interface AppFrameProps {
    * category. The thread views stay mounted underneath, so leaving settings returns to them as they were.
    */
   readonly settings: { readonly open: boolean; readonly nav: ReactNode; readonly page: ReactNode };
+  /** Which of the account's computers the window drives, once there's a choice. */
+  readonly machinePicker?: ReactNode;
   readonly children: ReactNode;
 }
 
@@ -43,6 +45,7 @@ export function AppFrame({
   inspector,
   onToggleInspector,
   settings,
+  machinePicker,
   children,
 }: AppFrameProps) {
   const view = settings.open ? "settings" : "threads";
@@ -60,6 +63,7 @@ export function AppFrame({
         agents={agents}
         inspectorOpen={inspector !== undefined}
         onToggleInspector={onToggleInspector}
+        machinePicker={machinePicker}
       />
       <div className="flex min-h-0 flex-1 pr-1.5 pb-1.5">
         {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}

@@ -29,6 +29,16 @@ import { Rpc, RpcGroup } from "effect/rpc";
 // The contract between the UI and the backend, served over a localhost WebSocket
 // (docs/architecture.md §7). Payloads and results are protocol schemas, so both sides validate them.
 
+/**
+ * The version of this contract. Changes only add (docs/architecture.md §14.1): a new RPC, or an
+ * optional field. Bump it with each addition a client relies on, so a client driving another
+ * machine knows what that machine's backend offers.
+ */
+export const RPC_VERSION = 1;
+
+/** The oldest backend this UI can drive on another machine. */
+export const MIN_RPC_VERSION = 1;
+
 /** A request the backend refused; `message` is written for the user. */
 export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError", {
   message: Schema.String,

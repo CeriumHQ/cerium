@@ -1,9 +1,15 @@
 import type { AccountState, AgentEvent, AgentId, ProviderId, ThreadId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
-import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import {
+  RegistryContext,
+  RegistryProvider,
+  useAtomRefresh,
+  useAtomSet,
+  useAtomValue,
+} from "@effect/atom-react";
 import { Cause } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   accountAtom,
@@ -11,6 +17,7 @@ import {
   deleteThread,
   harnessesAtom,
   interruptAgent,
+  localWorkingAtom,
   renameThread,
   respondToPermission,
   sendMessage,
@@ -20,10 +27,13 @@ import {
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
+import { driveMachine, machineAtom, machineKey } from "../backend/machine.ts";
 import { saveProject } from "../backend/projects.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { DeviceRequestNotice, useShellPresence } from "../features/account/AccountNotice.tsx";
+import { MachinePicker } from "../features/account/MachinePicker.tsx";
+import { presenceLabel } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
@@ -74,7 +84,17 @@ function Workspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
-  const [folder, setFolder] = useState(() => stored(FOLDER_KEY));
+  const registry = useContext(RegistryContext);
+  const driven = useAtomValue(machineAtom);
+  const folderKey = machineKey(FOLDER_KEY, driven);
+  const [folder, setFolder] = useState(() => stored(folderKey));
+  // Switching machines starts afresh there: its last folder, and no thread open from the other one.
+  const [shownFolderKey, setShownFolderKey] = useState(folderKey);
+  if (shownFolderKey !== folderKey) {
+    setShownFolderKey(folderKey);
+    setFolder(stored(folderKey));
+    setOpenThread({});
+  }
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   /** How tall the approval tray above the message box is, so the transcript's end stays visible. */
@@ -115,10 +135,18 @@ function Workspace() {
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
     _tag: "SignedOut",
   }));
+  // The shell keeps this computer awake for its own agents, whichever machine the window shows.
+  const localWorking = AsyncResult.getOrElse(useAtomValue(localWorkingAtom), () => undefined);
   useShellPresence(
     account,
-    summaries.some((summary) => summary.status === "running"),
+    driven === undefined
+      ? summaries.some((summary) => summary.status === "running")
+      : (localWorking ?? false),
   );
+  const drivenDevice =
+    driven === undefined || account._tag !== "SignedIn"
+      ? undefined
+      : account.devices.find((device) => device.id === driven.id);
   const markSeen = useEffectEvent(() => {
     if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
       readState.markRead([selectedSummary]);
@@ -199,7 +227,7 @@ function Workspace() {
 
   const chooseFolder = (picked: string) => {
     setFolder(picked);
-    remember(FOLDER_KEY, picked);
+    remember(folderKey, picked);
   };
 
   const toggleSidebar = () => {
@@ -332,6 +360,7 @@ function Workspace() {
           onOpenSettings={openSettings}
         />
       }
+      machinePicker={<MachinePicker account={account} />}
       settings={{
         open: settingsOpen,
         nav: (
@@ -363,7 +392,20 @@ function Workspace() {
       onToggleInspector={() => setInspectorOpen((open) => !open)}
     >
       <div className="relative flex h-full flex-col">
-        {connection === "unreachable" ? (
+        {connection === "unreachable" && driven !== undefined ? (
+          <Notice tone="attention">
+            Can't reach {driven.name}
+            {drivenDevice && !drivenDevice.online ? ` (${presenceLabel(drivenDevice).toLowerCase()})` : ""}.
+            Cerium keeps trying.{" "}
+            <button
+              type="button"
+              onClick={() => driveMachine(registry, undefined)}
+              className="font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
+            >
+              Back to this computer
+            </button>
+          </Notice>
+        ) : connection === "unreachable" ? (
           <Notice tone="attention">
             Reconnecting to Cerium's backend…
             {import.meta.env.DEV ? (

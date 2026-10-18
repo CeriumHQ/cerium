@@ -19,7 +19,8 @@ import { Socket } from "effect/socket";
 import { join } from "node:path";
 
 import { Account, DEFAULT_RELAY_URL, thisMachine, type AccountOptions } from "./account.ts";
-import { rpcRoutes } from "./rpc.ts";
+import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
+import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { Vault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
@@ -105,10 +106,19 @@ const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
  * endpoint served on one loopback port.
  */
 export const backendLayer = (options: BackendOptions) =>
-  HttpRouter.serve(Layer.mergeAll(BusRoutes, rpcRoutes(options.token)), {
-    disableListenLog: true,
-    disableLogger: true,
-  }).pipe(
+  HttpRouter.serve(
+    Layer.mergeAll(
+      BusRoutes,
+      rpcRoutes(options.token),
+      remoteRoutes(requireToken(options.token)),
+      // Other devices driving this machine through the relay.
+      tunnelRpcServer.pipe(Layer.provide(TunnelSocketServer)),
+    ),
+    {
+      disableListenLog: true,
+      disableLogger: true,
+    },
+  ).pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),

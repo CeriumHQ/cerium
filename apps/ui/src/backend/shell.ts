@@ -1,3 +1,5 @@
+import { drivenMachine } from "./machine.ts";
+
 /** Where the UI reaches the backend. */
 export interface BackendConnection {
   readonly url: string;
@@ -91,10 +93,24 @@ declare global {
   }
 }
 
-export const shellBridge = (): ShellBridge | undefined => window.cerium;
+/**
+ * The shell's bridge. While the window drives another machine (§14.8), what reaches this computer's
+ * files is left out: a path from that machine means nothing here, so files are shown and picked on
+ * that machine itself, and attachments travel as bytes.
+ */
+export const shellBridge = (): ShellBridge | undefined => {
+  const bridge = window.cerium;
+  if (bridge === undefined || drivenMachine() === undefined) return bridge;
+  const { pickFolder: _pick, pathForFile: _path, revealPath: _reveal, ...elsewhere } = bridge;
+  return elsewhere;
+};
 
-/** Asks the user for a folder: the native dialog in Electron, a prompt in the browser preview. */
+/**
+ * Asks the user for a folder: the native dialog in Electron, a prompt in the browser preview. None
+ * while the window drives another machine, whose folders this computer can't show.
+ */
 export const pickFolder = async (): Promise<string | undefined> => {
+  if (drivenMachine() !== undefined) return undefined;
   const bridge = shellBridge();
   if (bridge?.pickFolder) return bridge.pickFolder();
   const path = window.prompt("Folder for this thread (full path)")?.trim();

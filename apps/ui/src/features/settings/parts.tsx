@@ -1,22 +1,39 @@
+import { useAtomValue } from "@effect/atom-react";
+import { Monitor } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { machineAtom } from "../../backend/machine.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 
-/** A settings category: its title and what it covers, over its sections. Settles in when opened. */
+/**
+ * A settings category: its title and what it covers, over its sections. Settles in when opened.
+ * `perMachine` pages show the driven machine's settings, and say which while it isn't this one.
+ */
 export function SettingsPage({
   title,
   description,
+  perMachine = false,
   children,
 }: {
   title: string;
   description: ReactNode;
+  perMachine?: boolean;
   children: ReactNode;
 }) {
+  const driven = useAtomValue(machineAtom);
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto flex max-w-[42rem] flex-col gap-10 px-10 pt-12 pb-20 transition-[opacity,translate] duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
         <header className="flex flex-col gap-1.5">
-          <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary">{title}</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary">{title}</h1>
+            {perMachine && driven ? (
+              <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-[12px] font-medium text-fg-primary">
+                <Monitor size={12} strokeWidth={1.75} className="shrink-0" />
+                <span className="truncate">On {driven.name}</span>
+              </span>
+            ) : null}
+          </div>
           <p className="max-w-md text-[13px] leading-relaxed text-fg-tertiary">{description}</p>
         </header>
         {children}

@@ -20,7 +20,7 @@ const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | Store
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
 
-const Handlers = CeriumRpcs.toLayer(
+export const Handlers = CeriumRpcs.toLayer(
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     const adapters = yield* Adapters;
@@ -149,7 +149,7 @@ const sameSecret = (given: string, expected: string) =>
  * Only the UI holding this launch's token may connect. Browsers can't set WebSocket headers, so the
  * token travels in the query string; the check happens before the upgrade.
  */
-const requireToken = (token: string) =>
+export const requireToken = (token: string) =>
   HttpRouter.middleware((httpEffect) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -168,3 +168,24 @@ export const rpcRoutes = (token: string) =>
     ),
     Layer.provide(RpcSerialization.layerJson),
   );
+
+/**
+ * What another device may call through the relay (docs/architecture.md §14.8): everything but this
+ * machine's own account, which only its own UI manages.
+ */
+export const TunnelRpcs = CeriumRpcs.omit(
+  "WatchAccount",
+  "SignIn",
+  "CancelSignIn",
+  "SignOut",
+  "ApproveDevice",
+  "RenameDevice",
+  "RemoveDevice",
+);
+
+/** The RPC server for tunnelled channels. Requires what the handlers do and a `SocketServer`. */
+export const tunnelRpcServer = RpcServer.layer(TunnelRpcs).pipe(
+  Layer.provide(Handlers),
+  Layer.provide(RpcServer.layerProtocolSocketServer),
+  Layer.provide(RpcSerialization.layerJson),
+);

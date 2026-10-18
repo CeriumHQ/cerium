@@ -6,6 +6,7 @@ import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
+import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
@@ -41,15 +42,18 @@ export function HarnessSettings() {
     refreshModels();
   };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> => []);
+  const driven = useAtomValue(machineAtom);
+  const where = driven?.name ?? "this computer";
   const checking = result.waiting;
 
   return (
     <SettingsPage
+      perMachine
       title="Harnesses"
-      description="The agent harnesses Cerium drives on this computer. Each keeps its own login: Cerium checks that you're signed in, and never sees your keys or tokens."
+      description={`The agent harnesses Cerium drives on ${where}. Each keeps its own login: Cerium checks that you're signed in, and never sees your keys or tokens.`}
     >
       <SettingsSection
-        title="On this computer"
+        title={driven ? `On ${driven.name}` : "On this computer"}
         description="Cerium drives the harnesses you have installed and never bundles their CLIs. Cursor runs inside Cerium, through its own SDK."
         action={
           <Button

@@ -38,6 +38,7 @@ export function ArchivedSettings() {
 
   return (
     <SettingsPage
+      perMachine
       title="Archived"
       description="Threads and chats you archived. Restoring one puts it back in the inbox or the chat list."
     >

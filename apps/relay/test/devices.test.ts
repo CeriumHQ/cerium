@@ -10,6 +10,7 @@ const row = (id: string, approved: boolean, extra: Partial<DeviceRow> = {}): Dev
   platform: "win32",
   channel: "stable",
   version: "0.4.0",
+  rpc_version: 1,
   secret_hash: "0".repeat(64),
   created_at: 1_000,
   approved_at: approved ? 2_000 : null,

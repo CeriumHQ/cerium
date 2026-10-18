@@ -5,6 +5,7 @@ import { AsyncResult } from "effect/reactivity";
 import type { ReactElement } from "react";
 
 import { imageAtom } from "../backend/files.ts";
+import { drivenMachine } from "../backend/machine.ts";
 import { shellBridge } from "../backend/shell.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "./ui/Menu.tsx";
 
@@ -55,7 +56,12 @@ function ImageMenu({ url, name, path }: { url: string; name: string; path: strin
       {save ? (
         <MenuItem
           icon={Download}
-          onClick={() => void save(path ?? url, fileNameFor(name, url)).catch(() => undefined)}
+          // A path on another machine means nothing here; the image's bytes are already in the page.
+          onClick={() =>
+            void save(drivenMachine() === undefined ? (path ?? url) : url, fileNameFor(name, url)).catch(
+              () => undefined,
+            )
+          }
         >
           Save image as…
         </MenuItem>

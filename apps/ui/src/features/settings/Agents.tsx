@@ -80,7 +80,11 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
   const activeEffort = model ? effortFor(model, effort) : undefined;
 
   return (
-    <SettingsPage title="Agents" description="How new threads start, and what their agents can reach.">
+    <SettingsPage
+      perMachine
+      title="Agents"
+      description="How new threads start, and what their agents can reach."
+    >
       <SettingsSection
         title="Lead model"
         description="The model that leads a new thread. The composer offers the same choice and remembers the last one picked."

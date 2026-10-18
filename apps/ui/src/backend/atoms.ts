@@ -3,7 +3,8 @@ import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionAtom, LocalBackend, localConnectionAtom } from "./client.ts";
+import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
 const resubscribe = Stream.retry(Schedule.spaced("1 second"));
@@ -41,9 +42,14 @@ const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor
 const MODELS_KEY = "cerium:models";
 const CachedModels = Schema.fromJsonString(Schema.Array(ModelInfo));
 
-/** The last lists the harnesses gave, so the model pickers fill in before they answer again. */
-const cachedModels = (): ReadonlyArray<ModelInfo> =>
-  Schema.decodeUnknownOption(CachedModels)(stored(MODELS_KEY)).pipe(Option.getOrElse(() => []));
+/**
+ * The last lists the driven machine's harnesses gave, so the model pickers fill in before they
+ * answer again. Each machine has its own: their harnesses differ.
+ */
+const cachedModels = (machine: DrivenMachine | undefined): ReadonlyArray<ModelInfo> =>
+  Schema.decodeUnknownOption(CachedModels)(stored(machineKey(MODELS_KEY, machine))).pipe(
+    Option.getOrElse(() => []),
+  );
 
 /**
  * Every harness's models, in provider order. Each provider's list replaces its cached one as soon as
@@ -52,6 +58,7 @@ const cachedModels = (): ReadonlyArray<ModelInfo> =>
 export const modelsAtom = Backend.runtime.atom(
   (get) => {
     get(connectionAtom);
+    const machine = get(machineAtom);
     return Stream.unwrap(
       Backend.use((client) =>
         Effect.succeed(
@@ -69,18 +76,21 @@ export const modelsAtom = Backend.runtime.atom(
         ),
       ),
     ).pipe(
-      Stream.scan(cachedModels, (current, answer) => {
-        const next = providers.flatMap((provider) =>
-          provider === answer.provider
-            ? answer.models
-            : current.filter((model) => model.provider === provider),
-        );
-        remember(MODELS_KEY, Schema.encodeSync(CachedModels)(next));
-        return next;
-      }),
+      Stream.scan(
+        () => cachedModels(machine),
+        (current, answer) => {
+          const next = providers.flatMap((provider) =>
+            provider === answer.provider
+              ? answer.models
+              : current.filter((model) => model.provider === provider),
+          );
+          remember(machineKey(MODELS_KEY, machine), Schema.encodeSync(CachedModels)(next));
+          return next;
+        },
+      ),
     );
   },
-  { initialValue: cachedModels() },
+  { initialValue: cachedModels(undefined) },
 );
 
 /**
@@ -97,9 +107,35 @@ export const loginAtom = Atom.family((provider: ProviderId) =>
  * This machine's Cerium account (docs/architecture.md §14): signed out, signing in, or signed in with
  * the account's devices. Picked back up after a reconnect.
  */
-export const accountAtom = Backend.runtime.atom(
-  Stream.unwrap(Backend.use((client) => Effect.succeed(client("WatchAccount", undefined)))).pipe(resubscribe),
+export const accountAtom = LocalBackend.runtime.atom(
+  Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchAccount", undefined)))).pipe(
+    resubscribe,
+  ),
 );
+
+/**
+ * Whether this computer's own agents are working while the window drives another machine; the
+ * shell keeps this computer awake for them. Undefined while the window drives this computer, whose
+ * threads say so already.
+ */
+export const localWorkingAtom = LocalBackend.runtime.atom((get) => {
+  if (get(machineAtom) === undefined) return Stream.succeed<boolean | undefined>(undefined);
+  get(localConnectionAtom);
+  return Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchEvents", undefined)))).pipe(
+    resubscribe,
+    Stream.filter((event) => !isDelta(event)),
+    Stream.mapEffect(() =>
+      LocalBackend.use((client) => client("ListThreads", undefined)).pipe(
+        Effect.map((threads) =>
+          threads.some((thread) =>
+            thread.agents.some((agent) => agent.state === "running" || agent.state === "queued"),
+          ),
+        ),
+        Effect.orElseSucceed(() => false),
+      ),
+    ),
+  );
+});
 
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {
@@ -161,9 +197,10 @@ export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const deleteThread = Backend.mutation("DeleteThread");
 export const updateSettings = Backend.mutation("UpdateSettings");
-export const signIn = Backend.mutation("SignIn");
-export const cancelSignIn = Backend.mutation("CancelSignIn");
-export const signOut = Backend.mutation("SignOut");
-export const approveDevice = Backend.mutation("ApproveDevice");
-export const renameDevice = Backend.mutation("RenameDevice");
-export const removeDevice = Backend.mutation("RemoveDevice");
+// This computer's account is managed only from its own backend, whatever the window drives.
+export const signIn = LocalBackend.mutation("SignIn");
+export const cancelSignIn = LocalBackend.mutation("CancelSignIn");
+export const signOut = LocalBackend.mutation("SignOut");
+export const approveDevice = LocalBackend.mutation("ApproveDevice");
+export const renameDevice = LocalBackend.mutation("RenameDevice");
+export const removeDevice = LocalBackend.mutation("RemoveDevice");

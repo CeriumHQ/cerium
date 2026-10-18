@@ -1,24 +1,29 @@
 import {
   credentialFromProtocols,
+  DeviceMessage,
   hashSecret,
   randomToken,
   RELAY_PROTOCOL,
   type AccountId,
   type AccountProfile,
   type ConfirmLinkRequest,
+  type ConnectionId,
   type Credential,
   type DeviceDraft,
   type DeviceId,
+  type RelayMessage,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
+import { Option, Schema } from "effect";
 
 import { approvedOnLink, mayManage, stateFor, type DeviceAction, type DeviceRow } from "./devices.ts";
 import type { Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
+import { routeFrame, type Live } from "./tunnel.ts";
 
 // One Cerium account (docs/architecture.md §14.4): its devices, and every device's WebSocket. The
 // sockets hibernate between messages and `ping` is answered without waking the object, so an idle
-// connection costs nothing.
+// connection costs nothing. Frames one device tunnels to another pass through here unread (§14.8).
 
 /** What a refused action reports to the Worker, which answers with it. */
 export type Outcome =
@@ -28,12 +33,23 @@ export type Outcome =
 const done: Outcome = { ok: true };
 const refused = (status: number, message: string): Outcome => ({ ok: false, status, message });
 
-interface Attachment {
-  readonly deviceId: string;
-}
+/** What each device socket carries through hibernation. */
+type Attachment = Live;
+
+const decodeDeviceMessage = Schema.decodeUnknownOption(Schema.fromJsonString(DeviceMessage));
+
+const send = (socket: WebSocket, message: RelayMessage) => {
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    // The socket is closing; its close handler tells the others.
+  }
+};
 
 export class Account extends DurableObject<Env> {
   private readonly sql: SqlStorage;
+  /** The devices table while the object is awake; every write drops it. */
+  private cached: Array<DeviceRow> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -45,11 +61,17 @@ export class Account extends DurableObject<Env> {
       platform TEXT NOT NULL,
       channel TEXT NOT NULL,
       version TEXT NOT NULL,
+      rpc_version INTEGER,
       secret_hash TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       approved_at INTEGER,
       last_seen_at INTEGER
     )`);
+    // Tables made before devices reported the RPC version they speak.
+    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(devices)").toArray();
+    if (!columns.some((column) => column.name === "rpc_version")) {
+      this.sql.exec("ALTER TABLE devices ADD COLUMN rpc_version INTEGER");
+    }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS profile (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       account_id TEXT NOT NULL,
@@ -70,15 +92,16 @@ export class Account extends DurableObject<Env> {
     const now = Date.now();
     const approved = approvedOnLink(this.rows());
     const deviceId = randomToken(16) as DeviceId;
-    this.sql.exec(
-      `INSERT INTO devices (id, kind, name, platform, channel, version, secret_hash, created_at, approved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    this.write(
+      `INSERT INTO devices (id, kind, name, platform, channel, version, rpc_version, secret_hash, created_at, approved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       deviceId,
       device.kind,
       device.name,
       device.platform,
       device.channel,
       device.version,
+      device.rpcVersion ?? null,
       secretHash,
       now,
       approved ? now : null,
@@ -127,7 +150,11 @@ export class Account extends DurableObject<Env> {
 
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server, [row.id]);
-    server.serializeAttachment({ deviceId: row.id } satisfies Attachment);
+    server.serializeAttachment({
+      deviceId: row.id,
+      connection: randomToken(12),
+      connectedAt: Date.now(),
+    } satisfies Attachment);
     this.touch(row.id);
     this.broadcast();
     return new Response(null, {
@@ -137,8 +164,34 @@ export class Account extends DurableObject<Env> {
     });
   }
 
-  override webSocketMessage(): void {
-    // Devices only send `ping`, which the auto-response answers.
+  /** A tunnelled frame, passed on unread to the connection it's for (§14.8). */
+  override webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
+    if (typeof message !== "string" || message === "ping") return;
+    const frame = Option.getOrUndefined(decodeDeviceMessage(message));
+    const self = this.attachment(socket);
+    if (frame === undefined || self === undefined) return;
+    const rows = this.rows();
+    const live = this.live();
+    const route = routeFrame(
+      rows.find((row) => row.id === self.deviceId),
+      frame.to,
+      rows,
+      live.map(({ attachment }) => attachment),
+    );
+    if ("undeliverable" in route) {
+      if (frame._tag === "Send")
+        send(socket, { _tag: "Undeliverable", channel: frame.channel, reason: route.undeliverable });
+      return;
+    }
+    const target = live.find(({ attachment }) => attachment.connection === route.to.connection)?.socket;
+    if (target === undefined) return;
+    const from = { device: self.deviceId as DeviceId, connection: self.connection as ConnectionId };
+    send(
+      target,
+      frame._tag === "Send"
+        ? { _tag: "Receive", from, channel: frame.channel, data: frame.data }
+        : { _tag: "Closed", from, channel: frame.channel },
+    );
   }
 
   override webSocketClose(socket: WebSocket, code: number, reason: string): void {
@@ -157,21 +210,21 @@ export class Account extends DurableObject<Env> {
   async approve(credential: Credential, targetId: DeviceId): Promise<Outcome> {
     return this.manage(credential, targetId, "approve", (target) => {
       if (target.approved_at === null) {
-        this.sql.exec("UPDATE devices SET approved_at = ? WHERE id = ?", Date.now(), target.id);
+        this.write("UPDATE devices SET approved_at = ? WHERE id = ?", Date.now(), target.id);
       }
     });
   }
 
   async rename(credential: Credential, targetId: DeviceId, name: string): Promise<Outcome> {
     return this.manage(credential, targetId, "rename", (target) => {
-      this.sql.exec("UPDATE devices SET name = ? WHERE id = ?", name, target.id);
+      this.write("UPDATE devices SET name = ? WHERE id = ?", name, target.id);
     });
   }
 
   /** Removes a device: denying one that waits for approval, or signing one out. Its sockets close. */
   async remove(credential: Credential, targetId: DeviceId): Promise<Outcome> {
     return this.manage(credential, targetId, "remove", (target) => {
-      this.sql.exec("DELETE FROM devices WHERE id = ?", target.id);
+      this.write("DELETE FROM devices WHERE id = ?", target.id);
       for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
     });
   }
@@ -200,23 +253,45 @@ export class Account extends DurableObject<Env> {
     return (await hashSecret(credential.secret)) === row.secret_hash;
   }
 
+  private write(query: string, ...bindings: Array<SqlStorageValue>) {
+    this.sql.exec(query, ...bindings);
+    this.cached = undefined;
+  }
+
   private rows(): Array<DeviceRow> {
-    return this.sql.exec<DeviceRow>("SELECT * FROM devices ORDER BY created_at").toArray();
+    this.cached ??= this.sql.exec<DeviceRow>("SELECT * FROM devices ORDER BY created_at").toArray();
+    return this.cached;
   }
 
   private row(id: string): DeviceRow | undefined {
-    return this.sql.exec<DeviceRow>("SELECT * FROM devices WHERE id = ?", id).toArray()[0];
+    return this.rows().find((row) => row.id === id);
   }
 
   private touch(deviceId: string) {
-    this.sql.exec("UPDATE devices SET last_seen_at = ? WHERE id = ?", Date.now(), deviceId);
+    this.write("UPDATE devices SET last_seen_at = ? WHERE id = ?", Date.now(), deviceId);
+  }
+
+  private attachment(socket: WebSocket): Attachment | undefined {
+    return (socket.deserializeAttachment() as Attachment | null) ?? undefined;
+  }
+
+  /** Every device socket, with what it carries; `closing` no longer counts. */
+  private live(closing?: WebSocket) {
+    return this.ctx.getWebSockets().flatMap((socket) => {
+      const attachment = this.attachment(socket);
+      return socket === closing || attachment === undefined ? [] : [{ socket, attachment }];
+    });
   }
 
   private closed(socket: WebSocket) {
-    const attachment = socket.deserializeAttachment() as Attachment | null;
-    if (attachment === null) return;
+    const attachment = this.attachment(socket);
+    if (attachment === undefined) return;
     this.touch(attachment.deviceId);
     this.broadcast(socket);
+    // Channels with this connection end with it.
+    for (const other of this.live(socket)) {
+      send(other.socket, { _tag: "Gone", connection: attachment.connection as ConnectionId });
+    }
   }
 
   /** Sends every connected device the account's state; `closing` no longer counts as connected. */
@@ -224,22 +299,15 @@ export class Account extends DurableObject<Env> {
     const profile = this.profile();
     if (profile === undefined) return;
     const rows = this.rows();
-    const attached = this.ctx.getWebSockets().flatMap((socket) => {
-      const attachment = socket.deserializeAttachment() as Attachment | null;
-      return socket === closing || attachment === null ? [] : [{ socket, deviceId: attachment.deviceId }];
-    });
-    const online = new Set(attached.map(({ deviceId }) => deviceId));
-    for (const { socket, deviceId } of attached) {
-      const self = rows.find((row) => row.id === deviceId);
+    const attached = this.live(closing);
+    const online = new Set(attached.map(({ attachment }) => attachment.deviceId));
+    for (const { socket, attachment } of attached) {
+      const self = rows.find((row) => row.id === attachment.deviceId);
       if (self === undefined) {
         signOut(socket, "removed");
         continue;
       }
-      try {
-        socket.send(JSON.stringify(stateFor(self, rows, online, profile)));
-      } catch {
-        // The socket is closing; its close handler sends the others the change.
-      }
+      send(socket, stateFor(self, rows, online, profile, attachment.connection));
     }
   }
 }

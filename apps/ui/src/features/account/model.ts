@@ -1,4 +1,5 @@
 import type { AccountState, DeviceInfo } from "@cerium/protocol";
+import { MIN_RPC_VERSION } from "@cerium/rpc";
 
 import { whenAgo } from "../../lib/time.ts";
 
@@ -57,6 +58,16 @@ export const presenceLabel = (device: DeviceInfo, now = Date.now()): string => {
   if (device.online) return "Online";
   if (device.lastSeenAt === undefined) return "Never connected";
   return `Last seen ${whenAgo(device.lastSeenAt, now)}`;
+};
+
+/**
+ * Why another desktop can't be driven from here right now (§14.8), or nothing when it can: its
+ * backend is too old for this UI, or it isn't connected.
+ */
+export const whyUnreachable = (device: DeviceInfo, now = Date.now()): string | undefined => {
+  if ((device.rpcVersion ?? 0) < MIN_RPC_VERSION) return "Update Cerium there to reach it";
+  if (!device.online) return presenceLabel(device, now);
+  return undefined;
 };
 
 /** Up to two initials for an account without a picture. */

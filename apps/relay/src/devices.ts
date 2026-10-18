@@ -1,6 +1,7 @@
 import type {
   AccountProfile,
   Channel,
+  ConnectionId,
   DeviceId,
   DeviceInfo,
   DeviceKind,
@@ -18,6 +19,7 @@ export type DeviceRow = {
   readonly platform: string;
   readonly channel: Channel;
   readonly version: string;
+  readonly rpc_version: number | null;
   readonly secret_hash: string;
   readonly created_at: number;
   readonly approved_at: number | null;
@@ -31,6 +33,7 @@ export const toDeviceInfo = (row: DeviceRow, online: boolean): DeviceInfo => ({
   platform: row.platform,
   channel: row.channel,
   version: row.version,
+  ...(row.rpc_version === null ? {} : { rpcVersion: row.rpc_version }),
   approved: row.approved_at !== null,
   online,
   createdAt: row.created_at,
@@ -56,9 +59,11 @@ export const stateFor = (
   rows: ReadonlyArray<DeviceRow>,
   online: ReadonlySet<string>,
   account: AccountProfile,
+  connection?: string,
 ): Extract<RelayMessage, { readonly _tag: "State" }> => ({
   _tag: "State",
   account,
   self: self.id as DeviceId,
+  ...(connection === undefined ? {} : { connection: connection as ConnectionId }),
   devices: (self.approved_at === null ? [self] : rows).map((row) => toDeviceInfo(row, online.has(row.id))),
 });

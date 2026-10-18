@@ -5,6 +5,7 @@ import { Check, ChevronDown, FolderOpen, FolderPlus, Search, X } from "lucide-re
 import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 
+import { machineAtom } from "../../backend/machine.ts";
 import { removeProject, savedProjectsAtom, saveProject } from "../../backend/projects.ts";
 import { pickFolder } from "../../backend/shell.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -33,6 +34,7 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
     (): ReadonlyArray<ProjectInfo> => [],
   );
   const refresh = useAtomRefresh(savedProjectsAtom);
+  const machine = useAtomValue(machineAtom);
   const save = useAtomSet(saveProject, { mode: "promise" });
   const remove = useAtomSet(removeProject, { mode: "promise" });
   const byPath = new Map(projects.map((project) => [project.path, project]));
@@ -73,8 +75,9 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
       onValueChange={(value) => {
         if (value === null) return;
         setOpen(false);
-        if (value === ADD_FOLDER) browse();
-        else choose(value);
+        if (value === ADD_FOLDER) {
+          if (machine === undefined) browse();
+        } else choose(value);
       }}
       autoHighlight
     >
@@ -114,6 +117,7 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
                   item === ADD_FOLDER ? (
                     <AddFolderItem
                       key={item}
+                      elsewhere={machine?.name}
                       hint={
                         projects.length === 0
                           ? "Folders you work in are saved here."
@@ -179,8 +183,30 @@ function ProjectItem({ project, onRemove }: { project: ProjectInfo; onRemove: ()
   );
 }
 
-/** Browses for a folder; `hint` stands in for the projects when there are none to show. */
-function AddFolderItem({ hint }: { hint: string | undefined }) {
+/**
+ * Browses for a folder; `hint` stands in for the projects when there are none to show. Another
+ * machine's folders can't be browsed from here yet, so it says where to add one instead.
+ */
+function AddFolderItem({ hint, elsewhere }: { hint: string | undefined; elsewhere: string | undefined }) {
+  if (elsewhere !== undefined) {
+    return (
+      <>
+        {hint ? (
+          <p className="px-2 pt-2 pb-1.5 text-[12.5px] leading-relaxed text-fg-tertiary">{hint}</p>
+        ) : (
+          <Combobox.Separator className="mx-2 my-1 h-px bg-line-subtle" />
+        )}
+        <Combobox.Item value={ADD_FOLDER} disabled className={`${itemClass} data-disabled:opacity-100`}>
+          <span className="grid size-4.5 shrink-0 place-items-center text-fg-tertiary">
+            <FolderPlus size={14} strokeWidth={1.75} />
+          </span>
+          <span className="flex-1 text-[12.5px] leading-snug text-fg-tertiary">
+            Add folders in Cerium on {elsewhere}
+          </span>
+        </Combobox.Item>
+      </>
+    );
+  }
   return (
     <>
       {hint ? (

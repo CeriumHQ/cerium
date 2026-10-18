@@ -7,6 +7,7 @@ import {
   orderedDevices,
   presenceLabel,
   waitingDevices,
+  whyUnreachable,
 } from "../src/features/account/model.ts";
 
 const device = (id: string, extra: Partial<DeviceInfo> = {}): DeviceInfo => ({
@@ -83,6 +84,17 @@ describe("presence", () => {
     expect(presenceLabel(device("a"), now)).toBe("Never connected");
     expect(presenceLabel(device("a", { lastSeenAt: now - 20_000 }), now)).toBe("Last seen just now");
     expect(presenceLabel(device("a", { lastSeenAt: now - 5 * 60_000 }), now)).toBe("Last seen 5 minutes ago");
+  });
+});
+
+describe("reaching another desktop", () => {
+  it("works while it's online with a backend this UI can drive", () => {
+    expect(whyUnreachable(device("b", { online: true, rpcVersion: 1 }))).toBeUndefined();
+  });
+
+  it("says when it's offline, or too old to drive", () => {
+    expect(whyUnreachable(device("b", { rpcVersion: 1 }))).toBe("Never connected");
+    expect(whyUnreachable(device("b", { online: true }))).toBe("Update Cerium there to reach it");
   });
 });
 
