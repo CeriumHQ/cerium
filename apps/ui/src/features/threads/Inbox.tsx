@@ -65,7 +65,6 @@ export function Inbox({ threads, ...actions }: InboxProps) {
   const scoped = project ? threads.filter((thread) => thread.folder === project.folder) : threads;
   const sections = inboxSections(scoped);
   const unread = scoped.filter((thread) => thread.unread);
-  const caughtUp = sections.length > 0 && sections.every((section) => section.kind === "time");
 
   const chooseScope = (folder: string) => {
     remember(SCOPE_KEY, folder);
@@ -120,11 +119,12 @@ export function Inbox({ threads, ...actions }: InboxProps) {
 
       <ScrollArea className="flex-1">
         <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Threads">
-          {caughtUp ? <p className="px-2 text-xs text-fg-tertiary">Nothing needs you right now.</p> : null}
-          {sections.map((section) => (
+          {sections.map((section, index) => (
             <InboxSection
               key={section.key}
               section={section}
+              // Today's threads leading the list need no heading; below a status section they do.
+              headed={!(index === 0 && section.key === "Today")}
               scope={project?.folder}
               onScope={chooseScope}
               {...actions}
@@ -141,15 +141,21 @@ export function Inbox({ threads, ...actions }: InboxProps) {
   );
 }
 
-function InboxSection({ section, ...rowProps }: { section: ThreadSection } & RowProps) {
+function InboxSection({
+  section,
+  headed,
+  ...rowProps
+}: { section: ThreadSection; headed: boolean } & RowProps) {
   return (
     <section aria-label={section.label}>
-      <h3 className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-fg-secondary/80">
-        {section.label}
-        {section.kind === "status" ? (
-          <span className="text-fg-tertiary tabular-nums">{section.threads.length}</span>
-        ) : null}
-      </h3>
+      {headed ? (
+        <h3 className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-fg-secondary/80">
+          {section.label}
+          {section.kind === "status" ? (
+            <span className="text-fg-tertiary tabular-nums">{section.threads.length}</span>
+          ) : null}
+        </h3>
+      ) : null}
       <ul className="flex flex-col gap-px">
         {section.threads.map((thread) => (
           <li key={thread.id}>
