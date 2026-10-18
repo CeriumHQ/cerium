@@ -1,7 +1,13 @@
-import { mentionToken, type Attachment, type Mention } from "@cerium/protocol";
+import {
+  mentionToken,
+  type AccessMode,
+  type Attachment,
+  type Mention,
+  type ReasoningEffort,
+} from "@cerium/protocol";
 
 // A message being written: its text with the files, folders and skills tagged inside it, and the
-// files attached to it. Kept per thread, so switching threads keeps each one's draft.
+// files attached to it. Kept per thread, and per thread not started yet, in `drafts.ts`.
 
 export type Segment =
   | { readonly kind: "text"; readonly text: string }
@@ -20,12 +26,33 @@ export interface DraftAttachment {
     | { readonly _tag: "Failed"; readonly message: string };
 }
 
+/** What a thread not started yet starts with, beyond the window's defaults for new threads. */
+export interface DraftStart {
+  readonly mode: "work" | "chat";
+  /** When the user started writing it; drafts are listed newest first by this, so rows stay put. */
+  readonly createdAt: number;
+  /** The machine it starts on (docs/architecture.md §14.8); none for this computer. */
+  readonly machine?: string;
+  /** The work thread's folder. */
+  readonly folder?: string;
+  /** Picks made in this draft's message box, which win over the defaults. */
+  readonly model?: string;
+  readonly effort?: ReasoningEffort;
+  readonly access?: AccessMode;
+}
+
 export interface Draft {
   readonly segments: ReadonlyArray<Segment>;
   readonly attachments: ReadonlyArray<DraftAttachment>;
+  /** Set for a thread not started yet. */
+  readonly start?: DraftStart;
 }
 
 export const emptyDraft: Draft = { segments: [], attachments: [] };
+
+/** Something the user wrote or attached, which a message could send. */
+export const hasContent = (draft: Draft | undefined): draft is Draft =>
+  draft !== undefined && (draftText(draft.segments).trim() !== "" || draft.attachments.length > 0);
 
 /** The text agents read: each mention as its token. */
 export const draftText = (segments: ReadonlyArray<Segment>): string =>

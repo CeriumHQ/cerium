@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
+import { useAtomValue } from "@effect/atom-react";
 import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen, Trash2, Monitor } from "lucide-react";
 import { useState } from "react";
 
@@ -10,7 +11,9 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { shortAgo } from "../../lib/time.ts";
+import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
+import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
 import { Inbox } from "./Inbox.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
@@ -22,8 +25,12 @@ interface SidebarProps {
   /** Only this mode's threads are listed. */
   readonly mode: "work" | "chat";
   readonly threads: ReadonlyArray<ThreadSummary>;
+  /** The open thread, or the open draft of a thread not started yet. */
   readonly selectedId: string | undefined;
   readonly onSelect: (threadId: string) => void;
+  readonly onSelectDraft: (draft: NewThreadDraft) => void;
+  readonly onDiscardDraft: (key: string) => void;
+  readonly draftMachine: DraftMachine;
   readonly onNewThread: () => void;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
   readonly onMarkUnread: (threadId: string) => void;
@@ -50,6 +57,9 @@ export function Sidebar({
   threads,
   selectedId,
   onSelect,
+  onSelectDraft,
+  onDiscardDraft,
+  draftMachine,
   onNewThread,
   onMarkRead,
   onMarkUnread,
@@ -62,6 +72,9 @@ export function Sidebar({
   onOpenSettings,
 }: SidebarProps) {
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
+  // Read here rather than by the window, so writing a draft's first line re-renders only the list.
+  const drafts = useAtomValue(newThreadDraftsAtom).filter((draft) => draft.mode === mode);
+  const draftActions: DraftActions = { selectedId, onSelectDraft, onDiscardDraft, draftMachine };
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
@@ -84,6 +97,8 @@ export function Sidebar({
       {mode === "work" ? (
         <Inbox
           threads={modeThreads}
+          drafts={drafts}
+          draftActions={draftActions}
           archived={archivedWork(threads)}
           selectedId={selectedId}
           onSelect={onSelect}
@@ -98,6 +113,8 @@ export function Sidebar({
       ) : (
         <ChatList
           threads={modeThreads}
+          drafts={drafts}
+          draftActions={draftActions}
           selectedId={selectedId}
           onSelect={onSelect}
           onRename={onRename}
@@ -119,16 +136,26 @@ interface ChatActions {
   readonly onDelete: (threadId: string) => void;
 }
 
-/** Chats grouped by how recent they are. */
-function ChatList({ threads, ...actions }: { threads: ReadonlyArray<ThreadSummary> } & ChatActions) {
+/** Chats grouped by how recent they are, under the drafts of chats not started yet. */
+function ChatList({
+  threads,
+  drafts,
+  draftActions,
+  ...actions
+}: {
+  threads: ReadonlyArray<ThreadSummary>;
+  drafts: ReadonlyArray<NewThreadDraft>;
+  draftActions: DraftActions;
+} & ChatActions) {
   const sections = chatSections(threads);
   return (
     <ScrollArea className="flex-1">
       <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
+        <DraftSection drafts={drafts} layout="chat" {...draftActions} />
         {sections.map((section) => (
           <ChatGroup key={section.key} section={section} {...actions} />
         ))}
-        {sections.length === 0 ? (
+        {sections.length === 0 && drafts.length === 0 ? (
           <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
             Chats you start show up here, newest first.
           </p>

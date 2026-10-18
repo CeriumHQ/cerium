@@ -74,6 +74,36 @@ export function CloudThreadBar({
   );
 }
 
+/**
+ * Above the message box while the thread's machine hasn't answered yet: the draft stays and takes
+ * writing, and sending waits for the machine.
+ */
+export function ConnectingNote({ machine }: { machine: string }) {
+  return (
+    <div className="pointer-events-none mx-auto mb-2 flex max-w-[46.2rem] justify-center">
+      <p className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface-raised px-3 py-1 text-[12.5px] text-fg-secondary backdrop-blur-2xl max-md:text-[13px]">
+        <RefreshCw size={12} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
+        <span>
+          Connecting to <span className="font-medium text-fg-primary">{machine}</span>… you can send once it
+          answers.
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** Where the open thread's message box will be, while the thread list first loads. */
+export function LoadingThreadBar() {
+  return (
+    <Bar>
+      <RefreshCw size={14} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
+      <p className="min-w-0 flex-1 py-1.5 text-[13px] text-fg-secondary max-md:py-0 max-md:text-[14px]">
+        Opening the thread…
+      </p>
+    </Bar>
+  );
+}
+
 /** Where the message box sits, holding a note instead. */
 function Bar({ children }: { children: ReactNode }) {
   return (

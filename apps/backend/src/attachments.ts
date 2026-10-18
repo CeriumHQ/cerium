@@ -4,11 +4,11 @@ import { Clock, Effect, FileSystem, Path } from "effect";
 
 // Pasted files are saved the moment they are pasted (`Workspace.saveAttachment`), each in a folder
 // named by a UUIDv7, so ones removed from the draft or never sent would stay forever. Drafts live
-// only in the window, so once a folder is older than any draft can reasonably be and no sent message
-// names it, nothing will.
+// only in the window (kept in its local storage, so they outlast a restart), so once a folder is older
+// than any draft can reasonably be and no sent message names it, nothing will.
 
 /** How long a pasted file may wait in a draft before an unsent one is removed. */
-const UNSENT_GRACE_MS = 24 * 60 * 60 * 1000;
+const UNSENT_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

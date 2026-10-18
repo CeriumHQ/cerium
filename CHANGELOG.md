@@ -126,6 +126,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Harnesses can report a one-time setup they still need (`HarnessSetup`). Muse reports its Windows sandbox until it's set up: Settings → Harnesses shows it as "Needs setup", with the modes it blocks and `muse sandbox windows setup` to run once as administrator, and the sidebar's Muse icon carries a dot.
 - UI: on a phone, the conversation gets the room while the keyboard is up. The thread's top bar folds into the status bar, and the message box shrinks to one line with attach and send beside the text; the project, model, effort and access pickers come back when the keyboard goes. Sending keeps the keyboard up for the next message.
 - The web app on your phone or browser runs the version of Cerium that matches the computer it drives, so stable and nightly computers, and ones not yet updated, work from it alike. The relay keeps every recent release's web app, each release publishes its own before its installer, and the web app moves to the right one, with the open thread, when you switch computers or one updates.
+- UI: drafts of threads not started yet. Write in a new thread, go elsewhere, and it waits in the sidebar under "Drafts" (after "Needs you" in the inbox, first among chats), drawn apart from threads with a dashed outline round a pen and "Draft" beside its project. "New thread" starts another blank one, so you can keep several; each remembers its project, model, effort and access. Opening one on another computer switches there first, right-click discards one, and sending turns it into the thread.
 
 ### Changed
 
@@ -157,6 +158,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: nothing clears the message box any more. Drafts are kept in the window's storage, so they survive a reload or restart, reconnecting to the backend, "Connecting to …" while another computer answers (the box now stays, keeps taking writing, and lets you send once it answers), the web app moving to another version, and the window turning phone-narrow. A reload also comes back to the thread or draft that was open, and pasted files waiting in a draft are kept for 30 days instead of one.
 - Nightly releases are named with a padded build (`0.2.0-nightly.n000014` instead of `0.2.0-nightly.14`), so GitHub's release list, which orders a day's releases by tag as text, puts the newest nightly first instead of an older build whose number reads larger as text (build 9 above builds 12 and 13).
 - UI: a reply streams into a long thread with about half the work per word. Only the part of the conversation that changed renders again, instead of every earlier message, tool call and card for each streamed word.
 - Opening a thread reads its history about three times faster: the provider's original messages, kept in the store but never shown, are no longer read and parsed with it. In a thread full of screenshots that was most of the data.

@@ -16,7 +16,7 @@ import {
   useAtomSet,
   useAtomValue,
 } from "@effect/atom-react";
-import { Cause } from "effect";
+import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
@@ -55,6 +55,15 @@ import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { hasContent } from "../features/composer/draft.ts";
+import {
+  draftsAtom,
+  draftStartAtom,
+  isNewDraftKey,
+  newDraftKey,
+  withoutDraft,
+  type NewThreadDraft,
+} from "../features/composer/drafts.ts";
 import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
@@ -65,7 +74,12 @@ import {
   type SettingsCategory,
 } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
-import { CloudThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
+import {
+  CloudThreadBar,
+  ConnectingNote,
+  LoadingThreadBar,
+  NoComputerBar,
+} from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
@@ -81,6 +95,7 @@ import { useCompact } from "./compact.ts";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
+import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
@@ -117,14 +132,25 @@ function Themed({ children }: { children: ReactNode }) {
 }
 
 function Workspace() {
-  const [mode, setMode] = useState<AppMode>("work");
-  /** The open thread per mode; none means "start a new one". */
-  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>({});
+  const registry = useContext(RegistryContext);
+  const driven = useAtomValue(machineAtom);
+  /** Where this tab was before a reload; it comes back once the window drives the same machine. */
+  const [session] = useState(restoredSession);
+  const resumed = session?.machine === driven?.id ? session : undefined;
+  const [resumePending, setResumePending] = useState(() => session !== undefined && resumed === undefined);
+  const [mode, setMode] = useState<AppMode>(() => session?.mode ?? "work");
+  /**
+   * The open thread per mode, or the draft of a thread not started yet; none means the mode's blank
+   * new thread.
+   */
+  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>(() => resumed?.open ?? {});
+  /** Each mode's blank new thread: once it has something in it, "New thread" starts another. */
+  const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
   const [inspectorOpen, setInspectorOpen] = useState(false);
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
-  const registry = useContext(RegistryContext);
-  const driven = useAtomValue(machineAtom);
+  /** The narrow window's pane (§14.10): the threads, or the open (or new) thread. */
+  const [pane, setPane] = useState<"list" | "main">(() => resumed?.pane ?? "list");
   const folderKey = machineKey(FOLDER_KEY, driven);
   const [folder, setFolder] = useState(() => stored(folderKey));
   // Switching machines starts afresh there: its last folder, and no thread open from the other one.
@@ -132,19 +158,25 @@ function Workspace() {
   /** A thread on another machine the user opened, which opens once the window drives that machine. */
   const [openAfterSwitch, setOpenAfterSwitch] = useState<{ readonly mode: AppMode; readonly id: string }>();
   if (shownFolderKey !== folderKey) {
+    const back = resumePending ? resumed : undefined;
     setShownFolderKey(folderKey);
     setFolder(stored(folderKey));
-    setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : {});
+    setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : (back?.open ?? {}));
+    setBlank(back?.blank ?? freshBlank());
+    if (back) setPane(back.pane);
     setOpenAfterSwitch(undefined);
+    setResumePending(false);
   }
+  useEffect(() => {
+    if (resumePending) return;
+    rememberSession({ ...(driven ? { machine: driven.id } : {}), mode, open: openThread, blank, pane });
+  }, [resumePending, driven, mode, openThread, blank, pane]);
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
   const [composerHeight, setComposerHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const compact = useCompact();
-  /** The narrow window's pane (§14.10): the threads, or the open (or new) thread. */
-  const [pane, setPane] = useState<"list" | "main">("list");
   /** Its settings pane: the categories, or the open category's page. */
   const [settingsPane, setSettingsPane] = useState<"nav" | "page">("nav");
   /** The category settings open on: the last one visited. */
@@ -161,7 +193,12 @@ function Workspace() {
   // the cloud copy instead, until it answers again. This computer's own list stays while it reconnects.
   const live =
     AsyncResult.isSuccess(threadsResult) && !(connection === "unreachable" && driven !== undefined);
-  const overviews = live ? AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []) : [];
+  const overviews: ReadonlyArray<ThreadOverview> = live
+    ? AsyncResult.getOrElse(threadsResult, () => [])
+    : driven === undefined
+      ? // A list call that fails while the backend restarts keeps the last list it gave.
+        Option.getOrElse(AsyncResult.value(threadsResult), () => [])
+      : [];
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
     _tag: "SignedOut",
   }));
@@ -192,6 +229,21 @@ function Workspace() {
         (each) => each.overview.thread.id === openThread[mode] && each.overview.thread.mode === mode,
       );
   const viewed = selected ?? cloudSelected?.overview;
+  /**
+   * The open thread isn't listed yet because the list hasn't loaded (just after a reload): it holds
+   * its place rather than showing the blank new thread, whose draft the user would be writing in.
+   */
+  const loadingThread =
+    viewed === undefined &&
+    openThread[mode] !== undefined &&
+    !isNewDraftKey(openThread[mode]) &&
+    overviews.length === 0 &&
+    !AsyncResult.isSuccess(threadsResult);
+  /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
+  const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
+  const openDraftStart = useAtomValue(draftStartAtom(openDraft));
+  /** The folder the new thread starts in: the one chosen for this draft, else the last one. */
+  const newFolder = openDraftStart?.folder ?? folder;
   const share = useAtomSet(markThreadsRead, { mode: "promise" });
   const readState = useReadState(
     new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
@@ -242,7 +294,7 @@ function Workspace() {
       ? undefined
       : account.devices.find((device) => device.id === driven.id);
   // The web client runs the build of the desktop it drives, and takes the open thread there (§14.10).
-  useMatchingBuild(drivenDevice, openThread[mode]);
+  useMatchingBuild(drivenDevice, isNewDraftKey(openThread[mode]) ? undefined : openThread[mode]);
   // The web client always drives one of the account's desktops (§14.10): the one it drove last,
   // else the first that can be reached, once one can.
   const reachable = devices.filter(
@@ -267,6 +319,12 @@ function Workspace() {
       : noEvents;
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
   const cloudDevice = cloudSelected ? deviceOf(cloudSelected.machine) : undefined;
+  /** The open thread's machine is the one the window drives, and it hasn't answered yet. */
+  const cloudConnecting =
+    cloudSelected !== undefined &&
+    cloudSelected.machine === drivenId &&
+    cloudDevice !== undefined &&
+    reachOf(cloudDevice).kind === "reachable";
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
     setOpenAfterSwitch({ mode: threadMode, id: threadId });
@@ -359,11 +417,40 @@ function Workspace() {
   };
   const answerApproval: AnswerApproval = (agentId, requestId, decision, scope) =>
     void attempt(respond({ payload: { agentId: agentId as AgentId, requestId, decision, scope } }));
-  /** Opens this mode's new thread, ready to type the first message. */
+  /**
+   * Opens a blank new thread in this mode, ready to type the first message. A blank one the user wrote
+   * in stays in the sidebar as a draft; an empty one is replaced, forgetting what was picked in it.
+   */
   const startNew = () => {
     setSettingsOpen(false);
+    const drafts = registry.get(draftsAtom);
+    if (!hasContent(drafts[blank[mode]])) registry.set(draftsAtom, withoutDraft(drafts, blank[mode]));
+    setBlank((current) => ({ ...current, [mode]: newDraftKey() }));
     setOpenThread((current) => ({ ...current, [mode]: undefined }));
     composerInput.current?.focus();
+  };
+
+  /** Opens a thread not started yet, on the machine it starts on. */
+  const openNewDraft = (draft: NewThreadDraft) => {
+    setSettingsOpen(false);
+    setPane("main");
+    const home = draft.machine === thisComputer ? undefined : draft.machine;
+    if (home !== driven?.id) {
+      setOpenAfterSwitch({ mode: draft.mode, id: draft.key });
+      driveMachine(registry, home === undefined ? undefined : { id: home as DeviceId, name: nameOf(home) });
+      return;
+    }
+    setOpenThread((current) => ({ ...current, [draft.mode]: draft.key }));
+  };
+
+  /** Throws a draft away; when it was open, a blank new thread takes its place. */
+  const discardDraft = (key: string) => {
+    const drafts = registry.get(draftsAtom);
+    for (const attachment of drafts[key]?.attachments ?? []) {
+      if (attachment.preview) URL.revokeObjectURL(attachment.preview);
+    }
+    registry.set(draftsAtom, withoutDraft(drafts, key));
+    if (openThread[mode] === key) setOpenThread((current) => ({ ...current, [mode]: undefined }));
   };
 
   /** The user asked for a new thread: in the narrow window, that's its pane. */
@@ -431,7 +518,7 @@ function Workspace() {
       payload: {
         title: (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80),
         mode,
-        ...(mode === "work" && folder ? { cwd: folder } : {}),
+        ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
         lead: setup,
       },
     });
@@ -464,7 +551,14 @@ function Workspace() {
         <Sidebar
           mode={mode}
           threads={summaries}
-          selectedId={viewed?.thread.id}
+          selectedId={viewed?.thread.id ?? openDraft}
+          onSelectDraft={openNewDraft}
+          onDiscardDraft={discardDraft}
+          draftMachine={(machine) =>
+            machine === undefined || machine === thisComputer
+              ? undefined
+              : { name: nameOf(machine), online: deviceOf(machine)?.online === true }
+          }
           onSelect={(threadId) => {
             const summary = summaries.find((candidate) => candidate.id === threadId);
             if (summary) openSummary(summary);
@@ -510,6 +604,7 @@ function Workspace() {
           onDelete={(threadId) =>
             void attempt(remove({ payload: { threadId: threadId as ThreadId } })).then((deleted) => {
               if (!deleted) return;
+              registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
               refreshThreads();
               if (threadId === selected?.thread.id) startNew();
             })
@@ -627,14 +722,16 @@ function Workspace() {
                   : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
               }
             />
-          ) : (
-            <EmptyThread mode={mode} folder={folder} />
+          ) : loadingThread ? null : (
+            <EmptyThread mode={mode} folder={newFolder} />
           )}
         </div>
 
         {WEB && driven === undefined && !cloudSelected ? (
           <NoComputerBar />
-        ) : cloudSelected ? (
+        ) : loadingThread ? (
+          <LoadingThreadBar />
+        ) : cloudSelected && !(cloudConnecting && lead) ? (
           <CloudThreadBar
             machine={nameOf(cloudSelected.machine)}
             reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
@@ -645,23 +742,32 @@ function Workspace() {
             onStartNew={startNew}
           />
         ) : (
+          // While the open thread's machine is still connecting, the box keeps its draft and takes
+          // writing; sending waits until the machine answers.
           <Composer
-            draftKey={selected ? selected.thread.id : `new:${mode}`}
+            draftKey={viewed && lead ? viewed.thread.id : openDraft}
+            connecting={cloudSelected !== undefined}
             inputRef={composerInput}
             messageBox={messageBoxRef}
             target={
-              selected && lead
+              viewed && lead
                 ? {
                     kind: "thread",
                     provider: lead.provider,
                     model: leadModel,
-                    folder: selected.thread.cwd,
+                    folder: viewed.thread.cwd,
                     ...(leadEnded ? { ended: leadEnded } : {}),
                   }
-                : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
+                : { kind: "new", mode, folder: newFolder, onChooseFolder: chooseFolder, available }
             }
-            running={leadRunning}
-            above={<ApprovalTray agents={agents} onAnswer={answerApproval} />}
+            running={leadRunning && cloudSelected === undefined}
+            above={
+              cloudSelected ? (
+                <ConnectingNote machine={nameOf(cloudSelected.machine)} />
+              ) : (
+                <ApprovalTray agents={agents} onAnswer={answerApproval} />
+              )
+            }
             onHeight={setComposerHeight}
             onSend={(message, setup) =>
               attempt(

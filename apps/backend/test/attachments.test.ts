@@ -87,10 +87,11 @@ describe("sweepAttachments", () => {
         yield* fs.writeFileString(file, name);
         return { path: file, name, mediaType: "image/png" } satisfies Attachment;
       });
-      const sentLongAgo = yield* paste("sent.png", 72);
-      const stillQueued = yield* paste("queued.png", 30);
-      const removedFromDraft = yield* paste("removed.png", 48);
-      const inDraft = yield* paste("draft.png", 2);
+      const sentLongAgo = yield* paste("sent.png", 40 * 24);
+      const stillQueued = yield* paste("queued.png", 35 * 24);
+      const removedFromDraft = yield* paste("removed.png", 32 * 24);
+      // Drafts outlast restarts, so a file can wait in one for days.
+      const inDraft = yield* paste("draft.png", 7 * 24);
 
       // Not Cerium's to remove: a folder it didn't name, and the user's own file sent by its path.
       const stranger = path.join(directory, "notes");

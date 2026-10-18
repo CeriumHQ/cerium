@@ -27,6 +27,7 @@ import {
 } from "react";
 
 import { saveAttachment } from "../../backend/files.ts";
+import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import {
@@ -48,10 +49,13 @@ import {
   draftMentions,
   draftText,
   emptyDraft,
+  hasContent,
   type Draft,
   type DraftAttachment,
+  type DraftStart,
   type Trigger,
 } from "./draft.ts";
+import { draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "./drafts.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import type { MessageBox } from "./messageBox.ts";
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "./models.ts";
@@ -110,8 +114,10 @@ export type ComposerTarget =
 
 interface ComposerProps {
   readonly target: ComposerTarget;
-  /** Which draft the box shows: each thread, and each mode's new thread, keeps its own. */
+  /** Which draft the box shows: each thread, and each thread not started yet, keeps its own. */
   readonly draftKey: string;
+  /** The thread's machine hasn't answered yet: the box takes writing, and sending waits for it. */
+  readonly connecting?: boolean;
   /** The message box, for callers that move focus to it. */
   readonly inputRef?: RefObject<HTMLDivElement | null>;
   /** Filled with what others can put into the box; null while it takes no messages. */
@@ -131,6 +137,7 @@ interface ComposerProps {
 export function Composer({
   target,
   draftKey,
+  connecting = false,
   inputRef,
   messageBox,
   running,
@@ -139,7 +146,8 @@ export function Composer({
   above,
   onHeight,
 }: ComposerProps) {
-  const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({});
+  const [drafts, setDrafts] = useAtom(draftsAtom);
+  const machine = useAtomValue(machineAtom);
   /** Bumped when the box itself replaces a draft (sent, or given back), so the editor shows it. */
   const [epoch, setEpoch] = useState(0);
   const ownRef = useRef<HTMLDivElement>(null);
@@ -153,13 +161,15 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
   const save = useAtomSet(saveAttachment, { mode: "promise" });
+  const draft = drafts[draftKey] ?? emptyDraft;
   // New threads start with the model and effort the last one was given, which are also the defaults
-  // in settings. Access always starts from the settings default; a pick here covers this thread only.
-  const [modelId, setModelId] = useAtom(modelAtom);
-  const [effort, setEffort] = useAtom(effortAtom);
+  // in settings. Access always starts from the settings default. A pick here stays with the draft.
+  const [defaultModel, setDefaultModel] = useAtom(modelAtom);
+  const [defaultEffort, setDefaultEffort] = useAtom(effortAtom);
   const defaultAccess = useAtomValue(accessAtom);
-  const [accessPick, setAccess] = useState<AccessMode>();
-  const access = accessPick ?? defaultAccess;
+  const modelId = draft.start?.model ?? defaultModel;
+  const effort = draft.start?.effort ?? defaultEffort;
+  const access = draft.start?.access ?? defaultAccess;
   const sendKey = useAtomValue(sendKeyAtom);
   const choose =
     <A extends string>(set: (value: A) => void) =>
@@ -174,14 +184,17 @@ export function Composer({
   const AccessIcon = accessIcon[access];
   const isNew = target.kind === "new";
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
-  const draft = drafts[draftKey] ?? emptyDraft;
   const text = draftText(draft.segments);
   const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
   const ready = draft.attachments.flatMap((attachment) =>
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   );
   const canSend =
-    (text.trim() !== "" || ready.length > 0) && !preparing && !needsFolder && (!isNew || model !== undefined);
+    (text.trim() !== "" || ready.length > 0) &&
+    !preparing &&
+    !needsFolder &&
+    !connecting &&
+    (!isNew || model !== undefined);
   const recipient = target.kind === "thread" ? target.model : (model?.label ?? "an agent");
 
   // `@` tags files in the thread's folder; `$` the skills of the harness the message goes to.
@@ -220,8 +233,42 @@ export function Composer({
     input.current?.focus();
   }, [input, draftKey]);
 
+  /** How the open thread not started yet starts, the first time the user writes or picks anything in it. */
+  const startOf = (current: Draft): DraftStart | undefined =>
+    current.start ??
+    (target.kind === "new"
+      ? startedNow({
+          mode: target.mode,
+          ...(machine ? { machine: machine.id } : {}),
+          ...(target.mode === "work" && target.folder !== undefined ? { folder: target.folder } : {}),
+        })
+      : undefined);
+
   const updateDraft = (key: string, update: (current: Draft) => Draft) =>
-    setDrafts((current) => ({ ...current, [key]: update(current[key] ?? emptyDraft) }));
+    setDrafts((current) =>
+      withDraft(current, key, (each) => {
+        const next = update(each);
+        // Only the open draft learns how it starts; a file finishing for another one keeps its own.
+        const start = key === draftKey && isNewDraftKey(key) ? startOf(next) : next.start;
+        return start ? { ...next, start } : next;
+      }),
+    );
+
+  /** Remembers a pick in the open new thread's draft; nothing else changes it. */
+  const pickForDraft = (pick: Partial<Pick<DraftStart, "folder" | "model" | "effort" | "access">>) =>
+    updateDraft(draftKey, (current) => {
+      const start = startOf(current);
+      return start ? { ...current, start: { ...start, ...pick } } : current;
+    });
+  const setModelId = (value: string) => {
+    setDefaultModel(value);
+    pickForDraft({ model: value });
+  };
+  const setEffort = (value: ReasoningEffort) => {
+    setDefaultEffort(value);
+    pickForDraft({ effort: value });
+  };
+  const setAccess = (value: AccessMode) => pickForDraft({ access: value });
 
   const setAttachment = (key: string, id: string, state: DraftAttachment["state"]) =>
     updateDraft(key, (current) => ({
@@ -311,7 +358,7 @@ export function Composer({
     if (!canSend || model === undefined) return;
     const key = draftKey;
     const sent = draft;
-    setDrafts((current) => ({ ...current, [key]: emptyDraft }));
+    setDrafts((current) => withoutDraft(current, key));
     setEpoch((current) => current + 1);
     setTrigger(undefined);
     void onSend(
@@ -327,17 +374,10 @@ export function Composer({
         for (const attachment of sent.attachments) {
           if (attachment.preview) URL.revokeObjectURL(attachment.preview);
         }
-        // The next new thread starts from the default access again.
-        if (isNew) setAccess(undefined);
         return;
       }
       // Give an undelivered message back, unless the user has started writing another.
-      setDrafts((current) => {
-        const now = current[key];
-        return now && (now.segments.length > 0 || now.attachments.length > 0)
-          ? current
-          : { ...current, [key]: sent };
-      });
+      setDrafts((current) => (hasContent(current[key]) ? current : { ...current, [key]: sent }));
       setEpoch((current) => current + 1);
     });
   };
@@ -515,7 +555,13 @@ export function Composer({
               ) : (
                 <>
                   {target.mode === "work" ? (
-                    <ProjectPicker folder={target.folder} onChoose={target.onChooseFolder} />
+                    <ProjectPicker
+                      folder={target.folder}
+                      onChoose={(folder) => {
+                        target.onChooseFolder(folder);
+                        pickForDraft({ folder });
+                      }}
+                    />
                   ) : null}
 
                   <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>

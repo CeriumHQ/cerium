@@ -14,7 +14,7 @@ import {
   Trash2,
   Monitor,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   ContextMenuArea,
@@ -31,9 +31,11 @@ import { gitBranchAtom } from "../../backend/projects.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { remember, stored } from "../../lib/storage.ts";
 import { shortAgo } from "../../lib/time.ts";
+import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections, type ThreadSection } from "./sections.ts";
 import { ArchivedSection } from "./Archived.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
+import { DraftSection, type DraftActions } from "./DraftRow.tsx";
 import { canArchive, canDelete, type ThreadSummary } from "./model.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
@@ -43,6 +45,9 @@ const SCOPE_KEY = "cerium:inboxScope";
 
 interface InboxProps {
   readonly threads: ReadonlyArray<ThreadSummary>;
+  /** Threads not started yet, listed under what needs the user. */
+  readonly drafts: ReadonlyArray<NewThreadDraft>;
+  readonly draftActions: DraftActions;
   /** Archived threads, listed apart at the foot. */
   readonly archived: ReadonlyArray<ThreadSummary>;
   readonly onRestore: (threadId: string) => void;
@@ -57,14 +62,14 @@ interface InboxProps {
   readonly onDelete: (threadId: string) => void;
 }
 
-type RowProps = Omit<InboxProps, "threads" | "archived" | "onRestore"> & {
+type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archived" | "onRestore"> & {
   /** The folder the inbox is scoped to, if any. */
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
 };
 
 /** Every project's work threads in one list, what needs the user first; optionally scoped to one folder. */
-export function Inbox({ threads, archived, onRestore, ...actions }: InboxProps) {
+export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...actions }: InboxProps) {
   const projects = inboxProjects(threads);
   /** The folder the inbox is scoped to; empty for every project. */
   const [scope, setScope] = useState(() => stored(SCOPE_KEY) ?? "");
@@ -73,6 +78,13 @@ export function Inbox({ threads, archived, onRestore, ...actions }: InboxProps) 
   const inScope = (thread: ThreadSummary) => project === undefined || thread.folder === project.folder;
   const scoped = threads.filter(inScope);
   const sections = inboxSections(scoped);
+  // A draft with no project chosen yet shows in every scope.
+  const scopedDrafts = drafts.filter(
+    (draft) => project === undefined || draft.folder === undefined || draft.folder === project.folder,
+  );
+  // Drafts follow what needs the user: a request waiting on them still comes first.
+  const needsYou = sections.filter((section) => section.key === "needsYou");
+  const rest = sections.filter((section) => section.key !== "needsYou");
   const unread = scoped.filter((thread) => thread.unread);
 
   const chooseScope = (folder: string) => {
@@ -128,18 +140,23 @@ export function Inbox({ threads, archived, onRestore, ...actions }: InboxProps) 
 
       <ScrollArea className="flex-1">
         <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Threads">
-          {sections.map((section, index) => (
-            <InboxSection
-              key={section.key}
-              section={section}
-              // Today's threads leading the list need no heading; below a status section they do.
-              headed={!(index === 0 && section.key === "Today")}
-              scope={project?.folder}
-              onScope={chooseScope}
-              {...actions}
-            />
+          {[...needsYou, ...rest].map((section, index) => (
+            <Fragment key={section.key}>
+              {index === needsYou.length ? (
+                <DraftSection drafts={scopedDrafts} layout="inbox" {...draftActions} />
+              ) : null}
+              <InboxSection
+                section={section}
+                // Today's threads leading the list need no heading; below drafts or a status section they do.
+                headed={!(index === 0 && section.key === "Today" && scopedDrafts.length === 0)}
+                scope={project?.folder}
+                onScope={chooseScope}
+                {...actions}
+              />
+            </Fragment>
           ))}
-          {sections.length === 0 ? (
+          {rest.length === 0 ? <DraftSection drafts={scopedDrafts} layout="inbox" {...draftActions} /> : null}
+          {sections.length === 0 && scopedDrafts.length === 0 ? (
             <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
               Threads you start in any folder show up here, the ones that need you first.
             </p>
