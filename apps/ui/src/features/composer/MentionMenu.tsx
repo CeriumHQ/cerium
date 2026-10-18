@@ -73,9 +73,16 @@ export function useMentionOptions(trigger: Trigger | undefined, sources: Mention
   const skills = useAtomValue(
     listingSkills ? skillsAtom(skillsKey(sources.provider!, sources.folder)) : noSkills,
   );
-  const [kept, setKept] = useState<ReadonlyArray<MentionOption>>([]);
+  // Tagged with the trigger it answered, so `$` never flashes the files a past `@` found.
+  const [kept, setKept] = useState<{
+    readonly char: Trigger["char"];
+    readonly options: ReadonlyArray<MentionOption>;
+  }>();
 
-  if (trigger === undefined) return { state: "ready", options: [] };
+  if (trigger === undefined) {
+    if (kept !== undefined) setKept(undefined);
+    return { state: "ready", options: [] };
+  }
   if (trigger.char === "@" && !searching) return { state: "unavailable", options: [] };
   if (trigger.char === "$" && !listingSkills) return { state: "unavailable", options: [] };
 
@@ -84,10 +91,16 @@ export function useMentionOptions(trigger: Trigger | undefined, sources: Mention
       ? AsyncResult.map(files, (entries) => entries.map(fileOption))
       : AsyncResult.map(skills, (list) => skillOptions(list, trigger.query));
   if (AsyncResult.isFailure(result)) return { state: "failed", options: [] };
-  if (!AsyncResult.isSuccess(result)) return { state: "loading", options: kept };
+  if (!AsyncResult.isSuccess(result)) {
+    return { state: "loading", options: kept?.char === trigger.char ? kept.options : [] };
+  }
   const options = result.value;
-  if (options.length !== kept.length || options.some((option, index) => option.key !== kept[index]?.key)) {
-    setKept(options);
+  if (
+    kept?.char !== trigger.char ||
+    options.length !== kept.options.length ||
+    options.some((option, index) => option.key !== kept.options[index]?.key)
+  ) {
+    setKept({ char: trigger.char, options });
   }
   return { state: "ready", options };
 }
