@@ -1,0 +1,54 @@
+name: Deploy the relay
+description: >-
+  Builds this version's web UI into apps/relay/dist/cerium-web-<version>.tar.gz for its release to carry, then deploys
+  the relay with it and earlier releases' builds (docs/architecture.md §14.10). Runs before the installer is
+  published, so the relay already reads what the new version sends. Without a Cloudflare token it only builds.
+
+inputs:
+  version:
+    description: The version being released, from scripts/release.ts.
+    required: true
+  cloudflare-api-token:
+    description: A Cloudflare API token that may deploy Workers.
+    required: false
+    default: ""
+  cloudflare-account-id:
+    description: The Cloudflare account the relay belongs to.
+    required: false
+    default: ""
+  github-token:
+    description: Reads earlier releases' web UI builds.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Build the web UI
+      shell: bash
+      run: bun run --cwd apps/ui build:web
+      env:
+        CERIUM_VERSION: ${{ inputs.version }}
+    # Written through stdin: Git Bash's tar takes a drive letter in an archive's path for a remote host.
+    - name: Pack the web UI
+      shell: bash
+      run: |
+        mkdir -p apps/relay/dist
+        tar -czf - -C apps/ui/dist-web . > "apps/relay/dist/cerium-web-$VERSION.tar.gz"
+      env:
+        VERSION: ${{ inputs.version }}
+    - name: Deploy
+      shell: bash
+      run: |
+        if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+          echo "::warning::CLOUDFLARE_API_TOKEN isn't set, so the relay wasn't deployed with $VERSION's web UI."
+          exit 0
+        fi
+        if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
+        bun run --cwd apps/relay builds
+        cd apps/relay && bun x wrangler deploy
+      env:
+        VERSION: ${{ inputs.version }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}

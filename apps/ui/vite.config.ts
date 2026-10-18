@@ -90,7 +90,10 @@ const webFiles = [
 ];
 const webFolder = fileURLToPath(new URL("web/", import.meta.url));
 
-/** What a Home Screen web app needs in its page; the theme colours match the window over its backdrop. */
+/**
+ * What a Home Screen web app needs in its page; the theme colours match the window over its backdrop.
+ * These files live at the relay's root, which every version's build shares (§14.10).
+ */
 const webHead = `
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -104,10 +107,12 @@ const webHead = `
 `;
 
 /**
- * The web client (`--mode web`): its page head, its files and service worker, and the relay's
- * `_headers` with the policy, which scripts/assets.ts in apps/relay merges with the relay's own.
+ * The web client (`--mode web`): its page head, its files and service worker, and `build.json`, with
+ * its version and the headers its page is served with. The relay serves each version's build under
+ * `/v/<version>/` and the newest at its root too (§14.10); scripts/assets.ts in apps/relay lays the
+ * builds out and writes their `_headers`.
  */
-const webClient = (artifact: string): Plugin => ({
+const webClient = (artifact: string, version: string): Plugin => ({
   name: "cerium-web-client",
   transformIndexHtml: (html) => html.replace("</head>", `${webHead}  </head>`),
   configureServer(server) {
@@ -124,41 +129,47 @@ const webClient = (artifact: string): Plugin => ({
       this.emitFile({ type: "asset", fileName, source: await readFile(`${webFolder}${fileName}`) });
     }
     this.emitFile({ type: "asset", fileName: "sw.js", source: await serviceWorkerScript() });
-    const rules = [
+    const pageHeaders = [
       `Content-Security-Policy: ${contentPolicy(artifact)}`,
       "X-Content-Type-Options: nosniff",
       "Referrer-Policy: no-referrer",
       "Permissions-Policy: camera=(), microphone=(), geolocation=()",
     ];
-    const headers = [
-      ...["/", "/index.html"].map((path) => [path, ...rules.map((rule) => `  ${rule}`)].join("\n")),
-      // Browsers check for a newer worker at each visit.
-      "/sw.js\n  Cache-Control: no-cache",
-    ];
-    this.emitFile({ type: "asset", fileName: "_headers", source: `${headers.join("\n\n")}\n` });
+    this.emitFile({
+      type: "asset",
+      fileName: "build.json",
+      source: `${JSON.stringify({ version, pageHeaders }, null, 2)}\n`,
+    });
   },
 });
+
+/** The version a build carries: the release's, which the release workflows set, else `dev`. */
+const version = process.env["CERIUM_VERSION"]?.trim() || "dev";
+// It names the web build's folder on the relay.
+if (!/^[0-9A-Za-z][0-9A-Za-z.-]*$/.test(version))
+  throw new Error(`CERIUM_VERSION isn't a version: ${version}`);
 
 /** Where `bun run dev:web` finds the relay it proxies: the local one, unless told another. */
 const relay = process.env["CERIUM_RELAY"] ?? "http://localhost:8787";
 
-export default defineConfig(async ({ mode }) => {
+export default defineConfig(async ({ command, mode }) => {
   const web = mode === "web";
   const artifact = await artifactScript();
   return {
-    // The packaged shell loads the built UI from a file, so asset URLs stay relative to index.html;
-    // the relay serves the web client from its root.
-    base: web ? "/" : "./",
+    // The packaged shell loads the built UI from a file, so asset URLs stay relative to index.html.
+    // The relay serves each version's web build from a folder of its own; the dev server, from its
+    // root.
+    base: web ? (command === "build" ? `/v/${version}/` : "/") : "./",
     define: {
       __ARTIFACT_RUNTIME__: JSON.stringify(artifact),
-      __CERIUM_VERSION__: JSON.stringify(process.env["CERIUM_VERSION"] ?? "dev"),
+      __CERIUM_VERSION__: JSON.stringify(version),
     },
     build: web ? { outDir: "dist-web" } : {},
     plugins: [
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),
-      web ? webClient(artifact) : devBackendConnection(),
+      web ? webClient(artifact, version) : devBackendConnection(),
     ],
     server: web
       ? {

@@ -4,3 +4,6 @@
  * them through its own backend. Fixed at build time (`vp build --mode web`).
  */
 export const WEB = import.meta.env.MODE === "web";
+
+/** The version this build is: the release's, or `dev` (§14.10). */
+export const BUILD_VERSION = import.meta.env.DEV ? "dev" : __CERIUM_VERSION__;

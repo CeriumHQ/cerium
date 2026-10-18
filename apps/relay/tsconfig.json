@@ -4,6 +4,6 @@
     "lib": ["es2024"],
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src", "test"],
+  "include": ["src", "test", "scripts/layout.ts"],
   "references": [{ "path": "../../packages/protocol" }]
 }

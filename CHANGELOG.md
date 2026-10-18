@@ -125,6 +125,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: agents that may act learn about the UI and live-check tools in their instructions.
 - Harnesses can report a one-time setup they still need (`HarnessSetup`). Muse reports its Windows sandbox until it's set up: Settings → Harnesses shows it as "Needs setup", with the modes it blocks and `muse sandbox windows setup` to run once as administrator, and the sidebar's Muse icon carries a dot.
 - UI: on a phone, the conversation gets the room while the keyboard is up. The thread's top bar folds into the status bar, and the message box shrinks to one line with attach and send beside the text; the project, model, effort and access pickers come back when the keyboard goes. Sending keeps the keyboard up for the next message.
+- The web app on your phone or browser runs the version of Cerium that matches the computer it drives, so stable and nightly computers, and ones not yet updated, work from it alike. The relay keeps every recent release's web app, each release publishes its own before its installer, and the web app moves to the right one, with the open thread, when you switch computers or one updates.
 
 ### Changed
 

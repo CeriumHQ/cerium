@@ -98,6 +98,14 @@ jobs:
         with:
           version: ${{ steps.plan.outputs.version }}
           publish: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+      - name: Deploy the relay
+        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/deploy-relay
+        with:
+          version: ${{ steps.plan.outputs.version }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          github-token: ${{ github.token }}
       - name: Publish the nightly
         if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
         env:
@@ -108,6 +116,7 @@ jobs:
           COMMIT: ${{ steps.plan.outputs.commit }}
         run: |
           gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/nightly.yml \
+            apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
       - name: Prune old nightlies

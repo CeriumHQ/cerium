@@ -74,6 +74,14 @@ jobs:
         uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+      - name: Deploy the relay
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: ./.github/actions/deploy-relay
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          github-token: ${{ github.token }}
       - name: Publish
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env:
@@ -84,5 +92,6 @@ jobs:
           COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/latest.yml \
+            apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest

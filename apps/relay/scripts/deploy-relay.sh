@@ -313,7 +313,8 @@ say "This builds the web app and the relay, then publishes both at $SITE."
 note "Cloudflare also creates the cerium.nonlooped.xyz address and its certificate."
 note "Everything stays on Cloudflare's free plan."
 if confirm "Publish the relay now?"; then
-  (cd "$ROOT_DIR" && bun run --cwd apps/relay build)
+  # Earlier releases' web apps stay up for the computers still running them.
+  (cd "$ROOT_DIR" && bun run --cwd apps/relay builds && bun run --cwd apps/relay build)
   if [[ -n "$SECRETS_FILE" ]]; then
     wrangler deploy --secrets-file "$SECRETS_FILE"
   else

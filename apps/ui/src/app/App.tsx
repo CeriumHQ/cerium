@@ -73,6 +73,7 @@ import { buildTranscript, queuedMessages } from "../features/transcript/model.ts
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { remember, stored } from "../lib/storage.ts";
+import { useMatchingBuild } from "../web/builds.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
@@ -240,6 +241,8 @@ function Workspace() {
     driven === undefined || account._tag !== "SignedIn"
       ? undefined
       : account.devices.find((device) => device.id === driven.id);
+  // The web client runs the build of the desktop it drives, and takes the open thread there (§14.10).
+  useMatchingBuild(drivenDevice, openThread[mode]);
   // The web client always drives one of the account's desktops (§14.10): the one it drove last,
   // else the first that can be reached, once one can.
   const reachable = devices.filter(

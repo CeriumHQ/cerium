@@ -4,6 +4,8 @@ import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { Socket } from "effect/socket";
 
+import { BUILD_VERSION } from "../backend/target.ts";
+
 // The web client as a device of the account (docs/architecture.md §14.10): its sign-in, its relay
 // connection and the account's threads, running in the page. Both RPC clients use this one layer,
 // which the atom runtimes' shared memo map builds once.
@@ -71,7 +73,7 @@ export const thisBrowser = (): DeviceDraft => {
     name: nameOf(agent, platform),
     platform,
     channel: import.meta.env.DEV ? "dev" : "stable",
-    version: import.meta.env.DEV ? "dev" : __CERIUM_VERSION__,
+    version: BUILD_VERSION,
   };
 };
 
