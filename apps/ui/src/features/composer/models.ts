@@ -49,15 +49,17 @@ export const effortLabel: Record<ReasoningEffort, string> = {
   max: "Max",
 };
 
+/**
+ * The access modes a person picks from. `ask` and `acceptEdits` stay in the protocol for threads and
+ * agents that already run with them, but aren't offered.
+ */
 export const accessOptions: ReadonlyArray<{
   readonly value: AccessMode;
   readonly label: string;
   readonly description: string;
 }> = [
-  { value: "readOnly", label: "Read only", description: "Reads and searches; never edits or runs commands" },
-  { value: "ask", label: "Ask first", description: "Asks before every edit and command" },
-  { value: "acceptEdits", label: "Accept edits", description: "Edits files freely; asks before commands" },
   { value: "auto", label: "Auto", description: "Edits and runs what a reviewer model judges safe" },
+  { value: "readOnly", label: "Read only", description: "Reads and searches; never edits or runs commands" },
   {
     value: "fullAccess",
     label: "Full access",

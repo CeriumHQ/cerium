@@ -152,6 +152,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: a calmer titlebar. The mark stands alone without the "Cerium" name and divider, the sidebar toggle sits over the sidebar's edge above search, and the machine picker moves to the right beside the agents button, opening its menu leftward.
 - UI: Agents settings shows access as a table of modes against what each may do, with the chosen mode described beneath it, instead of a card per mode.
 - UI: every new work thread starts in Auto access. Agents settings changes that default; picking another mode in the composer covers just the thread it starts, instead of becoming the next thread's mode too. An access remembered from before starts over at Auto.
+- UI: the composer and Agents settings offer three access modes for every provider, in this order: Auto, Read only and Full access. Ask first and Accept edits are no longer offered; threads already running in them keep their mode, and a default set to either starts over at Auto.
 - Desktop: the development shell (`bun run dev`) listens for a debugger on port 9222, so agents can drive it.
 
 ### Fixed
