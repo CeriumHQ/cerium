@@ -95,8 +95,8 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
         <div className="flex flex-col gap-1">
           <span className="text-[13.5px] font-medium text-fg-primary">Connect this computer</span>
           <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
-            You'll sign in on Cerium's page in your browser, with Google, Discord, GitHub or an email and
-            password. Cerium never sees your password.
+            You'll sign in on Cerium's page in your browser, with Google, GitHub, X or an email and password.
+            Cerium never sees your password.
           </p>
         </div>
         {account._tag === "SigningIn" ? (

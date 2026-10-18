@@ -199,7 +199,7 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 
 # Sets up Clerk for running Cerium's relay locally (docs/architecture.md §14): a development instance
-# with Google, Discord, GitHub and email + password sign-in, and apps/relay/.dev.vars for
+# with Google, GitHub, X and email + password sign-in, and apps/relay/.dev.vars for
 # `bun run --cwd apps/relay dev`. Run from anywhere: bash apps/relay/scripts/setup-clerk.sh
 
 run_wizard() {
@@ -211,18 +211,18 @@ banner "Clerk for Cerium's relay (local development)"
 
 stage "Create the Clerk application"
 say "Cerium's accounts live in a Clerk application. Its development instance needs no OAuth apps:"
-say "Clerk lends shared Google, Discord and GitHub credentials until you go to production."
+say "Clerk lends shared Google, GitHub and X credentials until you go to production."
 open_url "https://dashboard.clerk.com/apps/new"
 step "Sign in to Clerk (or create your Clerk account) if it asks."
 step "Name the application Cerium."
-step "Under sign-in options, turn on Email, Google, GitHub and Discord."
-note "Discord may not be on the first screen; you'll add it in the next stage if so."
+step "Under sign-in options, turn on Email, Google, GitHub and X."
+note "X may not be on the first screen; you'll add it in the next stage if so."
 step "Select Create application."
 pause "Press Enter once the application exists."
 
 stage "Sign-in methods"
 open_url "https://dashboard.clerk.com/~/user-authentication/sso-connections"
-step "On SSO connections, check that Google, GitHub and Discord are listed."
+step "On SSO connections, check that Google, GitHub and X are listed."
 step "Missing one? Select Add connection → For all users, pick it, and save."
 open_url "https://dashboard.clerk.com/~/user-authentication/user-and-authentication"
 step "On User & authentication, make sure Sign-in with email is on and Password is on."
