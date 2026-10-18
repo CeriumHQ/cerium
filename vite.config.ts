@@ -38,5 +38,9 @@ export default defineConfig({
   test: {
     include: ["packages/**/test/**/*.test.ts", "apps/**/test/**/*.test.ts", "scripts/test/**/*.test.ts"],
     exclude: ignored,
+    // Test files share their worker's modules instead of each importing Effect and the packages again,
+    // which took most of the suite's time. Nothing in the tests mocks modules or changes global state,
+    // so sharing them can't leak one file's setup into another.
+    isolate: false,
   },
 });
