@@ -157,6 +157,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Nightly releases are named with a padded build (`0.2.0-nightly.n000014` instead of `0.2.0-nightly.14`), so GitHub's release list, which orders a day's releases by tag as text, puts the newest nightly first instead of an older build whose number reads larger as text (build 9 above builds 12 and 13).
 - UI: a reply streams into a long thread with about half the work per word. Only the part of the conversation that changed renders again, instead of every earlier message, tool call and card for each streamed word.
 - Opening a thread reads its history about three times faster: the provider's original messages, kept in the store but never shown, are no longer read and parsed with it. In a thread full of screenshots that was most of the data.
 - Agents at work no longer slow the backend down as threads pile up: the thread list it re-reads after every event, for the inbox, the cloud copy and whether anything is working, takes two reads instead of one per thread (about 6× faster with 300 threads).

@@ -37,7 +37,7 @@ export interface Updates {
 export const isUpdateChannel = (value: unknown): value is UpdateChannel =>
   value === "stable" || value === "nightly";
 
-/** Nightlies carry `-nightly.<run>` in their version (scripts/release.ts). */
+/** Nightlies carry `-nightly.n<run>` in their version (scripts/release.ts). */
 export const buildChannel = (): UpdateChannel =>
   app.getVersion().includes("-nightly.") ? "nightly" : "stable";
 

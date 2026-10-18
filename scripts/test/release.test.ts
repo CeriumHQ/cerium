@@ -13,10 +13,12 @@ import {
 describe("release versions", () => {
   it("reads stable and nightly tags and nothing else", () => {
     expect(parseTag("v0.4.1")).toEqual({ major: 0, minor: 4, patch: 1, nightly: undefined });
+    expect(parseTag("v0.5.0-nightly.n000057")).toEqual({ major: 0, minor: 5, patch: 0, nightly: 57 });
+    // Nightlies published before the build was padded keep their spelling.
     expect(parseTag("v0.5.0-nightly.57")).toEqual({ major: 0, minor: 5, patch: 0, nightly: 57 });
     expect(parseTag("0.4.1")).toBeUndefined();
     expect(parseTag("v0.4.1-beta.1")).toBeUndefined();
-    expect(formatVersion({ major: 0, minor: 5, patch: 0, nightly: 57 })).toBe("0.5.0-nightly.57");
+    expect(formatVersion({ major: 0, minor: 5, patch: 0, nightly: 57 })).toBe("0.5.0-nightly.n000057");
   });
 
   it("orders nightlies before the release they lead up to, and by build", () => {
@@ -26,7 +28,21 @@ describe("release versions", () => {
       .filter((version) => version !== undefined)
       .sort(compareVersions)
       .map(formatVersion);
-    expect(sorted).toEqual(["0.4.0", "0.5.0-nightly.9", "0.5.0-nightly.57", "0.5.0", "0.5.1-nightly.60"]);
+    expect(sorted).toEqual([
+      "0.4.0",
+      "0.5.0-nightly.n000009",
+      "0.5.0-nightly.n000057",
+      "0.5.0",
+      "0.5.1-nightly.n000060",
+    ]);
+  });
+
+  it("writes nightly builds so reading them as text orders them as versions", () => {
+    // GitHub orders a day's releases by tag as text, where nightly.9 would beat nightly.13.
+    const builds = [9, 13, 100, 999, 1000].map((nightly) =>
+      formatVersion({ major: 0, minor: 5, patch: 0, nightly }),
+    );
+    expect([...builds].sort()).toEqual(builds);
   });
 
   it("bumps from the commits that ship", () => {

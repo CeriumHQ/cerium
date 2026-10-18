@@ -5,7 +5,7 @@ import type { UpdateChannel, Updates, UpdateStatus } from "../../backend/shell.t
 
 export const channelLabel: Record<UpdateChannel, string> = { stable: "Stable", nightly: "Nightly" };
 
-/** "0.4.0" or "0.4.1-nightly.12", as Cerium names its builds. */
+/** "0.4.0" or "0.4.1-nightly.n000012", as Cerium names its builds. */
 export const versionLabel = (version: string) => `Cerium ${version}`;
 
 /** A nightly newer than stable's latest that now follows stable: it waits for stable to pass it. */

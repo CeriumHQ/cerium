@@ -3,7 +3,7 @@ import type { Configuration } from "electron-builder";
 // Packages the desktop shell and its backend into an unsigned Windows installer
 // (docs/architecture.md §10). The release workflows set CERIUM_VERSION from scripts/release.ts;
 // without it this builds an installer at the package's own version. Stable and nightly builds are the
-// same app: a nightly's version (`-nightly.<run>`) is all that tells them apart, and the updater
+// same app: a nightly's version (`-nightly.n<run>`) is all that tells them apart, and the updater
 // follows whichever channel the user picks.
 
 const version = process.env["CERIUM_VERSION"];

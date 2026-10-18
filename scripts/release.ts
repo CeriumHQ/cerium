@@ -6,7 +6,11 @@
 //   node scripts/release.ts stable [--commit=<sha>] [--version=<x.y.z>] [--notes=<file>]
 //
 // A nightly covers the commits pushed since the previous release, published as
-// `<next version>-nightly.<build>` when one of them changes the app. A stable promotes the newest
+// `<next version>-nightly.n<build, padded to six digits>` when one of them changes the app. The
+// padded, letter-prefixed build sorts the same read as text as it does as a version: GitHub orders
+// a day's releases by tag as text, so an unpadded `nightly.9` would sit above `nightly.13`, and a
+// purely numeric identifier may not carry leading zeroes under semver, while an alphanumeric one
+// may. A stable promotes the newest
 // nightly's commit, versioned from its Conventional Commits since the last stable: a breaking change
 // bumps the major (the minor before 1.0), a feature the minor, any other change that ships the
 // patch. Its notes are the CHANGELOG.md entries added since the last stable. The plan is printed and,
@@ -25,7 +29,8 @@ export interface Version {
 
 export type Bump = "major" | "minor" | "patch";
 
-const tagPattern = /^v(\d+)\.(\d+)\.(\d+)(?:-nightly\.(\d+))?$/;
+/** Nightly tags before the padded build read `-nightly.<build>`; both spellings name one build. */
+const tagPattern = /^v(\d+)\.(\d+)\.(\d+)(?:-nightly\.n?(\d+))?$/;
 const subjectPattern = /^([a-z]+)(?:\([^)]*\))?(!)?: /;
 
 /** Commit types whose changes reach the installed app; docs, test, ci and chore commits don't. */
@@ -47,7 +52,7 @@ export const parseTag = (tag: string): Version | undefined => {
 };
 
 export const formatVersion = ({ major, minor, patch, nightly }: Version): string =>
-  `${major}.${minor}.${patch}${nightly === undefined ? "" : `-nightly.${nightly}`}`;
+  `${major}.${minor}.${patch}${nightly === undefined ? "" : `-nightly.n${String(nightly).padStart(6, "0")}`}`;
 
 /** Semver precedence: a nightly comes before the release it leads up to. */
 export const compareVersions = (a: Version, b: Version): number =>
