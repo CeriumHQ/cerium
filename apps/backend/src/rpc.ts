@@ -1,18 +1,20 @@
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
 import type { ProviderId, SkillInfo } from "@cerium/protocol";
 import { CeriumError, CeriumRpcs } from "@cerium/rpc";
+import type { StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
-import { Projects } from "./project.ts";
+import { Projects, type ProjectError } from "./project.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError | WorkspaceError) => new CeriumError({ message: error.message });
+const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError) =>
+  new CeriumError({ message: error.message });
 
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
@@ -61,7 +63,16 @@ const Handlers = CeriumRpcs.toLayer(
         ),
       ThreadEvents: ({ threadId }) => orchestrator.threadEvents(threadId).pipe(Effect.mapError(refuse)),
       WatchEvents: () => orchestrator.events,
-      CreateThread: (payload) => orchestrator.createThread(payload).pipe(Effect.mapError(refuse)),
+      // A work thread's folder joins the projects the composer offers, as the one used last.
+      CreateThread: (payload) =>
+        orchestrator.createThread(payload).pipe(
+          Effect.tap(({ thread }) =>
+            thread.mode === "work" && thread.cwd !== undefined
+              ? projects.save(thread.cwd).pipe(Effect.ignore)
+              : Effect.void,
+          ),
+          Effect.mapError(refuse),
+        ),
       SendMessage: ({ agentId, text, attachments, mentions }) =>
         orchestrator
           .sendUserMessage(agentId, text, {
@@ -106,6 +117,9 @@ const Handlers = CeriumRpcs.toLayer(
       SaveAttachment: ({ name, mediaType, data }) =>
         workspace.saveAttachment(name, mediaType, data).pipe(Effect.mapError(refuse)),
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
+      ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
+      SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
+      RemoveProject: ({ path }) => projects.remove(path).pipe(Effect.mapError(refuse)),
       GitBranch: ({ cwd }) => projects.branch(cwd).pipe(Effect.map((branch) => (branch ? { branch } : {}))),
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,

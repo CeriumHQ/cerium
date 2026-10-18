@@ -4,7 +4,17 @@ import { Atom } from "effect/reactivity";
 import { activityAtom } from "./atoms.ts";
 import { Backend, connectionAtom } from "./client.ts";
 
-// What the inbox shows about a work thread's folder, keyed by the folder's path.
+// The folders the composer offers to work in, and what the inbox shows about a work thread's
+// folder, keyed by the folder's path.
+
+/** The saved projects, most recently used first. Re-read whenever the project picker opens. */
+export const savedProjectsAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  return Backend.use((client) => client("ListProjects", undefined));
+});
+
+export const saveProject = Backend.mutation("SaveProject");
+export const removeProject = Backend.mutation("RemoveProject");
 
 /** The project's own icon as a data URL; undefined when it has none. Rarely changes, so kept a while. */
 export const projectIconAtom = Atom.family((cwd: string) =>

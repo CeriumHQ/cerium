@@ -87,6 +87,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: `@` tags files and folders in the thread's folder and `$` the skills of the harness the message goes to, picked from a list above the message box (arrows, then Enter or Tab; Esc closes it). Each shows as a chip inside the text.
 - UI: files and folders agents name in inline code (`CONTRIBUTING.md`, `.agents/`, `src/App.tsx:42`) show as chips with their file type's icon, from the Material Icon Theme set; clicking one shows it in File Explorer. `bun run --cwd apps/ui icons` rebuilds the bundled icons.
 - UI: images an agent reads, or a tool returns, show as thumbnails on the folded tool line and full width inside the call, instead of their base64; clicking one enlarges it.
+- `@cerium/store`, `@cerium/rpc` and the backend: saved projects. Every folder a work thread starts in, or that you choose, is kept with when it was last used; existing threads' folders are added when the database upgrades.
 
 ### Changed
 
@@ -102,6 +103,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the tool calls and reasoning between two of the agent's messages fold into one line that counts what they did ("3 files read, 2 commands run"), opening on click. The stretch the agent is still working through stays open until it moves on.
 - UI and artifacts: text is set in Red Hat Text and code in Red Hat Mono instead of Geist and Geist Mono, scaled to Geist's x-height so every size reads as before.
 - UI: the Work sidebar is an inbox instead of per-project groups: every project's threads in one list, with those waiting on your approval or failed since you looked under "Needs you", then "Working", then "Unread" (finished since you last opened them), then the rest by day. Each row leads with the project's own icon (its favicon, icon or logo, found in the folder or its monorepo packages) or else its initials, with the thread's status as a dot on the badge's corner, and names the project, the git branch checked out there and the harnesses its agents use; a menu scopes the inbox to one folder (remembered) or marks everything read, and right-clicking a thread marks it read or unread. An unread thread you open keeps its place until you leave it. Chats keep their list by recency.
+- UI: a new work thread's project is chosen from a searchable list of saved projects, most recently used first, with each project's icon and where it sits, instead of opening File Explorer every time. Names that start with what you type come first; "Add folder…" browses for one and saves it; a project whose folder is gone is marked and can be removed from the list.
 - UI: the transcript and the message box are 10% wider.
 - UI: your messages keep their line breaks as typed, show their attachments above the text, and show tagged files and skills as chips.
 - `@cerium/orchestrator`: the lead's instructions say when to answer with an artifact (a report on several pieces of work, a comparison, a sequence, numbers) and show a working one, instead of one closing sentence; every agent learns that `@path` names a file and `$name` a skill.

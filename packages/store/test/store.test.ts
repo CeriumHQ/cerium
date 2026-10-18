@@ -213,6 +213,27 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("keeps project folders most recently used first, remembering when each was added", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.saveProject("C:/a", 1);
+        yield* store.saveProject("C:/b", 2);
+        yield* store.saveProject("C:/a", 3);
+        assert.deepStrictEqual(yield* store.listProjects, [
+          { path: "C:/a", addedAt: 1, usedAt: 3 },
+          { path: "C:/b", addedAt: 2, usedAt: 2 },
+        ]);
+
+        yield* store.removeProject("C:/a");
+        assert.deepStrictEqual(
+          (yield* store.listProjects).map((project) => project.path),
+          ["C:/b"],
+        );
+      }),
+    ),
+  );
+
   it.effect("enforces foreign keys", () =>
     withStore(
       Effect.gen(function* () {

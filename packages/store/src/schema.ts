@@ -60,3 +60,11 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value", { mode: "json" }).notNull(),
 });
+
+/** The folders the composer offers to work in: every one the user picked or ran a work thread in. */
+export const projects = sqliteTable("projects", {
+  path: text("path").primaryKey(),
+  addedAt: integer("added_at").notNull(),
+  /** When a thread last started in it, or the user last chose it. */
+  usedAt: integer("used_at").notNull(),
+});

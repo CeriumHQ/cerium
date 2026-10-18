@@ -15,7 +15,7 @@ export function EmptyThread({ mode, folder }: { mode: "work" | "chat"; folder: s
           ? "Chats can read and search the web, and never change your files."
           : folder
             ? `Agents will work in ${baseName(folder)}. Pick a model, then describe the task.`
-            : "Choose a folder for the agents to work in, pick a model, then describe the task."}
+            : "Choose a project for the agents to work in, pick a model, then describe the task."}
       </p>
     </div>
   );

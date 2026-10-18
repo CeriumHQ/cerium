@@ -16,7 +16,6 @@ import {
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
-import { pickFolder } from "../backend/shell.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
@@ -165,12 +164,9 @@ function Workspace() {
     if (!settingsOpen) composerInput.current?.focus();
   }, [settingsOpen]);
 
-  const chooseFolder = () => {
-    void pickFolder().then((picked) => {
-      if (picked === undefined) return;
-      setFolder(picked);
-      remember(FOLDER_KEY, picked);
-    });
+  const chooseFolder = (picked: string) => {
+    setFolder(picked);
+    remember(FOLDER_KEY, picked);
   };
 
   const toggleSidebar = () => {
@@ -356,7 +352,7 @@ function Workspace() {
                   ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
                   onStartNew: startNew,
                 }
-              : { kind: "new", mode, folder, onPickFolder: chooseFolder, available }
+              : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
           }
           running={leadRunning}
           above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}

@@ -1,1 +1,1 @@
-export { defaultMigrationsFolder, Store, StoreError, type AgentPatch } from "./store.ts";
+export { defaultMigrationsFolder, Store, StoreError, type AgentPatch, type StoredProject } from "./store.ts";

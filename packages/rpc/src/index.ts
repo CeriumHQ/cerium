@@ -9,6 +9,7 @@ import {
   LoginProgress,
   Mention,
   ModelInfo,
+  ProjectInfo,
   ProviderId,
   ReasoningEffort,
   Settings,
@@ -146,6 +147,16 @@ export const CeriumRpcs = RpcGroup.make(
     success: ImageData,
     error: CeriumError,
   }),
+  /** The folders the composer offers to work in, most recently used first. */
+  Rpc.make("ListProjects", { success: Schema.Array(ProjectInfo), error: CeriumError }),
+  /** Saves a folder as a project, or marks a saved one as just used. */
+  Rpc.make("SaveProject", {
+    payload: { path: Schema.NonEmptyString },
+    success: ProjectInfo,
+    error: CeriumError,
+  }),
+  /** Forgets a project; threads that ran in it keep their folder. */
+  Rpc.make("RemoveProject", { payload: { path: Schema.NonEmptyString }, error: CeriumError }),
   /** The branch checked out in a work thread's folder, or the short commit when detached; none outside git. */
   Rpc.make("GitBranch", {
     payload: { cwd: Schema.NonEmptyString },

@@ -27,3 +27,14 @@ export const ImageData = Schema.Struct({
   data: Schema.String,
 });
 export type ImageData = typeof ImageData.Type;
+
+/** A folder the composer offers to work in. */
+export const ProjectInfo = Schema.Struct({
+  /** Absolute, as the user picked it or a thread ran in it. */
+  path: Schema.NonEmptyString,
+  /** When a thread last started in it, or the user last chose it. */
+  usedAt: Schema.Finite,
+  /** The folder is gone (moved, deleted, or on a drive that isn't there right now). */
+  missing: Schema.optionalKey(Schema.Boolean),
+});
+export type ProjectInfo = typeof ProjectInfo.Type;

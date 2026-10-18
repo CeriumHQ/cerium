@@ -1,9 +1,10 @@
-import type { ImageData } from "@cerium/protocol";
-import { Cache, Context, Effect, FileSystem, Layer, Option, Path } from "effect";
+import type { ImageData, ProjectInfo } from "@cerium/protocol";
+import { Store, type StoreError } from "@cerium/store";
+import { Cache, Clock, Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { Base64 } from "effect/encoding";
 
-// What the sidebar shows about a work thread's folder: the git branch checked out there, and the
-// project's own icon when it has one.
+// The folders the composer offers to work in, and what the sidebar shows about a work thread's
+// folder: the git branch checked out there, and the project's own icon when it has one.
 
 /** Icons this large are artwork, not a mark; a mark that isn't small enough isn't worth the socket. */
 const MAX_ICON_BYTES = 512 * 1024;
@@ -56,21 +57,39 @@ export const branchFromHead = (head: string): string | undefined => {
 export const gitDirFromFile = (contents: string): string | undefined =>
   /^gitdir:\s*(.+)$/m.exec(contents)?.[1]?.trim();
 
+/** A folder the backend won't save as a project; `message` is written for the user. */
+export class ProjectError extends Schema.TaggedError<ProjectError>()("ProjectError", {
+  message: Schema.String,
+}) {}
+
 export class Projects extends Context.Service<
   Projects,
   {
+    /** The saved project folders, most recently used first, each marked when it is gone. */
+    readonly list: Effect.Effect<ReadonlyArray<ProjectInfo>, StoreError>;
+    /** Saves a folder as a project, or marks a saved one as just used. Refuses what isn't a folder. */
+    save(folder: string): Effect.Effect<ProjectInfo, ProjectError | StoreError>;
+    /** Forgets a project; threads that ran in it keep their folder. */
+    remove(folder: string): Effect.Effect<void, StoreError>;
     /** The branch checked out in `cwd`, or the short commit when detached; none outside git. */
     branch(cwd: string): Effect.Effect<string | undefined>;
     /** The project's own icon, when it has a favicon, icon or logo where projects keep them. */
     icon(cwd: string): Effect.Effect<ImageData | undefined>;
   }
 >()("cerium/backend/Projects") {
-  /** Requires `FileSystem` and `Path`. */
+  /** Requires `Store`, `FileSystem` and `Path`. */
   static readonly layer = Layer.effect(
     Projects,
     Effect.gen(function* () {
+      const store = yield* Store;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
+
+      const isFolder = (folder: string) =>
+        fs.stat(folder).pipe(
+          Effect.map((info) => info.type === "Directory"),
+          Effect.orElseSucceed(() => false),
+        );
 
       const isFile = (file: string) =>
         fs.stat(file).pipe(
@@ -125,6 +144,29 @@ export class Projects extends Context.Service<
       });
 
       return Projects.of({
+        list: store.listProjects.pipe(
+          Effect.flatMap((saved) =>
+            Effect.forEach(
+              saved,
+              ({ path: folder, usedAt }) =>
+                isFolder(folder).pipe(
+                  Effect.map((exists): ProjectInfo =>
+                    exists ? { path: folder, usedAt } : { path: folder, usedAt, missing: true },
+                  ),
+                ),
+              { concurrency: 8 },
+            ),
+          ),
+        ),
+        save: Effect.fn("Projects.save")(function* (folder: string) {
+          if (!(yield* isFolder(folder))) {
+            return yield* new ProjectError({ message: `${folder} isn't a folder Cerium can open.` });
+          }
+          const usedAt = yield* Clock.currentTimeMillis;
+          yield* store.saveProject(folder, usedAt);
+          return { path: folder, usedAt };
+        }),
+        remove: (folder) => store.removeProject(folder),
         branch: (cwd) =>
           Effect.gen(function* () {
             const dir = yield* gitDir(cwd);

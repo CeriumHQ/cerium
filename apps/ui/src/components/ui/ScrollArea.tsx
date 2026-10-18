@@ -4,17 +4,23 @@ import type { ReactNode, Ref } from "react";
 /** A vertical scroll area whose thin scrollbar only appears while hovering or scrolling. */
 export function ScrollArea({
   className,
+  viewportClassName,
   viewportRef,
   children,
 }: {
   className?: string;
+  /** Sizes the scrolling element itself, such as a `max-h-*` for a list that grows to a limit. */
+  viewportClassName?: string;
   /** The scrolling element, for callers that manage the scroll position. */
   viewportRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   return (
     <BaseScrollArea.Root className={`relative min-h-0 ${className ?? ""}`}>
-      <BaseScrollArea.Viewport ref={viewportRef} className="h-full overscroll-contain">
+      <BaseScrollArea.Viewport
+        ref={viewportRef}
+        className={`h-full overscroll-contain ${viewportClassName ?? ""}`}
+      >
         {/* Content defaults to `min-width: fit-content` for horizontal scrolling; vertical lists must
             fit the viewport so their rows can truncate. */}
         <BaseScrollArea.Content className="min-w-0!">{children}</BaseScrollArea.Content>

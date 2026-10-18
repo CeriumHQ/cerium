@@ -7,7 +7,6 @@ import {
   CircleStop,
   Eye,
   FilePen,
-  FolderOpen,
   Gauge,
   Paperclip,
   ShieldOff,
@@ -53,6 +52,7 @@ import {
 } from "./draft.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "./models.ts";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
@@ -64,8 +64,6 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
-
-const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
 /** A message as the box sends it: its text, which names each mention by its token. */
 export interface OutgoingMessage {
@@ -103,7 +101,7 @@ export type ComposerTarget =
       readonly mode: "work" | "chat";
       /** Work threads need a folder before they can start. */
       readonly folder: string | undefined;
-      readonly onPickFolder: () => void;
+      readonly onChooseFolder: (folder: string) => void;
       /** Providers whose harness is installed and logged in. */
       readonly available: ReadonlySet<ProviderId>;
     };
@@ -396,7 +394,7 @@ export function Composer({
             segments={draft.segments}
             placeholder={
               needsFolder
-                ? "Choose a folder to work in first"
+                ? "Choose a project to work in first"
                 : resumes
                   ? `Message ${recipient} to pick this thread back up`
                   : isNew && target.mode === "chat"
@@ -441,19 +439,7 @@ export function Composer({
             ) : (
               <>
                 {target.mode === "work" ? (
-                  <Tooltip label={target.folder ?? "Choose the folder agents work in"}>
-                    <Button
-                      onClick={target.onPickFolder}
-                      className={`flex h-7 max-w-44 items-center gap-1.5 rounded-md px-2 text-[12.5px] transition-colors hover:bg-surface-hover ${
-                        target.folder ? "text-fg-primary" : "text-attention"
-                      }`}
-                    >
-                      <FolderOpen size={13} strokeWidth={1.75} className="shrink-0" />
-                      <span className="truncate font-medium">
-                        {target.folder ? baseName(target.folder) : "Choose folder"}
-                      </span>
-                    </Button>
-                  </Tooltip>
+                  <ProjectPicker folder={target.folder} onChoose={target.onChooseFolder} />
                 ) : null}
 
                 <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>
