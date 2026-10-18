@@ -52,6 +52,40 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
   }
 };
 
+/** Modes whose commands run inside Muse's OS sandbox: every mode with a shell but Full access. */
+export const runsSandboxed = (access: AccessMode): boolean =>
+  access === "ask" || access === "acceptEdits" || access === "auto";
+
+/**
+ * What `muse sandbox windows check` says is wrong, from its `key=value` lines, or nothing when commands
+ * can run. Only a status that names a problem counts, so a check Cerium can't read never blocks anything.
+ */
+export const sandboxProblem = (output: string): string | undefined => {
+  const fields = new Map(
+    output.split(/\r?\n/).flatMap((line) => {
+      const at = line.indexOf("=");
+      return at > 0 ? [[line.slice(0, at).trim(), line.slice(at + 1).trim()] as const] : [];
+    }),
+  );
+  const status = fields.get("status");
+  if (status === undefined || !/required|unavailable|unsupported|error|fail/i.test(status)) return undefined;
+  return fields.get("reason") ?? status.replaceAll("_", " ");
+};
+
+/**
+ * Without its Windows sandbox set up, Muse fails every command in a sandboxed mode and keeps retrying
+ * them for minutes. The agent is told up front, so it works without commands and passes on the fix.
+ */
+export const sandboxInstructions = (problem: string): string =>
+  `Your shell tool cannot run commands on this computer: Muse's Windows sandbox is not set up (${problem}).` +
+  " Do not retry commands. Do what you can without them, and tell the user that commands need a one-time" +
+  " `muse sandbox windows setup` in a terminal opened as administrator, or Full access for this thread.";
+
+/** The same, for the user. */
+export const sandboxNotice = (problem: string): string =>
+  `Muse can't run commands here yet: its Windows sandbox isn't set up (${problem}). Run \`muse sandbox windows setup\`` +
+  " once in a terminal opened as administrator, or give this thread Full access.";
+
 /**
  * Per-host settings for every Cerium session. Cerium's bus is the only way to spawn (architecture §3.1):
  * native subagent tools are hidden, the `workflow` tool is removed and the agent tree has no child slot.

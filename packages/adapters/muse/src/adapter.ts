@@ -1,9 +1,15 @@
-import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, FileSystem, Layer, Path } from "effect";
-import { ChildProcessSpawner } from "effect/process";
+import {
+  HarnessUnavailable,
+  type AdapterEvent,
+  type HarnessAdapter,
+  type SessionOptions,
+} from "@cerium/harness";
+import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
+import { runsSandboxed, sandboxInstructions, sandboxNotice, sandboxProblem } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { startMuseSession } from "./session.ts";
 
@@ -46,8 +52,37 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         return status.executablePath;
       });
 
+      /** Why Muse's Windows sandbox can't run commands, if it can't; any trouble asking reads as fine. */
+      const checkSandbox = (executable: string) =>
+        Effect.gen(function* () {
+          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+          const output = yield* spawner.string(
+            ChildProcess.make(executable, ["sandbox", "windows", "check"]),
+          );
+          return sandboxProblem(output);
+        }).pipe(
+          Effect.timeout("10 seconds"),
+          Effect.orElseSucceed(() => undefined),
+          Effect.provide(platform),
+        );
+
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
-        return yield* startMuseSession(yield* ready, options);
+        const executable = yield* ready;
+        const problem =
+          process.platform === "win32" && runsSandboxed(options.access)
+            ? yield* checkSandbox(executable)
+            : undefined;
+        if (problem === undefined) return yield* startMuseSession(executable, options);
+        const session = yield* startMuseSession(executable, {
+          ...options,
+          appendSystemPrompt: [options.appendSystemPrompt, sandboxInstructions(problem)]
+            .filter((part) => part !== undefined)
+            .join("\n\n"),
+        });
+        const notice: AdapterEvent = {
+          payload: { _tag: "AgentError", kind: "unknown", message: sandboxNotice(problem), retryable: false },
+        };
+        return { ...session, events: Stream.concat(Stream.make(notice), session.events) };
       });
 
       return MuseAdapter.of({

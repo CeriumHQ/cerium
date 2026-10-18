@@ -11,10 +11,44 @@ import {
   fingerprintVerdict,
   isTrustedTool,
   pickApprovalChoice,
+  runsSandboxed,
+  sandboxInstructions,
+  sandboxProblem,
   serveArgs,
   toMuseEffort,
   toSessionMcp,
 } from "../src/policy.ts";
+
+describe("Muse's Windows sandbox", () => {
+  // `muse sandbox windows check` on a machine where the elevated setup never ran (Muse 1.4.10).
+  const unset = [
+    "backend=windows_elevated",
+    "status=setup_required",
+    "reason=sandbox users are not ready",
+    "sandbox_users_ready=false",
+    "diagnostic=sandbox_users_missing:required Windows sandbox users are missing or stale",
+    "sandbox users are not ready",
+  ].join("\r\n");
+
+  it("guards the commands of every mode but Full access and read-only", () => {
+    expect(["ask", "acceptEdits", "auto"].every((access) => runsSandboxed(access as "ask"))).toBe(true);
+    expect(runsSandboxed("fullAccess")).toBe(false);
+    expect(runsSandboxed("readOnly")).toBe(false);
+  });
+
+  it("reads why commands can't run, and nothing when they can or the output is unclear", () => {
+    expect(sandboxProblem(unset)).toBe("sandbox users are not ready");
+    expect(sandboxProblem("status=unsupported")).toBe("unsupported");
+    expect(sandboxProblem("backend=windows_elevated\nstatus=ready")).toBeUndefined();
+    expect(sandboxProblem("something else entirely")).toBeUndefined();
+  });
+
+  it("tells the agent to stop retrying and pass on the fix", () => {
+    const text = sandboxInstructions("sandbox users are not ready");
+    expect(text).toContain("Do not retry commands.");
+    expect(text).toContain("`muse sandbox windows setup`");
+  });
+});
 
 const choice = (choiceId: string, decision: string, scope: string): ApprovalChoice =>
   ({ choiceId, decision, scope, label: choiceId }) as ApprovalChoice;
