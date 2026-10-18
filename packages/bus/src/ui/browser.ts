@@ -117,6 +117,14 @@ const killProfile = (profile: string) => {
   }
 };
 
+const readPortFile = (path: string): string | undefined => {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Starts the browser on a fresh profile with a debugging port the OS picks, and waits for it to say
  * which: Chromium writes the port to `DevToolsActivePort` in the profile once it listens.
@@ -172,10 +180,10 @@ export const launchBrowser = async (options: {
   const portFile = join(profile, "DevToolsActivePort");
   for (let waited = 0; waited < 20_000; waited += 100) {
     if (child.exitCode !== null && child.exitCode !== 0) break;
-    if (existsSync(portFile)) {
-      const [port, path] = readFileSync(portFile, "utf8")
-        .split("\n")
-        .map((line) => line.trim());
+    // Windows keeps the file locked while the browser writes it; a busy read retries next round.
+    const written = existsSync(portFile) ? readPortFile(portFile) : undefined;
+    if (written !== undefined) {
+      const [port, path] = written.split("\n").map((line) => line.trim());
       if (port) {
         browserSocket = path ? `ws://127.0.0.1:${port}${path}` : undefined;
         return { origin: `http://127.0.0.1:${port}`, process: child, close };
