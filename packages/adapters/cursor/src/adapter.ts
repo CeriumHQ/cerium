@@ -2,6 +2,7 @@ import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@c
 import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
+import { completeWithCursor } from "./complete.ts";
 import { cursorLogin } from "./login.ts";
 import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog, toModelInfo } from "./models.ts";
@@ -48,6 +49,11 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         }
       });
 
+      // Completions are meant to be quick, so they skip the probe for a while after one passes.
+      const readyForCompletion = yield* ready.pipe(
+        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
+      );
+
       const startSession = Effect.fn("CursorAdapter.startSession")(function* (options: SessionOptions) {
         yield* ready;
         return yield* startCursorSession(options, catalog);
@@ -62,6 +68,11 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
           Effect.andThen(catalog),
           Effect.map((models) => models.map(toModelInfo)),
         ),
+        complete: (request) =>
+          readyForCompletion.pipe(
+            Effect.andThen(completeWithCursor(request, catalog)),
+            Effect.provide(platform),
+          ),
         startSession,
       });
     }),

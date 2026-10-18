@@ -147,7 +147,10 @@ export const backendLayer = (options: BackendOptions) =>
         }),
         AdaptersLive,
         CatalogLive(options.catalog),
-        OrchestratorConfig.layer({ chatDirectory: join(options.dataDirectory, "chats") }),
+        OrchestratorConfig.layer({
+          chatDirectory: join(options.dataDirectory, "chats"),
+          titleDirectory: join(options.dataDirectory, "titles"),
+        }),
       ),
     ),
     Layer.provideMerge(BusHttpServer),

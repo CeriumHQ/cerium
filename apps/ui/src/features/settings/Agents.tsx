@@ -1,6 +1,6 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
-import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, AdvisorSettings, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
@@ -33,6 +33,7 @@ import {
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import { TitleSetting } from "./Titles.tsx";
 import { accessAtom, effortAtom, modelAtom } from "./preferences.ts";
 
 const unavailableReason: Record<Exclude<HarnessIndicator["state"], "ready">, string> = {
@@ -91,7 +92,13 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
         title="Lead model"
         description="The model that leads a new thread. The composer offers the same choice and remembers the last one picked."
       >
-        <ModelPicker value={model} onChange={setModelId} models={models} harnesses={harnesses} />
+        <ModelPicker
+          label="Lead model"
+          value={model}
+          onChange={setModelId}
+          models={models}
+          harnesses={harnesses}
+        />
       </SettingsSection>
 
       {model && activeEffort ? (
@@ -99,7 +106,12 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
           title="Reasoning effort"
           description={`How long ${model.label} thinks before it answers.`}
         >
-          <EffortGauge levels={model.efforts} value={activeEffort} onChange={setEffort} />
+          <EffortGauge
+            label="Reasoning effort"
+            levels={model.efforts}
+            value={activeEffort}
+            onChange={setEffort}
+          />
         </SettingsSection>
       ) : null}
 
@@ -108,6 +120,17 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
         description="What the lead of every new work thread may do in its folder, Auto unless you change it here. A pick in the composer covers just the thread it starts. Chats are always read only, and agents a lead starts never get more than it has."
       >
         <AccessPicker value={access} onChange={setAccess} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Advisor"
+        description="A model your agents can ask when they're stuck. It reads what it needs and answers, but never edits, runs commands or starts agents. Your strongest model makes the best advisor."
+      >
+        <AdvisorSetting models={models} harnesses={harnesses} leadModel={model} />
+      </SettingsSection>
+
+      <SettingsSection title="Thread titles">
+        <TitleSetting models={models} harnesses={harnesses} />
       </SettingsSection>
 
       <SettingsSection title="Tools">
@@ -122,11 +145,13 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
  * many models, so only the chosen one shows.
  */
 function ModelPicker({
+  label,
   value,
   onChange,
   models,
   harnesses,
 }: {
+  label: string;
   value: ModelInfo | undefined;
   onChange: (model: string) => void;
   models: ReadonlyArray<ModelInfo>;
@@ -140,7 +165,7 @@ function ModelPicker({
     <RadioGroup
       value={value?.provider ?? null}
       onValueChange={(next) => choose(next as ProviderId)}
-      aria-label="Lead model"
+      aria-label={label}
       className="divide-y divide-line-subtle rounded-xl border border-line-subtle"
     >
       {harnesses.map(({ provider, state }) => {
@@ -171,7 +196,7 @@ function ModelPicker({
             </Radio.Root>
             {ready && shown ? (
               <SelectRoot value={modelKey(shown)} onValueChange={(next) => next !== null && onChange(next)}>
-                <SelectTrigger label={`${providerName[provider]} model`}>
+                <SelectTrigger label={`${providerName[provider]} ${label.toLowerCase()}`}>
                   <span className={value?.provider === provider ? "font-medium text-fg-primary" : ""}>
                     {shown.label}
                   </span>
@@ -198,10 +223,12 @@ function ModelPicker({
 
 /** The model's effort levels as rising bars, filled up to the chosen one. */
 function EffortGauge({
+  label,
   levels,
   value,
   onChange,
 }: {
+  label: string;
   levels: ReadonlyArray<ReasoningEffort>;
   value: ReasoningEffort;
   onChange: (effort: ReasoningEffort) => void;
@@ -212,7 +239,7 @@ function EffortGauge({
       <RadioGroup
         value={value}
         onValueChange={(next) => onChange(next as ReasoningEffort)}
-        aria-label="Reasoning effort"
+        aria-label={label}
         className="flex items-end gap-1"
       >
         {levels.map((level, index) => (
@@ -339,6 +366,125 @@ function PermissionCell({ permission }: { permission: Permission }) {
       )}
       {permission === "yes" ? null : permissionLabel[permission]}
     </span>
+  );
+}
+
+/** An advisor is there to think hard, so a new pick starts at the model's strongest effort. */
+const advisorEffort = (model: ModelInfo, wanted?: ReasoningEffort) =>
+  wanted !== undefined && model.efforts.includes(wanted) ? wanted : model.efforts.at(-1);
+
+const advisorPick = (model: ModelInfo, wanted?: ReasoningEffort) => {
+  const effort = advisorEffort(model, wanted);
+  return { provider: model.provider, model: model.id, ...(effort ? { effort } : {}) };
+};
+
+/**
+ * Whether agents may ask an advisor, and the model and effort it answers with. Saved by the backend;
+ * the pick is kept while it's off. Turning it on with no pick yet starts from the lead model.
+ */
+function AdvisorSetting({
+  models,
+  harnesses,
+  leadModel,
+}: {
+  models: ReadonlyArray<ModelInfo>;
+  harnesses: ReadonlyArray<HarnessIndicator>;
+  leadModel: ModelInfo | undefined;
+}) {
+  const result = useAtomValue(settingsAtom);
+  const refresh = useAtomRefresh(settingsAtom);
+  const update = useAtomSet(updateSettings, { mode: "promise" });
+  /** The choice being saved, shown before the backend confirms it. */
+  const [saving, setSaving] = useState<AdvisorSettings>();
+  const [error, setError] = useState<string>();
+  const labelId = useId();
+
+  const saved = AsyncResult.isSuccess(result) ? result.value.advisor : undefined;
+  const advisor = saving ?? saved ?? { enabled: false };
+  const picked = advisor.model;
+  const model = picked
+    ? models.find((candidate) => candidate.provider === picked.provider && candidate.id === picked.model)
+    : undefined;
+  const effort = model ? advisorEffort(model, picked?.effort) : undefined;
+
+  const save = (next: AdvisorSettings) => {
+    setSaving(next);
+    setError(undefined);
+    update({ payload: { advisor: next } }).then(
+      () => {
+        refresh();
+        setSaving(undefined);
+      },
+      () => {
+        setSaving(undefined);
+        setError("Couldn't save that. Is Cerium's backend running?");
+      },
+    );
+  };
+  const toggle = (on: boolean) => {
+    const start = on && picked === undefined && leadModel ? { model: advisorPick(leadModel) } : {};
+    save({ ...advisor, ...start, enabled: on });
+  };
+  const chooseModel = (key: string) => {
+    const next = models.find((candidate) => modelKey(candidate) === key);
+    if (next) save({ enabled: true, model: advisorPick(next, picked?.effort) });
+  };
+
+  return (
+    <>
+      <SettingsCard className="flex items-start gap-4 p-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span id={labelId} className="text-[13px] font-medium text-fg-primary">
+            Let agents ask an advisor
+          </span>
+          <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
+            Agents get <code className="font-mono text-[11.5px] text-fg-secondary">ask_advisor</code> to put a
+            question to it. Each thread starts its own advisor with the first question, so it remembers what
+            that thread asked. Agents started after you turn it on are told it's there.
+          </p>
+          {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
+        </div>
+        <SettingsSwitch
+          checked={advisor.enabled}
+          onCheckedChange={toggle}
+          disabled={saved === undefined}
+          labelledBy={labelId}
+        />
+      </SettingsCard>
+      {advisor.enabled ? (
+        <>
+          <AdvisorPart title="Answers with">
+            <ModelPicker
+              label="Advisor model"
+              value={model}
+              onChange={chooseModel}
+              models={models}
+              harnesses={harnesses}
+            />
+          </AdvisorPart>
+          {model && effort && picked ? (
+            <AdvisorPart title={`How long ${model.label} thinks`}>
+              <EffortGauge
+                label="Advisor reasoning effort"
+                levels={model.efforts}
+                value={effort}
+                onChange={(next) => save({ enabled: true, model: { ...picked, effort: next } })}
+              />
+            </AdvisorPart>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** One of the advisor's choices under a caption, set apart from the lead's identical controls above. */
+function AdvisorPart({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 pt-1">
+      <span className="text-xs font-medium text-fg-secondary">{title}</span>
+      {children}
+    </div>
   );
 }
 

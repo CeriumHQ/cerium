@@ -114,11 +114,14 @@ export interface ServeOptions {
   readonly appendSystemPrompt?: string | undefined;
   /** Test seam: `echo` drives the full protocol with no account. Cerium itself never sets it. */
   readonly provider?: "echo" | undefined;
+  /** Keeps sessions in memory only, for one-off completions. */
+  readonly ephemeral?: boolean | undefined;
 }
 
 export const serveArgs = (options: ServeOptions): ReadonlyArray<string> => [
   "serve",
   ...(options.provider ? ["--provider", options.provider] : []),
+  ...(options.ephemeral ? ["--no-session-log"] : []),
   // Cerium has no user-input dialog; the model asks in its reply instead.
   "--disable-request-user-input",
   ...accessPolicy(options.access).serveFlags,

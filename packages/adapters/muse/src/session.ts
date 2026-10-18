@@ -73,11 +73,13 @@ export const toTurnInput = (text: string, extras: TurnExtras | undefined): Array
   })),
 ];
 
-/** Seams for the offline checks and the fixture recorder; Cerium itself never sets them. */
+/** How a session's host differs from an agent's: for completions, the offline checks and the fixture recorder. */
 export interface MuseHostOverrides {
   /** `echo` answers every turn without an account, so the whole protocol runs offline. */
   readonly provider?: "echo";
   readonly record?: (frame: RecordedFrame) => void;
+  /** Nothing is saved: the host keeps its sessions in memory (completions). */
+  readonly ephemeral?: boolean;
 }
 
 type Verdict =
@@ -121,6 +123,7 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
       access: options.access,
       appendSystemPrompt: options.appendSystemPrompt,
       provider: overrides.provider,
+      ephemeral: overrides.ephemeral,
     }),
     { cwd: options.cwd, capabilities: { requestedCapabilities: ["sessionMcp"], userInputDialogs: false } },
   );
@@ -223,7 +226,8 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
           workspaceRoot: options.cwd,
           ...(overrides.provider === "echo" ? {} : { modelId: options.model }),
           approvalMode: policy.approvalMode,
-          permissionProfile: policy.permissionProfile,
+          // A memory-only host has one fixed profile and refuses any other; its serve flags set access.
+          ...(overrides.ephemeral ? {} : { permissionProfile: policy.permissionProfile }),
           ...config,
         },
   ).pipe(Effect.mapError(failure(`Muse Code refused \`${verb}\``)));

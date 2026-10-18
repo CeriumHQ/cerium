@@ -62,6 +62,9 @@ export const MAX_THREAD_TITLE = 80;
 /** The role every thread's lead agent has. */
 export const LEAD_ROLE = "lead";
 
+/** The role of a thread's advisor, a child Cerium starts itself; leads can't spawn one. */
+export const ADVISOR_ROLE = "advisor";
+
 export const AgentInfo = Schema.Struct({
   id: AgentId,
   threadId: ThreadId,

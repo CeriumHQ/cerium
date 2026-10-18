@@ -1,4 +1,5 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
+import { defaultSettings } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect } from "effect";
@@ -35,6 +36,7 @@ describe("UserSettings", () => {
       assert.isTrue(fake.sessions[0]?.options.includeUserMcpServers);
 
       assert.deepStrictEqual(yield* settings.update({ includeUserMcpServers: false }), {
+        ...defaultSettings,
         includeUserMcpServers: false,
       });
       yield* startWorkThread;
@@ -47,13 +49,18 @@ describe("UserSettings", () => {
   it.effect("reads saved settings back, and defaults any it can't decode", () =>
     Effect.gen(function* () {
       const store = yield* Store;
-      assert.deepStrictEqual(yield* readSettings, { includeUserMcpServers: true });
+      assert.deepStrictEqual(yield* readSettings, defaultSettings);
 
-      yield* store.writeSettings({ includeUserMcpServers: false });
-      assert.deepStrictEqual(yield* readSettings, { includeUserMcpServers: false });
+      const advisor = { enabled: true, model: { provider: "claude", model: "opus", effort: "max" } } as const;
+      yield* store.writeSettings({ includeUserMcpServers: false, advisor });
+      assert.deepStrictEqual(yield* readSettings, {
+        ...defaultSettings,
+        includeUserMcpServers: false,
+        advisor,
+      });
 
-      yield* store.writeSettings({ includeUserMcpServers: "no" });
-      assert.deepStrictEqual(yield* readSettings, { includeUserMcpServers: true });
+      yield* store.writeSettings({ includeUserMcpServers: "no", advisor: { enabled: "yes" } });
+      assert.deepStrictEqual(yield* readSettings, defaultSettings);
     }).pipe(
       Effect.provide(
         Store.layer({

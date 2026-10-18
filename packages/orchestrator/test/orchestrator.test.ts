@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Orchestrator, type CatalogEntry } from "../src/index.ts";
+import { HarnessFailure, type HarnessAdapter } from "@cerium/harness";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 
 import { recordEvents, testLayer } from "./fakes.ts";
@@ -363,6 +364,100 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
   });
 
+  it.live("tells a starting lead which threads already work in its folder", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const started = (agentId: AgentId) =>
+        waitFor((events) =>
+          events.find((event) => event.agentId === agentId && event.payload._tag === "SessionStarted"),
+        );
+      const first = yield* startWorkThread;
+      yield* started(first.lead.id);
+      const elsewhere = yield* orchestrator.createThread({
+        title: "Elsewhere",
+        mode: "work",
+        cwd: tmpdir(),
+        lead: { provider: "claude", model: "opus", access: "ask" },
+      });
+      yield* started(elsewhere.lead.id);
+      const second = yield* startWorkThread;
+      yield* started(second.lead.id);
+
+      const [firstPrompt, elsewherePrompt, secondPrompt] = fake.sessions.map(
+        (session) => session.options.appendSystemPrompt ?? "",
+      );
+      assert.notInclude(firstPrompt, "Other threads in your folder");
+      assert.notInclude(elsewherePrompt, "Other threads in your folder");
+      assert.include(secondPrompt, `"Test": lead ${first.lead.id} (opus)`);
+      assert.notInclude(secondPrompt, elsewhere.lead.id);
+      // Every agent is told when a message is worth sending, not just that the tool exists.
+      assert.include(firstPrompt, "when you are about to change files another agent is working on");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("ends a turn the harness refuses, so the agent doesn't stay working", () => {
+    const fake = makeFakeAdapter("claude");
+    const refusing: HarnessAdapter = {
+      ...fake.adapter,
+      startSession: (options) =>
+        fake.adapter.startSession(options).pipe(
+          Effect.map((session) => ({
+            ...session,
+            send: () =>
+              Effect.fail(
+                new HarnessFailure({
+                  provider: "claude",
+                  message: "The harness went away.",
+                  cause: undefined,
+                }),
+              ),
+          })),
+        ),
+    };
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      yield* orchestrator.sendUserMessage(lead.id, "hello");
+      yield* waitFor((events) =>
+        events.find(
+          (event) =>
+            event.agentId === lead.id &&
+            event.payload._tag === "AgentStateChanged" &&
+            event.payload.state === "idle",
+        ),
+      );
+      const tags = (yield* orchestrator.threadEvents(lead.threadId)).map((event) => event.payload._tag);
+      assert.includeMembers(tags, ["TurnInput", "AgentError", "TurnCompleted"]);
+      assert.strictEqual((yield* orchestrator.agent(lead.id)).state, "idle");
+    }).pipe(Effect.provide(testLayer([refusing])), Effect.scoped);
+  });
+
+  it.live("refuses a message to an agent whose session ended, instead of dropping it", () => {
+    const fake = makeFakeAdapter("claude", { failedStarts: 1 });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const failed = yield* startWorkThread;
+      yield* waitFor((events) =>
+        events.find(
+          (event) =>
+            event.agentId === failed.lead.id &&
+            event.payload._tag === "AgentStateChanged" &&
+            event.payload.state === "failed",
+        ),
+      );
+      const live = yield* startWorkThread;
+      const refused = yield* Effect.flip(
+        orchestrator.sendMessage(live.lead.id, failed.lead.id, "still there?"),
+      );
+      assert.strictEqual(refused.reason, "notFound");
+      assert.include(refused.message, "isn't running");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("stops a pair of agents from exceeding the message budget", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
@@ -509,8 +604,11 @@ describe("Orchestrator", () => {
       );
       assert.notInclude(recorded, "PermissionRequested", "nobody was asked, so nothing shows a request");
       assert.notInclude(recorded, "PermissionResolved");
-      // The UI and live-check tools refuse read-only agents, so their prompt leaves them out.
-      assert.notInclude(web.sessions[0]?.options.appendSystemPrompt ?? "", "`ui_open`");
+      // Read-only agents may look at pages, but acting on them and live checks are refused, so their
+      // prompt leaves those out.
+      assert.include(web.sessions[0]?.options.appendSystemPrompt ?? "", "`ui_open`");
+      assert.notInclude(web.sessions[0]?.options.appendSystemPrompt ?? "", "`ui_act`");
+      assert.notInclude(web.sessions[0]?.options.appendSystemPrompt ?? "", "`live_check`");
 
       const posting = yield* startChat("codex");
       yield* orchestrator.sendUserMessage(posting.lead.id, "post it");

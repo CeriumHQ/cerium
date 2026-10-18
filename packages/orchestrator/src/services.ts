@@ -41,6 +41,8 @@ export class BusEndpoint extends Context.Service<
 export interface OrchestratorSettings {
   /** Chat threads have no folder; each gets an empty directory under here as the harness's cwd. */
   readonly chatDirectory: string;
+  /** The empty folder title completions run in, so no project's instructions load (default `<chatDirectory>/.titles`). */
+  readonly titleDirectory?: string;
   /** How long to wait for more notices before delivering a batch to an idle agent. */
   readonly batchWindow: Duration.Duration;
   /** Agents running a turn at once across every provider. */

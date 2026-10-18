@@ -4,6 +4,7 @@ import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 import {
   HarnessUnavailable,
   type AdapterEvent,
+  type CompletionRequest,
   type HarnessAdapter,
   type PermissionDecision,
   type SessionOptions,
@@ -36,9 +37,14 @@ export const makeFakeAdapter = (
     readonly startDuration?: Duration.Input;
     /** How many of the first sessions fail to start, as a logged-out harness would. */
     readonly failedStarts?: number;
+    /** What `complete` answers; without it, `complete` fails as a logged-out harness would. */
+    readonly complete?: (request: CompletionRequest) => string;
+    /** How long each `complete` takes. */
+    readonly completeDuration?: Duration.Input;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
+  const completions: Array<CompletionRequest> = [];
   let failuresLeft = options.failedStarts ?? 0;
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
@@ -60,6 +66,15 @@ export const makeFakeAdapter = (
     listModels: Effect.succeed([
       { provider, id: "fake-model", label: "Fake model", efforts: ["low", "medium", "high"] },
     ]),
+    complete: (request) =>
+      Effect.gen(function* () {
+        completions.push(request);
+        yield* Effect.sleep(options.completeDuration ?? 0);
+        if (options.complete === undefined) {
+          return yield* new HarnessUnavailable({ provider, reason: "loggedOut", message: "Not logged in." });
+        }
+        return options.complete(request);
+      }),
     startSession: (sessionOptions) =>
       Effect.gen(function* () {
         yield* Effect.sleep(options.startDuration ?? 0);
@@ -130,5 +145,5 @@ export const makeFakeAdapter = (
         };
       }),
   };
-  return { adapter, sessions, running };
+  return { adapter, sessions, completions, running };
 };

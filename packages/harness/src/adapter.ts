@@ -87,6 +87,16 @@ export interface TurnExtras {
   readonly skills?: ReadonlyArray<{ readonly name: string; readonly path?: string }>;
 }
 
+/** A one-off question Cerium asks for its own small jobs, such as naming a thread. */
+export interface CompletionRequest {
+  readonly model: string;
+  /** The whole system prompt where the harness lets it be replaced; otherwise it opens the prompt. */
+  readonly instructions: string;
+  readonly prompt: string;
+  /** An empty folder to run in, so no project's instructions or skills load. */
+  readonly cwd: string;
+}
+
 /** A live harness session. Closing the scope it was started in ends the session. */
 export interface AgentSession {
   readonly events: Stream.Stream<AdapterEvent, HarnessFailure>;
@@ -113,6 +123,11 @@ export interface HarnessAdapter {
    * when the harness can't say without starting a session.
    */
   listSkills?(cwd: string): Effect.Effect<ReadonlyArray<SkillInfo>, HarnessUnavailable | HarnessFailure>;
+  /**
+   * Answers a `CompletionRequest` as quickly as the harness can: the model's lowest effort, no tools,
+   * no MCP servers, none of the user's configuration, and nothing saved. Resolves with the reply's text.
+   */
+  complete(request: CompletionRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

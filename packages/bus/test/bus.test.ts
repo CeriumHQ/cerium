@@ -116,6 +116,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
           "list_threads",
           "send_message",
           "kill_agent",
+          "ask_advisor",
           "artifact_guide",
           "ui_open",
           "ui_act",
@@ -155,6 +156,45 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
       const anonymous = yield* leadClient.callTool("list_agents", {}, { authorization: "Bearer forged" });
       assert.isTrue(anonymous?.result?.isError);
       assert.include(JSON.stringify(anonymous?.result?.content), "Unknown Cerium agent.");
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  it.live("puts questions to the user's advisor once they turn it on", () => {
+    const fake = makeFakeAdapter("claude", {
+      reply: (text, session) => (session.access === "readOnly" ? "Check the lockfile." : `lead saw: ${text}`),
+    });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const settings = yield* UserSettings;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Advice",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "auto" },
+      });
+      const client = mcpClient(yield* busOf(fake, 0));
+      yield* client.initialize;
+
+      const off = yield* client.callTool("ask_advisor", { question: "Why won't it install?" });
+      assert.isTrue(off?.result?.isError);
+      assert.include(JSON.stringify(off?.result?.content), "hasn't turned on an advisor");
+
+      yield* settings.update({ advisor: { enabled: true, model: { provider: "claude", model: "opus" } } });
+      const asked = yield* client.callTool("ask_advisor", { question: "Why won't it install?" });
+      assert.strictEqual(asked?.result?.structuredContent?.status, "asked");
+      const advisorId = asked?.result?.structuredContent?.advisorId as AgentId;
+      assert.strictEqual((yield* orchestrator.agent(advisorId)).access, "readOnly");
+      for (
+        let waited = 0;
+        waited < 100 && !fake.sessions[0]!.sent.some((sent) => sent.includes("Check the lockfile."));
+        waited++
+      ) {
+        yield* Effect.sleep(Duration.millis(20));
+      }
+      assert.include(
+        fake.sessions[0]!.sent.join("\n"),
+        `[Cerium] Message from agent ${advisorId} (thread ${lead.threadId}):\nCheck the lockfile.`,
+      );
     }).pipe(Effect.provide(stack(fake)), Effect.scoped);
   });
 

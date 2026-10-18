@@ -16,10 +16,12 @@ export const BusHttpServer = NodeHttpServer.layer(createServer, { host: "127.0.0
 /** What every session's MCP client is told the server is for, at initialize. */
 const INSTRUCTIONS = [
   "Cerium's own tools.",
-  "Agents: spawn, message and stop other agents in this thread (spawn_agent, send_message, list_agents, list_threads, kill_agent).",
+  "Agents: spawn and stop agents in your thread (spawn_agent, list_agents, kill_agent), and message them or" +
+    " another thread's lead (send_message, list_threads), before changing files they work on or to ask what they know.",
   "UI: see and use a web UI like a user. ui_open a URL (or attach to an app's debugging port), then ui_act with a batch of" +
     " clicks, typing and key presses, which answers with a screenshot; ui_inspect reads the page's controls and console.",
   "Live checks: live_check runs a short real turn on each harness and reports what it did, instead of a hand-written script.",
+  "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",
   "Artifacts: artifact_guide before writing your first visual.",
 ].join("\n");
 

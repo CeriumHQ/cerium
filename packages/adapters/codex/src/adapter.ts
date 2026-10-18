@@ -1,7 +1,8 @@
 import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
+import { completeWithCodex } from "./complete.ts";
 import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
@@ -49,6 +50,10 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         }
         return status.executablePath;
       });
+      // Completions are meant to be quick, so they skip the probe for a while after one passes.
+      const readyForCompletion = yield* ready.pipe(
+        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
+      );
 
       const startSession = Effect.fn("CodexAdapter.startSession")(function* (options: SessionOptions) {
         return yield* startCodexSession(yield* ready, options).pipe(Effect.provide(platform));
@@ -62,6 +67,11 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         listSkills: (cwd) =>
           ready.pipe(
             Effect.flatMap((executablePath) => listCodexSkills(executablePath, cwd)),
+            Effect.provide(platform),
+          ),
+        complete: (request) =>
+          readyForCompletion.pipe(
+            Effect.flatMap((executablePath) => completeWithCodex(executablePath, request)),
             Effect.provide(platform),
           ),
         startSession,

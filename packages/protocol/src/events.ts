@@ -196,6 +196,14 @@ export const SpawnApprovalResolved = Schema.TaggedStruct("SpawnApprovalResolved"
   decision: Schema.Literals(["allow", "deny"]),
 });
 
+/**
+ * Cerium named the thread from its first message (architecture §3.12). Published on the lead's live
+ * feed so lists refresh at once, and never stored: the thread's record holds the title.
+ */
+export const ThreadRenamed = Schema.TaggedStruct("ThreadRenamed", {
+  title: Schema.String,
+});
+
 export const EventPayload = Schema.Union([
   SessionStarted,
   MessageDelta,
@@ -217,6 +225,7 @@ export const EventPayload = Schema.Union([
   AgentStateChanged,
   SpawnApprovalRequested,
   SpawnApprovalResolved,
+  ThreadRenamed,
 ]);
 export type EventPayload = typeof EventPayload.Type;
 

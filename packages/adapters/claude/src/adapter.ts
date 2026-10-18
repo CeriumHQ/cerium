@@ -1,7 +1,8 @@
 import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
+import { completeWithClaude } from "./complete.ts";
 import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
@@ -46,6 +47,10 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         }
         return status.executablePath;
       });
+      // Completions are meant to be quick, so they skip the probe for a while after one passes.
+      const readyForCompletion = yield* ready.pipe(
+        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
+      );
 
       const startSession = Effect.fn("ClaudeAdapter.startSession")(function* (options: SessionOptions) {
         return yield* startClaudeSession(yield* ready, options);
@@ -58,6 +63,10 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
         listSkills: (cwd) =>
           ready.pipe(Effect.flatMap((executablePath) => listClaudeSkills(executablePath, cwd))),
+        complete: (request) =>
+          readyForCompletion.pipe(
+            Effect.flatMap((executablePath) => completeWithClaude(executablePath, request)),
+          ),
         startSession,
       });
     }),

@@ -1,4 +1,52 @@
-import { Schema, Struct } from "effect";
+import { Effect, Schema, Struct } from "effect";
+
+import { ReasoningEffort } from "./capabilities.ts";
+import { ProviderId } from "./ids.ts";
+
+/**
+ * The model agents ask through the bus's `ask_advisor` when they are stuck (architecture §3.11). It
+ * answers and never works: Cerium runs it read only. The pick is kept while it is off.
+ */
+export const AdvisorSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Absent until the user picks one; an enabled advisor without one answers nobody. */
+  model: Schema.optionalKey(
+    Schema.Struct({
+      provider: ProviderId,
+      model: Schema.NonEmptyString,
+      effort: Schema.optionalKey(ReasoningEffort),
+    }),
+  ),
+});
+export type AdvisorSettings = typeof AdvisorSettings.Type;
+
+const defaultAdvisor: AdvisorSettings = { enabled: false };
+
+/** A model as harness and id, without the effort a completion never takes. */
+export const ModelChoice = Schema.Struct({ provider: ProviderId, model: Schema.NonEmptyString });
+export type ModelChoice = typeof ModelChoice.Type;
+
+/**
+ * The models that name threads when the user hasn't picked one, best first: the first one a
+ * logged-in harness offers is used. One per provider, so every user has one (architecture §3.12).
+ */
+export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
+  { provider: "claude", model: "haiku" },
+  { provider: "codex", model: "gpt-6-luna" },
+  { provider: "cursor", model: "composer-2.5" },
+  { provider: "muse", model: "muse-spark-1.3-contributor" },
+];
+
+/** How Cerium names a new thread from its first message (architecture §3.12). */
+export const TitleSettings = Schema.Struct({
+  /** Off, a thread keeps the first line of its first message as its title. */
+  enabled: Schema.Boolean,
+  /** Absent: the first of `TITLE_MODELS` the user's harnesses offer. */
+  model: Schema.optionalKey(ModelChoice),
+});
+export type TitleSettings = typeof TitleSettings.Type;
+
+const defaultTitles: TitleSettings = { enabled: true };
 
 /**
  * The user's settings the backend applies. Preferences that only change the window (theme, text
@@ -7,6 +55,10 @@ import { Schema, Struct } from "effect";
 export const Settings = Schema.Struct({
   /** Load the MCP servers the user set up in each harness into sessions Cerium starts (§2.2). */
   includeUserMcpServers: Schema.Boolean,
+  /** Read as its default from a backend that predates it. */
+  advisor: AdvisorSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAdvisor))),
+  /** Read as its default from a backend that predates it. */
+  titles: TitleSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultTitles))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -14,4 +66,8 @@ export type Settings = typeof Settings.Type;
 export const SettingsPatch = Settings.mapFields(Struct.map(Schema.optionalKey));
 export type SettingsPatch = typeof SettingsPatch.Type;
 
-export const defaultSettings: Settings = { includeUserMcpServers: true };
+export const defaultSettings: Settings = {
+  includeUserMcpServers: true,
+  advisor: defaultAdvisor,
+  titles: defaultTitles,
+};

@@ -1,9 +1,11 @@
 import type { AgentSession, PermissionDecision, TurnExtras, TurnImage } from "@cerium/harness";
 import {
+  ADVISOR_ROLE,
   LEAD_ROLE,
   MAX_THREAD_TITLE,
   narrowAccess,
   type AccessMode,
+  type AdvisorSettings,
   type AgentEvent,
   type Attachment,
   type AgentId,
@@ -43,9 +45,10 @@ import {
 import { Base64 } from "effect/encoding";
 
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
-import { renderTurn, systemPrompt, truncate } from "./prompts.ts";
+import { renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { Adapters, BusEndpoint, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
 import { UserSettings } from "./settings.ts";
+import { ThreadTitles } from "./titles.ts";
 
 export interface CreateThreadInput {
   readonly title: string;
@@ -110,10 +113,14 @@ interface Runtime {
   ended: boolean;
 }
 
+/** A thread's advisor: the read-only child Cerium starts for `ask_advisor` (architecture §3.11). */
+const isAdvisor = (info: AgentInfo) => info.parentId !== undefined && info.role === ADVISOR_ROLE;
+
 const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("image/");
 
-const isDelta = (payload: EventPayload) =>
-  payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta";
+/** Events the store never keeps: streamed text, and new titles, which the thread's record holds. */
+const isEphemeral = (payload: EventPayload) =>
+  payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta" || payload._tag === "ThreadRenamed";
 
 /**
  * Read-only agents never wait on the user (architecture §2.2): each harness already keeps them from
@@ -175,6 +182,14 @@ export class Orchestrator extends Context.Service<
     spawn(callerId: AgentId, request: SpawnRequest): Effect.Effect<SpawnOutcome, OrchestratorError>;
     sendMessage(callerId: AgentId, to: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Puts a question to the thread's advisor, starting one on the model the user picked when none
+     * runs. Returns at once; the answer reaches the caller later, as a message from the advisor.
+     */
+    askAdvisor(
+      callerId: AgentId,
+      question: string,
+    ): Effect.Effect<{ readonly advisorId: AgentId }, OrchestratorError>;
     /** The agent record for a live agent. */
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
     /** Hands a live agent a Cerium notice, delivered like any message: as its next turn's input. */
@@ -194,6 +209,7 @@ export class Orchestrator extends Context.Service<
       const bus = yield* BusEndpoint;
       const config = yield* OrchestratorConfig;
       const settings = yield* UserSettings;
+      const titles = yield* ThreadTitles;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -207,7 +223,15 @@ export class Orchestrator extends Context.Service<
       const sentMessages = new Map<string, Array<number>>();
       /** Permission requests each agent is waiting on. */
       const pendingPermissions = new Map<AgentId, Set<string>>();
+      /** Each thread's live advisor. */
+      const advisors = new Map<ThreadId, Runtime>();
+      /** The agents waiting on each advisor's answers, in the order they asked. */
+      const advisorQuestions = new Map<AgentId, Array<AgentId>>();
+      /** One advisor starts at a time, so agents asking together share it. */
+      const advisorPermit = yield* Semaphore.make(1);
       const feed = yield* PubSub.unbounded<AgentEvent>();
+      /** Threads still waiting for their first message to name them, with the title they started with. */
+      const untitled = new Map<ThreadId, string>();
 
       // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
       // resumes its harness session when the user next messages it.
@@ -248,17 +272,8 @@ export class Orchestrator extends Context.Service<
             payload,
             ...(raw === undefined ? {} : { raw }),
           };
-          if (!isDelta(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
+          if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
           yield* PubSub.publish(feed, event);
-        });
-
-      const setState = (rt: Runtime, state: AgentState) =>
-        Effect.gen(function* () {
-          if (rt.info.state === state) return;
-          const updatedAt = yield* Clock.currentTimeMillis;
-          rt.info = { ...rt.info, state, updatedAt };
-          yield* store.updateAgent(rt.info.id, { state, updatedAt }).pipe(Effect.mapError(unavailable));
-          yield* emit(rt, { _tag: "AgentStateChanged", state });
         });
 
       const deliver = (agentId: AgentId, item: InputItem) =>
@@ -268,6 +283,33 @@ export class Orchestrator extends Context.Service<
             return yield* Effect.logWarning(`Dropped ${item._tag} for ${agentId}: agent is not running`);
           }
           yield* Queue.offer(target.inbox, item);
+        });
+
+      /** An advisor that ended answers nobody: the agents still waiting on it hear so, and ask anew. */
+      const releaseAdvisor = (rt: Runtime) =>
+        Effect.gen(function* () {
+          const waiting = advisorQuestions.get(rt.info.id) ?? [];
+          advisorQuestions.delete(rt.info.id);
+          if (advisors.get(rt.info.threadId) === rt) advisors.delete(rt.info.threadId);
+          yield* Effect.forEach(
+            new Set(waiting),
+            (asker) =>
+              deliver(asker, {
+                _tag: "SystemNotice",
+                text: "The advisor ended before it answered your question. Ask again with `ask_advisor` if you still need an answer.",
+              }),
+            { discard: true },
+          );
+        });
+
+      const setState = (rt: Runtime, state: AgentState) =>
+        Effect.gen(function* () {
+          if (rt.info.state === state) return;
+          const updatedAt = yield* Clock.currentTimeMillis;
+          rt.info = { ...rt.info, state, updatedAt };
+          yield* store.updateAgent(rt.info.id, { state, updatedAt }).pipe(Effect.mapError(unavailable));
+          yield* emit(rt, { _tag: "AgentStateChanged", state });
+          if (isAdvisor(rt.info) && (state === "stopped" || state === "failed")) yield* releaseAdvisor(rt);
         });
 
       const finishTurn = (rt: Runtime) =>
@@ -373,7 +415,22 @@ export class Orchestrator extends Context.Service<
           rt.lastMessage = undefined;
           rt.turn = yield* Deferred.make<void>();
           yield* emit(rt, { _tag: "TurnInput", items });
-          yield* session.send(renderTurn(items), yield* turnExtras(rt, items));
+          yield* session.send(renderTurn(items), yield* turnExtras(rt, items)).pipe(
+            // A turn the harness refused never ends on its own, leaving the agent working with
+            // nothing to stop; it ends here with the reason.
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                yield* emit(rt, {
+                  _tag: "AgentError",
+                  kind: "unknown",
+                  message: error.message,
+                  retryable: false,
+                });
+                yield* emit(rt, { _tag: "TurnCompleted", stopReason: "error" });
+                yield* finishTurn(rt);
+              }),
+            ),
+          );
           yield* Deferred.await(rt.turn);
           rt.turn = undefined;
         });
@@ -382,9 +439,11 @@ export class Orchestrator extends Context.Service<
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
           const first = yield* Queue.take(rt.inbox);
+          // An advisor answers one question a turn, each to the agent that asked it.
+          const advisor = isAdvisor(rt.info);
           // Notices wait briefly so several arriving together become one turn; the user never waits.
-          if (first._tag !== "FromUser") yield* Effect.sleep(config.batchWindow);
-          const items = [first, ...(yield* Queue.clear(rt.inbox))] as const;
+          if (first._tag !== "FromUser" && !advisor) yield* Effect.sleep(config.batchWindow);
+          const items = advisor ? ([first] as const) : ([first, ...(yield* Queue.clear(rt.inbox))] as const);
           if (rt.ended) return yield* Effect.interrupt;
 
           yield* setState(rt, "queued");
@@ -397,7 +456,18 @@ export class Orchestrator extends Context.Service<
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
 
-          if (rt.info.parentId !== undefined) {
+          if (advisor) {
+            if (first._tag !== "FromAgent") return;
+            const waiting = advisorQuestions.get(rt.info.id) ?? [];
+            const index = waiting.indexOf(first.agentId);
+            if (index !== -1) waiting.splice(index, 1);
+            yield* deliver(first.agentId, {
+              _tag: "FromAgent",
+              agentId: rt.info.id,
+              threadId: rt.info.threadId,
+              text: truncate(rt.lastMessage ?? "(no answer)", config.maxDeliveredChars),
+            });
+          } else if (rt.info.parentId !== undefined) {
             yield* deliver(rt.info.parentId, {
               _tag: "ChildFinishedTurn",
               agentId: rt.info.id,
@@ -409,6 +479,34 @@ export class Orchestrator extends Context.Service<
           Effect.catchCause((cause) => Effect.logError(`Agent ${rt.info.id} turn failed`, cause)),
           Effect.forever,
         );
+
+      /**
+       * The other work threads whose leads are live in a lead's folder, for its prompt: their agents may
+       * be changing the same files.
+       */
+      const neighboursOf = (info: AgentInfo, cwd: string) =>
+        Effect.gen(function* () {
+          if (info.parentId !== undefined || threadModes.get(info.threadId) !== "work") return [];
+          const live = [...runtimes.values()].filter((rt) => {
+            const folder = threadDirectories.get(rt.info.threadId);
+            return (
+              rt.info.parentId === undefined &&
+              rt.info.threadId !== info.threadId &&
+              !rt.ended &&
+              threadModes.get(rt.info.threadId) === "work" &&
+              folder !== undefined &&
+              path.relative(folder, cwd) === ""
+            );
+          });
+          if (live.length === 0) return [];
+          const threads = yield* store.listThreads.pipe(Effect.orElseSucceed(() => []));
+          return live.flatMap((rt): ReadonlyArray<Neighbour> => {
+            const thread = threads.find((candidate) => candidate.id === rt.info.threadId);
+            return thread === undefined || thread.archivedAt !== undefined
+              ? []
+              : [{ title: thread.title, leadId: rt.info.id, model: rt.info.model, state: rt.info.state }];
+          });
+        });
 
       /**
        * Makes an agent live at once, so it takes messages straight away; its harness session starts
@@ -443,7 +541,8 @@ export class Orchestrator extends Context.Service<
           runtimes.set(info.id, rt);
 
           const start = Effect.gen(function* () {
-            const { includeUserMcpServers } = yield* settings.get;
+            const { includeUserMcpServers, advisor } = yield* settings.get;
+            const neighbours = yield* neighboursOf(info, cwd);
             const busSpec = yield* bus.register(info.id);
             yield* Scope.addFinalizer(scope, bus.unregister(info.id));
             const session = yield* adapter
@@ -456,7 +555,10 @@ export class Orchestrator extends Context.Service<
                 mcpServers: { [bus.serverName]: busSpec },
                 includeUserMcpServers,
                 trustedMcpServers: [bus.serverName],
-                appendSystemPrompt: systemPrompt(info, bus.serverName),
+                appendSystemPrompt: systemPrompt(info, bus.serverName, {
+                  advisor: advisor.enabled && advisor.model !== undefined,
+                  neighbours,
+                }),
               })
               .pipe(
                 Scope.provide(scope),
@@ -558,6 +660,69 @@ export class Orchestrator extends Context.Service<
           return child.id;
         });
 
+      /**
+       * The thread's advisor, started as a read-only child of its lead when none runs. A new pick in
+       * settings takes over once the running advisor has answered what it was asked.
+       */
+      const advisorFor = (asker: Runtime, chosen: NonNullable<AdvisorSettings["model"]>) =>
+        Effect.gen(function* () {
+          const { threadId } = asker.info;
+          const live = advisors.get(threadId);
+          if (live !== undefined && !live.ended) {
+            const picked =
+              live.info.provider === chosen.provider &&
+              live.info.model === chosen.model &&
+              live.info.effort === chosen.effort;
+            if (picked || (advisorQuestions.get(live.info.id)?.length ?? 0) > 0) return live;
+            yield* stopRuntime(live);
+          }
+          const leadId = asker.info.parentId ?? asker.info.id;
+          const createdAt = yield* now;
+          const info: AgentInfo = {
+            id: (yield* makeId("agt")) as AgentId,
+            threadId,
+            parentId: leadId,
+            role: ADVISOR_ROLE,
+            provider: chosen.provider,
+            model: chosen.model,
+            ...(chosen.effort ? { effort: chosen.effort } : {}),
+            access: "readOnly",
+            state: "idle",
+            createdAt,
+            updatedAt: createdAt,
+          };
+          yield* store.createAgent(info).pipe(Effect.mapError(unavailable));
+          const lead = runtimes.get(leadId);
+          if (lead !== undefined) {
+            yield* emit(lead, {
+              _tag: "AgentSpawned",
+              childId: info.id,
+              role: info.role,
+              provider: info.provider,
+              model: info.model,
+              access: info.access,
+            });
+          }
+          const rt = yield* startRuntime(info, threadDirectories.get(threadId) ?? ".");
+          advisors.set(threadId, rt);
+          return rt;
+        });
+
+      /** Counts one more message from `key`'s sender against the per-pair budget (architecture §3.4). */
+      const spendBudget = (key: string, to: string) =>
+        Effect.gen(function* () {
+          const sentAt = yield* now;
+          const windowStart = sentAt - Duration.toMillis(config.messageBudget.window);
+          const recent = (sentMessages.get(key) ?? []).filter((time) => time > windowStart);
+          if (recent.length >= config.messageBudget.limit) {
+            return yield* new OrchestratorError({
+              reason: "budgetExceeded",
+              message: `You have sent ${recent.length} messages to ${to} recently, the most allowed. Finish your task or wait.`,
+            });
+          }
+          sentMessages.set(key, [...recent, sentAt]);
+        });
+
       const resolveTarget = (request: SpawnRequest): SpawnTarget | undefined => {
         const entry =
           catalog.find((candidate) => candidate.alias === request.model) ??
@@ -650,7 +815,8 @@ export class Orchestrator extends Context.Service<
         yield* setState(rt, "idle");
 
         const gone = (yield* store.listAgents(thread.id).pipe(Effect.mapError(unavailable))).filter(
-          (agent) => agent.parentId === agentId && !runtimes.has(agent.id),
+          // The advisor isn't the lead's to spawn again: the next question starts a new one.
+          (agent) => agent.parentId === agentId && !isAdvisor(agent) && !runtimes.has(agent.id),
         );
         const notices: Array<InputItem> =
           gone.length === 0
@@ -691,6 +857,30 @@ export class Orchestrator extends Context.Service<
       yield* Effect.addFinalizer(() =>
         Effect.forEach([...runtimes.values()], stopRuntime, { discard: true }),
       );
+
+      /**
+       * Names a new thread from its first message (§3.12) while the lead works on it, unless the user
+       * renamed the thread meanwhile. The lead's live feed tells the lists at once.
+       */
+      const nameThread = (
+        lead: Runtime,
+        startedAs: string,
+        text: string,
+        attachments: ReadonlyArray<Attachment>,
+      ) =>
+        Effect.gen(function* () {
+          const { threadId, provider, model } = lead.info;
+          const title = yield* titles.name({
+            text,
+            attachments: attachments.map((attachment) => attachment.name),
+            lead: { provider, model },
+          });
+          if (Option.isNone(title)) return;
+          const thread = yield* store.getThread(threadId).pipe(Effect.mapError(unavailable));
+          if (Option.isNone(thread) || thread.value.title !== startedAs) return;
+          yield* updateThread(threadId, { title: title.value });
+          yield* emit(lead, { _tag: "ThreadRenamed", title: title.value });
+        }).pipe(Effect.catchCause((cause) => Effect.logWarning("Couldn't name a thread", cause)));
 
       return Orchestrator.of({
         createThread: Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
@@ -740,6 +930,7 @@ export class Orchestrator extends Context.Service<
           yield* store.createAgent(lead).pipe(Effect.mapError(unavailable));
           threadDirectories.set(threadId, directory);
           threadModes.set(threadId, input.mode);
+          untitled.set(threadId, input.title);
           yield* startRuntime(lead, directory);
           return { thread, lead };
         }),
@@ -765,6 +956,11 @@ export class Orchestrator extends Context.Service<
               yield* emit(rt, { _tag: "MessageQueued", message });
               // Offered together, so the user's messages and any notices make one turn.
               yield* Queue.offerAll(rt.inbox, [...undelivered, message, ...notices]);
+              const startedAs = untitled.get(rt.info.threadId);
+              untitled.delete(rt.info.threadId);
+              if (startedAs !== undefined && text.trim() !== "") {
+                yield* Effect.forkIn(nameThread(rt, startedAs, text, attachments), layerScope);
+              }
             }),
           );
         },
@@ -830,8 +1026,9 @@ export class Orchestrator extends Context.Service<
         stopAgent: Effect.fn("Orchestrator.stopAgent")(function* (agentId: AgentId) {
           const rt = yield* runtime(agentId);
           yield* stopRuntime(rt);
-          // A lead waiting on this child would otherwise wait for a result that never comes.
-          if (rt.info.parentId !== undefined) {
+          // A lead waiting on this child would otherwise wait for a result that never comes. An
+          // advisor's askers hear from `releaseAdvisor` instead.
+          if (rt.info.parentId !== undefined && !isAdvisor(rt.info)) {
             yield* deliver(rt.info.parentId, {
               _tag: "SystemNotice",
               text: `The user stopped agent ${rt.info.id} "${rt.info.role}"; it will not report back. Carry on without it, or spawn a new agent if you still need that work.`,
@@ -906,6 +1103,12 @@ export class Orchestrator extends Context.Service<
           if (lead.info.parentId !== undefined) {
             return yield* notAllowed("Only a thread's lead can spawn agents.");
           }
+          if (request.role === ADVISOR_ROLE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `The role "${ADVISOR_ROLE}" belongs to the user's advisor: ask it with \`ask_advisor\`, or give your agent another role.`,
+            });
+          }
           const target = resolveTarget(request);
           if (target !== undefined) {
             return {
@@ -943,7 +1146,20 @@ export class Orchestrator extends Context.Service<
           text: string,
         ) {
           const from = yield* runtime(callerId);
-          const recipient = yield* runtime(to);
+          const stopped = notFound(
+            `Agent ${to} isn't running, so it can't take messages: it was stopped, or its thread waits for the user to pick it back up. \`list_threads\` shows which leads are working.`,
+          );
+          const recipient = yield* runtime(to).pipe(Effect.mapError(() => stopped));
+          // An agent whose session ended would drop the message while the sender heard it was delivered.
+          if (recipient.ended) return yield* stopped;
+          if (isAdvisor(from.info)) {
+            return yield* notAllowed(
+              "An advisor only answers the question it was asked; your reply reaches the agent that asked it.",
+            );
+          }
+          if (isAdvisor(recipient.info)) {
+            return yield* notAllowed("Put questions to the advisor with `ask_advisor`.");
+          }
           const crossThread = from.info.threadId !== recipient.info.threadId;
           if (crossThread && (from.info.parentId !== undefined || recipient.info.parentId !== undefined)) {
             return yield* notAllowed(
@@ -956,18 +1172,55 @@ export class Orchestrator extends Context.Service<
               message: `The message is ${text.length} characters; the limit is ${config.maxDeliveredChars}. Summarize it.`,
             });
           }
-          const sentAt = yield* now;
-          const key = `${callerId}->${to}`;
-          const windowStart = sentAt - Duration.toMillis(config.messageBudget.window);
-          const recent = (sentMessages.get(key) ?? []).filter((time) => time > windowStart);
-          if (recent.length >= config.messageBudget.limit) {
+          yield* spendBudget(`${callerId}->${to}`, to);
+          yield* deliver(to, { _tag: "FromAgent", agentId: callerId, threadId: from.info.threadId, text });
+        }),
+
+        askAdvisor: Effect.fn("Orchestrator.askAdvisor")(function* (callerId: AgentId, question: string) {
+          const asker = yield* runtime(callerId);
+          if (isAdvisor(asker.info)) {
+            return yield* notAllowed("You are the advisor: answer the question you were asked.");
+          }
+          const { advisor: chosen } = yield* settings.get;
+          if (!chosen.enabled || chosen.model === undefined) {
             return yield* new OrchestratorError({
-              reason: "budgetExceeded",
-              message: `You have sent ${recent.length} messages to ${to} recently, the most allowed. Finish your task or wait.`,
+              reason: "unavailable",
+              message:
+                "The user hasn't turned on an advisor (Settings → Agents). Carry on, or ask the user instead.",
             });
           }
-          sentMessages.set(key, [...recent, sentAt]);
-          yield* deliver(to, { _tag: "FromAgent", agentId: callerId, threadId: from.info.threadId, text });
+          if (!adapters.has(chosen.model.provider)) {
+            return yield* new OrchestratorError({
+              reason: "unavailable",
+              message: `The advisor runs on ${chosen.model.provider}, and no ${chosen.model.provider} adapter is installed.`,
+            });
+          }
+          if (question.length > config.maxDeliveredChars) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `The question is ${question.length} characters; the limit is ${config.maxDeliveredChars}. Shorten it, and name files for the advisor to read instead of pasting them.`,
+            });
+          }
+          yield* spendBudget(`${callerId}->${ADVISOR_ROLE}`, "the advisor");
+          const model = chosen.model;
+          return yield* advisorPermit.withPermits(1)(
+            Effect.gen(function* () {
+              const advisor = yield* advisorFor(asker, model);
+              advisorQuestions.set(advisor.info.id, [
+                ...(advisorQuestions.get(advisor.info.id) ?? []),
+                callerId,
+              ]);
+              yield* deliver(advisor.info.id, {
+                _tag: "FromAgent",
+                agentId: callerId,
+                threadId: asker.info.threadId,
+                text: question,
+              });
+              // One that ended while the question was put to it would leave the asker waiting.
+              if (advisor.ended) yield* releaseAdvisor(advisor);
+              return { advisorId: advisor.info.id };
+            }),
+          );
         }),
 
         killChild: Effect.fn("Orchestrator.killChild")(function* (callerId: AgentId, childId: AgentId) {
@@ -987,5 +1240,5 @@ export class Orchestrator extends Context.Service<
         awaitingApproval,
       });
     }),
-  );
+  ).pipe(Layer.provide(ThreadTitles.layer));
 }

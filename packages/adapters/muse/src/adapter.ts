@@ -4,9 +4,10 @@ import {
   type HarnessAdapter,
   type SessionOptions,
 } from "@cerium/harness";
-import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
+import { Context, Effect, Exit, FileSystem, Layer, Path, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
+import { completeWithMuse } from "./complete.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
 import { sandboxInstructions, sandboxNotice } from "./policy.ts";
@@ -51,6 +52,10 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         }
         return status;
       });
+      // Completions are meant to be quick, so they skip the probe for a while after one passes.
+      const readyForCompletion = yield* ready.pipe(
+        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
+      );
 
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
         const { executablePath: executable, setup } = yield* ready;
@@ -74,6 +79,10 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         manifest: museManifest,
         probe,
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
+        complete: (request) =>
+          readyForCompletion.pipe(
+            Effect.flatMap((status) => completeWithMuse(status.executablePath, request)),
+          ),
         startSession,
       });
     }),

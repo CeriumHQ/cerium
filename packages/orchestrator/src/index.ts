@@ -16,3 +16,4 @@ export {
   type OrchestratorSettings,
 } from "./services.ts";
 export { UserSettings } from "./settings.ts";
+export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";
