@@ -55,7 +55,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
         <ChevronDown size={12} strokeWidth={2} className="shrink-0 opacity-70" />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
+        <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
           <Menu.Popup className="w-64 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
             <Menu.Group>
               <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-2xs font-medium text-fg-tertiary select-none">

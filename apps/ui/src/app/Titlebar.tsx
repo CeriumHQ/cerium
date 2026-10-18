@@ -45,33 +45,39 @@ export function Titlebar({
   onToggleInspector,
   machinePicker,
 }: TitlebarProps) {
+  const showSidebar = sidebarOpen || settingsOpen;
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
-      <div className="flex items-center gap-2">
-        <CeriumMark size={16} className="text-fg-primary" />
-        <span className="text-[13px] font-medium tracking-tight text-fg-primary">Cerium</span>
-      </div>
-      <span className="mx-1 h-4 w-px bg-line-strong" aria-hidden="true" />
-      <ModeSwitch mode={mode} onChange={onModeChange} />
-      {machinePicker}
+      {/*
+       * Spans the sidebar while it shows, so the toggle sits over the sidebar's own edge; shrinks to
+       * its contents, in step with the sidebar, once it folds.
+       */}
       <div
-        inert={settingsOpen}
-        className={`flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}
+        className={`flex shrink-0 items-center gap-2.5 pr-2 transition-[width] duration-200 ease-out-soft [interpolate-size:allow-keywords] ${
+          showSidebar ? "w-65" : "w-fit"
+        }`}
       >
-        <IconButton
-          icon={PanelLeft}
-          label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-          shortcut="Ctrl B"
-          onClick={onToggleSidebar}
-        />
-        {sidebarOpen ? null : (
+        <CeriumMark size={16} className="ml-1.5 text-fg-primary" />
+        <ModeSwitch mode={mode} onChange={onModeChange} />
+        <div
+          inert={settingsOpen}
+          className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}
+        >
           <IconButton
-            icon={SquarePen}
-            label={mode === "work" ? "New thread" : "New chat"}
-            shortcut="Ctrl N"
-            onClick={onNewThread}
+            icon={PanelLeft}
+            label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            shortcut="Ctrl B"
+            onClick={onToggleSidebar}
           />
-        )}
+          {sidebarOpen ? null : (
+            <IconButton
+              icon={SquarePen}
+              label={mode === "work" ? "New thread" : "New chat"}
+              shortcut="Ctrl N"
+              onClick={onNewThread}
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 justify-center">
@@ -89,6 +95,7 @@ export function Titlebar({
       {agents.length > 0 && !settingsOpen ? (
         <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
       ) : null}
+      {machinePicker}
       <CaptionButtons />
     </header>
   );

@@ -142,6 +142,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Desktop: the installer's welcome and finish pages show the Cerium mark and name without the "Harness of harnesses" tagline.
 - README: the banner is now the Cerium mark and name alone, in dark or light to follow GitHub's theme; the features and screenshots show the inbox, `@` and `$` tags, approval diffs and right-click menus; the light theme screenshot is gone.
 - `@cerium/account`: what a device does with its Cerium account (the relay connection and sign-in, the account's threads and read state, tunnels to other computers, and the RPCs its own UI calls about them) moves out of the backend into a package of its own, so the web client can run it too. `@cerium/rpc` splits into what a machine serves (`MachineRpcs`) and what a device answers about itself (`DeviceRpcs`). A sign-in waiting for the browser now picks back up after a restart.
+- UI: a calmer titlebar. The mark stands alone without the "Cerium" name and divider, the sidebar toggle sits over the sidebar's edge above search, and the machine picker moves to the right beside the agents button, opening its menu leftward.
 
 ### Fixed
 
