@@ -48,21 +48,7 @@ export const Handlers = MachineRpcs.toLayer(
     });
 
     return MachineRpcs.of({
-      ListThreads: () =>
-        orchestrator.listThreads.pipe(
-          Effect.flatMap((threads) =>
-            Effect.forEach(threads, (thread) =>
-              orchestrator.listAgents(thread.id).pipe(
-                Effect.map((agents) => ({
-                  thread,
-                  agents,
-                  awaitingApproval: orchestrator.awaitingApproval(thread.id),
-                })),
-              ),
-            ),
-          ),
-          Effect.mapError(refuse),
-        ),
+      ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       ThreadEvents: ({ threadId }) => orchestrator.threadEvents(threadId).pipe(Effect.mapError(refuse)),
       WatchEvents: () => orchestrator.events,
       // A work thread's folder joins the projects the composer offers, as the one used last.
@@ -138,10 +124,11 @@ export const Handlers = MachineRpcs.toLayer(
 /** Whether this machine's agents are working, re-checked after every event but streamed text. */
 const working = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator;
-  const busy = orchestrator.listThreads.pipe(
-    Effect.flatMap((threads) => Effect.forEach(threads, (thread) => orchestrator.listAgents(thread.id))),
-    Effect.map((agents) =>
-      agents.flat().some((agent) => agent.state === "running" || agent.state === "queued"),
+  const busy = orchestrator.threadOverviews.pipe(
+    Effect.map((overviews) =>
+      overviews.some(({ agents }) =>
+        agents.some((agent) => agent.state === "running" || agent.state === "queued"),
+      ),
     ),
     Effect.orElseSucceed(() => false),
   );

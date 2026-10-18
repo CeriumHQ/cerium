@@ -6,7 +6,6 @@ import {
   UiEvent,
   type AgentEvent,
   type ThreadId,
-  type ThreadOverview,
 } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { Deferred, Effect, Layer, PubSub, Queue, Schema, Stream } from "effect";
@@ -80,19 +79,7 @@ export const CloudCopy = Layer.effectDiscard(
     const sent = new Map<string, string>();
     const accepted = new Map<string, Deferred.Deferred<number>>();
 
-    const overviews = orchestrator.listThreads.pipe(
-      Effect.flatMap((list) =>
-        Effect.forEach(list, (thread) =>
-          orchestrator.listAgents(thread.id).pipe(
-            Effect.map((agents): ThreadOverview => ({
-              thread,
-              agents,
-              awaitingApproval: orchestrator.awaitingApproval(thread.id),
-            })),
-          ),
-        ),
-      ),
-    );
+    const overviews = orchestrator.threadOverviews;
 
     /** Sends a thread's events from where the cloud's copy ends, a batch at a time. */
     const upload = Effect.fn("CloudCopy.upload")(function* (threadId: ThreadId, from: number) {

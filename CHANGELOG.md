@@ -156,6 +156,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Opening a thread reads its history about three times faster: the provider's original messages, kept in the store but never shown, are no longer read and parsed with it. In a thread full of screenshots that was most of the data.
+- Agents at work no longer slow the backend down as threads pile up: the thread list it re-reads after every event, for the inbox, the cloud copy and whether anything is working, takes two reads instead of one per thread (about 6× faster with 300 threads).
 - Your other devices now see the version a computer runs after it updates, instead of the one it signed in with: each device reports its build every time it connects to Cerium's cloud.
 - Threads from a newer version of Cerium no longer disappear or fail to open on another device: an access mode, agent state or other value a version doesn't know reads as a safe fallback (an unknown access mode as Ask first), and threads or events it can't read at all are skipped instead of failing the whole list or ending the live feed.
 - A long draft no longer hides the end of the conversation: the transcript keeps room for the message box at whatever height it grows to, and the jump-to-latest button sits just above it.

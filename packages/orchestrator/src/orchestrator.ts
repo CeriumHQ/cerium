@@ -19,6 +19,7 @@ import {
   type ThreadId,
   type ThreadInfo,
   type ThreadMode,
+  type ThreadOverview,
 } from "@cerium/protocol";
 import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
 import {
@@ -164,6 +165,8 @@ export class Orchestrator extends Context.Service<
      */
     deleteThread(threadId: ThreadId): Effect.Effect<void, OrchestratorError>;
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, OrchestratorError>;
+    /** Every thread with its agents and whether it waits on the user, oldest first, read at once. */
+    readonly threadOverviews: Effect.Effect<ReadonlyArray<ThreadOverview>, OrchestratorError>;
     /** Live events from every agent; subscribers see events published after they subscribe. */
     readonly events: Stream.Stream<AgentEvent>;
 
@@ -489,10 +492,13 @@ export class Orchestrator extends Context.Service<
 
       const now = Clock.currentTimeMillis;
 
-      const waitsOnUser = (threadId: ThreadId) =>
+      const awaitingApproval = (threadId: ThreadId) =>
         [...runtimes.values()].some(
           (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
-        ) ||
+        );
+
+      const waitsOnUser = (threadId: ThreadId) =>
+        awaitingApproval(threadId) ||
         [...pendingSpawns.values()].some(({ leadId }) => runtimes.get(leadId)?.info.threadId === threadId);
 
       const working = (threadId: ThreadId) =>
@@ -881,6 +887,16 @@ export class Orchestrator extends Context.Service<
 
         listAgents: (threadId) => store.listAgents(threadId).pipe(Effect.mapError(unavailable)),
 
+        threadOverviews: Effect.gen(function* () {
+          const threads = yield* store.listThreads;
+          const byThread = Map.groupBy(yield* store.listAllAgents, (agent) => agent.threadId);
+          return threads.map((thread): ThreadOverview => ({
+            thread,
+            agents: byThread.get(thread.id) ?? [],
+            awaitingApproval: awaitingApproval(thread.id),
+          }));
+        }).pipe(Effect.mapError(unavailable)),
+
         events: Stream.fromPubSub(feed),
 
         catalog,
@@ -968,10 +984,7 @@ export class Orchestrator extends Context.Service<
 
         threadEvents: (threadId) => store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable)),
 
-        awaitingApproval: (threadId) =>
-          [...runtimes.values()].some(
-            (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
-          ),
+        awaitingApproval,
       });
     }),
   );

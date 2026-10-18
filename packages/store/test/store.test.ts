@@ -123,6 +123,14 @@ describe("Store", () => {
         );
         assert.deepStrictEqual(yield* store.getAgent(child.id), Option.some(child));
         assert.strictEqual(Option.getOrThrow(yield* store.getAgent(lead.id)).providerSessionId, "s-1");
+
+        const other: AgentInfo = { ...lead, id: "agt_other" as AgentId, threadId: "thr_2" as ThreadId };
+        yield* store.createThread({ ...thread, id: other.threadId });
+        yield* store.createAgent(other);
+        assert.deepStrictEqual(
+          (yield* store.listAllAgents).map((agent) => agent.id),
+          [lead.id, other.id, child.id],
+        );
       }),
     ),
   );
@@ -149,6 +157,19 @@ describe("Store", () => {
           [1, 2],
         );
         assert.deepStrictEqual(yield* store.lastSequence(lead.id), Option.some(2));
+      }),
+    ),
+  );
+
+  it.effect("keeps a provider's raw message but leaves it out of what it lists", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        yield* store.appendEvents([{ ...event(0), raw: { type: "assistant", big: "x".repeat(1000) } }]);
+        assert.deepStrictEqual(yield* store.listEvents(lead.id), [event(0)]);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), [event(0)]);
       }),
     ),
   );

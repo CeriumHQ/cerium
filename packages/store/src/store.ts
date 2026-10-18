@@ -19,6 +19,19 @@ export const defaultMigrationsFolder = join(import.meta.dirname, "..", "migratio
 /** Streamed text: the cloud copy keeps the completed message instead (`isStreamDelta`). */
 const STREAM_DELTAS = ["MessageDelta", "ReasoningDelta"];
 
+/**
+ * An event's columns but `raw`, which nothing reads back: it is often twice the size of the payload
+ * (a screenshot's bytes, again), and parsing it made reading a thread several times slower.
+ */
+const eventColumns = {
+  id: events.id,
+  threadId: events.threadId,
+  agentId: events.agentId,
+  sequence: events.sequence,
+  at: events.at,
+  payload: events.payload,
+};
+
 export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
   message: Schema.String,
   cause: Schema.Defect(),
@@ -53,6 +66,8 @@ export class Store extends Context.Service<
     updateAgent(id: AgentId, patch: AgentPatch): Effect.Effect<void, StoreError>;
     getAgent(id: AgentId): Effect.Effect<Option.Option<AgentInfo>, StoreError>;
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, StoreError>;
+    /** Every thread's agents in one read, oldest first, for lists of every thread. */
+    readonly listAllAgents: Effect.Effect<ReadonlyArray<AgentInfo>, StoreError>;
     /** Appends atomically: either every event is stored or none is. */
     appendEvents(batch: ReadonlyArray<AgentEvent>): Effect.Effect<void, StoreError>;
     listEvents(
@@ -177,6 +192,9 @@ export class Store extends Context.Service<
             query("Could not list agents", () =>
               db.select().from(agents).where(eq(agents.threadId, threadId)).orderBy(asc(agents.createdAt)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent))),
+          listAllAgents: query("Could not list agents", () =>
+            db.select().from(agents).orderBy(asc(agents.createdAt)),
+          ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent))),
           appendEvents: (batch) => {
             const [first, ...rest] = batch.map((event) =>
               db.insert(events).values({
@@ -197,7 +215,7 @@ export class Store extends Context.Service<
           listEvents: (agentId, options) =>
             query("Could not list events", () =>
               db
-                .select()
+                .select(eventColumns)
                 .from(events)
                 .where(
                   and(
@@ -219,7 +237,7 @@ export class Store extends Context.Service<
           listThreadEvents: (threadId) =>
             query("Could not list thread events", () =>
               db
-                .select()
+                .select(eventColumns)
                 .from(events)
                 .where(eq(events.threadId, threadId))
                 .orderBy(asc(events.at), asc(events.sequence)),
@@ -227,7 +245,7 @@ export class Store extends Context.Service<
           listEventsByTag: (tag) =>
             query("Could not list events", () =>
               db
-                .select()
+                .select(eventColumns)
                 .from(events)
                 .where(eq(events.tag, tag))
                 .orderBy(asc(events.at), asc(events.sequence)),
@@ -242,7 +260,7 @@ export class Store extends Context.Service<
           listSyncedEvents: (threadId, offset, limit) =>
             query("Could not list thread events", () =>
               db
-                .select()
+                .select(eventColumns)
                 .from(events)
                 .where(and(eq(events.threadId, threadId), notInArray(events.tag, STREAM_DELTAS)))
                 .orderBy(sql`rowid`)
