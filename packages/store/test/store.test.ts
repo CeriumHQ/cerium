@@ -80,6 +80,21 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("deletes a thread with its agents and events", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        yield* store.appendEvents([event(0)]);
+        yield* store.deleteThread(thread.id);
+        assert.deepStrictEqual(yield* store.getThread(thread.id), Option.none());
+        assert.deepStrictEqual(yield* store.listAgents(thread.id), []);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), []);
+      }),
+    ),
+  );
+
   it.effect("creates, updates and lists agents", () =>
     withStore(
       Effect.gen(function* () {

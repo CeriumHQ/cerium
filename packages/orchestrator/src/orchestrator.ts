@@ -154,6 +154,11 @@ export class Orchestrator extends Context.Service<
      * archived, so a request never ends up where the user doesn't look.
      */
     setThreadArchived(threadId: ThreadId, archived: boolean): Effect.Effect<ThreadInfo, OrchestratorError>;
+    /**
+     * Deletes a thread for good: its agents' sessions end and its agents and events are removed.
+     * Refused while its agents work or wait on the user, like archiving.
+     */
+    deleteThread(threadId: ThreadId): Effect.Effect<void, OrchestratorError>;
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, OrchestratorError>;
     /** Live events from every agent; subscribers see events published after they subscribe. */
     readonly events: Stream.Stream<AgentEvent>;
@@ -784,6 +789,25 @@ export class Orchestrator extends Context.Service<
             );
           }
           return yield* updateThread(threadId, { archivedAt: archived ? yield* now : null });
+        }),
+
+        deleteThread: Effect.fn("Orchestrator.deleteThread")(function* (threadId: ThreadId) {
+          const thread = yield* store.getThread(threadId).pipe(Effect.mapError(unavailable));
+          if (Option.isNone(thread)) return yield* notFound(`Thread ${threadId} does not exist.`);
+          if (working(threadId) || waitsOnUser(threadId)) {
+            return yield* notAllowed(
+              "A thread can't be deleted while its agents are working or waiting on you.",
+            );
+          }
+          // Sessions end first, so nothing they record lands after the rows are gone.
+          yield* Effect.forEach(
+            [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+            stopRuntime,
+            { discard: true },
+          );
+          threadDirectories.delete(threadId);
+          threadModes.delete(threadId);
+          yield* store.deleteThread(threadId).pipe(Effect.mapError(unavailable));
         }),
 
         listAgents: (threadId) => store.listAgents(threadId).pipe(Effect.mapError(unavailable)),

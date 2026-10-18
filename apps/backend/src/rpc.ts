@@ -97,6 +97,7 @@ const Handlers = CeriumRpcs.toLayer(
         orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
       SetThreadArchived: ({ threadId, archived }) =>
         orchestrator.setThreadArchived(threadId, archived).pipe(Effect.mapError(refuse)),
+      DeleteThread: ({ threadId }) => orchestrator.deleteThread(threadId).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",

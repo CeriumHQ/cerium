@@ -381,6 +381,27 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("deletes threads for good, but not while they wait on the user", () => {
+    const fake = makeFakeAdapter("claude", { askPermission: true });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const kept = yield* startWorkThread;
+      yield* orchestrator.sendUserMessage(kept.lead.id, "run the tests");
+      yield* waitFor((events) => events.find((event) => event.payload._tag === "PermissionRequested"));
+      const refused = yield* Effect.flip(orchestrator.deleteThread(kept.thread.id));
+      assert.strictEqual(refused.reason, "notAllowed");
+
+      const { thread } = yield* startWorkThread;
+      yield* orchestrator.deleteThread(thread.id);
+      const ids = (yield* orchestrator.listThreads).map((listed) => listed.id);
+      assert.deepStrictEqual(ids, [kept.thread.id]);
+      assert.deepStrictEqual(yield* orchestrator.listAgents(thread.id), []);
+      const missing = yield* Effect.flip(orchestrator.deleteThread(thread.id));
+      assert.strictEqual(missing.reason, "notFound");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("approves read-only agents' requests itself, except the user's MCP tools", () => {
     const web = makeFakeAdapter("claude", { askPermission: true, permissionTool: "WebFetch" });
     const mcp = makeFakeAdapter("codex", { askPermission: true, permissionTool: "mcp__slack__post" });

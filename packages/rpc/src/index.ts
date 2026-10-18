@@ -118,6 +118,8 @@ export const CeriumRpcs = RpcGroup.make(
     success: ThreadInfo,
     error: CeriumError,
   }),
+  /** Deletes a thread and everything in it for good; refused while its agents work or wait on the user. */
+  Rpc.make("DeleteThread", { payload: { threadId: ThreadId }, error: CeriumError }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the

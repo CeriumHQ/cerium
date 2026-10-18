@@ -44,6 +44,8 @@ export class Store extends Context.Service<
     getThread(id: ThreadId): Effect.Effect<Option.Option<ThreadInfo>, StoreError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, StoreError>;
     updateThread(id: ThreadId, patch: ThreadPatch): Effect.Effect<void, StoreError>;
+    /** Deletes a thread with its agents and events, atomically. */
+    deleteThread(id: ThreadId): Effect.Effect<void, StoreError>;
     createAgent(agent: AgentInfo): Effect.Effect<void, StoreError>;
     updateAgent(id: AgentId, patch: AgentPatch): Effect.Effect<void, StoreError>;
     getAgent(id: AgentId): Effect.Effect<Option.Option<AgentInfo>, StoreError>;
@@ -129,6 +131,14 @@ export class Store extends Context.Service<
           updateThread: (id, patch) =>
             query("Could not update the thread", () =>
               db.update(threads).set(patch).where(eq(threads.id, id)),
+            ),
+          deleteThread: (id) =>
+            query("Could not delete the thread", () =>
+              db.batch([
+                db.delete(events).where(eq(events.threadId, id)),
+                db.delete(agents).where(eq(agents.threadId, id)),
+                db.delete(threads).where(eq(threads.id, id)),
+              ]),
             ),
           createAgent: (agent) =>
             query("Could not create the agent", () =>
