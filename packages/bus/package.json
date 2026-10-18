@@ -9,13 +9,13 @@
   },
   "dependencies": {
     "@cerium/artifacts": "workspace:*",
+    "@cerium/harness": "workspace:*",
     "@cerium/orchestrator": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "@effect/platform-node": "4.0.5",
     "effect": "4.0.5"
   },
   "devDependencies": {
-    "@cerium/harness": "workspace:*",
     "@cerium/store": "workspace:*",
     "@effect/vitest": "4.0.5"
   }

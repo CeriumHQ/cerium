@@ -174,6 +174,8 @@ export class Orchestrator extends Context.Service<
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /** The agent record for a live agent. */
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
+    /** Hands a live agent a Cerium notice, delivered like any message: as its next turn's input. */
+    notify(agentId: AgentId, text: string): Effect.Effect<void>;
     /** Every persisted event in a thread, in order. */
     threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
     /** Whether any agent in the thread is waiting for the user to approve something. */
@@ -961,6 +963,8 @@ export class Orchestrator extends Context.Service<
         }),
 
         agent: (agentId) => runtime(agentId).pipe(Effect.map((rt) => rt.info)),
+
+        notify: (agentId, text) => deliver(agentId, { _tag: "SystemNotice", text }),
 
         threadEvents: (threadId) => store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable)),
 

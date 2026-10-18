@@ -44,7 +44,7 @@ export interface BackendOptions {
 }
 
 /** Every harness adapter in this build. */
-const AdaptersLive = Layer.effect(
+export const AdaptersLive = Layer.effect(
   Adapters,
   Effect.gen(function* () {
     const adapters = [yield* ClaudeAdapter, yield* CodexAdapter, yield* MuseAdapter, yield* CursorAdapter];

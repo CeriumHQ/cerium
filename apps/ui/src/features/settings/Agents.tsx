@@ -409,7 +409,11 @@ function ToolSources({ connected }: { connected: boolean }) {
         <Link d="M0 58 C 60 58, 60 90, 120 90" live={connected} />
       </svg>
       <div className="flex flex-col gap-3">
-        <Node icon={<CeriumMark size={14} />} title="Cerium" detail="Spawn, message and coordinate agents" />
+        <Node
+          icon={<CeriumMark size={14} />}
+          title="Cerium"
+          detail="Coordinate agents, drive UIs, run live checks"
+        />
         <Node
           icon={<Plug size={15} strokeWidth={1.75} />}
           title="Your servers"

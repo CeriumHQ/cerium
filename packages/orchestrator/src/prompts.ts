@@ -57,6 +57,21 @@ const artifacts = (busServer: string) => [
   "```",
 ];
 
+/**
+ * Agents otherwise write a browser script or a harness check script in every session, so the prompt
+ * names the bus tools that replace both at the moment each is needed (architecture §3.2).
+ */
+const seeing = [
+  "",
+  "## Seeing and checking your work",
+  "- To look at or use a web UI (one you are building, a dev server, a site), call `ui_open` with its URL, or" +
+    " `attach` to an app's debugging port, then `ui_act` with every click, keystroke and wait you can predict in" +
+    " one batch. Each answers with a screenshot; `ui_inspect` lists the page's controls and console errors." +
+    " These replace writing browser or screenshot scripts.",
+  "- To see how a coding harness (Claude, Codex, Muse, Cursor) really behaves, call `live_check` instead of" +
+    " writing a check script: it runs a short real turn on each and reports tools, approvals and files.",
+];
+
 export const systemPrompt = (agent: AgentInfo, busServer: string): string => {
   const tools = `the \`${busServer}\` MCP tools`;
   const shared = [
@@ -73,6 +88,7 @@ export const systemPrompt = (agent: AgentInfo, busServer: string): string => {
       "Delegate with `spawn_agent` (see `list_models` for the models you may use). Spawning returns" +
         " immediately; each child's result arrives later as a message, so end your turn instead of waiting.",
       "Stop a child you no longer need with `kill_agent`.",
+      ...(agent.access === "readOnly" ? [] : seeing),
       ...artifacts(busServer),
     ].join("\n");
   }
@@ -81,5 +97,6 @@ export const systemPrompt = (agent: AgentInfo, busServer: string): string => {
     `You are a child agent with the role "${agent.role}", spawned by lead agent ${agent.parentId}.`,
     "Do the task you were given. Your final message of each turn is delivered to the lead, so end with" +
       " a concise, self-contained result.",
+    ...(agent.access === "readOnly" ? [] : seeing),
   ].join("\n");
 };

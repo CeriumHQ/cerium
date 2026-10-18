@@ -51,6 +51,9 @@ describe("Orchestrator", () => {
       assert.deepStrictEqual(fake.sessions[0]?.sent, ["hello"]);
       assert.deepStrictEqual(fake.sessions[0]?.options.trustedMcpServers, ["cerium"]);
       assert.include(fake.sessions[0]?.options.appendSystemPrompt ?? "", "lead agent");
+      // Agents that may act are pointed at the bus's UI and live-check tools.
+      assert.include(fake.sessions[0]?.options.appendSystemPrompt ?? "", "`ui_open`");
+      assert.include(fake.sessions[0]?.options.appendSystemPrompt ?? "", "`live_check`");
       const stored = (yield* store.listEvents(lead.id)).map((event) => event.payload._tag);
       assert.includeMembers(stored, ["SessionStarted", "TurnInput", "MessageCompleted", "TurnCompleted"]);
       assert.notInclude(stored, "MessageDelta");
@@ -506,6 +509,8 @@ describe("Orchestrator", () => {
       );
       assert.notInclude(recorded, "PermissionRequested", "nobody was asked, so nothing shows a request");
       assert.notInclude(recorded, "PermissionResolved");
+      // The UI and live-check tools refuse read-only agents, so their prompt leaves them out.
+      assert.notInclude(web.sessions[0]?.options.appendSystemPrompt ?? "", "`ui_open`");
 
       const posting = yield* startChat("codex");
       yield* orchestrator.sendUserMessage(posting.lead.id, "post it");

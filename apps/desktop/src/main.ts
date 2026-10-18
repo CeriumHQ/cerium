@@ -17,7 +17,8 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 /**
  * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files. The development
- * backend then runs on its own (`bun run dev`) and the UI finds it through the dev server.
+ * backend then runs on its own (`bun run dev`) and the UI finds it through the dev server. The dev
+ * script also opens Chromium's debugging port 9222, which agents' `ui_open` attaches to.
  */
 const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 

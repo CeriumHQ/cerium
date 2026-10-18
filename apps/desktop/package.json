@@ -7,7 +7,7 @@
   "main": "dist/main.mjs",
   "scripts": {
     "build": "vp pack",
-    "dev": "vp pack && electron . --dev-url=http://localhost:5173",
+    "dev": "vp pack && electron . --dev-url=http://localhost:5173 --remote-debugging-port=9222",
     "package": "electron-builder --win --publish never",
     "icons": "electron scripts/build-icons.mjs"
   },

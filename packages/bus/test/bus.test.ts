@@ -1,15 +1,16 @@
 import type { McpServerSpec } from "@cerium/harness";
 import { Adapters, Catalog, Orchestrator, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
-import type { AgentId } from "@cerium/protocol";
+import type { AccessMode, AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Layer } from "effect";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import { BusHttpServer, BusRegistryLive, BusServer } from "../src/index.ts";
+import { findBrowser } from "../src/ui/browser.ts";
 
 const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
   BusServer.pipe(
@@ -55,7 +56,7 @@ const mcpClient = (spec: McpServerSpec | undefined) => {
       });
       sessionId = response.headers.get("mcp-session-id") ?? sessionId;
       const text = await response.text();
-      const data = text.includes("data:")
+      const data = response.headers.get("content-type")?.includes("text/event-stream")
         ? text
             .split("\n")
             .filter((line) => line.startsWith("data:"))
@@ -108,6 +109,12 @@ describe("Cerium MCP bus", () => {
           "send_message",
           "kill_agent",
           "artifact_guide",
+          "ui_open",
+          "ui_act",
+          "ui_screenshot",
+          "ui_inspect",
+          "ui_close",
+          "live_check",
         ],
       );
 
@@ -140,6 +147,143 @@ describe("Cerium MCP bus", () => {
       const anonymous = yield* leadClient.callTool("list_agents", {}, { authorization: "Bearer forged" });
       assert.isTrue(anonymous?.result?.isError);
       assert.include(JSON.stringify(anonymous?.result?.content), "Unknown Cerium agent.");
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  /** A lead in its own folder, with its bus client ready. */
+  const leadIn = (fake: ReturnType<typeof makeFakeAdapter>, access: AccessMode, cwd: string) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Checks",
+        mode: "work",
+        cwd,
+        lead: { provider: "claude", model: "opus", access },
+      });
+      yield* Effect.sleep(Duration.millis(20));
+      const client = mcpClient(fake.sessions[0]?.options.mcpServers["cerium"]);
+      yield* client.initialize;
+      return { lead, client };
+    });
+  const text = (response: { result?: any } | undefined): string => response?.result?.content?.[0]?.text ?? "";
+
+  it.live("runs live checks through the app's adapters, answering now or in a later notice", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const { client } = yield* leadIn(fake, "ask", mkdtempSync(join(tmpdir(), "cerium-folder-")));
+
+      const now = yield* client.callTool("live_check", { providers: ["claude"], prompt: "hi", wait: true });
+      assert.include(text(now), "Live check finished (app):\nPASS claude (fake-model, ask)");
+      // The check never runs with more access than its agent has.
+      assert.strictEqual(fake.sessions[1]?.options.access, "ask");
+
+      const later = yield* client.callTool("live_check", { providers: ["claude"], prompt: "hi" });
+      assert.include(text(later), '"status":"started"');
+      for (
+        let waited = 0;
+        waited < 100 && !fake.sessions[0]!.sent.some((sent) => sent.includes("Live check"));
+        waited++
+      ) {
+        yield* Effect.sleep(Duration.millis(20));
+      }
+      assert.include(fake.sessions[0]!.sent.join("\n"), "[Cerium] Live check finished (app):\nPASS claude");
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  it.live("runs a checkout's own live check only for agents that may run its code", () => {
+    const fake = makeFakeAdapter("claude");
+    const checkout = mkdtempSync(join(tmpdir(), "cerium-checkout-"));
+    mkdirSync(join(checkout, "apps", "backend", "scripts"), { recursive: true });
+    const result = {
+      provider: "codex",
+      model: "gpt-mini",
+      access: "auto",
+      status: "passed",
+      seconds: 1,
+      tools: ["shell"],
+      approvals: [],
+      files: ["shell.txt"],
+      problems: [],
+    };
+    writeFileSync(
+      join(checkout, "apps", "backend", "scripts", "live-check.ts"),
+      `console.log("checking");\nconsole.log(${JSON.stringify(`LIVE_CHECK_RESULTS ${JSON.stringify([result])}`)});\n`,
+    );
+    return Effect.gen(function* () {
+      const asking = yield* leadIn(fake, "acceptEdits", checkout);
+      const refused = yield* asking.client.callTool("live_check", { wait: true });
+      assert.isTrue(refused?.result?.isError);
+      assert.include(text(refused), "needs Auto or Full access");
+    })
+      .pipe(Effect.provide(stack(fake)), Effect.scoped)
+      .pipe(
+        Effect.andThen(() => {
+          const trusted = makeFakeAdapter("claude");
+          return Effect.gen(function* () {
+            const { client } = yield* leadIn(trusted, "auto", checkout);
+            const ran = yield* client.callTool("live_check", { wait: true });
+            assert.include(text(ran), "Live check finished (workspace):\nPASS codex (gpt-mini, auto)");
+            assert.include(text(ran), "files: shell.txt");
+          }).pipe(Effect.provide(stack(trusted)), Effect.scoped);
+        }),
+      );
+  });
+
+  it.live.skipIf(findBrowser() === undefined)(
+    "drives a page for an agent and shows it the screenshots",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      const page = `<title>Form</title><input placeholder="Name"><button onclick="document.title='Hi ' + document.querySelector('input').value">Greet</button>`;
+      return Effect.gen(function* () {
+        const { client } = yield* leadIn(fake, "auto", mkdtempSync(join(tmpdir(), "cerium-folder-")));
+        const opened = yield* client.callTool("ui_open", {
+          url: `data:text/html,${encodeURIComponent(page)}`,
+          width: 600,
+          height: 400,
+        });
+        const [info, image] = opened?.result?.content ?? [];
+        assert.include(info?.text, '"title":"Form"');
+        assert.strictEqual(image?.type, "image");
+        assert.strictEqual(image?.mimeType, "image/png");
+        assert.isTrue(
+          Buffer.from(image?.data ?? "", "base64")
+            .subarray(1, 4)
+            .equals(Buffer.from("PNG")),
+        );
+
+        const acted = yield* client.callTool("ui_act", {
+          steps: [
+            { action: "type", text: "Name", input: "Ada" },
+            { action: "click", text: "Greet" },
+          ],
+          screenshot: false,
+        });
+        assert.include(text(acted), '"title":"Hi Ada"');
+        assert.strictEqual(acted?.result?.content?.length, 1);
+
+        const failed = yield* client.callTool("ui_act", { steps: [{ action: "click", text: "Nowhere" }] });
+        assert.isTrue(failed?.result?.isError);
+        assert.include(text(failed), 'Nothing visible matches \\"Nowhere\\".');
+        assert.strictEqual(failed?.result?.content?.[1]?.type, "image");
+
+        assert.include(text(yield* client.callTool("ui_close", {})), '"closed":true');
+      }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+    },
+    60_000,
+  );
+
+  it.live("keeps read-only agents from acting on pages or running checks", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const { client } = yield* leadIn(fake, "readOnly", mkdtempSync(join(tmpdir(), "cerium-folder-")));
+      const act = yield* client.callTool("ui_act", { steps: [{ action: "click", text: "Send" }] });
+      assert.include(text(act), "Read-only agents can look at a page but not act on it.");
+      const check = yield* client.callTool("live_check", { wait: true });
+      assert.include(text(check), "Read-only agents can't run live checks.");
+      const closed = yield* client.callTool("ui_screenshot", {});
+      assert.include(text(closed), "No page is open. Call ui_open first.");
+      const invalid = yield* client.callTool("ui_act", { steps: [] });
+      assert.include(text(invalid), "Invalid input");
     }).pipe(Effect.provide(stack(fake)), Effect.scoped);
   });
 });
