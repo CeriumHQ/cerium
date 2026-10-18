@@ -1,6 +1,14 @@
 <div align="center">
 
-<img src=".github/media/banner.png" alt="Cerium: one thread, every agent" width="100%" />
+<br />
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/media/wordmark-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset=".github/media/wordmark-light.svg" />
+  <img src=".github/media/wordmark-light.svg" alt="Cerium" width="520" />
+</picture>
+
+<h3>One thread. Every agent.</h3>
 
 <p>
   <a href="https://github.com/nonlooped/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/nonlooped/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
@@ -31,7 +39,7 @@ their own official SDKs, and lets one conversation coordinate agents from all of
 <br />
 
 <p align="center">
-  <img src=".github/media/hero.png" alt="A Claude lead working on a repo while a Codex agent writes tests and a Cursor agent reviews the code, with the agent inspector open" width="100%" />
+  <img src=".github/media/hero.png" alt="A Claude lead hardening a repo while a Codex agent writes its tests and a Cursor agent reviews it, with an approval waiting and the agents panel open" width="100%" />
 </p>
 
 ## Why Cerium
@@ -58,9 +66,9 @@ it, all in one thread you can follow, steer and stop.
       work in parallel, message each other within limits, and report back inline.
     </td>
     <td width="50%" valign="top">
-      <h3>🔍 Agent inspector</h3>
-      See every agent in the thread as a tree: its model, effort, access, tokens, cost and latest
-      message. Open, message, interrupt or stop any of them.
+      <h3>📥 An inbox for your threads</h3>
+      Every project's threads in one list: what needs your approval first, then what's working, then
+      what finished since you looked. Each row shows its project, git branch and the harnesses at work.
     </td>
   </tr>
   <tr>
@@ -70,21 +78,33 @@ it, all in one thread you can follow, steer and stop.
       its lead's. Approvals arrive as cards with diffs, and children's requests gather in a tray.
     </td>
     <td valign="top">
-      <h3>💬 Work and Chat</h3>
-      Work threads run in a folder and are grouped by project. Chat threads have no folder and keep
-      agents to read-only tools like web search.
+      <h3>🔍 Agents panel</h3>
+      Every agent in the thread as a tree: its model, effort, access, tokens, cost and latest message,
+      with usage per provider straight from each harness's own reporting.
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <h3>📊 Usage at a glance</h3>
-      Tokens and cost per turn, per agent and per provider, straight from each harness's own
-      reporting.
+      <h3>📎 Files, skills and images</h3>
+      Type <code>@</code> to tag a file or folder and <code>$</code> to call one of the harness's skills.
+      Paste or drop screenshots and files. Files agents mention show as chips with their icons.
     </td>
     <td valign="top">
-      <h3>🎨 Native on Windows</h3>
-      Translucent Acrylic, Windows' own caption buttons, dark and light themes, keyboard shortcuts
-      throughout, and inline visual artifacts agents can draw in a sandboxed frame.
+      <h3>💬 Work and Chat</h3>
+      Work threads run in a project picked from your saved folders. Chat threads have no folder and
+      keep agents to read-only tools like web search. Rename, archive or delete any of them.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>📊 Inline artifacts</h3>
+      Leads answer with visuals when structure matters: boards of results, comparisons, timelines
+      and charts, drawn in a sandboxed frame that loads nothing from the network.
+    </td>
+    <td valign="top">
+      <h3>🪟 Native on Windows</h3>
+      Translucent Acrylic, Windows' own caption buttons, right-click menus throughout, and keyboard
+      shortcuts for everything you do often.
     </td>
   </tr>
 </table>
@@ -92,21 +112,25 @@ it, all in one thread you can follow, steer and stop.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src=".github/media/approval.png" alt="An approval card asking to run a command, with Allow once, Allow for session and Deny" />
-      <p align="center"><sub>Approve commands and edits as they come up</sub></p>
+      <img src=".github/media/approval.png" alt="An approval card showing the diff of a file edit, with Allow once, Allow for session and Deny" />
+      <p align="center"><sub>Approve edits and commands as they come up</sub></p>
     </td>
     <td width="50%" valign="top">
       <img src=".github/media/result.png" alt="The lead's summary table of what changed and which agent did it" />
       <p align="center"><sub>The lead pulls everyone's work together</sub></p>
     </td>
   </tr>
+  <tr>
+    <td valign="top">
+      <img src=".github/media/tags.png" alt="The message box suggesting files to tag after typing @" />
+      <p align="center"><sub>Tag files with @ and skills with $</sub></p>
+    </td>
+    <td valign="top">
+      <img src=".github/media/menu.png" alt="A thread's right-click menu in the inbox, with rename, archive and delete" />
+      <p align="center"><sub>Right-click menus wherever they help</sub></p>
+    </td>
+  </tr>
 </table>
-
-<p align="center">
-  <img src=".github/media/light.png" alt="The same thread in Cerium's light theme, with the agent inspector open" width="100%" />
-  <br />
-  <sub>Light and dark themes, following Windows or your choice</sub>
-</p>
 
 ## Supported harnesses
 
