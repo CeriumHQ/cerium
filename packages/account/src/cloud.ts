@@ -1,4 +1,11 @@
-import { UiEvent, type AccountThreads, type DeviceId, type ReadEntry, type ThreadId } from "@cerium/protocol";
+import {
+  UiEvents,
+  type AccountThreads,
+  type UiEvent,
+  type DeviceId,
+  type ReadEntry,
+  type ThreadId,
+} from "@cerium/protocol";
 import { Context, Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from "effect";
 
 import { Account, AccountError, type RelayEvent } from "./account.ts";
@@ -9,7 +16,7 @@ import { Account, AccountError, type RelayEvent } from "./account.ts";
 
 const empty: AccountThreads = { threads: [], read: [] };
 
-const decodeEvents = Schema.decodeUnknownEffect(Schema.Array(UiEvent));
+const decodeEvents = Schema.decodeUnknownEffect(UiEvents);
 
 /** The account's threads after a notice from the relay. */
 export const applyNotice = (current: AccountThreads, event: RelayEvent): AccountThreads => {

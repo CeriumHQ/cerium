@@ -9,6 +9,7 @@ import {
   DeviceName,
   HarnessStatus,
   ImageData,
+  LiveUiEvent,
   LoginProgress,
   Mention,
   ModelInfo,
@@ -24,8 +25,10 @@ import {
   ThreadInfo,
   ThreadMode,
   ThreadOverview,
+  ThreadOverviews,
   ThreadRef,
   UiEvent,
+  UiEvents,
   WorkspaceEntry,
   ReadEntry,
 } from "@cerium/protocol";
@@ -34,6 +37,7 @@ import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 // The contract between the UI and the backend, served over a localhost WebSocket
 // (docs/architecture.md §7). Payloads and results are protocol schemas, so both sides validate them.
+// Lists of threads and events skip what the reading side's version can't read (§14.1).
 
 /**
  * The version of this contract. Changes only add (docs/architecture.md §14.1): a new RPC, or an
@@ -77,14 +81,17 @@ export type CreateThreadPayload = typeof CreateThreadPayload.Type;
  * (docs/architecture.md §14.8): its threads, projects, harnesses and settings.
  */
 export const MachineRpcs = RpcGroup.make(
-  Rpc.make("ListThreads", { success: Schema.Array(ThreadOverview), error: CeriumError }),
+  Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
   Rpc.make("ThreadEvents", {
     payload: { threadId: ThreadId },
-    success: Schema.Array(UiEvent),
+    success: UiEvents,
     error: CeriumError,
   }),
-  /** Every agent's events as they happen, streaming deltas included. */
-  Rpc.make("WatchEvents", { success: UiEvent, stream: true }),
+  /**
+   * Every agent's events as they happen, streaming deltas included; one of a kind the UI's version
+   * doesn't know arrives as `undefined`.
+   */
+  Rpc.make("WatchEvents", { success: LiveUiEvent, stream: true }),
   Rpc.make("CreateThread", {
     payload: CreateThreadPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
@@ -228,7 +235,7 @@ export const DeviceRpcs = RpcGroup.make(
   /** Another machine's thread, read from the cloud copy: its events without streamed text. */
   Rpc.make("CloudThreadEvents", {
     payload: { machine: DeviceId, threadId: ThreadId },
-    success: Schema.Array(UiEvent),
+    success: UiEvents,
     error: CeriumError,
   }),
   /** Tells the account's other devices these threads were seen here. */

@@ -16,7 +16,14 @@ import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
 const resubscribe = Stream.retry(Schedule.spaced("1 second"));
 
-const liveEvents = Stream.unwrap(Backend.use((client) => Effect.succeed(client("WatchEvents", undefined))));
+/** The driven machine's live events, without those of kinds this version doesn't know (§14.1). */
+const watchEvents = Backend.use((client) =>
+  Effect.succeed(
+    client("WatchEvents", undefined).pipe(Stream.filter((event): event is AgentEvent => event !== undefined)),
+  ),
+);
+
+const liveEvents = Stream.unwrap(watchEvents);
 
 const isDelta = (event: AgentEvent) =>
   event.payload._tag === "MessageDelta" || event.payload._tag === "ReasoningDelta";
@@ -178,7 +185,7 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
       Backend.use((client) =>
         Effect.succeed(
           Stream.merge(
-            client("WatchEvents", undefined).pipe(
+            Stream.unwrap(watchEvents).pipe(
               Stream.filter((event) => event.threadId === threadId),
               Stream.map((event): EventSource => ({ _tag: "Live", event })),
             ),

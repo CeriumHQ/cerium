@@ -1,11 +1,13 @@
 import { Schema } from "effect";
 
 import { ReasoningEffort } from "./capabilities.ts";
+import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, EventId, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 import { AccessMode, AgentState } from "./orchestration.ts";
 
 // Canonical events: every adapter translates its provider's stream into these, and the UI,
-// persistence and orchestrator never see provider types (docs/architecture.md §2.3).
+// persistence and orchestrator never see provider types (docs/architecture.md §2.3). Values a newer
+// version may add read as a fallback (§14.1).
 
 export const SessionStarted = Schema.TaggedStruct("SessionStarted", {
   provider: ProviderId,
@@ -49,7 +51,7 @@ export const ToolCallCompleted = Schema.TaggedStruct("ToolCallCompleted", {
 
 export const FileChanged = Schema.TaggedStruct("FileChanged", {
   path: Schema.NonEmptyString,
-  change: Schema.Literals(["created", "modified", "deleted"]),
+  change: withFallback(Schema.Literals(["created", "modified", "deleted"]), "modified"),
 });
 
 export const PermissionRequested = Schema.TaggedStruct("PermissionRequested", {
@@ -75,7 +77,7 @@ export const UsageReported = Schema.TaggedStruct("UsageReported", {
 });
 
 export const TurnCompleted = Schema.TaggedStruct("TurnCompleted", {
-  stopReason: Schema.Literals(["completed", "interrupted", "maxTurns", "error"]),
+  stopReason: withFallback(Schema.Literals(["completed", "interrupted", "maxTurns", "error"]), "completed"),
 });
 
 export const AuthRequired = Schema.TaggedStruct("AuthRequired", {
@@ -86,7 +88,10 @@ export const AuthRequired = Schema.TaggedStruct("AuthRequired", {
 });
 
 export const AgentError = Schema.TaggedStruct("AgentError", {
-  kind: Schema.Literals(["transient", "rateLimit", "versionMismatch", "crash", "unknown"]),
+  kind: withFallback(
+    Schema.Literals(["transient", "rateLimit", "versionMismatch", "crash", "unknown"]),
+    "unknown",
+  ),
   message: Schema.String,
   retryable: Schema.Boolean,
 });

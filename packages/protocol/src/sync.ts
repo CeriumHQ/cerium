@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect";
 
+import { LenientArray, Skippable } from "./compat.ts";
 import { AgentEvent } from "./events.ts";
 import { DeviceId, EpochMillis, NonNegativeInt, ThreadId } from "./ids.ts";
 import { AgentInfo, ThreadInfo } from "./orchestration.ts";
@@ -15,6 +16,12 @@ import { AgentInfo, ThreadInfo } from "./orchestration.ts";
 export const UiEvent = AgentEvent.mapFields(Struct.omit(["raw"]));
 export type UiEvent = typeof UiEvent.Type;
 
+/** A thread's events, skipping those of kinds this version doesn't know (§14.1). */
+export const UiEvents = LenientArray(UiEvent);
+
+/** A live event, read as `undefined` when it's of a kind this version doesn't know (§14.1). */
+export const LiveUiEvent = Skippable(UiEvent);
+
 /** What the inbox needs about one thread. */
 export const ThreadOverview = Schema.Struct({
   thread: ThreadInfo,
@@ -23,9 +30,15 @@ export const ThreadOverview = Schema.Struct({
 });
 export type ThreadOverview = typeof ThreadOverview.Type;
 
+/** Threads, skipping any this version can't read, such as one led by a provider it doesn't know. */
+export const ThreadOverviews = LenientArray(ThreadOverview);
+
 /** A thread of the account, with the machine it lives on. */
 export const AccountThread = Schema.Struct({ machine: DeviceId, overview: ThreadOverview });
 export type AccountThread = typeof AccountThread.Type;
+
+/** The account's threads, skipping any this version can't read. */
+const AccountThreadList = LenientArray(AccountThread);
 
 /** When a thread was last seen, on any of the account's devices, by its last activity then. */
 export const ReadEntry = Schema.Struct({ threadId: ThreadId, seenAt: EpochMillis });
@@ -33,7 +46,7 @@ export type ReadEntry = typeof ReadEntry.Type;
 
 /** Every thread of the account and what has been seen of them, as a device knows them. */
 export const AccountThreads = Schema.Struct({
-  threads: Schema.Array(AccountThread),
+  threads: AccountThreadList,
   read: Schema.Array(ReadEntry),
 });
 export type AccountThreads = typeof AccountThreads.Type;
@@ -44,12 +57,13 @@ export const isStreamDelta = (tag: string) => tag === "MessageDelta" || tag === 
 /** What a desktop sends its relay socket to keep the cloud copy current. */
 export const SyncMessage = Schema.Union([
   /** These threads of the sender, new or changed. */
-  Schema.TaggedStruct("SyncThreads", { threads: Schema.Array(ThreadOverview) }),
+  Schema.TaggedStruct("SyncThreads", { threads: ThreadOverviews }),
   /** These threads of the sender are gone. */
   Schema.TaggedStruct("SyncRemoved", { threadIds: Schema.Array(ThreadId) }),
   /**
    * A thread's events from position `start` on, in the order the machine stored them. The relay
-   * keeps what follows what it has, and answers `SyncAccepted` with how many it has now.
+   * keeps what follows what it has, and answers `SyncAccepted` with how many it has now. Strict,
+   * unlike other lists of events: a skipped event would throw the counts off.
    */
   Schema.TaggedStruct("SyncEvents", {
     threadId: ThreadId,
@@ -69,12 +83,12 @@ export const SyncNotice = Schema.Union([
   Schema.TaggedStruct("SyncAccepted", { threadId: ThreadId, count: NonNegativeInt }),
   /** On connecting: every thread of the account, and what has been seen. */
   Schema.TaggedStruct("AccountThreads", {
-    threads: Schema.Array(AccountThread),
+    threads: AccountThreadList,
     read: Schema.Array(ReadEntry),
   }),
   /** Threads that changed or went, on another machine. */
   Schema.TaggedStruct("ThreadsChanged", {
-    threads: Schema.Array(AccountThread),
+    threads: AccountThreadList,
     removed: Schema.Array(Schema.Struct({ machine: DeviceId, threadId: ThreadId })),
   }),
   /** Threads seen on some device. */

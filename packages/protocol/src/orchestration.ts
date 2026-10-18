@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { ReasoningEffort } from "./capabilities.ts";
+import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, ProviderId, ThreadId } from "./ids.ts";
 
 /**
@@ -11,8 +12,13 @@ import { AgentId, EpochMillis, ProviderId, ThreadId } from "./ids.ts";
  * - `auto`: the harness's own reviewer model approves or refuses each edit and command, and asks the
  *   user only where the harness does (architecture §2.2).
  * - `fullAccess`: the harness's own bypass mode: nothing asks and no sandbox applies.
+ *
+ * A mode a newer version added reads as `ask` (§14.1): asking is never more than it allows.
  */
-export const AccessMode = Schema.Literals(["readOnly", "ask", "acceptEdits", "auto", "fullAccess"]);
+export const AccessMode = withFallback(
+  Schema.Literals(["readOnly", "ask", "acceptEdits", "auto", "fullAccess"]),
+  "ask",
+);
 export type AccessMode = typeof AccessMode.Type;
 
 const accessRank: Record<AccessMode, number> = {
@@ -27,7 +33,11 @@ const accessRank: Record<AccessMode, number> = {
 export const narrowAccess = (lead: AccessMode, requested: AccessMode): AccessMode =>
   accessRank[requested] <= accessRank[lead] ? requested : lead;
 
-export const AgentState = Schema.Literals(["queued", "running", "idle", "stopped", "failed"]);
+/** A state a newer version added reads as `idle` (§14.1). */
+export const AgentState = withFallback(
+  Schema.Literals(["queued", "running", "idle", "stopped", "failed"]),
+  "idle",
+);
 export type AgentState = typeof AgentState.Type;
 
 export const ThreadMode = Schema.Literals(["work", "chat"]);

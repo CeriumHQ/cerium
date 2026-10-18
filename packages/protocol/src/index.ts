@@ -1,5 +1,6 @@
 export * from "./account.ts";
 export * from "./capabilities.ts";
+export * from "./compat.ts";
 export * from "./events.ts";
 export * from "./harness.ts";
 export * from "./ids.ts";
