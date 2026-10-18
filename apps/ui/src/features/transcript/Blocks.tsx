@@ -13,6 +13,7 @@ import { useMessageBox } from "../composer/messageBox.ts";
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
 import { FileChip } from "./FileChip.tsx";
+import { useKeptOpen } from "./kept.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { TranscriptBlock, UserBlock } from "./model.ts";
@@ -93,6 +94,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
     item._tag === "ChildFinishedTurn" ? "finished" : item._tag === "FromAgent" ? "wrote" : "notice";
   const text = item.text.trim();
   const preview = previewLine(text);
+  const [open, setOpen] = useKeptOpen(block.id);
 
   // A one-liner reads best as it is; anything longer folds behind its first line.
   if (preview === text) {
@@ -108,7 +110,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
 
   return (
     <MessageMenuArea text={text}>
-      <Collapsible.Root>
+      <Collapsible.Root open={open ?? false} onOpenChange={setOpen}>
         <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
           <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
           <span className="shrink-0">
@@ -154,8 +156,9 @@ export function Working() {
 }
 
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
+  const [open, setOpen] = useKeptOpen(block.id);
   return (
-    <Collapsible.Root>
+    <Collapsible.Root open={open ?? false} onOpenChange={setOpen}>
       <Collapsible.Trigger className="group flex items-center gap-1.5 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
         <Brain size={13} strokeWidth={1.75} />
         {block.streaming ? <span className="text-shimmer">Thinking…</span> : "Thought"}

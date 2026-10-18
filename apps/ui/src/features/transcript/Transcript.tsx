@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
-import { createContext, memo, use, type CSSProperties, type ReactNode } from "react";
+import { createContext, memo, use, useState, type CSSProperties, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -23,11 +23,23 @@ import {
   type ChildState,
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
+import { Kept, KeptState, useKeptSize } from "./kept.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { AgentActivity, QueuedMessages, TranscriptBlock } from "./model.ts";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
+import { VirtualList } from "./VirtualList.tsx";
+
+/** The space between the conversation's items: the column's `gap-3`. */
+const ITEM_GAP = 12;
+/** A typical item's height before it is measured: a line or two of reply, or a folded tool run. */
+const ITEM_ESTIMATE = 96;
+/**
+ * The latest items, kept mounted in the page's flow: the reply streaming in, the tool run going on,
+ * and what was just before them.
+ */
+const LIVE_TAIL = 4;
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
@@ -187,16 +199,23 @@ export function Transcript({
   const held =
     queued.messages.length > 0 && (activity === "ended" || (activity === "running" && queued.behindTurn));
   const shown = held ? blocks : [...blocks, ...queued.messages];
-  const { viewport, following, toEnd } = useStickToBottom(
+  const { viewport, following, toEnd, isPinned } = useStickToBottom(
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
   const items = layout(shown);
   const last = items.at(-1);
+  // The latest items grow as the agent works, so they stay in the page's flow, where the end follows
+  // them as they grow; the rest is history and only mounts near view.
+  const history = items.slice(0, Math.max(0, items.length - LIVE_TAIL));
+  const tail = items.slice(history.length);
   const working = activity === "running" && !showsProgress(last);
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
   const scale = textScale(useAtomValue(textSizeAtom));
   // A phone's keyboard shrinks the message box to one line, so the end needs less room.
   const oneLine = useKeyboardOpen();
+  // What the reader opened, and how tall artifacts and the latest items drew, outlasts items
+  // unmounting out of view.
+  const [kept] = useState(() => new KeptState());
   const actions: TranscriptActions = {
     roleOf,
     childState,
@@ -206,7 +225,7 @@ export function Transcript({
   };
 
   return (
-    <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
+    <ThreadContext folder={folder} messageBox={messageBox} actions={actions} kept={kept}>
       <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
         {/* Content fades out where the floating composer sits instead of showing through its glass. */}
         <ScrollArea
@@ -225,15 +244,40 @@ export function Transcript({
               paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
             }}
           >
-            {items.map((item) => (
-              <TranscriptItem
-                key={item.id}
-                item={item}
-                last={item === last}
-                activity={activity}
-                provider={agent.provider}
-                model={agent.model}
-              />
+            {/* Of the history, only what is in and near view is mounted, so a long thread opens as
+                fast as a short one. */}
+            {history.length > 0 ? (
+              <VirtualList
+                items={history}
+                keyOf={(item) => item.id}
+                viewport={viewport}
+                zoom={scale}
+                gap={ITEM_GAP}
+                estimate={ITEM_ESTIMATE}
+                sizes={kept.sizes}
+                following={isPinned}
+              >
+                {(item) => (
+                  <TranscriptItem
+                    item={item}
+                    last={false}
+                    activity={activity}
+                    provider={agent.provider}
+                    model={agent.model}
+                  />
+                )}
+              </VirtualList>
+            ) : null}
+            {tail.map((item) => (
+              <LiveItem key={item.id} id={item.id}>
+                <TranscriptItem
+                  item={item}
+                  last={item === last}
+                  activity={activity}
+                  provider={agent.provider}
+                  model={agent.model}
+                />
+              </LiveItem>
             ))}
             {working && (last === undefined || last.kind === "input") ? (
               <ResponseHeader agent={agent} />
@@ -295,17 +339,21 @@ function ThreadContext({
   folder,
   messageBox,
   actions,
+  kept,
   children,
 }: {
   folder: string | undefined;
   messageBox: MessageBox | undefined;
   actions: TranscriptActions;
+  kept: KeptState;
   children: ReactNode;
 }) {
   return (
     <WorkspaceFolder value={folder}>
       <MessageBoxContext value={messageBox}>
-        <Actions value={actions}>{children}</Actions>
+        <Actions value={actions}>
+          <Kept value={kept}>{children}</Kept>
+        </Actions>
       </MessageBoxContext>
     </WorkspaceFolder>
   );
@@ -361,6 +409,7 @@ const TranscriptItem = memo(
           return (
             <ToolRun
               key={each.id}
+              id={each.id}
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               live={last && activity === "running"}
               activity={activity}
@@ -385,6 +434,12 @@ const TranscriptItem = memo(
     before.model === after.model &&
     same(before.item, after.item),
 );
+
+/** One of the latest items, whose height is kept for when it moves into the history. */
+function LiveItem({ id, children }: { id: string; children: ReactNode }) {
+  const element = useKeptSize<HTMLDivElement>(id);
+  return <div ref={element}>{children}</div>;
+}
 
 function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   const { childState, childAgent, agentActions } = use(Actions);

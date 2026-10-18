@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
 import { artifactDocument, HEIGHT_MESSAGE, sanitizeArtifact } from "./artifactDocument.ts";
+import { useKeptHeight } from "./kept.ts";
 
 /** Height held while the artifact streams and until its frame reports its own. */
 const PLACEHOLDER_HEIGHT = 112;
@@ -18,7 +19,8 @@ const currentTheme = (): "dark" | "light" =>
 export function Artifact({ code, isIncomplete }: CustomRendererProps) {
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState<number>();
+  // Kept for the conversation, so a frame drawn again as it scrolls back into view starts at its size.
+  const [height, keepHeight] = useKeptHeight(code);
   const [nonce] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
@@ -28,12 +30,13 @@ export function Artifact({ code, isIncomplete }: CustomRendererProps) {
       if (typeof data !== "object" || data === null) return;
       const { type, height } = data as { type?: unknown; height?: unknown };
       if (type === HEIGHT_MESSAGE && typeof height === "number" && Number.isFinite(height)) {
-        setHeight(Math.max(height, 1));
+        keepHeight(Math.max(height, 1));
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+    // Again for new code, so its height is kept under the code it drew.
+  }, [keepHeight]);
 
   if (isIncomplete) {
     return (

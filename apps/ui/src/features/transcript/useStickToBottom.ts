@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** How close to the end still counts as "at the bottom", so small layout shifts don't unpin. */
 const SLACK = 48;
@@ -39,8 +39,9 @@ export function useStickToBottom(pinKey: unknown) {
     };
   }, []);
 
-  // Jumping to the end fires a scroll event, which marks the viewport as following again.
-  useEffect(() => {
+  // Jumping to the end fires a scroll event, which marks the viewport as following again. It happens
+  // before the first paint, so a conversation opens at its end without a frame of its start.
+  useLayoutEffect(() => {
     pinned.current = true;
     const element = viewport.current;
     if (element) element.scrollTop = element.scrollHeight;
@@ -52,5 +53,8 @@ export function useStickToBottom(pinKey: unknown) {
     viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" });
   };
 
-  return { viewport, following, toEnd };
+  /** Whether the viewport follows the end right now, as of the last scroll. */
+  const isPinned = () => pinned.current;
+
+  return { viewport, following, toEnd, isPinned };
 }
