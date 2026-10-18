@@ -251,7 +251,11 @@ CLERK_JWT_KEY=$(CERIUM_PK="$CLERK_PUBLISHABLE_KEY" node -e '
     .then((response) => response.json())
     .then(({ keys }) => {
       const pem = createPublicKey({ key: keys[0], format: "jwk" }).export({ type: "spki", format: "pem" });
-      process.stdout.write(pem.trim().replace(/\n/g, "\n"));
+      // One line, its breaks written as a backslash and n: .dev.vars holds one value per line. Built
+      // from char codes because Git Bash collapses backslashes in arguments it hands to node.
+      const lineBreak = String.fromCharCode(10);
+      const escapedBreak = String.fromCharCode(92, 110);
+      process.stdout.write(pem.trim().split(lineBreak).join(escapedBreak));
     })
     .catch((error) => {
       console.error(`Couldn\x27t read ${host}: ${error.message}`);

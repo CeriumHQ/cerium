@@ -96,11 +96,14 @@ const loadScript = (src, attributes = {}) =>
 /** Clerk's Frontend API host, which the publishable key encodes (`pk_test_<base64 of "host$">`). */
 const frontendApi = (publishableKey) => atob(publishableKey.split("_")[2] ?? "").replace(/\$$/, "");
 
-/** Clerk's components in Cerium's tokens, flattened into this page's panel. */
+/**
+ * Clerk's components in Cerium's tokens, flattened into this page's panel. The accent goes by the
+ * aliases in link.css, since Clerk's buttons define an `--accent` of their own.
+ */
 const appearance = {
   variables: {
-    colorPrimary: "var(--accent)",
-    colorPrimaryForeground: "var(--accent-fg)",
+    colorPrimary: "var(--cerium-accent)",
+    colorPrimaryForeground: "var(--cerium-accent-fg)",
     colorBackground: "var(--surface-raised)",
     colorForeground: "var(--fg-primary)",
     colorMutedForeground: "var(--fg-tertiary)",
@@ -121,9 +124,39 @@ const appearance = {
       borderRadius: "0",
       background: "transparent",
     },
-    card: { padding: "0", boxShadow: "none", border: "none", background: "transparent" },
+    // Clerk offsets the card a pixel each way for a border it no longer has here.
+    card: {
+      padding: "0",
+      margin: "0",
+      width: "100%",
+      boxShadow: "none",
+      border: "none",
+      background: "transparent",
+    },
     header: { display: "none" },
     footer: { background: "transparent" },
+    formButtonPrimary: {
+      backgroundColor: "var(--cerium-accent)",
+      backgroundImage: "none",
+      color: "var(--cerium-accent-fg)",
+      boxShadow: "none",
+      border: "none",
+      "&:hover, &:focus": { backgroundColor: "var(--cerium-accent-strong)" },
+    },
+    socialButtonsIconButton: {
+      backgroundColor: "var(--surface-sunken)",
+      border: "1px solid var(--line-subtle)",
+      boxShadow: "none",
+      "&:hover": { backgroundColor: "var(--surface-hover)", borderColor: "var(--line-strong)" },
+    },
+    socialButtonsBlockButton: {
+      backgroundColor: "var(--surface-sunken)",
+      border: "1px solid var(--line-subtle)",
+      boxShadow: "none",
+      "&:hover": { backgroundColor: "var(--surface-hover)", borderColor: "var(--line-strong)" },
+    },
+    formFieldInput: { border: "1px solid var(--line-subtle)", boxShadow: "none" },
+    dividerLine: { backgroundColor: "var(--line-subtle)" },
   },
 };
 

@@ -56,6 +56,16 @@
   }
 }
 
+/*
+ * The accent under names of Cerium's own for Clerk's components: Clerk's buttons set an `--accent`
+ * of their own, so `var(--accent)` inside one refers to itself and draws nothing.
+ */
+:root {
+  --cerium-accent: var(--accent);
+  --cerium-accent-strong: var(--accent-strong);
+  --cerium-accent-fg: var(--accent-fg);
+}
+
 * {
   box-sizing: border-box;
 }
