@@ -1,50 +1,121 @@
 import {
+  isStreamDelta,
   ModelInfo,
   type AccountThreads,
   type AgentEvent,
+  type AgentId,
   type DeviceId,
   type ProviderId,
   type ThreadId,
 } from "@cerium/protocol";
-import { Effect, Option, Schedule, Schema, Stream } from "effect";
+import { Effect, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
-import { Backend, connectionAtom, LocalBackend } from "./client.ts";
+import { Backend, BackendUnreachable, connectionAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
+import { byTime, ThreadLog } from "./threadLog.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
 const resubscribe = Stream.retry(Schedule.spaced("1 second"));
 
-/** The driven machine's live events, without those of kinds this version doesn't know (§14.1). */
-const watchEvents = Backend.use((client) =>
-  Effect.succeed(
-    client("WatchEvents", undefined).pipe(Stream.filter((event): event is AgentEvent => event !== undefined)),
-  ),
-);
+/** What the window's live feed carries: each event, and a mark each time it subscribes again. */
+type Live = { readonly _tag: "Event"; readonly event: AgentEvent } | { readonly _tag: "Subscribed" };
 
-const liveEvents = Stream.unwrap(watchEvents);
+const subscribed: Live = { _tag: "Subscribed" };
 
-const isDelta = (event: AgentEvent) =>
-  event.payload._tag === "MessageDelta" || event.payload._tag === "ReasoningDelta";
+/**
+ * How many events the live subscription holds before the socket waits for the window to take them.
+ * The socket reads every answer in turn, so a subscription that makes it wait holds up all the
+ * others: the thread list, the open thread and every call the window makes.
+ */
+const LIVE_BUFFER = 4096;
+
+/**
+ * The driven machine's live events, streamed text included, on one subscription the whole window
+ * shares; events of kinds this version doesn't know are skipped (§14.1). It subscribes again when the
+ * connection comes back, and marks each subscription once its request is on its way: what happened
+ * while the connection was down never arrives, so readers read again what they hold.
+ */
+const liveFeedAtom = Backend.runtime
+  .atom(
+    Effect.gen(function* () {
+      const feed = yield* PubSub.unbounded<Live>();
+      const subscribe = Effect.gen(function* () {
+        const client = yield* Backend;
+        const events = yield* client("WatchEvents", undefined, {
+          asQueue: true,
+          streamBufferSize: LIVE_BUFFER,
+        });
+        yield* PubSub.publish(feed, subscribed);
+        yield* Stream.fromQueue(events).pipe(
+          Stream.runForEachArray((batch) =>
+            PubSub.publishAll(
+              feed,
+              batch.flatMap((event): ReadonlyArray<Live> =>
+                event === undefined ? [] : [{ _tag: "Event", event }],
+              ),
+            ),
+          ),
+        );
+      }).pipe(Effect.scoped);
+      yield* subscribe.pipe(
+        Effect.ignoreCause,
+        Effect.andThen(Effect.sleep("1 second")),
+        Effect.forever,
+        Effect.forkScoped,
+      );
+      return feed;
+    }),
+  )
+  .pipe(Atom.keepAlive);
+
+/** A reader's own subscription to the live feed, open while its stream runs. */
+const subscribeLive = (get: Atom.AtomContext) => Effect.flatMap(get.result(liveFeedAtom), PubSub.subscribe);
+
+/** Anything but streamed text, and each new subscription, after which what was read is stale. */
+const isActivity = (live: Live) => live._tag === "Subscribed" || !isStreamDelta(live.event.payload._tag);
 
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
-export const activityAtom = Backend.runtime.atom(
-  liveEvents.pipe(
-    resubscribe,
-    Stream.filter((event) => !isDelta(event)),
-    Stream.scan(
-      () => 0,
-      (count: number) => count + 1,
+export const activityAtom = Backend.runtime.atom((get) =>
+  Stream.unwrap(
+    Effect.map(subscribeLive(get), (live) =>
+      Stream.fromSubscription(live).pipe(
+        Stream.filter(isActivity),
+        Stream.scan(
+          () => 0,
+          (count: number) => count + 1,
+        ),
+      ),
     ),
   ),
 );
 
-/** Every thread with its agents and whether it waits on the user. Refreshes as agents work. */
+/**
+ * Every thread with its agents and whether it waits on the user. Read once connected, then again
+ * after every change but streamed text and each time the live feed subscribes again. One read runs
+ * at a time and changes during it make one more after it, so a busy machine can't keep cancelling
+ * reads, and the list always ends on the latest state. While disconnected it fails, keeping the
+ * last list it read.
+ */
 export const threadsAtom = Backend.runtime.atom((get) => {
-  get(connectionAtom);
-  get(activityAtom);
-  return Backend.use((client) => client("ListThreads", undefined));
+  get.mount(liveFeedAtom);
+  if (get(connectionAtom) !== "connected") {
+    return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
+  }
+  const listThreads = Backend.use((client) => client("ListThreads", undefined));
+  return Stream.unwrap(
+    Effect.map(subscribeLive(get), (live) =>
+      Stream.concat(
+        Stream.succeed(subscribed),
+        Stream.fromSubscription(live).pipe(Stream.filter(isActivity)),
+      ),
+    ),
+  ).pipe(
+    Stream.buffer({ capacity: 1, strategy: "sliding" }),
+    Stream.mapEffect(() => listThreads),
+    resubscribe,
+  );
 });
 
 export const harnessesAtom = Backend.runtime.atom((get) => {
@@ -168,56 +239,71 @@ export const settingsAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("Settings", undefined));
 });
 
-type EventSource =
-  | { readonly _tag: "History"; readonly events: ReadonlyArray<AgentEvent> }
-  | { readonly _tag: "Live"; readonly event: AgentEvent };
-
-const byTime = (a: AgentEvent, b: AgentEvent) => a.at - b.at || a.sequence - b.sequence;
+/** How long a thread's events are kept after it closes, so going back to it shows it at once. */
+const CLOSED_THREAD_TTL = "5 minutes";
 
 /**
- * A thread's events: persisted history merged with live events, including streamed text. History
- * and the live feed start together and are de-duplicated by event id, so nothing falls in between,
- * including across a reconnect, which fetches the history again.
+ * A thread's events: its history merged with live events, streamed text included. History is read
+ * once subscribed to the live feed and again each time the feed subscribes again, so nothing falls
+ * in between, even across a reconnect. Events are taken a batch at a time, which is what keeps a
+ * fast reply in a long thread from outrunning the window.
  */
 export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
-  Backend.runtime.atom(
-    Stream.unwrap(
-      Backend.use((client) =>
-        Effect.succeed(
-          Stream.merge(
-            Stream.unwrap(watchEvents).pipe(
-              Stream.filter((event) => event.threadId === threadId),
-              Stream.map((event): EventSource => ({ _tag: "Live", event })),
+  Backend.runtime
+    .atom((get) => {
+      const history = Backend.use((client) => client("ThreadEvents", { threadId })).pipe(
+        Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
+        // What the window holds stays; the next subscription reads again.
+        Effect.option,
+      );
+      return Stream.unwrap(
+        Effect.map(subscribeLive(get), (live) => {
+          const log = new ThreadLog();
+          return Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+            Stream.chunks,
+            Stream.mapEffect((batch) =>
+              Effect.gen(function* () {
+                let changed = log.add(
+                  batch.flatMap((each) =>
+                    each._tag === "Event" && each.event.threadId === threadId ? [each.event] : [],
+                  ),
+                );
+                if (batch.some((each) => each._tag === "Subscribed")) {
+                  const read = yield* history;
+                  // Shown once read, even when empty, so a new thread doesn't wait for its first event.
+                  changed = Option.isSome(read) ? log.add(read.value) || true : changed;
+                }
+                return changed ? Option.some(log.snapshot()) : Option.none();
+              }),
             ),
-            Stream.fromEffect(
-              client("ThreadEvents", { threadId }).pipe(
-                Effect.map((events): EventSource => ({ _tag: "History", events })),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ).pipe(
-      resubscribe,
-      Stream.scan(
-        () => new Map<string, AgentEvent>(),
-        (seen: ReadonlyMap<string, AgentEvent>, source: EventSource) => {
-          const next = new Map(seen);
-          for (const event of source._tag === "History" ? source.events : [source.event])
-            next.set(event.id, event);
-          return next;
-        },
-      ),
-      Stream.map((seen) => [...seen.values()].sort(byTime)),
-    ),
-  ),
+            Stream.filter(Option.isSome),
+            Stream.map((events) => events.value),
+          );
+        }),
+      );
+    })
+    .pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
 );
 
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
 export const respondToPermission = Backend.mutation("RespondToPermission");
-export const interruptAgent = Backend.mutation("InterruptAgent");
-export const stopAgent = Backend.mutation("StopAgent");
+/**
+ * Interrupting or stopping an agent reads the thread list again once done, so pressing stop on an
+ * agent the window still shows working, though it isn't, puts that right.
+ */
+export const interruptAgent = Backend.runtime.fn<{ readonly payload: { readonly agentId: AgentId } }>()(
+  ({ payload }, get) =>
+    Backend.use((client) => client("InterruptAgent", payload)).pipe(
+      Effect.ensuring(Effect.sync(() => get.refresh(threadsAtom))),
+    ),
+);
+export const stopAgent = Backend.runtime.fn<{ readonly payload: { readonly agentId: AgentId } }>()(
+  ({ payload }, get) =>
+    Backend.use((client) => client("StopAgent", payload)).pipe(
+      Effect.ensuring(Effect.sync(() => get.refresh(threadsAtom))),
+    ),
+);
 export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const deleteThread = Backend.mutation("DeleteThread");
