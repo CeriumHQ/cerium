@@ -61,6 +61,25 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("renames, archives and restores threads", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.updateThread(thread.id, { title: "Renamed", archivedAt: 9 });
+        assert.deepStrictEqual(
+          yield* store.getThread(thread.id),
+          Option.some({ ...thread, title: "Renamed", archivedAt: 9 }),
+        );
+        yield* store.updateThread(thread.id, { archivedAt: null });
+        assert.deepStrictEqual(
+          yield* store.getThread(thread.id),
+          Option.some({ ...thread, title: "Renamed" }),
+        );
+      }),
+    ),
+  );
+
   it.effect("creates, updates and lists agents", () =>
     withStore(
       Effect.gen(function* () {

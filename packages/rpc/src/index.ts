@@ -106,6 +106,18 @@ export const CeriumRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
+  /** The title is trimmed and must be 1 to 80 characters. */
+  Rpc.make("RenameThread", {
+    payload: { threadId: ThreadId, title: Schema.String },
+    success: ThreadInfo,
+    error: CeriumError,
+  }),
+  /** Archiving hides a thread until it is restored; refused while its agents work or wait on the user. */
+  Rpc.make("SetThreadArchived", {
+    payload: { threadId: ThreadId, archived: Schema.Boolean },
+    success: ThreadInfo,
+    error: CeriumError,
+  }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the

@@ -1,6 +1,7 @@
 import type { AgentSession, PermissionDecision, TurnExtras, TurnImage } from "@cerium/harness";
 import {
   LEAD_ROLE,
+  MAX_THREAD_TITLE,
   narrowAccess,
   type AccessMode,
   type AgentEvent,
@@ -18,7 +19,7 @@ import {
   type ThreadInfo,
   type ThreadMode,
 } from "@cerium/protocol";
-import { Store, type StoreError } from "@cerium/store";
+import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
 import {
   Clock,
   Context,
@@ -146,6 +147,13 @@ export class Orchestrator extends Context.Service<
     /** Ends the agent's session. */
     stopAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, OrchestratorError>;
+    /** Renames a thread; the title is trimmed and must be 1 to `MAX_THREAD_TITLE` characters. */
+    renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
+    /**
+     * Archives or restores a thread. One whose agents are working or waiting on the user can't be
+     * archived, so a request never ends up where the user doesn't look.
+     */
+    setThreadArchived(threadId: ThreadId, archived: boolean): Effect.Effect<ThreadInfo, OrchestratorError>;
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, OrchestratorError>;
     /** Live events from every agent; subscribers see events published after they subscribe. */
     readonly events: Stream.Stream<AgentEvent>;
@@ -434,6 +442,29 @@ export class Orchestrator extends Context.Service<
         });
 
       const now = Clock.currentTimeMillis;
+
+      const waitsOnUser = (threadId: ThreadId) =>
+        [...runtimes.values()].some(
+          (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
+        ) ||
+        [...pendingSpawns.values()].some(({ leadId }) => runtimes.get(leadId)?.info.threadId === threadId);
+
+      const working = (threadId: ThreadId) =>
+        [...runtimes.values()].some(
+          (rt) =>
+            rt.info.threadId === threadId && (rt.info.state === "running" || rt.info.state === "queued"),
+        );
+
+      /** Applies a change to a stored thread; renaming and archiving don't count as activity. */
+      const updateThread = (threadId: ThreadId, patch: ThreadPatch) =>
+        Effect.gen(function* () {
+          yield* store.updateThread(threadId, patch).pipe(Effect.mapError(unavailable));
+          const thread = Option.getOrUndefined(
+            yield* store.getThread(threadId).pipe(Effect.mapError(unavailable)),
+          );
+          if (thread === undefined) return yield* notFound(`Thread ${threadId} does not exist.`);
+          return thread;
+        });
 
       const launchChild = (lead: Runtime, request: SpawnRequest, target: SpawnTarget) =>
         Effect.gen(function* () {
@@ -729,6 +760,31 @@ export class Orchestrator extends Context.Service<
         }),
 
         listThreads: store.listThreads.pipe(Effect.mapError(unavailable)),
+
+        renameThread: (threadId, title) => {
+          const trimmed = title.trim();
+          if (trimmed === "" || trimmed.length > MAX_THREAD_TITLE) {
+            return Effect.fail(
+              new OrchestratorError({
+                reason: "invalid",
+                message: `A thread's title needs 1 to ${MAX_THREAD_TITLE} characters.`,
+              }),
+            );
+          }
+          return updateThread(threadId, { title: trimmed });
+        },
+
+        setThreadArchived: Effect.fn("Orchestrator.setThreadArchived")(function* (
+          threadId: ThreadId,
+          archived: boolean,
+        ) {
+          if (archived && (working(threadId) || waitsOnUser(threadId))) {
+            return yield* notAllowed(
+              "A thread can't be archived while its agents are working or waiting on you.",
+            );
+          }
+          return yield* updateThread(threadId, { archivedAt: archived ? yield* now : null });
+        }),
 
         listAgents: (threadId) => store.listAgents(threadId).pipe(Effect.mapError(unavailable)),
 

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentId } from "@cerium/protocol";
+import type { AgentEvent, AgentId, ThreadId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Exit } from "effect";
@@ -340,6 +340,44 @@ describe("Orchestrator", () => {
         "PermissionResolved",
         "TurnCompleted",
       ]);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("renames threads with a trimmed title and refuses empty or long ones", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* startWorkThread;
+      const renamed = yield* orchestrator.renameThread(thread.id, "  Fix the login flow  ");
+      assert.strictEqual(renamed.title, "Fix the login flow");
+      assert.strictEqual(renamed.updatedAt, thread.updatedAt, "renaming isn't activity");
+      assert.strictEqual((yield* orchestrator.listThreads)[0]?.title, "Fix the login flow");
+
+      for (const title of ["   ", "x".repeat(81)]) {
+        const refused = yield* Effect.flip(orchestrator.renameThread(thread.id, title));
+        assert.strictEqual(refused.reason, "invalid");
+      }
+      const missing = yield* Effect.flip(orchestrator.renameThread("thr_missing" as ThreadId, "Title"));
+      assert.strictEqual(missing.reason, "notFound");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("archives and restores threads, but not while they wait on the user", () => {
+    const fake = makeFakeAdapter("claude", { askPermission: true });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startWorkThread;
+      const archived = yield* orchestrator.setThreadArchived(thread.id, true);
+      assert.isDefined(archived.archivedAt);
+      assert.isDefined((yield* orchestrator.listThreads)[0]?.archivedAt);
+      const restored = yield* orchestrator.setThreadArchived(thread.id, false);
+      assert.isUndefined(restored.archivedAt);
+
+      yield* orchestrator.sendUserMessage(lead.id, "run the tests");
+      yield* waitFor((events) => events.find((event) => event.payload._tag === "PermissionRequested"));
+      const refused = yield* Effect.flip(orchestrator.setThreadArchived(thread.id, true));
+      assert.strictEqual(refused.reason, "notAllowed");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

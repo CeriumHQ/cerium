@@ -93,6 +93,10 @@ const Handlers = CeriumRpcs.toLayer(
           .interruptAgent(agentId, includeChildren === undefined ? {} : { includeChildren })
           .pipe(Effect.mapError(refuse)),
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
+      RenameThread: ({ threadId, title }) =>
+        orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
+      SetThreadArchived: ({ threadId, archived }) =>
+        orchestrator.setThreadArchived(threadId, archived).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",

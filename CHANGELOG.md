@@ -88,6 +88,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: files and folders agents name in inline code (`CONTRIBUTING.md`, `.agents/`, `src/App.tsx:42`) show as chips with their file type's icon, from the Material Icon Theme set; clicking one shows it in File Explorer. `bun run --cwd apps/ui icons` rebuilds the bundled icons.
 - UI: images an agent reads, or a tool returns, show as thumbnails on the folded tool line and full width inside the call, instead of their base64; clicking one enlarges it.
 - `@cerium/store`, `@cerium/rpc` and the backend: saved projects. Every folder a work thread starts in, or that you choose, is kept with when it was last used; existing threads' folders are added when the database upgrades.
+- `@cerium/store`, `@cerium/orchestrator`, `@cerium/rpc` and the backend: renaming a thread (trimmed, at most 80 characters) and archiving or restoring one. Archiving is refused while any of the thread's agents is working or waiting on you; neither counts as activity, so a thread doesn't turn unread or move.
 
 ### Changed
 

@@ -33,9 +33,13 @@ export const ThreadInfo = Schema.Struct({
   cwd: Schema.optionalKey(Schema.NonEmptyString),
   createdAt: EpochMillis,
   updatedAt: EpochMillis,
+  /** When the user archived it; archived threads leave the sidebar until restored. */
   archivedAt: Schema.optionalKey(EpochMillis),
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
+
+/** The longest a thread's title may be, in characters. */
+export const MAX_THREAD_TITLE = 80;
 
 /** The role every thread's lead agent has. */
 export const LEAD_ROLE = "lead";

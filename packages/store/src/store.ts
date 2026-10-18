@@ -25,6 +25,12 @@ export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "effort" | 
   readonly updatedAt: number;
 };
 
+/** `archivedAt: null` restores an archived thread. */
+export interface ThreadPatch {
+  readonly title?: string;
+  readonly archivedAt?: number | null;
+}
+
 export interface StoredProject {
   readonly path: string;
   readonly addedAt: number;
@@ -37,6 +43,7 @@ export class Store extends Context.Service<
     createThread(thread: ThreadInfo): Effect.Effect<void, StoreError>;
     getThread(id: ThreadId): Effect.Effect<Option.Option<ThreadInfo>, StoreError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, StoreError>;
+    updateThread(id: ThreadId, patch: ThreadPatch): Effect.Effect<void, StoreError>;
     createAgent(agent: AgentInfo): Effect.Effect<void, StoreError>;
     updateAgent(id: AgentId, patch: AgentPatch): Effect.Effect<void, StoreError>;
     getAgent(id: AgentId): Effect.Effect<Option.Option<AgentInfo>, StoreError>;
@@ -119,6 +126,10 @@ export class Store extends Context.Service<
           listThreads: query("Could not list threads", () =>
             db.select().from(threads).orderBy(asc(threads.createdAt)),
           ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeThread))),
+          updateThread: (id, patch) =>
+            query("Could not update the thread", () =>
+              db.update(threads).set(patch).where(eq(threads.id, id)),
+            ),
           createAgent: (agent) =>
             query("Could not create the agent", () =>
               db.insert(agents).values({
