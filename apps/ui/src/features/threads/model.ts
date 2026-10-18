@@ -17,6 +17,13 @@ export interface ThreadSummary {
   readonly updatedAt: number;
   /** When the user archived it. */
   readonly archivedAt?: number;
+  /** The computer the thread lives on, when it isn't this one (docs/architecture.md §14.9). */
+  readonly machine?: string;
+  /**
+   * Set when the thread lives on another machine than the one the window drives: what's known of it
+   * comes from the cloud copy, and acting on it means going to that machine.
+   */
+  readonly elsewhere?: { readonly machine: string; readonly online: boolean };
 }
 
 /** Archived threads leave the sidebar, except while they wait on the user: a request is never out of sight. */

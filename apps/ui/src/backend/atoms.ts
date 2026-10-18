@@ -1,4 +1,11 @@
-import { ModelInfo, type AgentEvent, type ProviderId, type ThreadId } from "@cerium/protocol";
+import {
+  ModelInfo,
+  type AccountThreads,
+  type AgentEvent,
+  type DeviceId,
+  type ProviderId,
+  type ThreadId,
+} from "@cerium/protocol";
 import { Effect, Option, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
@@ -114,6 +121,29 @@ export const accountAtom = LocalBackend.runtime.atom(
 );
 
 /**
+ * Every thread of the account, on whichever machine (§14.9), and what was seen of them on any
+ * device. Empty while signed out.
+ */
+export const accountThreadsAtom = LocalBackend.runtime.atom(
+  Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchAccountThreads", undefined)))).pipe(
+    resubscribe,
+  ),
+  { initialValue: { threads: [], read: [] } satisfies AccountThreads },
+);
+
+/** A thread of another machine, read from the cloud copy. Keyed `machine:thread`. */
+export const cloudEventsAtom = Atom.family((key: string) => {
+  const split = key.indexOf(":");
+  const machine = key.slice(0, split) as DeviceId;
+  const threadId = key.slice(split + 1) as ThreadId;
+  return LocalBackend.runtime.atom(
+    LocalBackend.use((client) => client("CloudThreadEvents", { machine, threadId })).pipe(
+      Effect.map((events): ReadonlyArray<AgentEvent> => [...events].sort(byTime)),
+    ),
+  );
+});
+
+/**
  * Whether this computer's own agents are working while the window drives another machine; the
  * shell keeps this computer awake for them. Undefined while the window drives this computer, whose
  * threads say so already.
@@ -204,3 +234,4 @@ export const signOut = LocalBackend.mutation("SignOut");
 export const approveDevice = LocalBackend.mutation("ApproveDevice");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
+export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");

@@ -19,6 +19,8 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceMessage,
+  type SyncNotice,
+  type ThreadId,
   type TunnelMessage,
 } from "@cerium/protocol";
 import { RPC_VERSION } from "@cerium/rpc";
@@ -67,10 +69,11 @@ export const thisMachine = (channel: Channel, version: string): DeviceDraft => (
 });
 
 /**
- * What a tunnel sees (docs/architecture.md §14.8): the relay's tunnel messages, and `RelayLost`
- * when this machine's connection to the relay drops, which ends every channel it carried.
+ * What the relay says besides the account's state: tunnel messages (docs/architecture.md §14.8) and
+ * sync notices (§14.9), and `RelayLost` when this machine's connection to the relay drops, which ends
+ * every channel it carried.
  */
-export type TunnelEvent = TunnelMessage | { readonly _tag: "RelayLost" };
+export type RelayEvent = TunnelMessage | SyncNotice | { readonly _tag: "RelayLost" };
 
 export interface AccountOptions {
   /** The relay, e.g. `https://cerium.nonlooped.xyz`. */
@@ -130,8 +133,10 @@ export class Account extends Context.Service<
     remove(deviceId: DeviceId): Effect.Effect<void, AccountError>;
     /** Sends a tunnel frame through the relay; fails while this machine isn't connected. */
     send(message: DeviceMessage): Effect.Effect<void, AccountError>;
-    /** Tunnel events from now on, for as long as the scope lasts. */
-    readonly tunnel: Effect.Effect<PubSub.Subscription<TunnelEvent>, never, Scope.Scope>;
+    /** What the relay says from now on, for as long as the scope lasts. */
+    readonly relayEvents: Effect.Effect<PubSub.Subscription<RelayEvent>, never, Scope.Scope>;
+    /** Another machine's thread from the cloud copy (§14.9), undecoded. */
+    readThread(machine: DeviceId, threadId: ThreadId): Effect.Effect<unknown, AccountError>;
     /**
      * A channel this machine opens to another, for as long as the scope lasts. Every machine both
      * opens channels and answers them, so answers on its own channels mustn't look like new ones.
@@ -154,7 +159,7 @@ export class Account extends Context.Service<
         const session = yield* FiberHandle.make<void, never>();
         /** Writes to the relay while connected. */
         const live = yield* Ref.make<Option.Option<Socket.Writer>>(Option.none());
-        const tunnelEvents = yield* PubSub.unbounded<TunnelEvent>();
+        const tunnelEvents = yield* PubSub.unbounded<RelayEvent>();
         const ownChannels = new Set<string>();
         const relay = options.relayUrl.replace(/\/+$/, "");
 
@@ -474,7 +479,19 @@ export class Account extends Context.Service<
 
         return Account.of({
           send: sendFrame,
-          tunnel: PubSub.subscribe(tunnelEvents),
+          relayEvents: PubSub.subscribe(tunnelEvents),
+          readThread: (machine, threadId) =>
+            Effect.gen(function* () {
+              const credential = yield* signedIn;
+              const response = yield* send(
+                withCredential(HttpClientRequest.get(`${relay}/api/sync/${machine}/${threadId}`), credential),
+              );
+              return yield* response.json.pipe(
+                Effect.mapError(
+                  () => new AccountError({ message: "Cerium's cloud sent a thread Cerium can't read." }),
+                ),
+              );
+            }),
           openChannel: Effect.acquireRelease(
             Effect.sync(() => {
               const channel = randomToken(12) as ChannelId;

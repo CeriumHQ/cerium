@@ -4,7 +4,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { NetAddress } from "effect/net";
 import { Socket, SocketServer } from "effect/socket";
 
-import { Account, type TunnelEvent } from "./account.ts";
+import { Account, type RelayEvent } from "./account.ts";
 
 // Driving another machine (docs/architecture.md §14.8). Through the relay, another device's UI calls
 // this machine's backend as if it were its own: each tunnel channel becomes one RPC client of the
@@ -66,7 +66,7 @@ export const TunnelSocketServer = Layer.effect(
       address: NetAddress.unixPathAddress("cerium-relay-tunnel"),
       run: (handler) =>
         Effect.gen(function* () {
-          const events = yield* account.tunnel;
+          const events = yield* account.relayEvents;
           const sessions = new Map<
             string,
             { readonly connection: string; readonly incoming: Queue.Queue<string, Socket.SocketError> }
@@ -79,7 +79,7 @@ export const TunnelSocketServer = Layer.effect(
               yield* Queue.fail(session.incoming, closed(1000));
             });
 
-          const onEvent = (event: TunnelEvent) =>
+          const onEvent = (event: RelayEvent) =>
             Effect.gen(function* () {
               switch (event._tag) {
                 case "Receive": {
@@ -116,7 +116,7 @@ export const TunnelSocketServer = Layer.effect(
                 case "RelayLost":
                   for (const key of [...sessions.keys()]) yield* end(key);
                   return;
-                case "Undeliverable":
+                default:
                   return;
               }
             });
@@ -164,7 +164,7 @@ const pipe = Effect.gen(function* () {
   const writer = yield* socket.writer;
   const channel = yield* account.openChannel;
   // Subscribed before the first frame goes out, so no answer slips past.
-  const events = yield* account.tunnel;
+  const events = yield* account.relayEvents;
   let host: ConnectionId | undefined;
   const target = (): TunnelAddress => (host === undefined ? { device: machine } : { connection: host });
   const close = (code: number, reason: string) =>
@@ -178,6 +178,7 @@ const pipe = Effect.gen(function* () {
         if (event.connection === host) return yield* close(CLOSE_UNREACHABLE, unreachableReason.offline);
         continue;
       }
+      if (event._tag !== "Receive" && event._tag !== "Closed" && event._tag !== "Undeliverable") continue;
       if (event.channel !== channel) continue;
       if (event._tag === "Undeliverable")
         return yield* close(CLOSE_UNREACHABLE, unreachableReason[event.reason]);

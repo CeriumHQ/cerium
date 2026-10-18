@@ -209,6 +209,35 @@ describe("Store", () => {
     ),
   );
 
+  it.effect(
+    "counts and pages the events the cloud copy keeps, in stored order and without streamed text",
+    () =>
+      withStore(
+        Effect.gen(function* () {
+          const store = yield* Store;
+          yield* store.createThread(thread);
+          yield* store.createAgent(lead);
+          const delta: AgentEvent = {
+            ...event(2),
+            id: "evt_delta" as EventId,
+            payload: { _tag: "MessageDelta", messageId: "m2", text: "partial" },
+          };
+          // Stored out of time order: the copy follows the order they were stored in.
+          yield* store.appendEvents([event(3), delta, event(1)]);
+          yield* store.appendEvents([event(4)]);
+          assert.deepStrictEqual(yield* store.countSyncedEvents, new Map([[thread.id, 3]]));
+          const ids = (events: ReadonlyArray<AgentEvent>) => events.map((each) => each.id);
+          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 0, 10)), [
+            "evt_3",
+            "evt_1",
+            "evt_4",
+          ]);
+          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 1, 1)), ["evt_1"]);
+          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 3, 10)), []);
+        }),
+      ),
+  );
+
   it.effect("stores a batch atomically", () =>
     withStore(
       Effect.gen(function* () {

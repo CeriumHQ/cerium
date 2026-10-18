@@ -11,7 +11,12 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceId,
+  type ReadEntry,
   type RelayMessage,
+  type SyncMessage,
+  type ThreadId,
+  type ThreadOverview,
+  type AccountThread,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
 import { Option, Schema } from "effect";
@@ -19,11 +24,13 @@ import { Option, Schema } from "effect";
 import { approvedOnLink, mayManage, stateFor, type DeviceAction, type DeviceRow } from "./devices.ts";
 import type { Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
+import { appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 
 // One Cerium account (docs/architecture.md §14.4): its devices, and every device's WebSocket. The
 // sockets hibernate between messages and `ping` is answered without waking the object, so an idle
-// connection costs nothing. Frames one device tunnels to another pass through here unread (§14.8).
+// connection costs nothing. Frames one device tunnels to another pass through here unread (§14.8),
+// and every desktop's threads are kept here, so every device sees them all (§14.9).
 
 /** What a refused action reports to the Worker, which answers with it. */
 export type Outcome =
@@ -78,6 +85,26 @@ export class Account extends DurableObject<Env> {
       name TEXT,
       email TEXT,
       image_url TEXT
+    )`);
+    // The cloud copy: each machine's threads, their events in stored batches, and what was seen.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS threads (
+      machine TEXT NOT NULL,
+      thread TEXT NOT NULL,
+      overview TEXT NOT NULL,
+      events INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (machine, thread)
+    )`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS event_batches (
+      machine TEXT NOT NULL,
+      thread TEXT NOT NULL,
+      start INTEGER NOT NULL,
+      events TEXT NOT NULL,
+      PRIMARY KEY (machine, thread, start)
+    )`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS read_state (
+      thread TEXT PRIMARY KEY,
+      seen_at INTEGER NOT NULL
     )`);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -157,6 +184,7 @@ export class Account extends DurableObject<Env> {
     } satisfies Attachment);
     this.touch(row.id);
     this.broadcast();
+    if (row.approved_at !== null) this.welcome(server, row);
     return new Response(null, {
       status: 101,
       webSocket: client,
@@ -170,6 +198,7 @@ export class Account extends DurableObject<Env> {
     const frame = Option.getOrUndefined(decodeDeviceMessage(message));
     const self = this.attachment(socket);
     if (frame === undefined || self === undefined) return;
+    if (frame._tag !== "Send" && frame._tag !== "Close") return this.sync(socket, self, frame);
     const rows = this.rows();
     const live = this.live();
     const route = routeFrame(
@@ -208,11 +237,17 @@ export class Account extends DurableObject<Env> {
   }
 
   async approve(credential: Credential, targetId: DeviceId): Promise<Outcome> {
-    return this.manage(credential, targetId, "approve", (target) => {
+    const outcome = await this.manage(credential, targetId, "approve", (target) => {
       if (target.approved_at === null) {
         this.write("UPDATE devices SET approved_at = ? WHERE id = ?", Date.now(), target.id);
       }
     });
+    // Approved, it sees the account's threads from now on.
+    const target = this.row(targetId);
+    if (outcome.ok && target !== undefined) {
+      for (const socket of this.ctx.getWebSockets(target.id)) this.welcome(socket, target);
+    }
+    return outcome;
   }
 
   async rename(credential: Credential, targetId: DeviceId, name: string): Promise<Outcome> {
@@ -226,6 +261,22 @@ export class Account extends DurableObject<Env> {
     return this.manage(credential, targetId, "remove", (target) => {
       this.write("DELETE FROM devices WHERE id = ?", target.id);
       for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
+      // A machine leaving takes its threads out of the cloud; they stay on the machine.
+      const threads = this.sql
+        .exec<{ thread: string }>("SELECT thread FROM threads WHERE machine = ?", target.id)
+        .toArray();
+      this.sql.exec("DELETE FROM event_batches WHERE machine = ?", target.id);
+      this.sql.exec("DELETE FROM threads WHERE machine = ?", target.id);
+      if (threads.length > 0) {
+        this.toApproved({
+          _tag: "ThreadsChanged",
+          threads: [],
+          removed: threads.map(({ thread }) => ({
+            machine: target.id as DeviceId,
+            threadId: thread as ThreadId,
+          })),
+        });
+      }
     });
   }
 
@@ -247,6 +298,157 @@ export class Account extends DurableObject<Env> {
     apply(target);
     this.broadcast();
     return done;
+  }
+
+  /** A thread's events from the cloud copy, for an approved device of the account. */
+  async threadEvents(
+    credential: Credential,
+    machine: DeviceId,
+    threadId: ThreadId,
+  ): Promise<Outcome | string> {
+    const reader = this.row(credential.deviceId);
+    if (reader === undefined || !(await this.verify(reader, credential))) {
+      return refused(401, "This device isn't signed in to the account.");
+    }
+    if (reader.approved_at === null)
+      return refused(403, "Approve this device from one that's already connected first.");
+    const batches = this.sql
+      .exec<{ events: string }>(
+        "SELECT events FROM event_batches WHERE machine = ? AND thread = ? ORDER BY start",
+        machine,
+        threadId,
+      )
+      .toArray();
+    // The batches are JSON arrays already; joining them avoids parsing every event here.
+    return `[${batches
+      .map(({ events }) => events.slice(1, -1))
+      .filter((inner) => inner !== "")
+      .join(",")}]`;
+  }
+
+  /** A desktop keeping its threads' copy current, or a device saying what was seen (§14.9). */
+  private sync(socket: WebSocket, self: Attachment, message: SyncMessage) {
+    const sender = this.row(self.deviceId);
+    if (sender === undefined || sender.approved_at === null) return;
+    const machine = sender.id as DeviceId;
+    const now = Date.now();
+    switch (message._tag) {
+      case "SyncThreads": {
+        if (sender.kind !== "desktop" || message.threads.length === 0) return;
+        for (const overview of message.threads) {
+          this.sql.exec(
+            `INSERT INTO threads (machine, thread, overview, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT (machine, thread) DO UPDATE SET overview = excluded.overview, updated_at = excluded.updated_at`,
+            machine,
+            overview.thread.id,
+            JSON.stringify(overview),
+            now,
+          );
+        }
+        return this.toApproved(
+          {
+            _tag: "ThreadsChanged",
+            threads: message.threads.map((overview) => ({ machine, overview })),
+            removed: [],
+          },
+          self.connection,
+        );
+      }
+      case "SyncRemoved": {
+        if (sender.kind !== "desktop" || message.threadIds.length === 0) return;
+        for (const threadId of message.threadIds) {
+          this.sql.exec("DELETE FROM event_batches WHERE machine = ? AND thread = ?", machine, threadId);
+          this.sql.exec("DELETE FROM threads WHERE machine = ? AND thread = ?", machine, threadId);
+        }
+        return this.toApproved(
+          {
+            _tag: "ThreadsChanged",
+            threads: [],
+            removed: message.threadIds.map((threadId) => ({ machine, threadId })),
+          },
+          self.connection,
+        );
+      }
+      case "SyncEvents": {
+        if (sender.kind !== "desktop") return;
+        const stored = this.sql
+          .exec<{ events: number }>(
+            "SELECT events FROM threads WHERE machine = ? AND thread = ?",
+            machine,
+            message.threadId,
+          )
+          .toArray()[0];
+        // Events wait for their thread's overview, which the machine sends first.
+        if (stored === undefined)
+          return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count: 0 });
+        const { keep, count } = appendBatch(stored.events, message.start, message.events);
+        if (keep.length > 0) {
+          this.sql.exec(
+            "INSERT OR REPLACE INTO event_batches (machine, thread, start, events) VALUES (?, ?, ?, ?)",
+            machine,
+            message.threadId,
+            stored.events,
+            JSON.stringify(keep),
+          );
+          this.sql.exec(
+            "UPDATE threads SET events = ? WHERE machine = ? AND thread = ?",
+            count,
+            machine,
+            message.threadId,
+          );
+        }
+        return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count });
+      }
+      case "MarkRead": {
+        if (message.entries.length === 0) return;
+        for (const { threadId, seenAt } of message.entries) {
+          this.sql.exec(
+            `INSERT INTO read_state (thread, seen_at) VALUES (?, ?)
+             ON CONFLICT (thread) DO UPDATE SET seen_at = MAX(seen_at, excluded.seen_at)`,
+            threadId,
+            seenAt,
+          );
+        }
+        // Every device hears it, the sender too: its other windows and its own list keep up.
+        return this.toApproved({ _tag: "ReadChanged", entries: message.entries });
+      }
+    }
+  }
+
+  /** What an approved device gets on connecting: the account's threads, and for a desktop, its cursors. */
+  private welcome(socket: WebSocket, device: DeviceRow) {
+    const threads = this.sql
+      .exec<{ machine: string; thread: string; overview: string; events: number }>(
+        "SELECT machine, thread, overview, events FROM threads",
+      )
+      .toArray();
+    const read = this.sql
+      .exec<{ thread: string; seen_at: number }>("SELECT thread, seen_at FROM read_state")
+      .toArray();
+    if (device.kind === "desktop") {
+      send(socket, {
+        _tag: "SyncCursors",
+        threads: Object.fromEntries(
+          threads.filter((row) => row.machine === device.id).map((row) => [row.thread, row.events]),
+        ),
+      });
+    }
+    send(socket, {
+      _tag: "AccountThreads",
+      threads: threads.map((row): AccountThread => ({
+        machine: row.machine as DeviceId,
+        overview: JSON.parse(row.overview) as ThreadOverview,
+      })),
+      read: read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seen_at })),
+    });
+  }
+
+  /** Sends every approved device's sockets a message, but for the connection it came from. */
+  private toApproved(message: RelayMessage, except?: string) {
+    const approved = new Set(this.rows().flatMap((row) => (row.approved_at === null ? [] : [row.id])));
+    for (const { socket, attachment } of this.live()) {
+      if (attachment.connection !== except && approved.has(attachment.deviceId)) send(socket, message);
+    }
   }
 
   private async verify(row: DeviceRow, credential: Credential): Promise<boolean> {

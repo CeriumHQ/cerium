@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { projectIconAtom } from "../../backend/projects.ts";
 
@@ -17,6 +17,8 @@ export const wordmark = (name: string): string => {
   return first.charAt(0).toUpperCase() + first.charAt(1).toLowerCase();
 };
 
+const noIcon = Atom.make(AsyncResult.success<string | undefined>(undefined));
+
 const sizes = {
   /** Inline with 12.5px toolbar text. */
   small: { tile: "size-3.5 rounded-[4px]", text: "text-[6.5px]" },
@@ -28,12 +30,18 @@ export function ProjectBadge({
   folder,
   name,
   size = "medium",
+  lookup = true,
 }: {
   folder: string;
   name: string;
   size?: keyof typeof sizes;
+  /** False for a folder on another machine than the one the window drives, which can't be looked in. */
+  lookup?: boolean;
 }) {
-  const icon = AsyncResult.getOrElse(useAtomValue(projectIconAtom(folder)), () => undefined);
+  const icon = AsyncResult.getOrElse(
+    useAtomValue(lookup ? projectIconAtom(folder) : noIcon),
+    () => undefined,
+  );
   const { tile, text } = sizes[size];
   if (icon !== undefined) {
     return <img src={icon} alt="" draggable={false} className={`${tile} shrink-0 object-contain`} />;

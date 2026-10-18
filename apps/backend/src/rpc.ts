@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 
 import { Account, type AccountError } from "./account.ts";
 import { Projects, type ProjectError } from "./project.ts";
+import { Sync } from "./sync.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
@@ -28,6 +29,7 @@ export const Handlers = CeriumRpcs.toLayer(
     const workspace = yield* Workspace;
     const projects = yield* Projects;
     const account = yield* Account;
+    const sync = yield* Sync;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -138,6 +140,10 @@ export const Handlers = CeriumRpcs.toLayer(
       ApproveDevice: ({ deviceId }) => account.approve(deviceId).pipe(Effect.mapError(refuse)),
       RenameDevice: ({ deviceId, name }) => account.rename(deviceId, name).pipe(Effect.mapError(refuse)),
       RemoveDevice: ({ deviceId }) => account.remove(deviceId).pipe(Effect.mapError(refuse)),
+      WatchAccountThreads: () => sync.accountThreads,
+      CloudThreadEvents: ({ machine, threadId }) =>
+        sync.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),
+      MarkThreadsRead: ({ entries }) => sync.markRead(entries).pipe(Effect.mapError(refuse)),
     });
   }),
 );
@@ -159,7 +165,7 @@ export const requireToken = (token: string) =>
     }),
   ).layer;
 
-/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects, Account and an HttpRouter. */
+/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects, Account, Sync and an HttpRouter. */
 export const rpcRoutes = (token: string) =>
   RpcServer.layer(CeriumRpcs).pipe(
     Layer.provide(Handlers),
@@ -181,6 +187,9 @@ export const TunnelRpcs = CeriumRpcs.omit(
   "ApproveDevice",
   "RenameDevice",
   "RemoveDevice",
+  "WatchAccountThreads",
+  "CloudThreadEvents",
+  "MarkThreadsRead",
 );
 
 /** The RPC server for tunnelled channels. Requires what the handlers do and a `SocketServer`. */

@@ -12,6 +12,7 @@ import {
   Pencil,
   SquarePen,
   Trash2,
+  Monitor,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -212,7 +213,7 @@ function InboxRow({
     <>
       <span className="relative mt-px shrink-0">
         {folder && project ? (
-          <ProjectBadge folder={folder} name={project} />
+          <ProjectBadge folder={folder} name={project} lookup={thread.elsewhere === undefined} />
         ) : (
           <span className="block size-4.5" />
         )}
@@ -230,8 +231,11 @@ function InboxRow({
           </span>
         </span>
         <span className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-tertiary">
+          {thread.machine ? (
+            <MachineLabel name={thread.machine} online={thread.elsewhere?.online ?? true} />
+          ) : null}
           {project ? <span className="max-w-[55%] shrink-0 truncate">{project}</span> : null}
-          {folder ? <Branch folder={folder} /> : null}
+          {folder && thread.elsewhere === undefined ? <Branch folder={folder} /> : null}
           <span className="ml-auto shrink-0 pl-1">
             <ProviderStack providers={thread.providers} />
           </span>
@@ -258,9 +262,11 @@ function InboxRow({
             )}
             {folder && project ? (
               <>
-                <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
-                  <span className="max-w-64 truncate">New thread in {project}</span>
-                </MenuItem>
+                {thread.elsewhere ? null : (
+                  <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
+                    <span className="max-w-64 truncate">New thread in {project}</span>
+                  </MenuItem>
+                )}
                 {scope === folder ? (
                   <MenuItem icon={ListFilter} onClick={() => onScope("")}>
                     Show all projects
@@ -272,22 +278,27 @@ function InboxRow({
                 )}
               </>
             ) : null}
-            <MenuSeparator />
-            <MenuItem icon={Pencil} onClick={start}>
-              Rename
-            </MenuItem>
-            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
-              Archive
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem
-              icon={Trash2}
-              tone="danger"
-              disabled={!canDelete(thread)}
-              onClick={() => setDeleting(true)}
-            >
-              Delete
-            </MenuItem>
+            {/* Renaming, archiving and deleting happen on the thread's own machine: open it there. */}
+            {thread.elsewhere ? null : (
+              <>
+                <MenuSeparator />
+                <MenuItem icon={Pencil} onClick={start}>
+                  Rename
+                </MenuItem>
+                <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+                  Archive
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem
+                  icon={Trash2}
+                  tone="danger"
+                  disabled={!canDelete(thread)}
+                  onClick={() => setDeleting(true)}
+                >
+                  Delete
+                </MenuItem>
+              </>
+            )}
           </>
         }
       >
@@ -307,6 +318,19 @@ function InboxRow({
         onConfirm={() => onDelete(thread.id)}
       />
     </>
+  );
+}
+
+/** The computer a thread lives on, when it isn't this one; faint while it's offline. */
+function MachineLabel({ name, online }: { name: string; online: boolean }) {
+  return (
+    <span
+      className={`flex max-w-[45%] min-w-0 shrink-0 items-center gap-1 ${online ? "" : "opacity-60"}`}
+      title={online ? `On ${name}` : `On ${name}, which is offline`}
+    >
+      <Monitor size={10} strokeWidth={2} className="shrink-0" />
+      <span className="truncate">{name}</span>
+    </span>
   );
 }
 

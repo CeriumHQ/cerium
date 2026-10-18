@@ -6,6 +6,7 @@ import {
   initials,
   orderedDevices,
   presenceLabel,
+  reachOf,
   waitingDevices,
   whyUnreachable,
 } from "../src/features/account/model.ts";
@@ -95,6 +96,12 @@ describe("reaching another desktop", () => {
   it("says when it's offline, or too old to drive", () => {
     expect(whyUnreachable(device("b", { rpcVersion: 1 }))).toBe("Never connected");
     expect(whyUnreachable(device("b", { online: true }))).toBe("Update Cerium there to reach it");
+  });
+
+  it("tells an old backend from a missing one, whatever its connection", () => {
+    expect(reachOf(device("b", { online: true }))).toEqual({ kind: "outdated" });
+    expect(reachOf(device("b", { rpcVersion: 1 }))).toEqual({ kind: "offline", presence: "Never connected" });
+    expect(reachOf(device("b", { online: true, rpcVersion: 1 }))).toEqual({ kind: "reachable" });
   });
 });
 

@@ -60,14 +60,29 @@ export const presenceLabel = (device: DeviceInfo, now = Date.now()): string => {
   return `Last seen ${whenAgo(device.lastSeenAt, now)}`;
 };
 
-/**
- * Why another desktop can't be driven from here right now (§14.8), or nothing when it can: its
- * backend is too old for this UI, or it isn't connected.
- */
+/** Whether another desktop can be driven from here right now (§14.8). */
+export type Reach =
+  | { readonly kind: "reachable" }
+  /** Its backend is too old for this UI. */
+  | { readonly kind: "outdated" }
+  /** It isn't connected; `presence` says since when. */
+  | { readonly kind: "offline"; readonly presence: string };
+
+export const reachOf = (device: DeviceInfo, now = Date.now()): Reach =>
+  (device.rpcVersion ?? 0) < MIN_RPC_VERSION
+    ? { kind: "outdated" }
+    : device.online
+      ? { kind: "reachable" }
+      : { kind: "offline", presence: presenceLabel(device, now) };
+
+/** Why another desktop can't be driven from here right now, or nothing when it can. */
 export const whyUnreachable = (device: DeviceInfo, now = Date.now()): string | undefined => {
-  if ((device.rpcVersion ?? 0) < MIN_RPC_VERSION) return "Update Cerium there to reach it";
-  if (!device.online) return presenceLabel(device, now);
-  return undefined;
+  const reach = reachOf(device, now);
+  return reach.kind === "outdated"
+    ? "Update Cerium there to reach it"
+    : reach.kind === "offline"
+      ? reach.presence
+      : undefined;
 };
 
 /** Up to two initials for an account without a picture. */

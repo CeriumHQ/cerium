@@ -17,3 +17,9 @@ export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
 /** Milliseconds since the Unix epoch. Stored as-is in SQLite. */
 export const EpochMillis = NonNegativeInt;
+
+/** One machine or browser linked to a Cerium account (docs/architecture.md §14). */
+export const DeviceId = Schema.NonEmptyString.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/)).pipe(
+  Schema.brand("cerium/DeviceId"),
+);
+export type DeviceId = typeof DeviceId.Type;

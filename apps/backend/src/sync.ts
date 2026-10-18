@@ -1,0 +1,253 @@
+import { Orchestrator } from "@cerium/orchestrator";
+import {
+  isStreamDelta,
+  MAX_SYNC_BATCH_BYTES,
+  UiEvent,
+  type AccountThreads,
+  type AgentEvent,
+  type DeviceId,
+  type ReadEntry,
+  type ThreadId,
+  type ThreadOverview,
+} from "@cerium/protocol";
+import { Store } from "@cerium/store";
+import { Context, Deferred, Effect, Layer, PubSub, Queue, Schema, Stream, SubscriptionRef } from "effect";
+
+import { Account, AccountError, type RelayEvent } from "./account.ts";
+
+// Synced threads (docs/architecture.md §14.9). While signed in, this machine keeps the cloud copy of
+// its threads current: each thread's overview when it changes, and its events but streamed text, in
+// batches from where the cloud's copy ends. It also keeps the account's threads as the relay tells
+// them, for this machine's UI, and reads other machines' threads from the copy.
+
+/** How often overviews are compared even without new events: renames and archives make none. */
+const SWEEP_EVERY = "15 seconds";
+/** How long after an event the next upload waits, so a busy turn goes up in a few batches. */
+const SETTLE_FOR = "1 second";
+/** How long the relay gets to accept a batch before the upload stops until the next round. */
+const ACCEPT_WITHIN = "20 seconds";
+/** Events read from the store at a time. */
+const PAGE = 200;
+/** Strings longer than this are cut in the cloud copy of an event too big for one batch. */
+const LONG_STRING = 50_000;
+
+const encodeEvent = Schema.encodeSync(UiEvent);
+const decodeEvents = Schema.decodeUnknownEffect(Schema.Array(UiEvent));
+
+/** An event's cloud copy: as the UI sees it, with very long strings cut when it's too big to store. */
+export const cloudEvent = (event: AgentEvent): UiEvent => {
+  const ui = encodeEvent(event) as UiEvent;
+  if (JSON.stringify(ui).length <= MAX_SYNC_BATCH_BYTES) return ui;
+  const cut = (value: unknown): unknown =>
+    typeof value === "string" && value.length > LONG_STRING
+      ? `${value.slice(0, LONG_STRING)}\n… (shortened in the cloud copy)`
+      : Array.isArray(value)
+        ? value.map(cut)
+        : typeof value === "object" && value !== null
+          ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, cut(inner)]))
+          : value;
+  return { ...ui, payload: cut(ui.payload) as UiEvent["payload"] };
+};
+
+/** Events split into batches the relay can store, each under `MAX_SYNC_BATCH_BYTES`. */
+export const batches = (events: ReadonlyArray<UiEvent>): Array<Array<UiEvent>> => {
+  const out: Array<Array<UiEvent>> = [];
+  let current: Array<UiEvent> = [];
+  let size = 2;
+  for (const event of events) {
+    const bytes = JSON.stringify(event).length + 1;
+    if (current.length > 0 && size + bytes > MAX_SYNC_BATCH_BYTES) {
+      out.push(current);
+      current = [];
+      size = 2;
+    }
+    current.push(event);
+    size += bytes;
+  }
+  if (current.length > 0) out.push(current);
+  return out;
+};
+
+const empty: AccountThreads = { threads: [], read: [] };
+
+/** The account's threads after a notice from the relay. */
+export const applyNotice = (current: AccountThreads, event: RelayEvent): AccountThreads => {
+  switch (event._tag) {
+    case "AccountThreads":
+      return { threads: event.threads, read: event.read };
+    case "ThreadsChanged": {
+      const key = (machine: string, threadId: string) => `${machine}:${threadId}`;
+      const gone = new Set(event.removed.map(({ machine, threadId }) => key(machine, threadId)));
+      const changed = new Map(
+        event.threads.map((each) => [key(each.machine, each.overview.thread.id), each]),
+      );
+      const kept = current.threads.filter((each) => {
+        const id = key(each.machine, each.overview.thread.id);
+        return !gone.has(id) && !changed.has(id);
+      });
+      return { ...current, threads: [...kept, ...changed.values()] };
+    }
+    case "ReadChanged": {
+      const seen = new Map(current.read.map((entry) => [entry.threadId, entry.seenAt]));
+      for (const { threadId, seenAt } of event.entries)
+        seen.set(threadId, Math.max(seen.get(threadId) ?? 0, seenAt));
+      return { ...current, read: [...seen].map(([threadId, seenAt]) => ({ threadId, seenAt })) };
+    }
+    default:
+      return current;
+  }
+};
+
+export class Sync extends Context.Service<
+  Sync,
+  {
+    /** Every thread of the account and what was seen of them, now and after every change. */
+    readonly accountThreads: Stream.Stream<AccountThreads>;
+    /** Another machine's thread, read from the cloud copy. */
+    cloudEvents(machine: DeviceId, threadId: ThreadId): Effect.Effect<ReadonlyArray<UiEvent>, AccountError>;
+    /** Tells the account's other devices these threads were seen here. */
+    markRead(entries: ReadonlyArray<ReadEntry>): Effect.Effect<void, AccountError>;
+  }
+>()("cerium/backend/Sync") {
+  /** Requires `Account`, `Orchestrator` and `Store`. */
+  static readonly layer = Layer.effect(
+    Sync,
+    Effect.gen(function* () {
+      const account = yield* Account;
+      const orchestrator = yield* Orchestrator;
+      const store = yield* Store;
+      const threads = yield* SubscriptionRef.make<AccountThreads>(empty);
+      const kick = yield* Queue.sliding<void>(1);
+
+      /** How many events of each of this machine's threads the cloud has; none until it says. */
+      let cursors: Map<string, number> | undefined;
+      /** The overview last sent of each thread, as JSON, to send only what changed. */
+      const sent = new Map<string, string>();
+      const accepted = new Map<string, Deferred.Deferred<number>>();
+
+      const overviews = orchestrator.listThreads.pipe(
+        Effect.flatMap((list) =>
+          Effect.forEach(list, (thread) =>
+            orchestrator.listAgents(thread.id).pipe(
+              Effect.map((agents): ThreadOverview => ({
+                thread,
+                agents,
+                awaitingApproval: orchestrator.awaitingApproval(thread.id),
+              })),
+            ),
+          ),
+        ),
+      );
+
+      /** Sends a thread's events from where the cloud's copy ends, a batch at a time. */
+      const upload = Effect.fn("Sync.upload")(function* (threadId: ThreadId, from: number) {
+        let start = from;
+        while (true) {
+          const page = yield* store.listSyncedEvents(threadId, start, PAGE);
+          if (page.length === 0) return;
+          for (const batch of batches(page.map(cloudEvent))) {
+            const answer = yield* Deferred.make<number>();
+            accepted.set(threadId, answer);
+            yield* account.send({ _tag: "SyncEvents", threadId, start, events: batch });
+            const count = yield* Deferred.await(answer).pipe(
+              Effect.timeoutOrElse({ duration: ACCEPT_WITHIN, orElse: () => Effect.succeed(-1) }),
+            );
+            accepted.delete(threadId);
+            // No answer, or the relay has fewer than it was sent (a gap): try again next round.
+            if (count < start + batch.length) return;
+            start = count;
+          }
+        }
+      });
+
+      /** One round: changed overviews, threads gone from here, and events the cloud doesn't have. */
+      const round = Effect.gen(function* () {
+        const known = cursors;
+        if (known === undefined) return;
+        const local = yield* overviews;
+        const changed = local.filter((overview) => sent.get(overview.thread.id) !== JSON.stringify(overview));
+        for (let index = 0; index < changed.length; index += 50) {
+          yield* account.send({ _tag: "SyncThreads", threads: changed.slice(index, index + 50) });
+        }
+        for (const overview of changed) sent.set(overview.thread.id, JSON.stringify(overview));
+
+        const here = new Set(local.map((overview) => overview.thread.id as string));
+        const gone = [...new Set([...known.keys(), ...sent.keys()])].filter(
+          (id) => !here.has(id),
+        ) as Array<ThreadId>;
+        if (gone.length > 0) {
+          yield* account.send({ _tag: "SyncRemoved", threadIds: gone });
+          for (const id of gone) {
+            known.delete(id);
+            sent.delete(id);
+          }
+        }
+
+        const counts = yield* store.countSyncedEvents;
+        for (const overview of local) {
+          const id = overview.thread.id;
+          if ((counts.get(id) ?? 0) > (known.get(id) ?? 0)) yield* upload(id, known.get(id) ?? 0);
+        }
+      }).pipe(Effect.ignore);
+
+      // What the relay says: cursors and acceptances for uploads, the account's threads for the UI.
+      yield* Effect.gen(function* () {
+        const events = yield* account.relayEvents;
+        while (true) {
+          const event = yield* PubSub.take(events);
+          if (event._tag === "SyncCursors") {
+            cursors = new Map(Object.entries(event.threads));
+            sent.clear();
+            yield* Queue.offer(kick, undefined);
+          } else if (event._tag === "SyncAccepted") {
+            cursors?.set(event.threadId, event.count);
+            const answer = accepted.get(event.threadId);
+            if (answer !== undefined) yield* Deferred.succeed(answer, event.count);
+          } else if (event._tag === "RelayLost") {
+            cursors = undefined;
+            for (const answer of accepted.values()) yield* Deferred.succeed(answer, -1);
+          } else {
+            yield* SubscriptionRef.update(threads, (current) => applyNotice(current, event));
+          }
+        }
+      }).pipe(Effect.scoped, Effect.forkScoped);
+
+      // Signed out, this machine knows no account's threads.
+      yield* account.changes.pipe(
+        Stream.runForEach((state) =>
+          state._tag === "SignedIn" ? Effect.void : SubscriptionRef.set(threads, empty),
+        ),
+        Effect.forkScoped,
+      );
+
+      // New events (not streamed text) start a round soon; a sweep catches renames and archives.
+      yield* orchestrator.events.pipe(
+        Stream.filter((event) => !isStreamDelta(event.payload._tag)),
+        Stream.runForEach(() => Queue.offer(kick, undefined)),
+        Effect.forkScoped,
+      );
+      yield* Queue.offer(kick, undefined).pipe(Effect.delay(SWEEP_EVERY), Effect.forever, Effect.forkScoped);
+      yield* Queue.take(kick).pipe(
+        Effect.andThen(Effect.sleep(SETTLE_FOR)),
+        Effect.andThen(round),
+        Effect.forever,
+        Effect.forkScoped,
+      );
+
+      return Sync.of({
+        accountThreads: SubscriptionRef.changes(threads),
+        cloudEvents: (machine, threadId) =>
+          account.readThread(machine, threadId).pipe(
+            Effect.flatMap(decodeEvents),
+            Effect.mapError((error) =>
+              error._tag === "AccountError"
+                ? error
+                : new AccountError({ message: "Cerium's cloud sent a thread Cerium can't read." }),
+            ),
+          ),
+        markRead: (entries) =>
+          entries.length === 0 ? Effect.void : account.send({ _tag: "MarkRead", entries }),
+      });
+    }),
+  );
+}

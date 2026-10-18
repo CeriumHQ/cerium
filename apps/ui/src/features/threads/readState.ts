@@ -26,10 +26,29 @@ const load = (): ReadState =>
     }),
   );
 
-export const isUnread = (state: ReadState, threadId: string, updatedAt: number): boolean =>
-  updatedAt > (state.seen[threadId] ?? state.since);
+/**
+ * Whether a thread changed since it was last seen, here or on another device of the account
+ * (`elsewhere`, §14.9). Marking it unread here counts over what other devices saw.
+ */
+export const isUnread = (
+  state: ReadState,
+  threadId: string,
+  updatedAt: number,
+  elsewhere?: ReadonlyMap<string, number>,
+): boolean => {
+  const here = state.seen[threadId];
+  if (here === 0) return true;
+  return updatedAt > Math.max(here ?? state.since, elsewhere?.get(threadId) ?? 0);
+};
 
-export function useReadState() {
+/**
+ * The window's read state. `elsewhere` is what the account's other devices have seen; `share`
+ * tells them what this one saw.
+ */
+export function useReadState(
+  elsewhere?: ReadonlyMap<string, number>,
+  share?: (entries: ReadonlyArray<{ readonly threadId: string; readonly seenAt: number }>) => void,
+) {
   const [state, setState] = useState(load);
   const save = (seen: ReadState["seen"]) => {
     const next = { ...state, seen: { ...state.seen, ...seen } };
@@ -37,10 +56,12 @@ export function useReadState() {
     setState(next);
   };
   return {
-    isUnread: (threadId: string, updatedAt: number) => isUnread(state, threadId, updatedAt),
-    /** Marks threads seen as of their latest activity. */
-    markRead: (threads: ReadonlyArray<{ readonly id: string; readonly updatedAt: number }>) =>
-      save(Object.fromEntries(threads.map(({ id, updatedAt }) => [id, updatedAt]))),
+    isUnread: (threadId: string, updatedAt: number) => isUnread(state, threadId, updatedAt, elsewhere),
+    /** Marks threads seen as of their latest activity, on every device of the account. */
+    markRead: (threads: ReadonlyArray<{ readonly id: string; readonly updatedAt: number }>) => {
+      save(Object.fromEntries(threads.map(({ id, updatedAt }) => [id, updatedAt])));
+      share?.(threads.map(({ id, updatedAt }) => ({ threadId: id, seenAt: updatedAt })));
+    },
     markUnread: (threadId: string) => save({ [threadId]: 0 }),
   };
 }

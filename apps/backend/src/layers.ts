@@ -22,6 +22,7 @@ import { Account, DEFAULT_RELAY_URL, thisMachine, type AccountOptions } from "./
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
+import { Sync } from "./sync.ts";
 import { Vault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -119,6 +120,8 @@ export const backendLayer = (options: BackendOptions) =>
       disableLogger: true,
     },
   ).pipe(
+    // Keeps the cloud copy of this machine's threads current (§14.9).
+    Layer.provideMerge(Sync.layer),
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),

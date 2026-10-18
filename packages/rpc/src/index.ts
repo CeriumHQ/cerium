@@ -1,7 +1,7 @@
 import {
   AccessMode,
   AccountState,
-  AgentEvent,
+  AccountThreads,
   AgentId,
   AgentInfo,
   Attachment,
@@ -21,9 +21,12 @@ import {
   ThreadId,
   ThreadInfo,
   ThreadMode,
+  ThreadOverview,
+  UiEvent,
   WorkspaceEntry,
+  ReadEntry,
 } from "@cerium/protocol";
-import { Schema, Struct } from "effect";
+import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 
 // The contract between the UI and the backend, served over a localhost WebSocket
@@ -44,21 +47,8 @@ export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError"
   message: Schema.String,
 }) {}
 
-/**
- * An event as the UI receives it. The provider's original message stays in the store: the UI never
- * reads it, and it isn't always strict JSON (SDKs leave `undefined` fields in), which would fail the
- * whole response. Encoding drops keys a struct doesn't declare.
- */
-export const UiEvent = AgentEvent.mapFields(Struct.omit(["raw"]));
-export type UiEvent = typeof UiEvent.Type;
-
-/** What the sidebar needs about one thread. */
-export const ThreadOverview = Schema.Struct({
-  thread: ThreadInfo,
-  agents: Schema.Array(AgentInfo),
-  awaitingApproval: Schema.Boolean,
-});
-export type ThreadOverview = typeof ThreadOverview.Type;
+// Shared with Cerium's relay, which keeps a copy of every thread (docs/architecture.md §14.9).
+export { ThreadOverview, UiEvent };
 
 export const CreateThreadPayload = Schema.Struct({
   title: Schema.String,
@@ -209,4 +199,17 @@ export const CeriumRpcs = RpcGroup.make(
   Rpc.make("RenameDevice", { payload: { deviceId: DeviceId, name: DeviceName }, error: CeriumError }),
   /** Removes a device from the account: denies one waiting for approval, or signs one out. */
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
+  /**
+   * Every thread of the account and what has been seen of them (§14.9), now and after every change.
+   * Empty while this machine isn't signed in.
+   */
+  Rpc.make("WatchAccountThreads", { success: AccountThreads, stream: true }),
+  /** Another machine's thread, read from the cloud copy: its events without streamed text. */
+  Rpc.make("CloudThreadEvents", {
+    payload: { machine: DeviceId, threadId: ThreadId },
+    success: Schema.Array(UiEvent),
+    error: CeriumError,
+  }),
+  /** Tells the account's other devices these threads were seen here. */
+  Rpc.make("MarkThreadsRead", { payload: { entries: Schema.Array(ReadEntry) }, error: CeriumError }),
 );

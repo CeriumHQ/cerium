@@ -7,6 +7,7 @@ import {
   parseCredential,
   randomToken,
   RenameDeviceRequest,
+  ThreadId,
   type CreateLinkResponse,
   type Credential,
 } from "@cerium/protocol";
@@ -89,6 +90,22 @@ const route = async (request: Request, env: Env): Promise<Response> => {
     if (request.headers.get("Upgrade") !== "websocket") return refuse(426, "Connect with a WebSocket.");
     const credential = credentialFromProtocols(request.headers.get("Sec-WebSocket-Protocol"));
     return credential === undefined ? refusedSocket("invalid") : accountStub(env, credential).fetch(request);
+  }
+
+  // A thread of another machine, read from the cloud copy (§14.9).
+  if (resource === "sync" && id !== undefined && action !== undefined && method === "GET") {
+    const credential = parseCredential(bearer(request) ?? "");
+    if (credential === undefined) return refuse(401, "This device isn't signed in.");
+    const machine = param(id, DeviceId);
+    const threadId = param(action, ThreadId);
+    if (machine === undefined || threadId === undefined)
+      return refuse(404, "That thread isn't in your account.");
+    const events = await accountStub(env, credential).threadEvents(credential, machine, threadId);
+    return typeof events === "string"
+      ? new Response(events, {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+        })
+      : refuse(events.ok ? 500 : events.status, events.ok ? "Couldn't read that thread." : events.message);
   }
 
   // Approving, renaming and removing devices.

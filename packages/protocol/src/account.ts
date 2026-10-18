@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { EpochMillis } from "./ids.ts";
+import { DeviceId, EpochMillis } from "./ids.ts";
+import { SyncMessage, SyncNotice } from "./sync.ts";
 
 // Cerium accounts (docs/architecture.md §14): what a signed-in machine and Cerium's relay say to each
 // other, and what the UI shows about the account's devices.
@@ -10,12 +11,6 @@ export const AccountId = Schema.NonEmptyString.check(Schema.isPattern(/^[A-Za-z0
   Schema.brand("cerium/AccountId"),
 );
 export type AccountId = typeof AccountId.Type;
-
-/** One machine or browser linked to an account. */
-export const DeviceId = Schema.NonEmptyString.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/)).pipe(
-  Schema.brand("cerium/DeviceId"),
-);
-export type DeviceId = typeof DeviceId.Type;
 
 /** A pending sign-in. Unguessable: whoever holds it can see which machine is signing in. */
 export const LinkId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{32,}$/)).pipe(
@@ -167,8 +162,9 @@ export type TunnelAddress = typeof TunnelAddress.Type;
 export const TunnelPeer = Schema.Struct({ device: DeviceId, connection: ConnectionId });
 export type TunnelPeer = typeof TunnelPeer.Type;
 
-/** What a device sends its relay socket, besides `ping`. */
+/** What a device sends its relay socket, besides `ping`: tunnel frames, and sync (§14.9). */
 export const DeviceMessage = Schema.Union([
+  ...SyncMessage.members,
   /** One RPC frame for the other end, as text. */
   Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String }),
   /** This end of the channel is done. */
@@ -201,6 +197,7 @@ export const RelayMessage = Schema.Union([
     reason: Schema.Literals(["offline", "forbidden"]),
   }),
   Schema.TaggedStruct("Gone", { connection: ConnectionId }),
+  ...SyncNotice.members,
 ]);
 export type TunnelMessage = Extract<
   RelayMessage,

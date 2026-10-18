@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen, Trash2, Monitor } from "lucide-react";
 import { useState } from "react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -186,6 +186,18 @@ function ThreadRow({
       {thread.providers.length > 1 && thread.status !== "idle" && thread.status !== "failed" ? (
         <ProviderStack providers={thread.providers} />
       ) : null}
+      {thread.machine ? (
+        <span
+          title={
+            thread.elsewhere?.online === false
+              ? `On ${thread.machine}, which is offline`
+              : `On ${thread.machine}`
+          }
+          className={`shrink-0 text-fg-tertiary ${thread.elsewhere?.online === false ? "opacity-60" : ""}`}
+        >
+          <Monitor size={11} strokeWidth={2} aria-label={`On ${thread.machine}`} />
+        </span>
+      ) : null}
       <span className="w-6 shrink-0 text-right text-2xs text-fg-tertiary tabular-nums">
         {shortAgo(thread.updatedAt)}
       </span>
@@ -194,6 +206,19 @@ function ThreadRow({
 
   // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
   if (editing) return <div className={rowClass}>{content}</div>;
+  // Another machine's chat is renamed, archived or deleted there, so its row has no menu here.
+  if (thread.elsewhere) {
+    return (
+      <Button
+        ref={row}
+        onClick={() => onSelect(thread.id)}
+        aria-current={selected ? "page" : undefined}
+        className={rowClass}
+      >
+        {content}
+      </Button>
+    );
+  }
   return (
     <>
       <ContextMenuArea

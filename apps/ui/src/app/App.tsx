@@ -1,4 +1,12 @@
-import type { AccountState, AgentEvent, AgentId, ProviderId, ThreadId } from "@cerium/protocol";
+import type {
+  AccountState,
+  AccountThreads,
+  AgentEvent,
+  DeviceInfo,
+  AgentId,
+  ProviderId,
+  ThreadId,
+} from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
@@ -13,11 +21,14 @@ import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   accountAtom,
+  accountThreadsAtom,
+  cloudEventsAtom,
   createThread,
   deleteThread,
   harnessesAtom,
   interruptAgent,
   localWorkingAtom,
+  markThreadsRead,
   renameThread,
   respondToPermission,
   sendMessage,
@@ -33,7 +44,7 @@ import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backen
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { DeviceRequestNotice, useShellPresence } from "../features/account/AccountNotice.tsx";
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
-import { presenceLabel } from "../features/account/model.ts";
+import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
@@ -43,6 +54,7 @@ import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
 import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
+import { CloudThreadBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
@@ -90,10 +102,13 @@ function Workspace() {
   const [folder, setFolder] = useState(() => stored(folderKey));
   // Switching machines starts afresh there: its last folder, and no thread open from the other one.
   const [shownFolderKey, setShownFolderKey] = useState(folderKey);
+  /** A thread on another machine the user opened, which opens once the window drives that machine. */
+  const [openAfterSwitch, setOpenAfterSwitch] = useState<{ readonly mode: AppMode; readonly id: string }>();
   if (shownFolderKey !== folderKey) {
     setShownFolderKey(folderKey);
     setFolder(stored(folderKey));
-    setOpenThread({});
+    setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : {});
+    setOpenAfterSwitch(undefined);
   }
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
@@ -115,26 +130,72 @@ function Workspace() {
   const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
   const models = useModels();
   const overviews = AsyncResult.getOrElse(threadsResult, (): ReadonlyArray<ThreadOverview> => []);
-  const selected = overviews.find(
-    (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
-  );
-  const readState = useReadState();
-  /** The open thread, when it was unread as the user opened it: it keeps its inbox place until they leave. */
-  const [heldUnread, setHeldUnread] = useState<string>();
-  // A work thread is unread once it changed after the user last saw it; the open one is seen as it changes.
-  const summaries = overviews
-    .map(toThreadSummary)
-    .map((summary) =>
-      summary.mode !== "work"
-        ? summary
-        : summary.id === selected?.thread.id
-          ? { ...summary, unread: summary.id === heldUnread }
-          : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
-    );
-  const selectedSummary = summaries.find((summary) => summary.id === selected?.thread.id);
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
     _tag: "SignedOut",
   }));
+  const accountThreads = AsyncResult.getOrElse(useAtomValue(accountThreadsAtom), (): AccountThreads => ({
+    threads: [],
+    read: [],
+  }));
+  // Every thread of the account (§14.9): the driven machine's live, the others' from the cloud copy.
+  const devices = account._tag === "SignedIn" ? account.devices : [];
+  const thisComputer = account._tag === "SignedIn" ? account.deviceId : undefined;
+  const drivenId = driven?.id ?? thisComputer;
+  const deviceOf = (id: string) => devices.find((device) => device.id === id);
+  const nameOf = (id: string) => deviceOf(id)?.name ?? "another computer";
+  const elsewhere = accountThreads.threads.filter(
+    (each) =>
+      drivenId !== undefined &&
+      each.machine !== drivenId &&
+      !overviews.some((overview) => overview.thread.id === each.overview.thread.id),
+  );
+  const selected = overviews.find(
+    (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
+  );
+  /** Another machine's thread open from the cloud copy, read-only, while that machine can't be reached. */
+  const cloudSelected = selected
+    ? undefined
+    : elsewhere.find(
+        (each) => each.overview.thread.id === openThread[mode] && each.overview.thread.mode === mode,
+      );
+  const viewed = selected ?? cloudSelected?.overview;
+  const share = useAtomSet(markThreadsRead, { mode: "promise" });
+  const readState = useReadState(
+    new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
+    account._tag === "SignedIn"
+      ? (entries) =>
+          void share({
+            payload: {
+              entries: entries.map((entry) => ({ ...entry, threadId: entry.threadId as ThreadId })),
+            },
+          }).catch(() => undefined)
+      : undefined,
+  );
+  /** The open thread, when it was unread as the user opened it: it keeps its inbox place until they leave. */
+  const [heldUnread, setHeldUnread] = useState<string>();
+  const here = overviews
+    .map(toThreadSummary)
+    .map((summary) => (driven ? { ...summary, machine: driven.name } : summary));
+  const there = elsewhere.map((each) => {
+    const summary = toThreadSummary(each.overview);
+    const online = deviceOf(each.machine)?.online === true;
+    return {
+      ...summary,
+      // An offline machine's agents aren't working, whatever they were doing when it went.
+      ...(online || summary.status === "failed" ? {} : { status: "idle" as const }),
+      ...(each.machine === thisComputer ? {} : { machine: nameOf(each.machine) }),
+      elsewhere: { machine: each.machine, online },
+    };
+  });
+  // A work thread is unread once it changed after the user last saw it; the open one is seen as it changes.
+  const summaries = [...here, ...there].map((summary) =>
+    summary.mode !== "work"
+      ? summary
+      : summary.id === viewed?.thread.id
+        ? { ...summary, unread: summary.id === heldUnread }
+        : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
+  );
+  const selectedSummary = summaries.find((summary) => summary.id === viewed?.thread.id);
   // The shell keeps this computer awake for its own agents, whichever machine the window shows.
   const localWorking = AsyncResult.getOrElse(useAtomValue(localWorkingAtom), () => undefined);
   useShellPresence(
@@ -153,10 +214,19 @@ function Workspace() {
     }
   });
   useEffect(() => markSeen(), [selectedSummary?.id, selectedSummary?.updatedAt]);
-  const events = AsyncResult.getOrElse(
-    useAtomValue(selected ? threadEventsAtom(selected.thread.id) : noEvents),
-    (): ReadonlyArray<AgentEvent> => [],
-  );
+  // The open thread's events: live from the driven machine, or the cloud copy of another machine's.
+  const eventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
+    ? threadEventsAtom(selected.thread.id)
+    : cloudSelected
+      ? cloudEventsAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
+      : noEvents;
+  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const cloudDevice = cloudSelected ? deviceOf(cloudSelected.machine) : undefined;
+  /** Opens another machine's thread there: the window drives that machine, then shows it. */
+  const openOn = (device: DeviceInfo, threadId: string) => {
+    setOpenAfterSwitch({ mode, id: threadId });
+    driveMachine(registry, device.id === thisComputer ? undefined : { id: device.id, name: device.name });
+  };
 
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
@@ -189,8 +259,8 @@ function Workspace() {
     indicators.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])),
   );
 
-  const lead = selected ? leadOf(selected.agents) : undefined;
-  const agents = selected ? toAgentSummaries(selected.agents, events, models) : [];
+  const lead = viewed ? leadOf(viewed.agents) : undefined;
+  const agents = viewed ? toAgentSummaries(viewed.agents, events, models) : [];
   const leadModel =
     agents.find((agent) => agent.id === lead?.id)?.model ??
     (lead ? modelLabel(models, lead.provider, lead.model) : "");
@@ -285,11 +355,11 @@ function Workspace() {
 
   return (
     <AppFrame
-      {...(selected
+      {...(viewed
         ? {
             thread: {
-              title: selected.thread.title,
-              ...(selected.thread.cwd ? { project: baseName(selected.thread.cwd) } : {}),
+              title: viewed.thread.title,
+              ...(viewed.thread.cwd ? { project: baseName(viewed.thread.cwd) } : {}),
             },
           }
         : {})}
@@ -305,10 +375,16 @@ function Workspace() {
         <Sidebar
           mode={mode}
           threads={summaries}
-          selectedId={selected?.thread.id}
+          selectedId={viewed?.thread.id}
           onSelect={(threadId) => {
             const summary = summaries.find((candidate) => candidate.id === threadId);
             setHeldUnread(summary?.unread ? threadId : undefined);
+            const home = summary?.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
+            // Another machine's thread opens there; one that can't be reached opens here, read-only.
+            if (home && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
+              openOn(home, threadId);
+              return;
+            }
             setOpenThread((current) => ({ ...current, [mode]: threadId }));
           }}
           onNewThread={startNew}
@@ -317,7 +393,7 @@ function Workspace() {
             readState.markRead(threads);
           }}
           onMarkUnread={(threadId) => {
-            if (threadId === selected?.thread.id) setHeldUnread(threadId);
+            if (threadId === viewed?.thread.id) setHeldUnread(threadId);
             readState.markUnread(threadId);
           }}
           onNewThreadIn={(picked) => {
@@ -426,13 +502,13 @@ function Workspace() {
         ) : null}
 
         <div className="min-h-0 flex-1">
-          {selected && lead ? (
+          {viewed && lead ? (
             <Transcript
-              key={selected.thread.id}
-              folder={selected.thread.cwd}
+              key={viewed.thread.id}
+              folder={viewed.thread.cwd}
               blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
               agent={{ provider: lead.provider, model: leadModel }}
-              {...(leadEnded && !leadResumable ? {} : { messageBox })}
+              {...((leadEnded && !leadResumable) || cloudSelected ? {} : { messageBox })}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
               bottomInset={trayHeight + attachmentsHeight}
               childState={(childId) => {
@@ -446,9 +522,12 @@ function Workspace() {
                       : "idle";
               }}
               childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-              agentActions={agentActions}
+              // A thread read from the cloud copy offers no agent actions: they take its machine.
+              agentActions={cloudSelected ? {} : agentActions}
               onAnswerPermission={(requestId, decision, scope) =>
-                attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
+                cloudSelected
+                  ? Promise.resolve(false)
+                  : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
               }
             />
           ) : (
@@ -456,36 +535,47 @@ function Workspace() {
           )}
         </div>
 
-        <Composer
-          draftKey={selected ? selected.thread.id : `new:${mode}`}
-          inputRef={composerInput}
-          messageBox={messageBoxRef}
-          target={
-            selected && lead
-              ? {
-                  kind: "thread",
-                  provider: lead.provider,
-                  model: leadModel,
-                  folder: selected.thread.cwd,
-                  ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
-                  onStartNew: startNew,
-                }
-              : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
-          }
-          running={leadRunning}
-          above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}
-          onAttachmentsHeight={setAttachmentsHeight}
-          onSend={(message, setup) =>
-            attempt(
+        {cloudSelected ? (
+          <CloudThreadBar
+            machine={nameOf(cloudSelected.machine)}
+            reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
+            onOpen={() => {
+              if (cloudDevice) openOn(cloudDevice, cloudSelected.overview.thread.id);
+            }}
+            onStartNew={startNew}
+          />
+        ) : (
+          <Composer
+            draftKey={selected ? selected.thread.id : `new:${mode}`}
+            inputRef={composerInput}
+            messageBox={messageBoxRef}
+            target={
               selected && lead
-                ? send({ payload: { agentId: lead.id, ...message } })
-                : startThread(message, setup),
-            )
-          }
-          onStop={() => {
-            if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
-          }}
-        />
+                ? {
+                    kind: "thread",
+                    provider: lead.provider,
+                    model: leadModel,
+                    folder: selected.thread.cwd,
+                    ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
+                    onStartNew: startNew,
+                  }
+                : { kind: "new", mode, folder, onChooseFolder: chooseFolder, available }
+            }
+            running={leadRunning}
+            above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}
+            onAttachmentsHeight={setAttachmentsHeight}
+            onSend={(message, setup) =>
+              attempt(
+                selected && lead
+                  ? send({ payload: { agentId: lead.id, ...message } })
+                  : startThread(message, setup),
+              )
+            }
+            onStop={() => {
+              if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
+            }}
+          />
+        )}
       </div>
     </AppFrame>
   );
