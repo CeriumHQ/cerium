@@ -8,6 +8,10 @@ inputs:
   version:
     description: The version the installer carries, from scripts/release.ts.
     required: true
+  publish:
+    description: Whether the installer will be published. One that won't only checks the packaging, so it's compressed lightly.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -20,10 +24,17 @@ runs:
           ~/AppData/Local/electron-builder/Cache
         key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json') }}
 
+    # electron-builder packs the app with LZMA2 at its highest level, which takes much of the packaging
+    # time. An installer nobody downloads is packed at the lowest level instead: still LZMA2, so it
+    # installs the same way, and about a tenth larger.
+    #
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded.
     - shell: bash
-      run: bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
+      run: |
+        if [ "$PUBLISH" != true ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
+        bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
       env:
         CERIUM_CHANNEL: ${{ inputs.channel }}
         CERIUM_VERSION: ${{ inputs.version }}
+        PUBLISH: ${{ inputs.publish }}

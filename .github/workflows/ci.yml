@@ -93,6 +93,7 @@ jobs:
         with:
           channel: nightly
           version: ${{ steps.plan.outputs.version }}
+          publish: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
       - name: Publish the nightly
         if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
         env:
