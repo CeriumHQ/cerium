@@ -4,6 +4,42 @@ export interface BackendConnection {
   readonly token: string;
 }
 
+/**
+ * A right-click no page menu claimed, as the app-wide text menu needs it. The shell keeps the rest
+ * (the selected text, the word, the link) and acts on it when the page names a command.
+ */
+export interface TextMenuRequest {
+  /** Where, in the window's CSS pixels. */
+  readonly x: number;
+  readonly y: number;
+  readonly editable: boolean;
+  readonly canCut: boolean;
+  readonly canCopy: boolean;
+  readonly canPaste: boolean;
+  readonly canSelectAll: boolean;
+  /** Some text is selected. */
+  readonly selection: boolean;
+  /** The misspelled word right-clicked, with up to three replacements. */
+  readonly misspelling?: { readonly word: string; readonly suggestions: ReadonlyArray<string> };
+  /** A link was right-clicked; only `https` links open. */
+  readonly link?: { readonly openable: boolean };
+}
+
+/** What the text menu asks the shell to do with the right-click it last reported. */
+export type TextCommand =
+  | {
+      readonly kind:
+        | "cut"
+        | "copy"
+        | "paste"
+        | "selectAll"
+        | "copySelection"
+        | "addToDictionary"
+        | "openLink"
+        | "copyLink";
+    }
+  | { readonly kind: "replaceMisspelling"; readonly suggestion: number };
+
 /** What Electron's preload exposes as `window.cerium`; absent in the browser preview. */
 export interface ShellBridge {
   readonly shell: "electron";
@@ -19,12 +55,21 @@ export interface ShellBridge {
   /** Shows a file or folder (absolute path) in the system's file manager. */
   readonly revealPath?: (path: string) => Promise<void>;
   /**
+   * Saves an image where the user picks with the native Save dialog, suggesting `name`. `source` is
+   * a `data:image/…;base64,` URL or an absolute path to an image file. Resolves whether it was saved.
+   */
+  readonly saveImage?: (source: string, name: string) => Promise<boolean>;
+  /**
    * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether
    * that means dark colours, which for "system" is Windows' own choice.
    */
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
   /** Calls back whenever Windows' colours turn dark or light; returns how to stop. */
   readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
+  /** Calls back on every right-click no page menu claimed; returns how to stop. */
+  readonly onTextMenu?: (listener: (request: TextMenuRequest) => void) => () => void;
+  /** Runs a text menu command on the last right-click, in the focused field or frame. */
+  readonly runTextCommand?: (command: TextCommand) => Promise<void>;
 }
 
 declare global {

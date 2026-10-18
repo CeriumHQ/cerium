@@ -3,6 +3,8 @@ import {
   Ban,
   Check,
   ChevronRight,
+  Copy,
+  ExternalLink,
   FilePen,
   FileText,
   FolderOpen,
@@ -16,12 +18,16 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useContext, useState, type ReactNode } from "react";
 
+import { shellBridge } from "../../backend/shell.ts";
 import { FileImageThumb, ImageThumb } from "../../components/ImageThumb.tsx";
+import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
+import { WorkspaceFolder } from "./FileChip.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
+import { resolvePath } from "./paths.ts";
 
 type ToolBlock = Extract<TranscriptBlock, { kind: "tool" }>;
 
@@ -139,6 +145,76 @@ export const describeTool = (
   }
 };
 
+/** What a tool row's right-click menu offers; each part is absent when the call has nothing for it. */
+export interface ToolMenuPlan {
+  /** The one thing the call is about, and how its menu item reads: "Copy command", "Copy URL". */
+  readonly copy?: { readonly label: string; readonly text: string };
+  /** A file the call names, as written (it may be relative). */
+  readonly path?: string;
+  /** An https page the call fetched. */
+  readonly url?: string;
+  /** What the Output panel shows. */
+  readonly output?: string;
+}
+
+/** Long base64 (an image in a tool's output) shows as its size instead of a wall of characters. */
+const withoutBlobs = (_key: string, value: unknown) =>
+  typeof value === "string" && value.length > 1024 && /^[A-Za-z0-9+/]+={0,2}$/.test(value.slice(-64))
+    ? `[${Math.round((value.length * 3) / 4 / 1024)} KB of base64]`
+    : value;
+
+const payloadText = (value: unknown) =>
+  typeof value === "string" ? value : JSON.stringify(value, withoutBlobs, 2);
+
+/** What a tool call's menu copies and opens, by the kind of tool; anything unplaced copies its input. */
+export const toolMenuPlan = (tool: ToolBlock): ToolMenuPlan => {
+  const { input } = tool;
+  const path = field(input, "file_path") ?? field(input, "path");
+  const copyInput = (): Pick<ToolMenuPlan, "copy"> =>
+    input === undefined ? {} : { copy: { label: "Copy input", text: payloadText(input) } };
+  // The Output panel gives way to the images a call showed, so there is no text to copy then.
+  const output =
+    tool.output === undefined || toolImages(tool).length > 0 ? {} : { output: payloadText(tool.output) };
+  const text = (label: string, value: string | undefined) =>
+    value ? { copy: { label, text: value } } : copyInput();
+  const named = (file: string | undefined) =>
+    file ? { copy: { label: "Copy path", text: file }, path: file } : copyInput();
+  switch (toolKinds[tool.toolName]) {
+    case "read":
+    case "edit":
+    case "write":
+    case "delete":
+    case "list":
+      return { ...named(path), ...output };
+    case "patch": {
+      const files = patchedFiles(input);
+      return { ...(files.length === 1 ? named(files[0]) : copyInput()), ...output };
+    }
+    case "run":
+      return { ...text("Copy command", field(input, "command")), ...output };
+    case "search":
+      return {
+        ...text(
+          "Copy pattern",
+          field(input, "pattern") ?? field(input, "globPattern") ?? field(input, "query"),
+        ),
+        ...output,
+      };
+    case "webSearch":
+      return { ...text("Copy query", field(input, "query")), ...output };
+    case "fetch": {
+      const url = field(input, "url");
+      return {
+        ...text("Copy URL", url),
+        ...(url && /^https:\/\//i.test(url) ? { url } : {}),
+        ...output,
+      };
+    }
+    default:
+      return { ...copyInput(), ...output };
+  }
+};
+
 /** An image a tool call showed the agent: its bytes from the call's output, or the file it read. */
 export interface ToolImage {
   readonly key: string;
@@ -204,7 +280,7 @@ export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
 };
 
 function ToolImageThumb({ image, className }: { image: ToolImage; className: string }) {
-  if (image.url) return <ImageThumb url={image.url} name={image.name} className={className} />;
+  if (image.url) return <ImageThumb url={image.url} name={image.name} className={className} menu />;
   if (image.path) return <FileImageThumb path={image.path} name={image.name} className={className} />;
   return null;
 }
@@ -340,29 +416,67 @@ function ToolRow({
 }) {
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
   const images = toolImages(tool);
+  const plan = toolMenuPlan(tool);
+  const folder = useContext(WorkspaceFolder);
+  const reveal = shellBridge()?.revealPath;
+  const location = plan.path ? resolvePath(plan.path, folder) : undefined;
+  const menu = (
+    <>
+      {plan.copy ? (
+        <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(location ?? plan.copy!.text)}>
+          {plan.copy.label}
+        </MenuItem>
+      ) : null}
+      {reveal && location ? (
+        <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
+          Show in File Explorer
+        </MenuItem>
+      ) : null}
+      {plan.url ? (
+        <MenuItem icon={ExternalLink} onClick={() => window.open(plan.url, "_blank", "noopener,noreferrer")}>
+          Open in browser
+        </MenuItem>
+      ) : null}
+      {plan.output !== undefined ? (
+        <>
+          {plan.copy ? <MenuSeparator /> : null}
+          <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(plan.output!)}>
+            Copy output
+          </MenuItem>
+        </>
+      ) : null}
+    </>
+  );
+  const header = (
+    <Collapsible.Trigger className="group flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
+      <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+      <span className="shrink-0 font-medium text-fg-primary capitalize">{verb}</span>
+      {detail ? (
+        <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
+          {detail}
+        </span>
+      ) : null}
+      {tool.changedFiles.length > 0 ? (
+        <span className="shrink-0 rounded border border-line-subtle px-1.5 text-2xs text-fg-secondary">
+          {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
+        </span>
+      ) : null}
+      <span className="ml-auto flex shrink-0 items-center gap-2">
+        <ToolStatus status={tool.status} activity={activity} />
+        <ChevronRight
+          size={13}
+          className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100"
+        />
+      </span>
+    </Collapsible.Trigger>
+  );
   return (
     <Collapsible.Root className={divider ? "border-t border-line-subtle" : ""}>
-      <Collapsible.Trigger className="group flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
-        <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-        <span className="shrink-0 font-medium text-fg-primary capitalize">{verb}</span>
-        {detail ? (
-          <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
-            {detail}
-          </span>
-        ) : null}
-        {tool.changedFiles.length > 0 ? (
-          <span className="shrink-0 rounded border border-line-subtle px-1.5 text-2xs text-fg-secondary">
-            {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
-          </span>
-        ) : null}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
-          <ToolStatus status={tool.status} activity={activity} />
-          <ChevronRight
-            size={13}
-            className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100"
-          />
-        </span>
-      </Collapsible.Trigger>
+      {plan.copy || plan.output !== undefined ? (
+        <ContextMenuArea menu={menu}>{header}</ContextMenuArea>
+      ) : (
+        header
+      )}
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
         <div className="flex flex-col gap-2 px-3 pt-1 pb-3">
           {fileEdits(tool.input).length > 0 ? (
@@ -408,14 +522,8 @@ function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activit
   return <Check size={13} strokeWidth={2.25} className="text-success/80" />;
 }
 
-/** Long base64 (an image in a tool's output) shows as its size instead of a wall of characters. */
-const withoutBlobs = (_key: string, value: unknown) =>
-  typeof value === "string" && value.length > 1024 && /^[A-Za-z0-9+/]+={0,2}$/.test(value.slice(-64))
-    ? `[${Math.round((value.length * 3) / 4 / 1024)} KB of base64]`
-    : value;
-
 function Payload({ label, value }: { label: string; value: unknown }) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, withoutBlobs, 2);
+  const text = payloadText(value);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-2xs font-medium tracking-wide text-fg-tertiary uppercase">{label}</span>

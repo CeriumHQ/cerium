@@ -57,6 +57,48 @@ export const normalizeSegments = (segments: ReadonlyArray<Segment>): ReadonlyArr
     return merged;
   }, []);
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A sent message's text back as segments: each mention's token becomes its chip again. */
+export const segmentsOf = (text: string, mentions: ReadonlyArray<Mention>): ReadonlyArray<Segment> => {
+  const byToken = new Map(mentions.map((mention) => [mentionToken(mention), mention]));
+  if (byToken.size === 0) return normalizeSegments([{ kind: "text", text }]);
+  // Longest first, so `@src/` isn't read as `@src` followed by a slash.
+  const pattern = new RegExp(
+    [...byToken.keys()]
+      .toSorted((a, b) => b.length - a.length)
+      .map(escapeRegExp)
+      .join("|"),
+    "g",
+  );
+  const segments: Array<Segment> = [];
+  let from = 0;
+  for (const match of text.matchAll(pattern)) {
+    segments.push({ kind: "text", text: text.slice(from, match.index) });
+    segments.push({ kind: "mention", mention: byToken.get(match[0])! });
+    from = match.index + match[0].length;
+  }
+  segments.push({ kind: "text", text: text.slice(from) });
+  return normalizeSegments(segments);
+};
+
+/** `added` after `segments`, starting on a line of its own when the draft already has text. */
+export const appendSegments = (
+  segments: ReadonlyArray<Segment>,
+  added: ReadonlyArray<Segment>,
+): ReadonlyArray<Segment> => {
+  const text = draftText(segments);
+  if (text.trim() === "") return normalizeSegments(added);
+  if (text.endsWith("\n")) return normalizeSegments([...segments, ...added]);
+  // Spaces at the end of the draft would otherwise end the line before the break.
+  const last = segments.at(-1);
+  const trimmed: ReadonlyArray<Segment> =
+    last?.kind === "text"
+      ? [...segments.slice(0, -1), { kind: "text", text: last.text.trimEnd() }]
+      : segments;
+  return normalizeSegments([...trimmed, { kind: "text", text: "\n" }, ...added]);
+};
+
 /** What is being typed after `@` or `$` right before the caret, if anything. */
 export interface Trigger {
   readonly char: "@" | "$";

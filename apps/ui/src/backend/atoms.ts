@@ -149,4 +149,6 @@ export const sendMessage = Backend.mutation("SendMessage");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const interruptAgent = Backend.mutation("InterruptAgent");
 export const stopAgent = Backend.mutation("StopAgent");
+export const renameThread = Backend.mutation("RenameThread");
+export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const updateSettings = Backend.mutation("UpdateSettings");

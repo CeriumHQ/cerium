@@ -6,10 +6,15 @@ import type { ReactNode } from "react";
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
+import { AgentMenuArea, type AgentActions } from "../agents/AgentMenu.tsx";
+import type { AgentSummary } from "../agents/model.ts";
+import { segmentsOf } from "../composer/draft.ts";
+import { useMessageBox } from "../composer/messageBox.ts";
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
 import { FileChip } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { TranscriptBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -17,8 +22,21 @@ type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind:
 export function UserMessage({ block }: { block: Block<"user"> }) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
+  const messageBox = useMessageBox();
   return (
-    <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+    <MessageMenuArea
+      text={block.text.trim()}
+      onCopyToMessageBox={
+        messageBox
+          ? () =>
+              messageBox.append({
+                segments: segmentsOf(block.text.trim(), block.mentions),
+                attachments: block.attachments,
+              })
+          : undefined
+      }
+      className="flex max-w-[85%] flex-col items-end gap-1.5"
+    >
       {block.attachments.length > 0 ? (
         <div className="flex flex-wrap justify-end gap-1.5">
           {images.map((image) => (
@@ -41,7 +59,7 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
           <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
         </div>
       )}
-    </div>
+    </MessageMenuArea>
   );
 }
 
@@ -62,34 +80,36 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   // A one-liner reads best as it is; anything longer folds behind its first line.
   if (preview === text) {
     return (
-      <div className="flex gap-2 text-[12.5px] leading-[1.55]">
+      <MessageMenuArea text={text} className="flex gap-2 text-[12.5px] leading-[1.55]">
         <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
         <p className="min-w-0 text-fg-tertiary select-text">
           <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}
         </p>
-      </div>
+      </MessageMenuArea>
     );
   }
 
   return (
-    <Collapsible.Root>
-      <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
-        <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="shrink-0">
-          <span className="font-medium text-fg-secondary">{from}</span> {verb}
-        </span>
-        <span className="min-w-0 truncate group-data-panel-open:hidden">{preview}</span>
-        <ChevronRight
-          size={13}
-          className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
-        />
-      </Collapsible.Trigger>
-      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <div className="mt-2 ml-[5.5px] border-l border-line-strong pl-[14px] select-text">
-          <Markdown text={text} streaming={false} compact />
-        </div>
-      </Collapsible.Panel>
-    </Collapsible.Root>
+    <MessageMenuArea text={text}>
+      <Collapsible.Root>
+        <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+          <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
+          <span className="shrink-0">
+            <span className="font-medium text-fg-secondary">{from}</span> {verb}
+          </span>
+          <span className="min-w-0 truncate group-data-panel-open:hidden">{preview}</span>
+          <ChevronRight
+            size={13}
+            className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+          />
+        </Collapsible.Trigger>
+        <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+          <div className="mt-2 ml-[5.5px] border-l border-line-strong pl-[14px] select-text">
+            <Markdown text={text} streaming={false} compact />
+          </div>
+        </Collapsible.Panel>
+      </Collapsible.Root>
+    </MessageMenuArea>
   );
 }
 
@@ -146,16 +166,38 @@ const accessLabel = {
 /** A spawned agent as its card shows it; `needsYou` while a request of its waits on the user. */
 export type ChildState = "running" | "needsYou" | "idle" | "failed";
 
-export function SpawnCard({ block, state }: { block: Block<"spawn">; state: ChildState }) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-[12.5px]">
+/** Opens the agent in the agents panel; right-click for its menu. */
+export function SpawnCard({
+  block,
+  state,
+  agent,
+  actions,
+}: {
+  block: Block<"spawn">;
+  state: ChildState;
+  /** The child's live record, once it has one. */
+  agent?: AgentSummary | undefined;
+  actions: AgentActions;
+}) {
+  const card = (
+    <Button
+      onClick={() => actions.onShow?.(block.childId)}
+      className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-[12.5px] transition-colors hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
+    >
       <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
       <span className="truncate font-medium text-fg-primary">{block.role}</span>
       <span className="min-w-0 flex-1 truncate text-fg-tertiary">
         {block.model} · {accessLabel[block.access]}
       </span>
       <AgentState state={state} />
-    </div>
+    </Button>
+  );
+  return agent ? (
+    <AgentMenuArea agent={agent} actions={actions} card>
+      {card}
+    </AgentMenuArea>
+  ) : (
+    card
   );
 }
 

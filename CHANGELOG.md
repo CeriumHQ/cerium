@@ -89,6 +89,12 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: images an agent reads, or a tool returns, show as thumbnails on the folded tool line and full width inside the call, instead of their base64; clicking one enlarges it.
 - `@cerium/store`, `@cerium/rpc` and the backend: saved projects. Every folder a work thread starts in, or that you choose, is kept with when it was last used; existing threads' folders are added when the database upgrades.
 - `@cerium/store`, `@cerium/orchestrator`, `@cerium/rpc` and the backend: renaming a thread (trimmed, at most 80 characters) and archiving or restoring one. Archiving is refused while any of the thread's agents is working or waiting on you; neither counts as activity, so a thread doesn't turn unread or move.
+- Desktop and UI: right-clicking where you type or select text opens Cerium's own menu: spelling fixes and Add to dictionary on a misspelled word, Cut, Copy, Paste and Select all with their shortcuts, Copy for selected text, and Open link and Copy link address on links. Paste goes through the message box's own handling, so a copied screenshot becomes an attachment, as with Ctrl V.
+- UI: right-clicking an inbox thread can also start a new thread in its project, show only that project's threads, rename the thread in place or archive it; right-clicking a chat renames or archives it. Settings → Archived lists archived threads and chats, most recently archived first, and restores them.
+- UI: right-clicking a file or folder chip shows it in File Explorer, copies its path or its path relative to the thread's folder, or mentions it in your message.
+- UI: right-clicking a message copies it (an agent's as Markdown), the text selected in it or a link in it; one of your own messages can go back into the message box with its tagged files and attachments.
+- UI: right-clicking a tool call copies its command, path, URL, pattern, query, input or output, shows its file in File Explorer, or opens a fetched page in your browser. Right-clicking an image in the conversation copies it, shows its file in File Explorer, or saves it where you choose (Pictures at first, then wherever you last saved one).
+- UI: right-clicking an agent in the agents panel, or its card in the conversation, opens the same menu as its "More actions" button: show it in the agents panel, message the lead, interrupt its turn or stop it. Clicking a card opens that agent in the panel.
 
 ### Changed
 

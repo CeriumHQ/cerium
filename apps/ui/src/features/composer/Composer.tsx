@@ -17,11 +17,13 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type DragEvent,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from "react";
 
@@ -51,6 +53,7 @@ import {
   type Trigger,
 } from "./draft.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
+import type { MessageBox } from "./messageBox.ts";
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "./models.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
@@ -112,6 +115,8 @@ interface ComposerProps {
   readonly draftKey: string;
   /** The message box, for callers that move focus to it. */
   readonly inputRef?: RefObject<HTMLDivElement | null>;
+  /** Filled with what others can put into the box; null while it takes no messages. */
+  readonly messageBox?: Ref<MessageBox | null>;
   /** A turn is in progress: the send button becomes stop. */
   readonly running: boolean;
   /** Resolves false when the message didn't go through, so the box can give the draft back. */
@@ -128,6 +133,7 @@ export function Composer({
   target,
   draftKey,
   inputRef,
+  messageBox,
   running,
   onSend,
   onStop,
@@ -249,6 +255,42 @@ export function Composer({
     }));
   };
 
+  const resumes = target.kind === "thread" && target.ended !== undefined && target.resumable === true;
+  const writable = !(target.kind === "thread" && target.ended && !resumes);
+
+  useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () =>
+    writable
+      ? {
+          mention: (mention) => editor.current?.mentionAtCaret(mention),
+          append: ({ segments, attachments = [] }) => {
+            const key = draftKey;
+            updateDraft(key, (current) => {
+              const attached = new Set(
+                current.attachments.flatMap((attachment) =>
+                  attachment.state._tag === "Ready" ? [attachment.state.attachment.path] : [],
+                ),
+              );
+              return {
+                ...current,
+                attachments: [
+                  ...current.attachments,
+                  ...attachments
+                    .filter((attachment) => !attached.has(attachment.path))
+                    .map((attachment): DraftAttachment => ({
+                      id: crypto.randomUUID(),
+                      name: attachment.name,
+                      mediaType: attachment.mediaType,
+                      state: { _tag: "Ready", attachment },
+                    })),
+                ],
+              };
+            });
+            editor.current?.append(segments);
+          },
+        }
+      : null,
+  );
+
   const pick = (mention: Mention) => {
     editor.current?.insertMention(mention);
     setActive(0);
@@ -316,8 +358,6 @@ export function Composer({
   };
 
   const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
-
-  const resumes = target.kind === "thread" && target.ended !== undefined && target.resumable === true;
 
   if (target.kind === "thread" && target.ended && !resumes) {
     return (

@@ -1,10 +1,11 @@
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import { mentionToken, type Mention } from "@cerium/protocol";
 import { createContext, useContext, type ComponentProps } from "react";
-import { defaultRemarkPlugins, Streamdown } from "streamdown";
+import { defaultComponents, defaultRemarkPlugins, Streamdown } from "streamdown";
 
 import { Artifact } from "./Artifact.tsx";
 import { FileChip, SkillChip } from "./FileChip.tsx";
+import { LINK_ATTRIBUTE } from "./menus.ts";
 import { pathReference } from "./paths.ts";
 
 /** Copy for code and tables; downloads don't earn a place in a conversation. */
@@ -35,7 +36,25 @@ function InlineCode({ children, node: _node, ...props }: ComponentProps<"code"> 
   );
 }
 
-const components = { inlineCode: InlineCode };
+const StreamdownLink = defaultComponents.a;
+
+/**
+ * Streamdown's link, which asks before opening and so renders as a button without the address. The
+ * address goes on a wrapper for the message menu's link items.
+ */
+function Link(props: ComponentProps<typeof StreamdownLink>) {
+  const { href } = props;
+  return (
+    <span
+      className="contents"
+      {...(href && !href.startsWith("streamdown:") ? { [LINK_ATTRIBUTE]: href } : {})}
+    >
+      <StreamdownLink {...props} />
+    </span>
+  );
+}
+
+const components = { inlineCode: InlineCode, a: Link };
 
 interface MarkdownNode {
   type: string;

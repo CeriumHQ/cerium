@@ -12,11 +12,15 @@ import {
 
 import { baseName, fileIconSvg, skillIconSvg } from "../../components/fileIcons/index.ts";
 import { chipClass } from "../transcript/FileChip.tsx";
-import { normalizeSegments, triggerAt, type Segment, type Trigger } from "./draft.ts";
+import { appendSegments, normalizeSegments, triggerAt, type Segment, type Trigger } from "./draft.ts";
 
 export interface PromptEditorHandle {
   /** Replaces the tag being typed before the caret with a chip for `mention`. */
   insertMention(mention: Mention): void;
+  /** A chip for `mention` at the caret the editor last had (the end when none), then focus. */
+  mentionAtCaret(mention: Mention): void;
+  /** `segments` after the content, on a line of their own, then focus with the caret at the end. */
+  append(segments: ReadonlyArray<Segment>): void;
 }
 
 interface PromptEditorProps {
@@ -102,12 +106,42 @@ const currentTrigger = (root: HTMLElement): Trigger | undefined => {
   return triggerAt((node.textContent ?? "").slice(0, selection.anchorOffset));
 };
 
+const placeCaret = (range: Range) => {
+  document.getSelection()?.removeAllRanges();
+  document.getSelection()?.addRange(range);
+};
+
 const placeCaretAtEnd = (root: HTMLElement) => {
   const range = document.createRange();
   range.selectNodeContents(root);
   range.collapse(false);
-  document.getSelection()?.removeAllRanges();
-  document.getSelection()?.addRange(range);
+  placeCaret(range);
+};
+
+/** The node right before or after a collapsed range's position, stepping out of text nodes' ends. */
+const besideCaret = (range: Range, side: "before" | "after"): Node | null => {
+  const { startContainer: container, startOffset: offset } = range;
+  if (container.nodeType === Node.TEXT_NODE) {
+    const length = container.textContent?.length ?? 0;
+    if (side === "before" ? offset > 0 : offset < length) return container;
+    return side === "before" ? container.previousSibling : container.nextSibling;
+  }
+  return container.childNodes[side === "before" ? offset - 1 : offset] ?? null;
+};
+
+/** Whether the caret sits after (or before) a space, a line break or an edge, not a word or chip. */
+const spacedAt = (range: Range, side: "before" | "after"): boolean => {
+  const node = besideCaret(range, side);
+  if (node === null || (node instanceof HTMLElement && node.tagName === "BR")) return true;
+  if (node instanceof HTMLElement) return false;
+  const text = node.textContent ?? "";
+  const char =
+    node === range.startContainer
+      ? text[side === "before" ? range.startOffset - 1 : range.startOffset]
+      : side === "before"
+        ? text.at(-1)
+        : text[0];
+  return char === undefined || /\s/.test(char);
 };
 
 /**
@@ -127,6 +161,14 @@ export function PromptEditor({
   activeOption,
 }: PromptEditorProps) {
   const root = useRef<HTMLDivElement>(null);
+  /** Where the caret was last inside the editor, for chips added while the user is elsewhere. */
+  const caret = useRef<Range>(null);
+
+  const keepCaret = () => {
+    const selection = document.getSelection();
+    if (root.current && selection && selection.rangeCount > 0 && root.current.contains(selection.anchorNode))
+      caret.current = selection.getRangeAt(0).cloneRange();
+  };
 
   // Another draft, or this one cleared or given back: show it.
   const show = useEffectEvent(() => {
@@ -138,6 +180,7 @@ export function PromptEditor({
 
   const report = () => {
     if (!root.current) return;
+    keepCaret();
     onChange(read(root.current));
     onTrigger(currentTrigger(root.current));
   };
@@ -163,6 +206,44 @@ export function PromptEditor({
       caret.collapse(true);
       selection.removeAllRanges();
       selection.addRange(caret);
+      report();
+    },
+    mentionAtCaret: (mention) => {
+      const element = root.current;
+      if (!element) return;
+      // The saved caret is gone once the draft was rebuilt, such as after sending.
+      const saved = caret.current;
+      const range = saved && element.contains(saved.startContainer) ? saved.cloneRange() : undefined;
+      const at = range ?? document.createRange();
+      if (range === undefined) {
+        at.selectNodeContents(element);
+        at.collapse(false);
+      }
+      at.deleteContents();
+      // A space after the chip also gives the caret somewhere to go at the end that isn't inside it.
+      const spaceAfter = besideCaret(at, "after") === null || !spacedAt(at, "after");
+      const spaceBefore = !spacedAt(at, "before");
+      // Inserting at a collapsed range puts each node before the ones inserted earlier.
+      const after = spaceAfter ? document.createTextNode(" ") : undefined;
+      if (after) at.insertNode(after);
+      const chip = chipElement(mention);
+      at.insertNode(chip);
+      if (spaceBefore) at.insertNode(document.createTextNode(" "));
+      element.focus();
+      const end = document.createRange();
+      if (after) end.setStart(after, 1);
+      else end.setStartAfter(chip);
+      end.collapse(true);
+      placeCaret(end);
+      report();
+    },
+    append: (added) => {
+      const element = root.current;
+      if (!element) return;
+      render(element, appendSegments(read(element), added));
+      element.focus();
+      placeCaretAtEnd(element);
+      element.scrollTop = element.scrollHeight;
       report();
     },
   }));
@@ -209,7 +290,10 @@ export function PromptEditor({
         suppressContentEditableWarning
         spellCheck
         onInput={report}
-        onSelect={() => root.current && onTrigger(currentTrigger(root.current))}
+        onSelect={() => {
+          keepCaret();
+          if (root.current) onTrigger(currentTrigger(root.current));
+        }}
         onKeyDown={keyDown}
         onPaste={paste}
         // Dropped text arrives as plain text; dropped files are handled by the box around the editor.

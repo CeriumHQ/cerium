@@ -6,6 +6,9 @@ import type { ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import type { AgentActions } from "../agents/AgentMenu.tsx";
+import type { AgentSummary } from "../agents/model.ts";
+import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import {
   Notice,
@@ -19,6 +22,7 @@ import {
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
@@ -28,9 +32,15 @@ interface TranscriptProps {
   readonly agent: { readonly provider: ProviderId; readonly model: string };
   /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
   readonly folder?: string | undefined;
+  /** The thread's message box, which messages and chips can put content into; absent when closed. */
+  readonly messageBox?: MessageBox | undefined;
   readonly activity: AgentActivity;
   /** Live state of a spawned child, for its card. */
   readonly childState: (childId: string) => ChildState;
+  /** A spawned child's live record, which its card's menu works from. */
+  readonly childAgent: (childId: string) => AgentSummary | undefined;
+  /** What a spawn card's click and menu do. */
+  readonly agentActions: AgentActions;
   /** Extra room at the end for what floats above the message box, in pixels. */
   readonly bottomInset?: number;
   readonly onAnswerPermission?: (
@@ -155,8 +165,11 @@ export function Transcript({
   blocks,
   agent,
   folder,
+  messageBox,
   activity,
   childState,
+  childAgent,
+  agentActions,
   bottomInset = 0,
   onAnswerPermission,
 }: TranscriptProps) {
@@ -202,7 +215,13 @@ export function Transcript({
         return (
           <div key={item.id} className="flex flex-wrap gap-1.5">
             {item.spawns.map((spawn) => (
-              <SpawnCard key={spawn.id} block={spawn} state={childState(spawn.childId)} />
+              <SpawnCard
+                key={spawn.id}
+                block={spawn}
+                state={childState(spawn.childId)}
+                agent={childAgent(spawn.childId)}
+                actions={agentActions}
+              />
             ))}
           </div>
         );
@@ -220,7 +239,7 @@ export function Transcript({
   };
 
   return (
-    <WorkspaceFolder value={folder}>
+    <ThreadContext folder={folder} messageBox={messageBox}>
       <div className="relative h-full">
         {/* Content fades out where the floating composer sits instead of showing through its glass. */}
         <ScrollArea
@@ -252,6 +271,23 @@ export function Transcript({
           <ArrowDown size={15} strokeWidth={2} />
         </Button>
       </div>
+    </ThreadContext>
+  );
+}
+
+/** What the transcript's chips and messages work from: the thread's folder and its message box. */
+function ThreadContext({
+  folder,
+  messageBox,
+  children,
+}: {
+  folder: string | undefined;
+  messageBox: MessageBox | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <WorkspaceFolder value={folder}>
+      <MessageBoxContext value={messageBox}>{children}</MessageBoxContext>
     </WorkspaceFolder>
   );
 }
@@ -283,9 +319,9 @@ function ResponseBlock({
       return <Notice block={block} roleOf={roleOf} />;
     case "message":
       return (
-        <div className="select-text">
+        <MessageMenuArea text={block.text} className="select-text">
           <Markdown text={block.text} streaming={block.streaming} />
-        </div>
+        </MessageMenuArea>
       );
     case "reasoning":
       return <Reasoning block={block} />;

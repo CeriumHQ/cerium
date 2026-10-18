@@ -2,6 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electro
 import { isAbsolute, join, normalize } from "node:path";
 
 import { startBackend } from "./backend.ts";
+import { saveImage } from "./saveImage.ts";
+import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell (docs/architecture.md §7): a window with Windows Acrylic and native caption buttons
@@ -68,6 +70,7 @@ const createWindow = () => {
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
+  forwardTextMenus(window.webContents);
 
   if (devUrl === undefined) {
     void window.loadFile(join(import.meta.dirname, "..", "..", "ui", "dist", "index.html"));
@@ -91,6 +94,14 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
 ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
   if (typeof target === "string" && isAbsolute(target)) shell.showItemInFolder(normalize(target));
 });
+
+/** Saves an image the transcript shows, where the user picks; resolves whether it was saved. */
+ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>
+  saveImage(event.sender, source, name),
+);
+
+/** A command from the app-wide text menu, run on the right-click it was opened for. */
+ipcMain.handle("cerium:text-command", (event, command: unknown) => runTextCommand(event.sender, command));
 
 /**
  * The UI's theme choice. Windows tints Acrylic from the native theme, so it follows the UI. Answers

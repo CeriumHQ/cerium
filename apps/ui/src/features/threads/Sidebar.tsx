@@ -1,9 +1,10 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronRight, Search, Settings, SquarePen } from "lucide-react";
+import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen } from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { ContextMenuArea, MenuItem } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -11,7 +12,8 @@ import { shortAgo } from "../../lib/time.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
 import { Inbox } from "./Inbox.tsx";
-import { providerName, type ThreadSummary } from "./model.ts";
+import { canArchive, isListed, providerName, type ThreadSummary } from "./model.ts";
+import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { ProviderStack, StatusIndicator } from "./StatusIndicator.tsx";
 
 interface SidebarProps {
@@ -23,6 +25,10 @@ interface SidebarProps {
   readonly onNewThread: () => void;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
   readonly onMarkUnread: (threadId: string) => void;
+  /** Opens a new work thread in the folder, ready to type. */
+  readonly onNewThreadIn: (folder: string) => void;
+  readonly onRename: RenameThread;
+  readonly onArchive: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   readonly onOpenSettings: (category?: SettingsCategory) => void;
 }
@@ -40,10 +46,13 @@ export function Sidebar({
   onNewThread,
   onMarkRead,
   onMarkUnread,
+  onNewThreadIn,
+  onRename,
+  onArchive,
   harnesses,
   onOpenSettings,
 }: SidebarProps) {
-  const modeThreads = threads.filter((thread) => thread.mode === mode);
+  const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
@@ -69,9 +78,18 @@ export function Sidebar({
           onSelect={onSelect}
           onMarkRead={onMarkRead}
           onMarkUnread={onMarkUnread}
+          onNewThreadIn={onNewThreadIn}
+          onRename={onRename}
+          onArchive={onArchive}
         />
       ) : (
-        <ChatList threads={modeThreads} selectedId={selectedId} onSelect={onSelect} />
+        <ChatList
+          threads={modeThreads}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onRename={onRename}
+          onArchive={onArchive}
+        />
       )}
 
       <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
@@ -79,22 +97,21 @@ export function Sidebar({
   );
 }
 
+interface ChatActions {
+  readonly selectedId: string | undefined;
+  readonly onSelect: (threadId: string) => void;
+  readonly onRename: RenameThread;
+  readonly onArchive: (threadId: string) => void;
+}
+
 /** Chats grouped by how recent they are. */
-function ChatList({
-  threads,
-  selectedId,
-  onSelect,
-}: {
-  threads: ReadonlyArray<ThreadSummary>;
-  selectedId: string | undefined;
-  onSelect: (threadId: string) => void;
-}) {
+function ChatList({ threads, ...actions }: { threads: ReadonlyArray<ThreadSummary> } & ChatActions) {
   const sections = chatSections(threads);
   return (
     <ScrollArea className="flex-1">
       <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
         {sections.map((section) => (
-          <ChatGroup key={section.key} section={section} selectedId={selectedId} onSelect={onSelect} />
+          <ChatGroup key={section.key} section={section} {...actions} />
         ))}
         {sections.length === 0 ? (
           <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
@@ -106,15 +123,7 @@ function ChatList({
   );
 }
 
-function ChatGroup({
-  section,
-  selectedId,
-  onSelect,
-}: {
-  section: ThreadSection;
-  selectedId: string | undefined;
-  onSelect: (threadId: string) => void;
-}) {
+function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection } & ChatActions) {
   return (
     <Collapsible.Root defaultOpen>
       <Collapsible.Trigger className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary">
@@ -129,7 +138,7 @@ function ChatGroup({
         <ul className="flex flex-col gap-px pt-0.5">
           {section.threads.map((thread) => (
             <li key={thread.id}>
-              <ThreadRow thread={thread} selected={thread.id === selectedId} onSelect={onSelect} />
+              <ThreadRow thread={thread} selected={thread.id === selectedId} {...actions} />
             </li>
           ))}
         </ul>
@@ -142,32 +151,57 @@ function ThreadRow({
   thread,
   selected,
   onSelect,
-}: {
-  thread: ThreadSummary;
-  selected: boolean;
-  onSelect: (threadId: string) => void;
-}) {
-  return (
-    <Button
-      onClick={() => onSelect(thread.id)}
-      aria-current={selected ? "page" : undefined}
-      className={`group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 ${
-        selected
-          ? "bg-surface-selected text-fg-primary"
-          : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-      }`}
-    >
+  onRename,
+  onArchive,
+}: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
+  const { editing, start, finish, title, row } = useRename(thread, onRename);
+  const rowClass = `group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover ${
+    selected || editing
+      ? "bg-surface-selected text-fg-primary"
+      : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+  }`;
+  const titleClass = `min-w-0 flex-1 truncate ${thread.unread ? "font-medium text-fg-primary" : ""}`;
+  const content = (
+    <>
       <StatusIndicator status={thread.status} unread={thread.unread} />
-      <span className={`min-w-0 flex-1 truncate ${thread.unread ? "font-medium text-fg-primary" : ""}`}>
-        {thread.title}
-      </span>
+      {editing ? (
+        <TitleField title={thread.title} onDone={finish} className={`-mx-1 h-6 ${titleClass}`} />
+      ) : (
+        <span className={titleClass}>{title}</span>
+      )}
       {thread.providers.length > 1 && thread.status !== "idle" && thread.status !== "failed" ? (
         <ProviderStack providers={thread.providers} />
       ) : null}
       <span className="w-6 shrink-0 text-right text-2xs text-fg-tertiary tabular-nums">
         {shortAgo(thread.updatedAt)}
       </span>
-    </Button>
+    </>
+  );
+
+  // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
+  if (editing) return <div className={rowClass}>{content}</div>;
+  return (
+    <ContextMenuArea
+      menu={
+        <>
+          <MenuItem icon={Pencil} onClick={start}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+            Archive
+          </MenuItem>
+        </>
+      }
+    >
+      <Button
+        ref={row}
+        onClick={() => onSelect(thread.id)}
+        aria-current={selected ? "page" : undefined}
+        className={rowClass}
+      >
+        {content}
+      </Button>
+    </ContextMenuArea>
   );
 }
 

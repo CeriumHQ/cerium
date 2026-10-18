@@ -1,23 +1,16 @@
+import { AtSign, Copy, FolderOpen } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { baseName } from "../../components/fileIcons/index.ts";
+import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useMessageBox } from "../composer/messageBox.ts";
+import { copyText, fileTargets } from "./menus.ts";
 
 /** The thread's folder, which the relative paths in its transcript are relative to. */
 export const WorkspaceFolder = createContext<string | undefined>(undefined);
-
-const isAbsolute = (path: string) => /^(?:[a-z]:[\\/]|[\\/]{2}|\/)/i.test(path);
-
-/** `path` on disk, when it can be told: absolute already, or relative to the thread's folder. */
-const resolvePath = (path: string, folder: string | undefined): string | undefined => {
-  if (isAbsolute(path)) return path;
-  if (folder === undefined) return undefined;
-  const separator = folder.includes("\\") ? "\\" : "/";
-  const relative = path.replace(/^\.[\\/]/, "").replaceAll(/[\\/]/g, separator);
-  return `${folder.replace(/[\\/]+$/, "")}${separator}${relative}`;
-};
 
 /** Shared look of every chip: files, folders and skills, in the transcript and the message box. */
 export const chipClass =
@@ -37,7 +30,7 @@ export function SkillChip({ name }: { name: string }) {
 
 /**
  * A file or folder named in the conversation: its type's icon and its name, the full path on hover.
- * Clicking shows it in File Explorer when the shell can.
+ * Clicking shows it in File Explorer when the shell can; right-click for its menu.
  */
 export function FileChip({
   path,
@@ -48,8 +41,9 @@ export function FileChip({
   folder: boolean;
   line?: number | undefined;
 }) {
-  const location = resolvePath(path, useContext(WorkspaceFolder));
+  const { location, relative, mention } = fileTargets(path, folder, useContext(WorkspaceFolder));
   const reveal = shellBridge()?.revealPath;
+  const messageBox = useMessageBox();
   const suffix = line === undefined ? "" : `:${line}`;
   const content = (
     <>
@@ -71,19 +65,51 @@ export function FileChip({
       ) : null}
     </span>
   );
-  return (
+  const chip = (
     <Tooltip label={label} side="top">
       {reveal && location ? (
         <button
           type="button"
           onClick={() => void reveal(location)}
-          className={`${chipClass} cursor-pointer transition-colors hover:bg-surface-active`}
+          className={`${chipClass} cursor-pointer transition-colors hover:bg-surface-active data-popup-open:bg-surface-active`}
         >
           {content}
         </button>
       ) : (
-        <span className={chipClass}>{content}</span>
+        <span className={`${chipClass} data-popup-open:bg-surface-active`}>{content}</span>
       )}
     </Tooltip>
+  );
+  // Everything the menu offers needs to know where the file is.
+  if (location === undefined) return chip;
+  const act = reveal || (mention && messageBox);
+  return (
+    <ContextMenuArea
+      menu={
+        <>
+          {reveal ? (
+            <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
+              Show in File Explorer
+            </MenuItem>
+          ) : null}
+          {mention && messageBox ? (
+            <MenuItem icon={AtSign} onClick={() => messageBox.mention(mention)}>
+              Mention in message
+            </MenuItem>
+          ) : null}
+          {act ? <MenuSeparator /> : null}
+          <MenuItem icon={Copy} onClick={() => copyText(location)}>
+            Copy path
+          </MenuItem>
+          {relative ? (
+            <MenuItem icon={Copy} onClick={() => copyText(relative)}>
+              Copy relative path
+            </MenuItem>
+          ) : null}
+        </>
+      }
+    >
+      {chip}
+    </ContextMenuArea>
   );
 }

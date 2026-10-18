@@ -49,3 +49,34 @@ export const accessLabel: Record<AccessMode, string> = {
   acceptEdits: "Accept edits",
   fullAccess: "Full access",
 };
+
+/** Which entries an agent's context menu offers; none at all means it has no menu. */
+export interface AgentMenuPlan {
+  /** Selects the agent in the agents panel: only offered from a spawn card. */
+  readonly show: boolean;
+  readonly message: boolean;
+  /** `disabled` between turns: there is nothing to interrupt. */
+  readonly interrupt: "enabled" | "disabled" | "hidden";
+  readonly stop: boolean;
+}
+
+/**
+ * An ended agent has nothing left to do, so only its spawn card keeps an entry (a way to see it in
+ * the panel). Children can't be messaged from the UI, only the lead.
+ */
+export const agentMenuPlan = (
+  agent: Pick<AgentSummary, "parentId" | "state">,
+  options: { readonly card: boolean; readonly canMessage: boolean },
+): AgentMenuPlan => {
+  const ended = agent.state === "stopped" || agent.state === "failed";
+  const busy = agent.state === "running" || agent.state === "queued";
+  return {
+    show: options.card,
+    message: !ended && agent.parentId === undefined && options.canMessage,
+    interrupt: ended ? "hidden" : busy ? "enabled" : "disabled",
+    stop: !ended,
+  };
+};
+
+export const hasAgentMenu = (plan: AgentMenuPlan): boolean =>
+  plan.show || plan.message || plan.interrupt !== "hidden" || plan.stop;

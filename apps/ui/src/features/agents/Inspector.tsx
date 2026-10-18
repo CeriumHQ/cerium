@@ -2,12 +2,10 @@ import { Button } from "@base-ui/react/button";
 import type { AccessMode, ProviderId } from "@cerium/protocol";
 import {
   Check,
-  CircleStop,
   Ellipsis,
   Eye,
   FilePen,
   MessageSquareText,
-  Pause,
   ShieldOff,
   ShieldQuestion,
   Square,
@@ -17,16 +15,23 @@ import {
 import { useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
 import { shortAgo } from "../../lib/time.ts";
 import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
+import { AgentMenuArea, AgentMenuItems, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
 import { AgentApproval, type AnswerApproval } from "./ApprovalTray.tsx";
-import { accessLabel, displayState, displayStateLabel, type AgentSummary } from "./model.ts";
+import {
+  accessLabel,
+  agentMenuPlan,
+  displayState,
+  displayStateLabel,
+  hasAgentMenu,
+  type AgentSummary,
+} from "./model.ts";
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
@@ -37,6 +42,9 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
 
 interface InspectorProps {
   readonly agents: ReadonlyArray<AgentSummary>;
+  /** The agent whose details show; the lead until another is picked. */
+  readonly selectedId: string | undefined;
+  readonly onSelect: (agentId: string) => void;
   readonly onClose: () => void;
   /** Moves to the composer, which messages the lead. */
   readonly onMessageLead?: () => void;
@@ -49,6 +57,8 @@ interface InspectorProps {
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
 export function Inspector({
   agents,
+  selectedId,
+  onSelect,
   onClose,
   onMessageLead,
   onInterrupt,
@@ -56,10 +66,14 @@ export function Inspector({
   onAnswerApproval,
 }: InspectorProps) {
   const lead = agents.find((agent) => agent.parentId === undefined);
-  const [selectedId, setSelectedId] = useState(lead?.id);
   if (lead === undefined) return null;
   const children = agents.filter((agent) => agent.parentId === lead.id);
   const selected = agents.find((agent) => agent.id === selectedId) ?? lead;
+  const actions: AgentActions = {
+    ...(onMessageLead ? { onMessageLead } : {}),
+    ...(onInterrupt ? { onInterrupt } : {}),
+    ...(onStop ? { onStop } : {}),
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -71,13 +85,14 @@ export function Inspector({
 
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-px p-1.5" role="tree" aria-label="Agents">
-          <AgentRow agent={lead} selected={selected.id === lead.id} onSelect={setSelectedId} />
+          <AgentRow agent={lead} selected={selected.id === lead.id} onSelect={onSelect} actions={actions} />
           {children.map((child, index) => (
             <AgentRow
               key={child.id}
               agent={child}
               selected={selected.id === child.id}
-              onSelect={setSelectedId}
+              onSelect={onSelect}
+              actions={actions}
               branch={index === children.length - 1 ? "last" : "middle"}
             />
           ))}
@@ -85,9 +100,8 @@ export function Inspector({
 
         <AgentDetails
           agent={selected}
+          actions={actions}
           {...(selected.id === lead.id && onMessageLead ? { onMessage: onMessageLead } : {})}
-          onInterrupt={() => onInterrupt?.(selected.id)}
-          onStop={() => onStop?.(selected.id)}
           {...(selected.id !== lead.id && onAnswerApproval ? { onAnswerApproval } : {})}
         />
         <UsageSummary agents={agents} />
@@ -100,38 +114,42 @@ function AgentRow({
   agent,
   selected,
   onSelect,
+  actions,
   branch,
 }: {
   agent: AgentSummary;
   selected: boolean;
   onSelect: (agentId: string) => void;
+  actions: AgentActions;
   /** Children draw a tree connector back to the lead. */
   branch?: "middle" | "last";
 }) {
   return (
-    <Button
-      role="treeitem"
-      aria-selected={selected}
-      onClick={() => onSelect(agent.id)}
-      className={`relative flex h-8 items-center gap-2 rounded-md pr-2 text-left text-[12.5px] transition-colors ${
-        branch ? "pl-7" : "pl-2"
-      } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
-    >
-      {branch ? (
-        <>
-          <span
-            className={`absolute left-[15px] w-px bg-line-strong ${branch === "last" ? "top-0 h-1/2" : "inset-y-0"}`}
-          />
-          <span className="absolute top-1/2 left-[15px] h-px w-2 bg-line-strong" />
-        </>
-      ) : null}
-      <ProviderLogo provider={agent.provider} size={13} />
-      <span className="shrink-0 font-medium text-fg-primary">
-        {agent.parentId === undefined ? "Lead" : agent.role}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-fg-tertiary">{agent.model}</span>
-      <StateBadge agent={agent} />
-    </Button>
+    <AgentMenuArea agent={agent} actions={actions}>
+      <Button
+        role="treeitem"
+        aria-selected={selected}
+        onClick={() => onSelect(agent.id)}
+        className={`relative flex h-8 items-center gap-2 rounded-md pr-2 text-left text-[12.5px] transition-colors data-popup-open:bg-surface-hover ${
+          branch ? "pl-7" : "pl-2"
+        } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
+      >
+        {branch ? (
+          <>
+            <span
+              className={`absolute left-[15px] w-px bg-line-strong ${branch === "last" ? "top-0 h-1/2" : "inset-y-0"}`}
+            />
+            <span className="absolute top-1/2 left-[15px] h-px w-2 bg-line-strong" />
+          </>
+        ) : null}
+        <ProviderLogo provider={agent.provider} size={13} />
+        <span className="shrink-0 font-medium text-fg-primary">
+          {agent.parentId === undefined ? "Lead" : agent.role}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-fg-tertiary">{agent.model}</span>
+        <StateBadge agent={agent} />
+      </Button>
+    </AgentMenuArea>
   );
 }
 
@@ -171,23 +189,21 @@ function StateBadge({ agent }: { agent: AgentSummary }) {
 
 function AgentDetails({
   agent,
+  actions,
   onMessage,
-  onInterrupt,
-  onStop,
   onAnswerApproval,
 }: {
   agent: AgentSummary;
+  actions: AgentActions;
   /** Absent where Cerium can't message this agent from here yet. */
   onMessage?: () => void;
-  onInterrupt: () => void;
-  onStop: () => void;
   onAnswerApproval?: AnswerApproval;
 }) {
   const AccessIcon = accessIcon[agent.access];
   const [confirmingStop, setConfirmingStop] = useState(false);
   const ended = agent.state === "stopped" || agent.state === "failed";
-  const busy = agent.state === "running" || agent.state === "queued";
-  const isLead = agent.parentId === undefined;
+  // The Message button sits beside "More actions", so its menu leaves Message out.
+  const plan = agentMenuPlan(agent, { card: false, canMessage: false });
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   const reported = inputTokens + outputTokens > 0;
   const started = shortAgo(agent.startedAt);
@@ -247,36 +263,31 @@ function AgentDetails({
               Message
             </Button>
           ) : null}
-          <MenuRoot>
-            <MenuTrigger>
-              <Button
-                aria-label="More actions"
-                className="ml-auto grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active"
-              >
-                <Ellipsis size={15} />
-              </Button>
-            </MenuTrigger>
-            <MenuPopup>
-              <MenuItem icon={Pause} onClick={onInterrupt} disabled={!busy}>
-                Interrupt turn
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon={CircleStop} tone="danger" onClick={() => setConfirmingStop(true)}>
-                Stop agent…
-              </MenuItem>
-            </MenuPopup>
-          </MenuRoot>
-          <ConfirmDialog
+          {hasAgentMenu(plan) ? (
+            <MenuRoot>
+              <MenuTrigger>
+                <Button
+                  aria-label="More actions"
+                  className="ml-auto grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active"
+                >
+                  <Ellipsis size={15} />
+                </Button>
+              </MenuTrigger>
+              <MenuPopup>
+                <AgentMenuItems
+                  agent={agent}
+                  plan={plan}
+                  actions={actions}
+                  onRequestStop={() => setConfirmingStop(true)}
+                />
+              </MenuPopup>
+            </MenuRoot>
+          ) : null}
+          <StopAgentDialog
+            agent={agent}
             open={confirmingStop}
             onOpenChange={setConfirmingStop}
-            title={isLead ? "Stop the lead?" : `Stop ${agent.role}?`}
-            description={
-              isLead
-                ? `${agent.model} will stop. Your next message in this thread starts it again where it left off.`
-                : `${agent.model} will stop and can't be restarted. The lead carries on without it.`
-            }
-            confirmLabel="Stop agent"
-            onConfirm={onStop}
+            onConfirm={() => actions.onStop?.(agent.id)}
           />
         </div>
       )}

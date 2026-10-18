@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentId, ProviderId } from "@cerium/protocol";
+import type { AgentEvent, AgentId, ProviderId, ThreadId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { RegistryProvider, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause } from "effect";
@@ -9,18 +9,23 @@ import {
   createThread,
   harnessesAtom,
   interruptAgent,
+  renameThread,
   respondToPermission,
   sendMessage,
+  setThreadArchived,
   stopAgent,
   threadEventsAtom,
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
+import { saveProject } from "../backend/projects.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
+import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
 import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
@@ -34,6 +39,7 @@ import { AppFrame } from "./AppFrame.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
+import { TextMenu } from "./TextMenu.tsx";
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
@@ -52,6 +58,7 @@ export function App() {
     <RegistryProvider>
       <TooltipProvider delay={400}>
         <Workspace />
+        <TextMenu />
       </TooltipProvider>
     </RegistryProvider>
   );
@@ -62,6 +69,8 @@ function Workspace() {
   /** The open thread per mode; none means "start a new one". */
   const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>({});
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  /** The agent the inspector shows; the lead until another is picked. */
+  const [inspectedAgent, setInspectedAgent] = useState<string>();
   const [folder, setFolder] = useState(() => stored(FOLDER_KEY));
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
@@ -73,6 +82,7 @@ function Workspace() {
   /** The category settings open on: the last one visited. */
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
   const composerInput = useRef<HTMLDivElement>(null);
+  const [messageBoxRef, messageBox] = useMessageBoxHandle();
 
   useTheme(useAtomValue(themeAtom));
 
@@ -115,6 +125,9 @@ function Workspace() {
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
+  const rename = useAtomSet(renameThread, { mode: "promise" });
+  const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
+  const save = useAtomSet(saveProject, { mode: "promise" });
   /** Runs a backend action, reporting a failure in the notice bar; resolves whether it worked. */
   const attempt = (action: Promise<unknown>): Promise<boolean> => {
     setActionError(undefined);
@@ -146,6 +159,15 @@ function Workspace() {
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   // A lead whose harness session started can be resumed by messaging it.
   const leadResumable = lead?.providerSessionId !== undefined;
+  const agentActions: AgentActions = {
+    onShow: (agentId) => {
+      setInspectedAgent(agentId);
+      setInspectorOpen(true);
+    },
+    onMessageLead: () => composerInput.current?.focus(),
+    onInterrupt: (agentId) => void attempt(interrupt({ payload: { agentId: agentId as AgentId } })),
+    onStop: (agentId) => void attempt(stop({ payload: { agentId: agentId as AgentId } })),
+  };
   const answerApproval: AnswerApproval = (agentId, requestId, decision, scope) =>
     void attempt(respond({ payload: { agentId: agentId as AgentId, requestId, decision, scope } }));
   /** Opens this mode's new thread, ready to type the first message. */
@@ -259,6 +281,27 @@ function Workspace() {
             if (threadId === selected?.thread.id) setHeldUnread(threadId);
             readState.markUnread(threadId);
           }}
+          onNewThreadIn={(picked) => {
+            chooseFolder(picked);
+            void save({ payload: { path: picked } }).catch(() => undefined);
+            startNew();
+          }}
+          onRename={(threadId, title) =>
+            attempt(rename({ payload: { threadId: threadId as ThreadId, title } })).then((renamed) => {
+              if (renamed) refreshThreads();
+              return renamed;
+            })
+          }
+          // Archiving the open thread leaves it for a new one.
+          onArchive={(threadId) =>
+            void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: true } })).then(
+              (archived) => {
+                if (!archived) return;
+                refreshThreads();
+                if (threadId === selected?.thread.id) startNew();
+              },
+            )
+          }
           harnesses={indicators}
           onOpenSettings={openSettings}
         />
@@ -281,6 +324,8 @@ function Workspace() {
         inspectorOpen && selected ? (
           <Inspector
             agents={agents}
+            selectedId={inspectedAgent}
+            onSelect={setInspectedAgent}
             onClose={() => setInspectorOpen(false)}
             onMessageLead={() => composerInput.current?.focus()}
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
@@ -318,6 +363,7 @@ function Workspace() {
               folder={selected.thread.cwd}
               blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
               agent={{ provider: lead.provider, model: leadModel }}
+              {...(leadEnded && !leadResumable ? {} : { messageBox })}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
               bottomInset={trayHeight + attachmentsHeight}
               childState={(childId) => {
@@ -330,6 +376,8 @@ function Workspace() {
                       ? "failed"
                       : "idle";
               }}
+              childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+              agentActions={agentActions}
               onAnswerPermission={(requestId, decision, scope) =>
                 attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
               }
@@ -342,6 +390,7 @@ function Workspace() {
         <Composer
           draftKey={selected ? selected.thread.id : `new:${mode}`}
           inputRef={composerInput}
+          messageBox={messageBoxRef}
           target={
             selected && lead
               ? {

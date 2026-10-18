@@ -45,6 +45,7 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
     providers: ordered.map((agent) => agent.provider),
     unread: false,
     updatedAt: Math.max(thread.updatedAt, ...agents.map((agent) => agent.updatedAt)),
+    ...(thread.archivedAt ? { archivedAt: thread.archivedAt } : {}),
   };
 };
 

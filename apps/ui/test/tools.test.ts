@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { describeTool, toolImages } from "../src/features/transcript/ToolGroup.tsx";
+import { describeTool, toolImages, toolMenuPlan } from "../src/features/transcript/ToolGroup.tsx";
 
 const describeCall = (toolName: string, input: unknown) => {
   const { verb, detail } = describeTool({
@@ -90,5 +90,59 @@ describe("toolImages", () => {
   it("shows nothing for other files or paths it can't resolve", () => {
     expect(call("Read", { file_path: "/w/a.ts" }, "export {}")).toEqual([]);
     expect(call("read", { path: "shot.png" }, "binary")).toEqual([]);
+  });
+});
+
+describe("toolMenuPlan", () => {
+  const plan = (toolName: string, input: unknown, output?: unknown) =>
+    toolMenuPlan({ kind: "tool", id: "tool:1", toolName, input, output, status: "done", changedFiles: [] });
+
+  it("copies the command, pattern or query a call is about", () => {
+    expect(plan("Bash", { command: "ls -la" }, "total 0")).toEqual({
+      copy: { label: "Copy command", text: "ls -la" },
+      output: "total 0",
+    });
+    expect(plan("Grep", { pattern: "TODO" })).toEqual({ copy: { label: "Copy pattern", text: "TODO" } });
+    expect(plan("WebSearch", { query: "effect 4" })).toEqual({
+      copy: { label: "Copy query", text: "effect 4" },
+    });
+  });
+
+  it("names the file of file tools, and of a patch that touches one", () => {
+    expect(plan("Read", { file_path: "src/a.ts" })).toEqual({
+      copy: { label: "Copy path", text: "src/a.ts" },
+      path: "src/a.ts",
+    });
+    expect(plan("apply_patch", { changes: [{ path: "C:\\w\\out.txt" }] }).path).toBe("C:\\w\\out.txt");
+    // Two files have no single path, so the input is what's left to copy.
+    expect(plan("apply_patch", { changes: [{ path: "a" }, { path: "b" }] }).copy?.label).toBe("Copy input");
+  });
+
+  it("opens only https pages", () => {
+    expect(plan("WebFetch", { url: "https://example.com/a" })).toEqual({
+      copy: { label: "Copy URL", text: "https://example.com/a" },
+      url: "https://example.com/a",
+    });
+    expect(plan("WebFetch", { url: "http://example.com" }).url).toBeUndefined();
+  });
+
+  it("copies the input of MCP and unknown tools, and nothing for a call without any", () => {
+    expect(plan("mcp__cerium__spawn_agent", { role: "x" }).copy).toEqual({
+      label: "Copy input",
+      text: JSON.stringify({ role: "x" }, null, 2),
+    });
+    expect(plan("sleep", undefined)).toEqual({});
+  });
+
+  it("copies the output as the panel shows it, with blobs elided, and not when images replace it", () => {
+    const blob = "A".repeat(4096);
+    expect(plan("mcp__x__y", {}, { data: blob }).output).toBe(
+      JSON.stringify({ data: "[3 KB of base64]" }, null, 2),
+    );
+    expect(
+      plan("Read", { file_path: "C:\\w\\shot.png" }, [
+        { type: "image", source: { media_type: "image/png", data: "iVBORw0K" } },
+      ]).output,
+    ).toBeUndefined();
   });
 });
