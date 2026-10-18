@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { FileImageThumb, ImageThumb } from "../../components/ImageThumb.tsx";
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
@@ -138,6 +139,79 @@ export const describeTool = (
   }
 };
 
+/** An image a tool call showed the agent: its bytes from the call's output, or the file it read. */
+export interface ToolImage {
+  readonly key: string;
+  readonly name: string;
+  /** A data URL, when the output carried the image itself. */
+  readonly url?: string;
+  /** An absolute path the backend can read, otherwise. */
+  readonly path?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/** Base64 images in a tool's output, as Anthropic content blocks or MCP content items carry them. */
+const outputImages = (
+  output: unknown,
+): ReadonlyArray<{ readonly mediaType: string; readonly data: string }> => {
+  const found: Array<{ mediaType: string; data: string }> = [];
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 4) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (!isRecord(value)) return;
+    if (value["type"] === "image") {
+      const source = isRecord(value["source"]) ? value["source"] : value;
+      const data = source["data"];
+      const mediaType = source["media_type"] ?? source["mediaType"] ?? source["mimeType"];
+      if (typeof data === "string" && typeof mediaType === "string" && mediaType.startsWith("image/")) {
+        found.push({ mediaType, data });
+        return;
+      }
+    }
+    for (const key of ["content", "output", "result"]) visit(value[key], depth + 1);
+  };
+  visit(output, 0);
+  return found;
+};
+
+const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i;
+const ABSOLUTE = /^(?:[a-z]:[\\/]|[\\/])/i;
+
+/** The images a tool call showed the agent, such as a screenshot it read or one a tool returned. */
+export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
+  const path = field(tool.input, "file_path") ?? field(tool.input, "path");
+  const name = path ? baseName(path) : "Image";
+  const inline = outputImages(tool.output);
+  if (inline.length > 0) {
+    return inline.map((image, index) => ({
+      key: `${tool.id}:${index}`,
+      name: inline.length === 1 ? name : `${name} (${index + 1})`,
+      url: `data:${image.mediaType};base64,${image.data}`,
+    }));
+  }
+  // Harnesses that only report the path: the file is read again to show it.
+  const saved = field(tool.output, "savedPath");
+  const file = toolKinds[tool.toolName] === "read" || tool.toolName === "view_image" ? path : saved;
+  if (tool.status === "done" && file && IMAGE_FILE.test(file) && ABSOLUTE.test(file)) {
+    return [{ key: tool.id, name: baseName(file), path: file }];
+  }
+  return [];
+};
+
+function ToolImageThumb({ image, className }: { image: ToolImage; className: string }) {
+  if (image.url) return <ImageThumb url={image.url} name={image.name} className={className} />;
+  if (image.path) return <FileImageThumb path={image.path} name={image.name} className={className} />;
+  return null;
+}
+
+/** How many images a folded run previews before counting the rest. */
+const PREVIEWED = 3;
+
 const count = (n: number, one: string, many: string, done = "") =>
   `${n} ${n === 1 ? one : many}${done ? ` ${done}` : ""}`;
 
@@ -208,18 +282,35 @@ export function ToolRun({
   const [toggled, setToggled] = useState<boolean>();
   const failed = tools.filter((tool) => tool.status === "error").length;
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
+  const images = tools.flatMap(toolImages);
+  const open = toggled ?? live;
   return (
-    <Collapsible.Root open={toggled ?? live} onOpenChange={setToggled}>
-      <Collapsible.Trigger className="group flex max-w-full items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
-        <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
-        {failed > 0 ? <span className="shrink-0 text-error">· {failed} failed</span> : null}
-        {interrupted > 0 ? <span className="shrink-0">· {interrupted} interrupted</span> : null}
-        <ChevronRight
-          size={13}
-          className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
-        />
-      </Collapsible.Trigger>
+    <Collapsible.Root open={open} onOpenChange={setToggled}>
+      <div className="flex min-w-0 items-center gap-3">
+        <Collapsible.Trigger className="group flex max-w-full min-w-0 items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+          <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
+          <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
+          {failed > 0 ? <span className="shrink-0 text-error">· {failed} failed</span> : null}
+          {interrupted > 0 ? <span className="shrink-0">· {interrupted} interrupted</span> : null}
+          <ChevronRight
+            size={13}
+            className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+          />
+        </Collapsible.Trigger>
+        {/* Folded, the images the agent looked at stay in sight; open, each shows with its call. */}
+        {images.length > 0 && !open ? (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {images.length > PREVIEWED ? (
+              <span className="pr-0.5 text-2xs text-fg-tertiary tabular-nums">
+                +{images.length - PREVIEWED}
+              </span>
+            ) : null}
+            {images.slice(0, PREVIEWED).map((image) => (
+              <ToolImageThumb key={image.key} image={image} className="h-6 w-8 rounded-md" />
+            ))}
+          </div>
+        ) : null}
+      </div>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
         <div className="flex flex-col gap-3 pt-2.5">{children}</div>
       </Collapsible.Panel>
@@ -248,6 +339,7 @@ function ToolRow({
   activity: AgentActivity;
 }) {
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
+  const images = toolImages(tool);
   return (
     <Collapsible.Root className={divider ? "border-t border-line-subtle" : ""}>
       <Collapsible.Trigger className="group flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
@@ -281,7 +373,20 @@ function ToolRow({
           ) : (
             <Payload label="Input" value={tool.input} />
           )}
-          {tool.output === undefined ? null : <Payload label="Output" value={tool.output} />}
+          {images.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs font-medium tracking-wide text-fg-tertiary uppercase">
+                {images.length === 1 ? "Image" : "Images"}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {images.map((image) => (
+                  <ToolImageThumb key={image.key} image={image} className="h-40 max-w-full min-w-24" />
+                ))}
+              </div>
+            </div>
+          ) : tool.output === undefined ? null : (
+            <Payload label="Output" value={tool.output} />
+          )}
         </div>
       </Collapsible.Panel>
     </Collapsible.Root>
@@ -303,8 +408,14 @@ function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activit
   return <Check size={13} strokeWidth={2.25} className="text-success/80" />;
 }
 
+/** Long base64 (an image in a tool's output) shows as its size instead of a wall of characters. */
+const withoutBlobs = (_key: string, value: unknown) =>
+  typeof value === "string" && value.length > 1024 && /^[A-Za-z0-9+/]+={0,2}$/.test(value.slice(-64))
+    ? `[${Math.round((value.length * 3) / 4 / 1024)} KB of base64]`
+    : value;
+
 function Payload({ label, value }: { label: string; value: unknown }) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const text = typeof value === "string" ? value : JSON.stringify(value, withoutBlobs, 2);
   return (
     <div className="flex flex-col gap-1">
       <span className="text-2xs font-medium tracking-wide text-fg-tertiary uppercase">{label}</span>

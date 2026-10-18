@@ -3,19 +3,44 @@ import { Collapsible } from "@base-ui/react/collapsible";
 import { Ban, Brain, Check, ChevronRight, CornerDownRight, ShieldQuestion, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
+import { FileChip } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { TranscriptBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
 export function UserMessage({ block }: { block: Block<"user"> }) {
+  const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
+  const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
   return (
-    <div className="max-w-[85%] rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text">
-      <Markdown text={block.text} streaming={false} />
+    <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+      {block.attachments.length > 0 ? (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {images.map((image) => (
+            <FileImageThumb
+              key={image.path}
+              path={image.path}
+              name={image.name}
+              className="h-28 max-w-60 min-w-16"
+            />
+          ))}
+          {files.map((file) => (
+            <span key={file.path} className="text-[13px]">
+              <FileChip path={file.path} folder={false} />
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {block.text.trim() === "" ? null : (
+        <div className="rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text">
+          <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
+        </div>
+      )}
     </div>
   );
 }

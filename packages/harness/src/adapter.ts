@@ -7,6 +7,7 @@ import type {
   ModelInfo,
   ProviderId,
   ReasoningEffort,
+  SkillInfo,
 } from "@cerium/protocol";
 import { Schema, type Effect, type Scope, type Stream } from "effect";
 
@@ -70,10 +71,26 @@ export interface PermissionDecision {
   readonly message?: string;
 }
 
+/** An image a turn shows the model, read from disk by Cerium. */
+export interface TurnImage {
+  readonly path: string;
+  readonly mediaType: string;
+  /** The file's bytes, base64-encoded. */
+  readonly data: string;
+}
+
+/** What a turn carries beside its text. */
+export interface TurnExtras {
+  /** Only sent to harnesses whose manifest takes images. */
+  readonly images?: ReadonlyArray<TurnImage>;
+  /** Skills the user picked; the text names each as `$name`. */
+  readonly skills?: ReadonlyArray<{ readonly name: string; readonly path?: string }>;
+}
+
 /** A live harness session. Closing the scope it was started in ends the session. */
 export interface AgentSession {
   readonly events: Stream.Stream<AdapterEvent, HarnessFailure>;
-  send(text: string): Effect.Effect<void, HarnessFailure>;
+  send(text: string, extras?: TurnExtras): Effect.Effect<void, HarnessFailure>;
   respondToPermission(requestId: string, decision: PermissionDecision): Effect.Effect<void>;
   readonly interrupt: Effect.Effect<void, HarnessFailure>;
   setModel(model: string): Effect.Effect<void, HarnessFailure>;
@@ -91,6 +108,11 @@ export interface HarnessAdapter {
    * `SignedIn`; interrupting it cancels the sign-in. The SDK stores the credential it gets.
    */
   readonly login?: Stream.Stream<LoginProgress, HarnessFailure>;
+  /**
+   * The skills the harness would offer a session in `cwd`, for the message box's `$` list. Absent
+   * when the harness can't say without starting a session.
+   */
+  listSkills?(cwd: string): Effect.Effect<ReadonlyArray<SkillInfo>, HarnessUnavailable | HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

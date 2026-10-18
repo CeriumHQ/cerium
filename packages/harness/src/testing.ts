@@ -1,13 +1,21 @@
 import type { CapabilityManifest, ProviderId } from "@cerium/protocol";
 import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 
-import type { AdapterEvent, HarnessAdapter, PermissionDecision, SessionOptions } from "./adapter.ts";
+import type {
+  AdapterEvent,
+  HarnessAdapter,
+  PermissionDecision,
+  SessionOptions,
+  TurnExtras,
+} from "./adapter.ts";
 
 // Test support shared by every package that drives harness sessions without a real provider.
 
 export interface FakeSession {
   readonly options: SessionOptions;
   readonly sent: Array<string>;
+  /** What each turn carried beside its text, in the same order. */
+  readonly extras: Array<TurnExtras | undefined>;
 }
 
 /** A scripted harness: every turn replies `reply(text)` after `turnDuration`, then completes. */
@@ -21,6 +29,8 @@ export const makeFakeAdapter = (
     readonly askPermission?: boolean;
     /** The tool those requests are for (default `Bash`). */
     readonly permissionTool?: string;
+    /** Whether the manifest takes images (default false). */
+    readonly images?: boolean;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
@@ -30,7 +40,7 @@ export const makeFakeAdapter = (
     harnessVersion: { minimum: "1.0.0", testedMaximum: "1.0.0" },
     session: { resume: true, fork: false },
     switching: { model: true, effort: true, cacheSafeEffort: true },
-    input: { images: false },
+    input: { images: options.images ?? false },
     permissions: { approvals: "callback", readOnlyMode: true },
     mcpInjection: true,
     nativeSubagents: "disableable",
@@ -48,7 +58,7 @@ export const makeFakeAdapter = (
       Effect.gen(function* () {
         const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
         yield* Effect.addFinalizer(() => Queue.end(events));
-        const session: FakeSession = { options: sessionOptions, sent: [] };
+        const session: FakeSession = { options: sessionOptions, sent: [], extras: [] };
         const decisions = new Map<string, Deferred.Deferred<PermissionDecision>>();
         sessions.push(session);
         yield* Queue.offer(events, {
@@ -91,11 +101,11 @@ export const makeFakeAdapter = (
           });
         return {
           events: Stream.fromQueue(events),
-          send: (text: string) =>
-            Effect.sync(() => session.sent.push(text)).pipe(
-              Effect.andThen(Effect.forkDetach(turn(text))),
-              Effect.asVoid,
-            ),
+          send: (text: string, extras?: TurnExtras) =>
+            Effect.sync(() => {
+              session.sent.push(text);
+              session.extras.push(extras);
+            }).pipe(Effect.andThen(Effect.forkDetach(turn(text))), Effect.asVoid),
           respondToPermission: (requestId: string, decision: PermissionDecision) =>
             Effect.suspend(() => {
               const pending = decisions.get(requestId);

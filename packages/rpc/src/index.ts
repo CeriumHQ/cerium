@@ -3,16 +3,21 @@ import {
   AgentEvent,
   AgentId,
   AgentInfo,
+  Attachment,
   HarnessStatus,
+  ImageData,
   LoginProgress,
+  Mention,
   ModelInfo,
   ProviderId,
   ReasoningEffort,
   Settings,
   SettingsPatch,
+  SkillInfo,
   ThreadId,
   ThreadInfo,
   ThreadMode,
+  WorkspaceEntry,
 } from "@cerium/protocol";
 import { Schema, Struct } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
@@ -68,8 +73,14 @@ export const CeriumRpcs = RpcGroup.make(
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
     error: CeriumError,
   }),
+  /** A message needs text, attachments or both. */
   Rpc.make("SendMessage", {
-    payload: { agentId: AgentId, text: Schema.NonEmptyString },
+    payload: {
+      agentId: AgentId,
+      text: Schema.String,
+      attachments: Schema.optionalKey(Schema.Array(Attachment)),
+      mentions: Schema.optionalKey(Schema.Array(Mention)),
+    },
     error: CeriumError,
   }),
   Rpc.make("RespondToPermission", {
@@ -110,6 +121,40 @@ export const CeriumRpcs = RpcGroup.make(
     payload: { provider: ProviderId },
     success: Schema.Array(ModelInfo),
     error: CeriumError,
+  }),
+  /** Files and folders in `cwd` matching `query`, for the message box's `@` list. */
+  Rpc.make("SearchWorkspace", {
+    payload: { cwd: Schema.NonEmptyString, query: Schema.String },
+    success: Schema.Array(WorkspaceEntry),
+    error: CeriumError,
+  }),
+  /** The skills a provider's harness offers in `cwd` (its home folder without one), for `$`. */
+  Rpc.make("ListSkills", {
+    payload: { provider: ProviderId, cwd: Schema.optionalKey(Schema.NonEmptyString) },
+    success: Schema.Array(SkillInfo),
+    error: CeriumError,
+  }),
+  /** Keeps a pasted file that has no path of its own; `data` is base64. */
+  Rpc.make("SaveAttachment", {
+    payload: { name: Schema.String, mediaType: Schema.String, data: Schema.String },
+    success: Attachment,
+    error: CeriumError,
+  }),
+  /** An image file's bytes, for showing attachments and images agents read. */
+  Rpc.make("ReadImage", {
+    payload: { path: Schema.NonEmptyString },
+    success: ImageData,
+    error: CeriumError,
+  }),
+  /** The branch checked out in a work thread's folder, or the short commit when detached; none outside git. */
+  Rpc.make("GitBranch", {
+    payload: { cwd: Schema.NonEmptyString },
+    success: Schema.Struct({ branch: Schema.optionalKey(Schema.NonEmptyString) }),
+  }),
+  /** A project's own icon (its favicon, icon or logo), when it has one where projects keep them. */
+  Rpc.make("ProjectIcon", {
+    payload: { cwd: Schema.NonEmptyString },
+    success: Schema.Struct({ icon: Schema.optionalKey(ImageData) }),
   }),
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */

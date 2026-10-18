@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 
 import { startBackend } from "./backend.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
@@ -85,6 +85,11 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
   const options = { properties: ["openDirectory" as const, "createDirectory" as const] };
   const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
   return result.canceled ? undefined : result.filePaths[0];
+});
+
+/** Shows a file the transcript names in File Explorer; only absolute paths, and nothing is opened. */
+ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
+  if (typeof target === "string" && isAbsolute(target)) shell.showItemInFolder(normalize(target));
 });
 
 /**

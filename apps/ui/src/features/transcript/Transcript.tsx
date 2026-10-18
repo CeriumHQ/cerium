@@ -17,6 +17,7 @@ import {
   Working,
   type ChildState,
 } from "./Blocks.tsx";
+import { WorkspaceFolder } from "./FileChip.tsx";
 import { Markdown } from "./Markdown.tsx";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
@@ -25,6 +26,8 @@ import { useStickToBottom } from "./useStickToBottom.ts";
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
   readonly agent: { readonly provider: ProviderId; readonly model: string };
+  /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
+  readonly folder?: string | undefined;
   readonly activity: AgentActivity;
   /** Live state of a spawned child, for its card. */
   readonly childState: (childId: string) => ChildState;
@@ -151,6 +154,7 @@ const showsProgress = (item: Item | undefined): boolean => {
 export function Transcript({
   blocks,
   agent,
+  folder,
   activity,
   childState,
   bottomInset = 0,
@@ -216,35 +220,39 @@ export function Transcript({
   };
 
   return (
-    <div className="relative h-full">
-      {/* Content fades out where the floating composer sits instead of showing through its glass. */}
-      <ScrollArea
-        viewportRef={viewport}
-        className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
-      >
-        <div
-          className="mx-auto flex max-w-[46rem] flex-col gap-3 px-8 pt-8"
-          // The inset is in screen pixels; the column's zoom would scale it.
-          style={{ zoom: scale, paddingBottom: `calc(10rem + ${bottomInset / scale}px)` }}
+    <WorkspaceFolder value={folder}>
+      <div className="relative h-full">
+        {/* Content fades out where the floating composer sits instead of showing through its glass. */}
+        <ScrollArea
+          viewportRef={viewport}
+          className="h-full mask-b-from-[calc(100%-9rem)] mask-b-to-[calc(100%-2rem)] [&_*]:[overflow-anchor:none]"
         >
-          {items.map(render)}
-          {working && (last === undefined || last.kind === "input") ? <ResponseHeader agent={agent} /> : null}
-          {working ? <Working /> : null}
-        </div>
-      </ScrollArea>
-      {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
-      <Button
-        onClick={toEnd}
-        aria-label="Jump to latest"
-        inert={following}
-        style={{ bottom: `calc(7.75rem + ${bottomInset}px)` }}
-        className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
-          following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
-        }`}
-      >
-        <ArrowDown size={15} strokeWidth={2} />
-      </Button>
-    </div>
+          <div
+            className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-8 pt-8"
+            // The inset is in screen pixels; the column's zoom would scale it.
+            style={{ zoom: scale, paddingBottom: `calc(10rem + ${bottomInset / scale}px)` }}
+          >
+            {items.map(render)}
+            {working && (last === undefined || last.kind === "input") ? (
+              <ResponseHeader agent={agent} />
+            ) : null}
+            {working ? <Working /> : null}
+          </div>
+        </ScrollArea>
+        {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
+        <Button
+          onClick={toEnd}
+          aria-label="Jump to latest"
+          inert={following}
+          style={{ bottom: `calc(7.75rem + ${bottomInset}px)` }}
+          className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
+            following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
+          }`}
+        >
+          <ArrowDown size={15} strokeWidth={2} />
+        </Button>
+      </div>
+    </WorkspaceFolder>
   );
 }
 

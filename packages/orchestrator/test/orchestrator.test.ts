@@ -2,6 +2,9 @@ import type { AgentEvent, AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Exit } from "effect";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Orchestrator, type CatalogEntry } from "../src/index.ts";
 import { makeFakeAdapter } from "@cerium/harness/testing";
@@ -53,6 +56,76 @@ describe("Orchestrator", () => {
       assert.notInclude(stored, "MessageDelta");
       const agents = yield* orchestrator.listAgents(lead.threadId);
       assert.strictEqual(agents[0]?.providerSessionId, "fake-1");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("hands the harness the user's attachments, images and skills", () => {
+    const folder = mkdtempSync(join(tmpdir(), "cerium-attachments-"));
+    const image = join(folder, "shot.png");
+    writeFileSync(image, Uint8Array.from([137, 80, 78, 71]));
+    const notes = join(folder, "notes.md");
+    writeFileSync(notes, "# Notes");
+    const sees = makeFakeAdapter("claude", { images: true });
+    const blind = makeFakeAdapter("codex");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const message = {
+        attachments: [
+          { path: image, name: "shot.png", mediaType: "image/png" },
+          { path: notes, name: "notes.md", mediaType: "text/markdown" },
+        ],
+        mentions: [
+          { _tag: "FileMention", path: "src/app.ts", folder: false },
+          { _tag: "SkillMention", name: "review", path: "/skills/review/SKILL.md" },
+        ],
+      } as const;
+      for (const provider of ["claude", "codex"] as const) {
+        const { lead } = yield* orchestrator.createThread({
+          title: provider,
+          mode: "work",
+          cwd: folder,
+          lead: { provider, model: "m", access: "ask" },
+        });
+        yield* orchestrator.sendUserMessage(lead.id, "Check @src/app.ts with $review", message);
+        yield* waitFor((events) =>
+          events.find(
+            (event) =>
+              event.agentId === lead.id &&
+              event.payload._tag === "AgentStateChanged" &&
+              event.payload.state === "idle",
+          ),
+        );
+        const turn = turnInputs(yield* orchestrator.threadEvents(lead.threadId), lead.id)[0];
+        assert.deepStrictEqual(turn, [
+          { _tag: "FromUser", text: "Check @src/app.ts with $review", ...message },
+        ]);
+      }
+
+      assert.strictEqual(
+        sees.sessions[0]?.sent[0],
+        `Check @src/app.ts with $review\n\nAttached files:\n- ${image}\n- ${notes}`,
+      );
+      assert.deepStrictEqual(sees.sessions[0]?.extras[0], {
+        images: [{ path: image, mediaType: "image/png", data: "iVBORw==" }],
+        skills: [{ name: "review", path: "/skills/review/SKILL.md" }],
+      });
+      // A harness that takes no images still gets their paths, and the skills.
+      assert.deepStrictEqual(blind.sessions[0]?.extras[0], {
+        skills: [{ name: "review", path: "/skills/review/SKILL.md" }],
+      });
+      assert.include(sees.sessions[0]?.options.appendSystemPrompt ?? "", "`$name` names a skill");
+      assert.include(sees.sessions[0]?.options.appendSystemPrompt ?? "", "```artifact");
+    }).pipe(Effect.provide(testLayer([sees.adapter, blind.adapter])), Effect.scoped);
+  });
+
+  it.live("refuses an empty message", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* startWorkThread;
+      const refused = yield* Effect.flip(orchestrator.sendUserMessage(lead.id, "  "));
+      assert.strictEqual(refused.reason, "invalid");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

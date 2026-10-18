@@ -1,15 +1,17 @@
-import type { AgentSession, PermissionDecision } from "@cerium/harness";
+import type { AgentSession, PermissionDecision, TurnExtras, TurnImage } from "@cerium/harness";
 import {
   LEAD_ROLE,
   narrowAccess,
   type AccessMode,
   type AgentEvent,
+  type Attachment,
   type AgentId,
   type AgentInfo,
   type AgentState,
   type EventId,
   type EventPayload,
   type InputItem,
+  type Mention,
   type ProviderId,
   type ReasoningEffort,
   type ThreadId,
@@ -35,6 +37,7 @@ import {
   Semaphore,
   Stream,
 } from "effect";
+import { Base64 } from "effect/encoding";
 
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { renderTurn, systemPrompt, truncate } from "./prompts.ts";
@@ -52,6 +55,12 @@ export interface CreateThreadInput {
     readonly effort?: ReasoningEffort;
     readonly access: AccessMode;
   };
+}
+
+/** What the user sent beside the text of a message. */
+export interface UserMessageExtras {
+  readonly attachments?: ReadonlyArray<Attachment>;
+  readonly mentions?: ReadonlyArray<Mention>;
 }
 
 /** What a lead asks for through `spawn_agent`. */
@@ -95,6 +104,8 @@ interface Runtime {
   ended: boolean;
 }
 
+const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("image/");
+
 const isDelta = (payload: EventPayload) =>
   payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta";
 
@@ -116,7 +127,11 @@ export class Orchestrator extends Context.Service<
       input: CreateThreadInput,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     /** Delivers the user's message to a lead, resuming its harness session if it stopped or failed. */
-    sendUserMessage(agentId: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
+    sendUserMessage(
+      agentId: AgentId,
+      text: string,
+      extras?: UserMessageExtras,
+    ): Effect.Effect<void, OrchestratorError>;
     respondToPermission(
       agentId: AgentId,
       requestId: string,
@@ -290,13 +305,46 @@ export class Orchestrator extends Context.Service<
         );
       };
 
+      /** The images and skills a turn's user messages carry, as harnesses take them. */
+      const turnExtras = (rt: Runtime, items: ReadonlyArray<InputItem>) =>
+        Effect.gen(function* () {
+          const fromUser = items.flatMap((item) => (item._tag === "FromUser" ? [item] : []));
+          const takesImages = adapters.get(rt.info.provider)?.manifest.input.images === true;
+          const read = yield* Effect.forEach(
+            takesImages ? fromUser.flatMap((item) => (item.attachments ?? []).filter(isImage)) : [],
+            (attachment) =>
+              fs.readFile(attachment.path).pipe(
+                Effect.map((bytes): TurnImage => ({
+                  path: attachment.path,
+                  mediaType: attachment.mediaType,
+                  data: Base64.encode(bytes),
+                })),
+                // An image that can't be read any more is still named in the text.
+                Effect.option,
+              ),
+          );
+          const images = read.flatMap(Option.toArray);
+          const skills = fromUser.flatMap((item) =>
+            (item.mentions ?? []).flatMap((mention) =>
+              mention._tag === "SkillMention"
+                ? [{ name: mention.name, ...(mention.path ? { path: mention.path } : {}) }]
+                : [],
+            ),
+          );
+          if (images.length === 0 && skills.length === 0) return undefined;
+          return {
+            ...(images.length > 0 ? { images } : {}),
+            ...(skills.length > 0 ? { skills } : {}),
+          } satisfies TurnExtras;
+        });
+
       const runTurn = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
         Effect.gen(function* () {
           yield* setState(rt, "running");
           rt.lastMessage = undefined;
           rt.turn = yield* Deferred.make<void>();
           yield* emit(rt, { _tag: "TurnInput", items });
-          yield* rt.session.send(renderTurn(items));
+          yield* rt.session.send(renderTurn(items), yield* turnExtras(rt, items));
           yield* Deferred.await(rt.turn);
           rt.turn = undefined;
         });
@@ -594,14 +642,25 @@ export class Orchestrator extends Context.Service<
           return { thread, lead };
         }),
 
-        sendUserMessage: (agentId, text) =>
-          liveLead(agentId).pipe(
+        sendUserMessage: (agentId, text, extras = {}) => {
+          const { attachments = [], mentions = [] } = extras;
+          if (text.trim() === "" && attachments.length === 0) {
+            return Effect.fail(
+              new OrchestratorError({ reason: "invalid", message: "The message is empty." }),
+            );
+          }
+          const message: InputItem = {
+            _tag: "FromUser",
+            text,
+            ...(attachments.length > 0 ? { attachments } : {}),
+            ...(mentions.length > 0 ? { mentions } : {}),
+          };
+          return liveLead(agentId).pipe(
             // Offered together, so the user's message and any notices make one turn.
-            Effect.flatMap(({ rt, notices }) =>
-              Queue.offerAll(rt.inbox, [{ _tag: "FromUser", text }, ...notices]),
-            ),
+            Effect.flatMap(({ rt, notices }) => Queue.offerAll(rt.inbox, [message, ...notices])),
             Effect.asVoid,
-          ),
+          );
+        },
 
         respondToPermission: (agentId, requestId, decision) =>
           runtime(agentId).pipe(Effect.flatMap((rt) => rt.session.respondToPermission(requestId, decision))),

@@ -1,6 +1,6 @@
 import stylesheet from "@cerium/artifacts/artifact.css?raw";
-import geistMono from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?inline";
-import geist from "@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?inline";
+import redHatMono from "@fontsource-variable/red-hat-mono/files/red-hat-mono-latin-wght-normal.woff2?inline";
+import redHatText from "@fontsource-variable/red-hat-text/files/red-hat-text-latin-wght-normal.woff2?inline";
 
 // The document an artifact renders as. It runs in a sandboxed frame with an opaque origin, so its
 // policy blocks every network request and every script but Cerium's own runtime: an agent's HTML
@@ -41,8 +41,8 @@ const tokenValues = (): string => {
 };
 
 const fonts = `
-@font-face { font-family: "Geist Variable"; font-weight: 100 900; font-display: block; src: url(${geist}) format("woff2"); }
-@font-face { font-family: "Geist Mono Variable"; font-weight: 100 900; font-display: block; src: url(${geistMono}) format("woff2"); }`;
+@font-face { font-family: "Red Hat Text Variable"; font-weight: 300 700; font-display: block; src: url(${redHatText}) format("woff2"); }
+@font-face { font-family: "Red Hat Mono Variable"; font-weight: 300 700; font-display: block; src: url(${redHatMono}) format("woff2"); }`;
 
 /**
  * Runs inside the frame: turns `.tabs` sections into tabs, keeps links from navigating the frame and

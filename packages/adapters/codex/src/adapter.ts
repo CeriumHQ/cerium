@@ -3,7 +3,7 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
-import { listCodexModels } from "./models.ts";
+import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
 import { startCodexSession } from "./session.ts";
 
@@ -59,6 +59,11 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         manifest: codexManifest,
         probe,
         listModels: ready.pipe(Effect.flatMap(listCodexModels), Effect.provide(platform)),
+        listSkills: (cwd) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) => listCodexSkills(executablePath, cwd)),
+            Effect.provide(platform),
+          ),
         startSession,
       });
     }),

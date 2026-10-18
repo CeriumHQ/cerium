@@ -1,4 +1,4 @@
-import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
 import { Cause, Effect, Queue, Stream } from "effect";
@@ -7,28 +7,38 @@ const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
 
 /**
- * Asks the user's `claude` which models it offers. Claude Code only answers inside a session, so this
- * opens one that is never sent a prompt and isn't saved, and closes it once the list arrives.
+ * Asks the user's `claude` something only a session answers. The session is never sent a prompt and
+ * isn't saved, and closes once `use` settles.
  */
+export const inspectClaude = <A>(
+  executablePath: string,
+  cwd: string | undefined,
+  message: string,
+  use: (session: Query) => Promise<A>,
+) =>
+  Effect.gen(function* () {
+    const input = yield* Queue.unbounded<SDKUserMessage, Cause.Done>();
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() =>
+        query({
+          prompt: Stream.toAsyncIterable(Stream.fromQueue(input)),
+          options: {
+            pathToClaudeCodeExecutable: executablePath,
+            ...(cwd === undefined ? {} : { cwd }),
+            persistSession: false,
+            settingSources: ["user", "project", "local"],
+          },
+        }),
+      ),
+      (session) => Effect.tryPromise({ try: () => use(session), catch: failure(message) }),
+      (session) => Queue.end(input).pipe(Effect.andThen(Effect.sync(() => session.close()))),
+    );
+  });
+
+/** Asks the user's `claude` which models it offers. */
 export const listClaudeModels = Effect.fn("ClaudeAdapter.listModels")(function* (executablePath: string) {
-  const input = yield* Queue.unbounded<SDKUserMessage, Cause.Done>();
-  const models = yield* Effect.acquireUseRelease(
-    Effect.sync(() =>
-      query({
-        prompt: Stream.toAsyncIterable(Stream.fromQueue(input)),
-        options: {
-          pathToClaudeCodeExecutable: executablePath,
-          persistSession: false,
-          settingSources: ["user", "project", "local"],
-        },
-      }),
-    ),
-    (session) =>
-      Effect.tryPromise({
-        try: () => session.supportedModels(),
-        catch: failure("Could not list Claude models"),
-      }),
-    (session) => Queue.end(input).pipe(Effect.andThen(Effect.sync(() => session.close()))),
+  const models = yield* inspectClaude(executablePath, undefined, "Could not list Claude models", (session) =>
+    session.supportedModels(),
   );
   // The "default" row is an alias for another row; it marks that row instead of being listed itself.
   const listed = models.filter((model) => model.value !== DEFAULT_ROW);

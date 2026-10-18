@@ -21,11 +21,12 @@ import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backen
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
-import { Composer, type ThreadSetup } from "../features/composer/Composer.tsx";
+import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { useModels } from "../features/composer/models.ts";
 import { themeAtom } from "../features/settings/preferences.ts";
 import { SettingsNav, SettingsView, type SettingsCategory } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
+import { useReadState } from "../features/threads/readState.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { buildTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -67,10 +68,12 @@ function Workspace() {
   const [actionError, setActionError] = useState<string>();
   /** How tall the approval tray above the message box is, so the transcript's end stays visible. */
   const [trayHeight, setTrayHeight] = useState(0);
+  /** How much taller files attached to the draft make the message box, for the same reason. */
+  const [attachmentsHeight, setAttachmentsHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** The category settings open on: the last one visited. */
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
-  const composerInput = useRef<HTMLTextAreaElement>(null);
+  const composerInput = useRef<HTMLDivElement>(null);
 
   useTheme(useAtomValue(themeAtom));
 
@@ -83,6 +86,26 @@ function Workspace() {
   const selected = overviews.find(
     (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
   );
+  const readState = useReadState();
+  /** The open thread, when it was unread as the user opened it: it keeps its inbox place until they leave. */
+  const [heldUnread, setHeldUnread] = useState<string>();
+  // A work thread is unread once it changed after the user last saw it; the open one is seen as it changes.
+  const summaries = overviews
+    .map(toThreadSummary)
+    .map((summary) =>
+      summary.mode !== "work"
+        ? summary
+        : summary.id === selected?.thread.id
+          ? { ...summary, unread: summary.id === heldUnread }
+          : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
+    );
+  const selectedSummary = summaries.find((summary) => summary.id === selected?.thread.id);
+  const markSeen = useEffectEvent(() => {
+    if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
+      readState.markRead([selectedSummary]);
+    }
+  });
+  useEffect(() => markSeen(), [selectedSummary?.id, selectedSummary?.updatedAt]);
   const events = AsyncResult.getOrElse(
     useAtomValue(selected ? threadEventsAtom(selected.thread.id) : noEvents),
     (): ReadonlyArray<AgentEvent> => [],
@@ -189,10 +212,10 @@ function Workspace() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const startThread = async (text: string, setup: ThreadSetup) => {
+  const startThread = async (message: OutgoingMessage, setup: ThreadSetup) => {
     const { thread, lead: newLead } = await create({
       payload: {
-        title: text.split("\n")[0]!.slice(0, 80),
+        title: (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80),
         mode,
         ...(mode === "work" && folder ? { cwd: folder } : {}),
         lead: setup,
@@ -200,7 +223,7 @@ function Workspace() {
     });
     setOpenThread((current) => ({ ...current, [mode]: thread.id }));
     refreshThreads();
-    await send({ payload: { agentId: newLead.id, text } });
+    await send({ payload: { agentId: newLead.id, ...message } });
   };
 
   return (
@@ -224,10 +247,22 @@ function Workspace() {
       sidebar={
         <Sidebar
           mode={mode}
-          threads={overviews.map(toThreadSummary)}
+          threads={summaries}
           selectedId={selected?.thread.id}
-          onSelect={(threadId) => setOpenThread((current) => ({ ...current, [mode]: threadId }))}
+          onSelect={(threadId) => {
+            const summary = summaries.find((candidate) => candidate.id === threadId);
+            setHeldUnread(summary?.unread ? threadId : undefined);
+            setOpenThread((current) => ({ ...current, [mode]: threadId }));
+          }}
           onNewThread={startNew}
+          onMarkRead={(threads) => {
+            if (threads.some((thread) => thread.id === heldUnread)) setHeldUnread(undefined);
+            readState.markRead(threads);
+          }}
+          onMarkUnread={(threadId) => {
+            if (threadId === selected?.thread.id) setHeldUnread(threadId);
+            readState.markUnread(threadId);
+          }}
           harnesses={indicators}
           onOpenSettings={openSettings}
         />
@@ -284,10 +319,11 @@ function Workspace() {
           {selected && lead ? (
             <Transcript
               key={selected.thread.id}
+              folder={selected.thread.cwd}
               blocks={buildTranscript(events.filter((event) => event.agentId === lead.id))}
               agent={{ provider: lead.provider, model: leadModel }}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
-              bottomInset={trayHeight}
+              bottomInset={trayHeight + attachmentsHeight}
               childState={(childId) => {
                 const child = agents.find((agent) => agent.id === childId);
                 return child?.awaitingApproval
@@ -316,6 +352,7 @@ function Workspace() {
                   kind: "thread",
                   provider: lead.provider,
                   model: leadModel,
+                  folder: selected.thread.cwd,
                   ...(leadEnded ? { ended: leadEnded, resumable: leadResumable } : {}),
                   onStartNew: startNew,
                 }
@@ -323,9 +360,12 @@ function Workspace() {
           }
           running={leadRunning}
           above={<ApprovalTray agents={agents} onAnswer={answerApproval} onHeight={setTrayHeight} />}
-          onSend={(text, setup) =>
+          onAttachmentsHeight={setAttachmentsHeight}
+          onSend={(message, setup) =>
             attempt(
-              selected && lead ? send({ payload: { agentId: lead.id, text } }) : startThread(text, setup),
+              selected && lead
+                ? send({ payload: { agentId: lead.id, ...message } })
+                : startThread(message, setup),
             )
           }
           onStop={() => {

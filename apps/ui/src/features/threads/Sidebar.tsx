@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { ChevronRight, Folder, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronRight, Search, Settings, SquarePen } from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -9,7 +9,10 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
+import { chatSections, type ThreadSection } from "./sections.ts";
+import { Inbox } from "./Inbox.tsx";
 import { providerName, type ThreadSummary } from "./model.ts";
+import { ProviderStack, StatusIndicator } from "./StatusIndicator.tsx";
 
 interface SidebarProps {
   /** Only this mode's threads are listed. */
@@ -18,6 +21,8 @@ interface SidebarProps {
   readonly selectedId: string | undefined;
   readonly onSelect: (threadId: string) => void;
   readonly onNewThread: () => void;
+  readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
+  readonly onMarkUnread: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   readonly onOpenSettings: (category?: SettingsCategory) => void;
 }
@@ -27,49 +32,18 @@ export interface HarnessIndicator {
   readonly state: "ready" | "loggedOut" | "missing" | "unsupported";
 }
 
-interface ThreadGroupData {
-  readonly key: string;
-  readonly label: string;
-  readonly threads: ReadonlyArray<ThreadSummary>;
-}
-
-const DAY = 86_400_000;
-
-/** Chats have no folder, so they group by how recent they are. */
-const recency = (updatedAt: number, now: number): string => {
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  if (updatedAt >= startOfToday) return "Today";
-  if (updatedAt >= startOfToday - DAY) return "Yesterday";
-  if (updatedAt >= startOfToday - 6 * DAY) return "Previous 7 days";
-  return "Older";
-};
-
-/** Work threads grouped by project folder, chats by recency; newest first within each group. */
-const groupThreads = (
-  threads: ReadonlyArray<ThreadSummary>,
-  mode: SidebarProps["mode"],
-): ReadonlyArray<ThreadGroupData> => {
-  const now = Date.now();
-  const byKey = new Map<string, ThreadGroupData>();
-  for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) {
-    if (thread.mode !== mode) continue;
-    const label = mode === "work" ? (thread.project ?? "Untitled") : recency(thread.updatedAt, now);
-    const group = byKey.get(label) ?? { key: label, label, threads: [] };
-    byKey.set(label, { ...group, threads: [...group.threads, thread] });
-  }
-  return [...byKey.values()];
-};
-
 export function Sidebar({
   mode,
   threads,
   selectedId,
   onSelect,
   onNewThread,
+  onMarkRead,
+  onMarkUnread,
   harnesses,
   onOpenSettings,
 }: SidebarProps) {
-  const groups = groupThreads(threads, mode);
+  const modeThreads = threads.filter((thread) => thread.mode === mode);
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
@@ -88,40 +62,56 @@ export function Sidebar({
         />
       </div>
 
-      <ScrollArea className="flex-1">
-        <nav className="flex flex-col gap-3 px-2 pb-3" aria-label={mode === "work" ? "Threads" : "Chats"}>
-          {groups.map((group) => (
-            <ThreadGroup
-              key={group.key}
-              group={group}
-              mode={mode}
-              selectedId={selectedId}
-              onSelect={onSelect}
-            />
-          ))}
-          {groups.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
-              {mode === "work"
-                ? "Threads you start show up here, grouped by the folder they work in."
-                : "Chats you start show up here, newest first."}
-            </p>
-          ) : null}
-        </nav>
-      </ScrollArea>
+      {mode === "work" ? (
+        <Inbox
+          threads={modeThreads}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onMarkRead={onMarkRead}
+          onMarkUnread={onMarkUnread}
+        />
+      ) : (
+        <ChatList threads={modeThreads} selectedId={selectedId} onSelect={onSelect} />
+      )}
 
       <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
     </div>
   );
 }
 
-function ThreadGroup({
-  group,
-  mode,
+/** Chats grouped by how recent they are. */
+function ChatList({
+  threads,
   selectedId,
   onSelect,
 }: {
-  group: ThreadGroupData;
-  mode: SidebarProps["mode"];
+  threads: ReadonlyArray<ThreadSummary>;
+  selectedId: string | undefined;
+  onSelect: (threadId: string) => void;
+}) {
+  const sections = chatSections(threads);
+  return (
+    <ScrollArea className="flex-1">
+      <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
+        {sections.map((section) => (
+          <ChatGroup key={section.key} section={section} selectedId={selectedId} onSelect={onSelect} />
+        ))}
+        {sections.length === 0 ? (
+          <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
+            Chats you start show up here, newest first.
+          </p>
+        ) : null}
+      </nav>
+    </ScrollArea>
+  );
+}
+
+function ChatGroup({
+  section,
+  selectedId,
+  onSelect,
+}: {
+  section: ThreadSection;
   selectedId: string | undefined;
   onSelect: (threadId: string) => void;
 }) {
@@ -133,12 +123,11 @@ function ThreadGroup({
           strokeWidth={2}
           className="transition-transform duration-200 ease-out-soft group-data-panel-open:rotate-90"
         />
-        {mode === "work" ? <Folder size={12} strokeWidth={2} /> : null}
-        {group.label}
+        {section.label}
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
         <ul className="flex flex-col gap-px pt-0.5">
-          {group.threads.map((thread) => (
+          {section.threads.map((thread) => (
             <li key={thread.id}>
               <ThreadRow thread={thread} selected={thread.id === selectedId} onSelect={onSelect} />
             </li>
@@ -179,47 +168,6 @@ function ThreadRow({
         {shortAgo(thread.updatedAt)}
       </span>
     </Button>
-  );
-}
-
-function StatusIndicator({ status, unread }: { status: ThreadSummary["status"]; unread: boolean }) {
-  const label = {
-    running: "Agents running",
-    awaitingApproval: "Waiting for your approval",
-    failed: "An agent failed",
-    idle: unread ? "Unread" : "Idle",
-  }[status];
-  return (
-    <span className="relative grid size-3 shrink-0 place-items-center">
-      <span className="sr-only">{label}</span>
-      {status === "running" ? (
-        <>
-          <span className="absolute size-2.5 animate-ping rounded-full bg-running/45" />
-          <span className="size-1.5 rounded-full bg-running" />
-        </>
-      ) : status === "awaitingApproval" ? (
-        <span className="size-1.5 rounded-full bg-attention shadow-[0_0_0_3px_color-mix(in_oklch,var(--status-attention)_28%,transparent)]" />
-      ) : status === "failed" ? (
-        <span className="size-1.5 rounded-full bg-error" />
-      ) : unread ? (
-        <span className="size-1.5 rounded-full bg-fg-secondary" />
-      ) : null}
-    </span>
-  );
-}
-
-/** The logos of the harnesses an active multi-agent thread uses. */
-function ProviderStack({ providers }: { providers: ReadonlyArray<ProviderId> }) {
-  const distinct = [...new Set(providers)];
-  return (
-    <span
-      className="flex shrink-0 items-center gap-0.5 text-fg-tertiary"
-      aria-label={`${providers.length} agents`}
-    >
-      {distinct.map((provider) => (
-        <ProviderLogo key={provider} provider={provider} size={11} />
-      ))}
-    </span>
   );
 }
 

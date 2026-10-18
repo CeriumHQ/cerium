@@ -6,6 +6,7 @@ import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
 import { startClaudeSession } from "./session.ts";
+import { listClaudeSkills } from "./skills.ts";
 
 export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter>()(
   "cerium/adapters/claude/ClaudeAdapter",
@@ -55,6 +56,8 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         manifest: claudeManifest,
         probe,
         listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
+        listSkills: (cwd) =>
+          ready.pipe(Effect.flatMap((executablePath) => listClaudeSkills(executablePath, cwd))),
         startSession,
       });
     }),

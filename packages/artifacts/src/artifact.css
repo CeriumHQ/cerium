@@ -8,8 +8,8 @@
  */
 
 :root {
-  --font: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --mono: "Geist Mono Variable", ui-monospace, "Cascadia Code", monospace;
+  --font: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Red Hat Mono Variable", ui-monospace, "Cascadia Code", monospace;
 
   --text: var(--fg-primary);
   --text-2: var(--fg-secondary);
@@ -91,6 +91,8 @@ body {
   margin: 0;
   padding: 1px 0;
   font: 13px/1.55 var(--font);
+  /* Matches the app: Red Hat scaled to a 0.53 em x-height. The `font` shorthand resets it, so after it. */
+  font-size-adjust: ex-height 0.53;
   color: var(--text);
   background: transparent;
   -webkit-font-smoothing: antialiased;
@@ -235,6 +237,7 @@ hr {
   background: transparent;
   padding: 0 12px;
   font: 500 12.5px/1 var(--font);
+  font-size-adjust: inherit;
   color: var(--text-3);
   cursor: pointer;
   transition:

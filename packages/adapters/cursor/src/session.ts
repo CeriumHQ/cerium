@@ -9,6 +9,7 @@ import {
   type ModelListItem,
   type ModelSelection,
   type Run,
+  type SDKUserMessage,
   type SendOptions,
   type SettingSource,
 } from "@cursor/sdk";
@@ -18,6 +19,7 @@ import {
   type AgentSession,
   type McpServerSpec,
   type SessionOptions,
+  type TurnExtras,
 } from "@cerium/harness";
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Data, Effect, Queue, Stream } from "effect";
@@ -43,6 +45,14 @@ export const READ_ONLY_TOOLS = [
   "readTodos",
   "updateTodos",
 ];
+
+/** A turn's message: the text, with any images as base64. */
+const toUserMessage = (text: string, extras: TurnExtras | undefined): string | SDKUserMessage => {
+  const images = extras?.images ?? [];
+  return images.length === 0
+    ? text
+    : { text, images: images.map((image) => ({ data: image.data, mimeType: image.mediaType })) };
+};
 
 /** Command tools: `shell` (with its stdin writes) and the alternative `piBash` toolset's equivalent. */
 const COMMAND_TOOLS = ["shell", "piBash"];
@@ -185,7 +195,7 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
   const cancel = (run: Run) =>
     Effect.tryPromise({ try: () => run.cancel(), catch: failure("Could not interrupt the Cursor run") });
 
-  const runTurn = (text: string) =>
+  const runTurn = ({ text, extras }: { readonly text: string; readonly extras?: TurnExtras }) =>
     Effect.gen(function* () {
       const turn = randomUUID();
       const prompt =
@@ -198,7 +208,7 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
         onDelta: ({ update }) => emit({ type: "update", turn, update }),
       };
       const record = yield* Effect.tryPromise({
-        try: () => agent.send(prompt, sendOptions),
+        try: () => agent.send(toUserMessage(prompt, extras), sendOptions),
         catch: (cause) => new SendFailed({ cause }),
       }).pipe(
         Effect.tap((run) => {
@@ -221,7 +231,7 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
       emit(record);
     });
 
-  const input = yield* Queue.unbounded<string>();
+  const input = yield* Queue.unbounded<{ readonly text: string; readonly extras?: TurnExtras }>();
   yield* Effect.forkScoped(Effect.forever(Queue.take(input).pipe(Effect.flatMap(runTurn))));
 
   const reselect = (next: { readonly model?: string; readonly effort?: ReasoningEffort }) =>
@@ -235,8 +245,11 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
 
   return {
     events: Stream.fromQueue(events),
-    send: (text) =>
-      Effect.sync(() => pending++).pipe(Effect.andThen(Queue.offer(input, text)), Effect.asVoid),
+    send: (text, extras) =>
+      Effect.sync(() => pending++).pipe(
+        Effect.andThen(Queue.offer(input, { text, ...(extras ? { extras } : {}) })),
+        Effect.asVoid,
+      ),
     // Nothing is ever asked (see `toolRestrictions`), so there is no request to answer.
     respondToPermission: () => Effect.void,
     interrupt: Effect.suspend(() => {

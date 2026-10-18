@@ -188,7 +188,15 @@ function ConversationSample({ scale }: { scale: number }) {
       >
         <div className="flex flex-col gap-3">
           <div className="flex justify-end">
-            <UserMessage block={{ kind: "user", id: "sample:user", text: "Rename `greet` to `welcome`." }} />
+            <UserMessage
+              block={{
+                kind: "user",
+                id: "sample:user",
+                text: "Rename `greet` to `welcome`.",
+                attachments: [],
+                mentions: [],
+              }}
+            />
           </div>
           <ResponseHeader agent={{ provider: "claude", model: "Opus 5.5" }} />
           <ToolGroup tools={sampleTools} activity="idle" />

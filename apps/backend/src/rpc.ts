@@ -1,19 +1,47 @@
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
+import type { ProviderId, SkillInfo } from "@cerium/protocol";
 import { CeriumError, CeriumRpcs } from "@cerium/rpc";
-import { Effect, Layer, Option, Stream } from "effect";
+import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
+import { homedir } from "node:os";
+
+import { Projects } from "./project.ts";
+import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError) => new CeriumError({ message: error.message });
+const refuse = (error: OrchestratorError | WorkspaceError) => new CeriumError({ message: error.message });
+
+/** How many matches the `@` list shows. */
+const SEARCH_LIMIT = 50;
 
 const Handlers = CeriumRpcs.toLayer(
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     const adapters = yield* Adapters;
     const settings = yield* UserSettings;
+    const workspace = yield* Workspace;
+    const projects = yield* Projects;
+
+    // Claude only lists its skills from inside a session, which takes a few seconds to start; the
+    // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
+    const skills = yield* Cache.make({
+      capacity: 32,
+      timeToLive: "1 minute",
+      lookup: (key: string) => {
+        const split = key.indexOf(":");
+        const provider = key.slice(0, split) as ProviderId;
+        const cwd = key.slice(split + 1);
+        const adapter = adapters.get(provider);
+        return adapter?.listSkills === undefined
+          ? Effect.succeed<ReadonlyArray<SkillInfo>>([])
+          : adapter
+              .listSkills(cwd)
+              .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
+      },
+    });
 
     return CeriumRpcs.of({
       ListThreads: () =>
@@ -34,8 +62,13 @@ const Handlers = CeriumRpcs.toLayer(
       ThreadEvents: ({ threadId }) => orchestrator.threadEvents(threadId).pipe(Effect.mapError(refuse)),
       WatchEvents: () => orchestrator.events,
       CreateThread: (payload) => orchestrator.createThread(payload).pipe(Effect.mapError(refuse)),
-      SendMessage: ({ agentId, text }) =>
-        orchestrator.sendUserMessage(agentId, text).pipe(Effect.mapError(refuse)),
+      SendMessage: ({ agentId, text, attachments, mentions }) =>
+        orchestrator
+          .sendUserMessage(agentId, text, {
+            ...(attachments ? { attachments } : {}),
+            ...(mentions ? { mentions } : {}),
+          })
+          .pipe(Effect.mapError(refuse)),
       RespondToPermission: ({ agentId, requestId, decision, scope }) =>
         orchestrator
           .respondToPermission(agentId, requestId, { decision, scope })
@@ -67,6 +100,14 @@ const Handlers = CeriumRpcs.toLayer(
           Effect.flatMap((adapter) => adapter.listModels),
           Effect.mapError((error) => new CeriumError({ message: error.message })),
         ),
+      SearchWorkspace: ({ cwd, query }) =>
+        workspace.search(cwd, query, SEARCH_LIMIT).pipe(Effect.mapError(refuse)),
+      ListSkills: ({ provider, cwd }) => Cache.get(skills, `${provider}:${cwd ?? homedir()}`),
+      SaveAttachment: ({ name, mediaType, data }) =>
+        workspace.saveAttachment(name, mediaType, data).pipe(Effect.mapError(refuse)),
+      ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
+      GitBranch: ({ cwd }) => projects.branch(cwd).pipe(Effect.map((branch) => (branch ? { branch } : {}))),
+      ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
     });
@@ -90,7 +131,7 @@ const requireToken = (token: string) =>
     }),
   ).layer;
 
-/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings and an HttpRouter. */
+/** The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects and an HttpRouter. */
 export const rpcRoutes = (token: string) =>
   RpcServer.layer(CeriumRpcs).pipe(
     Layer.provide(Handlers),

@@ -15,6 +15,7 @@ import {
   type McpServerSpec,
   type PermissionDecision,
   type SessionOptions,
+  type TurnExtras,
 } from "@cerium/harness";
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
@@ -81,6 +82,24 @@ export const toSdkOptions = (
     ? { systemPrompt: { type: "preset", preset: "claude_code", append: options.appendSystemPrompt } }
     : {}),
 });
+
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+/** A user turn's content: plain text, or the images first and then the text, as Anthropic advises. */
+const toUserContent = (
+  text: string,
+  extras: TurnExtras | undefined,
+): SDKUserMessage["message"]["content"] => {
+  const images = extras?.images ?? [];
+  if (images.length === 0) return text;
+  return [
+    ...images.map((image) => ({
+      type: "image" as const,
+      source: { type: "base64" as const, media_type: image.mediaType as ImageMediaType, data: image.data },
+    })),
+    ...(text === "" ? [] : [{ type: "text" as const, text }]),
+  ];
+};
 
 const toPermissionResult = (
   decision: PermissionDecision,
@@ -190,10 +209,10 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
 
   return {
     events: Stream.merge(sdkEvents, Stream.fromQueue(sideEvents), { haltStrategy: "left" }),
-    send: (text) =>
+    send: (text, extras) =>
       Queue.offer(input, {
         type: "user",
-        message: { role: "user", content: text },
+        message: { role: "user", content: toUserContent(text, extras) },
         parent_tool_use_id: null,
       }).pipe(Effect.asVoid),
     respondToPermission: (requestId, decision) =>

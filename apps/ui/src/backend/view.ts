@@ -40,7 +40,7 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
     id: thread.id,
     title: thread.title,
     mode: thread.mode,
-    ...(thread.cwd ? { project: baseName(thread.cwd) } : {}),
+    ...(thread.cwd ? { project: baseName(thread.cwd), folder: thread.cwd } : {}),
     status,
     providers: ordered.map((agent) => agent.provider),
     unread: false,

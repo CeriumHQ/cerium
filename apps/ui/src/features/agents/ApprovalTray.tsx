@@ -80,7 +80,7 @@ export function ApprovalTray({
     <section
       ref={measure}
       aria-label="Agents waiting for you"
-      className="pointer-events-auto mx-auto flex max-h-[45vh] max-w-[42rem] flex-col gap-2 overflow-y-auto pb-2"
+      className="pointer-events-auto mx-auto flex max-h-[45vh] max-w-[46.2rem] flex-col gap-2 overflow-y-auto pb-2"
     >
       {waiting.map((agent) => (
         <AgentApproval key={agent.id} agent={agent} onAnswer={onAnswer} />

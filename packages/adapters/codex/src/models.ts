@@ -1,5 +1,5 @@
 import { HarnessFailure } from "@cerium/harness";
-import type { ModelInfo } from "@cerium/protocol";
+import type { ModelInfo, SkillInfo } from "@cerium/protocol";
 import { Effect } from "effect";
 
 import { ceriumEfforts, fromCodexEffort } from "./config.ts";
@@ -45,4 +45,28 @@ export const listCodexModels = Effect.fn("CodexAdapter.listModels")(function* (e
     ),
   );
   return models.map(toModelInfo);
+}, Effect.scoped);
+
+/** The enabled skills Codex finds for `cwd`. No thread is started. */
+export const listCodexSkills = Effect.fn("CodexAdapter.listSkills")(function* (
+  executablePath: string,
+  cwd: string,
+) {
+  const server = yield* connect(executablePath);
+  const { data } = yield* server
+    .request("skills/list", { cwds: [cwd] })
+    .pipe(
+      Effect.mapError(
+        (cause) => new HarnessFailure({ provider: "codex", message: "Could not list Codex skills", cause }),
+      ),
+    );
+  return data.flatMap((entry) =>
+    entry.skills
+      .filter((skill) => skill.enabled)
+      .map((skill): SkillInfo => ({
+        name: skill.name,
+        description: skill.shortDescription ?? skill.description,
+        path: skill.path,
+      })),
+  );
 }, Effect.scoped);

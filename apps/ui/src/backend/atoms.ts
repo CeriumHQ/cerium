@@ -14,7 +14,7 @@ const isDelta = (event: AgentEvent) =>
   event.payload._tag === "MessageDelta" || event.payload._tag === "ReasoningDelta";
 
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
-const activityAtom = Backend.runtime.atom(
+export const activityAtom = Backend.runtime.atom(
   liveEvents.pipe(
     resubscribe,
     Stream.filter((event) => !isDelta(event)),

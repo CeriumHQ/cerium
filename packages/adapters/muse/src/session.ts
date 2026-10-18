@@ -5,6 +5,7 @@ import {
   type AgentSession,
   type PermissionDecision,
   type SessionOptions,
+  type TurnExtras,
 } from "@cerium/harness";
 import type { ReasoningEffort } from "@cerium/protocol";
 import {
@@ -21,6 +22,7 @@ import type {
   Notification,
   SessionResumeResult,
   SessionStartResult,
+  TurnInputPart,
 } from "@muse-code/sdk/dist/src/msp.js";
 import { Cause, Data, Deferred, Effect, Queue, Schema, Stream } from "effect";
 
@@ -57,6 +59,19 @@ export type RecordedFrame =
   | WireNotification
   | { readonly cerium: "expectTurn"; readonly turnId: string }
   | { readonly cerium: "renameTurn"; readonly from: string; readonly to: string };
+
+/**
+ * A turn's parts: the text, then each image as base64. Skills stay in the text as `$name`: a `skill`
+ * part with a selector Muse doesn't know fails the whole turn.
+ */
+export const toTurnInput = (text: string, extras: TurnExtras | undefined): Array<TurnInputPart> => [
+  { type: "text", text },
+  ...(extras?.images ?? []).map((image): TurnInputPart => ({
+    type: "image",
+    base64Data: image.data,
+    mediaType: image.mediaType,
+  })),
+];
 
 /** Seams for the offline checks and the fixture recorder; Cerium itself never sets them. */
 export interface MuseHostOverrides {
@@ -378,7 +393,7 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
 
   return {
     events: Stream.fromQueue(events),
-    send: (text) =>
+    send: (text, extras) =>
       Effect.suspend(() => {
         // `turnId` is the submitting `commandId` for a fresh turn, so the turn is known before its frames.
         const commandId = connection.mintCommandId();
@@ -386,7 +401,7 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
         overrides.record?.({ cerium: "expectTurn", turnId: commandId });
         return command(
           "turn/start",
-          { sessionId, input: [{ type: "text", text }], ifBusy: "queue" },
+          { sessionId, input: toTurnInput(text, extras), ifBusy: "queue" },
           commandId,
         ).pipe(
           Effect.map((ack) => {

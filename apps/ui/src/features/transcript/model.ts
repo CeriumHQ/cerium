@@ -1,10 +1,16 @@
-import type { AccessMode, AgentEvent, InputItem, ProviderId } from "@cerium/protocol";
+import type { AccessMode, AgentEvent, Attachment, InputItem, Mention, ProviderId } from "@cerium/protocol";
 
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
 
 export type TranscriptBlock =
-  | { readonly kind: "user"; readonly id: string; readonly text: string }
+  | {
+      readonly kind: "user";
+      readonly id: string;
+      readonly text: string;
+      readonly attachments: ReadonlyArray<Attachment>;
+      readonly mentions: ReadonlyArray<Mention>;
+    }
   | { readonly kind: "notice"; readonly id: string; readonly item: Exclude<InputItem, { _tag: "FromUser" }> }
   | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
   | { readonly kind: "reasoning"; readonly id: string; readonly text: string; readonly streaming: boolean }
@@ -76,7 +82,13 @@ export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArra
           const key = `${id}:${index}`;
           blocks.push(
             item._tag === "FromUser"
-              ? { kind: "user", id: key, text: item.text }
+              ? {
+                  kind: "user",
+                  id: key,
+                  text: item.text,
+                  attachments: item.attachments ?? [],
+                  mentions: item.mentions ?? [],
+                }
               : { kind: "notice", id: key, item },
           );
         });

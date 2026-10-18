@@ -5,6 +5,7 @@ export {
   type SpawnApproval,
   type SpawnOutcome,
   type SpawnRequest,
+  type UserMessageExtras,
 } from "./orchestrator.ts";
 export {
   Adapters,

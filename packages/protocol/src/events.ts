@@ -93,9 +93,45 @@ export const AgentError = Schema.TaggedStruct("AgentError", {
 
 // Orchestrator events: emitted by Cerium itself into an agent's log, never by adapters.
 
+/** A file sent with a message: the user's own file, or Cerium's copy of something pasted. */
+export const Attachment = Schema.Struct({
+  /** Absolute path on disk. */
+  path: Schema.NonEmptyString,
+  /** The name the user saw, such as `image.png` for a pasted screenshot. */
+  name: Schema.NonEmptyString,
+  mediaType: Schema.String,
+});
+export type Attachment = typeof Attachment.Type;
+
+/**
+ * Something the user tagged in the message box. The message's text carries each as a token (see
+ * `mentionToken`), which agents read and the transcript shows as a chip.
+ */
+export const Mention = Schema.Union([
+  Schema.TaggedStruct("FileMention", {
+    /** Relative to the thread's folder, with forward slashes and no trailing one. */
+    path: Schema.NonEmptyString,
+    folder: Schema.Boolean,
+  }),
+  Schema.TaggedStruct("SkillMention", {
+    name: Schema.NonEmptyString,
+    /** The skill's definition file, when its harness reports one. */
+    path: Schema.optionalKey(Schema.NonEmptyString),
+  }),
+]);
+export type Mention = typeof Mention.Type;
+
+/** How a mention reads in the message: `@path` for a file, `@path/` for a folder, `$name` for a skill. */
+export const mentionToken = (mention: Mention): string =>
+  mention._tag === "FileMention" ? `@${mention.path}${mention.folder ? "/" : ""}` : `$${mention.name}`;
+
 /** Something Cerium delivered to an agent as the start of a turn. */
 export const InputItem = Schema.Union([
-  Schema.TaggedStruct("FromUser", { text: Schema.String }),
+  Schema.TaggedStruct("FromUser", {
+    text: Schema.String,
+    attachments: Schema.optionalKey(Schema.Array(Attachment)),
+    mentions: Schema.optionalKey(Schema.Array(Mention)),
+  }),
   Schema.TaggedStruct("ChildFinishedTurn", {
     agentId: AgentId,
     role: Schema.NonEmptyString,

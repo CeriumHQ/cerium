@@ -4,6 +4,7 @@ import {
   type AgentSession,
   type PermissionDecision,
   type SessionOptions,
+  type TurnExtras,
 } from "@cerium/harness";
 import type { ReasoningEffort } from "@cerium/protocol";
 import { Clock, Deferred, Effect, Queue, Stream, type Cause } from "effect";
@@ -13,11 +14,24 @@ import { accessPolicy, threadParams, toCodexEffort, type UserConfig } from "./co
 import { listAllModels } from "./models.ts";
 import type { ServerNotification } from "./protocol/ServerNotification.ts";
 import type { ServerRequest } from "./protocol/ServerRequest.ts";
+import type { UserInput } from "./protocol/v2/UserInput.ts";
 import { connect, type AppServer, type RpcError } from "./rpc.ts";
 import { CodexTranslator } from "./translate.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "codex", message, cause });
+
+/**
+ * A turn's input as Codex's own UI sends it: the text, which names skills as `$name`, then the
+ * images by path and each skill whose file Codex reported.
+ */
+export const toUserInput = (text: string, extras: TurnExtras | undefined): Array<UserInput> => [
+  { type: "text", text, text_elements: [] },
+  ...(extras?.images ?? []).map((image): UserInput => ({ type: "localImage", path: image.path })),
+  ...(extras?.skills ?? []).flatMap((skill): Array<UserInput> =>
+    skill.path === undefined ? [] : [{ type: "skill", name: skill.name, path: skill.path }],
+  ),
+];
 
 /** The parts of the user's effective Codex config a thread needs. Nothing else from it is kept. */
 const readUserConfig = (server: AppServer, cwd: string) =>
@@ -237,13 +251,13 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
       yield* emit({ _tag: "TurnCompleted", stopReason: "error" }, error.response);
     });
 
-  const send = (text: string) =>
+  const send = (text: string, extras?: TurnExtras) =>
     Effect.gen(function* () {
       const turnModel = nextModel ?? model;
       starting = true;
       const started = yield* server.request("turn/start", {
         threadId,
-        input: [{ type: "text", text, text_elements: [] }],
+        input: toUserInput(text, extras),
         // Overrides apply to this turn and the ones after it.
         ...(nextModel === undefined ? {} : { model: nextModel }),
         ...(nextEffort === undefined ? {} : { effort: effortFor(turnModel, nextEffort) }),

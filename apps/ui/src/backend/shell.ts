@@ -14,6 +14,10 @@ export interface ShellBridge {
    */
   readonly backendConnection?: () => Promise<BackendConnection | undefined>;
   readonly pickFolder?: () => Promise<string | undefined>;
+  /** Where a pasted or dropped file lives on disk; undefined for one that only exists in memory. */
+  readonly pathForFile?: (file: File) => string | undefined;
+  /** Shows a file or folder (absolute path) in the system's file manager. */
+  readonly revealPath?: (path: string) => Promise<void>;
   /**
    * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether
    * that means dark colours, which for "system" is Windows' own choice.

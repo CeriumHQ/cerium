@@ -1,0 +1,68 @@
+import { CircleAlert, LoaderCircle, X } from "lucide-react";
+
+import { FileIcon } from "../../components/FileIcon.tsx";
+import { ImageThumb } from "../../components/ImageThumb.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import type { DraftAttachment } from "./draft.ts";
+
+/** The files attached to the draft, above its text: images as thumbnails, other files as cards. */
+export function AttachmentTray({
+  attachments,
+  onRemove,
+  onHeight,
+}: {
+  attachments: ReadonlyArray<DraftAttachment>;
+  onRemove: (id: string) => void;
+  /** Reports the space the tray adds to the message box, so the transcript can keep its end clear of it. */
+  onHeight?: ((height: number) => void) | undefined;
+}) {
+  const measure = (element: HTMLDivElement | null) => {
+    if (element === null) return;
+    const observer = new ResizeObserver(() => onHeight?.(element.offsetHeight));
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onHeight?.(0);
+    };
+  };
+  return (
+    <div ref={measure} className="flex flex-wrap gap-2 px-3 pt-3">
+      {attachments.map((attachment) => (
+        <div key={attachment.id} className="group/tile relative">
+          {attachment.preview ? (
+            <ImageThumb url={attachment.preview} name={attachment.name} className="size-14" />
+          ) : (
+            <div className="flex h-14 max-w-52 items-center gap-2 rounded-lg border border-line-subtle bg-surface-hover pr-3 pl-2.5">
+              <FileIcon path={attachment.name} className="size-6" />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-[12.5px] font-medium text-fg-primary">{attachment.name}</span>
+                <span className="text-2xs text-fg-tertiary uppercase">
+                  {attachment.name.includes(".") ? attachment.name.split(".").at(-1) : "File"}
+                </span>
+              </div>
+            </div>
+          )}
+          {attachment.state._tag === "Preparing" ? (
+            <span className="pointer-events-none absolute inset-0 grid place-items-center rounded-lg bg-scrim">
+              <LoaderCircle size={16} className="animate-spin text-fg-primary" />
+            </span>
+          ) : attachment.state._tag === "Failed" ? (
+            <Tooltip label={attachment.state.message} side="top">
+              <span className="absolute inset-0 grid place-items-center rounded-lg border border-error/60 bg-scrim text-error">
+                <CircleAlert size={16} strokeWidth={2} />
+              </span>
+            </Tooltip>
+          ) : null}
+          <button
+            type="button"
+            aria-label={`Remove ${attachment.name}`}
+            onClick={() => onRemove(attachment.id)}
+            className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full border border-line-strong bg-surface-overlay text-fg-secondary opacity-0 shadow-raised transition-opacity group-hover/tile:opacity-100 hover:text-fg-primary focus-visible:opacity-100"
+          >
+            <X size={11} strokeWidth={2.5} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -18,6 +18,8 @@ import { HttpRouter } from "effect/http";
 import { join } from "node:path";
 
 import { rpcRoutes } from "./rpc.ts";
+import { Projects } from "./project.ts";
+import { Workspace } from "./workspace.ts";
 
 export interface BackendOptions {
   /** Where Cerium keeps its database and chat-thread folders (the app's user-data directory). */
@@ -101,6 +103,8 @@ export const backendLayer = (options: BackendOptions) =>
     disableLogger: true,
   }).pipe(
     Layer.provideMerge(Orchestrator.layer),
+    Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
+    Layer.provideMerge(Projects.layer),
     Layer.provideMerge(BusRegistryLive),
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(

@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/red-hat-text";
+@import "@fontsource-variable/red-hat-mono";
 @import "./tokens.css";
 @import "streamdown/styles.css";
 @import "./markdown.css";
@@ -19,6 +19,8 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
+  /* Red Hat's x-height is 0.488 em; scaling it to 0.53 keeps every size reading as it was tuned. */
+  font-size-adjust: ex-height 0.53;
   color: var(--fg-primary);
   background: transparent;
   -webkit-font-smoothing: antialiased;
