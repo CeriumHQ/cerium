@@ -105,7 +105,7 @@ export function AgentSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessI
 
       <SettingsSection
         title="Access"
-        description="What the lead of a new work thread may do in its folder. Chats are always read only, and agents it starts never get more than it has."
+        description="What the lead of every new work thread may do in its folder, Auto unless you change it here. A pick in the composer covers just the thread it starts. Chats are always read only, and agents a lead starts never get more than it has."
       >
         <AccessPicker value={access} onChange={setAccess} />
       </SettingsSection>

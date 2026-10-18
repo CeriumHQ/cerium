@@ -78,8 +78,12 @@ export const effortAtom = preference<ReasoningEffort>(
   Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>,
   "high",
 );
+/**
+ * The access every new work thread starts with. Only Settings changes it: a pick in the composer
+ * covers the one thread it starts. Kept under a new key, so earlier remembered picks don't carry over.
+ */
 export const accessAtom = preference<AccessMode>(
-  "cerium:access",
+  "cerium:defaultAccess",
   accessOptions.map((option) => option.value),
-  "ask",
+  "auto",
 );

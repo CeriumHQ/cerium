@@ -151,11 +151,13 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
   const save = useAtomSet(saveAttachment, { mode: "promise" });
-  // New threads start with the model, effort and access the last one was given, which are also the
-  // defaults in settings.
+  // New threads start with the model and effort the last one was given, which are also the defaults
+  // in settings. Access always starts from the settings default; a pick here covers this thread only.
   const [modelId, setModelId] = useAtom(modelAtom);
   const [effort, setEffort] = useAtom(effortAtom);
-  const [access, setAccess] = useAtom(accessAtom);
+  const defaultAccess = useAtomValue(accessAtom);
+  const [accessPick, setAccess] = useState<AccessMode>();
+  const access = accessPick ?? defaultAccess;
   const sendKey = useAtomValue(sendKeyAtom);
   const choose =
     <A extends string>(set: (value: A) => void) =>
@@ -308,6 +310,8 @@ export function Composer({
         for (const attachment of sent.attachments) {
           if (attachment.preview) URL.revokeObjectURL(attachment.preview);
         }
+        // The next new thread starts from the default access again.
+        if (isNew) setAccess(undefined);
         return;
       }
       // Give an undelivered message back, unless the user has started writing another.
