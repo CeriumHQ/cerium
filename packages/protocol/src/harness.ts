@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { ProviderId } from "./ids.ts";
+import { AccessMode } from "./orchestration.ts";
 
 /** How the installed harness version relates to the adapter's tested range. */
 export const VersionStatus = Schema.Literals(["supported", "untested", "tooOld"]);
@@ -31,12 +32,31 @@ export const HarnessMissing = Schema.TaggedStruct("HarnessMissing", {
   installHint: Schema.NonEmptyString,
 });
 
+/**
+ * A one-time step the harness needs on this machine before its agents can run commands in some access
+ * modes, such as Muse's Windows sandbox. Cerium tells the user and shows the harness's own command.
+ */
+export const HarnessSetup = Schema.Struct({
+  /** What the step sets up, e.g. "Windows sandbox". */
+  name: Schema.NonEmptyString,
+  /** The harness's own words for what is missing. */
+  reason: Schema.NonEmptyString,
+  /** The harness's command that does the step. */
+  command: Schema.NonEmptyString,
+  /** The command must run in a terminal opened as administrator. */
+  elevated: Schema.Boolean,
+  /** The access modes whose commands fail until it's done. */
+  blocks: Schema.Array(AccessMode),
+});
+export type HarnessSetup = typeof HarnessSetup.Type;
+
 export const HarnessInstalled = Schema.TaggedStruct("HarnessInstalled", {
   provider: ProviderId,
   executablePath: Schema.NonEmptyString,
   version: Schema.NonEmptyString,
   versionStatus: VersionStatus,
   auth: AuthStatus,
+  setup: Schema.optionalKey(HarnessSetup),
 });
 
 /** How a browser sign-in is going, as the harness's SDK reports it. */

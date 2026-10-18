@@ -6,6 +6,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { openHost, query } from "./host.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
+import { sandboxProblem, sandboxSetup } from "./policy.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "muse", message, cause });
@@ -111,6 +112,7 @@ export const probeMuse = Effect.gen(function* () {
     });
   }
 
+  const setup = process.platform === "win32" ? yield* checkWindowsSandbox(executable.value) : undefined;
   return {
     _tag: "HarnessInstalled",
     provider: "muse",
@@ -118,5 +120,22 @@ export const probeMuse = Effect.gen(function* () {
     version,
     versionStatus: classifyVersion(version, museManifest.harnessVersion),
     auth: yield* readMuseAuth(executable.value),
+    ...(setup === undefined ? {} : { setup }),
   } satisfies HarnessStatus;
 });
+
+/**
+ * Muse's own `sandbox windows check` (about 0.1 s): the setup its sandbox still needs, if any. Trouble
+ * asking reads as nothing to do, so the check never keeps Muse from starting.
+ */
+const checkWindowsSandbox = (executable: string) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const problem = sandboxProblem(
+      yield* spawner.string(ChildProcess.make(executable, ["sandbox", "windows", "check"])),
+    );
+    return problem === undefined ? undefined : sandboxSetup(problem);
+  }).pipe(
+    Effect.timeout("10 seconds"),
+    Effect.orElseSucceed(() => undefined),
+  );

@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import type { HarnessStatus, ProviderId } from "@cerium/protocol";
+import type { HarnessSetup, HarnessStatus, ProviderId } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
@@ -8,6 +8,7 @@ import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { accessOptions } from "../composer/models.ts";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
@@ -124,6 +125,10 @@ function HarnessRow({
               <State tone="attention" dot>
                 Not logged in
               </State>
+            ) : status.setup ? (
+              <State tone="attention" dot>
+                Needs setup
+              </State>
             ) : (
               <State tone="success" dot>
                 Ready
@@ -183,6 +188,28 @@ function InstalledDetails({ status, onSignedIn }: { status: Installed; onSignedI
       {auth._tag === "LoggedOut" && auth.browserLogin ? (
         <BrowserSignIn provider={status.provider} onSignedIn={onSignedIn} />
       ) : null}
+      {auth._tag === "LoggedIn" && status.setup ? (
+        <SetupNeeded provider={status.provider} setup={status.setup} />
+      ) : null}
+    </div>
+  );
+}
+
+/** A one-time step the harness needs before some access modes can run commands, with its own command. */
+function SetupNeeded({ provider, setup }: { provider: ProviderId; setup: HarnessSetup }) {
+  const modes = accessOptions
+    .filter((option) => setup.blocks.includes(option.value))
+    .map((option) => option.label);
+  const listed = modes.length > 1 ? `${modes.slice(0, -1).join(", ")} and ${modes.at(-1)}` : (modes[0] ?? "");
+  return (
+    <div className="mt-1 flex flex-col gap-1.5">
+      <p className="leading-relaxed text-fg-secondary">
+        Agents in {listed} can't run commands until {harnessName[provider]}'s {setup.name} is set up
+        <span className="text-fg-tertiary"> ({setup.reason})</span>. Run this once
+        {setup.elevated ? " in a terminal opened as administrator" : ""}, then check again. Full access works
+        without it.
+      </p>
+      <Command text={setup.command} />
     </div>
   );
 }

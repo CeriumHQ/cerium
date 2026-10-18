@@ -1,5 +1,7 @@
+import { HarnessSetup } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
+import { Schema } from "effect";
 import type { ApprovalChoice, ApprovalRequestParams } from "@muse-code/sdk/dist/src/msp.js";
 
 import {
@@ -14,6 +16,7 @@ import {
   runsSandboxed,
   sandboxInstructions,
   sandboxProblem,
+  sandboxSetup,
   serveArgs,
   toMuseEffort,
   toSessionMcp,
@@ -41,6 +44,17 @@ describe("Muse's Windows sandbox", () => {
     expect(sandboxProblem("status=unsupported")).toBe("unsupported");
     expect(sandboxProblem("backend=windows_elevated\nstatus=ready")).toBeUndefined();
     expect(sandboxProblem("something else entirely")).toBeUndefined();
+  });
+
+  it("reports the setup for Settings: Muse's own command, as administrator, for the sandboxed modes", () => {
+    const setup = sandboxSetup("sandbox users are not ready");
+    expect(Schema.decodeUnknownSync(HarnessSetup)(setup)).toEqual({
+      name: "Windows sandbox",
+      reason: "sandbox users are not ready",
+      command: "muse sandbox windows setup",
+      elevated: true,
+      blocks: ["ask", "acceptEdits", "auto"],
+    });
   });
 
   it("tells the agent to stop retrying and pass on the fix", () => {

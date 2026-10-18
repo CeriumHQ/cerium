@@ -41,6 +41,8 @@ interface SidebarProps {
 export interface HarnessIndicator {
   readonly provider: ProviderId;
   readonly state: "ready" | "loggedOut" | "missing" | "unsupported";
+  /** Ready, but some access modes can't run commands until a one-time setup (Settings → Harnesses). */
+  readonly needsSetup?: boolean;
 }
 
 export function Sidebar({
@@ -286,8 +288,12 @@ function SidebarFooter({
         className="max-md:size-10"
       />
       <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
-        {harnesses.map(({ provider, state }) => (
-          <Tooltip key={provider} side="top" label={`${providerName[provider]}: ${harnessState[state]}`}>
+        {harnesses.map(({ provider, state, needsSetup = false }) => (
+          <Tooltip
+            key={provider}
+            side="top"
+            label={`${providerName[provider]}: ${needsSetup ? "needs a one-time setup to run commands" : harnessState[state]}`}
+          >
             <Button
               onClick={() => onOpenSettings("harnesses")}
               aria-label={`${providerName[provider]} status`}
@@ -301,7 +307,7 @@ function SidebarFooter({
                 size={14}
                 {...(state === "ready" ? {} : { className: "opacity-35 grayscale" })}
               />
-              {state === "loggedOut" ? (
+              {state === "loggedOut" || needsSetup ? (
                 <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-attention" />
               ) : null}
             </Button>

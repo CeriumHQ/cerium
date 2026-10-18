@@ -331,7 +331,8 @@ function Workspace() {
     const status = harnesses.find((candidate) => candidate.provider === provider);
     if (status === undefined) return { provider, state: "unsupported" };
     if (status._tag === "HarnessMissing") return { provider, state: "missing" };
-    return { provider, state: status.auth._tag === "LoggedIn" ? "ready" : "loggedOut" };
+    if (status.auth._tag === "LoggedOut") return { provider, state: "loggedOut" };
+    return { provider, state: "ready", ...(status.setup ? { needsSetup: true } : {}) };
   });
   const available = new Set(
     indicators.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])),

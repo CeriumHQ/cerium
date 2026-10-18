@@ -1,5 +1,5 @@
 import { compareVersions, type McpServerSpec, type PermissionDecision } from "@cerium/harness";
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, HarnessSetup, ReasoningEffort } from "@cerium/protocol";
 import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
 import type {
   ApprovalChoice,
@@ -53,8 +53,20 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
 };
 
 /** Modes whose commands run inside Muse's OS sandbox: every mode with a shell but Full access. */
-export const runsSandboxed = (access: AccessMode): boolean =>
-  access === "ask" || access === "acceptEdits" || access === "auto";
+const SANDBOXED: ReadonlyArray<AccessMode> = ["ask", "acceptEdits", "auto"];
+export const runsSandboxed = (access: AccessMode): boolean => SANDBOXED.includes(access);
+
+/** Muse's own one-time setup of its Windows sandbox, which needs an administrator terminal. */
+export const SANDBOX_SETUP_COMMAND = "muse sandbox windows setup";
+
+/** What the probe reports while the sandbox isn't set up. */
+export const sandboxSetup = (problem: string): HarnessSetup => ({
+  name: "Windows sandbox",
+  reason: problem,
+  command: SANDBOX_SETUP_COMMAND,
+  elevated: true,
+  blocks: SANDBOXED,
+});
 
 /**
  * What `muse sandbox windows check` says is wrong, from its `key=value` lines, or nothing when commands
@@ -79,12 +91,12 @@ export const sandboxProblem = (output: string): string | undefined => {
 export const sandboxInstructions = (problem: string): string =>
   `Your shell tool cannot run commands on this computer: Muse's Windows sandbox is not set up (${problem}).` +
   " Do not retry commands. Do what you can without them, and tell the user that commands need a one-time" +
-  " `muse sandbox windows setup` in a terminal opened as administrator, or Full access for this thread.";
+  ` \`${SANDBOX_SETUP_COMMAND}\` in a terminal opened as administrator, or Full access for this thread.`;
 
 /** The same, for the user. */
 export const sandboxNotice = (problem: string): string =>
-  `Muse can't run commands here yet: its Windows sandbox isn't set up (${problem}). Run \`muse sandbox windows setup\`` +
-  " once in a terminal opened as administrator, or give this thread Full access.";
+  `Muse can't run commands here yet: its Windows sandbox isn't set up (${problem}). Run \`${SANDBOX_SETUP_COMMAND}\`` +
+  " once in a terminal opened as administrator, or give this thread Full access. Settings → Harnesses shows how.";
 
 /**
  * Per-host settings for every Cerium session. Cerium's bus is the only way to spawn (architecture §3.1):

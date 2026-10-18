@@ -5,11 +5,11 @@ import {
   type SessionOptions,
 } from "@cerium/harness";
 import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
-import { runsSandboxed, sandboxInstructions, sandboxNotice, sandboxProblem } from "./policy.ts";
+import { sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { startMuseSession } from "./session.ts";
 
@@ -25,7 +25,7 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
       >();
       const probe = probeMuse.pipe(Effect.provide(platform));
 
-      /** The installed executable, once it is known to be usable. */
+      /** The installed harness, once it is known to be usable. */
       const ready = Effect.gen(function* () {
         const status = yield* probe;
         if (status._tag === "HarnessMissing") {
@@ -49,29 +49,13 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
             message: `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`,
           });
         }
-        return status.executablePath;
+        return status;
       });
 
-      /** Why Muse's Windows sandbox can't run commands, if it can't; any trouble asking reads as fine. */
-      const checkSandbox = (executable: string) =>
-        Effect.gen(function* () {
-          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-          const output = yield* spawner.string(
-            ChildProcess.make(executable, ["sandbox", "windows", "check"]),
-          );
-          return sandboxProblem(output);
-        }).pipe(
-          Effect.timeout("10 seconds"),
-          Effect.orElseSucceed(() => undefined),
-          Effect.provide(platform),
-        );
-
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
-        const executable = yield* ready;
-        const problem =
-          process.platform === "win32" && runsSandboxed(options.access)
-            ? yield* checkSandbox(executable)
-            : undefined;
+        const { executablePath: executable, setup } = yield* ready;
+        // Commands in this mode would fail until the sandbox is set up: tell the agent and the user.
+        const problem = setup?.blocks.includes(options.access) ? setup.reason : undefined;
         if (problem === undefined) return yield* startMuseSession(executable, options);
         const session = yield* startMuseSession(executable, {
           ...options,
@@ -89,7 +73,7 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         provider: "muse",
         manifest: museManifest,
         probe,
-        listModels: ready.pipe(Effect.flatMap(listMuseModels)),
+        listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
         startSession,
       });
     }),
