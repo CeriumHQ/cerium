@@ -1,11 +1,12 @@
 import { Button } from "@base-ui/react/button";
-import type { AccessMode, ProviderId } from "@cerium/protocol";
+import type { AccessMode } from "@cerium/protocol";
 import {
   Check,
-  Ellipsis,
+  CircleStop,
   Eye,
   FilePen,
   MessageSquareText,
+  Pause,
   ShieldCheck,
   ShieldOff,
   ShieldQuestion,
@@ -13,24 +14,26 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
-import { shortAgo } from "../../lib/time.ts";
+import { whenAgo } from "../../lib/time.ts";
 import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
-import { AgentMenuArea, AgentMenuItems, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
-import { AgentApproval, type AnswerApproval } from "./ApprovalTray.tsx";
+import { Markdown } from "../transcript/Markdown.tsx";
+import { AgentMenuArea, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
+import { AgentApproval, LeadSpawnRequest, type AnswerApproval, type AnswerSpawn } from "./ApprovalTray.tsx";
 import {
   accessLabel,
   agentMenuPlan,
   displayState,
-  displayStateLabel,
-  hasAgentMenu,
+  stateLabel,
+  statusCounts,
+  threadUsage,
   type AgentSummary,
 } from "./model.ts";
 
@@ -54,7 +57,17 @@ interface InspectorProps {
   readonly onStop?: (agentId: string) => void;
   /** Answers a request a child is waiting on; the lead's own are answered in the transcript. */
   readonly onAnswerApproval?: AnswerApproval;
+  /** Answers the lead's request to start an agent. */
+  readonly onAnswerSpawn?: AnswerSpawn;
 }
+
+const statusWords = {
+  needsYou: (count: number) => (count === 1 ? "1 needs you" : `${count} need you`),
+  running: (count: number) => `${count} working`,
+  failed: (count: number) => `${count} failed`,
+} as const;
+
+const statusTone = { needsYou: "text-attention", running: "text-fg-tertiary", failed: "text-error" } as const;
 
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
 export function Inspector({
@@ -66,24 +79,60 @@ export function Inspector({
   onInterrupt,
   onStop,
   onAnswerApproval,
+  onAnswerSpawn,
 }: InspectorProps) {
+  const root = useRef<HTMLDivElement>(null);
+  const details = useRef<HTMLElement>(null);
+  // Esc closes the panel while focus is inside it, unless a menu or dialog there used the key first.
+  const onEscape = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (event.key === "Escape" && !event.defaultPrevented && root.current?.contains(document.activeElement)) {
+      onClose();
+    }
+  });
+  useEffect(() => {
+    const listener = (event: globalThis.KeyboardEvent) => onEscape(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
   const lead = agents.find((agent) => agent.parentId === undefined);
   if (lead === undefined) return null;
   const children = agents.filter((agent) => agent.parentId === lead.id);
   const selected = agents.find((agent) => agent.id === selectedId) ?? lead;
+  const solo = children.length === 0;
   const actions: AgentActions = {
     ...(onMessageLead ? { onMessageLead } : {}),
     ...(onInterrupt ? { onInterrupt } : {}),
     ...(onStop ? { onStop } : {}),
   };
 
+  // With many agents the details sit below the screen: bring them up once one is picked.
+  const pick = (agentId: string) => {
+    onSelect(agentId);
+    requestAnimationFrame(() =>
+      details.current?.scrollIntoView({
+        block: "nearest",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      }),
+    );
+  };
+
+  const counts = statusCounts(agents);
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 max-md:pl-4">
+    <div ref={root} className="flex h-full flex-col">
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 max-md:pl-4">
         <span className="text-[13px] font-medium text-fg-primary max-md:text-[15px] max-md:font-semibold">
-          Agents
+          {solo ? "Agent" : "Agents"}
         </span>
-        <span className="text-xs text-fg-tertiary tabular-nums max-md:text-[13px]">{agents.length}</span>
+        {solo ? null : (
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs tabular-nums max-md:text-[13px]">
+            {counts.map(({ state, count }) => (
+              <span key={state} className={statusTone[state]}>
+                {statusWords[state](count)}
+              </span>
+            ))}
+          </span>
+        )}
         <IconButton
           icon={X}
           label="Close"
@@ -94,27 +143,32 @@ export function Inspector({
       </header>
 
       <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-px p-1.5" role="tree" aria-label="Agents">
-          <AgentRow agent={lead} selected={selected.id === lead.id} onSelect={onSelect} actions={actions} />
-          {children.map((child, index) => (
-            <AgentRow
-              key={child.id}
-              agent={child}
-              selected={selected.id === child.id}
-              onSelect={onSelect}
-              actions={actions}
-              branch={index === children.length - 1 ? "last" : "middle"}
-            />
-          ))}
-        </div>
+        {solo ? null : (
+          <ul aria-label="Agents" className="flex flex-col gap-px p-1.5">
+            <AgentRow agent={lead} selected={selected.id === lead.id} onSelect={pick} actions={actions} />
+            {children.map((child, index) => (
+              <AgentRow
+                key={child.id}
+                agent={child}
+                selected={selected.id === child.id}
+                onSelect={pick}
+                actions={actions}
+                branch={index === children.length - 1 ? "last" : "middle"}
+              />
+            ))}
+          </ul>
+        )}
 
         <AgentDetails
+          ref={details}
           agent={selected}
           actions={actions}
+          bare={solo}
           {...(selected.id === lead.id && onMessageLead ? { onMessage: onMessageLead } : {})}
           {...(selected.id !== lead.id && onAnswerApproval ? { onAnswerApproval } : {})}
+          {...(selected.id === lead.id && onAnswerSpawn ? { onAnswerSpawn } : {})}
         />
-        <UsageSummary agents={agents} />
+        {solo ? null : <ThreadUsage agents={agents} />}
       </ScrollArea>
     </div>
   );
@@ -135,43 +189,48 @@ function AgentRow({
   branch?: "middle" | "last";
 }) {
   return (
-    <AgentMenuArea agent={agent} actions={actions}>
-      <Button
-        role="treeitem"
-        aria-selected={selected}
-        onClick={() => onSelect(agent.id)}
-        className={`relative flex h-8 items-center gap-2 rounded-md pr-2 text-left text-[12.5px] transition-colors data-popup-open:bg-surface-hover ${
-          branch ? "pl-7" : "pl-2"
-        } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
-      >
-        {branch ? (
-          <>
-            <span
-              className={`absolute left-[15px] w-px bg-line-strong ${branch === "last" ? "top-0 h-1/2" : "inset-y-0"}`}
-            />
-            <span className="absolute top-1/2 left-[15px] h-px w-2 bg-line-strong" />
-          </>
-        ) : null}
-        <ProviderLogo provider={agent.provider} size={13} />
-        <span className="shrink-0 font-medium text-fg-primary">
-          {agent.parentId === undefined ? "Lead" : agent.role}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-fg-tertiary">{agent.model}</span>
-        <StateBadge agent={agent} />
-      </Button>
-    </AgentMenuArea>
+    <li>
+      <AgentMenuArea agent={agent} actions={actions}>
+        <Button
+          aria-current={selected ? "true" : undefined}
+          onClick={() => onSelect(agent.id)}
+          className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-[12.5px] transition-colors data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] ${
+            branch ? "pl-7" : "pl-2"
+          } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
+        >
+          {branch ? (
+            <>
+              <span
+                className={`absolute left-[15px] w-px bg-line-strong ${branch === "last" ? "top-0 h-1/2" : "inset-y-0"}`}
+              />
+              <span className="absolute top-1/2 left-[15px] h-px w-2 bg-line-strong" />
+            </>
+          ) : null}
+          <ProviderLogo provider={agent.provider} size={13} />
+          <span className="shrink-0 font-medium text-fg-primary">
+            {agent.parentId === undefined ? "Lead" : agent.role}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-fg-tertiary">{agent.model}</span>
+          <StateBadge agent={agent} />
+        </Button>
+      </AgentMenuArea>
+    </li>
   );
 }
 
-function StateBadge({ agent }: { agent: AgentSummary }) {
+function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boolean }) {
   const state = displayState(agent);
-  // A child that went idle has delivered its result: that reads as done.
   const finished = state === "idle" && agent.parentId !== undefined;
-  const label = finished ? "Done" : displayStateLabel[state];
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 text-2xs ${
-        state === "needsYou" ? "text-attention" : state === "failed" ? "text-error" : "text-fg-tertiary"
+      className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-[12.5px] max-md:text-[14px]" : "text-2xs max-md:text-xs"} ${
+        state === "needsYou"
+          ? "text-attention"
+          : state === "failed"
+            ? "text-error"
+            : plain
+              ? "text-fg-primary"
+              : "text-fg-tertiary"
       }`}
     >
       {state === "running" ? (
@@ -192,106 +251,138 @@ function StateBadge({ agent }: { agent: AgentSummary }) {
       ) : (
         <span className="size-1.5 rounded-full bg-fg-disabled" />
       )}
-      {label}
+      {stateLabel(agent)}
     </span>
   );
 }
 
+const actionButton =
+  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] transition-colors max-md:h-10 max-md:px-3.5 max-md:text-[14px]";
+
 function AgentDetails({
+  ref,
   agent,
   actions,
+  bare,
   onMessage,
   onAnswerApproval,
+  onAnswerSpawn,
 }: {
+  ref: React.Ref<HTMLElement>;
   agent: AgentSummary;
   actions: AgentActions;
+  /** The only agent: no list names it or its state, so the details do. */
+  bare: boolean;
   /** Absent where Cerium can't message this agent from here yet. */
   onMessage?: () => void;
   onAnswerApproval?: AnswerApproval;
+  onAnswerSpawn?: AnswerSpawn;
 }) {
   const AccessIcon = accessIcon[agent.access];
   const [confirmingStop, setConfirmingStop] = useState(false);
-  const ended = agent.state === "stopped" || agent.state === "failed";
-  // The Message button sits beside "More actions", so its menu leaves Message out.
-  const plan = agentMenuPlan(agent, { card: false, canMessage: false });
+  const failed = agent.state === "failed";
+  const ended = failed || agent.state === "stopped";
+  const plan = agentMenuPlan(agent, { card: false, canMessage: onMessage !== undefined });
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   const reported = inputTokens + outputTokens > 0;
-  const started = shortAgo(agent.startedAt);
+  // The lead's own requests are answered in the conversation, so the panel points there.
+  const asksInConversation = agent.parentId === undefined && agent.approvals.length > 0;
   return (
-    <section className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3" aria-label="Agent details">
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-[12.5px]">
-        <Detail label="Model">
+    <section
+      ref={ref}
+      className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3 max-md:px-4"
+      aria-label="Agent details"
+    >
+      <dl className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px] max-md:text-[14px]">
+        {bare ? (
+          <>
+            <dt className="text-fg-tertiary">Status</dt>
+            <dd className="flex min-w-0 items-center">
+              <StateBadge agent={agent} plain />
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-fg-tertiary">Model</dt>
+        <dd className="truncate text-fg-primary" title={agent.model}>
           {agent.model}
           {agent.effort ? <span className="text-fg-tertiary"> · {effortLabel[agent.effort]}</span> : null}
-        </Detail>
-        <Detail label="Access">
-          <AccessIcon size={12} strokeWidth={1.75} className="text-fg-tertiary" />
+        </dd>
+        <dt className="text-fg-tertiary">Access</dt>
+        <dd className="flex min-w-0 items-center gap-1.5 text-fg-primary">
+          <AccessIcon size={12} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
           {accessLabel[agent.access]}
-        </Detail>
-        {/* Usage arrives when a turn ends; until then there is nothing to count. */}
-        <Detail label="Tokens">
+        </dd>
+        <dt className="text-fg-tertiary">Usage</dt>
+        {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
+        <dd className="truncate text-fg-primary tabular-nums">
           {reported ? (
-            `${compactTokens(inputTokens)} in · ${compactTokens(outputTokens)} out`
+            <>
+              {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
+              {costUsd !== undefined ? ` · ${usd(costUsd)}` : ""}
+            </>
           ) : (
-            <Absent>None yet</Absent>
+            <span className="text-fg-tertiary">None yet</span>
           )}
-        </Detail>
-        <Detail label="Cost">
-          {costUsd !== undefined ? usd(costUsd) : <Absent>{reported ? "Not reported" : "None yet"}</Absent>}
-        </Detail>
-        <Detail label="Started">{started === "now" ? "Just now" : `${started} ago`}</Detail>
+        </dd>
+        <dt className="text-fg-tertiary">Started</dt>
+        <dd className="text-fg-primary" title={new Date(agent.startedAt).toLocaleString()}>
+          {whenAgo(agent.startedAt)}
+        </dd>
       </dl>
 
       {onAnswerApproval && agent.approvals.length > 0 ? (
-        <div className="flex flex-col gap-1">
-          <span className="text-2xs text-fg-tertiary">
-            Waiting for you
-            {agent.approvals.length > 1 ? ` · 1 of ${agent.approvals.length}` : ""}
-          </span>
-          <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />
-        </div>
+        <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />
+      ) : null}
+      {onAnswerSpawn && agent.spawns.length > 0 ? (
+        <LeadSpawnRequest lead={agent} onAnswer={onAnswerSpawn} />
+      ) : null}
+      {asksInConversation ? (
+        <p className="flex items-center gap-1.5 text-[12.5px] text-attention max-md:text-[14px]">
+          <ShieldQuestion size={13} strokeWidth={1.75} />
+          Waiting for you in the conversation
+        </p>
       ) : null}
 
+      {failed && agent.error ? (
+        <Quote label="Error" tone="error">
+          {agent.error}
+        </Quote>
+      ) : null}
       {agent.lastMessage ? (
-        <div className="flex flex-col gap-1">
-          <span className="text-2xs text-fg-tertiary">Latest message</span>
-          <p className="line-clamp-4 border-l border-line-strong pl-2.5 text-[12.5px] leading-[1.55] text-fg-secondary select-text">
-            {plainExcerpt(agent.lastMessage)}
-          </p>
-        </div>
+        <Quote label="Latest message" markdown={agent.lastMessage}>
+          {plainExcerpt(agent.lastMessage)}
+        </Quote>
       ) : null}
 
       {/* An ended lead resumes from the message box; an ended child can't restart. Nothing to do here. */}
       {ended ? null : (
-        <div className="flex items-center gap-1.5">
-          {onMessage ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {plan.message ? (
             <Button
-              onClick={onMessage}
-              className="flex h-7 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-[12.5px] text-fg-primary transition-colors hover:bg-surface-hover"
+              onClick={() => actions.onMessageLead?.()}
+              className={`${actionButton} border border-line-strong text-fg-primary hover:bg-surface-hover`}
             >
               <MessageSquareText size={13} strokeWidth={1.75} />
               Message
             </Button>
           ) : null}
-          {hasAgentMenu(plan) ? (
-            <MenuRoot>
-              <MenuTrigger>
-                <Button
-                  aria-label="More actions"
-                  className="ml-auto grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active"
-                >
-                  <Ellipsis size={15} />
-                </Button>
-              </MenuTrigger>
-              <MenuPopup>
-                <AgentMenuItems
-                  agent={agent}
-                  plan={plan}
-                  actions={actions}
-                  onRequestStop={() => setConfirmingStop(true)}
-                />
-              </MenuPopup>
-            </MenuRoot>
+          {plan.interrupt === "enabled" ? (
+            <Button
+              onClick={() => actions.onInterrupt?.(agent.id)}
+              className={`${actionButton} border border-line-strong text-fg-primary hover:bg-surface-hover`}
+            >
+              <Pause size={13} strokeWidth={1.75} />
+              Interrupt
+            </Button>
+          ) : null}
+          {plan.stop ? (
+            <Button
+              onClick={() => setConfirmingStop(true)}
+              className={`${actionButton} ml-auto text-fg-secondary hover:bg-error/10 hover:text-error`}
+            >
+              <CircleStop size={13} strokeWidth={1.75} />
+              Stop
+            </Button>
           ) : null}
           <StopAgentDialog
             agent={agent}
@@ -305,56 +396,105 @@ function AgentDetails({
   );
 }
 
-/** A value that isn't there yet, quieter than a real one. */
-function Absent({ children }: { children: React.ReactNode }) {
-  return <span className="text-fg-tertiary">{children}</span>;
-}
-
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Words of the agent's, four lines of them; what doesn't fit opens in place. A message folds back
+ * to plain text, an expanded one reads as the agent wrote it.
+ */
+function Quote({
+  label,
+  tone = "default",
+  markdown,
+  children,
+}: {
+  label: string;
+  tone?: "default" | "error";
+  /** The message as written, shown in full once expanded. */
+  markdown?: string;
+  children: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const color = tone === "error" ? "text-error" : "text-fg-secondary";
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-2xs text-fg-tertiary">{label}</dt>
-      <dd className="flex min-w-0 items-center gap-1 truncate text-fg-primary">{children}</dd>
+    <div className="flex flex-col gap-1">
+      <span className="text-2xs text-fg-tertiary max-md:text-xs">{label}</span>
+      <div
+        className={`border-l pl-2.5 ${tone === "error" ? "border-error/40" : "border-line-strong"} ${color}`}
+      >
+        {open ? (
+          markdown !== undefined ? (
+            <Markdown text={markdown} streaming={false} compact />
+          ) : (
+            <p className="text-[12.5px] leading-[1.55] break-words whitespace-pre-wrap select-text max-md:text-[14px]">
+              {children}
+            </p>
+          )
+        ) : (
+          <p
+            ref={(element) => {
+              if (element) setClipped(element.scrollHeight > element.clientHeight + 1);
+            }}
+            className="line-clamp-4 text-[12.5px] leading-[1.55] break-words select-text max-md:text-[14px]"
+          >
+            {children}
+          </p>
+        )}
+        {clipped || open ? (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="mt-1 -ml-0.5 rounded px-0.5 text-xs text-fg-tertiary transition-colors hover:text-fg-primary max-md:py-1.5 max-md:text-[13px]"
+          >
+            {open ? "Show less" : "Show more"}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-/** Usage across the thread, per provider. */
-function UsageSummary({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
-  const byProvider = new Map<ProviderId, { input: number; output: number; cost: number }>();
-  for (const { provider, usage } of agents) {
-    const total = byProvider.get(provider) ?? { input: 0, output: 0, cost: 0 };
-    byProvider.set(provider, {
-      input: total.input + usage.inputTokens,
-      output: total.output + usage.outputTokens,
-      cost: total.cost + (usage.costUsd ?? 0),
-    });
-  }
-  const totalCost = [...byProvider.values()].reduce((sum, { cost }) => sum + cost, 0);
-  const used = [...byProvider].filter(([, { input, output }]) => input + output > 0);
+/** Usage across the thread: the cost at a glance, each provider's share when asked for. */
+function ThreadUsage({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
+  const { providers, total, partial } = threadUsage(agents);
+  if (providers.length === 0) return null;
   return (
-    <section
-      className="flex flex-col gap-1.5 border-t border-line-subtle px-3 py-3"
-      aria-label="Thread usage"
-    >
-      <div className="flex items-baseline justify-between text-2xs text-fg-tertiary">
-        <span>Thread usage</span>
-        {used.length > 0 ? (
-          <span className="text-[12.5px] text-fg-primary tabular-nums">{usd(totalCost)}</span>
-        ) : (
-          <span>None yet</span>
-        )}
-      </div>
-      {used.map(([provider, { input, output, cost }]) => (
-        <div key={provider} className="flex items-center gap-2 text-[12.5px]">
-          <ProviderLogo provider={provider} size={12} />
-          <span className="text-fg-secondary">{providerName[provider]}</span>
-          <span className="ml-auto text-fg-tertiary tabular-nums">
-            {compactTokens(input)} · {compactTokens(output)}
-          </span>
-          <span className="w-10 text-right text-fg-secondary tabular-nums">{usd(cost)}</span>
+    <section className="border-t border-line-subtle px-3 py-2 max-md:px-4" aria-label="Thread usage">
+      <Disclosure
+        summary="Thread usage"
+        hint={total > 0 ? `${usd(total)}${partial ? "+" : ""}` : "No cost reported"}
+      >
+        <div className="flex flex-col gap-1.5">
+          {providers.map(({ provider, inputTokens, outputTokens, costUsd }) => (
+            <div key={provider} className="flex items-center gap-2 text-[12.5px] max-md:text-[14px]">
+              <ProviderLogo provider={provider} size={12} />
+              <span className="text-fg-secondary">{providerName[provider]}</span>
+              <span className="ml-auto text-fg-tertiary tabular-nums">
+                {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
+              </span>
+              <span className="w-12 text-right text-fg-secondary tabular-nums">
+                {costUsd === undefined ? <span className="text-fg-tertiary">–</span> : usd(costUsd)}
+              </span>
+            </div>
+          ))}
+          {providers.length > 1 ? (
+            <div className="flex items-center gap-2 border-t border-line-subtle pt-1.5 text-[12.5px] max-md:text-[14px]">
+              <span className="text-fg-primary">Total</span>
+              <span className="ml-auto text-fg-tertiary tabular-nums">
+                {compactTokens(providers.reduce((sum, each) => sum + each.inputTokens, 0))} in ·{" "}
+                {compactTokens(providers.reduce((sum, each) => sum + each.outputTokens, 0))} out
+              </span>
+              <span className="w-12 text-right text-fg-primary tabular-nums">
+                {total > 0 ? usd(total) : <span className="text-fg-tertiary">–</span>}
+              </span>
+            </div>
+          ) : null}
+          {partial ? (
+            <p className="text-2xs text-fg-tertiary max-md:text-xs">
+              A dash means that harness reports no cost, so the total leaves it out.
+            </p>
+          ) : null}
         </div>
-      ))}
+      </Disclosure>
     </section>
   );
 }

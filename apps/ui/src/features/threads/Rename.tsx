@@ -69,6 +69,7 @@ export function TitleField({
     const field = input.current;
     field?.focus();
     field?.setSelectionRange(0, field.value.length, "backward");
+    if (field) field.scrollLeft = 0;
   }, []);
 
   return (

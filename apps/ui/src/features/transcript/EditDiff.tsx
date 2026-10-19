@@ -15,7 +15,7 @@ const markerTint = { context: "", removed: "text-error", added: "text-success" }
 /** A file edit as a compact diff, several edits to one file separated by a gap marker. */
 export function EditDiff({ edits }: { edits: ReadonlyArray<FileEdit> }) {
   return (
-    <div className="max-h-60 overflow-auto rounded-md border border-line-subtle bg-surface-window py-1.5 font-mono text-[12px] leading-[1.6] select-text">
+    <div className="scroll-thin max-h-60 overflow-auto rounded-md border border-line-subtle bg-surface-window py-1.5 font-mono text-[12px] leading-[1.6] select-text">
       <div className="grid w-max min-w-full">
         {edits.map((edit, index) => (
           <Fragment key={index}>

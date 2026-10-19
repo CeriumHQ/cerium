@@ -42,6 +42,9 @@ export function useAccountPresence(account: AccountState, viewing: ThreadRef | u
   }, [signedIn, visible, machine, threadId]);
 }
 
+const linkClass =
+  "font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary";
+
 /** Devices waiting to join the account, wherever the user is, with the way to them. */
 export function DeviceRequestNotice({ account, onReview }: { account: AccountState; onReview: () => void }) {
   const waiting = waitingDevices(account);
@@ -49,15 +52,43 @@ export function DeviceRequestNotice({ account, onReview }: { account: AccountSta
   return (
     <Notice tone="attention">
       {waiting.length === 1
-        ? `${waiting[0]!.name} wants to join your Cerium account.`
-        : `${waiting.length} devices want to join your Cerium account.`}{" "}
-      <button
-        type="button"
-        onClick={onReview}
-        className="font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
-      >
+        ? `${waiting[0]!.name} wants to join.`
+        : `${waiting.length} devices want to join.`}{" "}
+      <button type="button" onClick={onReview} className={linkClass}>
         Review
       </button>
+    </Notice>
+  );
+}
+
+/**
+ * The machine the window drives has stopped answering: the window keeps trying, and says so once
+ * here, with the way back to this computer when there is one.
+ */
+export function UnreachableNotice({
+  machine,
+  presence,
+  onBack,
+}: {
+  machine: string;
+  /** Since when it's been offline, such as "Last seen 3 hours ago", when the relay knows. */
+  presence?: string | undefined;
+  /** Drives this computer again; none in the web client, which picks from the menu. */
+  onBack?: (() => void) | undefined;
+}) {
+  return (
+    <Notice tone="attention">
+      {presence === undefined
+        ? `Can't reach ${machine}.`
+        : `${machine} is offline (${presence.toLowerCase()}).`}
+      {onBack ? (
+        <>
+          {" "}
+          <button type="button" onClick={onBack} className={linkClass}>
+            Back to this computer
+          </button>
+        </>
+      ) : null}
     </Notice>
   );
 }

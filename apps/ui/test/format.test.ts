@@ -1,6 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { plainExcerpt, usd } from "../src/lib/format.ts";
+import { compactTokens, plainExcerpt, usd } from "../src/lib/format.ts";
+
+describe("compactTokens", () => {
+  it("shortens counts to thousands and millions", () => {
+    expect(compactTokens(870)).toBe("870");
+    expect(compactTokens(1_234)).toBe("1.2k");
+    expect(compactTokens(2_000)).toBe("2k");
+    expect(compactTokens(9_960)).toBe("10k");
+    expect(compactTokens(157_400)).toBe("157k");
+    expect(compactTokens(999_600)).toBe("1M");
+    expect(compactTokens(1_136_000)).toBe("1.1M");
+    expect(compactTokens(24_500_000)).toBe("25M");
+  });
+});
 
 describe("usd", () => {
   it("never shows a turn that cost something as free", () => {

@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentInfo, ModelInfo, ProviderId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
-import type { AgentSummary, PendingApproval } from "../features/agents/model.ts";
+import type { AgentSummary, PendingApproval, SpawnRequest } from "../features/agents/model.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 
 // Maps backend records onto the view models the components render.
@@ -60,9 +60,11 @@ export const toAgentSummaries = (
     let outputTokens = 0;
     let costUsd: number | undefined;
     let lastMessage: string | undefined;
+    let error: string | undefined;
     let model = agent.model;
     const pending = new Map<string, PendingApproval>();
-    for (const { agentId, payload } of events) {
+    const spawning = new Map<string, SpawnRequest>();
+    for (const { agentId, payload, at } of events) {
       if (agentId !== agent.id) continue;
       switch (payload._tag) {
         case "UsageReported":
@@ -74,7 +76,11 @@ export const toAgentSummaries = (
           lastMessage = payload.text;
           break;
         case "SessionStarted":
+        case "ModelChanged":
           model = payload.model;
+          break;
+        case "AgentError":
+          error = payload.message;
           break;
         case "PermissionRequested":
           pending.set(payload.requestId, {
@@ -82,15 +88,33 @@ export const toAgentSummaries = (
             toolName: payload.toolName,
             summary: payload.summary,
             input: payload.input,
+            at,
           });
           break;
         case "PermissionResolved":
           pending.delete(payload.requestId);
           break;
+        case "SpawnApprovalRequested":
+          spawning.set(payload.requestId, {
+            requestId: payload.requestId,
+            role: payload.role,
+            provider: payload.provider,
+            model: modelLabel(models, payload.provider, payload.model),
+            ...(payload.effort ? { effort: payload.effort } : {}),
+            ...(payload.access ? { access: payload.access } : {}),
+            ...(payload.prompt ? { prompt: payload.prompt } : {}),
+            at,
+          });
+          break;
+        case "SpawnApprovalResolved":
+          spawning.delete(payload.requestId);
+          break;
       }
     }
     // An agent that stopped or failed can't act on an answer: its requests ended with its session.
-    const approvals = agent.state === "stopped" || agent.state === "failed" ? [] : [...pending.values()];
+    const ended = agent.state === "stopped" || agent.state === "failed";
+    const approvals = ended ? [] : [...pending.values()];
+    const spawns = ended ? [] : [...spawning.values()];
     return {
       id: agent.id,
       ...(agent.parentId ? { parentId: agent.parentId } : {}),
@@ -100,10 +124,12 @@ export const toAgentSummaries = (
       ...(agent.effort ? { effort: agent.effort } : {}),
       access: agent.access,
       state: agent.state,
-      awaitingApproval: approvals.length > 0,
+      awaitingApproval: approvals.length > 0 || spawns.length > 0,
       approvals,
+      spawns,
       usage: { inputTokens, outputTokens, ...(costUsd === undefined ? {} : { costUsd }) },
       ...(lastMessage ? { lastMessage } : {}),
+      ...(error ? { error } : {}),
       startedAt: agent.createdAt,
     };
   });

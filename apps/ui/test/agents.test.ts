@@ -1,6 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { agentMenuPlan, hasAgentMenu } from "../src/features/agents/model.ts";
+import type { AgentEvent, AgentInfo } from "@cerium/protocol";
+
+import { toAgentSummaries } from "../src/backend/view.ts";
+import {
+  agentMenuPlan,
+  hasAgentMenu,
+  requestQueue,
+  stateLabel,
+  statusCounts,
+  threadUsage,
+} from "../src/features/agents/model.ts";
 import type { AgentSummary } from "../src/features/agents/model.ts";
 
 const agent = (state: AgentSummary["state"], parentId?: string) => ({
@@ -51,5 +61,189 @@ describe("agentMenuPlan", () => {
       interrupt: "hidden",
       stop: false,
     });
+  });
+});
+
+const summary = (
+  id: string,
+  overrides: Partial<AgentSummary> & { parentId?: string } = {},
+): AgentSummary => ({
+  id,
+  role: id,
+  provider: "claude",
+  model: "Opus 5.5",
+  access: "auto",
+  state: "idle",
+  awaitingApproval: false,
+  approvals: [],
+  spawns: [],
+  usage: { inputTokens: 0, outputTokens: 0 },
+  startedAt: 0,
+  ...overrides,
+});
+
+const asking = (requestId: string, at: number) => ({
+  requestId,
+  toolName: "shell",
+  summary: "Run a shell command",
+  input: {},
+  at,
+});
+
+describe("statusCounts", () => {
+  it("counts the states that deserve a word, and leaves the rest out", () => {
+    const agents = [
+      summary("lead", { state: "running" }),
+      summary("a", { parentId: "lead", state: "queued" }),
+      summary("b", { parentId: "lead", state: "running", awaitingApproval: true }),
+      summary("c", { parentId: "lead", state: "failed" }),
+      summary("d", { parentId: "lead", state: "stopped" }),
+      summary("e", { parentId: "lead", state: "idle" }),
+    ];
+    expect(statusCounts(agents)).toEqual([
+      { state: "needsYou", count: 1 },
+      { state: "running", count: 2 },
+      { state: "failed", count: 1 },
+    ]);
+  });
+
+  it("says nothing of a thread at rest", () => {
+    expect(statusCounts([summary("lead"), summary("a", { parentId: "lead", state: "stopped" })])).toEqual([]);
+  });
+});
+
+describe("stateLabel", () => {
+  it("calls a child that went idle done, and a lead idle", () => {
+    expect(stateLabel(summary("a", { parentId: "lead" }))).toBe("Done");
+    expect(stateLabel(summary("lead"))).toBe("Idle");
+    expect(stateLabel(summary("a", { parentId: "lead", awaitingApproval: true }))).toBe("Needs you");
+  });
+});
+
+describe("threadUsage", () => {
+  const usage = (inputTokens: number, outputTokens: number, costUsd?: number) => ({
+    inputTokens,
+    outputTokens,
+    ...(costUsd === undefined ? {} : { costUsd }),
+  });
+
+  it("adds up each provider's agents and sums the costs that were reported", () => {
+    const result = threadUsage([
+      summary("lead", { usage: usage(1000, 100, 2) }),
+      summary("a", { parentId: "lead", usage: usage(500, 50, 0.5) }),
+      summary("b", { parentId: "lead", provider: "codex", usage: usage(300, 30) }),
+    ]);
+    expect(result.providers).toEqual([
+      { provider: "claude", inputTokens: 1500, outputTokens: 150, costUsd: 2.5 },
+      { provider: "codex", inputTokens: 300, outputTokens: 30 },
+    ]);
+    expect(result.total).toBe(2.5);
+    expect(result.partial).toBe(true);
+  });
+
+  it("leaves out providers that haven't counted anything", () => {
+    const result = threadUsage([
+      summary("lead", { usage: usage(10, 1, 0.1) }),
+      summary("a", { parentId: "lead", provider: "muse" }),
+    ]);
+    expect(result.providers.map(({ provider }) => provider)).toEqual(["claude"]);
+    expect(result.partial).toBe(false);
+  });
+});
+
+describe("requestQueue", () => {
+  it("orders what the agents wait on by when it was asked, the lead's spawn requests among them", () => {
+    const queue = requestQueue([
+      summary("lead", {
+        awaitingApproval: true,
+        spawns: [{ requestId: "s1", role: "r", provider: "codex", model: "m", at: 20 }],
+      }),
+      summary("a", { parentId: "lead", approvals: [asking("p2", 30), asking("p1", 10)] }),
+      summary("b", { parentId: "lead", approvals: [asking("p3", 25)] }),
+    ]);
+    expect(queue.map((item) => item.key)).toEqual([
+      "permission:p1",
+      "spawn:s1",
+      "permission:p3",
+      "permission:p2",
+    ]);
+  });
+
+  it("leaves the lead's own permission requests to the conversation", () => {
+    const queue = requestQueue([summary("lead", { approvals: [asking("p1", 1)] })]);
+    expect(queue).toEqual([]);
+  });
+});
+
+describe("toAgentSummaries", () => {
+  const info = (id: string, parentId?: string, state: AgentInfo["state"] = "running") =>
+    ({
+      id,
+      ...(parentId ? { parentId } : {}),
+      threadId: "t",
+      role: parentId ? id : "lead",
+      provider: "claude",
+      model: "claude-opus-5-5",
+      access: "auto",
+      state,
+      createdAt: 0,
+      updatedAt: 0,
+    }) as unknown as AgentInfo;
+  const event = (agentId: string, at: number, payload: Record<string, unknown>) =>
+    ({ id: `${agentId}:${at}`, threadId: "t", agentId, sequence: at, at, payload }) as unknown as AgentEvent;
+
+  it("keeps a lead's spawn request until it is answered, and what the agent would run with", () => {
+    const asked = event("lead", 5, {
+      _tag: "SpawnApprovalRequested",
+      requestId: "s1",
+      role: "profiler",
+      provider: "codex",
+      model: "gpt-x",
+      effort: "high",
+      access: "readOnly",
+      prompt: "Profile it.",
+    });
+    const [lead] = toAgentSummaries([info("lead")], [asked], []);
+    expect(lead?.spawns).toEqual([
+      {
+        requestId: "s1",
+        role: "profiler",
+        provider: "codex",
+        model: "gpt-x",
+        effort: "high",
+        access: "readOnly",
+        prompt: "Profile it.",
+        at: 5,
+      },
+    ]);
+    expect(lead?.awaitingApproval).toBe(true);
+
+    const answered = event("lead", 6, { _tag: "SpawnApprovalResolved", requestId: "s1", decision: "deny" });
+    const [after] = toAgentSummaries([info("lead")], [asked, answered], []);
+    expect(after?.spawns).toEqual([]);
+    expect(after?.awaitingApproval).toBe(false);
+  });
+
+  it("drops what an ended lead can no longer act on", () => {
+    const asked = event("lead", 5, {
+      _tag: "SpawnApprovalRequested",
+      requestId: "s1",
+      role: "profiler",
+      provider: "codex",
+      model: "gpt-x",
+    });
+    const [lead] = toAgentSummaries([info("lead", undefined, "stopped")], [asked], []);
+    expect(lead?.spawns).toEqual([]);
+  });
+
+  it("carries what a failed agent reported going wrong", () => {
+    const failed = event("a", 3, {
+      _tag: "AgentError",
+      kind: "crash",
+      message: "it crashed",
+      retryable: false,
+    });
+    const [agent] = toAgentSummaries([info("a", "lead", "failed")], [failed], []);
+    expect(agent?.error).toBe("it crashed");
   });
 });

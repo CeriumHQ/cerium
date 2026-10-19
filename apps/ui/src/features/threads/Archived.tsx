@@ -1,21 +1,21 @@
-import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ArchiveRestore, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { remember, stored } from "../../lib/storage.ts";
-import { shortAgo } from "../../lib/time.ts";
-import { DeleteThreadDialog } from "./Delete.tsx";
 import { canDelete, type ThreadSummary } from "./model.ts";
-import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
+import { type RenameThread } from "./Rename.tsx";
+import { ThreadRow, type RowMark } from "./ThreadRow.tsx";
 
 const OPEN_KEY = "cerium:archivedOpen";
 
 export interface ArchivedActions {
   readonly selectedId: string | undefined;
+  /** How the inbox leads its rows, so these match. */
+  readonly mark: RowMark;
+  readonly harness: boolean;
   readonly onSelect: (threadId: string) => void;
   readonly onRename: RenameThread;
   readonly onRestore: (threadId: string) => void;
@@ -38,7 +38,7 @@ export function ArchivedSection({
       }}
       className="flex max-h-[45%] shrink-0 flex-col border-t border-line-subtle px-2 pt-1.5 pb-1"
     >
-      <Collapsible.Trigger className="group flex w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary">
+      <Collapsible.Trigger className="group flex w-full shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary max-md:py-2 max-md:text-[13px]">
         <ChevronRight
           size={12}
           strokeWidth={2}
@@ -65,77 +65,37 @@ export function ArchivedSection({
 function ArchivedRow({
   thread,
   selectedId,
+  mark,
+  harness,
   onSelect,
   onRename,
   onRestore,
   onDelete,
 }: { thread: ThreadSummary } & ArchivedActions) {
-  const selected = thread.id === selectedId;
-  const [deleting, setDeleting] = useState(false);
-  const { editing, start, finish, title, row } = useRename(thread, onRename);
-  const rowClass = `flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover ${
-    selected || editing
-      ? "bg-surface-selected text-fg-primary"
-      : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary"
-  }`;
-  const titleClass = "min-w-0 flex-1 truncate";
-  const providers = [...new Set(thread.providers)];
-  const content = (
-    <>
-      <span className="flex shrink-0 items-center gap-0.5" aria-label={`${providers.length} harnesses`}>
-        {providers.map((provider) => (
-          <ProviderLogo key={provider} provider={provider} size={12} />
-        ))}
-      </span>
-      {editing ? (
-        <TitleField title={thread.title} onDone={finish} className={`-mx-1 h-6 ${titleClass}`} />
-      ) : (
-        <span className={titleClass}>{title}</span>
-      )}
-      <span className="shrink-0 text-2xs text-fg-tertiary tabular-nums">{shortAgo(thread.updatedAt)}</span>
-    </>
-  );
-
-  // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
-  if (editing) return <div className={rowClass}>{content}</div>;
   return (
-    <>
-      <ContextMenuArea
-        menu={
-          <>
-            <MenuItem icon={ArchiveRestore} onClick={() => onRestore(thread.id)}>
-              Restore
-            </MenuItem>
-            <MenuItem icon={Pencil} onClick={start}>
-              Rename
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem
-              icon={Trash2}
-              tone="danger"
-              disabled={!canDelete(thread)}
-              onClick={() => setDeleting(true)}
-            >
-              Delete
-            </MenuItem>
-          </>
-        }
-      >
-        <Button
-          ref={row}
-          onClick={() => onSelect(thread.id)}
-          aria-current={selected ? "page" : undefined}
-          className={rowClass}
-        >
-          {content}
-        </Button>
-      </ContextMenuArea>
-      <DeleteThreadDialog
-        thread={thread}
-        open={deleting}
-        onOpenChange={setDeleting}
-        onConfirm={() => onDelete(thread.id)}
-      />
-    </>
+    <ThreadRow
+      thread={thread}
+      selected={thread.id === selectedId}
+      mark={mark}
+      harness={harness}
+      quiet
+      onSelect={onSelect}
+      onRename={onRename}
+      onDelete={onDelete}
+      menu={({ rename, remove }) => (
+        <>
+          <MenuItem icon={ArchiveRestore} onClick={() => onRestore(thread.id)}>
+            Restore
+          </MenuItem>
+          <MenuItem icon={Pencil} onClick={rename}>
+            Rename
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
+            Delete
+          </MenuItem>
+        </>
+      )}
+    />
   );
 }

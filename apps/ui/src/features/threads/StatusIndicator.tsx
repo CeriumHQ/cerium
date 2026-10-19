@@ -1,7 +1,7 @@
 import type { ProviderId } from "@cerium/protocol";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import type { ThreadSummary } from "./model.ts";
+import { providerName, type ThreadSummary } from "./model.ts";
 
 const statusLabel = (status: ThreadSummary["status"], unread: boolean) =>
   ({
@@ -14,7 +14,8 @@ const statusLabel = (status: ThreadSummary["status"], unread: boolean) =>
 export function StatusIndicator({ status, unread }: { status: ThreadSummary["status"]; unread: boolean }) {
   return (
     <span className="relative grid size-3 shrink-0 place-items-center">
-      <span className="sr-only">{statusLabel(status, unread)}</span>
+      {/* A resting, read thread has nothing to announce. */}
+      {status === "idle" && !unread ? null : <span className="sr-only">{statusLabel(status, unread)}</span>}
       {status === "running" ? (
         <>
           <span className="absolute size-2.5 animate-ping rounded-full bg-running/45" />
@@ -51,14 +52,14 @@ export function CornerStatus({ status, unread }: { status: ThreadSummary["status
   );
 }
 
-/** The logos of the harnesses an active multi-agent thread uses. */
+/** The logos of the harnesses a thread's agents use. */
 export function ProviderStack({ providers }: { providers: ReadonlyArray<ProviderId> }) {
   const distinct = [...new Set(providers)];
   return (
-    <span
-      className="flex shrink-0 items-center gap-0.5 text-fg-tertiary"
-      aria-label={`${providers.length} agents`}
-    >
+    <span className="flex shrink-0 items-center gap-0.5 text-fg-tertiary">
+      <span className="sr-only">
+        {providers.length === 1 ? providerName[providers[0]!] : `${providers.length} agents`}
+      </span>
       {distinct.map((provider) => (
         <ProviderLogo key={provider} provider={provider} size={11} />
       ))}

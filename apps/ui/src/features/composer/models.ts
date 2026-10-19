@@ -37,8 +37,33 @@ export const pickModel = (
 };
 
 /** The effort a model runs at: the chosen one when it has it, else its default or strongest. */
-export const effortFor = (model: ModelInfo, effort: ReasoningEffort): ReasoningEffort | undefined =>
-  model.efforts.includes(effort) ? effort : (model.defaultEffort ?? model.efforts.at(-1));
+export const effortFor = (
+  model: ModelInfo,
+  effort: ReasoningEffort | undefined,
+): ReasoningEffort | undefined =>
+  effort !== undefined && model.efforts.includes(effort)
+    ? effort
+    : (model.defaultEffort ?? model.efforts.at(-1));
+
+/** What an open thread's lead is switched to: another model of its harness, at an effort it has. */
+export interface ModelSwitch {
+  readonly model: string;
+  /** Absent for a model its harness offers no effort setting for. */
+  readonly effort?: ReasoningEffort;
+}
+
+/**
+ * The switch to `model`, carrying `effort` over where the model has it. A harness that can't change
+ * effort keeps the thread's own, so asking for the model alone isn't refused over it.
+ */
+export const switchTo = (
+  model: ModelInfo,
+  effort: ReasoningEffort | undefined,
+  canSwitchEffort: boolean,
+): ModelSwitch => {
+  const carried = canSwitchEffort ? effortFor(model, effort) : effort;
+  return { model: model.id, ...(carried ? { effort: carried } : {}) };
+};
 
 export const effortLabel: Record<ReasoningEffort, string> = {
   minimal: "Minimal",

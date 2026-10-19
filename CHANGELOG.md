@@ -138,6 +138,19 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/orchestrator`: a thread's lead can switch to another model of its harness, or another effort, from its next turn. The thread records each switch (`ModelChanged`), which outlasts a stop or a restart; a switch the harness refuses says why and leaves the lead on what its session runs.
 - `@cerium/orchestrator`: a request to start an agent outside the catalog says the effort, access and prompt the agent would run with.
 - `@cerium/rpc`: searching a mode's threads by what was said in them, switching a lead's model and effort, and each harness's capability manifest.
+- UI: Ctrl K, or the search button beside "New thread", searches the threads: their titles as you type, then the words said in them, each match with the passage it's in.
+- UI: switch an open thread's model or effort from its message box, to another of its harness's, from the next turn. Each response is labelled with the model it ran on, a line in the conversation marks the switch, and a harness that can't switch says so.
+- UI: a request to start an agent outside the catalog waits above the message box and in the agents panel, with the model, effort, access and prompt it would run with, to allow or deny. Alt Y allows the request in front, Alt S allows it for the session and Alt N denies it; the conversation keeps a line for each request.
+- UI: approving a Codex file change shows its diff.
+- UI: drag the edge of the sidebar or the agents panel to resize it; a double-click puts it back, and the widths are remembered.
+- UI: Ctrl 1 and Ctrl 2 switch between Work and Chat.
+- UI: on a phone, the system's Back button closes search and steps back through the panes instead of leaving the app.
+- UI: the window's title names the open thread.
+- UI: Settings → Tools holds the advisor and whether agents get your own MCP servers.
+- UI: files dropped anywhere on the window attach to the message, and while a turn runs, Send sits beside Stop and sends once the turn ends.
+- UI: each thread in the sidebar has a "more" button for its menu (on hover or focus, always on touch screens), and empty lists say what they'll hold.
+- UI: copy a whole response from under it, and a tool call's command or output from inside it.
+- UI: the update notice links to what's new in the version and shows the download's progress.
 
 ### Changed
 
@@ -173,9 +186,24 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the notices over a thread read from the cloud copy take fewer words, and so does the web client's sign-in, with the sign-in options behind an info tip.
 - UI: Settings → Updates says its channels and statuses in fewer words.
 - UI: the machine picker outlines itself while you drive another computer, keeps that computer checked in its menu even while it's away, and shows a green dot only on computers you can drive now. A computer running a Cerium too old to drive says to update Cerium there first, in a warning colour, and Account settings say less.
+- UI: sidebar rows take one line. A project badge shows only while the list spans projects, a harness logo only where threads' harnesses differ, and the git branch is gone; the project filter appears once there's more than one project, "Mark all as read" is a button, and the harness icons at the foot say how each harness is.
+- UI: a new work thread starts in the most recent project. Sending before choosing one opens the list, where Enter picks the latest. A new thread shows only its heading, and when no harness is ready it says so and opens Harnesses settings.
+- UI: the model menu names harnesses that can't run without listing their models. On touch screens Enter starts a new line and the button sends, and on a phone the message box's pickers wrap.
+- UI: an opened tool call shows the command or file as written, a readable result and the exit code, Codex's, Cursor's and Muse's commands included, with long output folded (to its last lines for a failure). A failed tool call says why on its row, and screenshots under a folded run are larger.
+- UI: usage shows under the latest reply, and on hover under earlier ones. Long messages fold behind "Show all N lines", reasoning renders markdown, and agent cards stack on a phone.
+- UI: agents' requests queue oldest first, with one open at a time and the rest a line each, and long commands wrap.
+- UI: the agents panel says each agent's state at a glance, folds its usage away, opens the latest message in full on a click, and interrupts or stops with buttons.
+- UI: Settings → Agents shows only what a new thread starts with: the lead model, its effort and access, with thread titles folded away and explanations behind info tips; the advisor and MCP servers move to Tools, without the diagram. Access modes are rows of one line. A harness that isn't ready links to Harnesses settings, and one whose models didn't load says so, with Retry.
+- UI: Keyboard settings list Ctrl K, Ctrl 1 and Ctrl 2, and the box to try Enter in is smaller. Home and End move through the settings list.
+- UI: in a narrow window the agents panel floats over the conversation, and gives way when you click in the conversation or an action in the panel moves you there.
+- UI: long error notices fold to one line, and "Can't reach" another computer takes one line with the way back.
 
 ### Fixed
 
+- UI: a failed agent says why, agents that cost nothing no longer show $0.00, and a request to start an agent names its access the way the rest of the app does.
+- UI: a screenshot whose file is gone no longer leaves an empty box.
+- UI: renaming a long thread starts at its beginning, and idle threads no longer read "Idle".
+- UI: reasoning-effort levels that aren't chosen no longer look like empty boxes, and the settings list's focus ring is a hairline.
 - UI: Settings → Notifications shows notifications as off when the browser blocks them.
 - UI: Harnesses settings say when the computer they're about can't be reached, instead of "Checking…" forever.
 - UI: a dozen attachments no longer push the message off the screen: the tray scrolls past two rows. A file that couldn't be attached says why under the tray, and touch screens show each file's remove button.

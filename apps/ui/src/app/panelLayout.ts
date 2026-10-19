@@ -1,0 +1,47 @@
+/** The sidebar's width, including the gutter between it and the transcript. */
+export const SIDEBAR = { key: "cerium:sidebarWidth", fallback: 278, min: 232, max: 420 } as const;
+export const INSPECTOR = { key: "cerium:inspectorWidth", fallback: 320, min: 280, max: 560 } as const;
+/** The gap between panels, and around the window's edge. */
+export const GUTTER = 6;
+/** Below this the transcript is too narrow for its message box, so the inspector floats over it instead. */
+export const MIN_TRANSCRIPT = 480;
+
+export const clampWidth = (width: number, min: number, max: number) =>
+  Math.min(Math.max(width, min), Math.max(min, max));
+
+export interface PanelLayout {
+  readonly sidebarWidth: number;
+  readonly sidebarMax: number;
+  /** What the sidebar takes of the row: its width while it shows, else just its gutter. */
+  readonly sidebarSpace: number;
+  /** The inspector floats over the transcript rather than sitting beside it. */
+  readonly floating: boolean;
+  readonly inspectorWidth: number;
+  readonly inspectorMax: number;
+}
+
+/**
+ * How the window divides `bodyWidth` between its panels, given the widths the user last left them at.
+ * The sidebar never takes more than 40% of the window. The inspector sits beside the transcript while
+ * that keeps its room, and floats over it once it wouldn't.
+ */
+export const panelLayout = (
+  bodyWidth: number,
+  saved: { readonly sidebar: number; readonly inspector: number },
+  sidebarShown: boolean,
+): PanelLayout => {
+  const sidebarMax = Math.min(SIDEBAR.max, Math.floor(bodyWidth * 0.4));
+  const sidebarWidth = clampWidth(saved.sidebar, SIDEBAR.min, sidebarMax);
+  const sidebarSpace = sidebarShown ? sidebarWidth : GUTTER;
+  const roomBeside = bodyWidth - sidebarSpace - GUTTER * 2 - MIN_TRANSCRIPT;
+  const floating = roomBeside < INSPECTOR.min;
+  const inspectorMax = Math.min(INSPECTOR.max, floating ? bodyWidth - sidebarSpace - GUTTER * 8 : roomBeside);
+  return {
+    sidebarWidth,
+    sidebarMax,
+    sidebarSpace,
+    floating,
+    inspectorWidth: clampWidth(saved.inspector, INSPECTOR.min, inspectorMax),
+    inspectorMax,
+  };
+};

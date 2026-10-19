@@ -21,6 +21,10 @@ interface TitlebarProps {
   readonly mode: AppMode;
   readonly onModeChange: (mode: AppMode) => void;
   readonly sidebarOpen: boolean;
+  /** The sidebar's width while it shows, so the controls above it end where it does. */
+  readonly sidebarWidth: number;
+  /** The sidebar is being dragged to another width: the controls follow it without easing. */
+  readonly resizing: boolean;
   readonly onToggleSidebar: () => void;
   /** Offered here while the sidebar, which has the main button for it, is folded away. */
   readonly onNewThread: () => void;
@@ -38,6 +42,8 @@ export function Titlebar({
   mode,
   onModeChange,
   sidebarOpen,
+  sidebarWidth,
+  resizing,
   onToggleSidebar,
   onNewThread,
   agents,
@@ -50,11 +56,13 @@ export function Titlebar({
     <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
       {/*
        * Spans the sidebar while it shows, so the toggle sits over the sidebar's own edge; shrinks to
-       * its contents, in step with the sidebar, once it folds.
+       * its contents, in step with the sidebar, once it folds. The sidebar's width, less the titlebar's
+       * left padding and the gutter beside it.
        */}
       <div
-        className={`flex shrink-0 items-center gap-2.5 pr-2 transition-[width] duration-200 ease-out-soft [interpolate-size:allow-keywords] ${
-          showSidebar ? "w-65" : "w-fit"
+        style={{ width: showSidebar ? sidebarWidth - 18 : "fit-content" }}
+        className={`flex shrink-0 items-center gap-2.5 pr-2 [interpolate-size:allow-keywords] ${
+          resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
       >
         <CeriumMark size={16} className="ml-1.5 text-fg-primary" />
@@ -80,7 +88,13 @@ export function Titlebar({
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 justify-center">
+      {/*
+       * The title sits in the middle of what's left of the bar, with the controls in a column of its
+       * own at the end, so it stays put as the agents button comes and goes. It gives way to them only
+       * once it's too long for the room.
+       */}
+      <div className="grid h-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] items-center">
+        <div />
         {/* Plain text until the thread has actions to offer, so it also drags the window. */}
         {settingsOpen ? (
           <p className="px-2.5 text-[13px] font-medium text-fg-primary">Settings</p>
@@ -89,14 +103,17 @@ export function Titlebar({
             <span className="truncate font-medium text-fg-primary">{thread.title}</span>
             {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
           </p>
-        ) : null}
+        ) : (
+          <div />
+        )}
+        <div className="flex h-full items-center justify-end">
+          {agents.length > 0 && !settingsOpen ? (
+            <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
+          ) : null}
+          {machinePicker}
+          <CaptionButtons />
+        </div>
       </div>
-
-      {agents.length > 0 && !settingsOpen ? (
-        <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
-      ) : null}
-      {machinePicker}
-      <CaptionButtons />
     </header>
   );
 }

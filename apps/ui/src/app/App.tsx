@@ -31,10 +31,12 @@ import {
   localWorkingAtom,
   markThreadsRead,
   renameThread,
+  resolveSpawnApproval,
   respondToPermission,
   sendMessage,
   setThreadArchived,
   stopAgent,
+  switchModel,
   threadEventsAtom,
   threadsAtom,
 } from "../backend/atoms.ts";
@@ -46,13 +48,14 @@ import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backen
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import {
   DeviceRequestNotice,
+  UnreachableNotice,
   useAccountPresence,
   useShellPresence,
 } from "../features/account/AccountNotice.tsx";
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
 import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
-import { ApprovalTray, type AnswerApproval } from "../features/agents/ApprovalTray.tsx";
+import { ApprovalTray, type AnswerApproval, type AnswerSpawn } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { hasContent } from "../features/composer/draft.ts";
@@ -66,6 +69,7 @@ import {
 } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
+import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { themeAtom } from "../features/settings/preferences.ts";
 import {
   settingsLabel,
@@ -83,6 +87,7 @@ import {
 import { useReadState } from "../features/threads/readState.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
+import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
@@ -176,6 +181,7 @@ function Workspace() {
   /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
   const [composerHeight, setComposerHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const compact = useCompact();
   /** Its settings pane: the categories, or the open category's page. */
   const [settingsPane, setSettingsPane] = useState<"nav" | "page">("nav");
@@ -187,7 +193,8 @@ function Workspace() {
   const connection = useAtomValue(connectionAtom);
   const threadsResult = useAtomValue(threadsAtom);
   const refreshThreads = useAtomRefresh(threadsAtom);
-  const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
+  const harnessesResult = useAtomValue(harnessesAtom);
+  const harnesses = AsyncResult.getOrElse(harnessesResult, () => []);
   const models = useModels();
   // Another machine that can't be reached shows the threads it last listed no more: they read from
   // the cloud copy instead, until it answers again. This computer's own list stays while it reconnects.
@@ -242,8 +249,9 @@ function Workspace() {
   /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
   const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
   const openDraftStart = useAtomValue(draftStartAtom(openDraft));
-  /** The folder the new thread starts in: the one chosen for this draft, else the last one. */
-  const newFolder = openDraftStart?.folder ?? folder;
+  const latestProject = useLatestProject();
+  /** The folder the new thread starts in: the one chosen for this draft, else the last one, else the project used most recently. */
+  const newFolder = openDraftStart?.folder ?? folder ?? latestProject;
   const share = useAtomSet(markThreadsRead, { mode: "promise" });
   const readState = useReadState(
     new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
@@ -333,6 +341,7 @@ function Workspace() {
   };
   /** Opens a thread of the inbox: another machine's there when it can, else here (read-only when it's another's). */
   const openSummary = (summary: ThreadSummary) => {
+    setSettingsOpen(false);
     setHeldUnread(summary.unread ? summary.id : undefined);
     const home = summary.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
     if (home && home.id !== drivenId && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
@@ -367,7 +376,9 @@ function Workspace() {
 
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
+  const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
+  const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
   const rename = useAtomSet(renameThread, { mode: "promise" });
@@ -396,6 +407,8 @@ function Workspace() {
   const available = new Set(
     indicators.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])),
   );
+  /** The harnesses have answered and none can run a thread: there is nothing to start one with. */
+  const noHarness = AsyncResult.isSuccess(harnessesResult) && available.size === 0;
 
   const lead = viewed ? leadOf(viewed.agents) : undefined;
   const agents = viewed ? toAgentSummaries(viewed.agents, events, models) : [];
@@ -417,6 +430,8 @@ function Workspace() {
   };
   const answerApproval: AnswerApproval = (agentId, requestId, decision, scope) =>
     void attempt(respond({ payload: { agentId: agentId as AgentId, requestId, decision, scope } }));
+  const answerSpawn: AnswerSpawn = (requestId, decision) =>
+    void attempt(resolveSpawn({ payload: { requestId, decision } }));
   /**
    * Opens a blank new thread in this mode, ready to type the first message. A blank one the user wrote
    * in stays in the sidebar as a draft; an empty one is replaced, forgetting what was picked in it.
@@ -487,6 +502,8 @@ function Workspace() {
       return;
     }
     if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+    // Search has the keys while it's open, but for Ctrl K, which closes it.
+    if (searchOpen && event.key.toLowerCase() !== "k") return;
     switch (event.key.toLowerCase()) {
       case ",":
         setSettingsOpen(!settingsOpen);
@@ -497,6 +514,15 @@ function Workspace() {
         break;
       case "n":
         newThread();
+        break;
+      case "k":
+        if (settingsOpen) return;
+        setSearchOpen((open) => !open);
+        break;
+      case "1":
+      case "2":
+        setSettingsOpen(false);
+        setMode(event.key === "1" ? "work" : "chat");
         break;
       case "j":
         if (selected === undefined || settingsOpen) return;
@@ -611,9 +637,15 @@ function Workspace() {
           }
           harnesses={indicators}
           onOpenSettings={openSettings}
+          searchOpen={searchOpen}
+          onSearchOpenChange={setSearchOpen}
+          messageSearch={
+            drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= THREAD_SEARCH_VERSION
+          }
         />
       }
       machinePicker={<MachinePicker account={account} />}
+      {...(searchOpen ? { closeDialog: () => setSearchOpen(false) } : {})}
       settings={{
         open: settingsOpen,
         nav: (
@@ -629,7 +661,9 @@ function Workspace() {
             compact={compact}
           />
         ),
-        page: <SettingsView category={settingsCategory} harnesses={indicators} />,
+        page: (
+          <SettingsView category={settingsCategory} harnesses={indicators} onOpen={setSettingsCategory} />
+        ),
         pane: settingsPane,
         title: settingsLabel(settingsCategory),
         onBackToNav: () => setSettingsPane("nav"),
@@ -647,47 +681,39 @@ function Workspace() {
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
             onAnswerApproval={answerApproval}
+            onAnswerSpawn={answerSpawn}
           />
         ) : undefined
       }
       onToggleInspector={() => setInspectorOpen((open) => !open)}
+      onCloseInspector={() => setInspectorOpen(false)}
     >
       <div className="relative flex h-full flex-col">
         {connection === "unreachable" && driven !== undefined ? (
-          <Notice tone="attention">
-            Can't reach {driven.name}
-            {drivenDevice && !drivenDevice.online ? ` (${presenceLabel(drivenDevice).toLowerCase()})` : ""}.
-            Cerium keeps trying.
-            {WEB ? null : (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={() => driveMachine(registry, undefined)}
-                  className="font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
-                >
-                  Back to this computer
-                </button>
-              </>
-            )}
-          </Notice>
+          <UnreachableNotice
+            machine={driven.name}
+            presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+            onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+          />
         ) : connection === "unreachable" && !WEB ? (
           <Notice tone="attention">
             Reconnecting to Cerium's backend…
             {import.meta.env.DEV ? (
               <>
                 {" "}
-                In development, <code>bun run dev</code> starts it.
+                Start it with <code>bun run dev</code>.
               </>
             ) : null}
           </Notice>
         ) : AsyncResult.isFailure(threadsResult) ? (
-          <Notice tone="error">{messageOf(Cause.squash(threadsResult.cause))}</Notice>
+          <Notice tone="error" clamp>
+            {messageOf(Cause.squash(threadsResult.cause))}
+          </Notice>
         ) : null}
         <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
-        {WEB ? null : <UpdateNotice onOpenSettings={() => openSettings("updates")} />}
+        {WEB ? null : <UpdateNotice />}
         {actionError ? (
-          <Notice tone="error" onDismiss={() => setActionError(undefined)}>
+          <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
             {actionError}
           </Notice>
         ) : null}
@@ -697,9 +723,14 @@ function Workspace() {
             <Transcript
               key={viewed.thread.id}
               folder={viewed.thread.cwd}
-              blocks={buildTranscript(leadEvents)}
+              blocks={buildTranscript(
+                leadEvents,
+                (a, b) =>
+                  a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b),
+              )}
               queued={queuedMessages(leadEvents)}
               agent={{ provider: lead.provider, model: leadModel }}
+              modelName={(model) => modelLabel(models, lead.provider, model)}
               {...(cloudSelected ? {} : { messageBox })}
               activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
               bottomInset={composerHeight}
@@ -723,7 +754,7 @@ function Workspace() {
               }
             />
           ) : loadingThread ? null : (
-            <EmptyThread mode={mode} folder={newFolder} />
+            <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
           )}
         </div>
 
@@ -755,8 +786,17 @@ function Workspace() {
                     kind: "thread",
                     provider: lead.provider,
                     model: leadModel,
+                    modelId: lead.model,
+                    effort: lead.effort,
                     folder: viewed.thread.cwd,
                     ...(leadEnded ? { ended: leadEnded } : {}),
+                    // A thread read from the cloud copy can't be switched: it takes its machine.
+                    ...(cloudSelected
+                      ? {}
+                      : {
+                          onSwitch: (choice) =>
+                            attempt(switchLead({ payload: { agentId: lead.id, ...choice } })),
+                        }),
                   }
                 : { kind: "new", mode, folder: newFolder, onChooseFolder: chooseFolder, available }
             }
@@ -765,7 +805,7 @@ function Workspace() {
               cloudSelected ? (
                 <ConnectingNote machine={nameOf(cloudSelected.machine)} />
               ) : (
-                <ApprovalTray agents={agents} onAnswer={answerApproval} />
+                <ApprovalTray agents={agents} onAnswer={answerApproval} onAnswerSpawn={answerSpawn} />
               )
             }
             onHeight={setComposerHeight}

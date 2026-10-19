@@ -123,6 +123,12 @@ export const harnessesAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("HarnessStatuses", undefined));
 });
 
+/** What each harness can do. A machine too old to say fails it, and offers nothing that needs it. */
+export const manifestsAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  return Backend.use((client) => client("HarnessManifests", undefined));
+});
+
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const MODELS_KEY = "cerium:models";
 const CachedModels = Schema.fromJsonString(Schema.Array(ModelInfo));
@@ -287,7 +293,9 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
 
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
+export const switchModel = Backend.mutation("SwitchModel");
 export const respondToPermission = Backend.mutation("RespondToPermission");
+export const resolveSpawnApproval = Backend.mutation("ResolveSpawnApproval");
 /**
  * Interrupting or stopping an agent reads the thread list again once done, so pressing stop on an
  * agent the window still shows working, though it isn't, puts that right.

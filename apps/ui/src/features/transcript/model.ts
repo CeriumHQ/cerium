@@ -6,6 +6,7 @@ import type {
   InputItem,
   Mention,
   ProviderId,
+  ReasoningEffort,
 } from "@cerium/protocol";
 
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
@@ -58,7 +59,19 @@ export type TranscriptBlock =
         readonly costUsd?: number;
       };
     }
-  | { readonly kind: "error"; readonly id: string; readonly message: string };
+  | { readonly kind: "error"; readonly id: string; readonly message: string }
+  /**
+   * The model the agent runs on from here: where its session starts, and where the user switches
+   * it to another model or effort. Responses are labelled with the one in effect when they began.
+   */
+  | {
+      readonly kind: "model";
+      readonly id: string;
+      readonly model: string;
+      readonly effort?: ReasoningEffort;
+      /** `start` is a session beginning, which says nothing; the others are the user's switches. */
+      readonly change: "start" | "model" | "effort";
+    };
 
 export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
 
@@ -73,10 +86,18 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
 /** Whether the agent is mid-turn, waiting for input, or gone for good (stopped or failed). */
 export type AgentActivity = "running" | "idle" | "ended";
 
-export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArray<TranscriptBlock> => {
+/**
+ * `sameModel` tells whether two of the agent's model ids are one model: a session reports the id it
+ * resolved to (`claude-opus-5-5`), a switch the id it was picked by (`opus`).
+ */
+export const buildTranscript = (
+  events: ReadonlyArray<AgentEvent>,
+  sameModel: (a: string, b: string) => boolean = (a, b) => a === b,
+): ReadonlyArray<TranscriptBlock> => {
   const blocks: Array<TranscriptBlock> = [];
   const indexOf = new Map<string, number>();
   let lastUsage: Extract<TranscriptBlock, { kind: "turnEnd" }>["usage"];
+  let running: { model: string; effort: ReasoningEffort | undefined } | undefined;
 
   const upsert = (key: string, block: TranscriptBlock) => {
     const index = indexOf.get(key);
@@ -95,6 +116,29 @@ export const buildTranscript = (events: ReadonlyArray<AgentEvent>): ReadonlyArra
 
   for (const { payload, id } of events) {
     switch (payload._tag) {
+      case "SessionStarted":
+      case "ModelChanged": {
+        const effort = payload.effort;
+        const change =
+          payload._tag === "SessionStarted"
+            ? "start"
+            : running === undefined || !sameModel(running.model, payload.model)
+              ? "model"
+              : running.effort !== effort
+                ? "effort"
+                : undefined;
+        running = { model: payload.model, effort };
+        // A switch to what the agent already ran on changes nothing to show.
+        if (change === undefined || (change === "effort" && effort === undefined)) break;
+        blocks.push({
+          kind: "model",
+          id: `model:${id}`,
+          model: payload.model,
+          ...(effort ? { effort } : {}),
+          change,
+        });
+        break;
+      }
       case "TurnInput":
         payload.items.forEach((item, index) => {
           const key = `${id}:${index}`;

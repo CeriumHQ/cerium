@@ -14,6 +14,11 @@ interface ThumbProps {
   readonly name: string;
   /** Size and shape of the thumbnail, such as `h-28 max-w-60` or `size-6`. */
   readonly className: string;
+  /**
+   * `crop` fills the box and trims what doesn't fit; `natural` takes the box's height and keeps the
+   * image's own proportions, so a thumbnail of a screenshot isn't a strip of it.
+   */
+  readonly fit?: "crop" | "natural";
 }
 
 /** The image as a PNG on the clipboard: drawn on a canvas, so any format the page can show works. */
@@ -99,6 +104,7 @@ export function ImageThumb({
   url,
   name,
   className,
+  fit = "crop",
   path,
   menu = false,
 }: ThumbProps & { url: string; path?: string; menu?: boolean }) {
@@ -113,7 +119,9 @@ export function ImageThumb({
             src={url}
             alt={name}
             draggable={false}
-            className="size-full object-cover transition-[filter] duration-150 group-hover/thumb:brightness-110"
+            className={`object-cover transition-[filter] duration-150 group-hover/thumb:brightness-110 ${
+              fit === "natural" ? "h-full w-auto max-w-full" : "size-full"
+            }`}
           />
         </Dialog.Trigger>
       </WithImageMenu>
@@ -140,19 +148,46 @@ export function ImageThumb({
   );
 }
 
-/** An image file on disk, read through the backend, as a thumbnail. */
-export function FileImageThumb({ path, name, className }: ThumbProps & { path: string }) {
+/**
+ * An image file on disk, read through the backend, as a thumbnail. A file that can't be read shows
+ * as a labelled placeholder, or, when `quiet`, as nothing at all.
+ */
+export function FileImageThumb({
+  path,
+  name,
+  className,
+  fit,
+  quiet = false,
+}: ThumbProps & { path: string; quiet?: boolean }) {
   const result = useAtomValue(imageAtom(path));
-  if (AsyncResult.isSuccess(result))
-    return <ImageThumb url={result.value} name={name} className={className} path={path} menu />;
+  if (AsyncResult.isSuccess(result)) {
+    return (
+      <ImageThumb
+        url={result.value}
+        name={name}
+        className={className}
+        {...(fit ? { fit } : {})}
+        path={path}
+        menu
+      />
+    );
+  }
+  if (AsyncResult.isFailure(result)) {
+    if (quiet) return null;
+    return (
+      <span
+        title={path}
+        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-xs text-fg-tertiary"
+      >
+        <ImageOff size={13} strokeWidth={1.75} className="shrink-0" />
+        <span className="min-w-0 truncate">{name} can't be shown</span>
+      </span>
+    );
+  }
   return (
     <span
-      title={AsyncResult.isFailure(result) ? `${name} couldn't be shown` : name}
-      className={`grid shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-hover text-fg-tertiary ${
-        AsyncResult.isFailure(result) ? "" : "animate-pulse"
-      } ${className}`}
-    >
-      {AsyncResult.isFailure(result) ? <ImageOff size={14} strokeWidth={1.75} /> : null}
-    </span>
+      title={name}
+      className={`grid shrink-0 animate-pulse place-items-center rounded-lg border border-line-subtle bg-surface-hover ${className}`}
+    />
   );
 }

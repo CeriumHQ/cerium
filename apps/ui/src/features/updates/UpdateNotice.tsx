@@ -1,8 +1,9 @@
+import { Progress } from "@base-ui/react/progress";
 import { useState } from "react";
 
 import { Notice } from "../../app/Notice.tsx";
 import { shellBridge } from "../../backend/shell.ts";
-import { noticeVersion, versionLabel } from "./model.ts";
+import { noticeVersion, releaseNotesUrl, versionLabel } from "./model.ts";
 import { useUpdates } from "./useUpdates.ts";
 
 /** The version whose notice was dismissed, for as long as this window lives. */
@@ -16,7 +17,7 @@ const linkClass =
  * launch (and every few hours after), and takes it from download to restart without opening
  * settings. Dismissed, it stays away until a newer version turns up.
  */
-export function UpdateNotice({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function UpdateNotice() {
   const updates = useUpdates();
   const [dismissed, setDismissed] = useState(dismissedVersion);
   const version = updates && noticeVersion(updates.status);
@@ -38,13 +39,22 @@ export function UpdateNotice({ onOpenSettings }: { onOpenSettings: () => void })
             Update
           </button>
           <span className="text-fg-tertiary"> · </span>
-          <button type="button" onClick={onOpenSettings} className={linkClass}>
-            Details
-          </button>
+          <a href={releaseNotesUrl(version)} target="_blank" rel="noreferrer" className={linkClass}>
+            What's new
+          </a>
         </>
       ) : status.kind === "downloading" ? (
-        <span className="tabular-nums">
-          Downloading {versionLabel(version)}… {Math.floor(status.percent)}%
+        <span className="flex items-center gap-3">
+          <span className="shrink-0">Downloading {versionLabel(version)}…</span>
+          <Progress.Root
+            value={Math.floor(status.percent)}
+            aria-label={`Downloading ${versionLabel(version)}`}
+          >
+            <Progress.Track className="h-1 w-24 overflow-hidden rounded-full bg-line-strong">
+              <Progress.Indicator className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out-soft" />
+            </Progress.Track>
+          </Progress.Root>
+          <span className="text-fg-tertiary tabular-nums">{Math.floor(status.percent)}%</span>
         </span>
       ) : status.kind === "ready" ? (
         <>

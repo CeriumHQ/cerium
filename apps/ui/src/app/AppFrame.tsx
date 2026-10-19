@@ -1,12 +1,23 @@
 import type { ProviderId } from "@cerium/protocol";
-import type { ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
 import { useKeyboardOpen } from "../web/viewport.ts";
+import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
+import { GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
+import { ResizeHandle, usePanelWidth } from "./ResizeHandle.tsx";
 import { AgentsToggle, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
@@ -22,6 +33,8 @@ interface AppFrameProps {
   /** The agent inspector, shown beside the transcript only while open. */
   readonly inspector: ReactNode | undefined;
   readonly onToggleInspector: () => void;
+  /** Closes the inspector, whether or not it's open. */
+  readonly onCloseInspector: () => void;
   /**
    * Settings take the sidebar's place with their categories and the main panel's with the open
    * category. The thread views stay mounted underneath, so leaving settings returns to them as they were.
@@ -43,6 +56,8 @@ interface AppFrameProps {
   readonly onBack: () => void;
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
+  /** Closes the dialog open over the window, while one is: a phone's Back closes it first. */
+  readonly closeDialog?: () => void;
   readonly children: ReactNode;
 }
 
@@ -51,7 +66,33 @@ interface AppFrameProps {
  * transcript, which floats above it as an inset card. The sidebar folds away on demand (settings always
  * show theirs); the inspector opens beside the transcript on demand.
  */
-export function AppFrame({
+export function AppFrame(props: AppFrameProps) {
+  const compact = useCompact();
+  const { thread, settings } = props;
+  // The tab's and the taskbar's name for the window says where the user is.
+  const title = settings.open ? "Settings" : thread?.title;
+  useEffect(() => {
+    document.title = title ? `${title} · Cerium` : "Cerium";
+  }, [title]);
+  return compact ? <CompactFrame {...props} /> : <DesktopFrame {...props} />;
+}
+
+/** The width of an element, following it as the window resizes. */
+function useWidthOf(ref: RefObject<HTMLElement | null>) {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setWidth(element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
+
+function DesktopFrame({
   thread,
   mode,
   onModeChange,
@@ -62,34 +103,46 @@ export function AppFrame({
   agents,
   inspector,
   onToggleInspector,
+  onCloseInspector,
   settings,
   machinePicker,
-  pane,
-  onBack,
   children,
 }: AppFrameProps) {
-  const compact = useCompact();
-  if (compact) {
-    return (
-      <CompactFrame
-        mode={mode}
-        onModeChange={onModeChange}
-        sidebar={sidebar}
-        agents={agents}
-        inspector={inspector}
-        onToggleInspector={onToggleInspector}
-        settings={settings}
-        pane={pane}
-        onBack={onBack}
-        {...(thread ? { thread } : {})}
-        {...(machinePicker === undefined ? {} : { machinePicker })}
-      >
-        {children}
-      </CompactFrame>
-    );
-  }
   const view = settings.open ? "settings" : "threads";
   const showSidebar = sidebarOpen || settings.open;
+  const showInspector = inspector !== undefined && !settings.open;
+
+  const body = useRef<HTMLDivElement>(null);
+  const floatingInspector = useRef<HTMLElement>(null);
+  const bodyWidth = useWidthOf(body);
+  const [savedSidebar, setSavedSidebar, rememberSidebar] = usePanelWidth(SIDEBAR.key, SIDEBAR.fallback);
+  const [savedInspector, setSavedInspector, rememberInspector] = usePanelWidth(
+    INSPECTOR.key,
+    INSPECTOR.fallback,
+  );
+  /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
+  const [dragging, setDragging] = useState<"sidebar" | "inspector">();
+
+  const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
+    bodyWidth,
+    { sidebar: savedSidebar, inspector: savedInspector },
+    showSidebar,
+  );
+
+  const inspectorHandle = (
+    <ResizeHandle
+      label="Resize agents panel"
+      edge="start"
+      width={inspectorWidth}
+      min={INSPECTOR.min}
+      max={inspectorMax}
+      fallback={INSPECTOR.fallback}
+      onResize={setSavedInspector}
+      onCommit={rememberInspector}
+      onDragChange={(active) => setDragging(active ? "inspector" : undefined)}
+    />
+  );
+
   return (
     <div className="flex h-full flex-col bg-surface-window">
       <Titlebar
@@ -98,6 +151,8 @@ export function AppFrame({
         mode={mode}
         onModeChange={onModeChange}
         sidebarOpen={sidebarOpen}
+        sidebarWidth={sidebarWidth}
+        resizing={dragging === "sidebar"}
         onToggleSidebar={onToggleSidebar}
         onNewThread={onNewThread}
         agents={agents}
@@ -105,15 +160,16 @@ export function AppFrame({
         onToggleInspector={onToggleInspector}
         machinePicker={machinePicker}
       />
-      <div className="flex min-h-0 flex-1 pr-1.5 pb-1.5">
+      <div ref={body} className="relative flex min-h-0 flex-1 pr-1.5 pb-1.5">
         {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
         <aside
           inert={!showSidebar}
-          className={`shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out-soft ${
-            showSidebar ? "w-69.5 opacity-100" : "w-1.5 opacity-0"
-          }`}
+          style={{ width: sidebarSpace }}
+          className={`shrink-0 overflow-hidden ${
+            dragging === "sidebar" ? "" : "transition-[width,opacity] duration-200 ease-out-soft"
+          } ${showSidebar ? "opacity-100" : "opacity-0"}`}
         >
-          <div className="h-full w-68">
+          <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
             <ViewStack
               active={view}
               views={[
@@ -123,7 +179,36 @@ export function AppFrame({
             />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
+        {showSidebar ? (
+          <div className="relative w-0 shrink-0">
+            <ResizeHandle
+              label="Resize sidebar"
+              edge="end"
+              width={sidebarWidth}
+              min={SIDEBAR.min}
+              max={sidebarMax}
+              fallback={SIDEBAR.fallback}
+              onResize={setSavedSidebar}
+              onCommit={rememberSidebar}
+              onDragChange={(active) => setDragging(active ? "sidebar" : undefined)}
+            />
+          </div>
+        ) : null}
+        <main
+          // A floating inspector covers part of the transcript and the message box, so it gives way as
+          // soon as the user reaches for either: clicking it, or an action in the inspector moving
+          // focus there (Message). Focus coming back from a menu or another window leaves it open.
+          {...(showInspector && floating
+            ? {
+                onPointerDownCapture: onCloseInspector,
+                onFocusCapture: (event: FocusEvent) => {
+                  const from = event.relatedTarget;
+                  if (from instanceof Node && floatingInspector.current?.contains(from)) onCloseInspector();
+                },
+              }
+            : {})}
+          className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+        >
           <ViewStack
             active={view}
             views={[
@@ -132,11 +217,36 @@ export function AppFrame({
             ]}
           />
         </main>
-        {inspector === undefined || settings.open ? null : (
-          <aside className="ml-1.5 w-80 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
-            {inspector}
-          </aside>
-        )}
+        {showInspector ? (
+          floating ? (
+            <>
+              {/* On the gutter left of the floating panel. */}
+              <div
+                className="absolute top-0 bottom-1.5 z-30 w-0"
+                style={{ right: inspectorWidth + GUTTER * 2 }}
+              >
+                {inspectorHandle}
+              </div>
+              <aside
+                ref={floatingInspector}
+                style={{ width: inspectorWidth }}
+                className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
+              >
+                {inspector}
+              </aside>
+            </>
+          ) : (
+            <>
+              <div className="relative w-0 shrink-0">{inspectorHandle}</div>
+              <aside
+                style={{ width: inspectorWidth }}
+                className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+              >
+                {inspector}
+              </aside>
+            </>
+          )
+        ) : null}
       </div>
     </div>
   );
@@ -157,13 +267,29 @@ function CompactFrame({
   onToggleInspector,
   settings,
   machinePicker,
+  closeDialog,
   pane,
   onBack,
   children,
-}: Omit<AppFrameProps, "sidebarOpen" | "onToggleSidebar" | "onNewThread">) {
+}: AppFrameProps) {
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
+  const inspecting = inspector !== undefined && !settings.open && pane === "main";
+  // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
+  // button takes it up one.
+  useBackNavigation(
+    (settings.open ? (settings.pane === "nav" ? 1 : 2) : pane === "main" ? (inspecting ? 2 : 1) : 0) +
+      (closeDialog ? 1 : 0),
+    () => {
+      if (closeDialog) closeDialog();
+      else if (settings.open) {
+        if (settings.pane === "page") settings.onBackToNav();
+        else settings.onClose();
+      } else if (inspecting) onToggleInspector();
+      else onBack();
+    },
+  );
   return (
     <div className="relative flex h-full flex-col bg-surface-window">
       <ViewStack
@@ -223,7 +349,7 @@ function CompactFrame({
           ],
         ]}
       />
-      {inspector !== undefined && !settings.open && pane === "main" ? (
+      {inspecting ? (
         <div className="absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl">
           {inspector}
         </div>

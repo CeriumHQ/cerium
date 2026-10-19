@@ -1,24 +1,14 @@
 import { Button } from "@base-ui/react/button";
 import type { AccessMode, Attachment, Mention, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
-import {
-  ArrowUp,
-  Eye,
-  FilePen,
-  Gauge,
-  Paperclip,
-  ShieldCheck,
-  ShieldOff,
-  ShieldQuestion,
-  Square,
-  type LucideIcon,
-} from "lucide-react";
+import { AsyncResult } from "effect/reactivity";
+import { ArrowUp, Gauge, Paperclip, Square } from "lucide-react";
 import {
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   useRef,
   useState,
-  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -26,19 +16,11 @@ import {
   type RefObject,
 } from "react";
 
+import { manifestsAtom } from "../../backend/atoms.ts";
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import {
-  SelectGroup,
-  SelectGroupLabel,
-  SelectItem,
-  SelectPopup,
-  SelectRoot,
-  SelectSeparator,
-  SelectTrigger,
-} from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { accessAtom, effortAtom, isSendKey, modelAtom, sendKeyAtom } from "../settings/preferences.ts";
@@ -58,17 +40,19 @@ import {
 import { draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "./drafts.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import type { MessageBox } from "./messageBox.ts";
-import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "./models.ts";
+import {
+  effortFor,
+  effortLabel,
+  modelKey,
+  pickModel,
+  switchTo,
+  useModels,
+  type ModelSwitch,
+} from "./models.ts";
+import { AccessPicker, EffortPicker, FixedChip, ModelPicker, type ShownModel } from "./Pickers.tsx";
+import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
-
-const accessIcon: Record<AccessMode, LucideIcon> = {
-  readOnly: Eye,
-  ask: ShieldQuestion,
-  acceptEdits: FilePen,
-  auto: ShieldCheck,
-  fullAccess: ShieldOff,
-};
 
 const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
@@ -94,12 +78,21 @@ export type ComposerTarget =
   | {
       readonly kind: "thread";
       readonly provider: ProviderId;
+      /** The model as the transcript names it, for when the harness no longer lists it. */
       readonly model: string;
+      /** The model as the harness lists it, which the picker matches. */
+      readonly modelId: string;
+      /** Absent for models the harness offers no effort setting for. */
+      readonly effort?: ReasoningEffort | undefined;
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
-      /** The lead stopped or failed. */
       /** The lead stopped or failed; the next message picks the thread back up. */
       readonly ended?: "stopped" | "failed";
+      /**
+       * Switches the lead to another model of its harness, or another effort, from its next turn.
+       * Resolves false when it didn't go through. Absent where the box can't ask for that.
+       */
+      readonly onSwitch?: (choice: ModelSwitch) => Promise<boolean>;
     }
   /** The first message starts a thread with the chosen setup. */
   | {
@@ -160,6 +153,7 @@ export function Composer({
   const [dismissed, setDismissed] = useState<Trigger>();
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const save = useAtomSet(saveAttachment, { mode: "promise" });
   const draft = drafts[draftKey] ?? emptyDraft;
   // New threads start with the model and effort the last one was given, which are also the defaults
@@ -171,17 +165,12 @@ export function Composer({
   const effort = draft.start?.effort ?? defaultEffort;
   const access = draft.start?.access ?? defaultAccess;
   const sendKey = useAtomValue(sendKeyAtom);
-  const choose =
-    <A extends string>(set: (value: A) => void) =>
-    (value: A | null) => {
-      if (value !== null) set(value);
-    };
+  const touch = useCoarsePointer();
 
   const models = useModels();
   const model = pickModel(models, modelId, target.kind === "new" ? target.available : allProviders);
   // Keep the effort valid when switching to a model with fewer levels.
   const activeEffort = model ? effortFor(model, effort) : undefined;
-  const AccessIcon = accessIcon[access];
   const isNew = target.kind === "new";
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
@@ -189,13 +178,11 @@ export function Composer({
   const ready = draft.attachments.flatMap((attachment) =>
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   );
-  const canSend =
-    (text.trim() !== "" || ready.length > 0) &&
-    !preparing &&
-    !needsFolder &&
-    !connecting &&
-    (!isNew || model !== undefined);
-  const recipient = target.kind === "thread" ? target.model : (model?.label ?? "an agent");
+  const written = text.trim() !== "" || ready.length > 0;
+  const sendable = written && !preparing && !connecting && (!isNew || model !== undefined);
+  const canSend = sendable && !needsFolder;
+  /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
+  const asksForProject = sendable && needsFolder;
 
   // `@` tags files in the thread's folder; `$` the skills of the harness the message goes to.
   const sources = {
@@ -270,6 +257,37 @@ export function Composer({
   };
   const setAccess = (value: AccessMode) => pickForDraft({ access: value });
 
+  // An open thread's lead can take another model of its harness, or another effort, when the harness
+  // can switch a session. A machine too old to say (it has no manifests) offers nothing to switch.
+  const thread = target.kind === "thread" ? target : undefined;
+  const manifests = useAtomValue(manifestsAtom);
+  const switching =
+    thread?.onSwitch !== undefined && AsyncResult.isSuccess(manifests)
+      ? manifests.value.find((manifest) => manifest.provider === thread.provider)?.switching
+      : undefined;
+  /** A pick the machine hasn't confirmed yet, which holds only while the thread still has what it was made against. */
+  const [pending, setPending] = useState<{ readonly base: string; readonly choice: ModelSwitch }>();
+  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}`;
+  const picked = pending?.base === base ? pending.choice : undefined;
+  const threadModel =
+    thread === undefined
+      ? undefined
+      : models.find(
+          (candidate) =>
+            candidate.provider === thread.provider && candidate.id === (picked?.model ?? thread.modelId),
+        );
+  const threadEffort = threadModel
+    ? effortFor(threadModel, picked ? picked.effort : thread?.effort)
+    : undefined;
+  const switchLead = (choice: ModelSwitch) => {
+    if (thread?.onSwitch === undefined) return;
+    setPending({ base, choice });
+    void thread.onSwitch(choice).then((done) => {
+      // A refusal undoes only its own pick, not one made since.
+      if (!done) setPending((current) => (current?.choice === choice ? undefined : current));
+    });
+  };
+
   const setAttachment = (key: string, id: string, state: DraftAttachment["state"]) =>
     updateDraft(key, (current) => ({
       ...current,
@@ -308,6 +326,41 @@ export function Composer({
     }
   };
 
+  // Files dropped anywhere on the window attach here, not only onto the box: elsewhere the browser
+  // would open the file in place of the app. While the box is out of view (settings or another pane
+  // over it, which keep its layout but make it inert, or a dialog hiding it), drops are left alone.
+  const takeFiles = useEffectEvent((files: ReadonlyArray<File>) => addFiles(files));
+  useEffect(() => {
+    const showing = () =>
+      box.current !== null &&
+      box.current.getClientRects().length > 0 &&
+      box.current.closest('[inert], [aria-hidden="true"]') === null;
+    const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
+    const over = (event: DragEvent) => {
+      if (!carriesFiles(event) || !showing()) return;
+      event.preventDefault();
+      setDragging(true);
+    };
+    // Leaving for the window's edge; moving between its elements names the one entered.
+    const leave = (event: DragEvent) => {
+      if (event.relatedTarget === null) setDragging(false);
+    };
+    const drop = (event: DragEvent) => {
+      setDragging(false);
+      if (!carriesFiles(event) || !showing()) return;
+      event.preventDefault();
+      takeFiles([...(event.dataTransfer?.files ?? [])]);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
+
   const removeAttachment = (id: string) => {
     const removed = draft.attachments.find((attachment) => attachment.id === id);
     if (removed?.preview) URL.revokeObjectURL(removed.preview);
@@ -317,7 +370,7 @@ export function Composer({
     }));
   };
 
-  const resumes = target.kind === "thread" && target.ended !== undefined;
+  const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
 
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
@@ -355,6 +408,10 @@ export function Composer({
   };
 
   const send = () => {
+    if (asksForProject) {
+      setProjectsOpen(true);
+      return;
+    }
     if (!canSend || model === undefined) return;
     const key = draftKey;
     const sent = draft;
@@ -401,7 +458,7 @@ export function Composer({
       setDismissed(menuTrigger);
       return;
     }
-    if (isSendKey(event, sendKey)) {
+    if (isSendKey(event, touch ? "ctrlEnter" : sendKey)) {
       event.preventDefault();
       send();
     } else if (event.key === "Escape" && running) {
@@ -409,8 +466,6 @@ export function Composer({
       onStop();
     }
   };
-
-  const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
   const attachButton = (
     <IconButton
@@ -422,34 +477,137 @@ export function Composer({
   );
   // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
   const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
-  const sendButton = running ? (
+  const discSize = oneLine ? "m-0.5 size-9" : "size-8";
+  const stopButton = (
     <Tooltip label="Stop" shortcut="Esc">
       <Button
         onClick={onStop}
         onMouseDown={keepFocus}
         aria-label="Stop"
-        className={`grid shrink-0 place-items-center rounded-full bg-surface-active text-fg-primary transition-colors hover:bg-line-strong ${
-          oneLine ? "m-0.5 size-9" : "size-8"
-        }`}
+        className={`grid shrink-0 place-items-center rounded-full bg-surface-active text-fg-primary transition-colors hover:bg-line-strong ${discSize}`}
       >
         <Square size={12} fill="currentColor" />
       </Button>
     </Tooltip>
-  ) : (
-    <Tooltip label="Send" shortcut={sendKey === "enter" ? "Enter" : "Ctrl Enter"}>
+  );
+  const sendLabel = asksForProject ? "Choose a project first" : running ? "Send after this turn" : "Send";
+  const sendButton = (
+    <Tooltip
+      label={sendLabel}
+      {...(touch || asksForProject ? {} : { shortcut: sendKey === "enter" ? "Enter" : "Ctrl Enter" })}
+    >
       <Button
         onClick={send}
         onMouseDown={keepFocus}
-        disabled={!canSend}
-        aria-label="Send"
-        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30 ${
-          oneLine ? "m-0.5 size-9" : "size-8"
-        }`}
+        disabled={!canSend && !asksForProject}
+        aria-label={sendLabel}
+        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30 ${discSize}`}
       >
         <ArrowUp size={16} strokeWidth={2.25} />
       </Button>
     </Tooltip>
   );
+  // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop.
+  const actions = running ? (
+    <div className="flex shrink-0 items-center gap-1">
+      {stopButton}
+      {written ? sendButton : null}
+    </div>
+  ) : (
+    sendButton
+  );
+
+  /** What the model picker shows for an open thread: the model it runs, or the name the transcript gives it. */
+  const threadShown: ShownModel | undefined = thread
+    ? {
+        provider: thread.provider,
+        label: threadModel?.label ?? thread.model,
+        ...(threadModel ? { key: modelKey(threadModel) } : {}),
+      }
+    : undefined;
+
+  const placeholder = resumes
+    ? thread?.ended === "failed"
+      ? "Send a message to try again"
+      : "Send a message to pick this thread back up"
+    : isNew
+      ? target.mode === "chat"
+        ? "Ask anything"
+        : "Describe the task"
+      : `Message ${threadShown?.label}`;
+
+  const threadSetup =
+    thread && threadShown ? (
+      <>
+        {switching?.model ? (
+          <ModelPicker
+            models={models}
+            shown={threadShown}
+            providers={[thread.provider]}
+            available={new Set([thread.provider])}
+            onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort))}
+            {...(running ? { note: "Applies from the next turn" } : {})}
+          />
+        ) : (
+          <FixedChip
+            tip={
+              AsyncResult.isFailure(manifests)
+                ? "Update Cerium on that computer to switch models"
+                : switching
+                  ? `${providerName[thread.provider]} can't switch models mid-thread`
+                  : "The model this thread started with"
+            }
+          >
+            <ProviderLogo provider={thread.provider} size={13} />
+            <span className="font-medium text-fg-primary">{threadShown.label}</span>
+          </FixedChip>
+        )}
+        {threadModel && threadEffort ? (
+          switching?.effort ? (
+            <EffortPicker
+              model={threadModel}
+              value={threadEffort}
+              onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
+            />
+          ) : (
+            <FixedChip tip="The effort this thread started with">
+              <Gauge size={13} strokeWidth={1.75} />
+              {effortLabel[threadEffort]}
+            </FixedChip>
+          )
+        ) : null}
+      </>
+    ) : null;
+
+  const newSetup =
+    target.kind === "new" ? (
+      <>
+        {target.mode === "work" ? (
+          <ProjectPicker
+            folder={target.folder}
+            open={projectsOpen}
+            onOpenChange={setProjectsOpen}
+            needed={asksForProject}
+            returnFocus={input}
+            onChoose={(folder) => {
+              target.onChooseFolder(folder);
+              pickForDraft({ folder });
+            }}
+          />
+        ) : null}
+        <ModelPicker
+          models={models}
+          shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
+          providers={providers}
+          available={target.available}
+          onPick={(picked) => setModelId(modelKey(picked))}
+        />
+        {model && activeEffort ? (
+          <EffortPicker model={model} value={activeEffort} onPick={setEffort} />
+        ) : null}
+        {target.mode === "work" ? <AccessPicker value={access} onPick={setAccess} /> : null}
+      </>
+    ) : null;
 
   return (
     <div
@@ -472,24 +630,18 @@ export function Composer({
           />
         ) : null}
         <div
-          onDragOver={(event) => {
-            if (!hasFiles(event)) return;
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-          }}
-          onDrop={(event) => {
-            setDragging(false);
-            if (!hasFiles(event)) return;
-            event.preventDefault();
-            addFiles([...event.dataTransfer.files]);
-          }}
-          className={`pointer-events-auto rounded-2xl border bg-surface-raised backdrop-blur-2xl transition-colors ${
+          className={`pointer-events-auto relative rounded-2xl border bg-surface-raised backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-subtle focus-within:border-line-strong"
           } ${oneLine ? "flex flex-wrap items-end p-1" : ""}`}
         >
+          {dragging ? (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-2xl bg-surface-overlay text-[13px] text-fg-secondary backdrop-blur-xl">
+              <span className="flex items-center gap-2">
+                <Paperclip size={14} strokeWidth={1.75} />
+                Drop to attach
+              </span>
+            </div>
+          ) : null}
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {draft.attachments.length > 0 ? (
@@ -504,15 +656,7 @@ export function Composer({
             handle={editor}
             resetKey={`${draftKey}:${epoch}`}
             segments={draft.segments}
-            placeholder={
-              needsFolder
-                ? "Choose a project to work in first"
-                : resumes
-                  ? `Message ${recipient} to pick this thread back up`
-                  : isNew && target.mode === "chat"
-                    ? `Ask ${recipient} anything`
-                    : `Message ${recipient}`
-            }
+            placeholder={placeholder}
             onChange={(segments) => updateDraft(draftKey, (current) => ({ ...current, segments }))}
             onTrigger={(next) => {
               if (
@@ -542,112 +686,16 @@ export function Composer({
           />
           {/* While a phone's keyboard is up the setup waits below it; the box is one line. */}
           {oneLine ? (
-            sendButton
+            actions
           ) : (
-            <div className="flex items-center gap-0.5 px-2 pb-2 max-md:flex-wrap max-md:gap-y-1">
-              {attachButton}
-
-              {target.kind === "thread" ? (
-                <span className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">
-                  <ProviderLogo provider={target.provider} size={13} />
-                  <span className="font-medium text-fg-primary">{target.model}</span>
-                </span>
-              ) : (
-                <>
-                  {target.mode === "work" ? (
-                    <ProjectPicker
-                      folder={target.folder}
-                      onChoose={(folder) => {
-                        target.onChooseFolder(folder);
-                        pickForDraft({ folder });
-                      }}
-                    />
-                  ) : null}
-
-                  <SelectRoot value={model ? modelKey(model) : null} onValueChange={choose(setModelId)}>
-                    <SelectTrigger label="Model">
-                      {model ? (
-                        <>
-                          <ProviderLogo provider={model.provider} size={13} />
-                          <span className="font-medium text-fg-primary">{model.label}</span>
-                        </>
-                      ) : (
-                        <span className="text-fg-tertiary">Finding models…</span>
-                      )}
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {providers.map((provider, index) => (
-                        <SelectGroup key={provider}>
-                          {index > 0 ? <SelectSeparator /> : null}
-                          <SelectGroupLabel>
-                            <ProviderLogo
-                              provider={provider}
-                              size={11}
-                              {...(target.available.has(provider)
-                                ? {}
-                                : { className: "opacity-35 grayscale" })}
-                            />
-                            {providerName[provider]}
-                            {target.available.has(provider) ? null : (
-                              <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>
-                            )}
-                          </SelectGroupLabel>
-                          {models
-                            .filter((option) => option.provider === provider)
-                            .map((option) => (
-                              <SelectItem
-                                key={option.id}
-                                value={modelKey(option)}
-                                disabled={!target.available.has(provider)}
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      ))}
-                    </SelectPopup>
-                  </SelectRoot>
-
-                  {model && activeEffort ? (
-                    <SelectRoot value={activeEffort} onValueChange={choose<ReasoningEffort>(setEffort)}>
-                      <SelectTrigger label="Reasoning effort">
-                        <Gauge size={13} strokeWidth={1.75} />
-                        {effortLabel[activeEffort]}
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {model.efforts.map((level) => (
-                          <SelectItem key={level} value={level}>
-                            {effortLabel[level]}
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </SelectRoot>
-                  ) : null}
-
-                  {target.mode === "work" ? (
-                    <SelectRoot value={access} onValueChange={choose<AccessMode>(setAccess)}>
-                      <SelectTrigger label="Access">
-                        <AccessIcon size={13} strokeWidth={1.75} />
-                        {accessOptions.find((option) => option.value === access)?.label}
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {accessOptions.map((option) => (
-                          <SelectItem
-                            key={option.value}
-                            value={option.value}
-                            icon={accessIcon[option.value]}
-                            description={option.description}
-                          >
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </SelectRoot>
-                  ) : null}
-                </>
-              )}
-
-              <div className="ml-auto">{sendButton}</div>
+            <div className="flex items-end gap-1 px-2 pb-2">
+              {/* The pickers wrap among themselves on a narrow screen, so send keeps its corner
+                  instead of dropping onto a row of its own. */}
+              <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
+                {attachButton}
+                {thread ? threadSetup : newSetup}
+              </div>
+              {actions}
             </div>
           )}
         </div>

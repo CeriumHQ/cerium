@@ -3,7 +3,7 @@ import type { ProjectInfo } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Check, ChevronDown, FolderOpen, FolderPlus, Search, X } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
 import { removeProject, savedProjectsAtom, saveProject } from "../../backend/projects.ts";
@@ -20,15 +20,36 @@ interface ProjectPickerProps {
   /** The folder the next work thread starts in. */
   readonly folder: string | undefined;
   readonly onChoose: (folder: string) => void;
+  /** Whether the list is open; the box opens it when a message is sent before a project is chosen. */
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  /** The message was waiting on a project: the trigger asks for one. */
+  readonly needed?: boolean;
+  /** Where focus goes once the list closes: the message box, so writing carries on. */
+  readonly returnFocus?: RefObject<HTMLElement | null>;
 }
+
+/** The saved project used most recently, which a new work thread starts in until another is chosen. */
+export const useLatestProject = (): string | undefined =>
+  AsyncResult.getOrElse(useAtomValue(savedProjectsAtom), (): ReadonlyArray<ProjectInfo> => []).find(
+    (project) => project.missing !== true,
+  )?.path;
 
 /**
  * Chooses the folder a new work thread runs in from the saved projects, most recently used first,
  * or browses for another one, which is saved for next time.
  */
-export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
-  const [open, setOpen] = useState(false);
+export function ProjectPicker({
+  folder,
+  onChoose,
+  open,
+  onOpenChange,
+  needed,
+  returnFocus,
+}: ProjectPickerProps) {
   const [query, setQuery] = useState("");
+  /** The row the keyboard or pointer is on; none while the list has just opened. */
+  const [highlighted, setHighlighted] = useState<string>();
   const projects = AsyncResult.getOrElse(
     useAtomValue(savedProjectsAtom),
     (): ReadonlyArray<ProjectInfo> => [],
@@ -67,14 +88,15 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
       open={open}
       onOpenChange={(next) => {
         if (next) refresh();
-        setOpen(next);
+        onOpenChange(next);
       }}
       onOpenChangeComplete={(next) => {
         if (!next) setQuery("");
       }}
+      onItemHighlighted={setHighlighted}
       onValueChange={(value) => {
         if (value === null) return;
-        setOpen(false);
+        onOpenChange(false);
         if (value === ADD_FOLDER) {
           if (machine === undefined) browse();
         } else choose(value);
@@ -85,7 +107,7 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
         <Combobox.Trigger
           aria-label="Project"
           className={`flex h-7 max-w-52 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
-            folder ? "text-fg-primary" : "text-attention"
+            folder ? "text-fg-primary" : needed ? "text-attention" : "text-fg-secondary"
           }`}
         >
           {folder ? (
@@ -101,12 +123,23 @@ export function ProjectPicker({ folder, onChoose }: ProjectPickerProps) {
         <Combobox.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
           <Combobox.Popup
             aria-label="Projects"
+            {...(returnFocus ? { finalFocus: returnFocus } : {})}
             className="w-80 origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
           >
             <label className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
               <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
               <Combobox.Input
                 placeholder="Find a project"
+                aria-label="Find a project"
+                // Enter on a list nothing in it is highlighted yet takes its first project: the one used last.
+                onKeyDown={(event) => {
+                  const first = matches.find((path) => byPath.get(path)?.missing !== true);
+                  if (event.key !== "Enter" || highlighted !== undefined || first === undefined) return;
+                  event.preventBaseUIHandler();
+                  event.preventDefault();
+                  onOpenChange(false);
+                  choose(first);
+                }}
                 className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary"
               />
             </label>
@@ -174,7 +207,7 @@ function ProjectItem({ project, onRemove }: { project: ProjectInfo; onRemove: ()
             event.stopPropagation();
             onRemove();
           }}
-          className="pointer-events-auto hidden size-5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors group-hover/item:grid hover:bg-surface-active hover:text-fg-primary"
+          className="pointer-events-auto hidden size-5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors group-hover/item:grid hover:bg-surface-active hover:text-fg-primary pointer-coarse:grid"
         >
           <X size={12} strokeWidth={2} />
         </button>

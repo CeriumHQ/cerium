@@ -1,18 +1,32 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import { Ban, Brain, Check, ChevronRight, Clock, CornerDownRight, ShieldQuestion, X } from "lucide-react";
+import type { ReasoningEffort } from "@cerium/protocol";
+import {
+  ArrowRightLeft,
+  Ban,
+  Brain,
+  Check,
+  ChevronRight,
+  Clock,
+  CornerDownRight,
+  ShieldQuestion,
+  Workflow,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
 import { AgentMenuArea, type AgentActions } from "../agents/AgentMenu.tsx";
-import type { AgentSummary } from "../agents/model.ts";
+import { approvalShell, ApprovalActions, ApprovalDetail } from "../agents/ApprovalParts.tsx";
+import { accessLabel, type AgentSummary } from "../agents/model.ts";
 import { segmentsOf } from "../composer/draft.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
-import { fileEdits } from "./diff.ts";
-import { EditDiff } from "./EditDiff.tsx";
+import { effortLabel } from "../composer/models.ts";
+import { CopyButton } from "./CopyButton.tsx";
 import { FileChip } from "./FileChip.tsx";
+import { FoldedText } from "./FoldedText.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { TranscriptBlock, UserBlock } from "./model.ts";
@@ -44,7 +58,8 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
               key={image.path}
               path={image.path}
               name={image.name}
-              className="h-28 max-w-60 min-w-16"
+              className="h-32 max-w-full min-w-16"
+              fit="natural"
             />
           ))}
           {files.map((file) => (
@@ -55,8 +70,10 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
         </div>
       ) : null}
       {block.text.trim() === "" ? null : (
-        <div className="rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text">
-          <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
+        <div className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text">
+          <FoldedText text={block.text}>
+            <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
+          </FoldedText>
         </div>
       )}
     </MessageMenuArea>
@@ -153,6 +170,34 @@ export function Working() {
   );
 }
 
+/** Where the user switched the agent to another model, or just its effort. */
+export function ModelSwitch({
+  model,
+  effort,
+  change,
+}: {
+  /** The model as people know it. */
+  model: string;
+  effort?: ReasoningEffort;
+  change: "model" | "effort";
+}) {
+  return (
+    <p className="flex items-center gap-2 text-[12.5px] text-fg-tertiary">
+      <ArrowRightLeft size={13} strokeWidth={1.75} className="shrink-0" />
+      <span className="min-w-0 truncate">
+        {change === "effort" ? (
+          <>Effort set to {effort ? effortLabel[effort] : ""}</>
+        ) : (
+          <>
+            Switched to <span className="font-medium text-fg-secondary">{model}</span>
+            {effort ? ` · ${effortLabel[effort]}` : ""}
+          </>
+        )}
+      </span>
+    </p>
+  );
+}
+
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   return (
     <Collapsible.Root>
@@ -165,21 +210,14 @@ export function Reasoning({ block }: { block: Block<"reasoning"> }) {
         />
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <p className="mt-1.5 border-l border-line-strong pl-3 text-[12.5px] leading-[1.6] text-fg-tertiary select-text">
-          {block.text}
-        </p>
+        {/* Reasoning is written as markdown too: paragraphs, lists and bold run-in headings. */}
+        <div className="mt-1.5 border-l border-line-strong pl-3 select-text">
+          <Markdown text={block.text} streaming={block.streaming} compact />
+        </div>
       </Collapsible.Panel>
     </Collapsible.Root>
   );
 }
-
-const accessLabel = {
-  readOnly: "Read only",
-  ask: "Asks to edit",
-  acceptEdits: "Edits freely",
-  auto: "Auto-reviewed",
-  fullAccess: "Full access",
-} as const;
 
 /** A spawned agent as its card shows it; `needsYou` while a request of its waits on the user. */
 export type ChildState = "running" | "needsYou" | "idle" | "failed";
@@ -200,7 +238,7 @@ export function SpawnCard({
   const card = (
     <Button
       onClick={() => actions.onShow?.(block.childId)}
-      className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-[12.5px] transition-colors hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
+      className="flex min-w-0 flex-[1_1_17rem] items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-[12.5px] transition-colors max-md:min-h-10 hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
     >
       <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
       <span className="truncate font-medium text-fg-primary">{block.role}</span>
@@ -216,6 +254,26 @@ export function SpawnCard({
     </AgentMenuArea>
   ) : (
     card
+  );
+}
+
+/**
+ * A request to start an agent that waits for the user's approval. It makes no card until the user
+ * says yes, so a quiet line records that it was made; a refusal arrives as a notice.
+ */
+export function SpawnAsk({ call }: { call: Block<"tool"> }) {
+  const input =
+    typeof call.input === "object" && call.input !== null ? (call.input as Record<string, unknown>) : {};
+  const role = typeof input["role"] === "string" ? input["role"] : "an agent";
+  const model = typeof input["model"] === "string" ? input["model"] : undefined;
+  return (
+    <p className="flex items-center gap-2 text-[12.5px] text-fg-tertiary">
+      <Workflow size={13} strokeWidth={1.75} className="shrink-0" />
+      <span className="min-w-0 truncate">
+        Asked to start <span className="font-medium text-fg-secondary">{role}</span>
+        {model ? ` on ${model}` : ""}
+      </span>
+    </p>
   );
 }
 
@@ -247,6 +305,7 @@ export function PermissionCard({
   block,
   expired,
   from,
+  keys,
   onAnswer,
 }: {
   block: Block<"permission">;
@@ -254,14 +313,10 @@ export function PermissionCard({
   from?: ReactNode;
   /** The agent stopped before anyone answered, so the request can't be answered any more. */
   expired: boolean;
+  /** The buttons name the keys that answer this request (the one at the front of the tray). */
+  keys?: boolean;
   onAnswer?: PermissionAnswer;
 }) {
-  const command =
-    typeof block.input === "object" && block.input !== null
-      ? (block.input as Record<string, unknown>)["command"]
-      : undefined;
-  const edits = fileEdits(block.input);
-
   if (block.resolution !== undefined || expired) {
     const { decision, scope } = block.resolution ?? {};
     return (
@@ -287,7 +342,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-attention/35 bg-surface-raised p-3 shadow-raised">
+    <div className={approvalShell}>
       {from}
       <div className="flex items-center gap-1.5 text-[12.5px] text-fg-secondary">
         <ShieldQuestion size={13} strokeWidth={1.75} className="text-attention" />
@@ -295,45 +350,39 @@ export function PermissionCard({
         <span className="text-attention">needs approval</span>
       </div>
       {/* What the agent wants to do, so the answer is an informed one. */}
-      {typeof command === "string" ? (
-        <pre className="overflow-x-auto rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-[12px] text-fg-primary select-text">
-          {command}
-        </pre>
-      ) : edits.length > 0 ? (
-        <EditDiff edits={edits} />
-      ) : null}
-      <div className="flex items-center gap-1.5">
-        <Button
-          onClick={() => onAnswer?.("allow", "once")}
-          className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
-        >
-          Allow once
-        </Button>
-        <Button
-          onClick={() => onAnswer?.("allow", "session")}
-          className="h-7 rounded-md border border-line-strong px-2.5 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover"
-        >
-          Allow for session
-        </Button>
-        <Button
-          onClick={() => onAnswer?.("deny", "once")}
-          className="ml-auto h-7 rounded-md px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-        >
-          Deny
-        </Button>
-      </div>
+      <ApprovalDetail input={block.input} />
+      <ApprovalActions onAnswer={onAnswer} keys={keys === true} />
     </div>
   );
 }
 
-export function TurnFooter({ block }: { block: Block<"turnEnd"> }) {
-  if (block.usage === undefined) return null;
-  const { inputTokens, outputTokens, costUsd } = block.usage;
+/** Why a turn ended early, which the conversation otherwise leaves unsaid. */
+const stoppedNote = { interrupted: "Stopped", maxTurns: "Stopped at the turn limit" } as const;
+
+/**
+ * The end of a response: a button that copies it, and what the turn cost. The transcript shows it
+ * under the latest response, and under earlier ones while the pointer is over them.
+ */
+export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: string }) {
+  const stopped =
+    block.stopReason in stoppedNote ? stoppedNote[block.stopReason as keyof typeof stoppedNote] : undefined;
+  if (block.usage === undefined && text === "" && stopped === undefined) return null;
   return (
-    <div className="flex items-center gap-2 text-2xs text-fg-disabled tabular-nums">
-      <span>{compactTokens(inputTokens)} in</span>
-      <span>{compactTokens(outputTokens)} out</span>
-      {costUsd === undefined ? null : <span>{usd(costUsd)}</span>}
+    <div className="flex min-h-6 items-center gap-2.5 text-2xs text-fg-tertiary tabular-nums">
+      {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
+      {stopped === undefined ? null : (
+        <span className="flex items-center gap-1">
+          <Ban size={11} strokeWidth={2} />
+          {stopped}
+        </span>
+      )}
+      {block.usage === undefined ? null : (
+        <span className="flex items-center gap-2" title="Input counts cached tokens too">
+          <span>{compactTokens(block.usage.inputTokens)} in</span>
+          <span>{compactTokens(block.usage.outputTokens)} out</span>
+          {block.usage.costUsd === undefined ? null : <span>{usd(block.usage.costUsd)}</span>}
+        </span>
+      )}
     </div>
   );
 }

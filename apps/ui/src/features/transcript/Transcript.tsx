@@ -12,10 +12,12 @@ import type { AgentSummary } from "../agents/model.ts";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import {
+  ModelSwitch,
   Notice,
   PermissionCard,
   QueuedInput,
   Reasoning,
+  SpawnAsk,
   SpawnCard,
   TurnFooter,
   UserMessage,
@@ -23,6 +25,7 @@ import {
   type ChildState,
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
+import { currentModel, layout, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { AgentActivity, QueuedMessages, TranscriptBlock } from "./model.ts";
@@ -33,7 +36,10 @@ interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
   /** The user's messages that haven't reached the agent yet. */
   readonly queued: QueuedMessages;
+  /** The lead's provider, and the model it runs on now, which labels a response with no model of its own. */
   readonly agent: { readonly provider: ProviderId; readonly model: string };
+  /** A model's id as people know it ("Opus 5.5"); without it, responses show the id. */
+  readonly modelName?: ((model: string) => string) | undefined;
   /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
   readonly folder?: string | undefined;
   /** The thread's message box, which messages and chips can put content into; absent when closed. */
@@ -56,119 +62,22 @@ interface TranscriptProps {
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
-/** Cerium's own spawn tool calls are shown by the agent cards they create. */
-const isSpawnCall = (block: TranscriptBlock) =>
-  block.kind === "tool" && /^mcp__[^_]+__spawn_agent$/.test(block.toolName);
-
-type Item =
-  | { readonly kind: "input"; readonly id: string; readonly blocks: ReadonlyArray<TranscriptBlock> }
-  | { readonly kind: "header"; readonly id: string }
-  | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
-  | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
-  | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock }
-  | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> };
-
 /**
- * A permission request shares its id with the tool call it gates. While pending, the approval card
- * stands in for the call's row; once decided, the row alone tells the story.
+ * What an earlier response's footer wears so it stays out of sight until its response is under the
+ * pointer or has focus (touch screens, which can't hover, always show it). The latest response's
+ * footer, and any that says the turn was cut short, stay in view. `:hover+&` is the item just
+ * before the footer, which is the response's last part.
  */
-const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<TranscriptBlock> => {
-  const pending = new Set(
-    blocks.flatMap((block) =>
-      block.kind === "permission" && block.resolution === undefined
-        ? [block.id.replace(/^permission:/, "")]
-        : [],
-    ),
-  );
-  const toolIds = new Set(
-    blocks.flatMap((block) => (block.kind === "tool" ? [block.id.replace(/^tool:/, "")] : [])),
-  );
-  return blocks.filter((block) => {
-    if (isSpawnCall(block)) return false;
-    if (block.kind === "tool") return !pending.has(block.id.replace(/^tool:/, ""));
-    if (block.kind === "permission") {
-      return block.resolution === undefined || !toolIds.has(block.id.replace(/^permission:/, ""));
-    }
-    return true;
-  });
-};
-
-/** Turns blocks into display items: user inputs, a header per response, and grouped tools and spawns. */
-const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => {
-  const items: Array<Item> = [];
-  for (const block of visible(blocks)) {
-    const last = items.at(-1);
-    if (block.kind === "user") {
-      if (last?.kind === "input") items[items.length - 1] = { ...last, blocks: [...last.blocks, block] };
-      else items.push({ kind: "input", id: block.id, blocks: [block] });
-      continue;
-    }
-    // One header per response: only the user's own messages start a new one. Results from child
-    // agents arrive mid-response and stay inside it.
-    if (last === undefined || last.kind === "input") items.push({ kind: "header", id: `header:${block.id}` });
-    const previous = items.at(-1);
-    if (block.kind === "tool") {
-      if (previous?.kind === "tools")
-        items[items.length - 1] = { ...previous, tools: [...previous.tools, block] };
-      else items.push({ kind: "tools", id: block.id, tools: [block] });
-    } else if (block.kind === "spawn") {
-      if (previous?.kind === "spawns")
-        items[items.length - 1] = { ...previous, spawns: [...previous.spawns, block] };
-      else items.push({ kind: "spawns", id: block.id, spawns: [block] });
-    } else {
-      items.push({ kind: "block", id: block.id, block });
-    }
-  }
-  return fold(items);
-};
-
-const isStep = (item: Item) =>
-  item.kind === "tools" || (item.kind === "block" && item.block.kind === "reasoning");
-
-/** Folds each stretch of tool calls, and the reasoning between them, into one run. */
-const fold = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
-  const folded: Array<Item> = [];
-  let steps: Array<Item> = [];
-  const flush = () => {
-    // Reasoning alone is already one line.
-    if (steps.some((step) => step.kind === "tools"))
-      folded.push({ kind: "run", id: `run:${steps[0]!.id}`, steps });
-    else folded.push(...steps);
-    steps = [];
-  };
-  for (const item of items) {
-    if (isStep(item)) {
-      steps.push(item);
-    } else {
-      flush();
-      folded.push(item);
-    }
-  }
-  flush();
-  return folded;
-};
-
-/** Whether the end of the transcript already shows the agent at work, or waiting on the user. */
-const showsProgress = (item: Item | undefined): boolean => {
-  switch (item?.kind) {
-    case "run":
-      return showsProgress(item.steps.at(-1));
-    case "tools":
-      return item.tools.some((tool) => tool.status === "running");
-    case "block":
-      return (
-        ((item.block.kind === "message" || item.block.kind === "reasoning") && item.block.streaming) ||
-        (item.block.kind === "permission" && item.block.resolution === undefined)
-      );
-    default:
-      return false;
-  }
-};
+const quietFooter = (item: Extract<Item, { kind: "turnEnd" }>, latest: string | undefined) =>
+  item.id === latest || item.block.stopReason !== "completed"
+    ? ""
+    : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 [:focus-within+&]:opacity-100 [:hover+&]:opacity-100";
 
 export function Transcript({
   blocks,
   queued,
   agent,
+  modelName,
   folder,
   messageBox,
   activity,
@@ -192,7 +101,14 @@ export function Transcript({
   );
   const items = layout(shown);
   const last = items.at(-1);
+  const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
+  // A response labels itself with the model it ran on, which the thread's events say; the model it
+  // runs on now is only for one that hasn't started and for threads that never said.
+  const modelLabel = (model: string | undefined) =>
+    model === undefined ? agent.model : (modelName?.(model) ?? model);
+  const responding =
+    items.findLast((item) => item.kind === "header" || item.kind === "input")?.kind === "header";
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
   const scale = textScale(useAtomValue(textSizeAtom));
   // A phone's keyboard shrinks the message box to one line, so the end needs less room.
@@ -230,18 +146,25 @@ export function Transcript({
                 as a short one. An item out of view keeps its last laid-out height, and holds a
                 guess at one before it is first seen, so the scrollbar stays sensible. */}
             {items.map((item) => (
-              <div key={item.id} className="[contain-intrinsic-size:auto_6rem] [content-visibility:auto]">
+              <div
+                key={item.id}
+                className={
+                  item.kind === "turnEnd"
+                    ? `[contain-intrinsic-size:auto_1.5rem] [content-visibility:auto] ${quietFooter(item, latestFooter)}`
+                    : "[contain-intrinsic-size:auto_6rem] [content-visibility:auto]"
+                }
+              >
                 <TranscriptItem
                   item={item}
                   last={item === last}
                   activity={activity}
                   provider={agent.provider}
-                  model={agent.model}
+                  model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
                 />
               </div>
             ))}
-            {working && (last === undefined || last.kind === "input") ? (
-              <ResponseHeader agent={agent} />
+            {working && !responding ? (
+              <ResponseHeader agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }} />
             ) : null}
             {working ? <Working /> : null}
             {held ? (
@@ -362,6 +285,15 @@ const TranscriptItem = memo(
           );
         case "header":
           return <ResponseHeader key={each.id} agent={{ provider, model }} />;
+        case "switch":
+          return (
+            <ModelSwitch
+              key={each.id}
+              model={model}
+              {...(each.effort ? { effort: each.effort } : {})}
+              change={each.change}
+            />
+          );
         case "run":
           return (
             <ToolRun
@@ -377,8 +309,12 @@ const TranscriptItem = memo(
           return <ToolGroup key={each.id} tools={each.tools} activity={activity} />;
         case "spawns":
           return <SpawnCards key={each.id} spawns={each.spawns} />;
+        case "spawnAsk":
+          return <SpawnAsk key={each.id} call={each.call} />;
         case "block":
           return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
+        case "turnEnd":
+          return <TurnFooter key={each.id} block={each.block} text={each.text} />;
       }
     };
     return render(item);
@@ -433,8 +369,6 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
       return <Reasoning block={block} />;
     case "permission":
       return <PermissionBlock block={block} expired={activity === "ended"} />;
-    case "turnEnd":
-      return <TurnFooter block={block} />;
     case "error":
       return <p className="text-[13px] text-fg-secondary">{block.message}</p>;
     default:

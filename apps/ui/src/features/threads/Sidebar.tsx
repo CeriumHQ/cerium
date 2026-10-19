@@ -2,24 +2,32 @@ import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
-import { Archive, ChevronRight, Pencil, Search, Settings, SquarePen, Trash2, Monitor } from "lucide-react";
-import { useState } from "react";
+import {
+  Archive,
+  ChevronRight,
+  MessagesSquare,
+  Pencil,
+  Search,
+  Settings,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { shortAgo } from "../../lib/time.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
+import { EmptyList } from "./EmptyList.tsx";
 import { Inbox } from "./Inbox.tsx";
-import { DeleteThreadDialog } from "./Delete.tsx";
 import { archivedWork, canArchive, canDelete, isListed, providerName, type ThreadSummary } from "./model.ts";
-import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
-import { ProviderStack, StatusIndicator } from "./StatusIndicator.tsx";
+import { type RenameThread } from "./Rename.tsx";
+import { ThreadSearch } from "./Search.tsx";
+import { ThreadRow } from "./ThreadRow.tsx";
 
 interface SidebarProps {
   /** Only this mode's threads are listed. */
@@ -43,6 +51,11 @@ interface SidebarProps {
   readonly onDelete: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   readonly onOpenSettings: (category?: SettingsCategory) => void;
+  /** The thread search: opened by its button here and by Ctrl K, which the window listens for. */
+  readonly searchOpen: boolean;
+  readonly onSearchOpenChange: (open: boolean) => void;
+  /** Whether the machine the window drives can search what was said in threads, or only their titles. */
+  readonly messageSearch: boolean;
 }
 
 export interface HarnessIndicator {
@@ -70,6 +83,9 @@ export function Sidebar({
   onDelete,
   harnesses,
   onOpenSettings,
+  searchOpen,
+  onSearchOpenChange,
+  messageSearch,
 }: SidebarProps) {
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
   // Read here rather than by the window, so writing a draft's first line re-renders only the list.
@@ -90,6 +106,7 @@ export function Sidebar({
           icon={Search}
           label={mode === "work" ? "Search threads" : "Search chats"}
           shortcut="Ctrl K"
+          onClick={() => onSearchOpenChange(true)}
           className="max-md:size-10"
         />
       </div>
@@ -124,6 +141,14 @@ export function Sidebar({
       )}
 
       <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
+      <ThreadSearch
+        open={searchOpen}
+        onOpenChange={onSearchOpenChange}
+        mode={mode}
+        threads={threads.filter((thread) => thread.mode === mode)}
+        messageSearch={messageSearch}
+        onOpenThread={onSelect}
+      />
     </div>
   );
 }
@@ -151,14 +176,12 @@ function ChatList({
   return (
     <ScrollArea className="flex-1">
       <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
-        <DraftSection drafts={drafts} layout="chat" {...draftActions} />
+        <DraftSection drafts={drafts} list="chat" mark="dot" {...draftActions} />
         {sections.map((section) => (
           <ChatGroup key={section.key} section={section} {...actions} />
         ))}
         {sections.length === 0 && drafts.length === 0 ? (
-          <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
-            Chats you start show up here, newest first.
-          </p>
+          <EmptyList icon={MessagesSquare} title="No chats yet" hint="Your conversations are kept here." />
         ) : null}
       </nav>
     </ScrollArea>
@@ -180,7 +203,7 @@ function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection
         <ul className="flex flex-col gap-px pt-0.5">
           {section.threads.map((thread) => (
             <li key={thread.id}>
-              <ThreadRow thread={thread} selected={thread.id === selectedId} {...actions} />
+              <ChatRow thread={thread} selected={thread.id === selectedId} {...actions} />
             </li>
           ))}
         </ul>
@@ -189,7 +212,7 @@ function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection
   );
 }
 
-function ThreadRow({
+function ChatRow({
   thread,
   selected,
   onSelect,
@@ -197,97 +220,35 @@ function ThreadRow({
   onArchive,
   onDelete,
 }: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
-  const [deleting, setDeleting] = useState(false);
-  const { editing, start, finish, title, row } = useRename(thread, onRename);
-  const rowClass = `group flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-2.5 max-md:rounded-lg max-md:text-[15px] ${
-    selected || editing
-      ? "bg-surface-selected text-fg-primary"
-      : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-  }`;
-  const titleClass = `min-w-0 flex-1 truncate ${thread.unread ? "font-medium text-fg-primary" : ""}`;
-  const content = (
-    <>
-      <StatusIndicator status={thread.status} unread={thread.unread} />
-      {editing ? (
-        <TitleField title={thread.title} onDone={finish} className={`-mx-1 h-6 ${titleClass}`} />
-      ) : (
-        <span className={titleClass}>{title}</span>
-      )}
-      {thread.providers.length > 1 && thread.status !== "idle" && thread.status !== "failed" ? (
-        <ProviderStack providers={thread.providers} />
-      ) : null}
-      {thread.machine ? (
-        <span
-          title={
-            thread.elsewhere?.online === false
-              ? `On ${thread.machine}, which is offline`
-              : `On ${thread.machine}`
-          }
-          className={`shrink-0 text-fg-tertiary ${thread.elsewhere?.online === false ? "opacity-60" : ""}`}
-        >
-          <Monitor size={11} strokeWidth={2} aria-label={`On ${thread.machine}`} />
-        </span>
-      ) : null}
-      <span className="w-6 shrink-0 text-right text-2xs text-fg-tertiary tabular-nums">
-        {shortAgo(thread.updatedAt)}
-      </span>
-    </>
-  );
-
-  // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
-  if (editing) return <div className={rowClass}>{content}</div>;
-  // Another machine's chat is renamed, archived or deleted there, so its row has no menu here.
-  if (thread.elsewhere) {
-    return (
-      <Button
-        ref={row}
-        onClick={() => onSelect(thread.id)}
-        aria-current={selected ? "page" : undefined}
-        className={rowClass}
-      >
-        {content}
-      </Button>
-    );
-  }
   return (
-    <>
-      <ContextMenuArea
-        menu={
-          <>
-            <MenuItem icon={Pencil} onClick={start}>
-              Rename
-            </MenuItem>
-            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
-              Archive
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem
-              icon={Trash2}
-              tone="danger"
-              disabled={!canDelete(thread)}
-              onClick={() => setDeleting(true)}
-            >
-              Delete
-            </MenuItem>
-          </>
-        }
-      >
-        <Button
-          ref={row}
-          onClick={() => onSelect(thread.id)}
-          aria-current={selected ? "page" : undefined}
-          className={rowClass}
-        >
-          {content}
-        </Button>
-      </ContextMenuArea>
-      <DeleteThreadDialog
-        thread={thread}
-        open={deleting}
-        onOpenChange={setDeleting}
-        onConfirm={() => onDelete(thread.id)}
-      />
-    </>
+    <ThreadRow
+      thread={thread}
+      selected={selected}
+      mark="dot"
+      harness={false}
+      onSelect={onSelect}
+      onRename={onRename}
+      onDelete={onDelete}
+      // Another machine's chat is renamed, archived or deleted there, so its row has no menu here.
+      {...(thread.elsewhere
+        ? {}
+        : {
+            menu: ({ rename, remove }) => (
+              <>
+                <MenuItem icon={Pencil} onClick={rename}>
+                  Rename
+                </MenuItem>
+                <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+                  Archive
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
+                  Delete
+                </MenuItem>
+              </>
+            ),
+          })}
+    />
   );
 }
 
@@ -305,6 +266,9 @@ function SidebarFooter({
   harnesses: ReadonlyArray<HarnessIndicator>;
   onOpenSettings: SidebarProps["onOpenSettings"];
 }) {
+  // The backend reports every adapter it has, so a list of nothing but "unsupported" is the one the
+  // window shows before the first answer: the marks stay lit until it knows.
+  const checking = harnesses.every(({ state }) => state === "unsupported");
   return (
     <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5 max-md:pb-1">
       <IconButton
@@ -315,31 +279,33 @@ function SidebarFooter({
         className="max-md:size-10"
       />
       <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
-        {harnesses.map(({ provider, state, needsSetup = false }) => (
-          <Tooltip
-            key={provider}
-            side="top"
-            label={`${providerName[provider]}: ${needsSetup ? "needs a one-time setup to run commands" : harnessState[state]}`}
-          >
-            <Button
-              onClick={() => onOpenSettings("harnesses")}
-              aria-label={`${providerName[provider]} status`}
-              className={`relative grid size-7 place-items-center rounded-md transition-colors hover:bg-surface-hover max-md:size-10 ${
-                state === "ready" ? "text-fg-secondary hover:text-fg-primary" : "text-fg-secondary"
-              }`}
-            >
-              {/* Colour marks dim the same way as single-colour ones when the harness can't run. */}
-              <ProviderLogo
-                provider={provider}
-                size={14}
-                {...(state === "ready" ? {} : { className: "opacity-35 grayscale" })}
-              />
-              {state === "loggedOut" || needsSetup ? (
-                <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-attention" />
-              ) : null}
-            </Button>
-          </Tooltip>
-        ))}
+        {harnesses.map(({ provider, state, needsSetup = false }) => {
+          const status = checking
+            ? "checking"
+            : needsSetup
+              ? "needs a one-time setup to run commands"
+              : harnessState[state];
+          const label = `${providerName[provider]}: ${status}`;
+          return (
+            <Tooltip key={provider} side="top" label={label}>
+              <Button
+                onClick={() => onOpenSettings("harnesses")}
+                aria-label={label}
+                className="relative grid size-7 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover max-md:size-10"
+              >
+                {/* Colour marks dim the same way as single-colour ones when the harness can't run. */}
+                <ProviderLogo
+                  provider={provider}
+                  size={14}
+                  {...(checking || state === "ready" ? {} : { className: "opacity-35 grayscale" })}
+                />
+                {!checking && (state === "loggedOut" || needsSetup) ? (
+                  <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-attention" />
+                ) : null}
+              </Button>
+            </Tooltip>
+          );
+        })}
       </div>
     </div>
   );

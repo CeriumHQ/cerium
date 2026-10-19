@@ -2,6 +2,7 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 import { describe, expect, it } from "@effect/vitest";
 
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
+import { currentModel, layout } from "../src/features/transcript/layout.ts";
 import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -102,5 +103,93 @@ describe("queuedMessages", () => {
       { _tag: "MessageQueued", message: second },
     );
     expect(queuedMessages(afterTurn).behindTurn).toBe(false);
+  });
+});
+
+describe("the model each response ran on", () => {
+  const started = {
+    _tag: "SessionStarted",
+    provider: "claude",
+    providerSessionId: "s",
+    model: "claude-opus-5-5",
+    effort: "high",
+  } as const;
+  const say = (text: string): ReadonlyArray<EventPayload> => [
+    { _tag: "TurnInput", items: [{ _tag: "FromUser", text }] },
+    { _tag: "MessageCompleted", messageId: text, text: `Re: ${text}` },
+    { _tag: "TurnCompleted", stopReason: "completed" },
+  ];
+
+  it("marks where a session starts and where the user switches model or effort, and skips no-ops", () => {
+    const blocks = buildTranscript(
+      events(
+        started,
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "high" },
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "low" },
+        { _tag: "ModelChanged", model: "claude-sonnet-5-5", effort: "low" },
+      ),
+    );
+    expect(blocks).toMatchObject([
+      { kind: "model", model: "claude-opus-5-5", effort: "high", change: "start" },
+      { kind: "model", model: "claude-opus-5-5", effort: "low", change: "effort" },
+      { kind: "model", model: "claude-sonnet-5-5", effort: "low", change: "model" },
+    ]);
+  });
+
+  it("reads a switch by another id for the session's own model as an effort change", () => {
+    const blocks = buildTranscript(
+      events(started, { _tag: "ModelChanged", model: "opus", effort: "low" }),
+      (a, b) => [a, b].every((id) => id === "opus" || id === "claude-opus-5-5"),
+    );
+    expect(blocks.at(-1)).toMatchObject({ kind: "model", model: "opus", effort: "low", change: "effort" });
+  });
+
+  it("labels each response with the model in effect when it began, not the thread's current one", () => {
+    const blocks = buildTranscript(
+      events(
+        started,
+        ...say("first"),
+        { _tag: "ModelChanged", model: "claude-sonnet-5-5", effort: "medium" },
+        ...say("second"),
+      ),
+    );
+    const items = layout(blocks);
+    expect(items.flatMap((item) => (item.kind === "header" ? [item.model] : []))).toEqual([
+      "claude-opus-5-5",
+      "claude-sonnet-5-5",
+    ]);
+    // The switch shows between the two responses, once.
+    expect(items.map((item) => item.kind)).toEqual([
+      "input",
+      "header",
+      "block",
+      "turnEnd",
+      "switch",
+      "input",
+      "header",
+      "block",
+      "turnEnd",
+    ]);
+    expect(currentModel(blocks)).toBe("claude-sonnet-5-5");
+  });
+
+  it("gives a response a header even when a switch sits between the message and its reply", () => {
+    const items = layout(
+      buildTranscript(
+        events(
+          started,
+          { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "hi" }] },
+          { _tag: "ModelChanged", model: "claude-haiku-5-5" },
+          { _tag: "MessageCompleted", messageId: "m", text: "Hello" },
+        ),
+      ),
+    );
+    expect(items.map((item) => item.kind)).toEqual(["input", "switch", "header", "block"]);
+  });
+
+  it("leaves a response without a model when the thread never named one", () => {
+    const items = layout(buildTranscript(events(...say("hi"))));
+    expect(items[1]).toEqual({ kind: "header", id: expect.any(String) });
+    expect(currentModel(buildTranscript(events(...say("hi"))))).toBeUndefined();
   });
 });

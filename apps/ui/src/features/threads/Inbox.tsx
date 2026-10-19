@@ -1,23 +1,19 @@
 import { Button } from "@base-ui/react/button";
-import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
 import {
   Archive,
   CheckCheck,
   ChevronDown,
-  GitBranch,
+  Inbox as InboxIcon,
   ListFilter,
   Mail,
   MailOpen,
   Pencil,
   SquarePen,
   Trash2,
-  Monitor,
 } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import {
-  ContextMenuArea,
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
@@ -27,19 +23,18 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../../components/ui/Menu.tsx";
-import { gitBranchAtom } from "../../backend/projects.ts";
+import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { remember, stored } from "../../lib/storage.ts";
-import { shortAgo } from "../../lib/time.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections, type ThreadSection } from "./sections.ts";
 import { ArchivedSection } from "./Archived.tsx";
-import { DeleteThreadDialog } from "./Delete.tsx";
 import { DraftSection, type DraftActions } from "./DraftRow.tsx";
+import { EmptyList } from "./EmptyList.tsx";
 import { canArchive, canDelete, type ThreadSummary } from "./model.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
-import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
-import { CornerStatus, ProviderStack } from "./StatusIndicator.tsx";
+import { type RenameThread } from "./Rename.tsx";
+import { ThreadRow, type RowControls, type RowMark } from "./ThreadRow.tsx";
 
 const SCOPE_KEY = "cerium:inboxScope";
 
@@ -66,9 +61,17 @@ type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archiv
   /** The folder the inbox is scoped to, if any. */
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
+  /** What leads each row; see `RowMark`. */
+  readonly mark: RowMark;
+  /** Whether the threads in view use more than one harness, which makes each row's worth saying. */
+  readonly harness: boolean;
 };
 
-/** Every project's work threads in one list, what needs the user first; optionally scoped to one folder. */
+/**
+ * Every project's work threads in one list, what needs the user first; optionally scoped to one
+ * folder. A row says only what tells it apart: its project badge when the list spans projects, its
+ * harness when the list spans harnesses.
+ */
 export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...actions }: InboxProps) {
   const projects = inboxProjects(threads);
   /** The folder the inbox is scoped to; empty for every project. */
@@ -86,6 +89,9 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
   const needsYou = sections.filter((section) => section.key === "needsYou");
   const rest = sections.filter((section) => section.key !== "needsYou");
   const unread = scoped.filter((thread) => thread.unread);
+  const inView = [...scoped, ...archived.filter(inScope)];
+  const mark: RowMark = new Set(inView.map((thread) => thread.folder)).size > 1 ? "badge" : "dot";
+  const harness = new Set(inView.flatMap((thread) => thread.providers)).size > 1;
 
   const chooseScope = (folder: string) => {
     remember(SCOPE_KEY, folder);
@@ -94,48 +100,50 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
 
   return (
     <>
-      <div className="flex items-center gap-2 pr-2 pb-1.5 pl-4">
+      <div className="flex items-center gap-1 pr-2 pb-1.5 pl-4">
         <h2 className="text-[13px] font-semibold text-fg-primary max-md:text-[15px]">Inbox</h2>
-        <MenuRoot>
-          <MenuTrigger>
-            <Button
-              aria-label="Projects shown"
-              className="ml-auto flex h-6 min-w-0 items-center gap-1 rounded-md px-1.5 text-xs text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary max-md:h-9 max-md:px-2 max-md:text-[13px]"
-            >
-              <span className="truncate">{project?.name ?? "All projects"}</span>
-              <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
-            </Button>
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuRadioGroup
-              value={project?.folder ?? ""}
-              onValueChange={(value: string) => chooseScope(value)}
-            >
-              <MenuRadioItem value="">All projects</MenuRadioItem>
-              {projects.length > 0 ? (
-                <>
+        <div className="ml-auto flex min-w-0 items-center gap-0.5">
+          {projects.length > 1 ? (
+            <MenuRoot>
+              <MenuTrigger>
+                <Button
+                  aria-label="Projects shown"
+                  className="flex h-6 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-xs text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary max-md:h-9 max-md:px-2 max-md:text-[13px]"
+                >
+                  {project ? <ProjectBadge folder={project.folder} name={project.name} size="small" /> : null}
+                  <span className="truncate">{project?.name ?? "All projects"}</span>
+                  <ChevronDown size={12} strokeWidth={2} className="shrink-0" />
+                </Button>
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuRadioGroup
+                  value={project?.folder ?? ""}
+                  onValueChange={(value: string) => chooseScope(value)}
+                >
+                  <MenuRadioItem value="">All projects</MenuRadioItem>
                   <MenuSeparator />
                   <MenuGroupLabel>Projects</MenuGroupLabel>
-                </>
-              ) : null}
-              {projects.map(({ folder, name }) => (
-                <MenuRadioItem key={folder} value={folder}>
-                  <span className="truncate" title={folder}>
-                    {name}
-                  </span>
-                </MenuRadioItem>
-              ))}
-            </MenuRadioGroup>
-            <MenuSeparator />
-            <MenuItem
+                  {projects.map(({ folder, name }) => (
+                    <MenuRadioItem key={folder} value={folder}>
+                      <ProjectBadge folder={folder} name={name} size="small" />
+                      <span className="truncate" title={folder}>
+                        {name}
+                      </span>
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuPopup>
+            </MenuRoot>
+          ) : null}
+          {unread.length > 0 ? (
+            <IconButton
               icon={CheckCheck}
-              disabled={unread.length === 0}
+              label="Mark all as read"
               onClick={() => actions.onMarkRead(unread)}
-            >
-              Mark all as read
-            </MenuItem>
-          </MenuPopup>
-        </MenuRoot>
+              className="max-md:size-9"
+            />
+          ) : null}
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -143,7 +151,7 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
           {[...needsYou, ...rest].map((section, index) => (
             <Fragment key={section.key}>
               {index === needsYou.length ? (
-                <DraftSection drafts={scopedDrafts} layout="inbox" {...draftActions} />
+                <DraftSection drafts={scopedDrafts} list="inbox" mark={mark} {...draftActions} />
               ) : null}
               <InboxSection
                 section={section}
@@ -151,15 +159,21 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
                 headed={!(index === 0 && section.key === "Today" && scopedDrafts.length === 0)}
                 scope={project?.folder}
                 onScope={chooseScope}
+                mark={mark}
+                harness={harness}
                 {...actions}
               />
             </Fragment>
           ))}
-          {rest.length === 0 ? <DraftSection drafts={scopedDrafts} layout="inbox" {...draftActions} /> : null}
+          {rest.length === 0 ? (
+            <DraftSection drafts={scopedDrafts} list="inbox" mark={mark} {...draftActions} />
+          ) : null}
           {sections.length === 0 && scopedDrafts.length === 0 ? (
-            <p className="px-2 py-1.5 text-xs leading-relaxed text-fg-tertiary">
-              Threads you start in any folder show up here, the ones that need you first.
-            </p>
+            <EmptyList
+              icon={InboxIcon}
+              title="No threads yet"
+              hint="Threads from every project gather here."
+            />
           ) : null}
         </nav>
       </ScrollArea>
@@ -167,6 +181,8 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
       <ArchivedSection
         threads={archived.filter(inScope)}
         selectedId={actions.selectedId}
+        mark={mark}
+        harness={harness}
         onSelect={actions.onSelect}
         onRename={actions.onRename}
         onRestore={onRestore}
@@ -214,151 +230,67 @@ function InboxRow({
   onDelete,
   scope,
   onScope,
+  mark,
+  harness,
 }: { thread: ThreadSummary } & RowProps) {
-  const selected = thread.id === selectedId;
-  const [deleting, setDeleting] = useState(false);
-  const unread = thread.unread && !selected;
-  const { editing, start, finish, title, row } = useRename(thread, onRename);
   const { folder, project } = thread;
-  const rowClass = `flex w-full items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors duration-150 data-popup-open:bg-surface-hover max-md:gap-3 max-md:rounded-lg max-md:py-2.5 ${
-    selected || editing
-      ? "bg-surface-selected text-fg-primary"
-      : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-  }`;
-  const titleClass = `min-w-0 flex-1 truncate text-[13px] leading-5 max-md:text-[15px] max-md:leading-6 ${unread ? "font-medium text-fg-primary" : ""}`;
-  const content = (
+  const menu = ({ rename, remove }: RowControls) => (
     <>
-      <span className="relative mt-px shrink-0">
-        {folder && project ? (
-          <ProjectBadge folder={folder} name={project} lookup={thread.elsewhere === undefined} />
-        ) : (
-          <span className="block size-4.5" />
-        )}
-        <CornerStatus status={thread.status} unread={unread} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-baseline gap-2">
-          {editing ? (
-            <TitleField title={thread.title} onDone={finish} className={`-mx-1 ${titleClass}`} />
-          ) : (
-            <span className={titleClass}>{title}</span>
+      {thread.unread ? (
+        <MenuItem icon={MailOpen} onClick={() => onMarkRead([thread])}>
+          Mark as read
+        </MenuItem>
+      ) : (
+        <MenuItem icon={Mail} onClick={() => onMarkUnread(thread.id)}>
+          Mark as unread
+        </MenuItem>
+      )}
+      {folder && project ? (
+        <>
+          {thread.elsewhere ? null : (
+            <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
+              <span className="max-w-64 truncate">New thread in {project}</span>
+            </MenuItem>
           )}
-          <span className="shrink-0 text-2xs text-fg-tertiary tabular-nums max-md:text-xs">
-            {shortAgo(thread.updatedAt)}
-          </span>
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-tertiary max-md:text-xs">
-          {thread.machine ? (
-            <MachineLabel name={thread.machine} online={thread.elsewhere?.online ?? true} />
-          ) : null}
-          {project ? <span className="max-w-[55%] shrink-0 truncate">{project}</span> : null}
-          {folder && thread.elsewhere === undefined ? <Branch folder={folder} /> : null}
-          <span className="ml-auto shrink-0 pl-1">
-            <ProviderStack providers={thread.providers} />
-          </span>
-        </span>
-      </span>
+          {scope === folder ? (
+            <MenuItem icon={ListFilter} onClick={() => onScope("")}>
+              Show all projects
+            </MenuItem>
+          ) : (
+            <MenuItem icon={ListFilter} onClick={() => onScope(folder)}>
+              <span className="max-w-64 truncate">Show only {project}</span>
+            </MenuItem>
+          )}
+        </>
+      ) : null}
+      {/* Renaming, archiving and deleting happen on the thread's own machine: open it there. */}
+      {thread.elsewhere ? null : (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={Pencil} onClick={rename}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+            Archive
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
+            Delete
+          </MenuItem>
+        </>
+      )}
     </>
   );
-
-  // While renaming, the row is a field rather than a button, and right-clicks get the text menu.
-  if (editing) return <div className={rowClass}>{content}</div>;
   return (
-    <>
-      <ContextMenuArea
-        menu={
-          <>
-            {thread.unread ? (
-              <MenuItem icon={MailOpen} onClick={() => onMarkRead([thread])}>
-                Mark as read
-              </MenuItem>
-            ) : (
-              <MenuItem icon={Mail} onClick={() => onMarkUnread(thread.id)}>
-                Mark as unread
-              </MenuItem>
-            )}
-            {folder && project ? (
-              <>
-                {thread.elsewhere ? null : (
-                  <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
-                    <span className="max-w-64 truncate">New thread in {project}</span>
-                  </MenuItem>
-                )}
-                {scope === folder ? (
-                  <MenuItem icon={ListFilter} onClick={() => onScope("")}>
-                    Show all projects
-                  </MenuItem>
-                ) : (
-                  <MenuItem icon={ListFilter} onClick={() => onScope(folder)}>
-                    <span className="max-w-64 truncate">Show only {project}</span>
-                  </MenuItem>
-                )}
-              </>
-            ) : null}
-            {/* Renaming, archiving and deleting happen on the thread's own machine: open it there. */}
-            {thread.elsewhere ? null : (
-              <>
-                <MenuSeparator />
-                <MenuItem icon={Pencil} onClick={start}>
-                  Rename
-                </MenuItem>
-                <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
-                  Archive
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem
-                  icon={Trash2}
-                  tone="danger"
-                  disabled={!canDelete(thread)}
-                  onClick={() => setDeleting(true)}
-                >
-                  Delete
-                </MenuItem>
-              </>
-            )}
-          </>
-        }
-      >
-        <Button
-          ref={row}
-          onClick={() => onSelect(thread.id)}
-          aria-current={selected ? "page" : undefined}
-          className={rowClass}
-        >
-          {content}
-        </Button>
-      </ContextMenuArea>
-      <DeleteThreadDialog
-        thread={thread}
-        open={deleting}
-        onOpenChange={setDeleting}
-        onConfirm={() => onDelete(thread.id)}
-      />
-    </>
-  );
-}
-
-/** The computer a thread lives on, when it isn't this one; faint while it's offline. */
-function MachineLabel({ name, online }: { name: string; online: boolean }) {
-  return (
-    <span
-      className={`flex max-w-[45%] min-w-0 shrink-0 items-center gap-1 ${online ? "" : "opacity-60"}`}
-      title={online ? `On ${name}` : `On ${name}, which is offline`}
-    >
-      <Monitor size={10} strokeWidth={2} className="shrink-0" />
-      <span className="truncate">{name}</span>
-    </span>
-  );
-}
-
-/** The branch checked out in the thread's folder; nothing outside git. */
-function Branch({ folder }: { folder: string }) {
-  const branch = AsyncResult.getOrElse(useAtomValue(gitBranchAtom(folder)), () => undefined);
-  if (branch === undefined) return null;
-  return (
-    <span className="flex min-w-0 items-center gap-0.5" title={branch}>
-      <GitBranch size={10} strokeWidth={2} className="shrink-0" aria-hidden />
-      <span className="truncate">{branch}</span>
-    </span>
+    <ThreadRow
+      thread={thread}
+      selected={thread.id === selectedId}
+      mark={mark}
+      harness={harness}
+      onSelect={onSelect}
+      onRename={onRename}
+      onDelete={onDelete}
+      menu={menu}
+    />
   );
 }

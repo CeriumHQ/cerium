@@ -10,9 +10,10 @@ import {
   CircleUserRound,
   Keyboard,
   Palette,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 import { WEB } from "../../backend/target.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
@@ -23,6 +24,7 @@ import { ArchivedSettings } from "./Archived.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
+import { ToolSettings } from "./Tools.tsx";
 import { UpdateSettings } from "./Updates.tsx";
 
 export type SettingsCategory =
@@ -30,6 +32,7 @@ export type SettingsCategory =
   | "notifications"
   | "appearance"
   | "agents"
+  | "tools"
   | "harnesses"
   | "keyboard"
   | "archived"
@@ -45,6 +48,7 @@ const categories: ReadonlyArray<{
   ...(WEB ? [{ id: "notifications" as const, label: "Notifications", icon: Bell }] : []),
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "tools", label: "Tools", icon: Wrench },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "archived", label: "Archived", icon: Archive },
@@ -87,16 +91,22 @@ export function SettingsNav({
   useEffect(() => {
     if (active) current.current?.focus();
   }, [active]);
-  // Focus follows the selection when the arrow keys move it.
-  useEffect(() => {
-    if (nav.current?.contains(document.activeElement)) current.current?.focus();
-  }, [category]);
+  // Focus follows the selection when the arrow keys move it, and when a page's own link to another
+  // one (its focused button gone with it) leaves focus nowhere.
+  const followFocus = useEffectEvent(() => {
+    const focused = document.activeElement;
+    const lost = active && (focused === null || focused === document.body);
+    if (lost || nav.current?.contains(focused)) current.current?.focus();
+  });
+  useEffect(() => followFocus(), [category]);
 
-  // Arrow keys move between categories, like a list of tabs.
-  const step = (offset: number) => {
-    const index = categories.findIndex((each) => each.id === category);
-    const next = categories[(index + offset + categories.length) % categories.length];
-    if (next) onSelect(next.id);
+  // Arrow keys move between categories, like a list of tabs, and Home and End jump to either end.
+  const index = categories.findIndex((each) => each.id === category);
+  const target: Record<string, number> = {
+    ArrowDown: (index + 1) % categories.length,
+    ArrowUp: (index - 1 + categories.length) % categories.length,
+    Home: 0,
+    End: categories.length - 1,
   };
 
   if (compact) {
@@ -142,12 +152,17 @@ export function SettingsNav({
             ref={id === category ? current : undefined}
             onClick={() => onSelect(id)}
             onKeyDown={(event) => {
-              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+              const next = categories[target[event.key] ?? -1];
+              if (next === undefined) return;
               event.preventDefault();
-              step(event.key === "ArrowDown" ? 1 : -1);
+              onSelect(next.id);
             }}
+            // One stop for Tab: the open category, from which the arrow keys move.
+            tabIndex={id === category ? 0 : -1}
             aria-current={id === category ? "page" : undefined}
-            className={`flex h-8 items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors duration-150 ${
+            // The ring is a hairline inside the row: the open page's row is already highlighted, and a
+            // full ring around that read as a heavy white box when settings took focus on opening.
+            className={`flex h-8 items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-1 focus-visible:-outline-offset-1 ${
               id === category
                 ? "bg-surface-selected font-medium text-fg-primary"
                 : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -170,11 +185,15 @@ export function SettingsNav({
 export function SettingsView({
   category,
   harnesses,
+  onOpen,
 }: {
   category: SettingsCategory;
   /** Which harnesses can run, for the choices that depend on them. */
   harnesses: ReadonlyArray<HarnessIndicator>;
+  /** Opens another category, for a page that points the way to one. */
+  onOpen?: (category: SettingsCategory) => void;
 }) {
+  const openHarnesses = onOpen ? () => onOpen("harnesses") : undefined;
   switch (category) {
     case "account":
       return <AccountSettings key={category} />;
@@ -183,7 +202,15 @@ export function SettingsView({
     case "appearance":
       return <AppearanceSettings key={category} />;
     case "agents":
-      return <AgentSettings key={category} harnesses={harnesses} />;
+      return (
+        <AgentSettings
+          key={category}
+          harnesses={harnesses}
+          {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})}
+        />
+      );
+    case "tools":
+      return <ToolSettings key={category} harnesses={harnesses} />;
     case "harnesses":
       return <HarnessSettings key={category} />;
     case "keyboard":

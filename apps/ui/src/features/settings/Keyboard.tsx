@@ -14,6 +14,9 @@ const sendKeys: ReadonlyArray<{ readonly value: SendKey; readonly send: string; 
 
 const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["New thread", "Ctrl N"],
+  ["Search threads and chats", "Ctrl K"],
+  ["Switch to Work", "Ctrl 1"],
+  ["Switch to Chat", "Ctrl 2"],
   ["Show or hide the sidebar", "Ctrl B"],
   ["Show or hide the thread's agents", "Ctrl J"],
   ["Open or close settings", "Ctrl ,"],
@@ -34,11 +37,8 @@ export function KeyboardSettings() {
   };
 
   return (
-    <SettingsPage title="Keyboard" description="Sending messages, and getting around without the mouse.">
-      <SettingsSection
-        title="Sending messages"
-        description="The other way of pressing Enter starts a new line."
-      >
+    <SettingsPage title="Keyboard">
+      <SettingsSection title="Sending messages">
         <RadioGroup
           value={sendKey}
           onValueChange={(value) => setSendKey(value as SendKey)}
@@ -106,11 +106,10 @@ function TryIt({ sendKey, onPress }: { sendKey: SendKey; onPress: (press: Press)
 
   return (
     <SettingsCard className="overflow-hidden bg-surface-window/40">
-      <div className="flex h-32 flex-col justify-end gap-2 overflow-hidden mask-t-from-60% px-4 pt-3">
-        {sent.length === 0 ? (
-          <p className="self-center pb-8 text-xs text-fg-tertiary">Messages you send here stay here.</p>
-        ) : (
-          sent.map((message) => (
+      {/* Only once something has been sent does the box grow a conversation above its input. */}
+      {sent.length > 0 ? (
+        <div className="flex max-h-40 flex-col justify-end gap-2 overflow-hidden mask-t-from-60% px-4 pt-3">
+          {sent.map((message) => (
             <div
               key={message.id}
               className="flex justify-end transition-[opacity,translate] duration-300 ease-out-soft starting:translate-y-2 starting:opacity-0 motion-reduce:transition-none"
@@ -120,9 +119,9 @@ function TryIt({ sendKey, onPress }: { sendKey: SendKey; onPress: (press: Press)
                 {message.text}
               </p>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : null}
       <div className="p-3">
         <textarea
           rows={1}
