@@ -1,5 +1,5 @@
 // A minimal Chrome DevTools Protocol client over Node's global WebSocket: one connection to one
-// page target. Plain promises; the UI driver wraps them in Effect at its boundary.
+// page target. Plain promises.
 
 type Listener = (params: any) => void;
 

@@ -24,7 +24,9 @@
     "dev:web": "vp -C apps/ui dev --mode web",
     "dev:desktop": "bun run --cwd apps/desktop dev",
     "dev:backend": "node --watch apps/backend/src/main.ts --data-dir=.cerium-dev --connection-file=.cerium-dev/connection.json --relay-url=http://localhost:8787",
-    "dev:relay": "bun run --cwd apps/relay dev"
+    "dev:relay": "bun run --cwd apps/relay dev",
+    "ui": "node packages/browser/src/cli.ts",
+    "live-check": "node apps/backend/scripts/live-check.ts"
   },
   "devDependencies": {
     "@effect/tsgo": "0.53.3",

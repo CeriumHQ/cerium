@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { findBrowser, launchBrowser, pickPage } from "../src/ui/browser.ts";
-import { Page, parseKeys } from "../src/ui/page.ts";
+import { findBrowser, launchBrowser, pickPage } from "../src/browser.ts";
+import { Page, parseKeys } from "../src/page.ts";
 
 describe("key presses", () => {
   it("parse named keys, characters and modifier combinations", () => {

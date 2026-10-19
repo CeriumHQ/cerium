@@ -2,7 +2,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 
-import { checkHarness, renderResults, runLiveChecks } from "../src/index.ts";
+import { checkHarness, renderResults, runLiveChecks } from "../scripts/live/check.ts";
 
 describe("live checks", () => {
   it.live("pass when the turn finishes as expected, and report what the harness did", () =>

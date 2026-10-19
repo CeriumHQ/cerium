@@ -21,10 +21,12 @@ it if you want to run real agents.
 ```sh
 bun install
 bun run dev              # backend, UI and desktop window together
-bun run dev --browser    # backend and UI only, at http://localhost:5173
+bun run dev --browser    # backend and UI only, in your browser
 ```
 
-The development backend keeps its data in `.cerium-dev/`, apart from an installed Cerium.
+The development backend keeps its data in `.cerium-dev/`, apart from an installed Cerium. The UI is
+served on the first free port from 5173, written to `.cerium-dev/ui-url`; running `bun run dev` again
+reuses the servers already running.
 
 | Command                 | What it does                                                      |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -34,6 +36,8 @@ The development backend keeps its data in `.cerium-dev/`, apart from an installe
 | `bun run typecheck`     | `tsc -b`, the authoritative type gate                             |
 | `bun run package`       | Build an unsigned Windows installer into `apps/desktop/out`       |
 | `bun run vendor:effect` | Fetch the pinned Effect source into `vendor/effect` for reference |
+| `bun run ui`            | Drive a web UI from the shell: open, act, screenshot, inspect     |
+| `bun run live-check`    | Run a short real turn on each installed harness and report it     |
 
 ## Toolchain
 
@@ -59,6 +63,7 @@ The development backend keeps its data in `.cerium-dev/`, apart from an installe
 | `packages/store`        | SQLite persistence: threads, agents and the append-only event log        |
 | `packages/rpc`          | The RPC contract between the UI and the backend                          |
 | `packages/artifacts`    | The building blocks agents use to draw inline visuals                    |
+| `packages/browser`      | `bun run ui`: drives Edge or Chrome over the DevTools protocol, plain TS |
 
 ## How the code is written
 

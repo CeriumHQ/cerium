@@ -61,13 +61,18 @@ const listTargets = async (origin: string): Promise<ReadonlyArray<PageTarget & {
   return (await response.json()) as ReadonlyArray<PageTarget & { type: string }>;
 };
 
-/** A page target at `origin`, preferring one whose URL contains `match`; DevTools' own pages never count. */
-export const pickPage = async (origin: string, match?: string): Promise<PageTarget> => {
+/**
+ * A page target at `origin`: the one with id `id` if it is still there, else one whose URL contains
+ * `match`, else the first. DevTools' own pages never count.
+ */
+export const pickPage = async (origin: string, match?: string, id?: string): Promise<PageTarget> => {
   const pages = (await listTargets(origin)).filter(
     (target) => target.type === "page" && !target.url.startsWith("devtools://"),
   );
   const page =
-    (match === undefined ? undefined : pages.find((target) => target.url.includes(match))) ?? pages[0];
+    pages.find((target) => target.id === id) ??
+    (match === undefined ? undefined : pages.find((target) => target.url.includes(match))) ??
+    pages[0];
   if (page === undefined) throw new Error(`${origin} has no page to drive.`);
   return page;
 };
@@ -83,7 +88,15 @@ export const debuggerOrigin = (endpoint: string | number): string => {
 export interface LaunchedBrowser {
   readonly origin: string;
   readonly process: ChildProcess;
+  /** What `closeBrowser` needs to close it from another process. */
+  readonly handle: BrowserHandle;
   close(): void;
+}
+
+/** The browser's own debugging socket and its profile folder. */
+export interface BrowserHandle {
+  readonly socket: string | undefined;
+  readonly profile: string;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -117,6 +130,22 @@ const killProfile = (profile: string) => {
   }
 };
 
+/**
+ * Closes a browser `launchBrowser` started, through its own debugging endpoint, then whatever still
+ * runs on its profile, and removes the profile.
+ */
+export const closeBrowser = async (handle: BrowserHandle): Promise<void> => {
+  const closed =
+    handle.socket !== undefined &&
+    (await Cdp.connect(handle.socket, 3_000)
+      .then((cdp) => cdp.send("Browser.close", {}, 3_000).then(() => true))
+      .catch((error: unknown) => error instanceof Error && /closed/.test(error.message)));
+  if (!closed) killProfile(handle.profile);
+  // The profile stays locked for a moment after the browser goes.
+  await sleep(1_000);
+  rmSync(handle.profile, { recursive: true, force: true, maxRetries: 5 });
+};
+
 const readPortFile = (path: string): string | undefined => {
   try {
     return readFileSync(path, "utf8");
@@ -134,6 +163,8 @@ export const launchBrowser = async (options: {
   readonly visible: boolean;
   readonly width: number;
   readonly height: number;
+  /** Leave the browser running when this process exits, for a later one to drive and close. */
+  readonly outlive?: boolean | undefined;
 }): Promise<LaunchedBrowser> => {
   const profile = mkdtempSync(join(tmpdir(), "cerium-ui-profile-"));
   const child = spawn(
@@ -165,17 +196,7 @@ export const launchBrowser = async (options: {
   let browserSocket: string | undefined;
   const close = () => {
     killTree(child);
-    void (async () => {
-      const closed =
-        browserSocket !== undefined &&
-        (await Cdp.connect(browserSocket, 3_000)
-          .then((cdp) => cdp.send("Browser.close", {}, 3_000).then(() => true))
-          .catch((error: unknown) => error instanceof Error && /closed/.test(error.message)));
-      if (!closed) killProfile(profile);
-      // The profile stays locked for a moment after the browser goes.
-      await sleep(1_000);
-      rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
-    })().catch(() => undefined);
+    void closeBrowser({ socket: browserSocket, profile }).catch(() => undefined);
   };
   const portFile = join(profile, "DevToolsActivePort");
   // Edge's first start on a loaded two-core CI runner takes up to 20 s, so the wait leaves room.
@@ -187,7 +208,16 @@ export const launchBrowser = async (options: {
       const [port, path] = written.split("\n").map((line) => line.trim());
       if (port) {
         browserSocket = path ? `ws://127.0.0.1:${port}${path}` : undefined;
-        return { origin: `http://127.0.0.1:${port}`, process: child, close };
+        if (options.outlive === true) {
+          child.stderr?.destroy();
+          child.unref();
+        }
+        return {
+          origin: `http://127.0.0.1:${port}`,
+          process: child,
+          handle: { socket: browserSocket, profile },
+          close,
+        };
       }
     }
     await sleep(100);

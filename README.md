@@ -198,7 +198,7 @@ bun run dev          # backend, UI and desktop window in one terminal
 | Command                 | What it does                                                |
 | ----------------------- | ----------------------------------------------------------- |
 | `bun run dev`           | Backend, UI dev server and Electron window together         |
-| `bun run dev --browser` | The same, in your browser at `localhost:5173`               |
+| `bun run dev --browser` | The same, in your browser (from `localhost:5173`)           |
 | `bun run verify`        | Format, lint, typecheck and test, as CI does                |
 | `bun run package`       | Build an unsigned Windows installer into `apps/desktop/out` |
 

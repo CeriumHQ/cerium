@@ -4,11 +4,8 @@ import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter } from "effect/http";
 import { createServer } from "node:http";
 
-import { LiveCheckTools } from "./live/tools.ts";
 import { BUS_PATH, BUS_SERVER_NAME, BusRegistry } from "./registry.ts";
 import { BusToolkit, BusToolkitHandlers } from "./tools.ts";
-import { UiDriver } from "./ui/driver.ts";
-import { UiTools } from "./ui/tools.ts";
 
 /** Loopback only, on a free port: the bus is reachable from this machine's harness processes alone. */
 export const BusHttpServer = NodeHttpServer.layer(createServer, { host: "127.0.0.1", port: 0 });
@@ -18,19 +15,13 @@ const INSTRUCTIONS = [
   "Cerium's own tools.",
   "Agents: spawn and stop agents in your thread (spawn_agent, list_agents, kill_agent), and message them or" +
     " another thread's lead (send_message, list_threads), before changing files they work on or to ask what they know.",
-  "UI: see and use a web UI like a user. ui_open a URL (or attach to an app's debugging port), then ui_act with a batch of" +
-    " clicks, typing and key presses, which answers with a screenshot; ui_inspect reads the page's controls and console.",
-  "Live checks: live_check runs a short real turn on each harness and reports what it did, instead of a hand-written script.",
   "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",
   "Artifacts: artifact_guide before writing your first visual.",
 ].join("\n");
 
-/** The MCP endpoint's routes, for serving alongside other routes. Requires the Orchestrator, Adapters and BusRegistry. */
-export const BusRoutes = Layer.mergeAll(
-  McpServer.toolkit(BusToolkit).pipe(Layer.provide(BusToolkitHandlers)),
-  UiTools.pipe(Layer.provide(UiDriver.layer)),
-  LiveCheckTools,
-).pipe(
+/** The MCP endpoint's routes, for serving alongside other routes. Requires the Orchestrator and BusRegistry. */
+export const BusRoutes = McpServer.toolkit(BusToolkit).pipe(
+  Layer.provide(BusToolkitHandlers),
   Layer.provideMerge(
     McpServer.layerHttp({
       name: BUS_SERVER_NAME,

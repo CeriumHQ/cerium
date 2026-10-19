@@ -21,6 +21,7 @@
         "@cerium/adapter-cursor": "workspace:*",
         "@cerium/adapter-muse": "workspace:*",
         "@cerium/bus": "workspace:*",
+        "@cerium/harness": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@cerium/rpc": "workspace:*",
@@ -170,6 +171,13 @@
     },
     "packages/artifacts": {
       "name": "@cerium/artifacts",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/browser": {
+      "name": "@cerium/browser",
       "version": "0.0.0",
       "devDependencies": {
         "@effect/vitest": "4.0.5",
@@ -331,6 +339,8 @@
     "@cerium/artifacts": ["@cerium/artifacts@workspace:packages/artifacts"],
 
     "@cerium/backend": ["@cerium/backend@workspace:apps/backend"],
+
+    "@cerium/browser": ["@cerium/browser@workspace:packages/browser"],
 
     "@cerium/bus": ["@cerium/bus@workspace:packages/bus"],
 

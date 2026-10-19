@@ -1,7 +1,6 @@
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import {
   ADVISOR_ROLE,
-  type AccessMode,
   type AgentId,
   type AgentInfo,
   type AgentState,
@@ -63,31 +62,6 @@ const artifacts = (busServer: string) => [
   "</div>",
   "```",
 ];
-
-/**
- * Agents otherwise write a browser script or a harness check script in every session, so the prompt
- * names the bus tools that replace both at the moment each is needed. A read-only
- * agent may look at a page but not act on it, and runs no live checks.
- */
-const seeing = (access: AccessMode) =>
-  access === "readOnly"
-    ? [
-        "",
-        "## Seeing web pages",
-        "- To look at a web UI or a site, call `ui_open` with its URL instead of writing a browser script: it" +
-          " answers with a screenshot, `ui_screenshot` takes another and `ui_inspect` lists the page's controls" +
-          " and console errors. You can look but not click or type.",
-      ]
-    : [
-        "",
-        "## Seeing and checking your work",
-        "- To look at or use a web UI (one you are building, a dev server, a site), call `ui_open` with its URL, or" +
-          " `attach` to an app's debugging port, then `ui_act` with every click, keystroke and wait you can predict in" +
-          " one batch. Each answers with a screenshot; `ui_inspect` lists the page's controls and console errors." +
-          " These replace writing browser or screenshot scripts.",
-        "- To see how a coding harness (Claude, Codex, Muse, Cursor) really behaves, call `live_check` instead of" +
-          " writing a check script: it runs a short real turn on each and reports tools, approvals and files.",
-      ];
 
 /**
  * Newer models keep multi-step work in their heads, and some harnesses defer their todo tool, so
@@ -237,7 +211,6 @@ export const systemPrompt = (
       ...ask,
       ...planning,
       ...neighbourhood(options.neighbours ?? []),
-      ...seeing(agent.access),
       ...help,
       ...artifacts(busServer),
     ].join("\n");
@@ -250,7 +223,6 @@ export const systemPrompt = (
     ...together(agent),
     ...ask,
     ...planning,
-    ...seeing(agent.access),
     ...help,
   ].join("\n");
 };
