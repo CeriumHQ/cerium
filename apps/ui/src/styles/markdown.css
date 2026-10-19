@@ -126,12 +126,36 @@
   color: var(--fg-primary);
 }
 [data-streamdown="code-block-body"] {
+  /* A long listing scrolls in place rather than pushing the conversation a screen down. */
+  max-height: 32rem;
   border: 0;
   border-radius: 0;
   background: transparent;
   padding: 0.625rem 0.875rem;
   font-size: 12.5px;
   line-height: 1.6;
+}
+/* A fence with no language has nothing for a header to say: the copy button floats over its corner
+   while the block is hovered or focused, and always on touch screens. */
+[data-streamdown="code-block"][data-language=""] > [data-streamdown="code-block-header"] {
+  display: none;
+}
+[data-streamdown="code-block"][data-language=""] > :has(> [data-streamdown="code-block-actions"]) {
+  opacity: 0;
+  transition: opacity 150ms;
+}
+[data-streamdown="code-block"][data-language=""]:is(:hover, :focus-within)
+  > :has(> [data-streamdown="code-block-actions"]) {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  [data-streamdown="code-block"][data-language=""] > :has(> [data-streamdown="code-block-actions"]) {
+    opacity: 1;
+  }
+}
+[data-streamdown="code-block"][data-language=""] [data-streamdown="code-block-actions"] {
+  border-radius: 0.375rem;
+  background: var(--surface-overlay);
 }
 
 /* Tables: one card with a tinted header row; the copy and fullscreen controls appear on hover. */
@@ -175,6 +199,22 @@
 [data-streamdown="table-cell"] {
   padding: 0.4375rem 0.75rem;
   font-size: 13px;
+}
+
+/* Task list items: the checkbox is the marker. */
+[data-streamdown="list-item"]:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.25em;
+}
+[data-streamdown="list-item"] > input[type="checkbox"] {
+  margin-right: 0.5em;
+  accent-color: var(--fg-secondary);
+}
+
+/* Thin, quiet scrollbars on blocks that scroll inside the conversation: code, tables, tool output. */
+:is([data-streamdown="code-block-body"], [data-streamdown="table-wrapper"] > :has(> table), .scroll-thin) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
 }
 
 /* Artifacts: agents' HTML visuals. They sit on the column with no card of their own. */

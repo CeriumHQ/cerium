@@ -160,6 +160,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: the composer and Agents settings offer three access modes for every provider, in this order: Auto, Read only and Full access. Ask first and Accept edits are no longer offered; threads already running in them keep their mode, and a default set to either starts over at Auto.
 - Desktop: the development shell (`bun run dev`) listens for a debugger on port 9222, so agents can drive it.
 - UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts. Spelling suggestions in the text menu stand out from the commands under them.
+- UI: in replies, a long code block scrolls in place instead of pushing the conversation down, a block without a language drops its empty header for a copy button over its corner, task lists use their checkboxes as markers, and scrollbars inside the conversation are thin.
 
 ### Fixed
 
