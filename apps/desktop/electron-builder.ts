@@ -38,7 +38,8 @@ export default {
   // No asar archive: the Cursor SDK runs ripgrep and its sandbox from node_modules, and finds them by
   // walking up from the backend's script, which an archive would hide.
   asar: false,
-  // koffi ships prebuilt for Electron's Node-API, so nothing needs rebuilding.
+  // koffi and node-pty (the terminals' pseudoterminals) ship prebuilt for Node-API, so nothing needs
+  // rebuilding.
   npmRebuild: false,
   win: { target: "nsis", icon: "build/icon.ico" },
   // The guided installer, not the one-click one: only it shows the welcome and finish pages' artwork.

@@ -1,0 +1,463 @@
+import type { ThreadId } from "@cerium/protocol";
+import type { TerminalId, TerminalOutput, TerminalSize } from "@cerium/rpc";
+import { Store } from "@cerium/store";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
+
+import { MAX_PER_THREAD, Terminals } from "../src/terminal.ts";
+import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
+
+// The Terminals service over a pseudoterminal that is a puppet, so what the shell prints and when it
+// ends is up to the test. The screen is the real emulator.
+
+interface Puppet {
+  readonly options: SpawnOptions;
+  readonly written: Array<string>;
+  readonly resizes: Array<readonly [number, number]>;
+  killed: boolean;
+  /** What the shell prints. */
+  readonly print: (data: string) => void;
+  readonly end: (exitCode: number) => void;
+}
+
+const puppets = () => {
+  const spawned: Array<Puppet> = [];
+  const layer = Layer.succeed(
+    Ptys,
+    Ptys.of({
+      spawn: (options, events) =>
+        Effect.sync(() => {
+          const puppet: Puppet = {
+            options,
+            written: [],
+            resizes: [],
+            killed: false,
+            print: events.onData,
+            end: (exitCode) => events.onExit({ exitCode }),
+          };
+          spawned.push(puppet);
+          return {
+            write: (data) => puppet.written.push(data),
+            resize: (cols, rows) => puppet.resizes.push([cols, rows]),
+            pause: () => undefined,
+            resume: () => undefined,
+            kill: Effect.sync(() => {
+              puppet.killed = true;
+              events.onExit({ exitCode: 1 });
+            }),
+          };
+        }),
+    }),
+  );
+  return { spawned, layer };
+};
+
+const size: TerminalSize = { cols: 80, rows: 24 };
+const shell = { file: "puppet", args: ["-x"], name: "Puppet" };
+
+const withTerminals = (options: { readonly backlog?: number } = {}) => {
+  const { spawned, layer } = puppets();
+  return {
+    spawned,
+    provide: <A, E>(
+      effect: Effect.Effect<A, E, Terminals | Store | FileSystem.FileSystem | Path.Path | Scope.Scope>,
+    ) =>
+      effect.pipe(
+        Effect.provide(
+          Terminals.layer({ version: "test", shell, batchMs: 0, ...options }).pipe(
+            Layer.provide(layer),
+            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Store.layer({ filename: ":memory:" })),
+          ),
+        ),
+        Effect.scoped,
+      ),
+  };
+};
+
+const at = (id: string) => id as ThreadId;
+const settle = Effect.sleep("40 millis");
+
+/** A work thread whose folder is a fresh temporary one. */
+const workThread = (id: string) =>
+  Effect.gen(function* () {
+    const store = yield* Store;
+    const fs = yield* FileSystem.FileSystem;
+    const cwd = yield* fs.makeTempDirectoryScoped();
+    yield* store.createThread({ id: at(id), title: id, mode: "work", cwd, createdAt: 1, updatedAt: 1 });
+    return cwd;
+  });
+
+/** Collects what a viewer is sent. */
+const watch = (terminals: Terminals["Service"], id: TerminalId) =>
+  Effect.gen(function* () {
+    const seen: Array<TerminalOutput> = [];
+    const fiber = yield* terminals.attach(id, size).pipe(
+      Stream.runForEach((output) => Effect.sync(() => void seen.push(output))),
+      Effect.forkChild,
+    );
+    return { seen, fiber };
+  });
+
+const text = (outputs: ReadonlyArray<TerminalOutput>) =>
+  outputs.flatMap((output) => (output._tag === "Exit" ? [] : [output.data])).join("");
+
+describe("Terminals.open", () => {
+  it.live("starts the shell in the thread's folder, set up as a terminal", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const cwd = yield* workThread("thr_a");
+        const info = yield* terminals.open(at("thr_a"), size);
+        assert.strictEqual(info.threadId, "thr_a");
+        assert.strictEqual(info.shell, "Puppet");
+        assert.strictEqual(info.cwd, (yield* Path.Path).resolve(cwd));
+        assert.isUndefined(info.exitCode);
+        const [puppet] = spawned;
+        assert.strictEqual(puppet?.options.file, "puppet");
+        assert.deepStrictEqual(puppet?.options.args, ["-x"]);
+        assert.strictEqual(puppet?.options.cwd, info.cwd);
+        assert.strictEqual(puppet?.options.cols, 80);
+        assert.strictEqual(puppet?.options.env["TERM"], "xterm-256color");
+        assert.strictEqual(puppet?.options.env["TERM_PROGRAM_VERSION"], "test");
+        assert.deepStrictEqual(
+          (yield* terminals.list).map((each) => each.id),
+          [info.id],
+        );
+      }),
+    );
+  });
+
+  it.live("refuses a thread that is missing, a chat, or has no usable folder", () => {
+    const { provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const store = yield* Store;
+        const fs = yield* FileSystem.FileSystem;
+        const refused = (threadId: string) =>
+          terminals.open(at(threadId), size).pipe(
+            Effect.flip,
+            Effect.map((error) => error.message),
+          );
+
+        assert.strictEqual(yield* refused("thr_none"), "That thread doesn't exist.");
+
+        yield* store.createThread({
+          id: at("thr_chat"),
+          title: "c",
+          mode: "chat",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        assert.strictEqual(yield* refused("thr_chat"), "Only work threads have a terminal.");
+
+        yield* store.createThread({
+          id: at("thr_bare"),
+          title: "b",
+          mode: "work",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        assert.strictEqual(yield* refused("thr_bare"), "Only work threads have a terminal.");
+
+        const root = yield* fs.makeTempDirectoryScoped();
+        const missing = `${root}/gone`;
+        yield* store.createThread({
+          id: at("thr_gone"),
+          title: "g",
+          mode: "work",
+          cwd: missing,
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        assert.include(yield* refused("thr_gone"), "doesn't exist");
+
+        const file = `${root}/file.txt`;
+        yield* fs.writeFileString(file, "x");
+        yield* store.createThread({
+          id: at("thr_file"),
+          title: "f",
+          mode: "work",
+          cwd: file,
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        assert.include(yield* refused("thr_file"), "isn't a folder");
+
+        assert.deepStrictEqual(yield* terminals.list, []);
+      }),
+    );
+  });
+
+  it.live("caps a thread's terminals", () => {
+    const { provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        yield* workThread("thr_b");
+        for (let each = 0; each < MAX_PER_THREAD; each++) yield* terminals.open(at("thr_a"), size);
+        const error = yield* terminals.open(at("thr_a"), size).pipe(Effect.flip);
+        assert.include(error.message, `${MAX_PER_THREAD} terminals`);
+        // Another thread has its own.
+        yield* terminals.open(at("thr_b"), size);
+        assert.strictEqual((yield* terminals.list).length, MAX_PER_THREAD + 1);
+      }),
+    );
+  });
+});
+
+describe("Terminals.attach", () => {
+  it.live("sends the screen as it stands, then what the shell prints, until it ends with its code", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        const [puppet] = spawned;
+        puppet?.print("before\r\n");
+        yield* settle;
+
+        const viewer = yield* watch(terminals, id);
+        yield* settle;
+        const first = viewer.seen[0];
+        assert.strictEqual(first?._tag, "Screen");
+        assert.include(first?._tag === "Screen" ? first.data : "", "before");
+
+        puppet?.print("one ");
+        yield* settle;
+        puppet?.print("two");
+        yield* settle;
+        assert.deepStrictEqual(viewer.seen.slice(1), [
+          { _tag: "Data", data: "one " },
+          { _tag: "Data", data: "two" },
+        ]);
+
+        puppet?.end(3);
+        yield* Fiber.join(viewer.fiber);
+        assert.deepStrictEqual(viewer.seen.at(-1), { _tag: "Exit", code: 3 });
+        assert.strictEqual((yield* terminals.list)[0]?.exitCode, 3);
+      }),
+    );
+  });
+
+  it.live("hands a viewer that arrives after the shell ended its last screen and the code", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        spawned[0]?.print("done\r\n");
+        spawned[0]?.end(0);
+        yield* settle;
+        const viewer = yield* watch(terminals, id);
+        yield* Fiber.join(viewer.fiber);
+        assert.strictEqual(viewer.seen.length, 2);
+        assert.include(text(viewer.seen), "done");
+        assert.deepStrictEqual(viewer.seen[1], { _tag: "Exit", code: 0 });
+      }),
+    );
+  });
+
+  it.live("gives a viewer that fell behind the screen again instead of a gap", () => {
+    const { spawned, provide } = withTerminals({ backlog: 4 });
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        const gate = yield* Deferred.make<void>();
+        const seen: Array<TerminalOutput> = [];
+        // The viewer holds up on its first piece until released.
+        const fiber = yield* terminals.attach(id, size).pipe(
+          Stream.mapEffect((output) =>
+            seen.length === 0 ? Deferred.await(gate).pipe(Effect.as(output)) : Effect.succeed(output),
+          ),
+          Stream.runForEach((output) => Effect.sync(() => void seen.push(output))),
+          Effect.forkChild,
+        );
+        yield* settle;
+        for (let line = 1; line <= 20; line++) spawned[0]?.print(`line ${line}\r\n`);
+        yield* settle;
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        spawned[0]?.print("after\r\n");
+        yield* settle;
+        spawned[0]?.end(0);
+        yield* Fiber.join(fiber);
+
+        const screens = seen.filter((output) => output._tag === "Screen");
+        assert.isAtLeast(screens.length, 2);
+        const resynced = seen.findIndex((output, index) => index > 0 && output._tag === "Screen");
+        const screen = seen[resynced];
+        assert.include(screen?._tag === "Screen" ? screen.data : "", "line 20");
+        // Nothing is lost or repeated around the redraw: what follows it is only what came after it.
+        assert.include(text(seen.slice(resynced + 1)), "after");
+        assert.notInclude(text(seen.slice(resynced + 1)), "line 20");
+      }),
+    );
+  });
+
+  it.live("resizes the terminal to the viewer's size", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        const viewer = yield* terminals
+          .attach(id, { cols: 120, rows: 40 })
+          .pipe(Stream.runDrain, Effect.forkChild);
+        yield* settle;
+        assert.deepStrictEqual(spawned[0]?.resizes, [[120, 40]]);
+        yield* terminals.resize(id, { cols: 120, rows: 40 });
+        assert.strictEqual(spawned[0]?.resizes.length, 1);
+        yield* Fiber.interrupt(viewer);
+      }),
+    );
+  });
+});
+
+describe("Terminals input and lifecycle", () => {
+  it.live("types into the shell, and ignores typing once it has ended", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        yield* terminals.write(id, "ls\r");
+        assert.deepStrictEqual(spawned[0]?.written, ["ls\r"]);
+        spawned[0]?.end(0);
+        yield* terminals.write(id, "late");
+        assert.deepStrictEqual(spawned[0]?.written, ["ls\r"]);
+        const error = yield* terminals.write("term_none" as TerminalId, "x").pipe(Effect.flip);
+        assert.strictEqual(error.message, "That terminal has closed.");
+      }),
+    );
+  });
+
+  it.live("restarts a terminal whose shell ended, on its tab and with a clear screen", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        const running = yield* terminals.restart(id, size).pipe(Effect.flip);
+        assert.strictEqual(running.message, "That terminal is still running.");
+
+        spawned[0]?.print("old output\r\n");
+        spawned[0]?.end(2);
+        yield* settle;
+        const info = yield* terminals.restart(id, size);
+        assert.strictEqual(info.id, id);
+        assert.strictEqual(info.run, 2);
+        assert.isUndefined(info.exitCode);
+        assert.strictEqual(spawned.length, 2);
+        assert.strictEqual(spawned[1]?.options.cwd, spawned[0]?.options.cwd);
+
+        const viewer = yield* watch(terminals, id);
+        yield* settle;
+        assert.notInclude(text(viewer.seen), "old output");
+        yield* Fiber.interrupt(viewer.fiber);
+      }),
+    );
+  });
+
+  it.live("closes a terminal: the shell is ended, viewers are told, and the list forgets it", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        const viewer = yield* watch(terminals, id);
+        yield* settle;
+        yield* terminals.close(id);
+        yield* Fiber.join(viewer.fiber);
+        assert.isTrue(spawned[0]?.killed);
+        assert.deepStrictEqual(viewer.seen.at(-1), { _tag: "Exit" });
+        assert.deepStrictEqual(yield* terminals.list, []);
+        const again = yield* terminals.close(id).pipe(Effect.flip);
+        assert.strictEqual(again.message, "That terminal has closed.");
+      }),
+    );
+  });
+
+  it.live("closes every terminal of a thread that goes", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        yield* workThread("thr_b");
+        yield* terminals.open(at("thr_a"), size);
+        yield* terminals.open(at("thr_a"), size);
+        yield* terminals.open(at("thr_b"), size);
+        yield* terminals.closeThread(at("thr_a"));
+        assert.deepStrictEqual(
+          (yield* terminals.list).map((each) => each.threadId),
+          ["thr_b"],
+        );
+        assert.deepStrictEqual(
+          spawned.map((each) => each.killed),
+          [true, true, false],
+        );
+      }),
+    );
+  });
+
+  it.live("ends every terminal when the backend stops", () => {
+    const { spawned, provide } = withTerminals();
+    return Effect.gen(function* () {
+      yield* provide(
+        Effect.gen(function* () {
+          const terminals = yield* Terminals;
+          yield* workThread("thr_a");
+          yield* terminals.open(at("thr_a"), size);
+          yield* terminals.open(at("thr_a"), size);
+          assert.deepStrictEqual(
+            spawned.map((each) => each.killed),
+            [false, false],
+          );
+        }),
+      );
+      assert.deepStrictEqual(
+        spawned.map((each) => each.killed),
+        [true, true],
+      );
+    });
+  });
+
+  it.live("streams the list of terminals as it changes", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const counts: Array<string> = [];
+        const watcher = yield* terminals.changes.pipe(
+          Stream.runForEach((list) =>
+            Effect.sync(() => void counts.push(list.map((each) => each.exitCode ?? "running").join(","))),
+          ),
+          Effect.forkChild,
+        );
+        yield* settle;
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        yield* settle;
+        spawned[0]?.end(4);
+        yield* settle;
+        yield* terminals.close(id);
+        yield* settle;
+        yield* Fiber.interrupt(watcher);
+        assert.deepStrictEqual(counts, ["", "running", "4", ""]);
+      }),
+    );
+  });
+});

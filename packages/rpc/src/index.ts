@@ -37,9 +37,12 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
+import { CeriumError } from "./error.ts";
 import { FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
+import { TerminalRpcs } from "./terminal.ts";
 
 export * from "./files.ts";
+export * from "./terminal.ts";
 
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
 // results are protocol schemas, so both sides validate them. Lists of threads and events skip what
@@ -50,7 +53,7 @@ export * from "./files.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 3;
+export const RPC_VERSION = 4;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -61,10 +64,7 @@ export const MIN_RPC_VERSION = 1;
  */
 export const TUNNEL_HELLO = JSON.stringify(RpcMessage.constPing);
 
-/** A request the backend refused; `message` is written for the user. */
-export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError", {
-  message: Schema.String,
-}) {}
+export { CeriumError };
 
 // Shared with Cerium's relay, which keeps a copy of every thread.
 export { ThreadOverview, UiEvent };
@@ -286,7 +286,7 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
-);
+).merge(TerminalRpcs);
 
 /**
  * What a device answers its own UI about itself: its Cerium account, the account's threads,

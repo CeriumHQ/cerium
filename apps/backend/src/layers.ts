@@ -26,6 +26,8 @@ import { Files } from "./files.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { CloudCopy } from "./sync.ts";
+import { Terminals } from "./terminal.ts";
+import { Ptys } from "./terminalPty.ts";
 import { fileVault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 
@@ -130,6 +132,9 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(Files.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
+    Layer.provideMerge(
+      Terminals.layer({ version: options.account?.device.version ?? "dev" }).pipe(Layer.provide(Ptys.layer)),
+    ),
     Layer.provideMerge(
       Account.layer(
         options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") },

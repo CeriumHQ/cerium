@@ -19,7 +19,10 @@
     "@cerium/rpc": "workspace:*",
     "@cerium/store": "workspace:*",
     "@effect/platform-node": "4.0.5",
-    "effect": "4.0.5"
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
+    "effect": "4.0.5",
+    "node-pty": "1.2.0-beta.15"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5"

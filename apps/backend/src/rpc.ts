@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 
 import { Files, type FilesError } from "./files.ts";
 import { Projects, type ProjectError } from "./project.ts";
+import { Terminals, terminalHandlers } from "./terminal.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
@@ -33,6 +34,7 @@ export const Handlers = MachineRpcs.toLayer(
     const workspace = yield* Workspace;
     const files = yield* Files;
     const projects = yield* Projects;
+    const terminals = yield* Terminals;
     const store = yield* Store;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
@@ -95,7 +97,12 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
       SetThreadArchived: ({ threadId, archived }) =>
         orchestrator.setThreadArchived(threadId, archived).pipe(Effect.mapError(refuse)),
-      DeleteThread: ({ threadId }) => orchestrator.deleteThread(threadId).pipe(Effect.mapError(refuse)),
+      // A deleted thread's terminals end with it.
+      DeleteThread: ({ threadId }) =>
+        orchestrator.deleteThread(threadId).pipe(
+          Effect.tap(() => terminals.closeThread(threadId)),
+          Effect.mapError(refuse),
+        ),
       SearchThreads: ({ query, mode }) =>
         store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
@@ -135,6 +142,7 @@ export const Handlers = MachineRpcs.toLayer(
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
+      ...terminalHandlers(terminals),
     });
   }),
 );
