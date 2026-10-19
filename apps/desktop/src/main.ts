@@ -17,11 +17,12 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 if (!app.requestSingleInstanceLock()) app.quit();
 
 /**
- * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files. The development
- * backend then runs on its own (`bun run dev`) and the UI finds it through the dev server. The dev
- * script also opens Chromium's debugging port 9222, which agents' `ui_open` attaches to.
+ * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files; the last one given
+ * wins, so `bun run dev` can name the port it picked. The development backend then runs on its own
+ * (`bun run dev`) and the UI finds it through the dev server. The dev script also opens Chromium's
+ * debugging port 9222, which `bun run ui open --attach=9222` drives.
  */
-const devUrl = process.argv.find((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
+const devUrl = process.argv.findLast((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 
 let backend: ReturnType<typeof startBackend> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
