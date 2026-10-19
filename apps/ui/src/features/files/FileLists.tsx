@@ -14,7 +14,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FileMenuItems } from "./FileMenu.tsx";
 import { StateLetter, TouchedMark } from "./FileStatus.tsx";
-import { dirOf, nameOf, type ChangedRow } from "./model.ts";
+import { dirOf, nameOf, wantsTab, type ChangedRow, type OpenFile } from "./model.ts";
 
 /** A file or folder in a flat list: its icon, its name, where it is, and what happened to it. */
 function RowContent({
@@ -59,15 +59,21 @@ export function ChangesList({
   repository,
   root,
   messageBox,
+  activePath,
   onOpen,
+  viewer,
   onReveal,
 }: {
   rows: ReadonlyArray<ChangedRow>;
   repository: boolean;
   root: string;
   messageBox: MessageBox | undefined;
-  /** Opens a file in its own app; absent where this computer can't. */
-  onOpen: ((path: string) => void) | undefined;
+  /** The file the viewer shows. */
+  activePath: string | undefined;
+  /** Opens a file at its changes; absent where nothing can. */
+  onOpen: OpenFile | undefined;
+  /** Opens a file in Cerium's viewer, for the rows' menus; absent where the machine can't serve one. */
+  viewer: OpenFile | undefined;
   /** Shows a folder in the tree. */
   onReveal: (path: string) => void;
 }) {
@@ -114,14 +120,28 @@ export function ChangesList({
                 root={root}
                 gone={row.state === "deleted"}
                 messageBox={messageBox}
+                onOpen={
+                  viewer && !row.folder ? () => viewer(row.path, { changes: true, tab: true }) : undefined
+                }
               />
             }
           >
             <button
               type="button"
               tabIndex={row.path === first ? 0 : -1}
-              onClick={() => (row.folder ? onReveal(row.path) : onOpen?.(row.path))}
-              className={`${rowClass} transition-colors hover:bg-surface-hover`}
+              aria-current={!row.folder && row.path === activePath ? "page" : undefined}
+              onClick={(event) => {
+                if (row.folder) {
+                  if (event.detail < 2) onReveal(row.path);
+                } else onOpen?.(row.path, { changes: true, tab: wantsTab(event) });
+              }}
+              onAuxClick={(event) => {
+                if (event.button === 1 && !row.folder) onOpen?.(row.path, { changes: true, tab: true });
+              }}
+              onMouseDown={(event) => {
+                if (event.button === 1) event.preventDefault();
+              }}
+              className={`${rowClass} transition-colors hover:bg-surface-hover aria-[current=page]:bg-surface-selected`}
             >
               <RowContent
                 path={row.path}

@@ -6,7 +6,7 @@ import { useContext, useEffect, useEffectEvent, useRef, type ReactNode } from "r
 import { applyChanges, expandedAtom, watchAtom } from "../../backend/explorer.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FilesPanel } from "./FilesPanel.tsx";
-import { noTouched, touchedFiles } from "./model.ts";
+import { noTouched, touchedFiles, type OpenFile } from "./model.ts";
 
 /**
  * The files panel of a thread's folder `root`, while it is open, kept current: the machine says what
@@ -18,6 +18,8 @@ export function useFilesExplorer({
   events,
   messageBox,
   open,
+  onOpenFile,
+  activePath,
   onClose,
 }: {
   /** The thread's folder; none where there is nothing to browse. */
@@ -27,6 +29,10 @@ export function useFilesExplorer({
   messageBox: MessageBox | undefined;
   /** The files panel is shown. */
   open: boolean;
+  /** Opens a file of `root` in the viewer; absent where the machine can't serve one. */
+  onOpenFile?: OpenFile | undefined;
+  /** The file of `root` the viewer shows. */
+  activePath?: string | undefined;
   onClose: () => void;
 }): ReactNode | undefined {
   const registry = useContext(RegistryContext);
@@ -67,6 +73,13 @@ export function useFilesExplorer({
   }, [touched, active, root]);
 
   return active ? (
-    <FilesPanel root={root} touched={touched} messageBox={messageBox} onClose={onClose} />
+    <FilesPanel
+      root={root}
+      touched={touched}
+      messageBox={messageBox}
+      onOpenFile={onOpenFile}
+      activePath={activePath}
+      onClose={onClose}
+    />
   ) : undefined;
 }

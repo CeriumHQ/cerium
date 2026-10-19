@@ -46,6 +46,89 @@ export const statusAtom = Atom.family((root: string) =>
     .pipe(Atom.setIdleTTL("2 minutes")),
 );
 
+/** A file as the viewer shows it, keyed `root` and its path. */
+export const previewKey = (root: string, path: string) => key(root, path);
+
+export const previewAtom = Atom.family((id: string) => {
+  const [root = "", path = ""] = id.split("\n");
+  return Backend.runtime
+    .atom((get) => {
+      get(connectionAtom);
+      get(versionAtoms(key("file", id)));
+      return Backend.use((client) => client("ReadFile", { root, path }));
+    })
+    .pipe(Atom.setIdleTTL("1 minute"));
+});
+
+/**
+ * A changed file against the last commit, keyed `root`, its path, where it was before a rename and
+ * how many unchanged lines to show around each change.
+ */
+export const diffKey = (root: string, path: string, from: string | undefined, context: number) =>
+  key(root, path, from ?? "", String(context));
+
+export const diffAtom = Atom.family((id: string) => {
+  const [root = "", path = "", from = "", context = "3"] = id.split("\n");
+  return Backend.runtime
+    .atom((get) => {
+      get(connectionAtom);
+      get(versionAtoms(key("file", key(root, path))));
+      return Backend.use((client) =>
+        client("DiffFile", { root, path, context: Number(context), ...(from === "" ? {} : { from }) }),
+      );
+    })
+    .pipe(Atom.setIdleTTL("1 minute"));
+});
+
+/** How far a media file has been read; `url` plays or shows it once every byte is in. */
+export interface MediaLoad {
+  readonly received: number;
+  readonly url?: string;
+}
+
+/** A media file's bytes as a URL the page can play, keyed `root`, its path and its media type. */
+export const mediaKey = (root: string, path: string, mediaType: string) => key(root, path, mediaType);
+
+const fromBase64 = (data: string): Uint8Array<ArrayBuffer> => {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+};
+
+export const mediaAtom = Atom.family((id: string) => {
+  const [root = "", path = "", type = ""] = id.split("\n");
+  return Backend.runtime
+    .atom((get) => {
+      get(connectionAtom);
+      get(versionAtoms(key("file", key(root, path))));
+      const parts: Array<Uint8Array<ArrayBuffer>> = [];
+      let received = 0;
+      let url: string | undefined;
+      get.addFinalizer(() => {
+        if (url !== undefined) URL.revokeObjectURL(url);
+      });
+      return Stream.unwrap(
+        Backend.use((client) => Effect.succeed(client("ReadFileBytes", { root, path }))),
+      ).pipe(
+        Stream.map(({ data }): MediaLoad => {
+          const bytes = fromBase64(data);
+          parts.push(bytes);
+          received += bytes.length;
+          return { received };
+        }),
+        Stream.concat(
+          Stream.sync((): MediaLoad => {
+            url = URL.createObjectURL(new Blob(parts, { type }));
+            parts.length = 0;
+            return { received, url };
+          }),
+        ),
+      );
+    })
+    .pipe(Atom.setIdleTTL("30 seconds"));
+});
+
 /**
  * What changes under `root`, batch by batch, for as long as something reads it. A machine that stops
  * watching (or can't) is asked again every few seconds.
@@ -123,6 +206,10 @@ export const refreshListing = (registry: AtomRegistry.AtomRegistry, root: string
 
 export const refreshStatus = (registry: AtomRegistry.AtomRegistry, root: string) =>
   bump(registry, key("status", root));
+
+/** Reads a file the viewer shows again: its text or media, and its diff. */
+export const refreshFile = (registry: AtomRegistry.AtomRegistry, root: string, path: string) =>
+  bump(registry, key("file", key(root, path)));
 
 /** Reads again what a batch of changes touched: the folders it is in that are open, and the status. */
 export const applyChanges = (

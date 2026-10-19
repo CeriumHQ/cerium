@@ -15,7 +15,9 @@ import {
   touchedKey,
   touchWord,
   typeAhead,
+  wantsTab,
   type KeyAction,
+  type OpenFile,
   type Row,
   type Touched,
 } from "./model.ts";
@@ -41,9 +43,11 @@ function TreeRow({
   focusable,
   touch,
   touchedInside,
+  shown,
   messageBox,
   onFocus,
   onActivate,
+  onOpenTab,
 }: {
   row: Row;
   root: string;
@@ -51,9 +55,14 @@ function TreeRow({
   focusable: boolean;
   touch: "created" | "modified" | "deleted" | undefined;
   touchedInside: boolean;
+  /** The viewer shows this file. */
+  shown: boolean;
   messageBox: MessageBox | undefined;
   onFocus: () => void;
-  onActivate: () => void;
+  /** Pressed: `tab` when it asked for a tab of its own. */
+  onActivate: (tab: boolean) => void;
+  /** Opens the file in the viewer in a tab of its own, from its menu; absent without a viewer. */
+  onOpenTab: (() => void) | undefined;
 }) {
   const extra = notes(row, touch);
   const changed = row.state !== undefined;
@@ -67,6 +76,7 @@ function TreeRow({
           root={root}
           gone={row.gone}
           messageBox={messageBox}
+          onOpen={onOpenTab}
         />
       }
     >
@@ -91,10 +101,18 @@ function TreeRow({
           aria-level={row.depth + 1}
           aria-expanded={row.folder ? row.expanded : undefined}
           data-path={row.path}
-          onClick={onActivate}
+          aria-selected={shown}
+          onClick={(event) => onActivate(wantsTab(event))}
+          onAuxClick={(event) => {
+            if (event.button === 1) onActivate(true);
+          }}
+          onMouseDown={(event) => {
+            // The middle button opens on release; pressed, it would start the browser's autoscroll.
+            if (event.button === 1) event.preventDefault();
+          }}
           onFocus={onFocus}
           style={{ paddingLeft: 4 + row.depth * INDENT }}
-          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
+          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
             changed || touch ? "text-fg-primary" : "text-fg-secondary"
           }`}
         >
@@ -148,7 +166,9 @@ export function FileTree({
   messageBox,
   revealed,
   onRevealed,
+  activePath,
   onOpen,
+  viewer,
 }: {
   root: string;
   tree: Tree;
@@ -157,8 +177,12 @@ export function FileTree({
   /** A path to bring into view and focus as soon as its row is there. */
   revealed: string | undefined;
   onRevealed: () => void;
-  /** Opens a file in its own app; absent where this computer can't. */
-  onOpen: ((path: string) => void) | undefined;
+  /** The file the viewer shows. */
+  activePath: string | undefined;
+  /** Opens a file; absent where nothing can. */
+  onOpen: OpenFile | undefined;
+  /** Opens a file in Cerium's viewer, for the rows' menus; absent where the machine can't serve one. */
+  viewer: OpenFile | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const container = useRef<HTMLDivElement>(null);
@@ -254,12 +278,16 @@ export function FileTree({
           focusable={index === focusIndex}
           touch={row.folder ? undefined : touched.files.get(touchedKey(touched, row.path))?.change}
           touchedInside={row.folder && !row.expanded && touched.folders.has(touchedKey(touched, row.path))}
+          shown={!row.folder && row.path === activePath}
+          onOpenTab={viewer && !row.folder && !row.gone ? () => viewer(row.path, { tab: true }) : undefined}
           messageBox={messageBox}
           onFocus={() => setFocused(row.path)}
-          onActivate={() => {
+          onActivate={(tab) => {
             setFocused(row.path);
-            if (row.folder) setOpen(row.path, !row.expanded);
-            else onOpen?.(row.path);
+            // A folder opens and closes once, however many clicks a double click counts.
+            if (row.folder) {
+              if (!tab) setOpen(row.path, !row.expanded);
+            } else onOpen?.(row.path, { tab });
           }}
         />
       ))}

@@ -12,7 +12,7 @@ import type { MessageBox } from "../composer/messageBox.ts";
 import { resolvePath } from "../transcript/paths.ts";
 import { Filter, ChangesList } from "./FileLists.tsx";
 import { FileTree } from "./FileTree.tsx";
-import { ancestors, changedRows, type Touched } from "./model.ts";
+import { ancestors, changedRows, type OpenFile, type Touched } from "./model.ts";
 
 type View = "files" | "changes";
 
@@ -27,6 +27,8 @@ export function FilesPanel({
   root,
   touched,
   messageBox,
+  onOpenFile,
+  activePath,
   onClose,
 }: {
   /** The thread's folder. */
@@ -34,6 +36,10 @@ export function FilesPanel({
   /** The files this thread's agents changed. */
   touched: Touched;
   messageBox: MessageBox | undefined;
+  /** Opens a file in the viewer; absent where the machine can't serve it, when files open in their own app. */
+  onOpenFile: OpenFile | undefined;
+  /** The file the viewer shows, marked in the tree and the list. */
+  activePath: string | undefined;
   onClose: () => void;
 }) {
   const registry = useContext(RegistryContext);
@@ -62,15 +68,17 @@ export function FilesPanel({
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  // A file opens in the app the system gives its kind, on this computer only.
+  // A file opens in the viewer; where the machine can't serve one, in the app the system gives its
+  // kind, on this computer only.
   const opener = shellBridge()?.openPath;
-  const open =
-    opener === undefined
+  const open: OpenFile | undefined =
+    onOpenFile ??
+    (opener === undefined
       ? undefined
       : (path: string) => {
           const location = resolvePath(path, root);
           if (location !== undefined) void opener(location);
-        };
+        });
 
   /** Opens the folders above `path` (and `path` itself, a folder) and shows it in the tree. */
   const reveal = (path: string, folder: boolean) => {
@@ -108,7 +116,9 @@ export function FilesPanel({
           repository={tree.changes.repository}
           root={root}
           messageBox={messageBox}
+          activePath={activePath}
           onOpen={open}
+          viewer={onOpenFile}
           onReveal={(path) => reveal(path, true)}
         />
       </ScrollArea>
@@ -129,7 +139,9 @@ export function FilesPanel({
           messageBox={messageBox}
           revealed={revealed}
           onRevealed={() => setRevealed(undefined)}
+          activePath={activePath}
           onOpen={open}
+          viewer={onOpenFile}
         />
       </ScrollArea>
     );
@@ -194,7 +206,7 @@ export function FilesPanel({
           onClose={() => setFiltering(false)}
           onChoose={(entry) => {
             reveal(entry.path, entry.folder);
-            if (!entry.folder) open?.(entry.path);
+            if (!entry.folder) open?.(entry.path, { tab: true });
           }}
         >
           {body}

@@ -70,6 +70,8 @@ const contentPolicy = (artifactScript: string) =>
     `script-src 'self' 'sha256-${createHash("sha256").update(artifactScript).digest("base64")}'`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    // The file viewer plays a thread's sounds and videos from the bytes it read.
+    "media-src 'self' blob:",
     "font-src 'self' data:",
     "connect-src 'self'",
     "worker-src 'self' blob:",

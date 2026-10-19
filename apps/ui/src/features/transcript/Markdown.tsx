@@ -1,7 +1,7 @@
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import { mentionToken, type Mention } from "@cerium/protocol";
 import { createContext, useContext, type ComponentProps } from "react";
-import { defaultComponents, defaultRemarkPlugins, Streamdown } from "streamdown";
+import { defaultComponents, defaultRemarkPlugins, Streamdown, type DefaultComponents } from "streamdown";
 
 import { Artifact } from "./Artifact.tsx";
 import { FileChip, SkillChip } from "./FileChip.tsx";
@@ -107,6 +107,7 @@ export function Markdown({
   streaming,
   compact = false,
   user,
+  image,
 }: {
   text: string;
   streaming: boolean;
@@ -114,6 +115,8 @@ export function Markdown({
   compact?: boolean;
   /** The user's own message: line breaks kept as typed, and what they tagged shown as chips. */
   user?: { readonly mentions: ReadonlyArray<Mention> };
+  /** Draws images itself: a file's Markdown reads the ones beside it from its folder. */
+  image?: DefaultComponents["img"];
 }) {
   const mentions = new Map((user?.mentions ?? []).map((mention) => [mentionToken(mention), mention]));
   return (
@@ -123,7 +126,7 @@ export function Markdown({
         isAnimating={streaming}
         controls={controls}
         plugins={plugins}
-        components={components}
+        components={image ? { ...components, img: image } : components}
         remarkPlugins={user ? userRemarkPlugins : agentRemarkPlugins}
         lineNumbers={false}
         className={`${compact ? "text-[13px] leading-[1.6] text-fg-secondary [&>*+*]:mt-2.5" : "text-[14px] leading-[1.65] text-fg-primary [&>*+*]:mt-3"} [&_code]:font-mono [&_strong]:font-semibold [&_strong]:text-fg-primary`}

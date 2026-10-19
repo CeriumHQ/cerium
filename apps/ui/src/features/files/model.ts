@@ -9,6 +9,19 @@ import { relativePath, resolvePath } from "../transcript/paths.ts";
 /** The `RPC_VERSION` that brought the explorer's calls; an older machine can't be browsed. */
 export const FILES_VERSION = 3;
 
+/**
+ * Opens a file of the folder: in the viewer's preview tab, or a tab of its own (`tab`), showing its
+ * changes against the last commit (`changes`). Where the viewer can't, in the file's own app.
+ */
+export type OpenFile = (
+  path: string,
+  options?: { readonly tab?: boolean; readonly changes?: boolean },
+) => void;
+
+/** Ctrl click, the middle button and a double click open a file in a tab of its own, as with the sidebar's threads. */
+export const wantsTab = (event: { ctrlKey: boolean; metaKey: boolean; button: number; detail: number }) =>
+  event.ctrlKey || event.metaKey || event.button === 1 || event.detail >= 2;
+
 // ---------------------------------------------------------------------------------------------
 // Git
 

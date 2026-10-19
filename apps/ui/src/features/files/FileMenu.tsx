@@ -1,4 +1,4 @@
-import { AtSign, Copy, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
+import { AtSign, Copy, FileText, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 
 import { shellBridge } from "../../backend/shell.ts";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
@@ -16,6 +16,7 @@ export function FileMenuItems({
   root,
   gone = false,
   messageBox,
+  onOpen,
 }: {
   /** Relative to `root`. */
   path: string;
@@ -25,17 +26,24 @@ export function FileMenuItems({
   /** Deleted: there is nothing on disk to show. */
   gone?: boolean;
   messageBox: MessageBox | undefined;
+  /** Opens the file in Cerium's viewer, in a tab of its own; absent where it can't, or already shows it. */
+  onOpen?: (() => void) | undefined;
 }) {
   const { location, relative, mention } = fileTargets(path, folder, root);
   const reveal = gone ? undefined : shellBridge()?.revealPath;
-  const open = gone || folder ? undefined : shellBridge()?.openPath;
+  const openOutside = gone || folder ? undefined : shellBridge()?.openPath;
   if (location === undefined) return null;
   const canMention = mention !== undefined && messageBox !== undefined;
   return (
     <>
-      {open ? (
-        <MenuItem icon={SquareArrowOutUpRight} onClick={() => void open(location)}>
+      {onOpen && !folder ? (
+        <MenuItem icon={FileText} onClick={onOpen}>
           Open
+        </MenuItem>
+      ) : null}
+      {openOutside ? (
+        <MenuItem icon={SquareArrowOutUpRight} onClick={() => void openOutside(location)}>
+          {onOpen ? "Open in its app" : "Open"}
         </MenuItem>
       ) : null}
       {reveal ? (
