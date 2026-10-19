@@ -4,7 +4,7 @@ import { ReasoningEffort } from "./capabilities.ts";
 import { ProviderId } from "./ids.ts";
 
 /**
- * The model agents ask through the bus's `ask_advisor` when they are stuck (architecture §3.11). It
+ * The model agents ask through the bus's `ask_advisor` when they are stuck. It
  * answers and never works: Cerium runs it read only. The pick is kept while it is off.
  */
 export const AdvisorSettings = Schema.Struct({
@@ -28,7 +28,7 @@ export type ModelChoice = typeof ModelChoice.Type;
 
 /**
  * The models that name threads when the user hasn't picked one, best first: the first one a
- * logged-in harness offers is used. One per provider, so every user has one (architecture §3.12).
+ * logged-in harness offers is used. One per provider, so every user has one.
  */
 export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   { provider: "claude", model: "haiku" },
@@ -37,7 +37,7 @@ export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   { provider: "muse", model: "muse-spark-1.3-contributor" },
 ];
 
-/** How Cerium names a new thread from its first message (architecture §3.12). */
+/** How Cerium names a new thread from its first message. */
 export const TitleSettings = Schema.Struct({
   /** Off, a thread keeps the first line of its first message as its title. */
   enabled: Schema.Boolean,
@@ -53,7 +53,7 @@ const defaultTitles: TitleSettings = { enabled: true };
  * size, keys) stay in the UI.
  */
 export const Settings = Schema.Struct({
-  /** Load the MCP servers the user set up in each harness into sessions Cerium starts (§2.2). */
+  /** Load the MCP servers the user set up in each harness into sessions Cerium starts. */
   includeUserMcpServers: Schema.Boolean,
   /** Read as its default from a backend that predates it. */
   advisor: AdvisorSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAdvisor))),

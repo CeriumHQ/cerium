@@ -4,10 +4,10 @@ import { Atom, type AtomRegistry } from "effect/reactivity";
 import { remember, stored } from "../lib/storage.ts";
 import { WEB } from "./target.ts";
 
-// The machine this window drives (docs/architecture.md §14.8): this computer, or another desktop of
-// the account, reached through this computer's backend and the relay. Every RPC but the account's
-// goes there; the window always starts on this computer. The web client has no computer of its own,
-// so it drives one of the account's desktops, the one it drove last when it can (§14.10).
+// The machine this window drives: this computer, or another desktop of the
+// account, reached through this computer's backend and the relay. Every RPC but the account's goes
+// there; the window always starts on this computer. The web client has no computer of its own, so it
+// drives one of the account's desktops, the one it drove last when it can.
 
 /** The desktop the web client drove last. */
 const LAST_MACHINE_KEY = "cerium:machine";

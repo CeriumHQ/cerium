@@ -1,5 +1,5 @@
 // Fetches earlier releases' web UI builds into dist/builds, so a deploy keeps serving every version
-// desktops still run (docs/architecture.md §14.10). Each release carries its build as
+// desktops still run. Each release carries its build as
 // `cerium-web-<version>.tar.gz`; the newest ones are kept, up to MAX_BUILDS. Needs the GitHub CLI,
 // signed in or given GH_TOKEN, and reads the repository from GH_REPO or the checkout's remote.
 // Without it, a deploy serves only this checkout's build, and says so.

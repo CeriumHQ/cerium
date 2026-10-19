@@ -143,7 +143,7 @@ export function AppFrame({
 }
 
 /**
- * The phone-narrow window (docs/architecture.md §14.10): one pane at a time, each under its own top
+ * The phone-narrow window: one pane at a time, each under its own top
  * bar with the way back, and a thread's agents over the thread. Every pane stays mounted, so going
  * back finds it as it was left.
  */

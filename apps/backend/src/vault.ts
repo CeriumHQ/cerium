@@ -5,8 +5,8 @@ import { Deferred, Effect, FileSystem, Layer, Option, Path } from "effect";
 
 import type { ParentPort } from "./shell.ts";
 
-// Where the backend keeps this machine's Cerium sign-in: the one credential Cerium holds, its own
-// (docs/architecture.md §14.2). The packaged shell encrypts it with Windows' data protection; a
+// Where the backend keeps this machine's Cerium sign-in: the one credential Cerium holds, its own.
+// The packaged shell encrypts it with Windows' data protection; a
 // development backend keeps it in its data folder as it is.
 
 /** What the backend asks the shell over its parent port, and what the shell answers. */

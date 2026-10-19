@@ -28,7 +28,7 @@ const load = (): ReadState =>
 
 /**
  * Whether a thread changed since it was last seen, here or on another device of the account
- * (`elsewhere`, §14.9). Marking it unread here counts over what other devices saw.
+ * (`elsewhere`). Marking it unread here counts over what other devices saw.
  */
 export const isUnread = (
   state: ReadState,

@@ -41,7 +41,7 @@ const categories: ReadonlyArray<{
   readonly icon: LucideIcon;
 }> = [
   { id: "account", label: "Account", icon: CircleUserRound },
-  // Push notifications reach browsers only (docs/architecture.md §14.11).
+  // Push notifications reach browsers only.
   ...(WEB ? [{ id: "notifications" as const, label: "Notifications", icon: Bell }] : []),
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },

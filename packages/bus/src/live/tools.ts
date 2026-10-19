@@ -9,7 +9,7 @@ import { failure, registerRawTool, type RawReply } from "../raw.ts";
 import { BusRegistry } from "../registry.ts";
 import { LiveCheckRequest, LiveCheckResult, renderResults, runLiveChecks } from "./check.ts";
 
-// The `live_check` bus tool (architecture §3.2). In a Cerium checkout it runs the checkout's own
+// The `live_check` bus tool. In a Cerium checkout it runs the checkout's own
 // `apps/backend/scripts/live-check.ts`, so a change to an adapter is checked with that change; anywhere
 // else it checks the harnesses through this app's adapters. Results arrive as a notice, like a child's.
 

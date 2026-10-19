@@ -35,14 +35,14 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
-// The contract between the UI and the backend, served over a localhost WebSocket
-// (docs/architecture.md §7). Payloads and results are protocol schemas, so both sides validate them.
-// Lists of threads and events skip what the reading side's version can't read (§14.1).
+// The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
+// results are protocol schemas, so both sides validate them. Lists of threads and events skip what
+// the reading side's version can't read.
 
 /**
- * The version of this contract. Changes only add (docs/architecture.md §14.1): a new RPC, or an
- * optional field. Bump it with each addition a client relies on, so a client driving another
- * machine knows what that machine's backend offers.
+ * The version of this contract. Changes only add: a new RPC, or an optional field. Bump it with each
+ * addition a client relies on, so a client driving another machine knows what that machine's backend
+ * offers.
  */
 export const RPC_VERSION = 1;
 
@@ -60,7 +60,7 @@ export class CeriumError extends Schema.TaggedError<CeriumError>()("CeriumError"
   message: Schema.String,
 }) {}
 
-// Shared with Cerium's relay, which keeps a copy of every thread (docs/architecture.md §14.9).
+// Shared with Cerium's relay, which keeps a copy of every thread.
 export { ThreadOverview, UiEvent };
 
 export const CreateThreadPayload = Schema.Struct({
@@ -77,8 +77,8 @@ export const CreateThreadPayload = Schema.Struct({
 export type CreateThreadPayload = typeof CreateThreadPayload.Type;
 
 /**
- * What a machine serves its own UI and, through tunnels, the account's other devices
- * (docs/architecture.md §14.8): its threads, projects, harnesses and settings.
+ * What a machine serves its own UI and, through tunnels, the account's other devices: its threads,
+ * projects, harnesses and settings.
  */
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
@@ -210,12 +210,12 @@ export const MachineRpcs = RpcGroup.make(
 );
 
 /**
- * What a device answers its own UI about itself (§14.10): its Cerium account, the account's threads,
+ * What a device answers its own UI about itself: its Cerium account, the account's threads,
  * and whether its own agents are working. Never served through a tunnel: only a device's own UI
  * signs it in or out and manages the account's devices.
  */
 export const DeviceRpcs = RpcGroup.make(
-  /** This device's Cerium account (docs/architecture.md §14) now, then every change. */
+  /** This device's Cerium account now, then every change. */
   Rpc.make("WatchAccount", { success: AccountState, stream: true }),
   /** Starts signing this device in; the UI opens `url`, where the user confirms in their browser. */
   Rpc.make("SignIn", { success: Schema.Struct({ url: Schema.String }), error: CeriumError }),
@@ -228,7 +228,7 @@ export const DeviceRpcs = RpcGroup.make(
   /** Removes a device from the account: denies one waiting for approval, or signs one out. */
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
   /**
-   * Every thread of the account and what has been seen of them (§14.9), now and after every change.
+   * Every thread of the account and what has been seen of them, now and after every change.
    * Empty while this device isn't signed in.
    */
   Rpc.make("WatchAccountThreads", { success: AccountThreads, stream: true }),
@@ -247,7 +247,7 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("WatchWorking", { success: Schema.Boolean, stream: true }),
   /**
    * Whether this device's window shows, and the thread open in it: nobody is notified about a
-   * thread someone is looking at (§14.11).
+   * thread someone is looking at.
    */
   Rpc.make("ReportPresence", {
     payload: { visible: Schema.Boolean, viewing: Schema.optionalKey(ThreadRef) },

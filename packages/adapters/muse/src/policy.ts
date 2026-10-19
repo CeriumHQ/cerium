@@ -99,7 +99,7 @@ export const sandboxNotice = (problem: string): string =>
   " once in a terminal opened as administrator, or give this thread Full access. Settings → Harnesses shows how.";
 
 /**
- * Per-host settings for every Cerium session. Cerium's bus is the only way to spawn (architecture §3.1):
+ * Per-host settings for every Cerium session. Cerium's bus is the only way to spawn:
  * native subagent tools are hidden, the `workflow` tool is removed and the agent tree has no child slot.
  * Unknown keys refuse the run, so each one here was checked against the installed CLI.
  */

@@ -1,4 +1,4 @@
-// How the relay's assets hold the web UI's builds (docs/architecture.md §14.10), as plain functions
+// How the relay's assets hold the web UI's builds, as plain functions
 // scripts/assets.ts runs and the tests check.
 
 /** One version's web build: its folder, and what its `build.json` says. */

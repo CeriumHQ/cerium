@@ -5,8 +5,8 @@ import { AgentEvent } from "./events.ts";
 import { DeviceId, EpochMillis, NonNegativeInt, ThreadId } from "./ids.ts";
 import { AgentInfo, ThreadInfo } from "./orchestration.ts";
 
-// Synced threads (docs/architecture.md §14.9): every machine keeps a copy of its threads in the
-// account's cloud, so every device sees every thread, and can read one whose machine is offline.
+// Synced threads: every machine keeps a copy of its threads in the account's cloud, so every device
+// sees every thread, and can read one whose machine is offline.
 
 /**
  * An event as the UI and the cloud copy see it. The provider's original message stays in the store:
@@ -16,10 +16,10 @@ import { AgentInfo, ThreadInfo } from "./orchestration.ts";
 export const UiEvent = AgentEvent.mapFields(Struct.omit(["raw"]));
 export type UiEvent = typeof UiEvent.Type;
 
-/** A thread's events, skipping those of kinds this version doesn't know (§14.1). */
+/** A thread's events, skipping those of kinds this version doesn't know. */
 export const UiEvents = LenientArray(UiEvent);
 
-/** A live event, read as `undefined` when it's of a kind this version doesn't know (§14.1). */
+/** A live event, read as `undefined` when it's of a kind this version doesn't know. */
 export const LiveUiEvent = Skippable(UiEvent);
 
 /** What the inbox needs about one thread. */

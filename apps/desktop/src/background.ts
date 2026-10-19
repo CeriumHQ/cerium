@@ -2,7 +2,7 @@ import { app, Menu, powerSaveBlocker, Tray, type BrowserWindow } from "electron"
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Staying reachable (docs/architecture.md §14.5). While this machine is signed in to a Cerium
+// Staying reachable. While this machine is signed in to a Cerium
 // account, closing the window hides it to the tray, so the user's other devices can still reach it,
 // and while agents also work the PC is kept from sleeping. The UI reports both; signed out, the
 // window closes and quits as it always has.

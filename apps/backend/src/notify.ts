@@ -10,7 +10,7 @@ import {
 } from "@cerium/protocol";
 import { Effect, FiberMap, Layer, Stream } from "effect";
 
-// Push notifications (docs/architecture.md §14.11). This machine tells the relay when one of its
+// Push notifications. This machine tells the relay when one of its
 // threads waits on the user, finished or failed; the relay tells the account's browsers. A change
 // settles before it's told, and is checked again then: a child handing its answer to the lead leaves
 // the thread idle for a couple of seconds, and a request answered at once needs nobody told.

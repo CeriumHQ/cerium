@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { buildChannel } from "./updater.ts";
 import { answerVault, isVaultRequest } from "./vault.ts";
 
-// The packaged app's backend (docs/architecture.md §7): the bundled dist/backend.mjs, run in an
+// The packaged app's backend: the bundled dist/backend.mjs, run in an
 // Electron utility process so it gets Electron's own Node and no console window. It reports where it
 // listens over the process's port, so the token stays in memory; the UI asks for it through the
 // preload bridge. Its output goes to backend.log in the app's logs folder. It keeps this machine's

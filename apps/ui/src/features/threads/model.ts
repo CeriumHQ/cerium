@@ -17,7 +17,7 @@ export interface ThreadSummary {
   readonly updatedAt: number;
   /** When the user archived it. */
   readonly archivedAt?: number;
-  /** The computer the thread lives on, when it isn't this one (docs/architecture.md §14.9). */
+  /** The computer the thread lives on, when it isn't this one. */
   readonly machine?: string;
   /**
    * Set when the thread lives on another machine than the one the window drives: what's known of it

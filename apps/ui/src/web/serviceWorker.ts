@@ -1,4 +1,4 @@
-// The web client's service worker (docs/architecture.md §14.11): it shows the push notifications the
+// The web client's service worker: it shows the push notifications the
 // relay sends, and opens the thread one is about when it's tapped. It handles no requests, so the app
 // always loads from the relay as it is. Built into /sw.js on its own (vite.config.ts): it must not
 // import or reference anything outside this file.

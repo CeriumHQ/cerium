@@ -61,7 +61,7 @@ const serviceWorkerScript = async () => {
 };
 
 /**
- * The web client's Content-Security-Policy (docs/architecture.md §14.10): every script is the app's
+ * The web client's Content-Security-Policy: every script is the app's
  * own, or an artifact frame's runtime, which the frame inherits this policy for.
  */
 const contentPolicy = (artifactScript: string) =>
@@ -92,7 +92,7 @@ const webFolder = fileURLToPath(new URL("web/", import.meta.url));
 
 /**
  * What a Home Screen web app needs in its page; the theme colours match the window over its backdrop.
- * These files live at the relay's root, which every version's build shares (§14.10).
+ * These files live at the relay's root, which every version's build shares.
  */
 const webHead = `
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -109,7 +109,7 @@ const webHead = `
 /**
  * The web client (`--mode web`): its page head, its files and service worker, and `build.json`, with
  * its version and the headers its page is served with. The relay serves each version's build under
- * `/v/<version>/` and the newest at its root too (§14.10); scripts/assets.ts in apps/relay lays the
+ * `/v/<version>/` and the newest at its root too; scripts/assets.ts in apps/relay lays the
  * builds out and writes their `_headers`.
  */
 const webClient = (artifact: string, version: string): Plugin => ({

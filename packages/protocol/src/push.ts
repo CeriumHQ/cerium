@@ -3,9 +3,8 @@ import { Schema } from "effect";
 import { DeviceId, ThreadId } from "./ids.ts";
 import { MAX_THREAD_TITLE } from "./orchestration.ts";
 
-// Push notifications (docs/architecture.md §14.11): a thread's home machine says when it needs the
-// user, finished or failed, and the relay tells the account's browsers by Web Push, unless the user
-// is looking at it already.
+// Push notifications: a thread's home machine says when it needs the user, finished or failed, and
+// the relay tells the account's browsers by Web Push, unless the user is looking at it already.
 
 /** What a notification is about: a thread waits on the user, its agents finished, or one failed. */
 export const NotificationKind = Schema.Literals(["needsYou", "finished", "failed"]);

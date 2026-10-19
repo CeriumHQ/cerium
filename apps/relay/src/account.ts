@@ -41,11 +41,11 @@ import { appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
 
-// One Cerium account (docs/architecture.md §14.4): its devices, and every device's WebSocket. The
-// sockets hibernate between messages and `ping` is answered without waking the object, so an idle
-// connection costs nothing. Frames one device tunnels to another pass through here unread (§14.8),
-// every desktop's threads are kept here, so every device sees them all (§14.9), and browsers that
-// asked for them are sent push notifications about those threads (§14.11).
+// One Cerium account: its devices, and every device's WebSocket. The sockets hibernate between
+// messages and `ping` is answered without waking the object, so an idle connection costs nothing.
+// Frames one device tunnels to another pass through here unread, every desktop's threads are kept
+// here, so every device sees them all, and browsers that asked for them are sent push notifications
+// about those threads.
 
 /** What a refused action reports to the Worker, which answers with it. */
 export type Outcome =
@@ -210,7 +210,7 @@ export class Account extends DurableObject<Env> {
       connectedAt: Date.now(),
     } satisfies Attachment);
     this.touch(row.id);
-    // A desktop may have updated since it signed in; the browsers driving it follow its build (§14.10).
+    // A desktop may have updated since it signed in; the browsers driving it follow its build.
     const build = buildFromQuery(new URL(request.url).searchParams);
     if (build !== undefined) {
       this.write(
@@ -229,7 +229,7 @@ export class Account extends DurableObject<Env> {
     });
   }
 
-  /** A tunnelled frame, passed on unread to the connection it's for (§14.8); or sync, or push. */
+  /** A tunnelled frame, passed on unread to the connection it's for; or sync, or push. */
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== "string" || message === "ping") return;
     const frame = Option.getOrUndefined(decodeDeviceMessage(message));
@@ -375,7 +375,7 @@ export class Account extends DurableObject<Env> {
       .join(",")}]`;
   }
 
-  /** A desktop keeping its threads' copy current, or a device saying what was seen (§14.9). */
+  /** A desktop keeping its threads' copy current, or a device saying what was seen. */
   private sync(socket: WebSocket, self: Attachment, message: SyncMessage) {
     const sender = this.row(self.deviceId);
     if (sender === undefined || sender.approved_at === null) return;

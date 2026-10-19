@@ -11,7 +11,7 @@ import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { deviceDetails, isApproved, thisDevice } from "../features/account/model.ts";
 
-// What the web client shows before it may drive anything (docs/architecture.md §14.10): signing in,
+// What the web client shows before it may drive anything: signing in,
 // and waiting for one of the account's devices to allow this one. Signed out it has nothing to show.
 
 const messageOf = (error: unknown) =>

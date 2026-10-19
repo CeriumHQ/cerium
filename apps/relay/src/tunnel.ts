@@ -2,7 +2,7 @@ import type { TunnelAddress } from "@cerium/protocol";
 
 import type { DeviceRow } from "./devices.ts";
 
-// Where a tunnelled frame goes (docs/architecture.md §14.8). The relay passes frames between an
+// Where a tunnelled frame goes. The relay passes frames between an
 // account's approved devices without reading them; these rules decide which connection gets one.
 
 /** A connected socket, as the Account object knows it. */

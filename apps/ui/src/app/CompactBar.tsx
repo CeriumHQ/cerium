@@ -3,8 +3,8 @@ import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
- * The narrow window's top bar (docs/architecture.md §14.10), past the status bar and the notch: what
- * the pane is, with the way back to the one before it.
+ * The narrow window's top bar, past the status bar and the notch: what the pane is,
+ * with the way back to the one before it.
  */
 export function CompactBar({
   back,

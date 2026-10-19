@@ -6,7 +6,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { NetAddress } from "effect/net";
 import { Socket, SocketServer } from "effect/socket";
 
-// Driving another machine (docs/architecture.md §14.8). Through the relay, another device's UI calls
+// Driving another machine. Through the relay, another device's UI calls
 // this machine's backend as if it were its own: each tunnel channel becomes one RPC client of the
 // tunnel's RPC server (`tunnelRpcServer` in rpc.ts). The other way, this machine's UI reaches
 // another machine's backend through `/remote`, which pipes its RPC socket into a channel.

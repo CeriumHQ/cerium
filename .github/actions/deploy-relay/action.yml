@@ -1,7 +1,7 @@
 name: Deploy the relay
 description: >-
   Builds this version's web UI into apps/relay/dist/cerium-web-<version>.tar.gz for its release to carry, then deploys
-  the relay with it and earlier releases' builds (docs/architecture.md §14.10). Runs before the installer is
+  the relay with it and earlier releases' builds. Runs before the installer is
   published, so the relay already reads what the new version sends. Without a Cloudflare token it only builds.
 
 inputs:

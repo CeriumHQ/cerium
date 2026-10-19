@@ -10,9 +10,9 @@ import { Context, Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from 
 
 import { Account, AccountError, type RelayEvent } from "./account.ts";
 
-// The account's threads as a device knows them (docs/architecture.md §14.9): every machine's, as the
-// relay tells them, what was seen of them on any device, and reading another machine's thread from
-// the cloud copy. A desktop also keeps its own threads' copy current, which its backend does.
+// The account's threads as a device knows them: every machine's, as the relay tells them, what was
+// seen of them on any device, and reading another machine's thread from the cloud copy. A desktop
+// also keeps its own threads' copy current, which its backend does.
 
 const empty: AccountThreads = { threads: [], read: [] };
 

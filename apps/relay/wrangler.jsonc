@@ -1,6 +1,6 @@
-// Cerium's relay (docs/architecture.md §14.4). `bun run --cwd apps/relay dev` runs it locally with
+// Cerium's relay. `bun run --cwd apps/relay dev` runs it locally with
 // the Clerk keys in .dev.vars (see .dev.vars.example); `deploy` needs `wrangler login` first. It
-// serves public/ and the web UI (§14.10), which scripts/assets.ts puts together in dist/assets: one
+// serves public/ and the web UI, which scripts/assets.ts puts together in dist/assets: one
 // build per version, earlier releases' fetched by scripts/builds.ts. The release workflows deploy it
 // before publishing each installer (.github/actions/deploy-relay).
 {
@@ -27,7 +27,7 @@
   "send_metrics": false,
   "vars": {
     "PUBLIC_ORIGIN": "https://cerium.nonlooped.xyz",
-    // How push services reach whoever runs the relay (§14.11); its VAPID keys are secrets.
+    // How push services reach whoever runs the relay; its VAPID keys are secrets.
     "VAPID_SUBJECT": "https://cerium.nonlooped.xyz",
   },
   "dev": { "port": 8787 },

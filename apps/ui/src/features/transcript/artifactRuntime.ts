@@ -1,4 +1,4 @@
-// What an artifact's frame runs (docs/architecture.md §9.1). Built into one script at build time
+// What an artifact's frame runs. Built into one script at build time
 // (vite.config.ts), so the web client's Content-Security-Policy can admit it by its hash: it must not
 // import or reference anything outside this file.
 

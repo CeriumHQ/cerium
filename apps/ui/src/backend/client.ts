@@ -51,7 +51,7 @@ const openFailed = (cause: unknown) =>
 /**
  * Opens a socket, re-reading the connection each time so a restarted dev backend with a new port
  * and token just works. A backend that isn't up yet counts as a failed open, which the client
- * retries. Another machine is reached through this computer's backend at `/remote` (§14.8).
+ * retries. Another machine is reached through this computer's backend at `/remote`.
  */
 const openSocket = (target: Target) =>
   Effect.gen(function* () {
@@ -67,8 +67,8 @@ const openSocket = (target: Target) =>
   }).pipe(Effect.mapError(openFailed));
 
 /**
- * The web client reaches the machine it drives through a tunnel on its own relay connection
- * (§14.10), open once the machine answers; with none chosen yet, there's nothing to open.
+ * The web client reaches the machine it drives through a tunnel on its own relay connection,
+ * open once the machine answers; with none chosen yet, there's nothing to open.
  */
 const openTunnelSocket = Effect.gen(function* () {
   const machine = drivenMachine();

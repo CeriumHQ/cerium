@@ -4,7 +4,7 @@ import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 import { Adapters, Catalog, OrchestratorConfig } from "./services.ts";
 import { UserSettings } from "./settings.ts";
 
-// Naming threads (docs/architecture.md §3.12). A new thread shows the first line of its first
+// Naming threads. A new thread shows the first line of its first
 // message straight away; a quick model then replaces it with a short title of what the thread is
 // about, unless the user renamed it first.
 

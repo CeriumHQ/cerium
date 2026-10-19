@@ -31,7 +31,7 @@ export interface DraftStart {
   readonly mode: "work" | "chat";
   /** When the user started writing it; drafts are listed newest first by this, so rows stay put. */
   readonly createdAt: number;
-  /** The machine it starts on (docs/architecture.md §14.8); none for this computer. */
+  /** The machine it starts on; none for this computer. */
   readonly machine?: string;
   /** The work thread's folder. */
   readonly folder?: string;

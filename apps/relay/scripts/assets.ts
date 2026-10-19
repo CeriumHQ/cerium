@@ -1,4 +1,4 @@
-// Puts together what the relay serves (docs/architecture.md §14.10): its own pages from public/ and
+// Puts together what the relay serves: its own pages from public/ and
 // the web UI, one build per version of Cerium. Each build is served under `/v/<version>/`, and this
 // checkout's (apps/ui/dist-web, which `bun run --cwd apps/ui build:web` makes) at the root as well;
 // a browser driving a desktop moves to the build of that desktop's version. Earlier releases' builds

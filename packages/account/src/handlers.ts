@@ -4,8 +4,8 @@ import { Effect, type Stream } from "effect";
 import { Account, type AccountError } from "./account.ts";
 import { CloudThreads } from "./cloud.ts";
 
-// The device RPCs (docs/architecture.md §14.10), as a desktop's backend serves them to its UI and
-// as the web client answers them inside the page.
+// The device RPCs, as a desktop's backend serves them to its UI and as the web client answers them
+// inside the page.
 
 const refuse = (error: AccountError) => new CeriumError({ message: error.message });
 

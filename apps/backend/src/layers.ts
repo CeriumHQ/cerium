@@ -57,7 +57,7 @@ export const AdaptersLive = Layer.effect(
 );
 
 /**
- * Until onboarding builds the catalog with the user (architecture §4), every model a logged-in harness
+ * Until onboarding builds the catalog with the user, every model a logged-in harness
  * offers can be spawned without asking. Hand-picked entries come first and keep their aliases and
  * descriptions; the rest are known by their id, or `provider/id` where ids collide.
  */
@@ -122,8 +122,8 @@ export const backendLayer = (options: BackendOptions) =>
       disableLogger: true,
     },
   ).pipe(
-    // Keeps the cloud copy of this machine's threads current, knows the account's (§14.9), and
-    // tells the account's browsers when a thread here needs the user, finished or failed (§14.11).
+    // Keeps the cloud copy of this machine's threads current, knows the account's, and
+    // tells the account's browsers when a thread here needs the user, finished or failed.
     Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifier)),
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),

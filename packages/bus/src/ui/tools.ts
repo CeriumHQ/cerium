@@ -7,8 +7,8 @@ import { BusRegistry } from "../registry.ts";
 import { UiDriver } from "./driver.ts";
 import { parseKeys, type Page, type Target } from "./page.ts";
 
-// The `ui_*` bus tools: drive a web UI like a user and see it, one call per batch of steps
-// (architecture §3.2). Every call that changes the page can answer with a screenshot.
+// The `ui_*` bus tools: drive a web UI like a user and see it, one call per batch of steps. Every
+// call that changes the page can answer with a screenshot.
 
 const Int = (min: number, max: number) => Schema.Int.check(Schema.isBetween({ minimum: min, maximum: max }));
 

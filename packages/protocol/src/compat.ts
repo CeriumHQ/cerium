@@ -1,9 +1,9 @@
 import { Effect, Option, Schema, SchemaTransformation } from "effect";
 
-// Reading what another version of Cerium wrote (docs/architecture.md §14.1). Machines, browsers and
-// the relay run different versions, and newer ones add values, events and fields. What an older
-// version can't read mustn't hide a thread or end a feed: an enum that grows reads its unknown
-// values as a fallback, and a list or feed skips the items it can't read.
+// Reading what another version of Cerium wrote. Machines, browsers and the relay run different
+// versions, and newer ones add values, events and fields. What an older version can't read mustn't
+// hide a thread or end a feed: an enum that grows reads its unknown values as a fallback, and a list
+// or feed skips the items it can't read.
 
 /** A schema that reads a value this version doesn't know as `fallback`. */
 export const withFallback = <S extends Schema.Top>(schema: S, fallback: S["Type"]) =>

@@ -1,8 +1,8 @@
-// The page a machine opens in the user's browser to join their Cerium account
-// (docs/architecture.md §14.2), and the web client opens in its own tab (§14.10). It signs in with
-// Clerk, shows which device is asking, and confirms it with the user's session token; a browser goes
-// back to the app afterwards. The link's id rides in the URL's fragment, so it never reaches
-// a server log; it's kept for the tab in case a sign-in redirect drops it.
+// The page a machine opens in the user's browser to join their Cerium account, and the web client
+// opens in its own tab. It signs in with Clerk, shows which device is asking, and confirms it with
+// the user's session token; a browser goes back to the app afterwards. The link's id rides in the
+// URL's fragment, so it never reaches a server log; it's kept for the tab in case a sign-in redirect
+// drops it.
 
 const CLERK_JS_VERSION = "6.37.0";
 const CLERK_UI_VERSION = "1.38.1";

@@ -9,7 +9,7 @@ import type {
   RelayMessage,
 } from "@cerium/protocol";
 
-// The account's devices and the rules for what each may do (docs/architecture.md §14.3). Plain
+// The account's devices and the rules for what each may do. Plain
 // functions over the Account object's rows, so they're tested without the Workers runtime.
 
 /** A row of the Account object's `devices` table. */
@@ -61,7 +61,7 @@ export const mayManage = (actor: DeviceRow, target: DeviceRow, action: DeviceAct
 
 /**
  * The state a device's socket is sent: every device once it's approved, only itself until then.
- * `notifications` holds the kinds each browser with push on gets (§14.11).
+ * `notifications` holds the kinds each browser with push on gets.
  */
 export const stateFor = (
   self: DeviceRow,

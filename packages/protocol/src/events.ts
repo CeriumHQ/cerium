@@ -6,8 +6,8 @@ import { AgentId, EpochMillis, EventId, NonNegativeInt, ProviderId, ThreadId } f
 import { AccessMode, AgentState } from "./orchestration.ts";
 
 // Canonical events: every adapter translates its provider's stream into these, and the UI,
-// persistence and orchestrator never see provider types (docs/architecture.md §2.3). Values a newer
-// version may add read as a fallback (§14.1).
+// persistence and orchestrator never see provider types. Values a newer version may add read as a
+// fallback.
 
 export const SessionStarted = Schema.TaggedStruct("SessionStarted", {
   provider: ProviderId,
@@ -183,7 +183,7 @@ export const AgentStateChanged = Schema.TaggedStruct("AgentStateChanged", {
   state: AgentState,
 });
 
-/** A spawn outside the catalog waits for the user (docs/architecture.md §3.3). */
+/** A spawn outside the catalog waits for the user. */
 export const SpawnApprovalRequested = Schema.TaggedStruct("SpawnApprovalRequested", {
   requestId: Schema.NonEmptyString,
   role: Schema.NonEmptyString,
@@ -197,7 +197,7 @@ export const SpawnApprovalResolved = Schema.TaggedStruct("SpawnApprovalResolved"
 });
 
 /**
- * Cerium named the thread from its first message (architecture §3.12). Published on the lead's live
+ * Cerium named the thread from its first message. Published on the lead's live
  * feed so lists refresh at once, and never stored: the thread's record holds the title.
  */
 export const ThreadRenamed = Schema.TaggedStruct("ThreadRenamed", {

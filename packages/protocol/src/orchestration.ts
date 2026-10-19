@@ -10,10 +10,10 @@ import { AgentId, EpochMillis, ProviderId, ThreadId } from "./ids.ts";
  * - `ask`: every write or command goes through Cerium's approval flow.
  * - `acceptEdits`: file edits in the workspace are auto-approved; commands still ask.
  * - `auto`: the harness's own reviewer model approves or refuses each edit and command, and asks the
- *   user only where the harness does (architecture §2.2).
+ *   user only where the harness does.
  * - `fullAccess`: the harness's own bypass mode: nothing asks and no sandbox applies.
  *
- * A mode a newer version added reads as `ask` (§14.1): asking is never more than it allows.
+ * A mode a newer version added reads as `ask`: asking is never more than it allows.
  */
 export const AccessMode = withFallback(
   Schema.Literals(["readOnly", "ask", "acceptEdits", "auto", "fullAccess"]),
@@ -29,11 +29,11 @@ const accessRank: Record<AccessMode, number> = {
   fullAccess: 4,
 };
 
-/** Permissions only narrow: a child never gets more access than its lead (architecture §3.1). */
+/** Permissions only narrow: a child never gets more access than its lead. */
 export const narrowAccess = (lead: AccessMode, requested: AccessMode): AccessMode =>
   accessRank[requested] <= accessRank[lead] ? requested : lead;
 
-/** A state a newer version added reads as `idle` (§14.1). */
+/** A state a newer version added reads as `idle`. */
 export const AgentState = withFallback(
   Schema.Literals(["queued", "running", "idle", "stopped", "failed"]),
   "idle",

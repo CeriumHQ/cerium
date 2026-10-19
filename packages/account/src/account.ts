@@ -43,10 +43,10 @@ import { Socket } from "effect/socket";
 
 import { Vault } from "./vault.ts";
 
-// A device's Cerium account (docs/architecture.md §14): signing in through the user's browser, the
-// live connection to the relay that keeps the device reachable, and acting on the account's devices.
-// The relay is the source of truth; the state here is the last one it sent. A desktop's backend and
-// the web client (§14.10) run the same code.
+// A device's Cerium account: signing in through the user's browser, the live connection to the relay
+// that keeps the device reachable, and acting on the account's devices. The relay is the source of
+// truth; the state here is the last one it sent. A desktop's backend and the web client run the same
+// code.
 
 /** A request about the account that failed; `message` is written for the user. */
 export class AccountError extends Schema.TaggedError<AccountError>()("AccountError", {
@@ -59,9 +59,8 @@ export class AccountError extends Schema.TaggedError<AccountError>()("AccountErr
 export const DEFAULT_RELAY_URL = "https://cerium.nonlooped.xyz";
 
 /**
- * What the relay says besides the account's state: tunnel messages (docs/architecture.md §14.8) and
- * sync notices (§14.9), and `RelayLost` when this device's connection to the relay drops, which ends
- * every channel it carried.
+ * What the relay says besides the account's state: tunnel messages and sync notices, and `RelayLost`
+ * when this device's connection to the relay drops, which ends every channel it carried.
  */
 export type RelayEvent = TunnelMessage | SyncNotice | { readonly _tag: "RelayLost" };
 
@@ -88,7 +87,7 @@ type Linked = typeof Linked.Type;
 
 /**
  * What it keeps while the user confirms in the browser: the link and its secret, so a reload or a
- * restart picks the sign-in back up. The web client leaves the page to confirm (§14.10).
+ * restart picks the sign-in back up. The web client leaves the page to confirm.
  */
 const Pending = Schema.TaggedStruct("Pending", {
   relayUrl: Schema.String,
@@ -121,7 +120,7 @@ const reconnectDelay = (failures: number) => {
   return Math.round(base * (0.8 + Math.random() * 0.4));
 };
 
-/** What this device's window shows (docs/architecture.md §14.11). */
+/** What this device's window shows. */
 export type Presence = Omit<Extract<PushMessage, { readonly _tag: "Presence" }>, "_tag">;
 
 /** The relay ended this device's sign-in: it was removed, or its credential isn't valid. */
@@ -153,12 +152,12 @@ export class Account extends Context.Service<
     send(message: DeviceMessage): Effect.Effect<void, AccountError>;
     /**
      * Tells the relay what this device's window shows, now and again whenever it reconnects, so
-     * nobody is notified about what they're looking at (§14.11).
+     * nobody is notified about what they're looking at.
      */
     reportPresence(presence: Presence): Effect.Effect<void>;
     /** What the relay says from now on, for as long as the scope lasts. */
     readonly relayEvents: Effect.Effect<PubSub.Subscription<RelayEvent>, never, Scope.Scope>;
-    /** Another machine's thread from the cloud copy (§14.9), undecoded. */
+    /** Another machine's thread from the cloud copy, undecoded. */
     readThread(machine: DeviceId, threadId: ThreadId): Effect.Effect<unknown, AccountError>;
     /**
      * A channel this device opens to a machine, for as long as the scope lasts. A desktop both opens

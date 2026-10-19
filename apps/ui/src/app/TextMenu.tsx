@@ -77,8 +77,8 @@ const restore = (caret: Caret) => {
 
 /**
  * The app-wide menu for text and links: Cut, Copy, Paste, spelling fixes and link items wherever no
- * page menu claimed the right-click. The shell reports the right-click and runs the commands
- * (docs/architecture.md §7); in the browser preview the browser's own menu shows instead.
+ * page menu claimed the right-click. The shell reports the right-click and runs the commands;
+ * in the browser preview the browser's own menu shows instead.
  */
 export function TextMenu() {
   const [request, setRequest] = useState<TextMenuRequest>();

@@ -10,10 +10,10 @@ import { WEB } from "../../backend/target.ts";
 import { isApproved, platformLabel, thisDevice, whyUnreachable } from "./model.ts";
 
 /**
- * Chooses which of the account's computers the window drives (docs/architecture.md §14.8): this one,
- * or another that's online, whose threads, projects and harnesses then fill the window. Shown once
- * the account has more than one approved computer. The web client, which has no computer of its own,
- * always drives one of them (§14.10).
+ * Chooses which of the account's computers the window drives: this one, or
+ * another that's online, whose threads, projects and harnesses then fill the window. Shown once the
+ * account has more than one approved computer. The web client, which has no computer of its own,
+ * always drives one of them.
  */
 export function MachinePicker({ account }: { account: AccountState }) {
   const registry = useContext(RegistryContext);

@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 import type { Reach } from "../account/model.ts";
 
 /**
- * Where the message box would be, for a thread on another machine read from the cloud copy
- * (docs/architecture.md §14.9). Continuing it takes that machine, so the bar says why it can't be
- * reached, or offers to open the thread there once it can.
+ * Where the message box would be, for a thread on another machine read from the cloud copy.
+ * Continuing it takes that machine, so the bar says why it can't be reached, or offers to open the
+ * thread there once it can.
  */
 export function CloudThreadBar({
   machine,
@@ -116,7 +116,7 @@ function Bar({ children }: { children: ReactNode }) {
 }
 
 /**
- * The web client's message box while none of the account's computers can be reached (§14.10): their
+ * The web client's message box while none of the account's computers can be reached: their
  * threads stay readable from the cloud copy, but starting one takes a computer.
  */
 export function NoComputerBar() {

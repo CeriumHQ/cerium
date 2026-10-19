@@ -198,7 +198,7 @@ finish() {
 # the whole file before the first prompt, so an edit mid-run can't break it.
 # ──────────────────────────────────────────────────────────────────────────
 
-# Deploys Cerium's relay to https://cerium.nonlooped.xyz (docs/architecture.md §14.4) and walks
+# Deploys Cerium's relay to https://cerium.nonlooped.xyz and walks
 # through signing in from this computer and a phone. Run from anywhere, in Git Bash on Windows:
 #   bash apps/relay/scripts/deploy-relay.sh
 # Safe to re-run: settings the relay already has are kept, and finished steps can be skipped.

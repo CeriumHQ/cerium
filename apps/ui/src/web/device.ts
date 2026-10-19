@@ -6,7 +6,7 @@ import { Socket } from "effect/socket";
 
 import { BUILD_VERSION } from "../backend/target.ts";
 
-// The web client as a device of the account (docs/architecture.md §14.10): its sign-in, its relay
+// The web client as a device of the account: its sign-in, its relay
 // connection and the account's threads, running in the page. Both RPC clients use this one layer,
 // which the atom runtimes' shared memo map builds once.
 

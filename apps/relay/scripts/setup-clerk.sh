@@ -198,7 +198,7 @@ finish() {
 # the whole file before the first prompt, so an edit mid-run can't break it.
 # ──────────────────────────────────────────────────────────────────────────
 
-# Sets up Clerk for running Cerium's relay locally (docs/architecture.md §14): a development instance
+# Sets up Clerk for running Cerium's relay locally: a development instance
 # with Google, GitHub, X and email + password sign-in, and apps/relay/.dev.vars for
 # `bun run --cwd apps/relay dev`. Run from anywhere: bash apps/relay/scripts/setup-clerk.sh
 

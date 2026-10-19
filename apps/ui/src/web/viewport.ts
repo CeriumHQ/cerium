@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { useCompact } from "../app/compact.ts";
 
-// The phone's keyboard (docs/architecture.md §14.10). iOS shrinks the visible part of the page for
+// The phone's keyboard. iOS shrinks the visible part of the page for
 // it without resizing the page, and scrolls the page to show the focused field, which would leave the
 // message box under the keyboard or the top bar off the screen. So the window follows the visible
 // part instead: app.css sizes and places #root by these properties.

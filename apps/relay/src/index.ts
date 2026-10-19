@@ -20,7 +20,7 @@ import { bearer, json, param, readBody, refuse, refusedSocket } from "./http.ts"
 export { Account } from "./account.ts";
 export { Link } from "./link.ts";
 
-// Cerium's relay (docs/architecture.md §14.4). Static files (the sign-in page) are served from
+// Cerium's relay. Static files (the sign-in page) are served from
 // public/; everything under /api comes here. Each account is one `Account` object and each pending
 // sign-in one `Link` object; this Worker only checks requests and routes them.
 
@@ -96,7 +96,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
     return credential === undefined ? refusedSocket("invalid") : accountStub(env, credential).fetch(request);
   }
 
-  // A thread of another machine, read from the cloud copy (§14.9).
+  // A thread of another machine, read from the cloud copy.
   if (resource === "sync" && id !== undefined && action !== undefined && method === "GET") {
     const credential = parseCredential(bearer(request) ?? "");
     if (credential === undefined) return refuse(401, "This device isn't signed in.");

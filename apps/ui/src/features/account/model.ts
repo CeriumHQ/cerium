@@ -4,7 +4,7 @@ import { MIN_RPC_VERSION } from "@cerium/rpc";
 import { WEB } from "../../backend/target.ts";
 import { whenAgo } from "../../lib/time.ts";
 
-// What the UI says about the account and its devices (docs/architecture.md §14), as plain functions.
+// What the UI says about the account and its devices, as plain functions.
 
 type SignedIn = Extract<AccountState, { _tag: "SignedIn" }>;
 
@@ -65,7 +65,7 @@ export const presenceLabel = (device: DeviceInfo, now = Date.now()): string => {
   return `Last seen ${whenAgo(device.lastSeenAt, now)}`;
 };
 
-/** Whether another desktop can be driven from here right now (§14.8). */
+/** Whether another desktop can be driven from here right now. */
 export type Reach =
   | { readonly kind: "reachable" }
   /** Its backend is too old for this UI. */

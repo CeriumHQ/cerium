@@ -7,9 +7,9 @@ import type { CapabilityManifest } from "@cerium/protocol";
 // Cerium passes no `apiKey`.
 
 /**
- * Built-in tools that start or drive native agents; Cerium's bus is the only way to spawn
- * (architecture §3.1). `task` is the subagent tool; the others manage agents `createAgent` started.
- * All are names the SDK accepts (it rejects unknown ones at `Agent.create`).
+ * Built-in tools that start or drive native agents; Cerium's bus is the only way to spawn. `task` is
+ * the subagent tool; the others manage agents `createAgent` started. All are names the SDK accepts
+ * (it rejects unknown ones at `Agent.create`).
  */
 export const NATIVE_SUBAGENT_TOOLS = [
   "task",

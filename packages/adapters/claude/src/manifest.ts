@@ -4,7 +4,7 @@ export const LOGIN_COMMAND = "claude auth login";
 export const INSTALL_HINT =
   "Install Claude Code from https://claude.com/claude-code, then run `claude auth login`.";
 
-/** Built-in tools that spawn native subagents; Cerium's bus is the only way to spawn (architecture §3.1). */
+/** Built-in tools that spawn native subagents; Cerium's bus is the only way to spawn. */
 export const NATIVE_SUBAGENT_TOOLS = ["Agent", "Workflow", "SendMessage"] as const;
 
 export const claudeManifest: CapabilityManifest = {

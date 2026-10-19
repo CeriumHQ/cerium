@@ -13,7 +13,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "./env.ts";
 
-// One pending sign-in (docs/architecture.md §14.2), named by its unguessable id. The machine that
+// One pending sign-in, named by its unguessable id. The machine that
 // started it polls with its device secret until the user confirms it in their browser. It stays
 // claimable until it expires, so a claim whose answer was lost can be made again.
 

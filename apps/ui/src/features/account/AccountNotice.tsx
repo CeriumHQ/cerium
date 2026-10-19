@@ -9,7 +9,7 @@ import { waitingDevices } from "./model.ts";
 
 /**
  * Tells the shell whether this machine is signed in and agents are working, which keep it in the
- * tray when its window closes and the PC awake (docs/architecture.md §14.5).
+ * tray when its window closes and the PC awake.
  */
 export function useShellPresence(account: AccountState, working: boolean) {
   const signedIn = account._tag === "SignedIn";
@@ -24,7 +24,7 @@ const onVisibility = (change: () => void) => {
 };
 
 /**
- * Tells the account what this window shows (docs/architecture.md §14.11): whether it's on screen,
+ * Tells the account what this window shows: whether it's on screen,
  * and the thread open in it, so nobody is notified about what they're looking at.
  */
 export function useAccountPresence(account: AccountState, viewing: ThreadRef | undefined) {

@@ -1,4 +1,4 @@
-// Makes the relay's VAPID key pair, which signs its push notifications (docs/architecture.md §14.11).
+// Makes the relay's VAPID key pair, which signs its push notifications.
 // Keep a pair once browsers subscribe with it: a new one leaves their subscriptions unable to receive
 // until each opens Cerium again and resubscribes.
 //

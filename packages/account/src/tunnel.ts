@@ -4,9 +4,9 @@ import { Socket } from "effect/socket";
 
 import type { Account } from "./account.ts";
 
-// Tunnels (docs/architecture.md §14.8): a channel through the relay to a desktop of the account, as
-// a WebSocket, so `Socket.fromWebSocket` turns it into a socket that reopens like one. A desktop's
-// `/remote` pipe and the web client's RPC client (§14.10) both reach machines this way.
+// Tunnels: a channel through the relay to a desktop of the account, as a WebSocket, so
+// `Socket.fromWebSocket` turns it into a socket that reopens like one. A desktop's `/remote` pipe and
+// the web client's RPC client both reach machines this way.
 
 /** Close codes a tunnel ends with: the machine can't be reached, or it ended the channel. */
 export const CLOSE_UNREACHABLE = 4100;

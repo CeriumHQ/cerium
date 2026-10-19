@@ -175,7 +175,7 @@ export const rpcRoutes = (token: string) =>
   );
 
 /**
- * The RPC server for tunnelled channels (docs/architecture.md §14.8): the machine's RPCs, never the
+ * The RPC server for tunnelled channels: the machine's RPCs, never the
  * device's own, which only its own UI may call. Requires what the handlers do and a `SocketServer`.
  */
 export const tunnelRpcServer = RpcServer.layer(MachineRpcs).pipe(

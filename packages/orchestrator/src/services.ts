@@ -20,7 +20,7 @@ export interface CatalogEntry {
   readonly description: string;
 }
 
-/** Models the lead may spawn without asking the user (docs/architecture.md §3.3, §4). */
+/** Models the lead may spawn without asking the user. */
 export class Catalog extends Context.Service<Catalog, { readonly entries: ReadonlyArray<CatalogEntry> }>()(
   "cerium/orchestrator/Catalog",
 ) {
@@ -47,11 +47,11 @@ export interface OrchestratorSettings {
   readonly batchWindow: Duration.Duration;
   /** Agents running a turn at once across every provider. */
   readonly globalConcurrency: number;
-  /** Messages one agent may send another within `messageBudget.window` (architecture §3.4). */
+  /** Messages one agent may send another within `messageBudget.window`. */
   readonly messageBudget: { readonly limit: number; readonly window: Duration.Duration };
   /** Longest message or child result delivered inline; longer text is cut. */
   readonly maxDeliveredChars: number;
-  /** Whether stopping a lead also stops its children (architecture §3.8). */
+  /** Whether stopping a lead also stops its children. */
   readonly stopChildrenWithLead: boolean;
 }
 
@@ -62,7 +62,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
     Layer.succeed(OrchestratorConfig, {
       batchWindow: Duration.seconds(2),
       globalConcurrency: 12,
-      // Placeholder until tuned from real usage (docs/architecture.md §12).
+      // Placeholder until tuned from real usage.
       messageBudget: { limit: 10, window: Duration.minutes(30) },
       maxDeliveredChars: 8_000,
       stopChildrenWithLead: false,

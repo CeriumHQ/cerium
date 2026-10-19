@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { AccessMode, AccountThreads, LiveUiEvent, ThreadOverviews, UiEvents } from "../src/index.ts";
 
-// What a newer version wrote, read by this one (docs/architecture.md §14.1).
+// What a newer version wrote, read by this one.
 
 const event = (sequence: number, payload: object) => ({
   id: `evt_${sequence}`,

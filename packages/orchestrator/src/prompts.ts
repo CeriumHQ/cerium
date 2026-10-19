@@ -41,7 +41,7 @@ export const renderTurn = (items: ReadonlyArray<InputItem>): string => items.map
 /**
  * Artifacts only get used when the lead knows when to reach for one and has seen what one looks like,
  * so the prompt names the moments and carries a working example; the full vocabulary stays in the
- * bus's `artifact_guide` tool (architecture §9.1).
+ * bus's `artifact_guide` tool.
  */
 const artifacts = (busServer: string) => [
   "",
@@ -66,7 +66,7 @@ const artifacts = (busServer: string) => [
 
 /**
  * Agents otherwise write a browser script or a harness check script in every session, so the prompt
- * names the bus tools that replace both at the moment each is needed (architecture §3.2). A read-only
+ * names the bus tools that replace both at the moment each is needed. A read-only
  * agent may look at a page but not act on it, and runs no live checks.
  */
 const seeing = (access: AccessMode) =>
@@ -90,7 +90,7 @@ const seeing = (access: AccessMode) =>
       ];
 
 /**
- * How agents work together (architecture §3.1, §3.4). Agents never messaged each other while the
+ * How agents work together. Agents never messaged each other while the
  * prompt only named the tools, so it says what replaced their harness's own, when a message is worth
  * sending, and what one is.
  */
@@ -169,7 +169,7 @@ const stuck = [
     " from the advisor, so end your turn or carry on with other work meanwhile.",
 ];
 
-/** The advisor's whole brief: it answers one agent's question a turn and never works (architecture §3.11). */
+/** The advisor's whole brief: it answers one agent's question a turn and never works. */
 const advisorPrompt = [
   "You are running inside Cerium, which coordinates agents from several AI providers in one thread.",
   "You are this thread's advisor: the model the user chose to help its agents when they are stuck.",

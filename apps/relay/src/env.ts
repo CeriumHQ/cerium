@@ -21,7 +21,7 @@ export interface Env {
   /** The Clerk instance's JWT public key (PEM), for verifying session tokens without a network call. */
   readonly CLERK_JWT_KEY: string;
   /**
-   * The relay's VAPID key pair for push notifications (§14.11), as `scripts/vapid.ts` makes it.
+   * The relay's VAPID key pair for push notifications, as `scripts/vapid.ts` makes it.
    * Without both, the relay sends none and the web client doesn't offer them.
    */
   readonly VAPID_PUBLIC_KEY?: string;

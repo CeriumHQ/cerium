@@ -10,7 +10,7 @@ import {
 import { Store } from "@cerium/store";
 import { Deferred, Effect, Layer, PubSub, Queue, Schema, Stream } from "effect";
 
-// Synced threads (docs/architecture.md §14.9). While signed in, this machine keeps the cloud copy of
+// Synced threads. While signed in, this machine keeps the cloud copy of
 // its threads current: each thread's overview when it changes, and its events but streamed text, in
 // batches from where the cloud's copy ends. The account's threads as the relay tells them, and reading
 // other machines', are `CloudThreads` in @cerium/account.

@@ -80,10 +80,7 @@ export class Store extends Context.Service<
     listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** Every thread's events of one kind, in the order they happened. */
     listEventsByTag(tag: EventPayload["_tag"]): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
-    /**
-     * How many events of each thread the cloud copy keeps (all but streamed text; docs/architecture.md
-     * §14.9), by thread id.
-     */
+    /** How many events of each thread the cloud copy keeps (all but streamed text), by thread id. */
     readonly countSyncedEvents: Effect.Effect<ReadonlyMap<string, number>, StoreError>;
     /**
      * A thread's events the cloud copy keeps, in the order they were stored, from position `offset`

@@ -16,7 +16,7 @@ import {
 } from "../../web/push.ts";
 import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
 
-// Push notifications on this phone, tablet or browser (docs/architecture.md §14.11): turning them on,
+// Push notifications on this phone, tablet or browser: turning them on,
 // and which kinds. Only the web client has this page. Some mobile browsers notify only web apps on
 // the Home Screen; there it says how to put Cerium there first.
 

@@ -128,7 +128,7 @@ declare global {
 }
 
 /**
- * The shell's bridge. While the window drives another machine (§14.8), what reaches this computer's
+ * The shell's bridge. While the window drives another machine, what reaches this computer's
  * files is left out: a path from that machine means nothing here, so files are shown and picked on
  * that machine itself, and attachments travel as bytes.
  */

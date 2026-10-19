@@ -1,4 +1,4 @@
-// The cloud copy of each thread (docs/architecture.md §14.9): its events in the order the machine
+// The cloud copy of each thread: its events in the order the machine
 // stored them, appended in batches. A batch can arrive again (its answer was lost) or out of turn
 // (an earlier one was), so the relay keeps only what follows on from what it has.
 

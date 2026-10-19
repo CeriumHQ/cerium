@@ -4,8 +4,8 @@ import { DeviceId, EpochMillis } from "./ids.ts";
 import { NotificationKind, PushMessage } from "./push.ts";
 import { SyncMessage, SyncNotice } from "./sync.ts";
 
-// Cerium accounts (docs/architecture.md §14): what a signed-in machine and Cerium's relay say to each
-// other, and what the UI shows about the account's devices.
+// Cerium accounts: what a signed-in machine and Cerium's relay say to each other, and what the UI
+// shows about the account's devices.
 
 /** A Cerium account: the Clerk user it belongs to, by that user's id. */
 export const AccountId = Schema.NonEmptyString.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/)).pipe(
@@ -59,7 +59,7 @@ export const DeviceInfo = Schema.Struct({
   createdAt: EpochMillis,
   /** When its last connection opened or closed; absent until it first connects. */
   lastSeenAt: Schema.optionalKey(EpochMillis),
-  /** For a browser that gets push notifications (§14.11): which kinds. */
+  /** For a browser that gets push notifications: which kinds. */
   notifications: Schema.optionalKey(Schema.Array(NotificationKind)),
 });
 export type DeviceInfo = typeof DeviceInfo.Type;
@@ -141,7 +141,7 @@ export const RenameDeviceRequest = Schema.Struct({ name: DeviceName });
 export const RelayError = Schema.Struct({ message: Schema.String });
 
 // ---------------------------------------------------------------------------------------------
-// Tunnels (docs/architecture.md §14.8): one device drives another's backend by sending it RPC
+// Tunnels: one device drives another's backend by sending it RPC
 // frames through the relay, which passes them on without reading them.
 
 /** One of a device's connections to the relay; replies go back to the connection that asked. */
@@ -165,7 +165,7 @@ export type TunnelAddress = typeof TunnelAddress.Type;
 export const TunnelPeer = Schema.Struct({ device: DeviceId, connection: ConnectionId });
 export type TunnelPeer = typeof TunnelPeer.Type;
 
-/** What a device sends its relay socket, besides `ping`: tunnel frames, sync (§14.9) and push (§14.11). */
+/** What a device sends its relay socket, besides `ping`: tunnel frames, sync and push. */
 export const DeviceMessage = Schema.Union([
   ...SyncMessage.members,
   ...PushMessage.members,
@@ -266,7 +266,7 @@ export const relayProtocols = (credential: Credential): Array<string> => [
 
 /**
  * The build a device runs now. It says so each time it connects, in the query: it may have updated
- * since it signed in, and a browser opens the web UI built for the desktop it drives (§14.10).
+ * since it signed in, and a browser opens the web UI built for the desktop it drives.
  */
 export const DeviceBuild = DeviceDraft.mapFields(Struct.pick(["version", "rpcVersion"]));
 export type DeviceBuild = typeof DeviceBuild.Type;

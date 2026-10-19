@@ -33,7 +33,7 @@ const LIVE_BUFFER = 4096;
 
 /**
  * The driven machine's live events, streamed text included, on one subscription the whole window
- * shares; events of kinds this version doesn't know are skipped (§14.1). It subscribes again when the
+ * shares; events of kinds this version doesn't know are skipped. It subscribes again when the
  * connection comes back, and marks each subscription once its request is on its way: what happened
  * while the connection was down never arrives, so readers read again what they hold.
  */
@@ -189,7 +189,7 @@ export const loginAtom = Atom.family((provider: ProviderId) =>
 );
 
 /**
- * This machine's Cerium account (docs/architecture.md §14): signed out, signing in, or signed in with
+ * This machine's Cerium account: signed out, signing in, or signed in with
  * the account's devices. Picked back up after a reconnect.
  */
 export const accountAtom = LocalBackend.runtime.atom(
@@ -199,7 +199,7 @@ export const accountAtom = LocalBackend.runtime.atom(
 );
 
 /**
- * Every thread of the account, on whichever machine (§14.9), and what was seen of them on any
+ * Every thread of the account, on whichever machine, and what was seen of them on any
  * device. Empty while signed out.
  */
 export const accountThreadsAtom = LocalBackend.runtime.atom(
@@ -316,7 +316,7 @@ export const approveDevice = LocalBackend.mutation("ApproveDevice");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");
-// Push notifications (docs/architecture.md §14.11): what the window shows, and a browser's subscription.
+// Push notifications: what the window shows, and a browser's subscription.
 export const reportPresence = LocalBackend.mutation("ReportPresence");
 export const subscribePush = LocalBackend.mutation("SubscribePush");
 export const unsubscribePush = LocalBackend.mutation("UnsubscribePush");

@@ -6,7 +6,7 @@ import { remember, stored } from "../../lib/storage.ts";
 import { draftText, hasContent, type Draft, type DraftAttachment, type DraftStart } from "./draft.ts";
 
 // Every draft the window holds, by key: a thread's id, or `new:<uuid>` for a thread not started yet.
-// They live in the window's local storage (docs/architecture.md §9.2), so nothing that rebuilds the
+// They live in the window's local storage, so nothing that rebuilds the
 // message box loses one: reconnecting, a reload, the web client moving to another build, the window
 // turning phone-narrow. Files still being prepared, and image previews made in the page, stay in memory
 // only; a restored image is read back from its saved file.

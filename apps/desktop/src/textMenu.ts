@@ -1,6 +1,6 @@
 import { clipboard, shell, type ContextMenuParams, type WebContents } from "electron";
 
-// The app-wide text menu (docs/architecture.md §7). Chromium reports each right-click no page menu
+// The app-wide text menu. Chromium reports each right-click no page menu
 // claimed; the page draws Cerium's own menu for it and names a command, which the shell runs here on
 // what that right-click was on. The page never hands back a word, text or link to act on.
 

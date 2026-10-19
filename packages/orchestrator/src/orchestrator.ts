@@ -113,7 +113,7 @@ interface Runtime {
   ended: boolean;
 }
 
-/** A thread's advisor: the read-only child Cerium starts for `ask_advisor` (architecture §3.11). */
+/** A thread's advisor: the read-only child Cerium starts for `ask_advisor`. */
 const isAdvisor = (info: AgentInfo) => info.parentId !== undefined && info.role === ADVISOR_ROLE;
 
 const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("image/");
@@ -123,7 +123,7 @@ const isEphemeral = (payload: EventPayload) =>
   payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta" || payload._tag === "ThreadRenamed";
 
 /**
- * Read-only agents never wait on the user (architecture §2.2): each harness already keeps them from
+ * Read-only agents never wait on the user: each harness already keeps them from
  * writing, so Cerium approves what they ask itself. Tools of the user's own MCP servers still ask,
  * since those can change things outside Cerium; every adapter names them `mcp__<server>…`.
  */
@@ -435,7 +435,7 @@ export class Orchestrator extends Context.Service<
           rt.turn = undefined;
         });
 
-      /** Delivers inbox items as turns, one turn at a time, under the concurrency caps (§3.5, §3.6). */
+      /** Delivers inbox items as turns, one turn at a time, under the concurrency caps. */
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
           const first = yield* Queue.take(rt.inbox);
@@ -708,7 +708,7 @@ export class Orchestrator extends Context.Service<
           return rt;
         });
 
-      /** Counts one more message from `key`'s sender against the per-pair budget (architecture §3.4). */
+      /** Counts one more message from `key`'s sender against the per-pair budget. */
       const spendBudget = (key: string, to: string) =>
         Effect.gen(function* () {
           const sentAt = yield* now;
@@ -859,7 +859,7 @@ export class Orchestrator extends Context.Service<
       );
 
       /**
-       * Names a new thread from its first message (§3.12) while the lead works on it, unless the user
+       * Names a new thread from its first message while the lead works on it, unless the user
        * renamed the thread meanwhile. The lead's live feed tells the lists at once.
        */
       const nameThread = (

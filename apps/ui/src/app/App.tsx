@@ -149,7 +149,7 @@ function Workspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
-  /** The narrow window's pane (§14.10): the threads, or the open (or new) thread. */
+  /** The narrow window's pane: the threads, or the open (or new) thread. */
   const [pane, setPane] = useState<"list" | "main">(() => resumed?.pane ?? "list");
   const folderKey = machineKey(FOLDER_KEY, driven);
   const [folder, setFolder] = useState(() => stored(folderKey));
@@ -206,7 +206,7 @@ function Workspace() {
     threads: [],
     read: [],
   }));
-  // Every thread of the account (§14.9): the driven machine's live, the others' from the cloud copy.
+  // Every thread of the account: the driven machine's live, the others' from the cloud copy.
   const devices = account._tag === "SignedIn" ? account.devices : [];
   const thisComputer = account._tag === "SignedIn" ? account.deviceId : undefined;
   const drivenId = driven?.id ?? thisComputer;
@@ -293,9 +293,9 @@ function Workspace() {
     driven === undefined || account._tag !== "SignedIn"
       ? undefined
       : account.devices.find((device) => device.id === driven.id);
-  // The web client runs the build of the desktop it drives, and takes the open thread there (§14.10).
+  // The web client runs the build of the desktop it drives, and takes the open thread there.
   useMatchingBuild(drivenDevice, isNewDraftKey(openThread[mode]) ? undefined : openThread[mode]);
-  // The web client always drives one of the account's desktops (§14.10): the one it drove last,
+  // The web client always drives one of the account's desktops: the one it drove last,
   // else the first that can be reached, once one can.
   const reachable = devices.filter(
     (device) => device.kind === "desktop" && device.approved && reachOf(device).kind === "reachable",
@@ -343,7 +343,7 @@ function Workspace() {
     setPane("main");
   };
 
-  // A tapped notification (§14.11) opens its thread, once the inbox lists it.
+  // A tapped notification opens its thread, once the inbox lists it.
   useNotificationOpens(
     (threadId) => summaries.find((summary) => summary.id === threadId),
     (summary) => {
@@ -353,7 +353,7 @@ function Workspace() {
     },
   );
   useRenewPush(account);
-  // Nobody is told about the thread this window shows (§14.11), unless settings or the narrow
+  // Nobody is told about the thread this window shows, unless settings or the narrow
   // window's inbox cover it.
   useAccountPresence(
     account,

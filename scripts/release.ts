@@ -1,4 +1,4 @@
-// Plans Cerium's automatic releases (docs/architecture.md §10): the version a nightly or stable
+// Plans Cerium's automatic releases: the version a nightly or stable
 // build gets, whether it has anything to publish, and its release notes.
 //
 // Usage:

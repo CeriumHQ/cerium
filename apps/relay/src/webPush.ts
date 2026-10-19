@@ -1,6 +1,6 @@
 import type { PushSubscriptionInfo } from "@cerium/protocol";
 
-// Web Push from the relay (docs/architecture.md §14.11), on WebCrypto alone: each notification is
+// Web Push from the relay, on WebCrypto alone: each notification is
 // encrypted for the browser's subscription (RFC 8291, one aes128gcm record) and signed for the push
 // service with the relay's VAPID key (RFC 8292).
 

@@ -8,8 +8,8 @@ export type ReasoningEffort = typeof ReasoningEffort.Type;
 const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
 
 /**
- * What an adapter's harness can do. The UI and orchestrator branch on these flags
- * instead of on provider names (docs/architecture.md §2.4).
+ * What an adapter's harness can do. The UI and orchestrator branch on these flags instead of on
+ * provider names.
  */
 export const CapabilityManifest = Schema.Struct({
   provider: ProviderId,

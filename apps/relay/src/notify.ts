@@ -2,7 +2,7 @@ import { NOTIFICATION_KINDS, type NotificationKind } from "@cerium/protocol";
 
 import type { DeviceRow } from "./devices.ts";
 
-// Who a notification goes to (docs/architecture.md §14.11). Plain functions over the Account
+// Who a notification goes to. Plain functions over the Account
 // object's rows and connections, so they're tested without the Workers runtime.
 
 /** A row of the Account object's `push` table: a browser's subscription and the kinds it wants. */

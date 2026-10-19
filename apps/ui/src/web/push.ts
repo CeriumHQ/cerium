@@ -6,7 +6,7 @@ import { subscribePush, unsubscribePush } from "../backend/atoms.ts";
 import { WEB } from "../backend/target.ts";
 import { OPEN_MESSAGE, OPEN_PARAMS } from "./serviceWorker.ts";
 
-// Push notifications on this browser (docs/architecture.md §14.11): its service worker, its
+// Push notifications on this browser: its service worker, its
 // subscription with the browser's push service, and the threads notifications open. The relay keeps
 // which kinds this browser wants (its device's `notifications`); the browser keeps the subscription.
 

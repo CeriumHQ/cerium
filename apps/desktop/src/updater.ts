@@ -3,7 +3,7 @@ import electronUpdater from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Updating Cerium from within (docs/architecture.md §10). The installed app follows one release
+// Updating Cerium from within. The installed app follows one release
 // channel's GitHub Releases through electron-updater: stable's latest release, or the newest
 // nightly. The UI shows what this module reports and asks it to check, download and install;
 // nothing downloads until the user asks. It checks at launch and every few hours, so a window that

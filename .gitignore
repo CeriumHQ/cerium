@@ -49,8 +49,7 @@ skills-lock.json
 .github/instructions/
 .github/prompts/
 
-# Local documentation, notes and throwaway work: not published
-docs/
+# Local notes and throwaway work: not published
 notes/
 *.local.md
 scratch/

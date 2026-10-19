@@ -8,7 +8,7 @@ import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
-// The thin shell (docs/architecture.md §7): a window with Windows Acrylic and native caption buttons
+// The thin shell: a window with Windows Acrylic and native caption buttons
 // around the UI, the backend's launcher, and the tray that keeps a signed-in machine reachable
 // (background.ts), and the updater (updater.ts). Everything else lives in the UI and the backend.
 

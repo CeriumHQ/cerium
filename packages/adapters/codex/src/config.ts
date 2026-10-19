@@ -82,7 +82,7 @@ export const accessPolicy = (access: AccessMode): AccessPolicy => {
 };
 
 /**
- * Turns Codex's native subagents off (architecture §3.1). On 0.162.1 only `agents.enabled=false`
+ * Turns Codex's native subagents off. On 0.162.1 only `agents.enabled=false`
  * removes the `collaboration.*` spawn tools from multi-agent v2 models; the feature flags alone leave
  * them in place. They are still set so a v1 model cannot fall back to its own spawn tools.
  */
