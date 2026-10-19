@@ -1,44 +1,54 @@
 import { Switch } from "@base-ui/react/switch";
 import { useAtomValue } from "@effect/atom-react";
 import { Monitor } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 
 /**
- * A settings category: its title and what it covers, over its sections. Settles in when opened.
- * `perMachine` pages show the driven machine's settings, and say which while it isn't this one.
+ * A settings category: its title, a line on what it covers when the title doesn't say, and an action
+ * for the whole page, over its sections. Settles in when opened. `perMachine` pages show the driven
+ * machine's settings, and say which while it isn't this one.
  */
 export function SettingsPage({
   title,
   description,
+  action,
   perMachine = false,
   children,
 }: {
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
   perMachine?: boolean;
   children: ReactNode;
 }) {
   const driven = useAtomValue(machineAtom);
+  const badge =
+    perMachine && driven ? (
+      <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-[12px] font-medium text-fg-primary">
+        <Monitor size={12} strokeWidth={1.75} className="shrink-0" />
+        <span className="truncate">On {driven.name}</span>
+      </span>
+    ) : null;
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto flex max-w-[42rem] flex-col gap-8 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] transition-[opacity,translate] md:gap-10 md:px-10 md:pt-12 md:pb-20 duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
-        <header className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2.5">
-            {/* The narrow window's top bar already names the page. */}
+        {/* The narrow window's top bar already names the page, so there the header may be empty. */}
+        <header className={`flex flex-col gap-1.5 ${description || badge || action ? "" : "max-md:hidden"}`}>
+          {/* The title is hidden there, so the row stays only for what sits beside it. */}
+          <div className={`flex min-h-7 items-center gap-2.5 ${badge || action ? "" : "max-md:hidden"}`}>
             <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary max-md:hidden">
               {title}
             </h1>
-            {perMachine && driven ? (
-              <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-[12px] font-medium text-fg-primary">
-                <Monitor size={12} strokeWidth={1.75} className="shrink-0" />
-                <span className="truncate">On {driven.name}</span>
-              </span>
-            ) : null}
+            {badge}
+            {action ? <div className="ml-auto flex shrink-0 items-center">{action}</div> : null}
           </div>
-          <p className="max-w-md text-[13px] leading-relaxed text-fg-tertiary">{description}</p>
+          {description ? (
+            <p className="max-w-md text-[13px] leading-relaxed text-fg-tertiary">{description}</p>
+          ) : null}
         </header>
         {children}
       </div>
@@ -46,14 +56,20 @@ export function SettingsPage({
   );
 }
 
-/** Related settings under a heading, with room for an action on the right. */
+/**
+ * Related settings under a heading, with room for an action on the right. What the heading doesn't
+ * say goes in `info`, behind a small "i" beside it, so the section opens on the setting itself;
+ * `description` is for the one line a decision can't do without.
+ */
 export function SettingsSection({
   title,
+  info,
   description,
   action,
   children,
 }: {
   title: string;
+  info?: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
@@ -62,7 +78,10 @@ export function SettingsSection({
     <section className="flex flex-col gap-3.5">
       <div className="flex items-end gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="text-[13.5px] font-medium text-fg-primary">{title}</h2>
+          <h2 className="flex items-center gap-1.5 text-[13.5px] font-medium text-fg-primary">
+            {title}
+            {info ? <InfoTip label={`About ${title.toLowerCase()}`}>{info}</InfoTip> : null}
+          </h2>
           {description ? (
             <p className="text-[12.5px] leading-relaxed text-fg-tertiary">{description}</p>
           ) : null}
@@ -71,6 +90,43 @@ export function SettingsSection({
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * One setting inside a card: its name, a short line under it when the name isn't enough, and its
+ * control on the right (a switch, a menu). `info` holds the longer explanation behind an "i", and
+ * `error` says why the last change didn't save. `control` receives the id of the name, for a control
+ * with no label of its own.
+ */
+export function SettingsRow({
+  label,
+  info,
+  hint,
+  error,
+  control,
+  className,
+}: {
+  label: string;
+  info?: ReactNode;
+  hint?: ReactNode;
+  error?: ReactNode;
+  control: (labelledBy: string) => ReactNode;
+  className?: string;
+}) {
+  const labelId = useId();
+  return (
+    <div className={`flex min-h-12 items-center gap-4 px-4 py-2.5 ${className ?? ""}`}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-fg-primary">
+          <span id={labelId}>{label}</span>
+          {info ? <InfoTip label={`About ${label.toLowerCase()}`}>{info}</InfoTip> : null}
+        </span>
+        {hint ? <span className="text-xs leading-relaxed text-fg-tertiary">{hint}</span> : null}
+        {error ? <span className="text-xs leading-relaxed text-error">{error}</span> : null}
+      </div>
+      {control(labelId)}
+    </div>
   );
 }
 

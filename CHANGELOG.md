@@ -131,6 +131,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: drafts of threads not started yet. Write in a new thread, go elsewhere, and it waits in the sidebar under "Drafts" (after "Needs you" in the inbox, first among chats), drawn apart from threads with a dashed outline round a pen and "Draft" beside its project. "New thread" starts another blank one, so you can keep several; each remembers its project, model, effort and access. Opening one on another computer switches there first, right-click discards one, and sending turns it into the thread.
 - UI: going back to a thread you had open in the last five minutes shows it at once, without reading it again.
 - Agents are told when to message each other, not only that they can. Every agent's instructions say Cerium's tools replace their harness's own subagents and messaging, and name the moments a message pays off: before changing files another agent works on, when a change affects another's work, to ask what another knows, and on finding a problem in its work. A child asks its lead instead of guessing, and a lead learns what each access mode it gives a child allows. A lead that starts in a folder where other threads are working is told which threads, with their leads. `list_threads` shows each thread's folder and whether its lead is working, and leaves archived threads out. Read-only agents learn they can still look at pages with `ui_open`, `ui_screenshot` and `ui_inspect`.
+- UI: Harnesses settings link a missing harness's install page, copy its sign-in command and where each harness is installed in one click (long paths shortened in the middle), and say when you last checked them.
 
 ### Changed
 
@@ -161,9 +162,11 @@ All notable changes to Cerium are recorded here. The format follows
 - Desktop: the development shell (`bun run dev`) listens for a debugger on port 9222, so agents can drive it.
 - UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts. Spelling suggestions in the text menu stand out from the commands under them.
 - UI: in replies, a long code block scrolls in place instead of pushing the conversation down, a block without a language drops its empty header for a copy button over its corner, task lists use their checkboxes as markers, and scrollbars inside the conversation are thin.
+- UI: Harnesses settings say a version Cerium hasn't tested is "Not tested with Cerium", with the detail behind an info tip, instead of warning about it.
 
 ### Fixed
 
+- UI: Harnesses settings say when the computer they're about can't be reached, instead of "Checking…" forever.
 - UI: a dozen attachments no longer push the message off the screen: the tray scrolls past two rows. A file that couldn't be attached says why under the tray, and touch screens show each file's remove button.
 - UI: a long menu, such as every saved project, scrolls inside the window instead of running off it.
 - `@cerium/bus`: `ui_open` waits up to a minute, not twenty seconds, for the browser to start its debugging port, which a slow or busy machine needed.
