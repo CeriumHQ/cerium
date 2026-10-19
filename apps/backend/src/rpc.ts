@@ -134,6 +134,10 @@ export const Handlers = MachineRpcs.toLayer(
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
       ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
       FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),
+      ReadFile: ({ root, path }) => files.read(root, path).pipe(Effect.mapError(refuse)),
+      ReadFileBytes: ({ root, path }) => files.readBytes(root, path).pipe(Stream.mapError(refuse)),
+      DiffFile: ({ root, path, from, context }) =>
+        files.diff(root, path, from, context).pipe(Effect.mapError(refuse)),
       WatchFiles: ({ root }) => files.watch(root).pipe(Stream.mapError(refuse)),
       ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),

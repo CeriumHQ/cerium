@@ -5,13 +5,20 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { posix, win32 } from "node:path";
 
 import {
+  BYTES_CHUNK,
   compareEntries,
+  decodeText,
   Files,
+  limitHunks,
+  mediaOf,
+  parseDiff,
   parseStatus,
   pathSegments,
+  PREVIEW_BYTES,
   resolveInside,
   stateOf,
   watchedChange,
+  withoutPartialCharacter,
 } from "../src/files.ts";
 
 describe("paths", () => {
@@ -162,6 +169,125 @@ describe("watching", () => {
   });
 });
 
+describe("git diff", () => {
+  const diff = [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "index 1111111..2222222 100644",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1,3 +1,4 @@ import x",
+    " one",
+    "-two",
+    "+two!",
+    "+three",
+    " four",
+    "\\ No newline at end of file",
+    "@@ -20 +21,2 @@",
+    "+added\r",
+    "+more",
+    "",
+  ].join("\n");
+
+  it("reads hunks with where they start", () => {
+    const { hunks, binary } = parseDiff(diff);
+    expect(binary).toBe(false);
+    expect(hunks).toEqual([
+      {
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          { kind: "context", text: "one" },
+          { kind: "removed", text: "two" },
+          { kind: "added", text: "two!" },
+          { kind: "added", text: "three" },
+          { kind: "context", text: "four" },
+        ],
+      },
+      {
+        oldStart: 20,
+        newStart: 21,
+        lines: [
+          { kind: "added", text: "added" },
+          { kind: "added", text: "more" },
+        ],
+      },
+    ]);
+  });
+
+  it("says when git has no lines to show", () => {
+    expect(parseDiff("diff --git a/x.png b/x.png\nBinary files a/x.png and b/x.png differ\n")).toEqual({
+      hunks: [],
+      binary: true,
+    });
+    expect(parseDiff("")).toEqual({ hunks: [], binary: false });
+  });
+
+  it("cuts a long diff where it is told to", () => {
+    const hunk = (count: number) => ({
+      oldStart: 1,
+      newStart: 1,
+      lines: Array.from({ length: count }, () => ({ kind: "added" as const, text: "x" })),
+    });
+    expect(limitHunks([hunk(3), hunk(3)], 10)).toEqual({ hunks: [hunk(3), hunk(3)], truncated: false });
+    const cut = limitHunks([hunk(3), hunk(3)], 4);
+    expect(cut.truncated).toBe(true);
+    expect(cut.hunks.map((each) => each.lines.length)).toEqual([3, 1]);
+    expect(limitHunks([hunk(3), hunk(3)], 3).hunks).toHaveLength(1);
+  });
+});
+
+describe("reading text", () => {
+  const bytes = (text: string) => new TextEncoder().encode(text);
+
+  it("reads UTF-8, with or without its byte order mark", () => {
+    expect(decodeText(bytes("héllo\nwörld"), false)).toBe("héllo\nwörld");
+    expect(decodeText(new Uint8Array([0xef, 0xbb, 0xbf, ...bytes("hi")]), false)).toBe("hi");
+  });
+
+  it("reads UTF-16 that says so", () => {
+    expect(decodeText(new Uint8Array([0xff, 0xfe, 0x68, 0x00, 0x69, 0x00]), false)).toBe("hi");
+    expect(decodeText(new Uint8Array([0xfe, 0xff, 0x00, 0x68, 0x00, 0x69]), false)).toBe("hi");
+  });
+
+  it("reads legacy text as Windows-1252", () => {
+    expect(decodeText(new Uint8Array([0x63, 0x61, 0x66, 0xe9]), false)).toBe("café");
+  });
+
+  it("calls anything with NUL bytes or mostly control characters binary", () => {
+    expect(decodeText(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]), false)).toBeUndefined();
+    expect(
+      decodeText(new Uint8Array(Array.from({ length: 200 }, (_, index) => 1 + (index % 7))), false),
+    ).toBeUndefined();
+    expect(decodeText(new Uint8Array(), false)).toBe("");
+  });
+
+  it("drops a character a cut left half-read", () => {
+    const whole = bytes("a€");
+    expect(whole).toHaveLength(4);
+    expect(withoutPartialCharacter(whole.subarray(0, 3))).toHaveLength(1);
+    expect(withoutPartialCharacter(whole)).toHaveLength(4);
+    expect(decodeText(whole.subarray(0, 2), true)).toBe("a");
+    expect(decodeText(whole.subarray(0, 3), true)).toBe("a");
+  });
+});
+
+describe("media", () => {
+  it("knows images, sounds and videos by their extension, whatever its case", () => {
+    expect(mediaOf("shots/Home.PNG")).toEqual({ kind: "image", mediaType: "image/png" });
+    expect(mediaOf("a/b.jpeg")).toEqual({ kind: "image", mediaType: "image/jpeg" });
+    expect(mediaOf("voice.mp3")).toEqual({ kind: "audio", mediaType: "audio/mpeg" });
+    expect(mediaOf("take.flac")).toEqual({ kind: "audio", mediaType: "audio/flac" });
+    expect(mediaOf("clip.webm")).toEqual({ kind: "video", mediaType: "video/webm" });
+    expect(mediaOf("clip.MOV")).toEqual({ kind: "video", mediaType: "video/quicktime" });
+  });
+
+  it("leaves SVG and everything else to be read as text or not at all", () => {
+    expect(mediaOf("logo.svg")).toBeUndefined();
+    expect(mediaOf("main.ts")).toBeUndefined();
+    expect(mediaOf("Makefile")).toBeUndefined();
+  });
+});
+
 // A real repository, as the service sees one.
 const TestLayer = Files.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -291,6 +417,139 @@ describe("Files", () => {
         ["app.ts", "old.ts"],
       );
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("reads text, cuts a long file, and tells media, binary and missing files apart", () =>
+    Effect.gen(function* () {
+      const files = yield* Files;
+      const { root, write, fs, path } = yield* repository;
+      const text = yield* files.read(root, "README.md");
+      assert.deepStrictEqual(text, { _tag: "Text", text: "# Title\n\nHello\n", size: 15, truncated: false });
+
+      yield* write("big.txt", "line of text\n".repeat(200_000));
+      const big = yield* files.read(root, "big.txt");
+      assert.strictEqual(big._tag, "Text");
+      if (big._tag === "Text") {
+        assert.isTrue(big.truncated);
+        assert.strictEqual(big.text.length, PREVIEW_BYTES);
+      }
+
+      yield* write("logo.svg", "<svg xmlns='http://www.w3.org/2000/svg'/>");
+      assert.strictEqual((yield* files.read(root, "logo.svg"))._tag, "Text");
+
+      yield* fs.writeFile(path.join(root, "blob.bin"), new Uint8Array([1, 2, 0, 3, 255, 0, 9]));
+      assert.deepStrictEqual(yield* files.read(root, "blob.bin"), { _tag: "Binary", size: 7 });
+      assert.deepStrictEqual(yield* files.read(root, "nope.txt"), { _tag: "Missing" });
+
+      yield* fs.writeFile(path.join(root, "pic.png"), new Uint8Array([137, 80, 78, 71]));
+      assert.deepStrictEqual(yield* files.read(root, "pic.png"), {
+        _tag: "Media",
+        kind: "image",
+        mediaType: "image/png",
+        size: 4,
+      });
+      yield* fs.writeFile(path.join(root, "clip.mp4"), new Uint8Array(10));
+      assert.deepStrictEqual(yield* files.read(root, "clip.mp4"), {
+        _tag: "Media",
+        kind: "video",
+        mediaType: "video/mp4",
+        size: 10,
+      });
+
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(files.read(root, "../outside.txt"))));
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(files.read(root, "src"))));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("streams a file's bytes in pieces that put it back together", () =>
+    Effect.gen(function* () {
+      const files = yield* Files;
+      const { root, fs, path } = yield* repository;
+      const bytes = Uint8Array.from({ length: BYTES_CHUNK * 2 + 123 }, (_, index) => (index * 7) % 256);
+      yield* fs.writeFile(path.join(root, "song.mp3"), bytes);
+      const pieces = yield* files.readBytes(root, "song.mp3").pipe(Stream.runCollect);
+      assert.isAbove(pieces.length, 1);
+      const joined = Buffer.concat(pieces.map((piece) => Buffer.from(piece.data, "base64")));
+      assert.isTrue(joined.equals(Buffer.from(bytes)));
+
+      for (const bad of ["../outside.mp3", "missing.mp3", "src"]) {
+        const exit = yield* Effect.exit(files.readBytes(root, bad).pipe(Stream.runDrain));
+        assert.isTrue(Exit.isFailure(exit), bad);
+      }
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect(
+    "diffs a changed file against the last commit, shows new files whole, and widens on request",
+    () =>
+      Effect.gen(function* () {
+        const files = yield* Files;
+        const { root, write, fs, path } = yield* repository;
+        yield* write("src/app.ts", "one\nTWO\nthree\nfour\n");
+        const changed = yield* files.diff(root, "src/app.ts");
+        assert.deepStrictEqual(changed.hunks, [
+          {
+            oldStart: 1,
+            newStart: 1,
+            lines: [
+              { kind: "context", text: "one" },
+              { kind: "removed", text: "two" },
+              { kind: "added", text: "TWO" },
+              { kind: "context", text: "three" },
+              { kind: "context", text: "four" },
+            ],
+          },
+        ]);
+        const tight = yield* files.diff(root, "src/app.ts", undefined, 0);
+        assert.deepStrictEqual(tight.hunks[0]?.lines, [
+          { kind: "removed", text: "two" },
+          { kind: "added", text: "TWO" },
+        ]);
+
+        const long = Array.from({ length: 30 }, (_, index) => `line ${index}`);
+        yield* write("long.txt", `${long.join("\n")}\n`);
+        yield* git(root, "add", "long.txt");
+        yield* git(root, "commit", "-q", "-m", "long");
+        yield* write(
+          "long.txt",
+          `${long.map((line, index) => (index === 15 ? "middle" : line)).join("\n")}\n`,
+        );
+        assert.strictEqual((yield* files.diff(root, "long.txt")).hunks[0]?.lines.length, 8);
+        const whole = yield* files.diff(root, "long.txt", undefined, 100_000);
+        assert.strictEqual(whole.hunks.length, 1);
+        assert.strictEqual(whole.hunks[0]?.lines.length, 31);
+
+        yield* write("fresh.ts", "a\nb\n");
+        const fresh = yield* files.diff(root, "fresh.ts");
+        assert.deepStrictEqual(fresh.hunks, [
+          {
+            oldStart: 0,
+            newStart: 1,
+            lines: [
+              { kind: "added", text: "a" },
+              { kind: "added", text: "b" },
+            ],
+          },
+        ]);
+
+        yield* fs.remove(path.join(root, "gone.txt"));
+        const gone = yield* files.diff(root, "gone.txt");
+        assert.deepStrictEqual(gone.hunks[0]?.lines, [{ kind: "removed", text: "bye" }]);
+
+        yield* git(root, "mv", "README.md", "READ.md");
+        yield* write("READ.md", "# Title\n\nHello!\n");
+        const moved = yield* files.diff(root, "READ.md", "README.md");
+        assert.deepStrictEqual(
+          moved.hunks.flatMap((hunk) => hunk.lines.filter((line) => line.kind !== "context")),
+          [
+            { kind: "removed", text: "Hello" },
+            { kind: "added", text: "Hello!" },
+          ],
+        );
+
+        assert.deepStrictEqual((yield* files.diff(root, "src/old.ts")).hunks, []);
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(files.diff(root, "../outside.txt"))));
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
   it.live("tells the explorer what changes while it watches, in a batch", () =>

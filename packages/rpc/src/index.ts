@@ -39,7 +39,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
-import { FileListing, FileStatuses, FilesChanged } from "./files.ts";
+import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
 import { TerminalRpcs } from "./terminal.ts";
 
 export * from "./files.ts";
@@ -54,7 +54,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 5;
+export const RPC_VERSION = 6;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -260,6 +260,36 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("FileStatuses", {
     payload: { root: Schema.NonEmptyString },
     success: FileStatuses,
+    error: CeriumError,
+  }),
+  /** A file under `root` as the viewer shows it: its text up to a size, its kind of media, or neither. */
+  Rpc.make("ReadFile", {
+    payload: { root: Schema.NonEmptyString, path: Schema.NonEmptyString },
+    success: FilePreview,
+    error: CeriumError,
+  }),
+  /**
+   * A file's bytes under `root`, in pieces small enough for the relay, for the viewer to play or show
+   * a `Media` file. Refused past a size the viewer can hold.
+   */
+  Rpc.make("ReadFileBytes", {
+    payload: { root: Schema.NonEmptyString, path: Schema.NonEmptyString },
+    success: FileBytes,
+    stream: true,
+    error: CeriumError,
+  }),
+  /**
+   * A changed file against the last commit; `from` is where it was before it was renamed, `context`
+   * how many unchanged lines surround each change (3 when absent; a large number shows the whole file).
+   */
+  Rpc.make("DiffFile", {
+    payload: {
+      root: Schema.NonEmptyString,
+      path: Schema.NonEmptyString,
+      from: Schema.optionalKey(Schema.NonEmptyString),
+      context: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    },
+    success: FileDiff,
     error: CeriumError,
   }),
   /**

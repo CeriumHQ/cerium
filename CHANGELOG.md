@@ -160,6 +160,7 @@ All notable changes to Cerium are recorded here. The format follows
 - `@cerium/bus`: an `ask_user` tool that puts up to four questions to the user, each with options to pick one or several of (descriptions, a recommended pick) and room for their own words. The agent carries on or ends its turn; the answer arrives as its next message. A question the user hasn't answered expires when the agent is interrupted, stopped or its session ends. `@cerium/rpc` (version 5) answers or dismisses one with `AnswerQuestion`.
 - UI: an agent's questions as a card: options as rows to pick, "Something else…" for your own words, a tab per question that ticks once answered, Ctrl Enter to send and Dismiss. The lead asks in the conversation, a child in the requests over the message box and the agents panel. Once answered the card folds to the questions and what you said; the agent's reply is a new response.
 - `@cerium/protocol` and the adapters: an agent's todo list as `TodosUpdated` events, carrying the whole list each time: Claude's task tools (or `TodoWrite`), Codex's and Muse's plans and Cursor's todos. A list that changes nothing isn't sent again; `bun run live-check --todos` checks each harness reports one.
+- `@cerium/rpc` (version 6): a work thread's file as the viewer shows it (its text up to 2 MB, or the kind of image, sound or video it is), its bytes in pieces small enough for the relay for playing media up to 512 MB, and a changed file's diff against the last commit with as many unchanged lines around each change as asked for.
 
 ### Changed
 

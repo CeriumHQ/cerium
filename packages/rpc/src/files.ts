@@ -57,6 +57,56 @@ export const FileStatuses = Schema.Struct({
 });
 export type FileStatuses = typeof FileStatuses.Type;
 
+/** A file as the viewer shows it. */
+export const FilePreview = Schema.Union([
+  /** Text, decoded (SVG included); `truncated` when the file is longer than the viewer reads. */
+  Schema.TaggedStruct("Text", {
+    text: Schema.String,
+    size: Schema.Finite,
+    truncated: Schema.Boolean,
+  }),
+  /** An image, a sound or a video, whose bytes `ReadFileBytes` streams. */
+  Schema.TaggedStruct("Media", {
+    kind: Schema.Literals(["image", "audio", "video"]),
+    mediaType: Schema.String,
+    size: Schema.Finite,
+  }),
+  /** Not text, or too large to show. */
+  Schema.TaggedStruct("Binary", { size: Schema.Finite }),
+  /** It isn't on disk (any more). */
+  Schema.TaggedStruct("Missing", {}),
+]);
+export type FilePreview = typeof FilePreview.Type;
+
+/** A piece of a file's bytes, base64, in the order they are in the file. */
+export const FileBytes = Schema.Struct({ data: Schema.String });
+export type FileBytes = typeof FileBytes.Type;
+
+export const DiffLine = Schema.Struct({
+  kind: Schema.Literals(["context", "removed", "added"]),
+  text: Schema.String,
+});
+export type DiffLine = typeof DiffLine.Type;
+
+/** A stretch of changed lines with the unchanged ones around it, starting at these lines (from 1). */
+export const DiffHunk = Schema.Struct({
+  oldStart: Schema.Finite,
+  newStart: Schema.Finite,
+  lines: Schema.Array(DiffLine),
+});
+export type DiffHunk = typeof DiffHunk.Type;
+
+/** A file against the last commit. */
+export const FileDiff = Schema.Struct({
+  /** Empty for a file that is only renamed, or whose changes git has no lines for. */
+  hunks: Schema.Array(DiffHunk),
+  /** Git has no lines to show: the file isn't text. */
+  binary: Schema.optionalKey(Schema.Boolean),
+  /** The diff is longer than is sent. */
+  truncated: Schema.optionalKey(Schema.Boolean),
+});
+export type FileDiff = typeof FileDiff.Type;
+
 /** What changed in a folder since the last batch, so the explorer reads only that again. */
 export const FilesChanged = Schema.Struct({
   /** Paths whose entries or contents changed, at most a few hundred. */
