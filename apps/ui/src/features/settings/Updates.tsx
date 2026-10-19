@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Progress } from "@base-ui/react/progress";
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
+import { ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { shellBridge, type UpdateChannel, type Updates } from "../../backend/shell.ts";
@@ -10,6 +11,7 @@ import {
   channelLocked,
   checkedAt,
   checkedLabel,
+  releaseNotesUrl,
   statusText,
   versionLabel,
 } from "../updates/model.ts";
@@ -17,14 +19,8 @@ import { useUpdates } from "../updates/useUpdates.ts";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 
 const channels: ReadonlyArray<{ readonly id: UpdateChannel; readonly description: string }> = [
-  {
-    id: "stable",
-    description: "A release a day at most, built from a nightly that has had its run. The one to use.",
-  },
-  {
-    id: "nightly",
-    description: "Every change as soon as it lands, to try things first. Expect the odd rough edge.",
-  },
+  { id: "stable", description: "Tested releases, at most one a day. Most people want this one." },
+  { id: "nightly", description: "Every change as it lands. Expect rough edges." },
 ];
 
 const buttonClass =
@@ -35,10 +31,7 @@ const secondaryClass = `${buttonClass} border border-line-subtle bg-surface-rais
 export function UpdateSettings() {
   const updates = useUpdates();
   return (
-    <SettingsPage
-      title="Updates"
-      description="Cerium updates itself from its releases on GitHub. Nothing downloads until you say so."
-    >
+    <SettingsPage title="Updates" description="Nothing downloads until you say so.">
       {updates ? (
         <>
           <ChannelSection updates={updates} />
@@ -57,8 +50,8 @@ function ChannelSection({ updates }: { updates: Updates }) {
       title="Channel"
       description={
         locked
-          ? "Finish installing the update first; then you can switch channels."
-          : "Which releases Cerium follows. Your threads and settings stay as they are when you switch."
+          ? "Finish the update first, then you can switch."
+          : "Your threads and settings stay as they are when you switch."
       }
     >
       <RadioGroup
@@ -107,6 +100,14 @@ function VersionSection({ updates }: { updates: Updates }) {
   const at = checkedAt(status);
   // Releases nobody can read yet just mean updates are off; a network or download problem is an error.
   const failed = status.kind === "failed" || (status.kind === "unreachable" && status.reason === "offline");
+  // A release on offer, or being installed, has its notes a click away.
+  const offered =
+    status.kind === "available" ||
+    status.kind === "downloading" ||
+    status.kind === "ready" ||
+    status.kind === "failed"
+      ? status.version
+      : undefined;
 
   return (
     <SettingsSection title="This version">
@@ -126,6 +127,17 @@ function VersionSection({ updates }: { updates: Updates }) {
               {statusText(updates)}
               {at !== undefined ? <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span> : null}
             </p>
+            {offered !== undefined ? (
+              <a
+                href={releaseNotesUrl(offered)}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 flex w-fit items-center gap-1.5 rounded-md text-[12.5px] text-fg-secondary transition-colors hover:text-fg-primary"
+              >
+                <ExternalLink size={12} strokeWidth={1.75} />
+                What's new in {offered}
+              </a>
+            ) : null}
           </div>
           {status.kind === "available" || status.kind === "failed" ? (
             <Button onClick={() => void bridge?.downloadUpdate?.()} className={primaryClass}>

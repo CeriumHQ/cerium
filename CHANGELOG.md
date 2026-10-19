@@ -133,6 +133,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Agents are told when to message each other, not only that they can. Every agent's instructions say Cerium's tools replace their harness's own subagents and messaging, and name the moments a message pays off: before changing files another agent works on, when a change affects another's work, to ask what another knows, and on finding a problem in its work. A child asks its lead instead of guessing, and a lead learns what each access mode it gives a child allows. A lead that starts in a folder where other threads are working is told which threads, with their leads. `list_threads` shows each thread's folder and whether its lead is working, and leaves archived threads out. Read-only agents learn they can still look at pages with `ui_open`, `ui_screenshot` and `ui_inspect`.
 - UI: Harnesses settings link a missing harness's install page, copy its sign-in command and where each harness is installed in one click (long paths shortened in the middle), and say when you last checked them.
 - UI: Settings → Notifications sends a test notification, to see that they reach this browser.
+- UI: Settings → Updates links to what's new in a version on offer.
 
 ### Changed
 
@@ -166,6 +167,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Harnesses settings say a version Cerium hasn't tested is "Not tested with Cerium", with the detail behind an info tip, instead of warning about it.
 - UI: Appearance and Archived settings say less, with the rest behind an info tip, and an archived thread's delete button shows on hover or focus.
 - UI: the notices over a thread read from the cloud copy take fewer words, and so does the web client's sign-in, with the sign-in options behind an info tip.
+- UI: Settings → Updates says its channels and statuses in fewer words.
 
 ### Fixed
 

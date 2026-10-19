@@ -5,6 +5,7 @@ import {
   channelLocked,
   checkedLabel,
   noticeVersion,
+  releaseNotesUrl,
   statusText,
   waitsForStable,
 } from "../src/features/updates/model.ts";
@@ -34,15 +35,24 @@ describe("statusText", () => {
       { version: "0.5.0-nightly.3", buildChannel: "nightly" },
     );
     expect(waitsForStable(waiting)).toBe(true);
-    expect(statusText(waiting)).toContain("once a stable release passes 0.5.0-nightly.3");
+    expect(statusText(waiting)).toContain("once one passes 0.5.0-nightly.3");
   });
 
   it("tells unreadable releases from a network problem", () => {
-    expect(statusText(updates({ kind: "unreachable", reason: "unpublished", checkedAt: 0 }))).toContain(
-      "updates are off for now",
+    expect(statusText(updates({ kind: "unreachable", reason: "unpublished", checkedAt: 0 }))).toBe(
+      "No stable releases to update from yet.",
     );
-    expect(statusText(updates({ kind: "unreachable", reason: "offline", checkedAt: 0 }))).toContain(
-      "Check your connection",
+    expect(statusText(updates({ kind: "unreachable", reason: "offline", checkedAt: 0 }))).toBe(
+      "Couldn't reach GitHub. Check your connection.",
+    );
+  });
+});
+
+describe("releaseNotesUrl", () => {
+  it("links the GitHub release tagged with the version", () => {
+    expect(releaseNotesUrl("0.5.0")).toBe("https://github.com/nonlooped/cerium/releases/tag/v0.5.0");
+    expect(releaseNotesUrl("0.7.0-nightly.n000031")).toBe(
+      "https://github.com/nonlooped/cerium/releases/tag/v0.7.0-nightly.n000031",
     );
   });
 });

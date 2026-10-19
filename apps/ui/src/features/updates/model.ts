@@ -17,27 +17,31 @@ export const statusText = (updates: Updates): string => {
   const { status } = updates;
   switch (status.kind) {
     case "unsupported":
-      return "This is a development build. Only the installed app updates itself.";
+      return "A development build. Only the installed app updates itself.";
     case "checking":
       return "Checking for updates…";
     case "current":
       return waitsForStable(updates)
-        ? `This nightly is newer than the latest stable release. Cerium moves to stable once a stable release passes ${updates.version}.`
+        ? `Ahead of the latest stable release. Cerium moves to stable once one passes ${updates.version}.`
         : `You're on the latest ${channelLabel[updates.channel].toLowerCase()} release.`;
     case "available":
       return `${versionLabel(status.version)} is available.`;
     case "downloading":
       return `Downloading ${versionLabel(status.version)}…`;
     case "ready":
-      return `${versionLabel(status.version)} is ready. Restart Cerium to finish updating, or it installs when you quit.`;
+      return `${versionLabel(status.version)} is ready. It installs when you restart or quit.`;
     case "unreachable":
       return status.reason === "unpublished"
-        ? `Cerium can't read ${channelLabel[updates.channel].toLowerCase()} releases yet, so updates are off for now.`
-        : "Couldn't reach GitHub to check for updates. Check your connection and try again.";
+        ? `No ${channelLabel[updates.channel].toLowerCase()} releases to update from yet.`
+        : "Couldn't reach GitHub. Check your connection.";
     case "failed":
-      return `Couldn't download ${versionLabel(status.version)}. Try again.`;
+      return `Couldn't download ${versionLabel(status.version)}.`;
   }
 };
+
+/** The GitHub release page of a version, which says what changed in it. */
+export const releaseNotesUrl = (version: string) =>
+  `https://github.com/nonlooped/cerium/releases/tag/v${version}`;
 
 /** When the updater last looked, for statuses that come from a finished check. */
 export const checkedAt = (status: UpdateStatus): number | undefined =>
