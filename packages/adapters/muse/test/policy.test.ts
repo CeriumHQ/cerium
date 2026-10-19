@@ -121,8 +121,8 @@ describe("access modes", () => {
 describe("serveArgs", () => {
   const args = serveArgs({ access: "readOnly", appendSystemPrompt: 'Say "hi"' });
 
-  it("turns native subagents off and skips user-input dialogs", () => {
-    expect(args.slice(0, 2)).toEqual(["serve", "--disable-request-user-input"]);
+  it("turns native subagents off, skips user-input dialogs and loads the folder's rules", () => {
+    expect(args.slice(0, 3)).toEqual(["serve", "--disable-request-user-input", "--trust-workspace"]);
     expect(args).toEqual(
       expect.arrayContaining([
         'run.subagent_delegation_mode="off"',

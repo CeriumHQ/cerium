@@ -124,6 +124,9 @@ export const serveArgs = (options: ServeOptions): ReadonlyArray<string> => [
   ...(options.ephemeral ? ["--no-session-log"] : []),
   // Muse's own question tool stays off: agents ask the user through the bus's `ask_user`.
   "--disable-request-user-input",
+  // The folder the user opened a thread in is trusted, so Muse loads its AGENTS.md and skills, as
+  // the other harnesses load theirs. Untrusted, Muse skips both.
+  "--trust-workspace",
   ...accessPolicy(options.access).serveFlags,
   ...HOST_SETTINGS.flatMap(([key, value]) => ["-c", `${key}=${JSON.stringify(value)}`]),
   // A developer-role prompt beside Muse's own base instructions, not a replacement for them.
