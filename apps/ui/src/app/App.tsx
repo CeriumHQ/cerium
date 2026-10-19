@@ -72,6 +72,8 @@ import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { FILES_VERSION } from "../features/files/model.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
+import { TERMINAL_VERSION } from "../features/terminal/model.ts";
+import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { themeAtom } from "../features/settings/preferences.ts";
 import {
   settingsLabel,
@@ -438,6 +440,16 @@ function Workspace() {
     (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= FILES_VERSION)
       ? selected.thread.cwd
       : undefined;
+  // Its shells run on the same machine, in the same folder.
+  const terminal = useTerminalDrawer({
+    thread:
+      filesRoot !== undefined &&
+      (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TERMINAL_VERSION)
+        ? selected?.thread.id
+        : undefined,
+    suspended: settingsOpen || searchOpen,
+    compact,
+  });
   const explorer = useFilesExplorer({
     root: filesRoot,
     events,
@@ -727,146 +739,151 @@ function Workspace() {
       onCloseFiles={() => setFilesOpen(false)}
       filePreviewOpen={explorer.previewing}
       onCloseFilePreview={explorer.closePreview}
+      {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
+      {/* The terminal drawer docks under the conversation, which keeps its message box floating above it. */}
       <div className="relative flex h-full flex-col">
-        {connection === "unreachable" && driven !== undefined ? (
-          <UnreachableNotice
-            machine={driven.name}
-            presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-            onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-          />
-        ) : connection === "unreachable" && !WEB ? (
-          <Notice tone="attention">
-            Reconnecting to Cerium's backend…
-            {import.meta.env.DEV ? (
-              <>
-                {" "}
-                Start it with <code>bun run dev</code>.
-              </>
-            ) : null}
-          </Notice>
-        ) : AsyncResult.isFailure(threadsResult) ? (
-          <Notice tone="error" clamp>
-            {messageOf(Cause.squash(threadsResult.cause))}
-          </Notice>
-        ) : null}
-        <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
-        {WEB ? null : <UpdateNotice />}
-        {actionError ? (
-          <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
-            {actionError}
-          </Notice>
-        ) : null}
-
-        <div className="relative min-h-0 flex-1">
-          {viewed && lead ? (
-            <Transcript
-              key={viewed.thread.id}
-              folder={viewed.thread.cwd}
-              blocks={buildTranscript(
-                leadEvents,
-                (a, b) =>
-                  a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b),
-              )}
-              queued={queuedMessages(leadEvents)}
-              agent={{ provider: lead.provider, model: leadModel }}
-              modelName={(model) => modelLabel(models, lead.provider, model)}
-              {...(cloudSelected ? {} : { messageBox })}
-              activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
-              bottomInset={composerHeight}
-              childState={(childId) => {
-                const child = agents.find((agent) => agent.id === childId);
-                return child?.awaitingApproval
-                  ? "needsYou"
-                  : child?.state === "running" || child?.state === "queued"
-                    ? "running"
-                    : child?.state === "failed"
-                      ? "failed"
-                      : "idle";
-              }}
-              childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-              // A thread read from the cloud copy offers no agent actions: they take its machine.
-              agentActions={cloudSelected ? {} : agentActions}
-              onAnswerPermission={(requestId, decision, scope) =>
-                cloudSelected
-                  ? Promise.resolve(false)
-                  : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
-              }
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {connection === "unreachable" && driven !== undefined ? (
+            <UnreachableNotice
+              machine={driven.name}
+              presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+              onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
             />
-          ) : loadingThread ? null : (
-            <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
-          )}
-          {/* An open file covers the conversation but not the message box, which can mention it. */}
-          {explorer.overlay ? (
-            <div className="absolute inset-x-0 top-0 z-10" style={{ bottom: composerHeight }}>
-              {explorer.overlay}
-            </div>
+          ) : connection === "unreachable" && !WEB ? (
+            <Notice tone="attention">
+              Reconnecting to Cerium's backend…
+              {import.meta.env.DEV ? (
+                <>
+                  {" "}
+                  Start it with <code>bun run dev</code>.
+                </>
+              ) : null}
+            </Notice>
+          ) : AsyncResult.isFailure(threadsResult) ? (
+            <Notice tone="error" clamp>
+              {messageOf(Cause.squash(threadsResult.cause))}
+            </Notice>
           ) : null}
-        </div>
+          <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
+          {WEB ? null : <UpdateNotice />}
+          {actionError ? (
+            <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
+              {actionError}
+            </Notice>
+          ) : null}
 
-        {WEB && driven === undefined && !cloudSelected ? (
-          <NoComputerBar />
-        ) : loadingThread ? (
-          <LoadingThreadBar />
-        ) : cloudSelected && !(cloudConnecting && lead) ? (
-          <CloudThreadBar
-            machine={nameOf(cloudSelected.machine)}
-            reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
-            connecting={cloudSelected.machine === drivenId}
-            onOpen={() => {
-              if (cloudDevice) openOn(cloudDevice, cloudSelected.overview.thread.id);
-            }}
-            onStartNew={startNew}
-          />
-        ) : (
-          // While the open thread's machine is still connecting, the box keeps its draft and takes
-          // writing; sending waits until the machine answers.
-          <Composer
-            draftKey={viewed && lead ? viewed.thread.id : openDraft}
-            connecting={cloudSelected !== undefined}
-            inputRef={composerInput}
-            messageBox={messageBoxRef}
-            target={
-              viewed && lead
-                ? {
-                    kind: "thread",
-                    provider: lead.provider,
-                    model: leadModel,
-                    modelId: lead.model,
-                    effort: lead.effort,
-                    folder: viewed.thread.cwd,
-                    ...(leadEnded ? { ended: leadEnded } : {}),
-                    // A thread read from the cloud copy can't be switched: it takes its machine.
-                    ...(cloudSelected
-                      ? {}
-                      : {
-                          onSwitch: (choice) =>
-                            attempt(switchLead({ payload: { agentId: lead.id, ...choice } })),
-                        }),
-                  }
-                : { kind: "new", mode, folder: newFolder, onChooseFolder: chooseFolder, available }
-            }
-            running={leadRunning && cloudSelected === undefined}
-            above={
-              cloudSelected ? (
-                <ConnectingNote machine={nameOf(cloudSelected.machine)} />
-              ) : (
-                <ApprovalTray agents={agents} onAnswer={answerApproval} onAnswerSpawn={answerSpawn} />
-              )
-            }
-            onHeight={setComposerHeight}
-            onSend={(message, setup) =>
-              attempt(
-                selected && lead
-                  ? send({ payload: { agentId: lead.id, ...message } })
-                  : startThread(message, setup),
-              )
-            }
-            onStop={() => {
-              if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
-            }}
-          />
-        )}
+          <div className="relative min-h-0 flex-1">
+            {viewed && lead ? (
+              <Transcript
+                key={viewed.thread.id}
+                folder={viewed.thread.cwd}
+                blocks={buildTranscript(
+                  leadEvents,
+                  (a, b) =>
+                    a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b),
+                )}
+                queued={queuedMessages(leadEvents)}
+                agent={{ provider: lead.provider, model: leadModel }}
+                modelName={(model) => modelLabel(models, lead.provider, model)}
+                {...(cloudSelected ? {} : { messageBox })}
+                activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
+                bottomInset={composerHeight}
+                childState={(childId) => {
+                  const child = agents.find((agent) => agent.id === childId);
+                  return child?.awaitingApproval
+                    ? "needsYou"
+                    : child?.state === "running" || child?.state === "queued"
+                      ? "running"
+                      : child?.state === "failed"
+                        ? "failed"
+                        : "idle";
+                }}
+                childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+                // A thread read from the cloud copy offers no agent actions: they take its machine.
+                agentActions={cloudSelected ? {} : agentActions}
+                onAnswerPermission={(requestId, decision, scope) =>
+                  cloudSelected
+                    ? Promise.resolve(false)
+                    : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
+                }
+              />
+            ) : loadingThread ? null : (
+              <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
+            )}
+            {/* An open file covers the conversation but not the message box, which can mention it. */}
+            {explorer.overlay ? (
+              <div className="absolute inset-x-0 top-0 z-10" style={{ bottom: composerHeight }}>
+                {explorer.overlay}
+              </div>
+            ) : null}
+          </div>
+
+          {WEB && driven === undefined && !cloudSelected ? (
+            <NoComputerBar />
+          ) : loadingThread ? (
+            <LoadingThreadBar />
+          ) : cloudSelected && !(cloudConnecting && lead) ? (
+            <CloudThreadBar
+              machine={nameOf(cloudSelected.machine)}
+              reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
+              connecting={cloudSelected.machine === drivenId}
+              onOpen={() => {
+                if (cloudDevice) openOn(cloudDevice, cloudSelected.overview.thread.id);
+              }}
+              onStartNew={startNew}
+            />
+          ) : (
+            // While the open thread's machine is still connecting, the box keeps its draft and takes
+            // writing; sending waits until the machine answers.
+            <Composer
+              draftKey={viewed && lead ? viewed.thread.id : openDraft}
+              connecting={cloudSelected !== undefined}
+              inputRef={composerInput}
+              messageBox={messageBoxRef}
+              target={
+                viewed && lead
+                  ? {
+                      kind: "thread",
+                      provider: lead.provider,
+                      model: leadModel,
+                      modelId: lead.model,
+                      effort: lead.effort,
+                      folder: viewed.thread.cwd,
+                      ...(leadEnded ? { ended: leadEnded } : {}),
+                      // A thread read from the cloud copy can't be switched: it takes its machine.
+                      ...(cloudSelected
+                        ? {}
+                        : {
+                            onSwitch: (choice) =>
+                              attempt(switchLead({ payload: { agentId: lead.id, ...choice } })),
+                          }),
+                    }
+                  : { kind: "new", mode, folder: newFolder, onChooseFolder: chooseFolder, available }
+              }
+              running={leadRunning && cloudSelected === undefined}
+              above={
+                cloudSelected ? (
+                  <ConnectingNote machine={nameOf(cloudSelected.machine)} />
+                ) : (
+                  <ApprovalTray agents={agents} onAnswer={answerApproval} onAnswerSpawn={answerSpawn} />
+                )
+              }
+              onHeight={setComposerHeight}
+              onSend={(message, setup) =>
+                attempt(
+                  selected && lead
+                    ? send({ payload: { agentId: lead.id, ...message } })
+                    : startThread(message, setup),
+                )
+              }
+              onStop={() => {
+                if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
+              }}
+            />
+          )}
+        </div>
+        {terminal.drawer}
       </div>
     </AppFrame>
   );

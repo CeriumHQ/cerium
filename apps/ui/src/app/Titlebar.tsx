@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
-import { FolderTree, Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
+import { FolderTree, Minus, PanelLeft, Square, SquarePen, SquareTerminal, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
@@ -34,6 +34,8 @@ interface TitlebarProps {
   readonly onToggleInspector: () => void;
   /** The files panel's button, offered while there is a folder to browse. */
   readonly files?: { readonly open: boolean; readonly onToggle: () => void };
+  /** The terminal drawer's button, offered while the thread can have a terminal. */
+  readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
 }
@@ -52,6 +54,7 @@ export function Titlebar({
   inspectorOpen,
   onToggleInspector,
   files,
+  terminal,
   machinePicker,
 }: TitlebarProps) {
   const showSidebar = sidebarOpen || settingsOpen;
@@ -110,6 +113,9 @@ export function Titlebar({
           <div />
         )}
         <div className="flex h-full items-center justify-end">
+          {terminal && !settingsOpen ? (
+            <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
+          ) : null}
           {files && !settingsOpen ? <FilesToggle open={files.open} onToggle={files.onToggle} /> : null}
           {agents.length > 0 && !settingsOpen ? (
             <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
@@ -137,6 +143,26 @@ export function FilesToggle({ open, onToggle }: { open: boolean; onToggle: () =>
         }`}
       >
         <FolderTree size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
+  );
+}
+
+/** Shows the open thread's terminals under its conversation. */
+export function TerminalToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut="Ctrl `">
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="Terminal"
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <SquareTerminal size={15} strokeWidth={1.75} />
       </Button>
     </Tooltip>
   );

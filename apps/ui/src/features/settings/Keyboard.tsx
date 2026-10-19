@@ -19,6 +19,7 @@ const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["Switch to Chat", "Ctrl 2"],
   ["Show or hide the sidebar", "Ctrl B"],
   ["Show or hide the thread's agents", "Ctrl J"],
+  ["Show, focus or hide the terminal", "Ctrl `"],
   ["Open or close settings", "Ctrl ,"],
   ["Stop the running turn, or leave settings", "Esc"],
 ];

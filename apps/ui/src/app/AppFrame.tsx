@@ -19,7 +19,7 @@ import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 import { FILES, GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
-import { AgentsToggle, FilesToggle, Titlebar } from "./Titlebar.tsx";
+import { AgentsToggle, FilesToggle, TerminalToggle, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -50,6 +50,11 @@ interface AppFrameProps {
   /** A file is open in the files pane of the narrow window; the phone's Back closes it before the pane. */
   readonly filePreviewOpen: boolean;
   readonly onCloseFilePreview: () => void;
+  /**
+   * The open thread's terminal drawer, offered while it can have one. The drawer itself is part of
+   * `children`; in the narrow window it covers the thread, and the phone's Back hides it.
+   */
+  readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /**
    * Settings take the sidebar's place with their categories and the main panel's with the open
    * category. The thread views stay mounted underneath, so leaving settings returns to them as they were.
@@ -124,6 +129,7 @@ function DesktopFrame({
   filesOpen,
   onToggleFiles,
   onCloseFiles,
+  terminal,
   settings,
   machinePicker,
   children,
@@ -185,6 +191,7 @@ function DesktopFrame({
         inspectorOpen={inspector !== undefined}
         onToggleInspector={onToggleInspector}
         {...(filesAvailable ? { files: { open: filesOpen, onToggle: onToggleFiles } } : {})}
+        {...(terminal ? { terminal } : {})}
         machinePicker={machinePicker}
       />
       <div ref={body} className="relative flex min-h-0 flex-1 pr-1.5 pb-1.5">
@@ -298,6 +305,7 @@ function CompactFrame({
   onToggleFiles,
   filePreviewOpen,
   onCloseFilePreview,
+  terminal,
   settings,
   machinePicker,
   closeDialog,
@@ -310,9 +318,11 @@ function CompactFrame({
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
   const side = inspector ?? files;
   const inspecting = side !== undefined && !settings.open && pane === "main";
+  // The terminal is a pane over the thread, and the agents or files a pane over that.
+  const terminalOpen = terminal?.open === true && !settings.open && pane === "main";
   // A file open in the files pane is one more pane down.
   const previewing = files !== undefined && inspecting && filePreviewOpen;
-  const inspectDepth = previewing ? 3 : 2;
+  const inspectDepth = (previewing ? 3 : 2) + (terminalOpen ? 1 : 0);
   // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
   // button takes it up one.
   useBackNavigation(
@@ -323,7 +333,9 @@ function CompactFrame({
       : pane === "main"
         ? inspecting
           ? inspectDepth
-          : 1
+          : terminalOpen
+            ? 2
+            : 1
         : 0) + (closeDialog ? 1 : 0),
     () => {
       if (closeDialog) closeDialog();
@@ -332,6 +344,7 @@ function CompactFrame({
         else settings.onClose();
       } else if (previewing) onCloseFilePreview();
       else if (inspecting) (files !== undefined ? onToggleFiles : onToggleInspector)();
+      else if (terminalOpen) terminal.onToggle();
       else onBack();
     },
   );
@@ -363,10 +376,13 @@ function CompactFrame({
                 folded={keyboardOpen}
                 title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
                 {...(thread?.project ? { subtitle: thread.project } : {})}
-                {...(agents.length > 0 || filesAvailable
+                {...(agents.length > 0 || filesAvailable || terminal
                   ? {
                       trailing: (
                         <>
+                          {terminal ? (
+                            <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
+                          ) : null}
                           {filesAvailable ? <FilesToggle open={filesOpen} onToggle={onToggleFiles} /> : null}
                           {agents.length > 0 ? (
                             <AgentsToggle

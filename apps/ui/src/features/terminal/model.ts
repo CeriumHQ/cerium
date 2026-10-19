@@ -1,0 +1,81 @@
+import type { TerminalInfo } from "@cerium/rpc";
+
+// What the terminal drawer works out from the terminals a machine lists, and the room it has.
+
+/** The `RPC_VERSION` that brought terminals; an older machine has none to open. */
+export const TERMINAL_VERSION = 4;
+
+/** The drawer's height: remembered between launches, `fallback` until the user has dragged it. */
+export const DRAWER = { key: "cerium:terminalHeight", fallback: 280, min: 120 } as const;
+
+/** What the transcript above the drawer is always left, so the conversation never disappears behind it. */
+const MIN_ABOVE = 240;
+
+export interface DrawerLayout {
+  readonly height: number;
+  readonly max: number;
+}
+
+/**
+ * The drawer's height in a main column `columnHeight` tall, given the height the user last left it at:
+ * never less than `DRAWER.min`, and never so tall that less than `MIN_ABOVE` of the thread remains.
+ */
+export const drawerLayout = (columnHeight: number, saved: number): DrawerLayout => {
+  const max = Math.max(DRAWER.min, columnHeight - MIN_ABOVE);
+  return { height: Math.min(Math.max(saved, DRAWER.min), max), max };
+};
+
+/** A thread's terminals, in the order they opened. */
+export const terminalsOf = (
+  all: ReadonlyArray<TerminalInfo>,
+  threadId: string,
+): ReadonlyArray<TerminalInfo> =>
+  all.filter((terminal) => terminal.threadId === threadId).toSorted((a, b) => a.openedAt - b.openedAt);
+
+/** What each tab says: the shell's name, numbered once a thread has several of the same. */
+export const tabLabels = (terminals: ReadonlyArray<TerminalInfo>): ReadonlyArray<string> => {
+  const seen = new Map<string, number>();
+  const totals = new Map<string, number>();
+  for (const { shell } of terminals) totals.set(shell, (totals.get(shell) ?? 0) + 1);
+  return terminals.map(({ shell }) => {
+    const number = (seen.get(shell) ?? 0) + 1;
+    seen.set(shell, number);
+    return (totals.get(shell) ?? 0) > 1 ? `${shell} ${number}` : shell;
+  });
+};
+
+/**
+ * How a shell's end is told. Windows reports a program that was stopped as a large negative number, so
+ * a code that isn't an ordinary one reads in hex, as Windows documents them.
+ */
+export const exitNote = (code: number | undefined): string => {
+  if (code === undefined || code === 0) return "Exited";
+  if (code < 0 || code > 255) return `Exited with code 0x${(code >>> 0).toString(16).toUpperCase()}`;
+  return `Exited with code ${code}`;
+};
+
+/** What a failed call says to the user. */
+export const messageOf = (error: unknown): string =>
+  typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message
+    : "Something went wrong.";
+
+/** Input split into pieces the backend accepts in one call. */
+export const inputPieces = (data: string, size: number): ReadonlyArray<string> => {
+  const pieces: Array<string> = [];
+  for (let at = 0; at < data.length;) {
+    let end = Math.min(at + size, data.length);
+    // Never between the halves of a character that takes two.
+    const last = data.charCodeAt(end - 1);
+    if (end < data.length && last >= 0xd800 && last <= 0xdbff) end--;
+    pieces.push(data.slice(at, end));
+    at = end;
+  }
+  return pieces;
+};
+
+/** The terminal a thread shows: the one it last showed while it's still there, else the newest. */
+export const shownTerminal = (
+  terminals: ReadonlyArray<TerminalInfo>,
+  chosen: string | undefined,
+): TerminalInfo | undefined => terminals.find((terminal) => terminal.id === chosen) ?? terminals.at(-1);
