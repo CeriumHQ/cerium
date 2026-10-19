@@ -37,7 +37,9 @@ const HELP = `bun run ui <command> [options]
   Steps:  click=Send  rightClick=… doubleClick=… hover=…  wait=Saved  waitGone=Loading  (wait@Saved=10000 ms)
           type=hello (focused field)  type@Message=hello  fill@Message=hello (replaces)  press=Control+K
           scroll=400  scroll@css:.list=-400  drag@Card=Done  sleep=500  navigate=<url>  reload  back
+          down=Card move=@600,400 shot up  (a drag in parts; shot saves the drop preview mid-drag)
           eval=<js>  viewport=390x844@3  upload@css:input[type=file]=a.png,b.png
+          Drags work on pointer-event and native (HTML5) drag and drop alike.
           Targets: visible text or accessible name, css:<selector>, or @x,y; [n] after one picks the nth match.
           A JSON step works too: '{"action":"click","selector":"#go"}'.
   Screenshots (act, open, shot):  --no-shot  --full (whole page)  --crop=<target> (one element)
@@ -242,6 +244,10 @@ const act = async (): Promise<Record<string, unknown>> => {
     let failed: Record<string, unknown> | undefined;
     for (const [index, step] of steps.entries()) {
       try {
+        if (step.action === "shot") {
+          results.push({ step: index + 1, action: step.action, ...(await shoot(page, current())) });
+          continue;
+        }
         results.push({ step: index + 1, action: step.action, ...(await runStep(page, step)) });
         await page.settle();
       } catch (error) {
@@ -251,13 +257,19 @@ const act = async (): Promise<Record<string, unknown>> => {
     }
     save({ ...current(), lastUsed: Date.now() });
     const reported = results.filter((result) => Object.keys(result).length > 2);
-    return {
+    const report = {
       ok: failed === undefined,
       ran: results.length,
       ...(reported.length > 0 ? { results: reported } : {}),
       ...(failed === undefined ? {} : { failed }),
       ...(await location(page)),
       ...(await shoot(page, current())),
+    };
+    // A drag cannot span calls: the next one connects afresh, without the native drag's data.
+    const released = page.holding && (await page.up().then(() => true));
+    return {
+      ...report,
+      ...(released ? { released: "The button was still down; let go after the screenshot." } : {}),
       console: page.drainConsole(),
     };
   } finally {

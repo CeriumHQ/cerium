@@ -75,4 +75,49 @@ describe.skipIf(browser === undefined)("a driven page", () => {
       }
     },
   );
+
+  it(
+    "drags with pointer events and with native drag and drop, and holds a drag midway",
+    { timeout: 60_000 },
+    async () => {
+      const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
+      try {
+        const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
+        await page.navigate(`data:text/html,${encodeURIComponent(DRAGS)}`);
+        const log = () => page.evaluate<string>("document.getElementById('log').textContent");
+
+        await page.drag({ text: "Native card" }, { text: "Drop here" });
+        assert.strictEqual(await log(), "dropped native");
+
+        await page.down({ text: "Pointer card" });
+        await page.move({ text: "Drop here" });
+        assert.isTrue(page.holding);
+        assert.strictEqual(await log(), "moving");
+        await page.up();
+        assert.isFalse(page.holding);
+        assert.strictEqual(await log(), "released over Drop here");
+        page.close();
+      } finally {
+        launched.close();
+      }
+    },
+  );
 });
+
+const DRAGS = `<!doctype html><title>Drags</title>
+<div id="native" draggable="true" style="width:120px;height:40px">Native card</div>
+<div id="pointer" style="width:120px;height:40px;margin-top:20px;touch-action:none">Pointer card</div>
+<div id="zone" style="width:200px;height:100px;margin:40px 0 0 300px">Drop here</div>
+<p id="log"></p>
+<script>
+  const log = (text) => (document.getElementById("log").textContent = text);
+  const zone = document.getElementById("zone");
+  document.getElementById("native").addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", "native"));
+  zone.addEventListener("dragover", (event) => event.preventDefault());
+  zone.addEventListener("drop", (event) => log("dropped " + event.dataTransfer.getData("text/plain")));
+  const pointer = document.getElementById("pointer");
+  pointer.addEventListener("pointerdown", (event) => pointer.setPointerCapture(event.pointerId));
+  pointer.addEventListener("pointermove", (event) => { if (event.buttons) log("moving"); });
+  pointer.addEventListener("pointerup", (event) =>
+    log("released over " + document.elementFromPoint(event.clientX, event.clientY).textContent));
+</script>`;

@@ -24,6 +24,9 @@ describe("command-line steps", () => {
     assert.deepStrictEqual(parseStep("drag@Card=Done"), [
       { action: "drag", target: { text: "Card" }, to: { text: "Done" } },
     ]);
+    assert.deepStrictEqual(parseStep("down=Card"), [{ action: "down", target: { text: "Card" } }]);
+    assert.deepStrictEqual(parseStep("move=@600,400"), [{ action: "move", target: { x: 600, y: 400 } }]);
+    assert.deepStrictEqual(parseStep("up"), [{ action: "up", target: undefined, value: undefined }]);
     assert.deepStrictEqual(parseStep("reload"), [{ action: "reload", target: undefined, value: undefined }]);
     assert.throws(() => parseStep("tap=Send"), 'Unknown step "tap=Send"');
     assert.throws(() => parseStep("click"), "click needs a target");

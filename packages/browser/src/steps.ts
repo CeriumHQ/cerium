@@ -13,6 +13,10 @@ export type Action =
   | "press"
   | "scroll"
   | "drag"
+  | "down"
+  | "move"
+  | "up"
+  | "shot"
   | "wait"
   | "waitGone"
   | "sleep"
@@ -33,6 +37,10 @@ const ACTIONS: ReadonlyArray<Action> = [
   "press",
   "scroll",
   "drag",
+  "down",
+  "move",
+  "up",
+  "shot",
   "wait",
   "waitGone",
   "sleep",
@@ -50,6 +58,8 @@ const TARGETED: ReadonlySet<Action> = new Set([
   "rightClick",
   "doubleClick",
   "hover",
+  "down",
+  "move",
   "wait",
   "waitGone",
 ]);
@@ -186,6 +196,16 @@ export const runStep = async (page: Page, step: Step): Promise<Record<string, un
     }
     case "drag":
       await page.drag(target(), need(step, step.to, "where to drop"));
+      return {};
+    case "down":
+      return { at: (await page.down(target())).label };
+    case "move":
+      return { at: (await page.move(target())).label };
+    case "up":
+      await page.up();
+      return {};
+    case "shot":
+      // `bun run ui act` saves this screenshot itself, between the steps around it.
       return {};
     case "wait":
     case "waitGone":

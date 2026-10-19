@@ -189,8 +189,18 @@ export const parseKeys = (combo: string): KeyPress => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The left button held down between `down` and `up`, and the native drag it started, if any. */
+interface Held {
+  x: number;
+  y: number;
+  native?: unknown;
+  entered: boolean;
+  readonly stop: () => void;
+}
+
 export class Page {
   private readonly console: Array<ConsoleEntry> = [];
+  private held: Held | undefined;
   readonly cdp: Cdp;
 
   private constructor(cdp: Cdp) {
@@ -383,35 +393,95 @@ export class Page {
     return found;
   }
 
-  async drag(from: Target, to: Target): Promise<void> {
-    const start = await this.find(from);
-    const end = await this.find(to);
-    await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: start.x, y: start.y });
+  /** Whether a `down` is still waiting for its `up`. */
+  get holding(): boolean {
+    return this.held !== undefined;
+  }
+
+  /**
+   * Presses the left button on the target and keeps it down. A native (HTML5) drag the page starts
+   * is intercepted, so `move` and `up` can carry it to a drop with its data: headless input alone
+   * never runs one.
+   */
+  async down(target: Target): Promise<Found> {
+    if (this.held !== undefined) throw new CdpError("The button is already down; `up` first.");
+    const found = await this.find(target);
+    await this.cdp.send("Input.setInterceptDrags", { enabled: true });
+    const held: Held = {
+      x: found.x,
+      y: found.y,
+      entered: false,
+      stop: this.cdp.on("Input.dragIntercepted", (event) => (held.native = event.data)),
+    };
+    this.held = held;
+    await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: found.x, y: found.y });
     await this.cdp.send("Input.dispatchMouseEvent", {
       type: "mousePressed",
-      x: start.x,
-      y: start.y,
+      x: found.x,
+      y: found.y,
       button: "left",
       buttons: 1,
       clickCount: 1,
     });
+    return found;
+  }
+
+  /** Moves the held button to the target in small steps, over whatever the page shows on the way. */
+  async move(target: Target): Promise<Found> {
+    const held = this.held;
+    if (held === undefined) throw new CdpError("Nothing is held; `down` first.");
+    const end = await this.find(target);
     for (let step = 1; step <= 10; step++) {
       await this.cdp.send("Input.dispatchMouseEvent", {
         type: "mouseMoved",
-        x: start.x + ((end.x - start.x) * step) / 10,
-        y: start.y + ((end.y - start.y) * step) / 10,
+        x: held.x + ((end.x - held.x) * step) / 10,
+        y: held.y + ((end.y - held.y) * step) / 10,
         button: "left",
         buttons: 1,
       });
     }
+    held.x = end.x;
+    held.y = end.y;
+    // The page answers the first moves with dragstart; its interception arrives a moment later.
+    if (held.native === undefined) await sleep(50);
+    if (held.native !== undefined) {
+      const at = { x: end.x, y: end.y, data: held.native };
+      if (!held.entered) await this.cdp.send("Input.dispatchDragEvent", { type: "dragEnter", ...at });
+      held.entered = true;
+      await this.cdp.send("Input.dispatchDragEvent", { type: "dragOver", ...at });
+    }
+    return end;
+  }
+
+  /** Lets go where the pointer is: the drop of a native drag, a plain release otherwise. */
+  async up(): Promise<void> {
+    const held = this.held;
+    if (held === undefined) throw new CdpError("Nothing is held; `down` first.");
+    this.held = undefined;
+    held.stop();
+    if (held.native !== undefined) {
+      await this.cdp.send("Input.dispatchDragEvent", {
+        type: "drop",
+        x: held.x,
+        y: held.y,
+        data: held.native,
+      });
+    }
     await this.cdp.send("Input.dispatchMouseEvent", {
       type: "mouseReleased",
-      x: end.x,
-      y: end.y,
+      x: held.x,
+      y: held.y,
       button: "left",
       buttons: 0,
       clickCount: 1,
     });
+    await this.cdp.send("Input.setInterceptDrags", { enabled: false });
+  }
+
+  async drag(from: Target, to: Target): Promise<void> {
+    await this.down(from);
+    await this.move(to);
+    await this.up();
   }
 
   /** Types into the focused element, or clicks `into` first to focus it. */
