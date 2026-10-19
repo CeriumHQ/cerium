@@ -5,6 +5,7 @@ import {
   type AgentId,
   type EventPayload,
   type ThreadId,
+  type ThreadMode,
 } from "@cerium/protocol";
 import { and, asc, count, desc, eq, gt, inArray, max, notInArray, sql } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
@@ -37,7 +38,9 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
   cause: Schema.Defect(),
 }) {}
 
-export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "effort" | "providerSessionId">> & {
+/** `effort: null` clears the effort, for a model its harness offers no effort setting for. */
+export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "providerSessionId">> & {
+  readonly effort?: AgentInfo["effort"] | null;
   readonly updatedAt: number;
 };
 
@@ -53,6 +56,47 @@ export interface StoredProject {
   readonly usedAt: number;
 }
 
+/** A thread whose messages match a search, and the passage around its best match in pieces. */
+export interface MessageMatch {
+  readonly threadId: ThreadId;
+  /** The matched words are the pieces marked `match`. */
+  readonly passage: ReadonlyArray<{ readonly text: string; readonly match: boolean }>;
+}
+
+/** How many words of a search count; the rest are ignored. */
+const SEARCH_WORDS = 8;
+
+/**
+ * The full-text query for what the user typed: every word must start a word in the message, so
+ * results narrow as they type. Each is quoted, so punctuation and the query syntax read as plain
+ * text. None when nothing typed can match a word.
+ */
+export const searchExpression = (typed: string): string | undefined => {
+  const words = typed
+    // A control character, such as a pasted NUL, would end the quoted word early.
+    .replaceAll(/\p{C}/gu, " ")
+    .split(/\s+/u)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word))
+    .slice(0, SEARCH_WORDS);
+  return words.length === 0 ? undefined : words.map((word) => `"${word.replaceAll('"', '""')}"*`).join(" ");
+};
+
+// What `snippet()` puts around each matched word; neither turns up in typed text.
+const MATCH_START = "\u0001";
+const MATCH_END = "\u0002";
+
+/** A snippet split into plain and matched pieces. */
+const passageOf = (snippet: string): MessageMatch["passage"] =>
+  snippet
+    // oxlint-disable-next-line no-control-regex -- the markers are control characters on purpose
+    .split(/(\u0001[^\u0002]*\u0002)/u)
+    .filter((piece) => piece !== "")
+    .map((piece) =>
+      piece.startsWith(MATCH_START)
+        ? { text: piece.slice(1, -1), match: true }
+        : { text: piece.replaceAll(MATCH_END, ""), match: false },
+    );
+
 export class Store extends Context.Service<
   Store,
   {
@@ -62,6 +106,14 @@ export class Store extends Context.Service<
     updateThread(id: ThreadId, patch: ThreadPatch): Effect.Effect<void, StoreError>;
     /** Deletes a thread with its agents and events, atomically. */
     deleteThread(id: ThreadId): Effect.Effect<void, StoreError>;
+    /**
+     * The threads of one mode whose messages, the user's or the agents', hold every word of `typed`
+     * (`searchExpression`), best match first.
+     */
+    searchMessages(
+      typed: string,
+      options: { readonly mode: ThreadMode; readonly limit: number },
+    ): Effect.Effect<ReadonlyArray<MessageMatch>, StoreError>;
     createAgent(agent: AgentInfo): Effect.Effect<void, StoreError>;
     updateAgent(id: AgentId, patch: AgentPatch): Effect.Effect<void, StoreError>;
     getAgent(id: AgentId): Effect.Effect<Option.Option<AgentInfo>, StoreError>;
@@ -169,6 +221,36 @@ export class Store extends Context.Service<
                 db.delete(threads).where(eq(threads.id, id)),
               ]),
             ),
+          // `message_search` is kept by triggers on the events and threads tables (migration 0003).
+          searchMessages: (typed, { mode, limit }) => {
+            const expression = searchExpression(typed);
+            if (expression === undefined) return Effect.succeed([]);
+            return query("Could not search threads", async () => {
+              // Each thread's best-ranked message, then the passage around the match in each.
+              const best = await db.values<[number, string, number]>(sql`
+                SELECT s.rowid, s.thread_id, min(s.rank) AS score
+                FROM message_search AS s JOIN threads AS t ON t.id = s.thread_id
+                WHERE message_search MATCH ${expression} AND t.mode = ${mode}
+                GROUP BY s.thread_id ORDER BY score LIMIT ${limit}`);
+              if (best.length === 0) return [];
+              // In one query: FTS5 evaluates the match afresh for every query, which a common prefix
+              // makes slow, and the backend waits on each.
+              const snippets = await db.values<[number, string]>(sql`
+                SELECT rowid, snippet(message_search, 0, ${MATCH_START}, ${MATCH_END}, '…', 12)
+                FROM message_search WHERE message_search MATCH ${expression}
+                AND rowid IN (${sql.join(
+                  best.map(([rowid]) => sql`${rowid}`),
+                  sql`, `,
+                )})`);
+              const passages = new Map(snippets);
+              return best.flatMap(([rowid, threadId]) => {
+                const snippet = passages.get(rowid);
+                return snippet === undefined
+                  ? []
+                  : [{ threadId: threadId as ThreadId, passage: passageOf(snippet) }];
+              });
+            });
+          },
           createAgent: (agent) =>
             query("Could not create the agent", () =>
               db.insert(agents).values({

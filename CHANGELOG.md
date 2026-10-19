@@ -134,6 +134,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Harnesses settings link a missing harness's install page, copy its sign-in command and where each harness is installed in one click (long paths shortened in the middle), and say when you last checked them.
 - UI: Settings → Notifications sends a test notification, to see that they reach this browser.
 - UI: Settings → Updates links to what's new in a version on offer.
+- `@cerium/store`: a full-text index of the words in every message, yours and the agents', built for existing threads by its migration, which finds a mode's threads by what was said in them, with the passage around each match.
 
 ### Changed
 

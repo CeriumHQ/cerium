@@ -95,6 +95,87 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("finds threads by the words in their messages, the user's and the agents'", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const chat: ThreadInfo = {
+          id: "thr_chat" as ThreadId,
+          title: "Q",
+          mode: "chat",
+          createdAt: 3,
+          updatedAt: 3,
+        };
+        const chatLead: AgentInfo = { ...lead, id: "agt_chat" as AgentId, threadId: chat.id };
+        yield* store.createThread(thread);
+        yield* store.createThread(chat);
+        yield* store.createAgent(lead);
+        yield* store.createAgent(chatLead);
+        yield* store.appendEvents([
+          event(0, "The flaky checkout test fails on Windows"),
+          {
+            ...event(1),
+            payload: {
+              _tag: "TurnInput",
+              items: [{ _tag: "FromUser", text: "Please rerun the checkout suite" }],
+            },
+          },
+          // A child agent's report back is not the user's message and is not searched.
+          {
+            ...event(2),
+            payload: {
+              _tag: "TurnInput",
+              items: [
+                {
+                  _tag: "ChildFinishedTurn",
+                  agentId: "agt_child" as AgentId,
+                  role: "reviewer",
+                  text: "checkout looks fine",
+                },
+              ],
+            },
+          },
+          { ...event(3, "Checkout is also slow"), threadId: chat.id, agentId: chatLead.id },
+        ]);
+
+        const work = yield* store.searchMessages("checkout", { mode: "work", limit: 10 });
+        assert.deepStrictEqual(
+          work.map((match) => match.threadId),
+          [thread.id],
+        );
+        assert.isTrue(
+          work[0]?.passage.some((piece) => piece.match && piece.text.toLowerCase() === "checkout"),
+        );
+        // Words match as prefixes and all of them must be there, so results narrow as the user types.
+        assert.strictEqual((yield* store.searchMessages("check", { mode: "work", limit: 10 })).length, 1);
+        assert.strictEqual(
+          (yield* store.searchMessages("checkout win", { mode: "work", limit: 10 })).length,
+          1,
+        );
+        assert.strictEqual(
+          (yield* store.searchMessages("checkout linux", { mode: "work", limit: 10 })).length,
+          0,
+        );
+        // Each mode searches its own threads, and query syntax typed as text is only text.
+        assert.deepStrictEqual(
+          (yield* store.searchMessages("checkout", { mode: "chat", limit: 10 })).map(
+            (match) => match.threadId,
+          ),
+          [chat.id],
+        );
+        assert.deepStrictEqual(yield* store.searchMessages('"AND* NOT (', { mode: "work", limit: 10 }), []);
+        assert.deepStrictEqual(yield* store.searchMessages("  ", { mode: "work", limit: 10 }), []);
+        assert.strictEqual(
+          (yield* store.searchMessages("checkout\u0000win", { mode: "work", limit: 10 })).length,
+          1,
+        );
+
+        yield* store.deleteThread(thread.id);
+        assert.deepStrictEqual(yield* store.searchMessages("checkout", { mode: "work", limit: 10 }), []);
+      }),
+    ),
+  );
+
   it.effect("creates, updates and lists agents", () =>
     withStore(
       Effect.gen(function* () {
@@ -123,6 +204,14 @@ describe("Store", () => {
         );
         assert.deepStrictEqual(yield* store.getAgent(child.id), Option.some(child));
         assert.strictEqual(Option.getOrThrow(yield* store.getAgent(lead.id)).providerSessionId, "s-1");
+
+        // Switching to a model without an effort setting clears the effort.
+        yield* store.updateAgent(lead.id, { model: "claude-sonnet-5-5", effort: "low", updatedAt: 10 });
+        assert.strictEqual(Option.getOrThrow(yield* store.getAgent(lead.id)).effort, "low");
+        yield* store.updateAgent(lead.id, { model: "claude-haiku-4-5", effort: null, updatedAt: 11 });
+        const switched = Option.getOrThrow(yield* store.getAgent(lead.id));
+        assert.strictEqual(switched.model, "claude-haiku-4-5");
+        assert.isFalse("effort" in switched);
 
         const other: AgentInfo = { ...lead, id: "agt_other" as AgentId, threadId: "thr_2" as ThreadId };
         yield* store.createThread({ ...thread, id: other.threadId });
