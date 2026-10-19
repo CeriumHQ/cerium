@@ -47,7 +47,7 @@ import {
 import { Base64 } from "effect/encoding";
 
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
-import { renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
+import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { Adapters, BusEndpoint, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
 import { UserSettings } from "./settings.ts";
@@ -149,11 +149,14 @@ const isEphemeral = (payload: EventPayload) =>
 
 /**
  * Read-only agents never wait on the user: each harness already keeps them from
- * writing, so Cerium approves what they ask itself. Tools of the user's own MCP servers still ask,
- * since those can change things outside Cerium; every adapter names them `mcp__<server>…`.
+ * writing, so Cerium approves what they ask itself. Tools of the user's own MCP servers still ask (the
+ * user, or a child's lead), since those can change things outside Cerium; every adapter names them
+ * `mcp__<server>…`.
  */
 const approvesItself = (access: AccessMode, toolName: string) =>
   access === "readOnly" && !toolName.startsWith("mcp__");
+
+type PermissionRequest = Extract<EventPayload, { readonly _tag: "PermissionRequested" }>;
 
 const unavailable = (error: StoreError) =>
   new OrchestratorError({ reason: "unavailable", message: error.message });
@@ -190,6 +193,16 @@ export class Orchestrator extends Context.Service<
       response: QuestionResponse,
     ): Effect.Effect<void, OrchestratorError>;
     resolveSpawnApproval(requestId: string, approval: SpawnApproval): Effect.Effect<void, OrchestratorError>;
+    /**
+     * A lead's answer to a permission request of one of its children, which Cerium hands the lead
+     * instead of the user. Refused once the request is closed or when the child isn't the caller's.
+     */
+    answerChildPermission(
+      callerId: AgentId,
+      childId: AgentId,
+      requestId: string,
+      decision: PermissionDecision,
+    ): Effect.Effect<void, OrchestratorError>;
     /** Interrupts the agent's current turn; children follow when configured or asked. */
     interruptAgent(
       agentId: AgentId,
@@ -244,8 +257,8 @@ export class Orchestrator extends Context.Service<
     /** Every persisted event in a thread, in order. */
     threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
     /**
-     * Whether the thread waits for the user: an agent's permission request, its lead's request to start
-     * an agent outside the catalog, or a question an agent asked.
+     * Whether the thread waits for the user: its lead's permission request (a child's goes to the lead),
+     * the lead's request to start an agent outside the catalog, or a question an agent asked.
      */
     awaitingApproval(threadId: ThreadId): boolean;
   }
@@ -273,6 +286,8 @@ export class Orchestrator extends Context.Service<
       const sentMessages = new Map<string, Array<number>>();
       /** Permission requests each agent is waiting on. */
       const pendingPermissions = new Map<AgentId, Set<string>>();
+      /** Permission requests each child is waiting on its lead to answer; the user never sees them. */
+      const leadRequests = new Map<AgentId, Set<string>>();
       /** The questions each agent has put to the user and not had answered, by request id. */
       const openQuestions = new Map<AgentId, Map<string, OpenQuestion>>();
       /** Each thread's live advisor. */
@@ -422,24 +437,82 @@ export class Orchestrator extends Context.Service<
           { discard: true },
         );
 
+      const closeLeadRequest = (childId: AgentId, requestId: string) => {
+        const open = leadRequests.get(childId);
+        const found = open?.delete(requestId) ?? false;
+        if (open?.size === 0) leadRequests.delete(childId);
+        return found;
+      };
+
+      /**
+       * Hands a child's permission request to its lead, which answers it with `answer_permission`. A
+       * lead that isn't running can't, so the request is denied rather than left waiting for good.
+       */
+      const askLead = (child: Runtime, session: AgentSession, request: PermissionRequest) =>
+        Effect.gen(function* () {
+          const lead = child.info.parentId === undefined ? undefined : runtimes.get(child.info.parentId);
+          if (lead === undefined || lead.ended) {
+            return yield* session.respondToPermission(request.requestId, {
+              decision: "deny",
+              scope: "once",
+              message: "Your lead isn't running to approve this, so it was denied.",
+            });
+          }
+          const open = leadRequests.get(child.info.id) ?? new Set<string>();
+          leadRequests.set(child.info.id, open.add(request.requestId));
+          yield* deliver(lead.info.id, { _tag: "SystemNotice", text: permissionNotice(child.info, request) });
+        });
+
+      /** Denies what a lead's children wait on it to answer, once the lead can no longer answer. */
+      const releaseLeadRequests = (leadId: AgentId) =>
+        Effect.forEach(
+          childrenOf(leadId),
+          (child) => {
+            const waiting = [...(leadRequests.get(child.info.id) ?? [])];
+            leadRequests.delete(child.info.id);
+            const session = child.session;
+            if (session === undefined) return Effect.void;
+            return Effect.forEach(
+              waiting,
+              (requestId) =>
+                session.respondToPermission(requestId, {
+                  decision: "deny",
+                  scope: "once",
+                  message: "Your lead stopped before it answered this request, so it was denied.",
+                }),
+              { discard: true },
+            );
+          },
+          { discard: true },
+        );
+
       const consumeEvents = (rt: Runtime, session: AgentSession) => {
-        /** Requests Cerium approved itself: nobody was asked, so neither end is recorded or shown. */
-        const approvedByCerium = new Set<string>();
+        /**
+         * Requests the user never sees, so neither end is recorded: those Cerium approved itself, and a
+         * child's, which its lead answers.
+         */
+        const unseen = new Set<string>();
         return session.events.pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
               const { payload } = event;
-              if (
-                payload._tag === "PermissionRequested" &&
-                approvesItself(rt.info.access, payload.toolName)
-              ) {
-                approvedByCerium.add(payload.requestId);
-                return yield* session.respondToPermission(payload.requestId, {
-                  decision: "allow",
-                  scope: "once",
-                });
+              if (payload._tag === "PermissionRequested") {
+                if (approvesItself(rt.info.access, payload.toolName)) {
+                  unseen.add(payload.requestId);
+                  return yield* session.respondToPermission(payload.requestId, {
+                    decision: "allow",
+                    scope: "once",
+                  });
+                }
+                if (rt.info.parentId !== undefined) {
+                  unseen.add(payload.requestId);
+                  return yield* askLead(rt, session, payload);
+                }
               }
-              if (payload._tag === "PermissionResolved" && approvedByCerium.delete(payload.requestId)) return;
+              if (payload._tag === "PermissionResolved" && unseen.delete(payload.requestId)) {
+                closeLeadRequest(rt.info.id, payload.requestId);
+                return;
+              }
               yield* emit(rt, payload, event.raw);
               switch (payload._tag) {
                 case "SessionStarted": {
@@ -473,6 +546,7 @@ export class Orchestrator extends Context.Service<
             Effect.gen(function* () {
               rt.ended = true;
               yield* expireQuestions(rt).pipe(Effect.ignore);
+              if (rt.info.parentId === undefined) yield* releaseLeadRequests(rt.info.id);
               yield* finishTurn(rt);
               if (rt.info.state !== "stopped") yield* setState(rt, "failed").pipe(Effect.ignore);
             }),
@@ -910,6 +984,7 @@ export class Orchestrator extends Context.Service<
           yield* expireQuestions(rt).pipe(Effect.ignore);
           runtimes.delete(rt.info.id);
           pendingPermissions.delete(rt.info.id);
+          leadRequests.delete(rt.info.id);
           yield* setState(rt, "stopped").pipe(Effect.ignore);
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
@@ -1335,6 +1410,24 @@ export class Orchestrator extends Context.Service<
             _tag: "SystemNotice",
             text: `The user approved your spawn request: agent ${childId} (${pending.request.role}) is running ${target.model}.`,
           });
+        }),
+
+        answerChildPermission: Effect.fn("Orchestrator.answerChildPermission")(function* (
+          callerId: AgentId,
+          childId: AgentId,
+          requestId: string,
+          decision: PermissionDecision,
+        ) {
+          const child = yield* runtime(childId);
+          if (child.info.parentId !== callerId) {
+            return yield* notAllowed(`Agent ${childId} is not your child.`);
+          }
+          if (!closeLeadRequest(childId, requestId)) {
+            return yield* notFound(
+              `Agent ${childId} isn't waiting on request ${requestId}: it was answered, or the agent's turn ended.`,
+            );
+          }
+          yield* (yield* sessionOf(child)).respondToPermission(requestId, decision);
         }),
 
         interruptAgent: Effect.fn("Orchestrator.interruptAgent")(function* (

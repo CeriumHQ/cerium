@@ -115,6 +115,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
           "list_threads",
           "send_message",
           "kill_agent",
+          "answer_permission",
           "ask_advisor",
           "ask_user",
           "artifact_guide",
@@ -146,6 +147,14 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
       const refused = yield* childClient.callTool("spawn_agent", { role: "x", model: "scout", prompt: "no" });
       assert.isTrue(refused?.result?.isError);
       assert.include(JSON.stringify(refused?.result?.content), "Only a thread's lead can spawn agents.");
+
+      const unasked = yield* leadClient.callTool("answer_permission", {
+        agentId: childId,
+        requestId: "p9",
+        decision: "allowForSession",
+      });
+      assert.isTrue(unasked?.result?.isError);
+      assert.include(JSON.stringify(unasked?.result?.content), "isn't waiting on request p9");
 
       const anonymous = yield* leadClient.callTool("list_agents", {}, { authorization: "Bearer forged" });
       assert.isTrue(anonymous?.result?.isError);

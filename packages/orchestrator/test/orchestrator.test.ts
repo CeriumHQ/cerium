@@ -656,6 +656,89 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([web.adapter, mcp.adapter])), Effect.scoped);
   });
 
+  it.live("hands a child's permission requests to its lead, never the user", () => {
+    const leads = makeFakeAdapter("claude");
+    const children = makeFakeAdapter("codex", { askPermission: true });
+    const coder: CatalogEntry = { alias: "coder", provider: "codex", model: "gpt", description: "Code" };
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { seen, waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startWorkThread;
+      const outcome = yield* orchestrator.spawn(lead.id, { role: "coder", model: "coder", prompt: "fix it" });
+      const childId = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
+
+      const notice = yield* waitFor((events) =>
+        turnInputs(events, lead.id)
+          .flat()
+          .find((item) => item._tag === "SystemNotice" && item.text.includes("answer_permission")),
+      );
+      const text = notice._tag === "SystemNotice" ? notice.text : "";
+      assert.include(text, childId);
+      assert.include(text, "requestId p1");
+      assert.include(text, "Bash: Run tests");
+      assert.isFalse(orchestrator.awaitingApproval(thread.id), "the user isn't asked");
+
+      const other = yield* startWorkThread;
+      const stranger = yield* Effect.flip(
+        orchestrator.answerChildPermission(other.lead.id, childId, "p1", {
+          decision: "allow",
+          scope: "once",
+        }),
+      );
+      assert.strictEqual(stranger.reason, "notAllowed");
+
+      yield* orchestrator.answerChildPermission(lead.id, childId, "p1", {
+        decision: "deny",
+        scope: "once",
+        message: "Not now",
+      });
+      yield* waitFor((events) =>
+        turnInputs(events, lead.id)
+          .flat()
+          .find((item) => item._tag === "ChildFinishedTurn" && item.agentId === childId),
+      );
+      const again = yield* Effect.flip(
+        orchestrator.answerChildPermission(lead.id, childId, "p1", { decision: "allow", scope: "once" }),
+      );
+      assert.strictEqual(again.reason, "notFound");
+
+      const shown = [...seen, ...(yield* orchestrator.threadEvents(thread.id))].map(
+        (event) => event.payload._tag,
+      );
+      assert.notInclude(shown, "PermissionRequested");
+      assert.notInclude(shown, "PermissionResolved");
+    }).pipe(
+      Effect.provide(testLayer([leads.adapter, children.adapter], { catalog: [coder] })),
+      Effect.scoped,
+    );
+  });
+
+  it.live("denies what a child waits on its lead for once the lead stops", () => {
+    const leads = makeFakeAdapter("claude");
+    const children = makeFakeAdapter("codex", { askPermission: true });
+    const coder: CatalogEntry = { alias: "coder", provider: "codex", model: "gpt", description: "Code" };
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      const outcome = yield* orchestrator.spawn(lead.id, { role: "coder", model: "coder", prompt: "fix it" });
+      const childId = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
+      yield* waitFor((events) =>
+        turnInputs(events, lead.id)
+          .flat()
+          .find((item) => item._tag === "SystemNotice" && item.text.includes("answer_permission")),
+      );
+
+      yield* orchestrator.stopAgent(lead.id);
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === childId && event.payload._tag === "TurnCompleted"),
+      );
+    }).pipe(
+      Effect.provide(testLayer([leads.adapter, children.adapter], { catalog: [coder] })),
+      Effect.scoped,
+    );
+  });
+
   it.live("tells the lead when the user stops one of its agents", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {

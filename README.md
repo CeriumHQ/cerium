@@ -74,7 +74,7 @@ it, all in one thread you can follow, steer and stop.
     <td valign="top">
       <h3>🛡️ Access you control</h3>
       Read only, ask first, accept edits or full access, per agent. A child's access can only narrow
-      its lead's. Approvals arrive as cards with diffs, and children's requests gather in a tray.
+      its lead's. Your leads' approvals arrive as cards with diffs; each lead answers its children's.
     </td>
     <td valign="top">
       <h3>🔍 Agents panel</h3>

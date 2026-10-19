@@ -110,6 +110,26 @@ export const KillAgent = Tool.make("kill_agent", {
   failure: OrchestratorError,
 });
 
+export const AnswerPermission = Tool.make("answer_permission", {
+  description:
+    "Answer a permission request from one of your child agents, which Cerium hands you as a [Cerium] message" +
+    " instead of asking the user. The child waits until you answer. Leads only.",
+  parameters: Schema.Struct({
+    agentId: AgentId,
+    requestId: Schema.NonEmptyString,
+    decision: Schema.Literals(["allow", "allowForSession", "deny"]).annotate({
+      description:
+        "allow: this request once. allowForSession: this and requests like it for the rest of the child's" +
+        " session. deny: refuse it.",
+    }),
+    reason: Schema.optionalKey(Schema.String).annotate({
+      description: "When denying: why, and what to do instead. The child reads it.",
+    }),
+  }),
+  success: Schema.Struct({ answered: Schema.Boolean }),
+  failure: OrchestratorError,
+});
+
 export const AskAdvisor = Tool.make("ask_advisor", {
   description:
     "Ask the user's advisor, a model they chose that answers questions and does no work, when you are stuck," +
@@ -195,6 +215,7 @@ export const BusToolkit = Toolkit.make(
   ListThreads,
   SendMessage,
   KillAgent,
+  AnswerPermission,
   AskAdvisor,
   AskUser,
   ArtifactGuide,
@@ -287,6 +308,20 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
       kill_agent: Effect.fn("Bus.kill_agent")(function* ({ agentId }) {
         yield* orchestrator.killChild(yield* caller, agentId);
         return { stopped: true };
+      }),
+
+      answer_permission: Effect.fn("Bus.answer_permission")(function* ({
+        agentId,
+        requestId,
+        decision,
+        reason,
+      }) {
+        yield* orchestrator.answerChildPermission(yield* caller, agentId, requestId, {
+          decision: decision === "deny" ? "deny" : "allow",
+          scope: decision === "allowForSession" ? "session" : "once",
+          ...(decision === "deny" && reason?.trim() ? { message: reason.trim() } : {}),
+        });
+        return { answered: true };
       }),
 
       ask_advisor: Effect.fn("Bus.ask_advisor")(function* ({ question }) {

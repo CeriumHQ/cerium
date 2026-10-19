@@ -34,6 +34,39 @@ const renderItem = (item: InputItem): string => {
   }
 };
 
+/** How much of a request's input a lead is shown; the summary says what it does. */
+const MAX_REQUEST_INPUT = 2000;
+
+const requestInput = (input: unknown): string | undefined => {
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(input);
+  } catch {
+    text = String(input);
+  }
+  if (text === undefined || text === "{}" || text === "null") return undefined;
+  return text.length <= MAX_REQUEST_INPUT ? text : `${text.slice(0, MAX_REQUEST_INPUT)}…`;
+};
+
+/** A child's permission request, handed to its lead to answer instead of the user. */
+export const permissionNotice = (
+  child: AgentInfo,
+  request: {
+    readonly requestId: string;
+    readonly toolName: string;
+    readonly summary: string;
+    readonly input: unknown;
+  },
+): string => {
+  const input = requestInput(request.input);
+  return [
+    `Agent ${child.id} (${child.role}) asks to use ${request.toolName}: ${request.summary}`,
+    ...(input === undefined ? [] : [`Input: ${input}`]),
+    `Answer it with \`answer_permission\` (agentId ${child.id}, requestId ${request.requestId});` +
+      " the user won't see it, and the agent waits until you answer.",
+  ].join("\n");
+};
+
 /** One turn's input: the batch rendered in arrival order. */
 export const renderTurn = (items: ReadonlyArray<InputItem>): string => items.map(renderItem).join("\n\n");
 
@@ -94,8 +127,11 @@ const together = (agent: AgentInfo) => {
           "- A child's `access` is `readOnly` (reads and searches only), `ask` (asks the user before edits and" +
             " commands), `acceptEdits` (edits freely, asks before commands), `auto` (its harness's own reviewer" +
             " approves or refuses each step) or `fullAccess`. It never gets more than yours, and in a chat thread" +
-            " children are read-only. A child's approvals go to the user, not to you, so a child waiting on one" +
-            " just looks busy.",
+            " children are read-only.",
+          `- A child's permission requests come to you, not the user, as ${PREFIX} messages: answer each with` +
+            " `answer_permission`. Allow what serves the task you gave it and stays within what the user asked of" +
+            " you; deny the rest with a reason it can act on. The child waits until you answer, so answer before" +
+            " starting long work of your own.",
         ]
       : [
           "- Ask your lead with `send_message` when you are blocked on a question or a decision that is the lead's" +
@@ -130,7 +166,10 @@ const asking = (agent: AgentInfo, busServer: string) => [
     " turn after asking, or carry on with work that doesn't depend on it.",
   "Offer two to four options with a short description each, your recommendation first, and put related" +
     " questions in one call. Don't ask what the code, the docs or a quick check can tell you, and don't" +
-    " ask permission for what the user already asked for: Cerium asks them to approve commands and edits itself.",
+    " ask permission for what the user already asked for: " +
+    (agent.parentId === undefined
+      ? "Cerium asks them to approve commands and edits itself."
+      : "your lead approves your commands and edits."),
   ...(agent.parentId === undefined
     ? ["The questions of agents you spawn go to the user directly, not to you."]
     : []),
