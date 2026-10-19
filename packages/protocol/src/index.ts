@@ -9,4 +9,5 @@ export * from "./orchestration.ts";
 export * from "./push.ts";
 export * from "./settings.ts";
 export * from "./sync.ts";
+export * from "./todos.ts";
 export * from "./workspace.ts";

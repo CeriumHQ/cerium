@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Schema } from "effect";
 
-import { AgentEvent, CapabilityManifest } from "../src/index.ts";
+import { AgentEvent, answerText, CapabilityManifest } from "../src/index.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(AgentEvent);
 const encodeEvent = Schema.encodeEffect(AgentEvent);
@@ -33,6 +33,25 @@ describe("AgentEvent", () => {
         { _tag: "FileChanged", path: "a.ts", change: "modified" },
         { _tag: "PermissionRequested", requestId: "p1", toolName: "Bash", summary: "Run tests", input: {} },
         { _tag: "PermissionResolved", requestId: "p1", decision: "allow", scope: "once" },
+        {
+          _tag: "QuestionAsked",
+          requestId: "q1",
+          questions: [
+            {
+              header: "Library",
+              question: "Which library should we use?",
+              options: [{ label: "date-fns", description: "Small and tree-shakable" }, { label: "Luxon" }],
+              multiSelect: false,
+              allowOther: true,
+            },
+          ],
+        },
+        {
+          _tag: "QuestionResolved",
+          requestId: "q1",
+          outcome: "answered",
+          answers: [{ choices: ["Luxon"], text: "with the timezone plugin" }],
+        },
         { _tag: "UsageReported", inputTokens: 10, outputTokens: 5, cachedInputTokens: 2, costUsd: 0.01 },
         { _tag: "TurnCompleted", stopReason: "completed" },
         { _tag: "AuthRequired", provider: "codex", reason: "Not logged in", loginCommand: "codex login" },
@@ -96,6 +115,50 @@ describe("AgentEvent", () => {
       }
     }),
   );
+
+  it.effect("reads a question's resolution of a kind this version doesn't know as expired", () =>
+    Effect.gen(function* () {
+      const event = yield* decodeEvent({
+        ...envelope,
+        payload: { _tag: "QuestionResolved", requestId: "q1", outcome: "postponed" },
+      });
+      assert.deepStrictEqual(event.payload, {
+        _tag: "QuestionResolved",
+        requestId: "q1",
+        outcome: "expired",
+      });
+    }),
+  );
+
+  it.effect("rejects a question with nothing to ask", () =>
+    Effect.gen(function* () {
+      const asked = { _tag: "QuestionAsked", requestId: "q1" };
+      const question = { question: "Which?", options: [], multiSelect: false, allowOther: true };
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(decodeEvent({ ...envelope, payload: { ...asked, questions: [] } })),
+        ),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            decodeEvent({ ...envelope, payload: { ...asked, questions: [{ ...question, question: "" }] } }),
+          ),
+        ),
+      );
+      assert.isTrue(
+        Exit.isSuccess(
+          yield* Effect.exit(decodeEvent({ ...envelope, payload: { ...asked, questions: [question] } })),
+        ),
+      );
+    }),
+  );
+
+  it("writes an answer as one line, the picks first", () => {
+    assert.strictEqual(answerText({ choices: ["A", "B"], text: " and more " }), "A, B, and more");
+    assert.strictEqual(answerText({ choices: [], text: "just words" }), "just words");
+    assert.strictEqual(answerText({ choices: ["A"], text: "  " }), "A");
+  });
 
   it.effect("rejects empty identifiers", () =>
     Effect.gen(function* () {

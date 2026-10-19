@@ -54,6 +54,31 @@ export const FileChanged = Schema.TaggedStruct("FileChanged", {
   change: withFallback(Schema.Literals(["created", "modified", "deleted"]), "modified"),
 });
 
+/**
+ * One item of an agent's todo list or plan. Statuses a newer version adds read as `pending`.
+ * `cancelled` is for harnesses that drop an item without finishing it.
+ */
+export const TodoItem = Schema.Struct({
+  /** The harness's own id for the item, when it has one (Claude's task ids). */
+  id: Schema.optionalKey(Schema.NonEmptyString),
+  text: Schema.String,
+  status: withFallback(Schema.Literals(["pending", "inProgress", "completed", "cancelled"]), "pending"),
+  /** What the agent is doing while the item is in progress ("Running the tests"), when the harness says. */
+  activeText: Schema.optionalKey(Schema.NonEmptyString),
+});
+export type TodoItem = typeof TodoItem.Type;
+
+/**
+ * The agent's todo list changed. It carries the whole current list, so the latest event is the list:
+ * adapters turn the partial or merged updates some harnesses report into the full list. An empty list
+ * clears it.
+ */
+export const TodosUpdated = Schema.TaggedStruct("TodosUpdated", {
+  items: Schema.Array(TodoItem),
+  /** Why the agent changed its plan, when the harness gives a reason. */
+  explanation: Schema.optionalKey(Schema.String),
+});
+
 export const PermissionRequested = Schema.TaggedStruct("PermissionRequested", {
   requestId: Schema.NonEmptyString,
   toolName: Schema.NonEmptyString,
@@ -66,6 +91,71 @@ export const PermissionResolved = Schema.TaggedStruct("PermissionResolved", {
   requestId: Schema.NonEmptyString,
   decision: Schema.Literals(["allow", "deny"]),
   scope: Schema.Literals(["once", "session"]),
+});
+
+/** One choice offered with a question. */
+export const QuestionOption = Schema.Struct({
+  label: Schema.NonEmptyString,
+  description: Schema.optionalKey(Schema.String),
+});
+export type QuestionOption = typeof QuestionOption.Type;
+
+/** One question an agent asks the user. */
+export const Question = Schema.Struct({
+  /** A few words naming what is asked; absent when the agent gives none. */
+  header: Schema.optionalKey(Schema.String),
+  question: Schema.NonEmptyString,
+  /** Empty for a question that takes the user's own words alone. */
+  options: Schema.Array(QuestionOption),
+  /** More than one option may be picked. */
+  multiSelect: Schema.Boolean,
+  /** The user may answer in their own words ("Other"), instead of or beside the options. */
+  allowOther: Schema.Boolean,
+});
+export type Question = typeof Question.Type;
+
+/** What the user answered to one question. */
+export const QuestionAnswer = Schema.Struct({
+  /** The labels of the options picked. */
+  choices: Schema.Array(Schema.String),
+  /** The user's own words, when they typed any. */
+  text: Schema.optionalKey(Schema.String),
+});
+export type QuestionAnswer = typeof QuestionAnswer.Type;
+
+/** An answer as one line: the picks, then the user's own words. */
+export const answerText = (answer: QuestionAnswer): string =>
+  [
+    ...answer.choices,
+    ...(answer.text !== undefined && answer.text.trim() !== "" ? [answer.text.trim()] : []),
+  ].join(", ");
+
+/** What the user did with a question an agent asked: answered it, one answer per question in order, or declined to. */
+export const QuestionResponse = Schema.Union([
+  Schema.Struct({ outcome: Schema.Literal("answered"), answers: Schema.Array(QuestionAnswer) }),
+  Schema.Struct({ outcome: Schema.Literal("dismissed") }),
+]);
+export type QuestionResponse = typeof QuestionResponse.Type;
+
+/**
+ * An agent asks the user one or more questions with Cerium's `ask_user`, the only question tool agents
+ * have. Like a permission request, it stays open until a `QuestionResolved` with the same `requestId`
+ * closes it; the agent hears the answer as a notice.
+ */
+export const QuestionAsked = Schema.TaggedStruct("QuestionAsked", {
+  requestId: Schema.NonEmptyString,
+  questions: Schema.NonEmptyArray(Question),
+});
+
+export const QuestionResolved = Schema.TaggedStruct("QuestionResolved", {
+  requestId: Schema.NonEmptyString,
+  /**
+   * `answered`: the user answered, and `answers` holds one per question, in order. `dismissed`: the
+   * user declined to. `expired`: nobody did before the question could no longer be answered (the agent
+   * was interrupted or stopped, or its session ended).
+   */
+  outcome: withFallback(Schema.Literals(["answered", "dismissed", "expired"]), "expired"),
+  answers: Schema.optionalKey(Schema.Array(QuestionAnswer)),
 });
 
 /** Usage for one completed turn. `inputTokens` excludes cache reads, which are `cachedInputTokens`. */
@@ -154,7 +244,11 @@ export const InputItem = Schema.Union([
     threadId: ThreadId,
     text: Schema.String,
   }),
-  Schema.TaggedStruct("SystemNotice", { text: Schema.String }),
+  Schema.TaggedStruct("SystemNotice", {
+    text: Schema.String,
+    /** The question whose answer this notice tells the agent; the thread shows the answer on the question. */
+    questionId: Schema.optionalKey(Schema.NonEmptyString),
+  }),
 ]);
 export type InputItem = typeof InputItem.Type;
 
@@ -228,8 +322,11 @@ export const EventPayload = Schema.Union([
   ToolCallStarted,
   ToolCallCompleted,
   FileChanged,
+  TodosUpdated,
   PermissionRequested,
   PermissionResolved,
+  QuestionAsked,
+  QuestionResolved,
   UsageReported,
   TurnCompleted,
   AuthRequired,
