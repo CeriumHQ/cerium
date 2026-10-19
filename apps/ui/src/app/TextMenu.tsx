@@ -142,7 +142,12 @@ export function TextMenu() {
               {...(entry.disabled ? { disabled: true } : {})}
               onClick={() => run(entry.command)}
             >
-              {entry.label}
+              {/* Spelling fixes stand out from the commands below them, as in a native menu. */}
+              {entry.command.kind === "replaceMisspelling" ? (
+                <span className="font-medium text-fg-primary">{entry.label}</span>
+              ) : (
+                entry.label
+              )}
             </MenuItem>
           ))}
         </Fragment>

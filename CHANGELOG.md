@@ -159,9 +159,11 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: every new work thread starts in Auto access. Agents settings changes that default; picking another mode in the composer covers just the thread it starts, instead of becoming the next thread's mode too. An access remembered from before starts over at Auto.
 - UI: the composer and Agents settings offer three access modes for every provider, in this order: Auto, Read only and Full access. Ask first and Accept edits are no longer offered; threads already running in them keep their mode, and a default set to either starts over at Auto.
 - Desktop: the development shell (`bun run dev`) listens for a debugger on port 9222, so agents can drive it.
+- UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts. Spelling suggestions in the text menu stand out from the commands under them.
 
 ### Fixed
 
+- UI: a long menu, such as every saved project, scrolls inside the window instead of running off it.
 - `@cerium/bus`: `ui_open` waits up to a minute, not twenty seconds, for the browser to start its debugging port, which a slow or busy machine needed.
 - UI: a long thread opens and streams faster. The browser lays out and paints only the messages, tool calls and cards in and near view instead of the whole conversation, through CSS `content-visibility`. (An earlier, unreleased version of this used a JavaScript virtual list, which on some threads left the start of the conversation blank with the end pushed to the bottom of the window: when a conversation fitted the window, or grew while it did, the list never learned where the window was scrolled to and only ever drew its last few items.)
 - A thread no longer stays "Working" after its agent has finished, with a stop button that does nothing, and no longer looks finished while its agent still works. The window now takes every live event on one subscription that never holds up its other calls, reads the thread list again each time it reconnects (events from while it was away never arrive), and never cancels a read of the list for a newer one, which on a busy machine could keep the list from updating at all. Stopping or interrupting an agent also reads the list again, so pressing stop on an agent shown working by mistake puts it right.

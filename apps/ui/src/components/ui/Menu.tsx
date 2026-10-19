@@ -12,11 +12,13 @@ export function MenuTrigger({ children }: { children: ReactElement }) {
   return <BaseMenu.Trigger render={children} />;
 }
 
+// A long menu, such as every project, scrolls inside the space the window leaves it.
 const popupClass =
-  "min-w-40 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0";
+  "max-h-(--available-height) min-w-40 origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 max-md:min-w-52";
 
+// Touch needs taller rows and bigger text, like the thread list's.
 const itemClass =
-  "flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover";
+  "flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover max-md:gap-2.5 max-md:py-2.5 max-md:text-[15px]";
 
 export function MenuPopup({
   children,
@@ -64,7 +66,9 @@ export function MenuItem({
     >
       {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
       {children}
-      {shortcut ? <kbd className="ml-auto pl-6 font-sans text-2xs text-fg-tertiary">{shortcut}</kbd> : null}
+      {shortcut ? (
+        <kbd className="ml-auto pl-6 font-sans text-2xs text-fg-tertiary max-md:hidden">{shortcut}</kbd>
+      ) : null}
     </BaseMenu.Item>
   );
 }
