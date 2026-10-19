@@ -18,11 +18,13 @@ const PLATFORMS: Readonly<Record<string, string>> = {
 
 export const platformLabel = (platform: string) => PLATFORMS[platform] ?? platform;
 
-/** "Windows · Nightly · 0.4.0": enough to tell a device apart; development builds say so. */
+/**
+ * "Windows · Nightly · 0.4.0": enough to tell a device apart; development builds say so. A browser's
+ * icon already says it is one, so its name does too.
+ */
 export const deviceDetails = (device: DeviceInfo): string =>
   [
     platformLabel(device.platform),
-    device.kind === "browser" ? "Web app" : undefined,
     device.channel === "nightly" ? "Nightly" : device.channel === "dev" ? "Development build" : undefined,
     device.version === "dev" ? undefined : device.version,
   ]
@@ -84,7 +86,7 @@ export const reachOf = (device: DeviceInfo, now = Date.now()): Reach =>
 export const whyUnreachable = (device: DeviceInfo, now = Date.now()): string | undefined => {
   const reach = reachOf(device, now);
   return reach.kind === "outdated"
-    ? "Update Cerium there to reach it"
+    ? "Update Cerium there first"
     : reach.kind === "offline"
       ? reach.presence
       : undefined;

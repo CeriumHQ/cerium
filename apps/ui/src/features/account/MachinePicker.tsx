@@ -27,6 +27,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
   const label = driven?.name ?? (WEB ? "Choose a computer" : (self?.name ?? "This computer"));
   // Driving another computer from one's own window stands out; the web client always drives one.
   const elsewhere = driven !== undefined && !WEB;
+  const driving = driven?.id ?? (WEB ? "" : account.deviceId);
 
   const choose = (id: string) => {
     if (id === account.deviceId) return driveMachine(registry, undefined);
@@ -42,10 +43,11 @@ export function MachinePicker({ account }: { account: AccountState }) {
         render={
           <Button
             aria-label={`Computer: ${label}`}
-            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md px-1.5 text-[12.5px] transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[13.5px] ${
+            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md border px-1.5 text-[12.5px] transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[13.5px] ${
+              // Driving another computer gets a visible edge, so the window never looks like this one by mistake.
               elsewhere
-                ? "bg-accent-soft font-medium text-fg-primary hover:bg-surface-active"
-                : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
+                ? "border-line-strong bg-surface-raised font-medium text-fg-primary hover:bg-surface-hover"
+                : "border-transparent text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
             }`}
           />
         }
@@ -61,10 +63,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
               <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-2xs font-medium text-fg-tertiary select-none">
                 Work on
               </Menu.GroupLabel>
-              <Menu.RadioGroup
-                value={driven?.id ?? (WEB ? "" : account.deviceId)}
-                onValueChange={(id: string) => choose(id)}
-              >
+              <Menu.RadioGroup value={driving} onValueChange={(id: string) => choose(id)}>
                 {self && !WEB ? (
                   <MachineItem
                     value={self.id}
@@ -74,14 +73,16 @@ export function MachinePicker({ account }: { account: AccountState }) {
                 ) : null}
                 {others.map((device) => {
                   const reason = whyUnreachable(device);
+                  // The machine being driven stays selectable, so its check mark shows even while it's away.
                   return (
                     <MachineItem
                       key={device.id}
                       value={device.id}
                       name={device.name}
-                      detail={reason ?? `Online · ${platformLabel(device.platform)}`}
-                      online={device.online}
-                      disabled={reason !== undefined}
+                      detail={reason ?? platformLabel(device.platform)}
+                      reachable={reason === undefined}
+                      attention={reason !== undefined && device.online}
+                      disabled={reason !== undefined && device.id !== driven?.id}
                     />
                   );
                 })}
@@ -98,13 +99,17 @@ function MachineItem({
   value,
   name,
   detail,
-  online = true,
+  reachable = false,
+  attention = false,
   disabled = false,
 }: {
   value: string;
   name: string;
   detail: string;
-  online?: boolean;
+  /** Shows the green dot: it can be driven now. */
+  reachable?: boolean;
+  /** Its detail says what to do about it, so it reads as a warning. */
+  attention?: boolean;
   disabled?: boolean;
 }) {
   return (
@@ -112,20 +117,21 @@ function MachineItem({
       value={value}
       disabled={disabled}
       closeOnClick
-      className="relative flex cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-8 pl-2 outline-none select-none data-disabled:opacity-50 data-highlighted:bg-surface-hover"
+      className="group relative flex cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-8 pl-2 outline-none select-none data-highlighted:bg-surface-hover"
     >
-      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-secondary">
+      {/* Dimmed when it can't be chosen; its detail stays readable, since that says why. */}
+      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-secondary group-data-disabled:opacity-50">
         <Monitor size={13} strokeWidth={1.75} />
-        {online ? (
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full border-[1.5px] border-surface-overlay bg-success"
-          />
+        {reachable ? (
+          <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full border-[1.5px] border-surface-overlay bg-success" />
         ) : null}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-[13px] text-fg-primary">{name}</span>
-        <span className="truncate text-2xs text-fg-tertiary">{detail}</span>
+        <span className="truncate text-[13px] text-fg-primary group-data-disabled:opacity-50">{name}</span>
+        <span className={`truncate text-2xs ${attention ? "text-attention" : "text-fg-tertiary"}`}>
+          {reachable ? <span className="sr-only">Online, </span> : null}
+          {detail}
+        </span>
       </span>
       <Menu.RadioItemIndicator className="absolute right-2.5 text-fg-secondary">
         <Check size={14} strokeWidth={2} />

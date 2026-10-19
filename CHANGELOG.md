@@ -168,6 +168,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Appearance and Archived settings say less, with the rest behind an info tip, and an archived thread's delete button shows on hover or focus.
 - UI: the notices over a thread read from the cloud copy take fewer words, and so does the web client's sign-in, with the sign-in options behind an info tip.
 - UI: Settings → Updates says its channels and statuses in fewer words.
+- UI: the machine picker outlines itself while you drive another computer, keeps that computer checked in its menu even while it's away, and shows a green dot only on computers you can drive now. A computer running a Cerium too old to drive says to update Cerium there first, in a warning colour, and Account settings say less.
 
 ### Fixed
 

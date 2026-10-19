@@ -95,7 +95,7 @@ describe("reaching another desktop", () => {
 
   it("says when it's offline, or too old to drive", () => {
     expect(whyUnreachable(device("b", { rpcVersion: 1 }))).toBe("Never connected");
-    expect(whyUnreachable(device("b", { online: true }))).toBe("Update Cerium there to reach it");
+    expect(whyUnreachable(device("b", { online: true }))).toBe("Update Cerium there first");
   });
 
   it("tells an old backend from a missing one, whatever its connection", () => {

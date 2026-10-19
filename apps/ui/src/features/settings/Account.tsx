@@ -29,6 +29,7 @@ import { shellBridge, type StartAtLogin } from "../../backend/shell.ts";
 import { openSignIn, signInHref } from "../../backend/signIn.ts";
 import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
 import {
   deviceDetails,
@@ -36,6 +37,7 @@ import {
   isApproved,
   orderedDevices,
   presenceLabel,
+  reachOf,
   selfNoun,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
@@ -57,8 +59,10 @@ export function AccountSettings() {
       title="Account"
       description={
         WEB
-          ? "Your Cerium account and its devices. This device reaches your computers through it."
-          : "Sign in to reach this computer from your phone and your other computers. It's optional: signed out, nothing leaves this computer."
+          ? "Your Cerium account and its devices."
+          : account?._tag === "SignedIn"
+            ? "Your other devices reach this computer through your account."
+            : "Optional. Signed out, nothing leaves this computer."
       }
     >
       <SettingsSection title="Cerium account">
@@ -108,8 +112,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
         <div className="flex flex-col gap-1">
           <span className="text-[13.5px] font-medium text-fg-primary">Connect this {selfNoun}</span>
           <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
-            You'll sign in on Cerium's page{WEB ? "" : " in your browser"}, with Google, GitHub, X or an email
-            and password. Cerium never sees your password.
+            Reach it from your phone and your other computers, and get notified there when an agent needs you.
           </p>
         </div>
         {account._tag === "SigningIn" ? (
@@ -117,7 +120,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
             {WEB ? "Finish signing in on Cerium's page." : "Finish signing in using your browser."}
           </Progress>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Button
               onClick={begin}
               disabled={starting}
@@ -126,7 +129,13 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
               <LogIn size={13} strokeWidth={2} />
               {starting ? "Opening your browser…" : "Sign in"}
             </Button>
-            {shownError ? <p className="min-w-0 flex-1 text-[12.5px] text-error">{shownError}</p> : null}
+            <p className="flex items-center gap-1.5 text-[12.5px] text-fg-tertiary">
+              Cerium never sees your password.
+              <InfoTip label="Sign-in options" side="bottom">
+                Google, GitHub, X or an email and password, on Cerium's sign-in page.
+              </InfoTip>
+            </p>
+            {shownError ? <p className="w-full text-[12.5px] text-error">{shownError}</p> : null}
           </div>
         )}
       </div>
@@ -191,9 +200,8 @@ function AccountCard({ account }: { account: SignedIn }) {
         </div>
       </div>
       {account.connection === "online" && !approved ? (
-        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] leading-relaxed text-attention">
-          Waiting for approval. Allow this {selfNoun} from a device that's already connected to your account;
-          until then it sees nothing{WEB ? "" : ", and nothing can reach it"}.
+        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] text-attention">
+          Waiting for approval from a device already on your account.
         </p>
       ) : null}
       {error ? (
@@ -289,8 +297,8 @@ function DevicesSection({ account }: { account: SignedIn }) {
       title="Devices"
       description={
         live
-          ? "Everything connected to your account. A new one waits, seeing nothing, until you allow it here or on another device that's already connected."
-          : "Your devices as this computer last saw them. They update when it reaches Cerium's cloud again."
+          ? "New devices wait until you allow them, here or on another connected device."
+          : "As this computer last saw them. They update when it's back online."
       }
     >
       <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
@@ -319,6 +327,19 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
       : device.platform === "ios" || device.platform === "android"
         ? Smartphone
         : Globe;
+  // A desktop too old to be driven is online, but no more reachable than an offline one.
+  const outdated = device.kind === "desktop" && reachOf(device).kind === "outdated";
+  // What the row says after its details: nothing while the device is simply there, a dot instead.
+  const note =
+    self || !live
+      ? undefined
+      : !device.approved
+        ? "Wants to join"
+        : outdated
+          ? "Update Cerium there first"
+          : device.online
+            ? undefined
+            : presenceLabel(device);
 
   const run = (action: Promise<unknown>) => {
     setBusy(true);
@@ -344,11 +365,10 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
       <div className="flex items-center gap-3.5">
         <span className="relative grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-secondary">
           <Icon size={15} strokeWidth={1.75} />
-          {live && device.online ? (
-            <span
-              aria-hidden
-              className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-surface-panel bg-success"
-            />
+          {live && device.online && !outdated ? (
+            <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-surface-panel bg-success">
+              <span className="sr-only">Online</span>
+            </span>
           ) : null}
         </span>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -372,14 +392,13 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
               </span>
             ) : null}
           </div>
-          <span className="truncate text-xs text-fg-tertiary">
+          {/* A phone has no room to cut the line short, so it wraps there. */}
+          <span className="text-xs text-fg-tertiary max-md:[overflow-wrap:anywhere] md:truncate">
             {deviceDetails(device)}
-            {self || !live ? null : device.approved ? (
-              <> · {presenceLabel(device)}</>
-            ) : (
+            {note === undefined ? null : (
               <>
                 {" · "}
-                <span className="text-attention">Wants to join</span>
+                <span className={!device.approved || outdated ? "text-attention" : undefined}>{note}</span>
               </>
             )}
           </span>
@@ -433,7 +452,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
         description={
           self
             ? signOutDescription
-            : `${device.name} leaves your account and is signed out. To come back, it signs in again and waits for you to allow it.`
+            : `${device.name} signs out and leaves your account. It can come back, once you allow it again.`
         }
         confirmLabel={self ? "Sign out" : "Remove"}
         onConfirm={() => run(remove({ payload: { deviceId } }))}
@@ -465,7 +484,14 @@ function ThisComputerSection() {
   return (
     <SettingsSection
       title="This computer"
-      description="While you're signed in, closing Cerium's window keeps it running in the tray, so your other devices can still reach this computer. Agents at work keep it from going to sleep."
+      description={
+        <>
+          Closing the window keeps Cerium in the tray, so your other devices can still reach this computer.{" "}
+          <InfoTip label="About keeping this computer awake" side="bottom">
+            Agents at work keep it from going to sleep.
+          </InfoTip>
+        </>
+      }
     >
       {bridge?.startAtLogin ? (
         <SettingsCard className="flex items-start gap-4 p-4">
@@ -476,7 +502,7 @@ function ThisComputerSection() {
             <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
               {startAtLogin?.available === false
                 ? "Only the installed app can start with Windows."
-                : "Opens straight to the tray when you sign in to Windows, so this computer is reachable after a restart."}
+                : "Opens in the tray when you sign in, so this computer is reachable after a restart."}
             </p>
             {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
           </div>
