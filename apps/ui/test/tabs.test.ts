@@ -42,6 +42,12 @@ describe("showTab", () => {
     expect(showTab(strip(["a", "b", "c"], { active: "a" }), "d", "tab").keys).toEqual(["a", "d", "b", "c"]);
   });
 
+  it("leaves a preview thread in place when a tab of its own opens beside it", () => {
+    expect(showTab(strip(["thread"], { active: "thread", preview: "thread" }), "file", "tab")).toEqual(
+      strip(["thread", "file"], { active: "file", preview: "thread" }),
+    );
+  });
+
   it("replaces the previous preview with the next", () => {
     const shown = showTab(strip(["a", "p", "c"], { active: "c", preview: "p" }), "q", "preview");
     expect(shown).toEqual(strip(["a", "q", "c"], { active: "q", preview: "q" }));

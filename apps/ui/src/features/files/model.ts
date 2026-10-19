@@ -10,15 +10,15 @@ import { relativePath, resolvePath } from "../transcript/paths.ts";
 export const FILES_VERSION = 3;
 
 /**
- * Opens a file of the folder: in the viewer's preview tab, or a tab of its own (`tab`), showing its
- * changes against the last commit (`changes`). Where the viewer can't, in the file's own app.
+ * Opens a file of the folder in a tab of its own, showing its changes against the last commit
+ * (`changes`). Where the viewer can't, in the file's own app.
  */
-export type OpenFile = (
-  path: string,
-  options?: { readonly tab?: boolean; readonly changes?: boolean },
-) => void;
+export type OpenFile = (path: string, options?: { readonly changes?: boolean }) => void;
 
-/** Ctrl click, the middle button and a double click open a file in a tab of its own, as with the sidebar's threads. */
+/**
+ * A modified click: Ctrl, the middle button or a double click. A folder ignores it, so only a plain
+ * click opens or closes one.
+ */
 export const wantsTab = (event: { ctrlKey: boolean; metaKey: boolean; button: number; detail: number }) =>
   event.ctrlKey || event.metaKey || event.button === 1 || event.detail >= 2;
 

@@ -9,7 +9,7 @@ import { mediaAtom, mediaKey, previewAtom, previewKey } from "../../backend/expl
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
-import { wantsTab, type OpenFile } from "../files/model.ts";
+import type { OpenFile } from "../files/model.ts";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { byteSize } from "./model.ts";
@@ -319,9 +319,9 @@ export function MarkdownPreview({
       <button
         type="button"
         title={target}
-        onClick={(event) => onOpenFile(target, { tab: wantsTab(event) })}
+        onClick={() => onOpenFile(target)}
         onAuxClick={(event) => {
-          if (event.button === 1) onOpenFile(target, { tab: true });
+          if (event.button === 1) onOpenFile(target);
         }}
         className="cursor-pointer font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
       >

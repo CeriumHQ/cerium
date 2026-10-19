@@ -28,7 +28,8 @@ const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ??
 /**
  * The open threads' tabs for the window. The strip follows whatever the window shows: a thread opened
  * any way at all (the sidebar, search, a notification) takes the preview tab, unless `openAs` asked
- * for a tab of its own first. The window still decides what's shown; the tabs ask it through `onShow`.
+ * for a tab of its own first. A file always takes a tab of its own, so it never replaces the thread.
+ * The window still decides what's shown; the tabs ask it through `onShow`.
  */
 export function useThreadTabs({
   machine,
@@ -78,8 +79,10 @@ export function useThreadTabs({
 
   // Whatever the window shows has a tab.
   if (strip.active !== active) {
-    // A thread not started yet is the user's own writing, never a mere preview.
-    const as = opening?.key === active ? opening.as : isNewDraftKey(active) ? "tab" : "preview";
+    // A thread not started yet is the user's own writing, never a mere preview. A file is a tab of
+    // its own too: the preview slot is the thread's, and a file must not take it.
+    const as =
+      opening?.key === active ? opening.as : isNewDraftKey(active) || isFileKey(active) ? "tab" : "preview";
     update((current) => showTab(current, active, as, isEmpty));
     if (opening !== undefined) setOpening(undefined);
   }

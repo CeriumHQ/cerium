@@ -59,7 +59,7 @@ function TreeRow({
   shown: boolean;
   messageBox: MessageBox | undefined;
   onFocus: () => void;
-  /** Pressed: `tab` when it asked for a tab of its own. */
+  /** Pressed: `tab` on a modified click, which a folder ignores. */
   onActivate: (tab: boolean) => void;
   /** Opens the file in the viewer in a tab of its own, from its menu; absent without a viewer. */
   onOpenTab: (() => void) | undefined;
@@ -279,7 +279,7 @@ export function FileTree({
           touch={row.folder ? undefined : touched.files.get(touchedKey(touched, row.path))?.change}
           touchedInside={row.folder && !row.expanded && touched.folders.has(touchedKey(touched, row.path))}
           shown={!row.folder && row.path === activePath}
-          onOpenTab={viewer && !row.folder && !row.gone ? () => viewer(row.path, { tab: true }) : undefined}
+          onOpenTab={viewer && !row.folder && !row.gone ? () => viewer(row.path) : undefined}
           messageBox={messageBox}
           onFocus={() => setFocused(row.path)}
           onActivate={(tab) => {
@@ -287,7 +287,7 @@ export function FileTree({
             // A folder opens and closes once, however many clicks a double click counts.
             if (row.folder) {
               if (!tab) setOpen(row.path, !row.expanded);
-            } else onOpen?.(row.path, { tab });
+            } else onOpen?.(row.path);
           }}
         />
       ))}

@@ -569,10 +569,10 @@ function Workspace() {
       const key = fileKey(root, path);
       // From the Changes list, a file opens on what changed.
       if (options?.changes === true) registry.set(fileViewAtom(key), "diff");
-      if (options?.tab === true) {
-        tabs.openAs(key, "tab");
-        tabs.keep(key);
-      }
+      // A tab of its own, beside the thread. A preview would take the thread's tab while that thread
+      // is only being read.
+      tabs.openAs(key, "tab");
+      tabs.keep(key);
       setSettingsOpen(false);
       setOpenThread((open) => ({ ...open, [mode]: key }));
       setPane("main");

@@ -206,7 +206,7 @@ export function FilesPanel({
           onClose={() => setFiltering(false)}
           onChoose={(entry) => {
             reveal(entry.path, entry.folder);
-            if (!entry.folder) open?.(entry.path, { tab: true });
+            if (!entry.folder) open?.(entry.path);
           }}
         >
           {body}

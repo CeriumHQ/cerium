@@ -14,7 +14,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FileMenuItems } from "./FileMenu.tsx";
 import { StateLetter, TouchedMark } from "./FileStatus.tsx";
-import { dirOf, nameOf, wantsTab, type ChangedRow, type OpenFile } from "./model.ts";
+import { dirOf, nameOf, type ChangedRow, type OpenFile } from "./model.ts";
 
 /** A file or folder in a flat list: its icon, its name, where it is, and what happened to it. */
 function RowContent({
@@ -120,9 +120,7 @@ export function ChangesList({
                 root={root}
                 gone={row.state === "deleted"}
                 messageBox={messageBox}
-                onOpen={
-                  viewer && !row.folder ? () => viewer(row.path, { changes: true, tab: true }) : undefined
-                }
+                onOpen={viewer && !row.folder ? () => viewer(row.path, { changes: true }) : undefined}
               />
             }
           >
@@ -133,10 +131,10 @@ export function ChangesList({
               onClick={(event) => {
                 if (row.folder) {
                   if (event.detail < 2) onReveal(row.path);
-                } else onOpen?.(row.path, { changes: true, tab: wantsTab(event) });
+                } else onOpen?.(row.path, { changes: true });
               }}
               onAuxClick={(event) => {
-                if (event.button === 1 && !row.folder) onOpen?.(row.path, { changes: true, tab: true });
+                if (event.button === 1 && !row.folder) onOpen?.(row.path, { changes: true });
               }}
               onMouseDown={(event) => {
                 if (event.button === 1) event.preventDefault();
