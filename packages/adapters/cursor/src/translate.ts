@@ -2,6 +2,8 @@ import type { InteractionUpdate, ModelSelection, RunResult, TokenUsage } from "@
 import type { AdapterEvent } from "@cerium/harness";
 import type { EventPayload } from "@cerium/protocol";
 
+import { CursorTodos } from "./todos.ts";
+
 /** A failure the SDK reported: a thrown error (classified by the session) or a run's terminal error. */
 export interface CursorError {
   readonly message: string;
@@ -53,6 +55,8 @@ export class CursorTranslator {
   #reasoning: { readonly id: string; text: string } | undefined;
   /** Tool calls started this turn and not yet completed. */
   readonly #openTools = new Set<string>();
+  /** The todo tools' calls, which report the agent's todo list instead of tool calls. */
+  readonly #todos = new CursorTodos();
   /** Usage of the model turns inside this Cerium turn; a run can span several. */
   #usage: Tokens | undefined;
 
@@ -126,12 +130,15 @@ export class CursorTranslator {
   }
 
   #startTool(callId: string, toolCall: unknown): ReadonlyArray<EventPayload> {
-    if (this.#openTools.has(callId)) return [];
+    if (this.#todos.isTodoTool(toolName(toolCall)) || this.#openTools.has(callId)) return [];
     this.#openTools.add(callId);
     return [{ _tag: "ToolCallStarted", callId, toolName: toolName(toolCall), input: toolInput(toolCall) }];
   }
 
   #completeTool(callId: string, toolCall: unknown): ReadonlyArray<EventPayload> {
+    const name = toolName(toolCall);
+    if (this.#todos.isTodoTool(name))
+      return this.#todos.completed(callId, name, toolInput(toolCall), toolCall);
     // A completion can arrive without its start (the SDK drops some starts); emit both to keep pairs.
     const started = this.#startTool(callId, toolCall);
     this.#openTools.delete(callId);

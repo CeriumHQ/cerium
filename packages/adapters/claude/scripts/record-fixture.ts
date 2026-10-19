@@ -2,12 +2,19 @@
 // translator is tested against what the installed `claude` actually emits.
 //
 // Usage (uses your logged-in Claude account; a few cents of Haiku):
-//   node packages/adapters/claude/scripts/record-fixture.ts <path-to-claude-executable>
+//   node packages/adapters/claude/scripts/record-fixture.ts <path-to-claude-executable>           a read + write
+//   node packages/adapters/claude/scripts/record-fixture.ts <path-to-claude-executable> --todos   a two-item todo list
+//                                                                                                 (Claude Code's Task tools)
+//   node packages/adapters/claude/scripts/record-fixture.ts <path-to-claude-executable> --todo-write
+//                                                                                                 the same with TodoWrite, which
+//                                                                                                 CLAUDE_CODE_ENABLE_TASKS=0 brings back
 
 import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+
+import { TODO_TOOLS_ENV } from "../src/manifest.ts";
 
 const executable = process.argv[2];
 if (executable === undefined) {
@@ -21,10 +28,16 @@ writeFileSync(join(workspace, "hello.txt"), "hello from cerium\n");
 const messages: Array<SDKMessage | { type: "cerium_permission_request"; toolName: string; input: unknown }> =
   [];
 
+const todoWrite = process.argv.includes("--todo-write");
+const todos = todoWrite || process.argv.includes("--todos");
+
 const session = query({
-  prompt:
-    "Read hello.txt, then create out.txt containing its contents in uppercase. " +
-    "Finally reply with just the uppercase text.",
+  prompt: todos
+    ? "First write a todo list with your todo or plan tool, with exactly two items: create a.txt " +
+      "containing the text a, and create b.txt containing the text b. Then do each item, updating the " +
+      "list as you start and finish it. Finally reply with just DONE."
+    : "Read hello.txt, then create out.txt containing its contents in uppercase. " +
+      "Finally reply with just the uppercase text.",
   options: {
     pathToClaudeCodeExecutable: executable,
     cwd: workspace,
@@ -33,6 +46,11 @@ const session = query({
     settingSources: [],
     disallowedTools: ["Agent", "Workflow", "SendMessage"],
     permissionMode: "default",
+    ...(todos
+      ? {
+          env: { ...process.env, ...TODO_TOOLS_ENV, ...(todoWrite ? { CLAUDE_CODE_ENABLE_TASKS: "0" } : {}) },
+        }
+      : {}),
     canUseTool: async (toolName, input, { toolUseID }) => {
       messages.push({ type: "cerium_permission_request", toolName, input });
       return { behavior: "allow", updatedInput: input, toolUseID };
@@ -72,7 +90,10 @@ const scrub = (line: string) =>
 const fixtures = join(import.meta.dirname, "..", "test", "fixtures");
 mkdirSync(fixtures, { recursive: true });
 writeFileSync(
-  join(fixtures, "read-write-session.jsonl"),
+  join(
+    fixtures,
+    todoWrite ? "todo-write-session.jsonl" : todos ? "todo-session.jsonl" : "read-write-session.jsonl",
+  ),
   messages.map((message) => scrub(JSON.stringify(sanitize(message)))).join("\n") + "\n",
 );
 console.log(`Recorded ${messages.length} messages from ${workspace}`);

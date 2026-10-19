@@ -1,5 +1,5 @@
 import type { AdapterEvent } from "@cerium/harness";
-import type { EventPayload } from "@cerium/protocol";
+import { sameTodos, type EventPayload, type TodoItem } from "@cerium/protocol";
 
 import { fromCodexEffort } from "./config.ts";
 import { LOGIN_COMMAND } from "./manifest.ts";
@@ -10,6 +10,7 @@ import type { ThreadResumeResponse } from "./protocol/v2/ThreadResumeResponse.ts
 import type { ThreadStartResponse } from "./protocol/v2/ThreadStartResponse.ts";
 import type { ThreadTokenUsage } from "./protocol/v2/ThreadTokenUsage.ts";
 import type { TurnError } from "./protocol/v2/TurnError.ts";
+import type { TurnPlanUpdatedNotification } from "./protocol/v2/TurnPlanUpdatedNotification.ts";
 
 type ToolItem = Extract<
   ThreadItem,
@@ -59,6 +60,11 @@ export class CodexTranslator {
   readonly #usage = new Map<string, { readonly first: ThreadTokenUsage; latest: ThreadTokenUsage }>();
   /** Turns whose failure was already reported by an `error` notification. */
   readonly #reportedErrors = new Set<string>();
+  /** The plan as last reported, which a repeated `turn/plan/updated` leaves as it is. */
+  #plan: { readonly items: ReadonlyArray<TodoItem>; readonly explanation: string | undefined } = {
+    items: [],
+    explanation: undefined,
+  };
 
   /** The `thread/start` or `thread/resume` response starts the session. */
   started(response: ThreadStartResponse | ThreadResumeResponse): ReadonlyArray<AdapterEvent> {
@@ -151,6 +157,8 @@ export class CodexTranslator {
         this.#reportedErrors.add(turnId);
         return [turnError(error)];
       }
+      case "turn/plan/updated":
+        return this.#planUpdated(notification.params);
       case "turn/completed":
         return this.#turnCompleted(notification.params.turn);
       case "account/updated":
@@ -160,6 +168,18 @@ export class CodexTranslator {
       default:
         return [];
     }
+  }
+
+  /**
+   * The plan the agent keeps with `update_plan`: the whole list at every call, with the reason it
+   * changed. (Not Plan mode's plan text, which arrives as `item/plan/delta`.)
+   */
+  #planUpdated({ plan, explanation }: TurnPlanUpdatedNotification): ReadonlyArray<EventPayload> {
+    const items = plan.map((step): TodoItem => ({ text: step.step, status: step.status }));
+    const reason = explanation === null || explanation.trim() === "" ? undefined : explanation;
+    if (sameTodos(this.#plan.items, items) && this.#plan.explanation === reason) return [];
+    this.#plan = { items, explanation: reason };
+    return [{ _tag: "TodosUpdated", items, ...(reason === undefined ? {} : { explanation: reason }) }];
   }
 
   #itemCompleted(item: ThreadItem): ReadonlyArray<EventPayload> {

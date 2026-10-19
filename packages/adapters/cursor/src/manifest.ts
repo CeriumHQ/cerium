@@ -20,6 +20,12 @@ export const NATIVE_SUBAGENT_TOOLS = [
   "readAgentTranscript",
 ] as const;
 
+/**
+ * Cursor's own question tool. A local run rejects every call to it ("Interactive questions are not
+ * supported in local SDK runs"), so it is withheld and agents ask through the bus's `ask_user`.
+ */
+export const NATIVE_QUESTION_TOOLS = ["askQuestion"] as const;
+
 export const cursorManifest: CapabilityManifest = {
   provider: "cursor",
   // The harness is the pinned `@cursor/sdk`, not the user's CLI. Raise `testedMaximum` after

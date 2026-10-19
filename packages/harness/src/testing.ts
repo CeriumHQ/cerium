@@ -1,4 +1,4 @@
-import type { CapabilityManifest, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { CapabilityManifest, ProviderId, ReasoningEffort, TodoItem } from "@cerium/protocol";
 import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 
 import {
@@ -34,6 +34,8 @@ export const makeFakeAdapter = (
     readonly askPermission?: boolean;
     /** The tool those requests are for (default `Bash`). */
     readonly permissionTool?: string;
+    /** Each turn reports these todo lists, one update after another, before it replies. */
+    readonly todos?: ReadonlyArray<ReadonlyArray<TodoItem>>;
     /** Whether the manifest takes images (default false). */
     readonly images?: boolean;
     /** How long each session takes to start. */
@@ -131,6 +133,9 @@ export const makeFakeAdapter = (
               yield* Queue.offer(events, {
                 payload: { _tag: "PermissionResolved", requestId, decision: verdict, scope },
               });
+            }
+            for (const items of options.todos ?? []) {
+              yield* Queue.offer(events, { payload: { _tag: "TodosUpdated", items } });
             }
             const messageId = `m${session.sent.length}`;
             const reply = options.reply?.(text, sessionOptions) ?? `reply to: ${text.slice(0, 40)}`;

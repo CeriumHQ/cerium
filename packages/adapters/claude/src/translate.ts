@@ -3,6 +3,7 @@ import type { AdapterEvent } from "@cerium/harness";
 import type { EventPayload } from "@cerium/protocol";
 
 import { LOGIN_COMMAND } from "./manifest.ts";
+import { ClaudeTodos } from "./todos.ts";
 
 /** Built-in tools whose successful result means a file in the workspace changed. */
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -23,6 +24,8 @@ export class ClaudeTranslator {
   /** Fallback block numbering when partial messages are off, keyed like `#pendingBlocks`. */
   readonly #completedBlocks = new Map<string, number>();
   readonly #toolNames = new Map<string, string>();
+  /** The todo tools' calls, which report the agent's todo list instead of tool calls. */
+  readonly #todos = new ClaudeTodos();
   /** Claude Code repeats `init` every turn; only the first starts the session. */
   #started = false;
   /** `total_cost_usd` is cumulative for the session; turns report the difference. */
@@ -139,6 +142,7 @@ export class ClaudeTranslator {
         case "tool_use":
         case "server_tool_use":
         case "mcp_tool_use":
+          if (block.type === "tool_use" && this.#todos.call(block.id, block.name, block.input)) return [];
           this.#toolNames.set(block.id, block.name);
           return [{ _tag: "ToolCallStarted", callId: block.id, toolName: block.name, input: block.input }];
         default:
@@ -162,6 +166,8 @@ export class ClaudeTranslator {
 
     return content.flatMap((block): ReadonlyArray<EventPayload> => {
       if (block.type !== "tool_result") return [];
+      const todos = this.#todos.result(block.tool_use_id, block, message.tool_use_result);
+      if (todos !== undefined) return todos;
       const isError = block.is_error === true;
       const completed: EventPayload = {
         _tag: "ToolCallCompleted",

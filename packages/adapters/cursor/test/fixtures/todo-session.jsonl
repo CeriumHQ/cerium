@@ -1,0 +1,209 @@
+{"type":"agent","agentId":"agent-b0223173-1881-4bdc-aea8-8cfd33d3954b","model":{"id":"composer-2.5"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"I"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" will create a two-item"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" todo list. The first"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" item is to list the"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" working directory. "}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"The"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" second is to reply "}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"with"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" DONE. I will update"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" the list as I start"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" and finish each task"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":534}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"Creating the two"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"-item todo list,"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" then working through each"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":7}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" item"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":".\n"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":41}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_d27c235f-3703-45a8-a973-f39f158ca85","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"pending"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-0-zv9x"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_d27c235f-3703-45a8-a973-f39f158ca85","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"pending"},{"content":"Reply with DONE","status":"pending"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-0-zv9x"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-started","callId":"tool_d27c235f-3703-45a8-a973-f39f158ca85","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"pending"},{"content":"Reply with DONE","status":"pending"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-0-zv9x"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-completed","callId":"tool_d27c235f-3703-45a8-a973-f39f158ca85","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"pending"},{"content":"Reply with DONE","status":"pending"}]},"result":{"status":"success","value":{"todos":[{"content":"List the working directory with a command","status":"pending"},{"content":"Reply with DONE","status":"pending"}],"totalCount":2}}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-0-zv9x"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":107}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-requests-listed","callCount":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"Created"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" the todo list. Mark"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"ing the first item as"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" in progress and listing"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" the working directory"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":112}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":42}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_e06ec7b2-e2dc-4c1e-a719-be04a119e94","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"inProgress"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-1-24ax"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_e06ec7b2-e2dc-4c1e-a719-be04a119e94","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"inProgress"},{"content":"Reply with DONE","status":"pending"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-1-24ax"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-started","callId":"tool_e06ec7b2-e2dc-4c1e-a719-be04a119e94","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"inProgress"},{"content":"Reply with DONE","status":"pending"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-1-24ax"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-completed","callId":"tool_e06ec7b2-e2dc-4c1e-a719-be04a119e94","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"inProgress"},{"content":"Reply with DONE","status":"pending"}]},"result":{"status":"success","value":{"todos":[{"content":"List the working directory with a command","status":"inProgress"},{"content":"Reply with DONE","status":"pending"}],"totalCount":2}}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-1-24ax"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":86}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":22}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":8}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-requests-listed","callCount":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"The"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" shell is unavailable"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" directly. I'll use "}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"Call"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"DynamicTool for cursor"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" tools instead."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"\n\nG"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"lob will list the working"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" directory contents."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":277}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"Listing the workspace with"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" Glob since"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" Shell isn't available:\n"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":16}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-started","callId":"tool_17143d59-fcae-4f86-90c3-fb870825970","toolCall":{"type":"glob","args":{"globPattern":"*","targetDirectory":"<workspace>"}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-2-wz1b"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-requests-listed","callCount":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-completed","callId":"tool_17143d59-fcae-4f86-90c3-fb870825970","toolCall":{"type":"glob","args":{"globPattern":"*","targetDirectory":"<workspace>"},"result":{"status":"success","value":{"files":["../.\\hello.txt"],"totalFiles":1,"clientTruncated":false,"ripgrepTruncated":false}}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-2-wz1b"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":28}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"The"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" working directory contains"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":7}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" hello.txt."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"\n\nMark"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"ing the first todo complete"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":7}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" and the second in progress"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":7}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":". Replying with DONE"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" and marking the second"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" complete."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":663}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":43}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_9ea592a0-f759-484c-9e4c-769c1070692","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"completed"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-3-0cyc"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_9ea592a0-f759-484c-9e4c-769c1070692","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"completed"},{"content":"Reply with DONE","status":"inProgress"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-3-0cyc"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-started","callId":"tool_9ea592a0-f759-484c-9e4c-769c1070692","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"completed"},{"content":"Reply with DONE","status":"inProgress"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-3-0cyc"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-completed","callId":"tool_9ea592a0-f759-484c-9e4c-769c1070692","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"List the working directory with a command","status":"completed"},{"content":"Reply with DONE","status":"inProgress"}]},"result":{"status":"success","value":{"todos":[{"content":"List the working directory with a command","status":"completed"},{"content":"Reply with DONE","status":"inProgress"}],"totalCount":2}}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-3-0cyc"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":87}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-requests-listed","callCount":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"Item"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" 2 is now being completed"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":183}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":19}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"partial-tool-call","callId":"tool_584e1e77-82ee-4209-9290-0e8e3d47539","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"Reply with DONE","status":"completed"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-4-fytk"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-started","callId":"tool_584e1e77-82ee-4209-9290-0e8e3d47539","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"Reply with DONE","status":"completed"}]}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-4-fytk"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-call-completed","callId":"tool_584e1e77-82ee-4209-9290-0e8e3d47539","toolCall":{"type":"updateTodos","args":{"todos":[{"content":"Reply with DONE","status":"completed"}]},"result":{"status":"success","value":{"todos":[{"content":"List the working directory with a command","status":"completed"},{"content":"Reply with DONE","status":"completed"}],"totalCount":2}}},"modelCallId":"0d8f4a68-6017-418e-8163-221658d2fb29-4-fytk"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":87}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"tool-requests-listed","callCount":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":"Both"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" items are complete."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" The working directory"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" was listed, and the"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" response was marked"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-delta","text":" DONE."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"thinking-completed","thinkingDurationMs":237}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"**"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"Working directory** (`"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":6}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"C:\\Users\\"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"<user>\\AppData"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"\\Local\\Temp"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"\\cerium-fix"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"ture-vECU"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"AG`):\n\n|"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" Entry |\n|--------"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"|\n| `hello"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":".txt` |\n\n(S"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"hell wasn"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"’t available in this"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":5}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" session, so the"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":4}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" listing used"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" a workspace"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" file"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" search instead"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":3}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":" of `"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"ls"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":"`."}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":1}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"text-delta","text":")\n\n**DONE**"}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"token-delta","tokens":2}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"step-completed","stepId":14,"stepDurationMs":5633}}
+{"type":"update","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","update":{"type":"turn-ended","usage":{"inputTokens":41595,"outputTokens":735,"cacheReadTokens":26400,"cacheWriteTokens":0}}}
+{"type":"result","turn":"3d70521a-670f-4a28-b581-ba0f8e41069f","result":{"id":"run-88701b89-0d16-4f50-ab8e-d11dcad7fde8","requestId":"0d8f4a68-6017-418e-8163-221658d2fb29","status":"finished","result":"**Working directory** (`<workspace>`):\n\n| Entry |\n|--------|\n| `hello.txt` |\n\n(Shell wasn’t available in this session, so the listing used a workspace file search instead of `ls`.)\n\n**DONE**","model":{"id":"composer-2.5"},"durationMs":10183,"usage":{"inputTokens":41595,"outputTokens":735,"cacheReadTokens":26400,"cacheWriteTokens":0,"totalTokens":68730}}}

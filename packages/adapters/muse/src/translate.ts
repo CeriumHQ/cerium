@@ -1,9 +1,10 @@
 import type { AdapterEvent } from "@cerium/harness";
-import type { EventPayload, ReasoningEffort } from "@cerium/protocol";
+import { sameTodos, type EventPayload, type ReasoningEffort, type TodoItem } from "@cerium/protocol";
 import type { TurnOutcome } from "@muse-code/sdk";
 import type {
   Item,
   ItemDeltaParams,
+  SessionTodoListChangedParams,
   SessionTokenUsageParams,
   TokenUsage,
   TurnCompletedParams,
@@ -22,6 +23,15 @@ export interface WireNotification {
 }
 
 type Payload<Tag extends EventPayload["_tag"]> = Extract<EventPayload, { _tag: Tag }>;
+
+/** Muse's todo tool. Its calls are bookkeeping: the list comes from `session/todoListChanged`. */
+const TODO_TOOLS: ReadonlySet<string> = new Set(["write_todos"]);
+
+const TODO_STATUSES: Readonly<Record<string, TodoItem["status"]>> = {
+  inProgress: "inProgress",
+  completed: "completed",
+  cancelled: "cancelled",
+};
 
 interface TurnUsage {
   input: number;
@@ -55,6 +65,7 @@ export class MuseTranslator {
   /** `item/delta` frames that arrived before their item, waiting to learn its kind. */
   readonly #earlyDeltas = new Map<string, Array<ItemDeltaParams>>();
   readonly #reasoningPart = new Map<string, number>();
+  #todos: ReadonlyArray<TodoItem> = [];
 
   constructor(options: { readonly workspace: string; readonly resumed?: boolean }) {
     this.#workspace = options.workspace;
@@ -157,6 +168,8 @@ export class MuseTranslator {
       case "session/tokenUsage":
         this.#tokenUsage(params as unknown as SessionTokenUsageParams);
         return [];
+      case "session/todoListChanged":
+        return this.#todoList(params as unknown as SessionTodoListChangedParams);
       case "turn/started": {
         const { turnId } = params as unknown as TurnStartedParams;
         if (this.#turns.has(turnId)) this.#turns.set(turnId, true);
@@ -191,6 +204,20 @@ export class MuseTranslator {
       }
       case "toolCall":
       case "webSearch": {
+        if (item.tool !== undefined && TODO_TOOLS.has(item.tool)) {
+          // The list arrives as its own notification; only a call that failed has anything to say.
+          return finishing && item.status !== "completed"
+            ? [
+                { _tag: "ToolCallStarted", callId: id, toolName: item.tool, input: parseArgs(item.args) },
+                {
+                  _tag: "ToolCallCompleted",
+                  callId: id,
+                  output: item.visibleOutput ?? item.failureReason ?? item.fallbackText ?? null,
+                  isError: true,
+                },
+              ]
+            : [];
+        }
         const payloads: Array<EventPayload> = [];
         if (!this.#startedTools.has(id)) {
           this.#startedTools.add(id);
@@ -218,6 +245,24 @@ export class MuseTranslator {
         // store still has them.
         return [];
     }
+  }
+
+  /** Muse sends the whole list at every change, and an empty one when it clears it. */
+  #todoList(params: SessionTodoListChangedParams): ReadonlyArray<EventPayload> {
+    const items = params.items.flatMap((each): ReadonlyArray<TodoItem> =>
+      each.text === ""
+        ? []
+        : [
+            {
+              text: each.text,
+              status: TODO_STATUSES[each.status] ?? "pending",
+              ...(each.activeForm ? { activeText: each.activeForm } : {}),
+            },
+          ],
+    );
+    if (sameTodos(this.#todos, items)) return [];
+    this.#todos = items;
+    return [{ _tag: "TodosUpdated", items }];
   }
 
   #flushEarlyDeltas(itemId: string): ReadonlyArray<EventPayload> {

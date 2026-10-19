@@ -248,7 +248,8 @@ export const handleServerRequest = (request: ServerRequest, context: RequestCont
       };
     }
 
-    // The agent asking the user questions mid-turn: Cerium has no channel for it, so no answers.
+    // Codex's own question tool, which `threadConfig` keeps off: agents ask through the bus's `ask_user`.
+    // Should one arrive anyway, it gets no answers rather than holding the turn.
     case "item/tool/requestUserInput":
       return { _tag: "Reply", result: { answers: {} } };
     // Cerium registers no dynamic tools.

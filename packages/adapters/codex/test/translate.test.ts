@@ -384,7 +384,13 @@ describe("Session option mapping", () => {
     );
     expect(config).toEqual({
       agents: { enabled: false },
-      features: { multi_agent: false, multi_agent_v2: false, apps: false, plugins: false },
+      features: {
+        multi_agent: false,
+        multi_agent_v2: false,
+        default_mode_request_user_input: false,
+        apps: false,
+        plugins: false,
+      },
       mcp_servers: {
         node_repl: { enabled: false },
         cerium: {

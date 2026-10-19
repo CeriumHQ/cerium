@@ -122,7 +122,7 @@ export const serveArgs = (options: ServeOptions): ReadonlyArray<string> => [
   "serve",
   ...(options.provider ? ["--provider", options.provider] : []),
   ...(options.ephemeral ? ["--no-session-log"] : []),
-  // Cerium has no user-input dialog; the model asks in its reply instead.
+  // Muse's own question tool stays off: agents ask the user through the bus's `ask_user`.
   "--disable-request-user-input",
   ...accessPolicy(options.access).serveFlags,
   ...HOST_SETTINGS.flatMap(([key, value]) => ["-c", `${key}=${JSON.stringify(value)}`]),

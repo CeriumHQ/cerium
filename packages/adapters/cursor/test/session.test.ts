@@ -1,7 +1,7 @@
 import { JsonlLocalAgentStore } from "@cursor/sdk";
 import { describe, expect, it } from "@effect/vitest";
 
-import { NATIVE_SUBAGENT_TOOLS } from "../src/manifest.ts";
+import { NATIVE_QUESTION_TOOLS, NATIVE_SUBAGENT_TOOLS } from "../src/manifest.ts";
 import {
   READ_ONLY_TOOLS,
   accessOptions,
@@ -18,26 +18,36 @@ describe("access modes", () => {
       for (const writer of ["edit", "delete", "shell", "write", "applyAgentDiff", "piBash", "piWrite"]) {
         expect(tools).not.toContain(writer);
       }
-      expect(disallowedTools).toEqual([...NATIVE_SUBAGENT_TOOLS]);
+      expect(disallowedTools).toEqual([...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS]);
     }
   });
 
   it("lets acceptEdits edit but withholds commands", () => {
     const { tools, disallowedTools } = toolRestrictions("acceptEdits");
     expect(tools).toBeUndefined();
-    expect(disallowedTools).toEqual([...NATIVE_SUBAGENT_TOOLS, "shell", "piBash"]);
+    expect(disallowedTools).toEqual([...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS, "shell", "piBash"]);
   });
 
   it("gives auto every tool, reviewed by Cursor's Auto-review in the user's sandbox", () => {
-    expect(toolRestrictions("auto")).toEqual({ disallowedTools: [...NATIVE_SUBAGENT_TOOLS] });
+    expect(toolRestrictions("auto")).toEqual({
+      disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS],
+    });
     expect(accessOptions("auto")).toEqual({ autoReview: true });
   });
 
   it("gives fullAccess every tool, outside the sandbox", () => {
-    expect(toolRestrictions("fullAccess")).toEqual({ disallowedTools: [...NATIVE_SUBAGENT_TOOLS] });
+    expect(toolRestrictions("fullAccess")).toEqual({
+      disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS],
+    });
     expect(accessOptions("fullAccess")).toEqual({ sandboxOptions: { enabled: false } });
     for (const access of ["readOnly", "ask", "acceptEdits"] as const) {
       expect(accessOptions(access)).toEqual({});
+    }
+  });
+
+  it("withholds Cursor's own question tool in every mode: local runs reject it, and agents ask through Cerium", () => {
+    for (const access of ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"] as const) {
+      expect(toolRestrictions(access).disallowedTools).toContain("askQuestion");
     }
   });
 

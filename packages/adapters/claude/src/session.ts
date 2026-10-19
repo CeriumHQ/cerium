@@ -20,11 +20,14 @@ import {
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 
-import { NATIVE_SUBAGENT_TOOLS } from "./manifest.ts";
+import { NATIVE_QUESTION_TOOLS, NATIVE_SUBAGENT_TOOLS, TODO_TOOLS, TODO_TOOLS_ENV } from "./manifest.ts";
 import { ClaudeTranslator } from "./translate.ts";
 
-/** Tools available in `readOnly` access: reading, searching and the web. MCP tools stay available. */
-const READ_ONLY_TOOLS = ["Read", "Glob", "Grep", "LSP", "WebFetch", "WebSearch", "ToolSearch"];
+/**
+ * Tools available in `readOnly` access: reading, searching, the web, and the todo list, which only
+ * keeps the agent's own notes. MCP tools stay available.
+ */
+const READ_ONLY_TOOLS = ["Read", "Glob", "Grep", "LSP", "WebFetch", "WebSearch", "ToolSearch", ...TODO_TOOLS];
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
@@ -72,7 +75,9 @@ export const toSdkOptions = (
   includePartialMessages: true,
   // Load the user's own Claude configuration (CLAUDE.md, settings, skills) like their CLI does.
   settingSources: ["user", "project", "local"],
-  disallowedTools: [...NATIVE_SUBAGENT_TOOLS],
+  disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS],
+  // Newer models get no todo tools unless asked; Cerium shows the list they keep.
+  env: { ...process.env, ...TODO_TOOLS_ENV },
   ...(options.access === "readOnly" ? { tools: READ_ONLY_TOOLS } : {}),
   permissionMode: permissionMode(options.access),
   // The SDK refuses `bypassPermissions` without this explicit opt-in, and never consults `canUseTool`

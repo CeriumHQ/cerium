@@ -28,7 +28,7 @@ import { Cause, Data, Effect, Queue, Stream } from "effect";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
-import { NATIVE_SUBAGENT_TOOLS } from "./manifest.ts";
+import { NATIVE_QUESTION_TOOLS, NATIVE_SUBAGENT_TOOLS } from "./manifest.ts";
 import { toModelSelection } from "./models.ts";
 import { isUnauthenticated } from "./probe.ts";
 import { CursorTranslator, type CursorError, type CursorRecord } from "./translate.ts";
@@ -66,15 +66,16 @@ const COMMAND_TOOLS = ["shell", "piBash"];
  * lists with every request; deny wins.
  */
 export const toolRestrictions = (access: AccessMode): Pick<AgentOptions, "tools" | "disallowedTools"> => {
+  const withheld = [...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS];
   switch (access) {
     case "readOnly":
     case "ask":
-      return { tools: [...READ_ONLY_TOOLS], disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
+      return { tools: [...READ_ONLY_TOOLS], disallowedTools: withheld };
     case "acceptEdits":
-      return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...COMMAND_TOOLS] };
+      return { disallowedTools: [...withheld, ...COMMAND_TOOLS] };
     case "auto":
     case "fullAccess":
-      return { disallowedTools: [...NATIVE_SUBAGENT_TOOLS] };
+      return { disallowedTools: withheld };
   }
 };
 

@@ -7,6 +7,8 @@
 //                                                                  logged-in account's default model
 //   node packages/adapters/muse/scripts/record-fixture.ts --echo   two turns on Muse's offline `echo`
 //                                                                  provider; needs no account
+//   node packages/adapters/muse/scripts/record-fixture.ts --todos  a two-item todo list on the logged-in
+//                                                                  account's default model
 
 import type { AdapterEvent } from "@cerium/harness";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
@@ -19,15 +21,22 @@ import { findMuseExecutable, listMuseModels, startMuseSession } from "../src/ind
 import type { RecordedFrame } from "../src/session.ts";
 
 const echo = process.argv.includes("--echo");
+const todos = process.argv.includes("--todos");
 const workspace = mkdtempSync(join(tmpdir(), "cerium-fixture-"));
 writeFileSync(join(workspace, "hello.txt"), "hello from cerium\n");
 
 const prompts = echo
   ? ["hello echo", "second turn"]
-  : [
-      "Read hello.txt, then create out.txt containing its contents in uppercase. " +
-        "Finally reply with just the uppercase text.",
-    ];
+  : todos
+    ? [
+        "First write a todo list with your todo tool, with exactly two items: list the working directory " +
+          "with a command, and reply with DONE. Then do each item, updating the list as you start and " +
+          "finish it.",
+      ]
+    : [
+        "Read hello.txt, then create out.txt containing its contents in uppercase. " +
+          "Finally reply with just the uppercase text.",
+      ];
 
 const frames: Array<RecordedFrame> = [];
 
@@ -71,7 +80,7 @@ const scrub = (line: string) =>
 const write = Effect.sync(() => {
   const fixtures = join(import.meta.dirname, "..", "test", "fixtures");
   mkdirSync(fixtures, { recursive: true });
-  const name = echo ? "echo-session.jsonl" : "read-write-session.jsonl";
+  const name = echo ? "echo-session.jsonl" : todos ? "todo-session.jsonl" : "read-write-session.jsonl";
   writeFileSync(join(fixtures, name), frames.map((frame) => scrub(JSON.stringify(frame))).join("\n") + "\n");
   return name;
 });

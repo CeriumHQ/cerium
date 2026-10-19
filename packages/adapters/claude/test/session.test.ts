@@ -36,4 +36,10 @@ describe("access modes", () => {
       expect(optionsFor(access).canUseTool).toBe(canUseTool);
     }
   });
+
+  it("withholds Claude Code's own question tool in every mode", () => {
+    for (const access of ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"] as const) {
+      expect(optionsFor(access).disallowedTools).toContain("AskUserQuestion");
+    }
+  });
 });

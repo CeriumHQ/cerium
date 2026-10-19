@@ -165,6 +165,9 @@ export const threadConfig = (
     agents: { ...NATIVE_SUBAGENTS_OFF.agents },
     features: {
       ...NATIVE_SUBAGENTS_OFF.features,
+      // Codex's own question tool, `request_user_input`, stays off in Default mode even where the user's
+      // config turns it on: agents ask the user through the bus's `ask_user`.
+      default_mode_request_user_input: false,
       ...(options.includeUserMcpServers ? {} : { apps: false, plugins: false }),
     },
     mcp_servers: Object.fromEntries([...disabled, ...injected]),
