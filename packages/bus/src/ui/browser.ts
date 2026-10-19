@@ -178,7 +178,8 @@ export const launchBrowser = async (options: {
     })().catch(() => undefined);
   };
   const portFile = join(profile, "DevToolsActivePort");
-  for (let waited = 0; waited < 20_000; waited += 100) {
+  // Edge's first start on a loaded two-core CI runner takes up to 20 s, so the wait leaves room.
+  for (let waited = 0; waited < 60_000; waited += 100) {
     if (child.exitCode !== null && child.exitCode !== 0) break;
     // Windows keeps the file locked while the browser writes it; a busy read retries next round.
     const written = existsSync(portFile) ? readPortFile(portFile) : undefined;

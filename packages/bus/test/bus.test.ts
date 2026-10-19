@@ -316,7 +316,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
         assert.include(text(yield* client.callTool("ui_close", {})), '"closed":true');
       }).pipe(Effect.provide(stack(fake)), Effect.scoped);
     },
-    60_000,
+    120_000,
   );
 
   it.live("keeps read-only agents from acting on pages or running checks", () => {
