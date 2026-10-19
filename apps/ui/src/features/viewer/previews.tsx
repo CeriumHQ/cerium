@@ -9,6 +9,7 @@ import { mediaAtom, mediaKey, previewAtom, previewKey } from "../../backend/expl
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
+import { wantsTab, type OpenFile } from "../files/model.ts";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { byteSize } from "./model.ts";
@@ -177,10 +178,13 @@ export function SvgPreview({ text, path, size }: { text: string; path: string; s
   );
 }
 
-/** Where `src` points in the thread's folder, when it's a path relative to the Markdown file `path`. */
+/**
+ * Where `src` points in the thread's folder, when it's a path relative to the Markdown file `path`,
+ * or to the folder itself when it starts with `/`, as on GitHub.
+ */
 export const relativeTarget = (src: string, path: string): string | undefined => {
   if (/^[a-z][a-z\d+.-]*:|^\/\/|^#/i.test(src)) return undefined;
-  const parts = [...path.split("/").slice(0, -1)];
+  const parts = src.startsWith("/") ? [] : path.split("/").slice(0, -1);
   const [target = ""] = src.split(/[?#]/);
   for (const part of decodeURI(target).split("/")) {
     if (part === "" || part === ".") continue;
@@ -192,32 +196,70 @@ export const relativeTarget = (src: string, path: string): string | undefined =>
   return parts.length === 0 ? undefined : parts.join("/");
 };
 
+/** A path hardening percent-encoded, as it is on disk. */
+const folderPath = (encoded: string): string => {
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+};
+
+/** How a Markdown image asks to be drawn: its text, and the size it may set. */
+interface Shown {
+  readonly alt: string;
+  readonly width: string | number | undefined;
+  readonly height: string | number | undefined;
+}
+
+/** An image in a Markdown file, held to the column's width. */
+const MarkdownImage = ({ src, shown }: { src: string; shown: Shown }) => (
+  <img
+    src={src}
+    alt={shown.alt}
+    width={shown.width}
+    height={shown.height}
+    className="inline-block h-auto max-w-full"
+  />
+);
+
 /** An image a Markdown file links from beside it in the folder, read through the machine. */
-function FolderImage({ root, path, alt }: { root: string; path: string; alt: string }) {
+function FolderImage({ root, path, shown }: { root: string; path: string; shown: Shown }) {
   const preview = AsyncResult.value(useAtomValue(previewAtom(previewKey(root, path))));
   const file = Option.getOrUndefined(preview);
   if (file?._tag === "Text" && path.toLowerCase().endsWith(".svg")) {
-    return <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(file.text)}`} alt={alt} />;
+    return (
+      <MarkdownImage
+        src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(file.text)}`}
+        shown={shown}
+      />
+    );
   }
-  if (file?._tag !== "Media" || file.kind !== "image") return <span className="text-fg-tertiary">{alt}</span>;
-  return <FolderMedia root={root} path={path} mediaType={file.mediaType} alt={alt} />;
+  if (file?._tag !== "Media" || file.kind !== "image") {
+    return <span className="text-fg-tertiary">{shown.alt}</span>;
+  }
+  return <FolderMedia root={root} path={path} mediaType={file.mediaType} shown={shown} />;
 }
 
 function FolderMedia({
   root,
   path,
   mediaType,
-  alt,
+  shown,
 }: {
   root: string;
   path: string;
   mediaType: string;
-  alt: string;
+  shown: Shown;
 }) {
   const load = Option.getOrUndefined(
     AsyncResult.value(useAtomValue(mediaAtom(mediaKey(root, path, mediaType)))),
   );
-  return load?.url ? <img src={load.url} alt={alt} /> : <span className="text-fg-tertiary">{alt}</span>;
+  return load?.url ? (
+    <MarkdownImage src={load.url} shown={shown} />
+  ) : (
+    <span className="text-fg-tertiary">{shown.alt}</span>
+  );
 }
 
 /** A Markdown file as it reads, its relative images drawn from the folder. */
@@ -226,24 +268,58 @@ export function MarkdownPreview({
   path,
   text,
   messageBox,
+  onOpenFile,
 }: {
   root: string;
   path: string;
   text: string;
   messageBox: MessageBox | undefined;
+  onOpenFile: OpenFile | undefined;
 }) {
-  const image: DefaultComponents["img"] = ({ src, alt }) => {
-    const label = alt ?? "";
-    const target = typeof src === "string" ? relativeTarget(src, path) : undefined;
-    if (target !== undefined) return <FolderImage root={root} path={target} alt={label} />;
-    return typeof src === "string" ? <img src={src} alt={label} /> : null;
+  // Relative images and links reach the renderer as `/` and their path in the folder, which
+  // hardening keeps.
+  const resolve = (address: string) => {
+    const target = relativeTarget(address, path);
+    return target === undefined ? undefined : `/${target}`;
+  };
+  const inFolder = (address: unknown) =>
+    typeof address === "string" && address.startsWith("/") && !address.startsWith("//")
+      ? folderPath(address.slice(1))
+      : undefined;
+  const image: DefaultComponents["img"] = ({ src, alt, width, height }) => {
+    if (typeof src !== "string") return null;
+    const shown = { alt: alt ?? "", width, height };
+    const target = inFolder(src);
+    return target === undefined ? (
+      <MarkdownImage src={src} shown={shown} />
+    ) : (
+      <FolderImage root={root} path={target} shown={shown} />
+    );
+  };
+  const link = ({ href, children }: { href?: string | undefined; children?: ReactNode }) => {
+    const target = inFolder(href);
+    if (target === undefined) return undefined;
+    if (onOpenFile === undefined) return <span className="font-medium">{children}</span>;
+    return (
+      <button
+        type="button"
+        title={target}
+        onClick={(event) => onOpenFile(target, { tab: wantsTab(event) })}
+        onAuxClick={(event) => {
+          if (event.button === 1) onOpenFile(target, { tab: true });
+        }}
+        className="cursor-pointer font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
+      >
+        {children}
+      </button>
+    );
   };
   return (
     <div className="scroll-thin h-full overflow-auto select-text">
       <article className="mx-auto max-w-3xl px-8 py-8 max-md:px-4 max-md:py-5">
         <WorkspaceFolder value={root}>
           <MessageBoxContext value={messageBox}>
-            <Markdown text={text} streaming={false} image={image} />
+            <Markdown text={text} streaming={false} folder={{ resolve, image, link }} />
           </MessageBoxContext>
         </WorkspaceFolder>
       </article>

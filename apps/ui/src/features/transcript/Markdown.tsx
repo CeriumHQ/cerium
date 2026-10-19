@@ -1,7 +1,13 @@
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import { mentionToken, type Mention } from "@cerium/protocol";
-import { createContext, useContext, type ComponentProps } from "react";
-import { defaultComponents, defaultRemarkPlugins, Streamdown, type DefaultComponents } from "streamdown";
+import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
+import {
+  defaultComponents,
+  defaultRehypePlugins,
+  defaultRemarkPlugins,
+  Streamdown,
+  type DefaultComponents,
+} from "streamdown";
 
 import { Artifact } from "./Artifact.tsx";
 import { FileChip, SkillChip } from "./FileChip.tsx";
@@ -85,6 +91,58 @@ const remarkTypedBreaks = () => (tree: MarkdownNode) => {
 const agentRemarkPlugins = Object.values(defaultRemarkPlugins);
 const userRemarkPlugins = [...agentRemarkPlugins, remarkTypedBreaks];
 
+interface HtmlNode {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: Array<HtmlNode>;
+}
+
+/** The first address in a `srcset`. */
+const firstSource = (srcset: unknown): string | undefined => {
+  const first = Array.isArray(srcset) ? srcset[0] : srcset;
+  return typeof first === "string" ? first.trim().split(/[\s,]/)[0] || undefined : undefined;
+};
+
+/** A `<picture>` as the one image the current colour scheme picks, drawn by the image component. */
+const choosePicture = (picture: HtmlNode) => {
+  const children = picture.children ?? [];
+  const chosen = children.find((child) => {
+    if (child.tagName !== "source") return false;
+    const media = child.properties?.["media"];
+    return typeof media !== "string" || matchMedia(media).matches;
+  });
+  const src = chosen && firstSource(chosen.properties?.["srcSet"]);
+  picture.children = children.filter((child) => child.tagName !== "source");
+  const image = picture.children.find((child) => child.tagName === "img");
+  if (src !== undefined && image) image.properties = { ...image.properties, src };
+};
+
+/** Which attribute of an element holds the address `resolve` rewrites. */
+const ADDRESSES: Readonly<Record<string, string>> = { img: "src", a: "href" };
+
+/**
+ * Rewrites each image's and link's address through `resolve` once sanitizing has run and before
+ * hardening does, which blocks a bare relative path such as `media/shot.png` and collapses `../`
+ * against a dummy root.
+ */
+const rehypeFolderAddresses =
+  (resolve: (address: string) => string | undefined) => () => (tree: HtmlNode) => {
+    const visit = (node: HtmlNode) => {
+      if (node.tagName === "picture") choosePicture(node);
+      const attribute = node.tagName === undefined ? undefined : ADDRESSES[node.tagName];
+      const address = attribute === undefined ? undefined : node.properties?.[attribute];
+      if (attribute !== undefined && typeof address === "string") {
+        const resolved = resolve(address);
+        if (resolved !== undefined) node.properties = { ...node.properties, [attribute]: resolved };
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+
+const { harden, ...beforeHarden } = defaultRehypePlugins;
+
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Wraps each mention's token in backticks, so markdown leaves it whole and it renders as its chip. */
@@ -107,7 +165,7 @@ export function Markdown({
   streaming,
   compact = false,
   user,
-  image,
+  folder,
 }: {
   text: string;
   streaming: boolean;
@@ -115,8 +173,16 @@ export function Markdown({
   compact?: boolean;
   /** The user's own message: line breaks kept as typed, and what they tagged shown as chips. */
   user?: { readonly mentions: ReadonlyArray<Mention> };
-  /** Draws images itself: a file's Markdown reads the ones beside it from its folder. */
-  image?: DefaultComponents["img"];
+  /**
+   * A file's Markdown, whose images and links point at files beside it: `resolve` turns each address
+   * into the one `image` and `link` receive.
+   */
+  folder?: {
+    readonly resolve: (address: string) => string | undefined;
+    readonly image: DefaultComponents["img"];
+    /** Draws a link to a file beside it; undefined leaves any other link as it is. */
+    readonly link: (props: ComponentProps<typeof StreamdownLink>) => ReactNode | undefined;
+  };
 }) {
   const mentions = new Map((user?.mentions ?? []).map((mention) => [mentionToken(mention), mention]));
   return (
@@ -126,8 +192,26 @@ export function Markdown({
         isAnimating={streaming}
         controls={controls}
         plugins={plugins}
-        components={image ? { ...components, img: image } : components}
+        components={
+          folder
+            ? {
+                ...components,
+                img: folder.image,
+                a: (props: ComponentProps<typeof StreamdownLink>) =>
+                  folder.link(props) ?? <Link {...props} />,
+              }
+            : components
+        }
         remarkPlugins={user ? userRemarkPlugins : agentRemarkPlugins}
+        {...(folder
+          ? {
+              rehypePlugins: [
+                ...Object.values(beforeHarden),
+                rehypeFolderAddresses(folder.resolve),
+                ...(harden ? [harden] : []),
+              ],
+            }
+          : {})}
         lineNumbers={false}
         className={`${compact ? "text-[13px] leading-[1.6] text-fg-secondary [&>*+*]:mt-2.5" : "text-[14px] leading-[1.65] text-fg-primary [&>*+*]:mt-3"} [&_code]:font-mono [&_strong]:font-semibold [&_strong]:text-fg-primary`}
       >

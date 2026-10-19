@@ -27,7 +27,7 @@ import { remember } from "../../lib/storage.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FileMenuItems } from "../files/FileMenu.tsx";
 import { StateLetter, TouchedMark } from "../files/FileStatus.tsx";
-import { dirOf, nameOf, stateAt, stateWord, touchWord } from "../files/model.ts";
+import { dirOf, nameOf, stateAt, stateWord, touchWord, type OpenFile } from "../files/model.ts";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { fileTargets } from "../transcript/menus.ts";
 import { CodeView } from "./CodeView.tsx";
@@ -88,6 +88,7 @@ function FileBody({
   rendered,
   wrap,
   messageBox,
+  onOpenFile,
   outside,
 }: {
   root: string;
@@ -97,6 +98,7 @@ function FileBody({
   rendered: boolean;
   wrap: boolean;
   messageBox: MessageBox | undefined;
+  onOpenFile: OpenFile | undefined;
   /** Opens the file in its own app or shows it in File Explorer, where this computer can. */
   outside: ReactNode;
 }) {
@@ -118,7 +120,13 @@ function FileBody({
       const kind = renderedKind(path);
       const body =
         rendered && kind === "markdown" ? (
-          <MarkdownPreview root={root} path={path} text={preview.text} messageBox={messageBox} />
+          <MarkdownPreview
+            root={root}
+            path={path}
+            text={preview.text}
+            messageBox={messageBox}
+            onOpenFile={onOpenFile}
+          />
         ) : rendered && kind === "html" ? (
           <HtmlPreview text={preview.text} path={path} />
         ) : rendered && kind === "svg" ? (
@@ -195,6 +203,7 @@ export function FileViewer({
   path,
   touch,
   messageBox,
+  onOpenFile,
   onClose,
 }: {
   /** The thread's folder. */
@@ -204,6 +213,8 @@ export function FileViewer({
   /** What this thread's agents did to it, when they touched it. */
   touch?: "created" | "modified" | "deleted" | undefined;
   messageBox: MessageBox | undefined;
+  /** Opens another of the folder's files in the viewer, as a Markdown file's links ask. */
+  onOpenFile?: OpenFile | undefined;
   onClose: () => void;
 }) {
   const registry = useContext(RegistryContext);
@@ -411,6 +422,7 @@ export function FileViewer({
               rendered={view === "rendered"}
               wrap={wrap}
               messageBox={messageBox}
+              onOpenFile={onOpenFile}
               outside={outside}
             />
           )}

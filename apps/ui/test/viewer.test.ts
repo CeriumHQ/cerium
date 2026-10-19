@@ -177,6 +177,8 @@ describe("previews", () => {
     expect(relativeTarget("shot.png", "docs/README.md")).toBe("docs/shot.png");
     expect(relativeTarget("../assets/My%20Logo.svg?raw", "docs/README.md")).toBe("assets/My Logo.svg");
     expect(relativeTarget("./a/b.gif", "README.md")).toBe("a/b.gif");
+    expect(relativeTarget(".github/media/logo.svg", "README.md")).toBe(".github/media/logo.svg");
+    expect(relativeTarget("/media/logo.svg", "docs/README.md")).toBe("media/logo.svg");
     expect(relativeTarget("../../out.png", "docs/README.md")).toBeUndefined();
     expect(relativeTarget("https://example.com/a.png", "README.md")).toBeUndefined();
     expect(relativeTarget("data:image/png;base64,AA", "README.md")).toBeUndefined();
