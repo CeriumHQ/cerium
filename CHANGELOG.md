@@ -164,6 +164,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: a dozen attachments no longer push the message off the screen: the tray scrolls past two rows. A file that couldn't be attached says why under the tray, and touch screens show each file's remove button.
 - UI: a long menu, such as every saved project, scrolls inside the window instead of running off it.
 - `@cerium/bus`: `ui_open` waits up to a minute, not twenty seconds, for the browser to start its debugging port, which a slow or busy machine needed.
 - UI: a long thread opens and streams faster. The browser lays out and paints only the messages, tool calls and cards in and near view instead of the whole conversation, through CSS `content-visibility`. (An earlier, unreleased version of this used a JavaScript virtual list, which on some threads left the start of the conversation blank with the end pushed to the bottom of the window: when a conversation fitted the window, or grew while it did, the list never learned where the window was scrolled to and only ever drew its last few items.)
