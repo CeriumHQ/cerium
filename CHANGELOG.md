@@ -152,6 +152,8 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: copy a whole response from under it, and a tool call's command or output from inside it.
 - UI: the update notice links to what's new in the version and shows the download's progress.
 - `@cerium/rpc`: browsing a work thread's folder on the machine that runs it: its entries a level at a time, what git says differs from the last commit, a file to preview, a changed file's diff, and word of what changes while it's watched.
+- UI: Ctrl Shift E, or the folder button in the titlebar, opens a work thread's files beside the conversation in the agents panel's place: the folder as a tree to walk with the keyboard (arrows, Enter, or type a name), a letter beside each file git says changed and a dot on the folders holding changes, ignored and dependency folders dimmed, and a Changes tab listing them. Ctrl F finds a file or folder by name, and a sparkle marks what the thread's agents changed. The tree follows the folder as it changes, an agent's edit included.
+- UI: choosing a file previews it over the conversation, read-only: highlighted text with line numbers, a changed file against the last commit, Markdown rendered or as written, and images. Right-click a file or folder for the same menu as its chip. On a phone the files and the preview take the screen.
 
 ### Changed
 

@@ -70,6 +70,8 @@ import {
 import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
+import { FILES_VERSION } from "../features/files/model.ts";
+import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { themeAtom } from "../features/settings/preferences.ts";
 import {
   settingsLabel,
@@ -152,6 +154,8 @@ function Workspace() {
   /** Each mode's blank new thread: once it has something in it, "New thread" starts another. */
   const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  /** The files panel, which takes the inspector's place: one of the two is open at a time. */
+  const [filesOpen, setFilesOpen] = useState(false);
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
   /** The narrow window's pane: the threads, or the open (or new) thread. */
@@ -419,10 +423,33 @@ function Workspace() {
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
+  const toggleInspector = () => {
+    setInspectorOpen(!inspectorOpen);
+    setFilesOpen(false);
+  };
+  const toggleFiles = () => {
+    setFilesOpen(!filesOpen);
+    setInspectorOpen(false);
+  };
+  /** The open work thread's folder can be browsed here: it's on the machine the window drives, which knows how. */
+  const filesRoot =
+    selected?.thread.mode === "work" &&
+    selected.thread.cwd !== undefined &&
+    (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= FILES_VERSION)
+      ? selected.thread.cwd
+      : undefined;
+  const explorer = useFilesExplorer({
+    root: filesRoot,
+    events,
+    messageBox,
+    open: filesOpen && !settingsOpen,
+    onClose: () => setFilesOpen(false),
+  });
   const agentActions: AgentActions = {
     onShow: (agentId) => {
       setInspectedAgent(agentId);
       setInspectorOpen(true);
+      setFilesOpen(false);
     },
     onMessageLead: () => composerInput.current?.focus(),
     onInterrupt: (agentId) => void attempt(interrupt({ payload: { agentId: agentId as AgentId } })),
@@ -501,9 +528,15 @@ function Workspace() {
       setSettingsOpen(false);
       return;
     }
-    if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+    if (!event.ctrlKey || event.altKey || event.metaKey) return;
     // Search has the keys while it's open, but for Ctrl K, which closes it.
     if (searchOpen && event.key.toLowerCase() !== "k") return;
+    if (event.shiftKey) {
+      if (event.key.toLowerCase() !== "e" || settingsOpen || filesRoot === undefined) return;
+      toggleFiles();
+      event.preventDefault();
+      return;
+    }
     switch (event.key.toLowerCase()) {
       case ",":
         setSettingsOpen(!settingsOpen);
@@ -526,7 +559,7 @@ function Workspace() {
         break;
       case "j":
         if (selected === undefined || settingsOpen) return;
-        setInspectorOpen((open) => !open);
+        toggleInspector();
         break;
       default:
         return;
@@ -685,8 +718,15 @@ function Workspace() {
           />
         ) : undefined
       }
-      onToggleInspector={() => setInspectorOpen((open) => !open)}
+      onToggleInspector={toggleInspector}
       onCloseInspector={() => setInspectorOpen(false)}
+      files={inspectorOpen && selected ? undefined : explorer.panel}
+      filesAvailable={filesRoot !== undefined}
+      filesOpen={filesOpen}
+      onToggleFiles={toggleFiles}
+      onCloseFiles={() => setFilesOpen(false)}
+      filePreviewOpen={explorer.previewing}
+      onCloseFilePreview={explorer.closePreview}
     >
       <div className="relative flex h-full flex-col">
         {connection === "unreachable" && driven !== undefined ? (
@@ -718,7 +758,7 @@ function Workspace() {
           </Notice>
         ) : null}
 
-        <div className="min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1">
           {viewed && lead ? (
             <Transcript
               key={viewed.thread.id}
@@ -756,6 +796,12 @@ function Workspace() {
           ) : loadingThread ? null : (
             <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
           )}
+          {/* An open file covers the conversation but not the message box, which can mention it. */}
+          {explorer.overlay ? (
+            <div className="absolute inset-x-0 top-0 z-10" style={{ bottom: composerHeight }}>
+              {explorer.overlay}
+            </div>
+          ) : null}
         </div>
 
         {WEB && driven === undefined && !cloudSelected ? (

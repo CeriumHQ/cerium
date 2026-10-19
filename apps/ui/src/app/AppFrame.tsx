@@ -16,9 +16,10 @@ import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
-import { GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
+import { FILES, GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth } from "./ResizeHandle.tsx";
-import { AgentsToggle, Titlebar } from "./Titlebar.tsx";
+import { SidePanelContext } from "./sidePanel.ts";
+import { AgentsToggle, FilesToggle, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -35,6 +36,20 @@ interface AppFrameProps {
   readonly onToggleInspector: () => void;
   /** Closes the inspector, whether or not it's open. */
   readonly onCloseInspector: () => void;
+  /**
+   * The files panel, in the inspector's place: one of the two shows at a time, so this is only
+   * given while the inspector isn't. Absent when there is no folder to browse.
+   */
+  readonly files: ReactNode | undefined;
+  /** There is a folder to browse, so the window offers the panel. */
+  readonly filesAvailable: boolean;
+  /** Whether the files panel is open (it can be open without `files`, when settings cover it). */
+  readonly filesOpen: boolean;
+  readonly onToggleFiles: () => void;
+  readonly onCloseFiles: () => void;
+  /** A file is open in the files pane of the narrow window; the phone's Back closes it before the pane. */
+  readonly filePreviewOpen: boolean;
+  readonly onCloseFilePreview: () => void;
   /**
    * Settings take the sidebar's place with their categories and the main panel's with the open
    * category. The thread views stay mounted underneath, so leaving settings returns to them as they were.
@@ -104,13 +119,22 @@ function DesktopFrame({
   inspector,
   onToggleInspector,
   onCloseInspector,
+  files,
+  filesAvailable,
+  filesOpen,
+  onToggleFiles,
+  onCloseFiles,
   settings,
   machinePicker,
   children,
 }: AppFrameProps) {
   const view = settings.open ? "settings" : "threads";
   const showSidebar = sidebarOpen || settings.open;
-  const showInspector = inspector !== undefined && !settings.open;
+  // The agents and the files take the same place beside the transcript, one at a time.
+  const side = inspector ?? files;
+  const showInspector = side !== undefined && !settings.open;
+  const sideSpec = files !== undefined ? FILES : INSPECTOR;
+  const onCloseSide = files !== undefined ? onCloseFiles : onCloseInspector;
 
   const body = useRef<HTMLDivElement>(null);
   const floatingInspector = useRef<HTMLElement>(null);
@@ -120,25 +144,27 @@ function DesktopFrame({
     INSPECTOR.key,
     INSPECTOR.fallback,
   );
+  const [savedFiles, setSavedFiles, rememberFiles] = usePanelWidth(FILES.key, FILES.fallback);
   /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
 
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
     bodyWidth,
-    { sidebar: savedSidebar, inspector: savedInspector },
+    { sidebar: savedSidebar, inspector: files !== undefined ? savedFiles : savedInspector },
     showSidebar,
+    sideSpec,
   );
 
   const inspectorHandle = (
     <ResizeHandle
-      label="Resize agents panel"
+      label={files !== undefined ? "Resize files panel" : "Resize agents panel"}
       edge="start"
       width={inspectorWidth}
-      min={INSPECTOR.min}
+      min={sideSpec.min}
       max={inspectorMax}
-      fallback={INSPECTOR.fallback}
-      onResize={setSavedInspector}
-      onCommit={rememberInspector}
+      fallback={sideSpec.fallback}
+      onResize={files !== undefined ? setSavedFiles : setSavedInspector}
+      onCommit={files !== undefined ? rememberFiles : rememberInspector}
       onDragChange={(active) => setDragging(active ? "inspector" : undefined)}
     />
   );
@@ -158,6 +184,7 @@ function DesktopFrame({
         agents={agents}
         inspectorOpen={inspector !== undefined}
         onToggleInspector={onToggleInspector}
+        {...(filesAvailable ? { files: { open: filesOpen, onToggle: onToggleFiles } } : {})}
         machinePicker={machinePicker}
       />
       <div ref={body} className="relative flex min-h-0 flex-1 pr-1.5 pb-1.5">
@@ -200,10 +227,10 @@ function DesktopFrame({
           // focus there (Message). Focus coming back from a menu or another window leaves it open.
           {...(showInspector && floating
             ? {
-                onPointerDownCapture: onCloseInspector,
+                onPointerDownCapture: onCloseSide,
                 onFocusCapture: (event: FocusEvent) => {
                   const from = event.relatedTarget;
-                  if (from instanceof Node && floatingInspector.current?.contains(from)) onCloseInspector();
+                  if (from instanceof Node && floatingInspector.current?.contains(from)) onCloseSide();
                 },
               }
             : {})}
@@ -232,7 +259,7 @@ function DesktopFrame({
                 style={{ width: inspectorWidth }}
                 className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
               >
-                {inspector}
+                <SidePanelContext value={{ floating: true, close: onCloseSide }}>{side}</SidePanelContext>
               </aside>
             </>
           ) : (
@@ -242,7 +269,7 @@ function DesktopFrame({
                 style={{ width: inspectorWidth }}
                 className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
               >
-                {inspector}
+                <SidePanelContext value={{ floating: false, close: onCloseSide }}>{side}</SidePanelContext>
               </aside>
             </>
           )
@@ -265,6 +292,12 @@ function CompactFrame({
   agents,
   inspector,
   onToggleInspector,
+  files,
+  filesAvailable,
+  filesOpen,
+  onToggleFiles,
+  filePreviewOpen,
+  onCloseFilePreview,
   settings,
   machinePicker,
   closeDialog,
@@ -275,18 +308,30 @@ function CompactFrame({
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
-  const inspecting = inspector !== undefined && !settings.open && pane === "main";
+  const side = inspector ?? files;
+  const inspecting = side !== undefined && !settings.open && pane === "main";
+  // A file open in the files pane is one more pane down.
+  const previewing = files !== undefined && inspecting && filePreviewOpen;
+  const inspectDepth = previewing ? 3 : 2;
   // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
   // button takes it up one.
   useBackNavigation(
-    (settings.open ? (settings.pane === "nav" ? 1 : 2) : pane === "main" ? (inspecting ? 2 : 1) : 0) +
-      (closeDialog ? 1 : 0),
+    (settings.open
+      ? settings.pane === "nav"
+        ? 1
+        : 2
+      : pane === "main"
+        ? inspecting
+          ? inspectDepth
+          : 1
+        : 0) + (closeDialog ? 1 : 0),
     () => {
       if (closeDialog) closeDialog();
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
-      } else if (inspecting) onToggleInspector();
+      } else if (previewing) onCloseFilePreview();
+      else if (inspecting) (files !== undefined ? onToggleFiles : onToggleInspector)();
       else onBack();
     },
   );
@@ -318,14 +363,19 @@ function CompactFrame({
                 folded={keyboardOpen}
                 title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
                 {...(thread?.project ? { subtitle: thread.project } : {})}
-                {...(agents.length > 0
+                {...(agents.length > 0 || filesAvailable
                   ? {
                       trailing: (
-                        <AgentsToggle
-                          agents={agents}
-                          open={inspector !== undefined}
-                          onToggle={onToggleInspector}
-                        />
+                        <>
+                          {filesAvailable ? <FilesToggle open={filesOpen} onToggle={onToggleFiles} /> : null}
+                          {agents.length > 0 ? (
+                            <AgentsToggle
+                              agents={agents}
+                              open={inspector !== undefined}
+                              onToggle={onToggleInspector}
+                            />
+                          ) : null}
+                        </>
                       ),
                     }
                   : {})}
@@ -351,7 +401,7 @@ function CompactFrame({
       />
       {inspecting ? (
         <div className="absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl">
-          {inspector}
+          {side}
         </div>
       ) : null}
     </div>

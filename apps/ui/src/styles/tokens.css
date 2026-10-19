@@ -46,6 +46,12 @@
   --status-error: oklch(0.7 0.19 25);
   --status-success: oklch(0.78 0.15 152);
 
+  /* Code in file previews: four quiet hues over the neutral ramp, comments in `fg-tertiary`. */
+  --syntax-keyword: oklch(0.79 0.1 305);
+  --syntax-string: oklch(0.79 0.09 150);
+  --syntax-number: oklch(0.81 0.09 70);
+  --syntax-type: oklch(0.79 0.08 225);
+
   /*
    * Categorical colours for data in agents' artifacts, never for chrome. Validated as a set for
    * colour-blind separation in this order, so assign them in order and keep the hex steps as they are.
@@ -97,6 +103,11 @@
   --status-error: oklch(0.56 0.21 25);
   --status-success: oklch(0.58 0.15 152);
 
+  --syntax-keyword: oklch(0.5 0.15 305);
+  --syntax-string: oklch(0.48 0.12 150);
+  --syntax-number: oklch(0.52 0.12 55);
+  --syntax-type: oklch(0.5 0.11 235);
+
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -138,6 +149,11 @@
   --color-attention: var(--status-attention);
   --color-error: var(--status-error);
   --color-success: var(--status-success);
+
+  --color-syntax-keyword: var(--syntax-keyword);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-number: var(--syntax-number);
+  --color-syntax-type: var(--syntax-type);
 
   --shadow-raised: var(--shadow-raised);
   --shadow-overlay: var(--shadow-overlay);

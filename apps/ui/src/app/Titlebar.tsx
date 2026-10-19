@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
-import { Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
+import { FolderTree, Minus, PanelLeft, Square, SquarePen, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
@@ -32,6 +32,8 @@ interface TitlebarProps {
   readonly agents: ReadonlyArray<ProviderId>;
   readonly inspectorOpen: boolean;
   readonly onToggleInspector: () => void;
+  /** The files panel's button, offered while there is a folder to browse. */
+  readonly files?: { readonly open: boolean; readonly onToggle: () => void };
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
 }
@@ -49,6 +51,7 @@ export function Titlebar({
   agents,
   inspectorOpen,
   onToggleInspector,
+  files,
   machinePicker,
 }: TitlebarProps) {
   const showSidebar = sidebarOpen || settingsOpen;
@@ -107,6 +110,7 @@ export function Titlebar({
           <div />
         )}
         <div className="flex h-full items-center justify-end">
+          {files && !settingsOpen ? <FilesToggle open={files.open} onToggle={files.onToggle} /> : null}
           {agents.length > 0 && !settingsOpen ? (
             <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
           ) : null}
@@ -115,6 +119,26 @@ export function Titlebar({
         </div>
       </div>
     </header>
+  );
+}
+
+/** Opens the files panel, which shares the agents panel's place. */
+export function FilesToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={open ? "Hide files" : "Show files"} shortcut="Ctrl Shift E">
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="Files"
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <FolderTree size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
   );
 }
 
