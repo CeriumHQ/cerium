@@ -19,13 +19,8 @@ const TabStrip = Schema.Struct({
   closed: Schema.Array(Schema.String),
 });
 
-const PaneView = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("thread"), key: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("file"), root: Schema.String, path: Schema.String }),
-]);
-
 const PaneNode = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("pane"), id: Schema.String, view: PaneView }),
+  Schema.Struct({ kind: Schema.Literal("pane"), id: Schema.String, key: Schema.String }),
   Schema.Struct({
     kind: Schema.Literal("split"),
     axis: Schema.Literals(["row", "column"]),

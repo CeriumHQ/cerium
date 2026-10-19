@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   canSplit,
   closePane,
-  closeThreads,
+  closeKeys,
   dropZoneAt,
   focusPane,
   followShown,
@@ -11,25 +11,25 @@ import {
   leavesOf,
   moveEdge,
   movePane,
-  renameThread,
+  renameKey,
   resizeSplit,
   showInPane,
   singlePane,
   splitPane,
-  threadView,
   type PaneNode,
   type Panes,
 } from "../src/features/split/model.ts";
 
 const shape = (node: PaneNode): unknown =>
   node.kind === "pane"
-    ? node.view.kind === "thread"
-      ? node.view.key
-      : `file:${node.view.path}`
+    ? node.key
     : { [node.axis]: node.children.map(shape), sizes: node.sizes.map((size) => Math.round(size * 100)) };
 
+/** A file's tab key. */
+const file = "file:/r\nx.ts";
+
 /** Thread `a` alone, then `b` to its right. */
-const twoAcross = (): Panes => splitPane(singlePane("1", "a"), "1", "right", threadView("b"), "2");
+const twoAcross = (): Panes => splitPane(singlePane("1", "a"), "1", "right", "b", "2");
 
 describe("splitPane", () => {
   it("opens a pane beside another and focuses it", () => {
@@ -40,12 +40,12 @@ describe("splitPane", () => {
   });
 
   it("shares the parent's space along the same axis", () => {
-    const panes = splitPane(twoAcross(), "2", "right", threadView("c"), "3");
+    const panes = splitPane(twoAcross(), "2", "right", "c", "3");
     expect(shape(panes.root)).toEqual({ row: ["a", "b", "c"], sizes: [50, 25, 25] });
   });
 
   it("nests a split across the other axis", () => {
-    const panes = splitPane(twoAcross(), "1", "bottom", threadView("c"), "3");
+    const panes = splitPane(twoAcross(), "1", "bottom", "c", "3");
     expect(shape(panes.root)).toEqual({
       row: [{ column: ["a", "c"], sizes: [50, 50] }, "b"],
       sizes: [50, 50],
@@ -53,35 +53,30 @@ describe("splitPane", () => {
   });
 
   it("opens before the pane on the left or the top", () => {
-    const panes = splitPane(singlePane("1", "a"), "1", "top", threadView("b"), "2");
+    const panes = splitPane(singlePane("1", "a"), "1", "top", "b", "2");
     expect(shape(panes.root)).toEqual({ column: ["b", "a"], sizes: [50, 50] });
   });
 
   it("moves a thread that already shows rather than showing it twice", () => {
-    const three = splitPane(twoAcross(), "2", "right", threadView("c"), "3");
-    const panes = splitPane(three, "1", "bottom", threadView("c"), "4");
+    const three = splitPane(twoAcross(), "2", "right", "c", "3");
+    const panes = splitPane(three, "1", "bottom", "c", "4");
     expect(shape(panes.root)).toEqual({
       row: [{ column: ["a", "c"], sizes: [50, 50] }, "b"],
       sizes: [50, 50],
     });
   });
 
-  it("keeps the thread shown when a file opens beside it", () => {
-    const panes = splitPane(
-      singlePane("1", "a"),
-      "1",
-      "right",
-      { kind: "file", root: "/r", path: "x.ts" },
-      "2",
-    );
+  it("opens a file beside a thread as it does any tab", () => {
+    const panes = splitPane(singlePane("1", "a"), "1", "right", file, "2");
+    expect(shape(panes.root)).toEqual({ row: ["a", file], sizes: [50, 50] });
     expect(panes.focused).toBe("2");
-    expect(panes.shown).toBe("a");
+    expect(panes.shown).toBe(file);
   });
 });
 
 describe("closePane", () => {
   it("gives its space to its neighbour and its focus too", () => {
-    const three = splitPane(twoAcross(), "2", "right", threadView("c"), "3");
+    const three = splitPane(twoAcross(), "2", "right", "c", "3");
     const panes = closePane(three, "2")!;
     expect(shape(panes.root)).toEqual({ row: ["a", "c"], sizes: [75, 25] });
     expect(panes.focused).toBe("3");
@@ -92,14 +87,14 @@ describe("closePane", () => {
 
   it("collapses a split left with one pane", () => {
     const panes = closePane(twoAcross(), "2")!;
-    expect(panes.root).toEqual({ kind: "pane", id: "1", view: threadView("a") });
+    expect(panes.root).toEqual({ kind: "pane", id: "1", key: "a" });
     expect(panes.focused).toBe("1");
     expect(panes.shown).toBe("a");
   });
 
   it("merges a nested split that's left along its parent's axis", () => {
     // a | (b over c) ; closing b leaves a | c in one row.
-    const nested = splitPane(twoAcross(), "2", "bottom", threadView("c"), "3");
+    const nested = splitPane(twoAcross(), "2", "bottom", "c", "3");
     const panes = closePane(nested, "2")!;
     expect(shape(panes.root)).toEqual({ row: ["a", "c"], sizes: [50, 50] });
   });
@@ -122,9 +117,9 @@ describe("followShown", () => {
     expect(shape(panes.root)).toEqual({ row: ["a", "b"], sizes: [50, 50] });
   });
 
-  it("leaves a focused file alone while the window's thread stays", () => {
-    const withFile = splitPane(twoAcross(), "2", "right", { kind: "file", root: "/r", path: "x.ts" }, "3");
-    expect(followShown(withFile, "b")).toBe(withFile);
+  it("stays put while the window shows the tab they last followed", () => {
+    const withFile = splitPane(twoAcross(), "2", "right", file, "3");
+    expect(followShown(withFile, file)).toBe(withFile);
     const replaced = followShown(withFile, "c");
     expect(shape(replaced.root)).toEqual({ row: ["a", "b", "c"], sizes: [50, 25, 25] });
   });
@@ -138,7 +133,7 @@ describe("focusPane and showInPane", () => {
   });
 
   it("focuses the pane that already shows a thread rather than showing it twice", () => {
-    const panes = showInPane(twoAcross(), "2", threadView("a"));
+    const panes = showInPane(twoAcross(), "2", "a");
     expect(panes.focused).toBe("1");
     expect(shape(panes.root)).toEqual({ row: ["a", "b"], sizes: [50, 50] });
   });
@@ -146,7 +141,7 @@ describe("focusPane and showInPane", () => {
 
 describe("movePane", () => {
   it("moves a pane to another's side", () => {
-    const three = splitPane(twoAcross(), "2", "right", threadView("c"), "3");
+    const three = splitPane(twoAcross(), "2", "right", "c", "3");
     const panes = movePane(three, "1", "3", "bottom");
     expect(shape(panes.root)).toEqual({
       row: ["b", { column: ["c", "a"], sizes: [50, 50] }],
@@ -165,13 +160,13 @@ describe("movePane", () => {
 
 describe("threads closing and starting", () => {
   it("closes the panes of closed threads", () => {
-    const three = splitPane(twoAcross(), "2", "right", threadView("c"), "3");
-    expect(shape(closeThreads(three, ["a", "c"])!.root)).toBe("b");
-    expect(closeThreads(singlePane("1", "a"), ["a"])).toBeUndefined();
+    const three = splitPane(twoAcross(), "2", "right", "c", "3");
+    expect(shape(closeKeys(three, ["a", "c"])!.root)).toBe("b");
+    expect(closeKeys(singlePane("1", "a"), ["a"])).toBeUndefined();
   });
 
   it("follows a draft to the thread it started", () => {
-    const panes = renameThread(twoAcross(), "b", "t");
+    const panes = renameKey(twoAcross(), "b", "t");
     expect(shape(panes.root)).toEqual({ row: ["a", "t"], sizes: [50, 50] });
     expect(panes.shown).toBe("t");
   });
@@ -179,7 +174,7 @@ describe("threads closing and starting", () => {
 
 describe("sizes", () => {
   it("resizes a split by its path", () => {
-    const nested = splitPane(twoAcross(), "1", "bottom", threadView("c"), "3");
+    const nested = splitPane(twoAcross(), "1", "bottom", "c", "3");
     const panes = resizeSplit(nested, [0], [0.3, 0.7]);
     expect(shape(panes.root)).toEqual({
       row: [{ column: ["a", "c"], sizes: [30, 70] }, "b"],
@@ -195,7 +190,7 @@ describe("sizes", () => {
   });
 
   it("places panes and the edges between them", () => {
-    const nested = splitPane(twoAcross(), "1", "bottom", threadView("c"), "3");
+    const nested = splitPane(twoAcross(), "1", "bottom", "c", "3");
     const { panes, edges } = layoutOf(nested.root);
     expect(panes.map(({ leaf, box }) => [leaf.id, box])).toEqual([
       ["1", { x: 0, y: 0, width: 0.5, height: 0.5 }],

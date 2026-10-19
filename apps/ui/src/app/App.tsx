@@ -82,7 +82,7 @@ import {
 import type { MessageBox } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
-import { FILES_VERSION } from "../features/files/model.ts";
+import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
@@ -106,10 +106,10 @@ import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import type { DragSource } from "../features/split/drag.ts";
 import {
   canSplit,
+  closeKeys,
   closePane,
-  closeThreads,
   findPane,
-  focusedThread,
+  focusedKey,
   focusPane,
   followShown,
   isSplit,
@@ -117,20 +117,19 @@ import {
   leavesOf,
   movePane,
   paneShowing,
-  renameThread as renamePaneThread,
+  renameKey,
   resizeSplit,
   showInPane,
   singlePane,
   splitPane,
-  threadOf,
-  threadView,
   type DropZone,
   type PaneLeaf,
   type Panes,
-  type PaneView,
   type Side,
 } from "../features/split/model.ts";
-import { MIN_PANE, SplitView, type PaneLabel } from "../features/split/SplitView.tsx";
+import { MIN_PANE, SplitView, type PaneChrome, type PaneLabel } from "../features/split/SplitView.tsx";
+import { FileViewer } from "../features/viewer/FileViewer.tsx";
+import { fileKey, fileOfKey, fileViewAtom, isFileKey, VIEWER_VERSION } from "../features/viewer/model.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
@@ -232,17 +231,30 @@ function Workspace() {
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
   /** Each pane's message box, by the thread it shows; the window reaches the open thread's. */
   const paneHandles = useRef(new Map<string, PaneHandles>());
-  /** The open thread, as the window's handlers find it after each render. */
+  /** The open tab, as the window's handlers find it after each render. */
   const openKey = useRef<string>(undefined);
-  const openHandles = () =>
-    openKey.current === undefined ? undefined : paneHandles.current.get(openKey.current);
+  /** The thread open last, which a file open since still writes to. */
+  const lastThread = useRef<string>(undefined);
+  const handlesOf = (key: string | undefined) =>
+    key === undefined ? undefined : paneHandles.current.get(key);
   /** Puts the cursor in the open thread's message box. */
-  const focusComposer = () => openHandles()?.input.current?.focus();
-  /** What the rest of the window puts into the open thread's message box. */
-  const [messageBox] = useState((): MessageBox => ({
-    mention: (mention) => openHandles()?.box.mention(mention),
-    append: (content) => openHandles()?.box.append(content),
-  }));
+  const focusComposer = () => handlesOf(openKey.current)?.input.current?.focus();
+  /**
+   * What the rest of the window puts into the open thread's message box: with a file open, the
+   * thread's open before it, else whichever thread shows.
+   */
+  const [messageBox] = useState((): MessageBox => {
+    const box = () =>
+      (
+        handlesOf(openKey.current) ??
+        handlesOf(lastThread.current) ??
+        paneHandles.current.values().next().value
+      )?.box;
+    return {
+      mention: (mention) => box()?.mention(mention),
+      append: (content) => box()?.append(content),
+    };
+  });
   const [onPaneHandles] = useState(() => (key: string, handles: PaneHandles | undefined) => {
     if (handles) paneHandles.current.set(key, handles);
     else paneHandles.current.delete(key);
@@ -321,7 +333,10 @@ function Workspace() {
   const split = !compact && isSplit(panes);
   useLayoutEffect(() => {
     openKey.current = current;
+    if (!isFileKey(current)) lastThread.current = current;
   }, [current]);
+  /** The file the open tab shows, when it shows one. */
+  const openFile = fileOfKey(current);
   const share = useAtomSet(markThreadsRead, { mode: "promise" });
   const readState = useReadState(
     new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
@@ -372,7 +387,10 @@ function Workspace() {
       ? undefined
       : account.devices.find((device) => device.id === driven.id);
   // The web client runs the build of the desktop it drives, and takes the open thread there.
-  useMatchingBuild(drivenDevice, isNewDraftKey(openThread[mode]) ? undefined : openThread[mode]);
+  useMatchingBuild(
+    drivenDevice,
+    isNewDraftKey(openThread[mode]) || isFileKey(openThread[mode]) ? undefined : openThread[mode],
+  );
   // The web client always drives one of the account's desktops: the one it drove last,
   // else the first that can be reached, once one can.
   const reachable = devices.filter(
@@ -422,7 +440,7 @@ function Workspace() {
     loaded: live,
     initial: session?.tabs,
     onShow: (key) => {
-      if (!isNewDraftKey(key)) {
+      if (!isNewDraftKey(key) && !isFileKey(key)) {
         const summary = summaries.find((candidate) => candidate.id === key);
         if (summary) openSummary(summary);
         return;
@@ -445,16 +463,10 @@ function Workspace() {
       if (empty.length > 0) registry.set(draftsAtom, empty.reduce(withoutDraft, drafts));
       // A closed tab's pane closes with it, and the pane that takes its room shows in its place.
       if (!isSplit(panes)) return undefined;
-      const left = closeThreads(panes, keys);
+      const left = closeKeys(panes, keys);
       if (left === undefined) return undefined;
       setPanesByMode((all) => ({ ...all, [mode]: left }));
-      if (!keys.includes(current)) return undefined;
-      return (
-        focusedThread(left) ??
-        leavesOf(left.root)
-          .map((leaf) => threadOf(leaf.view))
-          .find(Boolean)
-      );
+      return keys.includes(current) ? focusedKey(left) : undefined;
     },
   });
   useEffect(() => {
@@ -538,13 +550,36 @@ function Workspace() {
     setFilesOpen(!filesOpen);
     setInspectorOpen(false);
   };
-  /** The open work thread's folder can be browsed here: it's on the machine the window drives, which knows how. */
+  /**
+   * The open work thread's folder, or the open file's, can be browsed here: it's on the machine the
+   * window drives, which knows how.
+   */
   const filesRoot =
-    selected?.thread.mode === "work" &&
-    selected.thread.cwd !== undefined &&
-    (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= FILES_VERSION)
-      ? selected.thread.cwd
-      : undefined;
+    drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < FILES_VERSION
+      ? undefined
+      : selected?.thread.mode === "work" && selected.thread.cwd !== undefined
+        ? selected.thread.cwd
+        : openFile?.root;
+  /** Its files open in Cerium's viewer, when the machine can serve them. */
+  const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
+  /** Opens the folder `root`'s files in the viewer. */
+  const openerIn =
+    (root: string): OpenFile =>
+    (path, options) => {
+      const key = fileKey(root, path);
+      // From the Changes list, a file opens on what changed.
+      if (options?.changes === true) registry.set(fileViewAtom(key), "diff");
+      if (options?.tab === true) {
+        tabs.openAs(key, "tab");
+        tabs.keep(key);
+      }
+      setSettingsOpen(false);
+      setOpenThread((open) => ({ ...open, [mode]: key }));
+      setPane("main");
+      // The narrow window shows one pane: the file takes the panel's place.
+      if (compact) setFilesOpen(false);
+    };
+  const openInViewer = filesRoot === undefined || !viewerOk ? undefined : openerIn(filesRoot);
   // Its shells run on the same machine, in the same folder.
   const terminal = useTerminalDrawer({
     thread:
@@ -560,6 +595,8 @@ function Workspace() {
     events,
     messageBox,
     open: filesOpen && !settingsOpen,
+    onOpenFile: openInViewer,
+    activePath: openFile?.root === filesRoot ? openFile?.path : undefined,
     onClose: () => setFilesOpen(false),
   });
   const agentActions: AgentActions = {
@@ -638,8 +675,8 @@ function Workspace() {
    */
   const applyPanes = (next: Panes) => {
     setPanesByMode((all) => ({ ...all, [mode]: next }));
-    const shown = focusedThread(next);
-    if (shown === undefined || shown === current) return;
+    const shown = focusedKey(next);
+    if (shown === current) return;
     tabs.keep(current);
     tabs.openAs(shown, "tab");
     setSettingsOpen(false);
@@ -660,15 +697,15 @@ function Workspace() {
       ? { width: 0, height: 0 }
       : { width: box.width * rect.width, height: box.height * rect.height };
   };
-  /** Opens `view` on `side` of the pane `target`, when it has the room. */
-  const splitWith = (target: string, side: Side, view: PaneView) => {
+  /** Opens the tab `key` on `side` of the pane `target`, when it has the room. */
+  const splitWith = (target: string, side: Side, key: string) => {
     if (compact || !canSplit(paneSize(target), side, MIN_PANE)) return false;
-    applyPanes(splitPane(panes, target, side, view, newPaneId()));
+    applyPanes(splitPane(panes, target, side, key, newPaneId()));
     return true;
   };
   /** A new thread on `side` of the pane `target`, ready to write in. */
   const splitNew = (target: string, side: Side) => {
-    if (splitWith(target, side, threadView(newDraftKey()))) setComposerFocus((count) => count + 1);
+    if (splitWith(target, side, newDraftKey())) setComposerFocus((count) => count + 1);
   };
   const closePaneOf = (id: string) => {
     const left = closePane(panes, id);
@@ -687,7 +724,7 @@ function Workspace() {
     if (leaf === undefined) return false;
     if (zone !== "center" && !canSplit(size, zone, MIN_PANE)) return false;
     if (source.kind === "pane") return source.id !== target && isSplit(panes);
-    return threadOf(leaf.view) !== source.key;
+    return leaf.key !== source.key;
   };
   const dropOn = (source: DragSource, target: string, zone: DropZone) => {
     if (source.kind === "pane") {
@@ -695,10 +732,10 @@ function Workspace() {
       return;
     }
     const showing = paneShowing(panes.root, source.key);
-    if (zone !== "center") applyPanes(splitPane(panes, target, zone, threadView(source.key), newPaneId()));
-    // Dropped on a pane, a thread shown elsewhere trades places with what it showed.
+    if (zone !== "center") applyPanes(splitPane(panes, target, zone, source.key, newPaneId()));
+    // Dropped on a pane, a tab shown elsewhere trades places with what it showed.
     else if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, "center"));
-    else applyPanes(showInPane(panes, target, threadView(source.key)));
+    else applyPanes(showInPane(panes, target, source.key));
   };
 
   const toggleSidebar = () => {
@@ -808,7 +845,7 @@ function Workspace() {
     tabs.started(draft, thread.id);
     setPanesByMode((all) => {
       const before = all[mode];
-      return before ? { ...all, [mode]: renamePaneThread(before, draft, thread.id) } : all;
+      return before ? { ...all, [mode]: renameKey(before, draft, thread.id) } : all;
     });
     setOpenThread((open) => ((open[mode] ?? blank[mode]) === draft ? { ...open, [mode]: thread.id } : open));
     refreshThreads();
@@ -922,10 +959,31 @@ function Workspace() {
     );
   };
 
+  /** A pane showing the tab `key`: a file, read-only, or a thread. */
+  const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+    const file = fileOfKey(key);
+    if (file === undefined) return threadPane(key, focused);
+    return (
+      <FileViewer
+        key={key}
+        root={file.root}
+        path={file.path}
+        messageBox={messageBox}
+        onOpenFile={openerIn(file.root)}
+        onClose={() => tabs.actions.onClose([key])}
+        pane={chrome}
+      />
+    );
+  };
+
   /** What a pane's header calls what it shows. */
   const paneLabel = (leaf: PaneLeaf): PaneLabel => {
-    if (leaf.view.kind === "file") return { title: baseName(leaf.view.path), detail: leaf.view.path };
-    const tab = tabs.tabs.find((each) => each.key === threadOf(leaf.view));
+    const tab = tabs.tabs.find((each) => each.key === leaf.key);
+    const file = fileOfKey(leaf.key);
+    if (file !== undefined) {
+      // The viewer's own header names the file, and is the pane's.
+      return { title: baseName(file.path), detail: tab?.project ?? file.path, ownHeader: true };
+    }
     const newTitle = mode === "work" ? "New thread" : "New chat";
     if (tab === undefined) return { title: newTitle };
     const status = tab.status ?? "idle";
@@ -939,12 +997,12 @@ function Workspace() {
       ) : undefined,
     };
   };
-  /** The threads showing in panes besides the focused one, whose tabs say so. */
+  /** The tabs showing in panes besides the focused one, which say so. */
   const beside = new Set(
     split
       ? leavesOf(panes.root)
           .filter((leaf) => leaf.id !== panes.focused)
-          .flatMap((leaf) => threadOf(leaf.view) ?? [])
+          .map((leaf) => leaf.key)
       : [],
   );
 
@@ -957,7 +1015,9 @@ function Workspace() {
               ...(viewed.thread.cwd ? { project: baseName(viewed.thread.cwd) } : {}),
             },
           }
-        : {})}
+        : openFile
+          ? { thread: { title: baseName(openFile.path), project: baseName(openFile.root) } }
+          : {})}
       mode={mode}
       onModeChange={(next) => {
         setSettingsOpen(false);
@@ -972,7 +1032,7 @@ function Workspace() {
         <Sidebar
           mode={mode}
           threads={summaries}
-          selectedId={viewed?.thread.id ?? openDraft}
+          selectedId={viewed?.thread.id ?? (openFile ? undefined : openDraft)}
           onSelectDraft={(draft, newTab) => {
             if (newTab) tabs.openAs(draft.key, "tab");
             openNewDraft(draft);
@@ -1050,11 +1110,10 @@ function Workspace() {
           tabs={
             beside.size === 0 ? tabs.tabs : tabs.tabs.map((tab) => ({ ...tab, beside: beside.has(tab.key) }))
           }
-          // A focused file pane has no tab of its own.
-          active={focusedThread(panes) === undefined ? undefined : current}
+          active={current}
           newLabel={mode === "work" ? "New thread" : "New chat"}
           {...tabs.actions}
-          onSplit={(key, side) => splitWith(panes.focused, side, threadView(key))}
+          onSplit={(key, side) => splitWith(panes.focused, side, key)}
         />
       }
       {...(searchOpen ? { closeDialog: () => setSearchOpen(false) } : {})}
@@ -1108,15 +1167,13 @@ function Workspace() {
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
       {compact ? (
-        // The narrow window shows one pane: the open thread's.
-        threadPane(current, true)
+        // The narrow window shows one pane: the open tab's.
+        paneContent(current, true)
       ) : (
         <div ref={panesArea} className="h-full">
           <SplitView
             panes={panes}
-            renderPane={(leaf, focused) =>
-              leaf.view.kind === "thread" ? threadPane(leaf.view.key, focused) : null
-            }
+            renderPane={(leaf, focused, chrome) => paneContent(leaf.key, focused, chrome)}
             label={paneLabel}
             onFocus={focusOn}
             onResize={(path, sizes) => applyPanes(resizeSplit(panes, path, sizes))}

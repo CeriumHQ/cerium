@@ -6,9 +6,9 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type DOMAttributes,
   type DragEvent,
   type KeyboardEvent,
-  type PointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -44,6 +44,20 @@ export interface PaneLabel {
   readonly icon?: ReactNode;
   /** Where it is, such as the thread's project. */
   readonly detail?: string;
+  /** The pane draws a header of its own, which wears the split's `PaneChrome` instead of another over it. */
+  readonly ownHeader?: boolean;
+}
+
+/** The pointer handlers that drag a pane by its header. */
+export type PaneGrip = Pick<
+  DOMAttributes<HTMLElement>,
+  "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel"
+>;
+
+/** What a header of a pane's own wears while the pane shares the area: the grip to drag it by, and the pane's menu. */
+export interface PaneChrome {
+  readonly grip: PaneGrip;
+  readonly menu: ReactNode;
 }
 
 /** `box` as CSS, inset by half the gap on each side another pane shares. */
@@ -94,7 +108,8 @@ export function SplitView({
   onDrop,
 }: {
   panes: Panes;
-  renderPane: (leaf: PaneLeaf, focused: boolean) => ReactNode;
+  /** What a pane shows; `chrome` for one that draws its own header, while it shares the area. */
+  renderPane: (leaf: PaneLeaf, focused: boolean, chrome: PaneChrome | undefined) => ReactNode;
   label: (leaf: PaneLeaf) => PaneLabel;
   onFocus: (id: string) => void;
   onResize: (path: SplitPath, sizes: ReadonlyArray<number>) => void;
@@ -177,34 +192,21 @@ export function SplitView({
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <div ref={area} onDragOver={onDragOver} onDrop={onNativeDrop} className="relative h-full w-full">
-      {placedPanes.map(({ leaf, box }) => {
-        const focused = leaf.id === panes.focused;
-        return (
-          <section
-            key={leaf.id}
-            aria-label={split ? label(leaf).title : undefined}
-            onPointerDownCapture={() => onFocus(leaf.id)}
-            onFocusCapture={() => onFocus(leaf.id)}
-            style={placed(box)}
-            className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-panel shadow-raised ${
-              resizing || drag ? "" : "transition-[left,top,width,height] duration-200 ease-out-soft"
-            } motion-reduce:transition-none ${
-              split && focused ? "border-line-strong" : "border-line-subtle"
-            }`}
-          >
-            {split ? (
-              <PaneHeader
-                id={leaf.id}
-                label={label(leaf)}
-                focused={focused}
-                onClose={() => onClose(leaf.id)}
-                onSplit={(side) => onSplit(leaf.id, side)}
-              />
-            ) : null}
-            <div className="relative min-h-0 flex-1">{renderPane(leaf, focused)}</div>
-          </section>
-        );
-      })}
+      {placedPanes.map(({ leaf, box }) => (
+        <Pane
+          key={leaf.id}
+          leaf={leaf}
+          box={box}
+          focused={leaf.id === panes.focused}
+          split={split}
+          label={label(leaf)}
+          still={resizing || drag !== undefined}
+          renderPane={renderPane}
+          onFocus={() => onFocus(leaf.id)}
+          onClose={() => onClose(leaf.id)}
+          onSplit={(side) => onSplit(leaf.id, side)}
+        />
+      ))}
       {edges.map((edge) => (
         <EdgeHandle
           key={`${edge.path.join(".")}:${edge.index}`}
@@ -225,67 +227,113 @@ export function SplitView({
   );
 }
 
-/** A pane's name, which it's focused, dragged and closed by while it shares the area with others. */
-function PaneHeader({
-  id,
-  label,
-  focused,
-  onClose,
-  onSplit,
-}: {
-  id: string;
-  label: PaneLabel;
-  focused: boolean;
-  onClose: () => void;
-  onSplit: (side: Side) => void;
-}) {
-  const press = useRef<{ x: number; y: number; dragging: boolean }>(undefined);
-  const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+/** The header pressed, whose pane drags once the pointer travels far enough: one at a time. */
+let pressed: { x: number; y: number; dragging: boolean } | undefined;
+
+/** The grip that drags the pane `id` by its header. */
+const gripOf = (id: string): PaneGrip => ({
+  onPointerDown: (event) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
-    press.current = { x: event.clientX, y: event.clientY, dragging: false };
-  };
-  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
-    const current = press.current;
-    if (current === undefined) return;
-    if (!current.dragging) {
-      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) < DRAG_THRESHOLD) return;
-      current.dragging = true;
+    pressed = { x: event.clientX, y: event.clientY, dragging: false };
+  },
+  onPointerMove: (event) => {
+    if (pressed === undefined) return;
+    if (!pressed.dragging) {
+      if (Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < DRAG_THRESHOLD) return;
+      pressed.dragging = true;
       event.currentTarget.setPointerCapture(event.pointerId);
       paneDrag.begin({ kind: "pane", id }, event.clientX, event.clientY);
     }
     paneDrag.move(event.clientX, event.clientY);
-  };
-  const onPointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (press.current?.dragging) paneDrag.drop(event.clientX, event.clientY);
-    press.current = undefined;
-  };
-  const onPointerCancel = () => {
-    if (press.current?.dragging) paneDrag.cancel();
-    press.current = undefined;
-  };
+  },
+  onPointerUp: (event) => {
+    if (pressed?.dragging) paneDrag.drop(event.clientX, event.clientY);
+    pressed = undefined;
+  },
+  onPointerCancel: () => {
+    if (pressed?.dragging) paneDrag.cancel();
+    pressed = undefined;
+  },
+});
+
+/** One pane's card, at its place in the area. */
+function Pane({
+  leaf,
+  box,
+  focused,
+  split,
+  label,
+  still,
+  renderPane,
+  onFocus,
+  onClose,
+  onSplit,
+}: {
+  leaf: PaneLeaf;
+  box: Box;
+  focused: boolean;
+  /** It shares the area with other panes. */
+  split: boolean;
+  label: PaneLabel;
+  /** Something is being dragged: the pane follows at once rather than easing after it. */
+  still: boolean;
+  renderPane: (leaf: PaneLeaf, focused: boolean, chrome: PaneChrome | undefined) => ReactNode;
+  onFocus: () => void;
+  onClose: () => void;
+  onSplit: (side: Side) => void;
+}) {
+  const menu = (
+    <>
+      <MenuItem icon={Columns2} shortcut="Ctrl \" onClick={() => onSplit("right")}>
+        New thread to the right
+      </MenuItem>
+      <MenuItem icon={Rows2} shortcut="Ctrl Shift \" onClick={() => onSplit("bottom")}>
+        New thread below
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={X} onClick={onClose}>
+        Close pane
+      </MenuItem>
+    </>
+  );
+  const chrome = split ? { grip: gripOf(leaf.id), menu } : undefined;
   return (
-    <ContextMenuArea
-      menu={
-        <>
-          <MenuItem icon={Columns2} shortcut="Ctrl \" onClick={() => onSplit("right")}>
-            New thread to the right
-          </MenuItem>
-          <MenuItem icon={Rows2} shortcut="Ctrl Shift \" onClick={() => onSplit("bottom")}>
-            New thread below
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem icon={X} onClick={onClose}>
-            Close pane
-          </MenuItem>
-        </>
-      }
+    <section
+      aria-label={split ? label.title : undefined}
+      onPointerDownCapture={onFocus}
+      onFocusCapture={onFocus}
+      style={placed(box)}
+      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-panel shadow-raised ${
+        still ? "" : "transition-[left,top,width,height] duration-200 ease-out-soft"
+      } motion-reduce:transition-none ${split && focused ? "border-line-strong" : "border-line-subtle"}`}
     >
+      {chrome && !label.ownHeader ? (
+        <PaneHeader label={label} focused={focused} chrome={chrome} onClose={onClose} />
+      ) : null}
+      <div className="relative min-h-0 flex-1">
+        {renderPane(leaf, focused, label.ownHeader ? chrome : undefined)}
+      </div>
+    </section>
+  );
+}
+
+/** A pane's name, which it's focused, dragged and closed by while it shares the area with others. */
+function PaneHeader({
+  label,
+  focused,
+  chrome,
+  onClose,
+}: {
+  label: PaneLabel;
+  focused: boolean;
+  chrome: PaneChrome;
+  onClose: () => void;
+}) {
+  return (
+    <ContextMenuArea menu={chrome.menu}>
       <header
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        className={`group/pane flex h-8 shrink-0 cursor-default items-center gap-2 border-b border-line-subtle pr-1 pl-3 text-[12.5px] select-none ${
+        {...chrome.grip}
+        className={`group/pane flex h-10 shrink-0 cursor-default items-center gap-2 border-b border-line-subtle pr-1 pl-3 text-[12.5px] select-none ${
           focused ? "text-fg-primary" : "text-fg-tertiary"
         }`}
       >

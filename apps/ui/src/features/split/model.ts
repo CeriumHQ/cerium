@@ -1,19 +1,16 @@
-// The main area split into panes, each showing a thread (or a thread not started yet) or a file. Panes
-// divide their space as a tree: a split lays its children side by side (a row) or one above the other
-// (a column), each taking its share of the split. One pane has focus, and that is the one the tabs
-// and the sidebar act on: the window's open thread is the focused pane's. A thread shows in one pane
-// at most, so opening one that already shows goes to its pane instead.
-
-export type PaneView =
-  | { readonly kind: "thread"; readonly key: string }
-  | { readonly kind: "file"; readonly root: string; readonly path: string };
+// The main area split into panes, each showing a tab: a thread, a thread not started yet, or a file.
+// Panes divide their space as a tree: a split lays its children side by side (a row) or one above the
+// other (a column), each taking its share of the split. One pane has focus, and that is the one the
+// tabs and the sidebar act on: the window's open tab is the focused pane's. A tab shows in one pane at
+// most, so opening one that already shows goes to its pane instead.
 
 export type Axis = "row" | "column";
 
 export interface PaneLeaf {
   readonly kind: "pane";
   readonly id: string;
-  readonly view: PaneView;
+  /** The tab it shows. */
+  readonly key: string;
 }
 
 export interface PaneSplit {
@@ -31,9 +28,9 @@ export interface Panes {
   /** The pane the tabs and the sidebar act on. */
   readonly focused: string;
   /**
-   * The thread the window showed when the panes last followed it. Once the window shows another (a
-   * tab, the sidebar or a notification opened it), the focused pane takes it, or the pane already
-   * showing it takes focus.
+   * The tab the window showed when the panes last followed it. Once the window shows another (a tab,
+   * the sidebar or a notification opened it), the focused pane takes it, or the pane already showing
+   * it takes focus.
    */
   readonly shown: string;
 }
@@ -44,15 +41,9 @@ export type Side = "left" | "right" | "top" | "bottom";
 /** Where a pane dragged over another lands: beside it, or in its place. */
 export type DropZone = Side | "center";
 
-/** A thread's view. */
-export const threadView = (key: string): PaneView => ({ kind: "thread", key });
-
-/** The thread a pane shows, if it shows one. */
-export const threadOf = (view: PaneView) => (view.kind === "thread" ? view.key : undefined);
-
 /** The one pane showing `key`. */
 export const singlePane = (id: string, key: string): Panes => ({
-  root: { kind: "pane", id, view: threadView(key) },
+  root: { kind: "pane", id, key },
   focused: id,
   shown: key,
 });
@@ -63,26 +54,19 @@ export const leavesOf = (node: PaneNode): ReadonlyArray<PaneLeaf> =>
 
 export const findPane = (node: PaneNode, id: string) => leavesOf(node).find((leaf) => leaf.id === id);
 
-/** The pane showing the thread `key`. */
-export const paneShowing = (node: PaneNode, key: string) =>
-  leavesOf(node).find((leaf) => threadOf(leaf.view) === key);
+/** The pane showing the tab `key`. */
+export const paneShowing = (node: PaneNode, key: string) => leavesOf(node).find((leaf) => leaf.key === key);
 
 export const isSplit = (panes: Panes) => panes.root.kind === "split";
 
 const axisOf = (side: Side): Axis => (side === "left" || side === "right" ? "row" : "column");
 const before = (side: Side) => side === "left" || side === "top";
 
-/** The focused pane's thread, when it shows one, becomes the one shown. */
-const withShown = (panes: Panes): Panes => {
-  const key = focusedThread(panes);
-  return key === undefined ? panes : { ...panes, shown: key };
-};
+/** The tab the focused pane shows. */
+export const focusedKey = (panes: Panes) => findPane(panes.root, panes.focused)?.key ?? panes.shown;
 
-/** The thread the focused pane shows, if it shows one. */
-export const focusedThread = (panes: Panes) => {
-  const leaf = findPane(panes.root, panes.focused);
-  return leaf === undefined ? undefined : threadOf(leaf.view);
-};
+/** The focused pane's tab becomes the one shown. */
+const withShown = (panes: Panes): Panes => ({ ...panes, shown: focusedKey(panes) });
 
 /** `node` with each of its splits that has a child split along its own axis holding that child's children itself. */
 const flatten = (node: PaneNode): PaneNode => {
@@ -136,15 +120,14 @@ const insertBeside = (node: PaneNode, target: string, side: Side, leaf: PaneLeaf
 };
 
 /**
- * `panes` with a new pane `id` showing `view` on `side` of the pane `target`, focused. A thread that
+ * `panes` with a new pane `id` showing `key` on `side` of the pane `target`, focused. A tab that
  * already shows elsewhere leaves its pane first, so it still shows once.
  */
-export const splitPane = (panes: Panes, target: string, side: Side, view: PaneView, id: string): Panes => {
-  const key = threadOf(view);
-  const elsewhere = key === undefined ? undefined : paneShowing(panes.root, key);
+export const splitPane = (panes: Panes, target: string, side: Side, key: string, id: string): Panes => {
+  const elsewhere = paneShowing(panes.root, key);
   const from =
     elsewhere !== undefined && elsewhere.id !== target ? (closePane(panes, elsewhere.id) ?? panes) : panes;
-  const leaf: PaneLeaf = { kind: "pane", id, view };
+  const leaf: PaneLeaf = { kind: "pane", id, key };
   return withShown({ ...from, root: flatten(insertBeside(from.root, target, side, leaf)), focused: id });
 };
 
@@ -190,9 +173,9 @@ export const movePane = (panes: Panes, id: string, target: string, zone: DropZon
       node.kind === "split"
         ? { ...node, children: node.children.map(swap) }
         : node.id === id
-          ? { ...node, view: onto.view }
+          ? { ...node, key: onto.key }
           : node.id === target
-            ? { ...node, view: moving.view }
+            ? { ...node, key: moving.key }
             : node;
     // The focus goes with what the user moved.
     return withShown({ ...panes, root: swap(panes.root), focused: target });
@@ -212,47 +195,43 @@ export const focusPane = (panes: Panes, id: string): Panes =>
     ? panes
     : withShown({ ...panes, focused: id });
 
-/** `panes` with the pane `id` showing `view` instead. */
-export const showInPane = (panes: Panes, id: string, view: PaneView): Panes => {
-  const key = threadOf(view);
-  const elsewhere = key === undefined ? undefined : paneShowing(panes.root, key);
+/** `panes` with the pane `id` showing the tab `key` instead. */
+export const showInPane = (panes: Panes, id: string, key: string): Panes => {
+  const elsewhere = paneShowing(panes.root, key);
   if (elsewhere !== undefined && elsewhere.id !== id) return focusPane(panes, elsewhere.id);
   const replace = (node: PaneNode): PaneNode =>
     node.kind === "split"
       ? { ...node, children: node.children.map(replace) }
       : node.id === id
-        ? { ...node, view }
+        ? { ...node, key }
         : node;
   return withShown({ ...panes, root: replace(panes.root) });
 };
 
 /**
- * `panes` following the window to the thread `key`: the pane showing it takes focus, else the focused
- * pane shows it. Unchanged while the window still shows the thread they last followed.
+ * `panes` following the window to the tab `key`: the pane showing it takes focus, else the focused
+ * pane shows it. Unchanged while the window still shows the tab they last followed.
  */
 export const followShown = (panes: Panes, key: string): Panes => {
   if (key === panes.shown) return panes;
   const showing = paneShowing(panes.root, key);
   if (showing !== undefined) return { ...panes, focused: showing.id, shown: key };
-  return { ...showInPane(panes, panes.focused, threadView(key)), shown: key };
+  return { ...showInPane(panes, panes.focused, key), shown: key };
 };
 
-/** `panes` without the panes showing any of the threads `keys`; none when no pane is left. */
-export const closeThreads = (panes: Panes, keys: ReadonlyArray<string>): Panes | undefined =>
+/** `panes` without the panes showing any of the tabs `keys`; none when no pane is left. */
+export const closeKeys = (panes: Panes, keys: ReadonlyArray<string>): Panes | undefined =>
   leavesOf(panes.root)
-    .filter((leaf) => {
-      const key = threadOf(leaf.view);
-      return key !== undefined && keys.includes(key);
-    })
+    .filter((leaf) => keys.includes(leaf.key))
     .reduce<Panes | undefined>((current, leaf) => current && closePane(current, leaf.id), panes);
 
-/** `panes` with every pane showing the thread `from` showing `to`: a new thread that started. */
-export const renameThread = (panes: Panes, from: string, to: string): Panes => {
+/** `panes` with the pane showing the tab `from` showing `to`: a new thread that started. */
+export const renameKey = (panes: Panes, from: string, to: string): Panes => {
   const rename = (node: PaneNode): PaneNode =>
     node.kind === "split"
       ? { ...node, children: node.children.map(rename) }
-      : threadOf(node.view) === from
-        ? { ...node, view: threadView(to) }
+      : node.key === from
+        ? { ...node, key: to }
         : node;
   return { ...panes, root: rename(panes.root), shown: panes.shown === from ? to : panes.shown };
 };
