@@ -9,6 +9,7 @@ import { accountAtom, cancelSignIn, signIn, signOut } from "../backend/atoms.ts"
 import { openSignIn } from "../backend/signIn.ts";
 import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
+import { InfoTip } from "../components/ui/InfoTip.tsx";
 import { deviceDetails, isApproved, thisDevice } from "../features/account/model.ts";
 
 // What the web client shows before it may drive anything: signing in,
@@ -81,7 +82,7 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
     return (
       <>
         <Heading title="Finish signing in">
-          Sign in on Cerium's page, and this device joins your account.
+          This device joins your account once you finish on Cerium's page.
         </Heading>
         <div className="flex flex-col gap-2">
           <Button onClick={() => openSignIn(account.url)} className={primary}>
@@ -100,8 +101,7 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
   return (
     <>
       <Heading title="Reach your computers from here">
-        Sign in to see the threads on every computer where Cerium runs, and to start and continue them from
-        this device.
+        See and continue the threads on all your computers from this device.
       </Heading>
       <div className="flex flex-col gap-3">
         <Button onClick={begin} disabled={starting} className={primary}>
@@ -114,9 +114,11 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
           </p>
         ) : null}
       </div>
-      <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
-        You'll sign in on Cerium's page with Google, GitHub, X or an email and password. Cerium never sees
-        your password.
+      <p className="flex items-center justify-center gap-1.5 text-[12.5px] text-fg-tertiary">
+        Cerium never sees your password.
+        <InfoTip label="Sign-in options">
+          Google, GitHub, X or an email and password, on Cerium's sign-in page.
+        </InfoTip>
       </p>
     </>
   );
@@ -142,8 +144,7 @@ function Joining({ account }: { account: Extract<AccountState, { _tag: "SignedIn
   return (
     <>
       <Heading title="Waiting for approval">
-        Allow this device on one of your computers, in Cerium's Settings → Account. Until then it sees
-        nothing.
+        Allow it in Settings → Account on one of your computers. Until then it sees nothing.
       </Heading>
       <div className="flex items-center gap-3.5 rounded-xl border border-line-subtle bg-surface-raised px-4 py-3.5">
         <span className="relative grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-panel text-fg-secondary">

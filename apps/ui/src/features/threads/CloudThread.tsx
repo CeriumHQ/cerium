@@ -41,16 +41,12 @@ export function CloudThreadBar({
       <Icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-[13px] text-fg-secondary max-md:text-[14px] max-md:leading-snug">
         {reach.kind === "reachable" ? (
-          <>{name} is back online. Open the thread there to continue it.</>
+          <>{name} is back online.</>
         ) : reach.kind === "outdated" ? (
-          <>
-            {name} runs an older Cerium. You can read this thread here; to continue it, update Cerium on{" "}
-            {machine}.
-          </>
+          <>Read-only here. Update Cerium on {name} to continue it.</>
         ) : (
           <>
-            {name} is offline ({reach.presence.toLowerCase()}). You can read this thread here; to continue it,{" "}
-            {machine} needs to be on and connected.
+            {name} is offline ({reach.presence.toLowerCase()}). Read-only until it's back.
           </>
         )}
       </p>
@@ -84,8 +80,7 @@ export function ConnectingNote({ machine }: { machine: string }) {
       <p className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface-raised px-3 py-1 text-[12.5px] text-fg-secondary backdrop-blur-2xl max-md:text-[13px]">
         <RefreshCw size={12} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
         <span>
-          Connecting to <span className="font-medium text-fg-primary">{machine}</span>… you can send once it
-          answers.
+          Connecting to <span className="font-medium text-fg-primary">{machine}</span>. Sending waits for it.
         </span>
       </p>
     </div>
@@ -124,8 +119,7 @@ export function NoComputerBar() {
     <Bar>
       <MonitorOff size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
       <p className="min-w-0 flex-1 py-1.5 text-[13px] text-fg-secondary max-md:py-0 max-md:text-[14px] max-md:leading-snug">
-        None of your computers is online. Their threads stay readable here; to start or continue one, open
-        Cerium on one of them.
+        None of your computers is online. Their threads stay readable; open Cerium on one to continue.
       </p>
     </Bar>
   );
