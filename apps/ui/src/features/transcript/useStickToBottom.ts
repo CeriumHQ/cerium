@@ -53,8 +53,5 @@ export function useStickToBottom(pinKey: unknown) {
     viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" });
   };
 
-  /** Whether the viewport follows the end right now, as of the last scroll. */
-  const isPinned = () => pinned.current;
-
-  return { viewport, following, toEnd, isPinned };
+  return { viewport, following, toEnd };
 }

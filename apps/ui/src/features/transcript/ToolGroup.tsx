@@ -18,7 +18,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useContext, type ReactNode } from "react";
+import { useContext, useState, type ReactNode } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
 import { FileImageThumb, ImageThumb } from "../../components/ImageThumb.tsx";
@@ -26,7 +26,6 @@ import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Me
 import { fileEdits } from "./diff.ts";
 import { EditDiff } from "./EditDiff.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
-import { useKeptOpen } from "./kept.ts";
 import type { AgentActivity, TranscriptBlock } from "./model.ts";
 import { resolvePath } from "./paths.ts";
 
@@ -346,20 +345,17 @@ export const summarizeTools = (tools: ReadonlyArray<ToolBlock>): string => {
  * moves on, unless the reader has opened or closed it themselves.
  */
 export function ToolRun({
-  id,
   tools,
   live,
   activity,
   children,
 }: {
-  /** The run's key in the conversation, which keeps the reader's choice while it scrolls out of view. */
-  id: string;
   tools: ReadonlyArray<ToolBlock>;
   live: boolean;
   activity: AgentActivity;
   children: ReactNode;
 }) {
-  const [toggled, setToggled] = useKeptOpen(id);
+  const [toggled, setToggled] = useState<boolean>();
   const failed = tools.filter((tool) => tool.status === "error").length;
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
   const images = tools.flatMap(toolImages);
@@ -421,7 +417,6 @@ function ToolRow({
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
   const images = toolImages(tool);
   const plan = toolMenuPlan(tool);
-  const [open, setOpen] = useKeptOpen(tool.id);
   const folder = useContext(WorkspaceFolder);
   const reveal = shellBridge()?.revealPath;
   const location = plan.path ? resolvePath(plan.path, folder) : undefined;
@@ -476,11 +471,7 @@ function ToolRow({
     </Collapsible.Trigger>
   );
   return (
-    <Collapsible.Root
-      open={open ?? false}
-      onOpenChange={setOpen}
-      className={divider ? "border-t border-line-subtle" : ""}
-    >
+    <Collapsible.Root className={divider ? "border-t border-line-subtle" : ""}>
       {plan.copy || plan.output !== undefined ? (
         <ContextMenuArea menu={menu}>{header}</ContextMenuArea>
       ) : (
