@@ -131,6 +131,8 @@ interface ComposerProps {
   readonly above?: ReactNode;
   /** Reports how tall the box stands over the transcript, with what sits above it, so the transcript's end stays in view. */
   readonly onHeight?: (height: number) => void;
+  /** Opening a thread puts the cursor in the box; not in a pane beside the focused one. */
+  readonly takesFocus?: boolean;
 }
 
 /** The message box, floating over the bottom of the transcript. */
@@ -145,6 +147,7 @@ export function Composer({
   onStop,
   above,
   onHeight,
+  takesFocus = true,
 }: ComposerProps) {
   const [drafts, setDrafts] = useAtom(draftsAtom);
   const machine = useAtomValue(machineAtom);
@@ -223,9 +226,10 @@ export function Composer({
   }, [onHeight]);
 
   // Opening a thread, or a new one, puts the cursor where the next message goes.
-  useEffect(() => {
-    input.current?.focus();
-  }, [input, draftKey]);
+  const focusOnOpen = useEffectEvent(() => {
+    if (takesFocus) input.current?.focus();
+  });
+  useEffect(() => focusOnOpen(), [input, draftKey]);
 
   /** How the open thread not started yet starts, the first time the user writes or picks anything in it. */
   const startOf = (current: Draft): DraftStart | undefined =>

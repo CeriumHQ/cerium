@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AppMode } from "../../app/ModeSwitch.tsx";
 import { isNewDraftKey, newDraftKey, newThreadDraftsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
+import { fileOfKey, isFileKey } from "../viewer/model.ts";
 import {
   closeTabs,
   emptyStrip,
@@ -53,8 +54,12 @@ export function useThreadTabs({
   onShow: (key: string) => void;
   /** Shows the blank new thread `key` in place of the window's current one. */
   onFresh: (key: string) => void;
-  /** Tabs closed, for the window to forget the empty drafts among them. */
-  onClosed: (keys: ReadonlyArray<string>) => void;
+  /**
+   * Tabs closed, for the window to forget the empty drafts among them and close their panes. Returns
+   * what shows in place of the active tab when it closed, if the window has its own idea (the pane
+   * beside the closed one); else the tab beside it shows.
+   */
+  onClosed: (keys: ReadonlyArray<string>) => string | undefined;
 }) {
   const [strips, setStrips] = useState<TabStrips>(() => initial ?? {});
   /** How the next thread shown opens, when it isn't the preview. */
@@ -79,14 +84,25 @@ export function useThreadTabs({
     if (opening !== undefined) setOpening(undefined);
   }
 
-  // A tab whose thread has gone (deleted elsewhere, say) no longer shows.
+  // A tab whose thread has gone (deleted elsewhere, say) no longer shows; a file's tab stays, and
+  // says so itself when its file has gone.
   const keys = strip.keys.filter(
-    (key) => key === active || !loaded || isNewDraftKey(key) || threadOf(key) !== undefined,
+    (key) => key === active || !loaded || isNewDraftKey(key) || isFileKey(key) || threadOf(key) !== undefined,
   );
   const visible = { ...strip, keys };
   const newTitle = mode === "work" ? "New thread" : "New chat";
   const tabs: ReadonlyArray<TabView> = keys.map((key) => {
     const preview = strip.preview === key;
+    const file = fileOfKey(key);
+    if (file)
+      return {
+        key,
+        title: baseName(file.path),
+        draft: false,
+        preview,
+        file,
+        project: file.path.includes("/") ? `${baseName(file.root)}/${file.path}` : baseName(file.root),
+      };
     const thread = threadOf(key);
     if (thread)
       return {
@@ -131,13 +147,15 @@ export function useThreadTabs({
     if (keys.length === 1 && closing.includes(active) && isEmpty(active)) return;
     const { next } = closeTabs(visible, closing, { remember });
     update((current) => closeTabs(current, closing, { remember }).strip);
-    onClosed(closing);
+    const instead = onClosed(closing);
     if (!closing.includes(active)) return;
-    if (next === undefined) fresh();
-    else onShow(next);
+    const shown = instead ?? next;
+    if (shown === undefined) fresh();
+    else onShow(shown);
   };
   const canReopen = (key: string) =>
-    isNewDraftKey(key) ? drafts.some((draft) => draft.key === key) : threadOf(key) !== undefined;
+    isFileKey(key) ||
+    (isNewDraftKey(key) ? drafts.some((draft) => draft.key === key) : threadOf(key) !== undefined);
   const reopenable = strip.closed.some((key) => !keys.includes(key) && canReopen(key));
   const reopen = () => {
     const { key } = reopenTab(visible, canReopen);

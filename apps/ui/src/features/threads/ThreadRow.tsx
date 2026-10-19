@@ -3,6 +3,7 @@ import { Monitor } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { shortAgo } from "../../lib/time.ts";
+import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
 import { DeleteThreadDialog } from "./Delete.tsx";
 import type { ThreadSummary } from "./model.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
@@ -119,6 +120,14 @@ export function ThreadRow({
       }}
       data-thread={thread.id}
       aria-current={selected ? "page" : undefined}
+      // Dragged onto the conversation, it opens beside it, or in its place; an archived one stays put.
+      draggable={!quiet}
+      onDragStart={(event) => {
+        event.dataTransfer.setData(THREAD_DRAG_TYPE, thread.id);
+        event.dataTransfer.effectAllowed = "move";
+        paneDrag.begin({ kind: "thread", key: thread.id }, event.clientX, event.clientY);
+      }}
+      onDragEnd={() => paneDrag.cancel()}
       // The full title, and where it is, for a row too narrow to say.
       title={mark === "badge" && thread.project ? `${title}\n${thread.project}` : title}
       className={rowClass}

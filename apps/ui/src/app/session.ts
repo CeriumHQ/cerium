@@ -1,6 +1,7 @@
 import { Option, Schema } from "effect";
 
 import { newDraftKey } from "../features/composer/drafts.ts";
+import type { PaneNode as PaneNodeType } from "../features/split/model.ts";
 import { rememberForTab, storedForTab } from "../lib/storage.ts";
 import type { AppMode } from "./ModeSwitch.tsx";
 
@@ -18,6 +19,23 @@ const TabStrip = Schema.Struct({
   closed: Schema.Array(Schema.String),
 });
 
+const PaneView = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("thread"), key: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("file"), root: Schema.String, path: Schema.String }),
+]);
+
+const PaneNode = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("pane"), id: Schema.String, view: PaneView }),
+  Schema.Struct({
+    kind: Schema.Literal("split"),
+    axis: Schema.Literals(["row", "column"]),
+    children: Schema.Array(Schema.suspend((): Schema.Codec<PaneNodeType> => PaneNode)),
+    sizes: Schema.Array(Schema.Finite),
+  }),
+]);
+
+const Panes = Schema.Struct({ root: PaneNode, focused: Schema.String, shown: Schema.String });
+
 const Session = Schema.fromJsonString(
   Schema.Struct({
     /** The machine the window drove; none for this computer. */
@@ -34,6 +52,10 @@ const Session = Schema.fromJsonString(
         Schema.String,
         Schema.Struct({ work: Schema.optionalKey(TabStrip), chat: Schema.optionalKey(TabStrip) }),
       ),
+    ),
+    /** How each mode's main area is split into panes. */
+    panes: Schema.optionalKey(
+      Schema.Struct({ work: Schema.optionalKey(Panes), chat: Schema.optionalKey(Panes) }),
     ),
   }),
 );

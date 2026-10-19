@@ -1,14 +1,17 @@
 import { Button } from "@base-ui/react/button";
 import { Tabs } from "@base-ui/react/tabs";
 import type { ProviderId } from "@cerium/protocol";
-import { ArrowRightToLine, History, PenLine, Pin, Plus, X, XSquare } from "lucide-react";
+import { ArrowRightToLine, Columns2, History, PenLine, Pin, Plus, Rows2, X, XSquare } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 
+import { FileIcon } from "../../components/FileIcon.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import type { ThreadSummary } from "../threads/model.ts";
+import { paneDrag } from "../split/drag.ts";
 import { StatusIndicator } from "../threads/StatusIndicator.tsx";
+import type { FileTab } from "../viewer/model.ts";
 
 /** What a tab shows of the thread, or the thread not started yet, it holds. */
 export interface TabView {
@@ -23,6 +26,10 @@ export interface TabView {
   /** Its lead's harness. */
   readonly provider?: ProviderId;
   readonly project?: string;
+  /** It shows in a pane beside the focused one. */
+  readonly beside?: boolean;
+  /** A work thread's file the viewer shows, rather than a thread. */
+  readonly file?: FileTab;
 }
 
 export interface TabActions {
@@ -33,10 +40,14 @@ export interface TabActions {
   readonly onNewTab: () => void;
   /** Reopens the tab closed last; absent while there is none. */
   readonly onReopen?: () => void;
+  /** Opens the tab's thread in a pane on `side` of the focused one; absent where panes can't split. */
+  readonly onSplit?: (key: string, side: "right" | "bottom") => void;
 }
 
 /** How far the pointer travels before pressing a tab becomes dragging it. */
 const DRAG_THRESHOLD = 4;
+/** How far below the strip a dragged tab goes before it's carried to the panes instead. */
+const SPLIT_THRESHOLD = 24;
 
 /**
  * The open threads as tabs in the titlebar, beside the new-tab button. A tab is shown as the pointer
@@ -53,6 +64,7 @@ export function ThreadTabs({
   onMove,
   onNewTab,
   onReopen,
+  onSplit,
 }: {
   tabs: ReadonlyArray<TabView>;
   active: string | undefined;
@@ -61,7 +73,17 @@ export function ThreadTabs({
 } & TabActions) {
   const list = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLElement>());
-  const press = useRef<{ key: string; x: number; dragging: boolean }>(undefined);
+  /**
+   * The tab pressed, and the one shown before it: a tab carried off the strip to the panes gives the
+   * focused pane back what it showed.
+   */
+  const press = useRef<{
+    key: string;
+    x: number;
+    dragging: boolean;
+    before: string | undefined;
+    carried: boolean;
+  }>(undefined);
   const [dragging, setDragging] = useState<string>();
   /** Which ends of the strip hide tabs past them, to fade so the hidden tabs show they're there. */
   const [hidden, setHidden] = useState({ start: false, end: false });
@@ -94,12 +116,29 @@ export function ThreadTabs({
       return;
     }
     if (event.button !== 0 || (event.target as HTMLElement).closest("[data-tab-close]")) return;
-    press.current = { key, x: event.clientX, dragging: false };
+    press.current = { key, x: event.clientX, dragging: false, before: active, carried: false };
+    // The tab follows the pointer from the press, so one pulled straight down off the strip is still its own.
+    event.currentTarget.setPointerCapture(event.pointerId);
     if (key !== active) onActivate(key);
   };
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     const current = press.current;
     if (current === undefined) return;
+    if (current.carried) {
+      paneDrag.move(event.clientX, event.clientY);
+      return;
+    }
+    const bottom = list.current?.getBoundingClientRect().bottom ?? Infinity;
+    // Pulled down off the strip, the tab goes to the panes, to open beside one of them.
+    if (onSplit && event.clientY > bottom + SPLIT_THRESHOLD) {
+      current.carried = true;
+      if (!current.dragging) event.currentTarget.setPointerCapture(event.pointerId);
+      current.dragging = true;
+      setDragging(current.key);
+      if (current.before !== undefined && current.before !== current.key) onActivate(current.before);
+      paneDrag.begin({ kind: "thread", key: current.key }, event.clientX, event.clientY);
+      return;
+    }
     if (!current.dragging) {
       if (Math.abs(event.clientX - current.x) < DRAG_THRESHOLD) return;
       current.dragging = true;
@@ -114,7 +153,11 @@ export function ThreadTabs({
     }).length;
     if (index !== tabs.findIndex((tab) => tab.key === current.key)) onMove(current.key, index);
   };
-  const endPress = () => {
+  const endPress = (event: PointerEvent<HTMLElement>) => {
+    if (press.current?.carried) {
+      if (event.type === "pointerup") paneDrag.drop(event.clientX, event.clientY);
+      else paneDrag.cancel();
+    }
     press.current = undefined;
     setDragging(undefined);
   };
@@ -171,6 +214,10 @@ export function ThreadTabs({
               }
               onKeep={() => onKeep(tab.key)}
               {...(onReopen ? { onReopen } : {})}
+              // The focused pane's own tab has nowhere beside itself to go.
+              {...(onSplit && tab.key !== active
+                ? { onSplit: (side: "right" | "bottom") => onSplit(tab.key, side) }
+                : {})}
             />
           ))}
           <Tabs.Indicator className="absolute top-1/2 left-0 -z-10 h-7 w-(--active-tab-width) translate-x-(--active-tab-left) -translate-y-1/2 rounded-lg border border-line-subtle bg-surface-selected shadow-raised transition-[translate,width] duration-200 ease-out-soft motion-reduce:transition-none" />
@@ -204,6 +251,7 @@ function ThreadTab({
   onCloseRight,
   onKeep,
   onReopen,
+  onSplit,
 }: {
   tab: TabView;
   active: boolean;
@@ -214,12 +262,13 @@ function ThreadTab({
   hasRight: boolean;
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
   onPointerMove: (event: PointerEvent<HTMLElement>) => void;
-  onPointerEnd: () => void;
+  onPointerEnd: (event: PointerEvent<HTMLElement>) => void;
   onClose: () => void;
   onCloseOthers: () => void;
   onCloseRight: () => void;
   onKeep: () => void;
   onReopen?: () => void;
+  onSplit?: (side: "right" | "bottom") => void;
 }) {
   const status = tab.status ?? "idle";
   const unread = tab.unread === true && !active;
@@ -233,6 +282,17 @@ function ThreadTab({
             <MenuItem icon={Pin} onClick={onKeep}>
               Keep open
             </MenuItem>
+          ) : null}
+          {onSplit ? (
+            <>
+              <MenuItem icon={Columns2} onClick={() => onSplit("right")}>
+                Open to the right
+              </MenuItem>
+              <MenuItem icon={Rows2} onClick={() => onSplit("bottom")}>
+                Open below
+              </MenuItem>
+              <MenuSeparator />
+            </>
           ) : null}
           <MenuItem icon={X} shortcut="Ctrl W" onClick={onClose}>
             Close
@@ -274,11 +334,17 @@ function ThreadTab({
           // The full title, and where it is, for a tab too narrow to say.
           title={tab.project ? `${tab.title}\n${tab.project}` : tab.title}
           className={`flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-7 pl-2.5 text-left text-[12.5px] outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
-            active ? "text-fg-primary" : "text-fg-tertiary group-hover/tab:text-fg-secondary"
+            active
+              ? "text-fg-primary"
+              : tab.beside
+                ? "text-fg-secondary group-hover/tab:text-fg-primary"
+                : "text-fg-tertiary group-hover/tab:text-fg-secondary"
           }`}
         >
           <span className="grid size-3.5 shrink-0 place-items-center">
-            {tab.draft ? (
+            {tab.file ? (
+              <FileIcon path={tab.file.path} className={`size-3.5 ${active ? "" : "opacity-80"}`} />
+            ) : tab.draft ? (
               <span
                 aria-hidden
                 className="grid size-3.5 place-items-center rounded-[4px] border border-dashed border-current opacity-70"

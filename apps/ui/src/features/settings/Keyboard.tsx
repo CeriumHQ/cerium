@@ -36,6 +36,11 @@ const tabShortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["Open a sidebar thread in a tab of its own", "Ctrl Click"],
 ];
 
+const paneShortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
+  ["New thread to the right", "Ctrl \\"],
+  ["New thread below", "Ctrl Shift \\"],
+];
+
 function ShortcutList({ rows }: { rows: ReadonlyArray<readonly [action: string, keys: string]> }) {
   return (
     <SettingsCard className="divide-y divide-line-subtle">
@@ -102,6 +107,10 @@ export function KeyboardSettings() {
 
       <SettingsSection title="Tabs">
         <ShortcutList rows={tabShortcuts} />
+      </SettingsSection>
+
+      <SettingsSection title="Split view">
+        <ShortcutList rows={paneShortcuts} />
       </SettingsSection>
     </SettingsPage>
   );

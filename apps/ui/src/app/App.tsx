@@ -18,7 +18,15 @@ import {
 } from "@effect/atom-react";
 import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   accountAtom,
@@ -45,7 +53,7 @@ import { connectionAtom } from "../backend/client.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject } from "../backend/projects.ts";
 import { WEB } from "../backend/target.ts";
-import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
+import { leadOf, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import {
   DeviceRequestNotice,
@@ -57,22 +65,21 @@ import { MachinePicker } from "../features/account/MachinePicker.tsx";
 import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
-  ApprovalTray,
   type AnswerApproval,
   type AnswerQuestion,
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
-import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
+import type { OutgoingMessage, ThreadSetup } from "../features/composer/Composer.tsx";
 import { hasContent } from "../features/composer/draft.ts";
 import {
   draftsAtom,
-  draftStartAtom,
   isNewDraftKey,
+  newDraftKey,
   withoutDraft,
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
-import { useMessageBoxHandle } from "../features/composer/messageBox.ts";
+import type { MessageBox } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { FILES_VERSION } from "../features/files/model.ts";
@@ -89,30 +96,53 @@ import {
 import { useTheme } from "../features/settings/theme.ts";
 import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
-import {
-  CloudThreadBar,
-  ConnectingNote,
-  LoadingThreadBar,
-  NoComputerBar,
-} from "../features/threads/CloudThread.tsx";
+import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
-import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
-import { Transcript } from "../features/transcript/Transcript.tsx";
+import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
+import type { DragSource } from "../features/split/drag.ts";
+import {
+  canSplit,
+  closePane,
+  closeThreads,
+  findPane,
+  focusedThread,
+  focusPane,
+  followShown,
+  isSplit,
+  layoutOf,
+  leavesOf,
+  movePane,
+  paneShowing,
+  renameThread as renamePaneThread,
+  resizeSplit,
+  showInPane,
+  singlePane,
+  splitPane,
+  threadOf,
+  threadView,
+  type DropZone,
+  type PaneLeaf,
+  type Panes,
+  type PaneView,
+  type Side,
+} from "../features/split/model.ts";
+import { MIN_PANE, SplitView, type PaneLabel } from "../features/split/SplitView.tsx";
+import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
 import { useCompact } from "./compact.ts";
-import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
+import { ThreadPane, type PaneHandles, type ThreadPaneActions } from "./ThreadPane.tsx";
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
@@ -124,6 +154,10 @@ const messageOf = (error: unknown) =>
     : "Something went wrong.";
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+
+/** The main area's pane until the user splits it. */
+const MAIN_PANE = "main";
+const newPaneId = () => `pane-${crypto.randomUUID()}`;
 
 export function App() {
   return (
@@ -161,6 +195,8 @@ function Workspace() {
   const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>(() => resumed?.open ?? {});
   /** Each mode's blank new thread: once it has something in it, "New thread" starts another. */
   const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
+  /** How each mode's main area is split into panes, once the user split it; the open thread is the focused pane's. */
+  const [panesByMode, setPanesByMode] = useState<Partial<Record<AppMode, Panes>>>(() => resumed?.panes ?? {});
   const [inspectorOpen, setInspectorOpen] = useState(false);
   /** The files panel, which takes the inspector's place: one of the two is open at a time. */
   const [filesOpen, setFilesOpen] = useState(false);
@@ -180,14 +216,13 @@ function Workspace() {
     setFolder(stored(folderKey));
     setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : (back?.open ?? {}));
     setBlank(back?.blank ?? freshBlank());
+    setPanesByMode(openAfterSwitch ? {} : (back?.panes ?? {}));
     if (back) setPane(back.pane);
     setOpenAfterSwitch(undefined);
     setResumePending(false);
   }
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
-  /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
-  const [composerHeight, setComposerHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const compact = useCompact();
@@ -195,8 +230,23 @@ function Workspace() {
   const [settingsPane, setSettingsPane] = useState<"nav" | "page">("nav");
   /** The category settings open on: the last one visited. */
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
-  const composerInput = useRef<HTMLDivElement>(null);
-  const [messageBoxRef, messageBox] = useMessageBoxHandle();
+  /** Each pane's message box, by the thread it shows; the window reaches the open thread's. */
+  const paneHandles = useRef(new Map<string, PaneHandles>());
+  /** The open thread, as the window's handlers find it after each render. */
+  const openKey = useRef<string>(undefined);
+  const openHandles = () =>
+    openKey.current === undefined ? undefined : paneHandles.current.get(openKey.current);
+  /** Puts the cursor in the open thread's message box. */
+  const focusComposer = () => openHandles()?.input.current?.focus();
+  /** What the rest of the window puts into the open thread's message box. */
+  const [messageBox] = useState((): MessageBox => ({
+    mention: (mention) => openHandles()?.box.mention(mention),
+    append: (content) => openHandles()?.box.append(content),
+  }));
+  const [onPaneHandles] = useState(() => (key: string, handles: PaneHandles | undefined) => {
+    if (handles) paneHandles.current.set(key, handles);
+    else paneHandles.current.delete(key);
+  });
 
   const connection = useAtomValue(connectionAtom);
   const threadsResult = useAtomValue(threadsAtom);
@@ -234,32 +284,44 @@ function Workspace() {
       (each.machine !== drivenId || !live) &&
       !overviews.some((overview) => overview.thread.id === each.overview.thread.id),
   );
-  const selected = overviews.find(
-    (overview) => overview.thread.id === openThread[mode] && overview.thread.mode === mode,
-  );
-  /** Another machine's thread open from the cloud copy, read-only, while that machine can't be reached. */
-  const cloudSelected = selected
-    ? undefined
-    : elsewhere.find(
-        (each) => each.overview.thread.id === openThread[mode] && each.overview.thread.mode === mode,
-      );
-  const viewed = selected ?? cloudSelected?.overview;
-  /**
-   * The open thread isn't listed yet because the list hasn't loaded (just after a reload): it holds
-   * its place rather than showing the blank new thread, whose draft the user would be writing in.
-   */
-  const loadingThread =
-    viewed === undefined &&
-    openThread[mode] !== undefined &&
-    !isNewDraftKey(openThread[mode]) &&
-    overviews.length === 0 &&
-    !AsyncResult.isSuccess(threadsResult);
+  /** The thread `key` names: live from the driven machine, or another machine's from the cloud copy. */
+  const resolve = (key: string | undefined) => {
+    const listed = overviews.find((overview) => overview.thread.id === key && overview.thread.mode === mode);
+    /** Another machine's thread open from the cloud copy, read-only, while that machine can't be reached. */
+    const cloud = listed
+      ? undefined
+      : elsewhere.find((each) => each.overview.thread.id === key && each.overview.thread.mode === mode);
+    const shown = listed ?? cloud?.overview;
+    /**
+     * The thread isn't listed yet because the list hasn't loaded (just after a reload): it holds
+     * its place rather than showing the blank new thread, whose draft the user would be writing in.
+     */
+    const loading =
+      shown === undefined &&
+      key !== undefined &&
+      !isNewDraftKey(key) &&
+      overviews.length === 0 &&
+      !AsyncResult.isSuccess(threadsResult);
+    return { listed, cloud, shown, loading };
+  };
+  const { listed: selected, cloud: cloudSelected, shown: viewed } = resolve(openThread[mode]);
   /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
   const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
-  const openDraftStart = useAtomValue(draftStartAtom(openDraft));
   const latestProject = useLatestProject();
-  /** The folder the new thread starts in: the one chosen for this draft, else the last one, else the project used most recently. */
-  const newFolder = openDraftStart?.folder ?? folder ?? latestProject;
+  /** The folder a new thread starts in, unless its draft chose one: the last one, else the project used most recently. */
+  const defaultFolder = folder ?? latestProject;
+  /** What the window shows: the open thread, or the draft of one not started yet. */
+  const current = openThread[mode] ?? blank[mode];
+  // The panes follow whatever the window shows: the focused pane takes it, or the pane showing it takes focus.
+  const storedPanes = panesByMode[mode];
+  const panes = storedPanes ? followShown(storedPanes, current) : singlePane(MAIN_PANE, current);
+  if (storedPanes !== undefined && panes !== storedPanes) {
+    setPanesByMode((all) => ({ ...all, [mode]: panes }));
+  }
+  const split = !compact && isSplit(panes);
+  useLayoutEffect(() => {
+    openKey.current = current;
+  }, [current]);
   const share = useAtomSet(markThreadsRead, { mode: "promise" });
   const readState = useReadState(
     new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
@@ -334,13 +396,6 @@ function Workspace() {
       ? cloudEventsAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
       : noEvents;
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
-  const cloudDevice = cloudSelected ? deviceOf(cloudSelected.machine) : undefined;
-  /** The open thread's machine is the one the window drives, and it hasn't answered yet. */
-  const cloudConnecting =
-    cloudSelected !== undefined &&
-    cloudSelected.machine === drivenId &&
-    cloudDevice !== undefined &&
-    reachOf(cloudDevice).kind === "reachable";
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
     setOpenAfterSwitch({ mode: threadMode, id: threadId });
@@ -362,7 +417,7 @@ function Workspace() {
   const tabs = useThreadTabs({
     machine: driven?.id ?? "local",
     mode,
-    active: openThread[mode] ?? blank[mode],
+    active: current,
     threads: summaries,
     loaded: live,
     initial: session?.tabs,
@@ -381,13 +436,25 @@ function Workspace() {
       setBlank((current) => ({ ...current, [mode]: key }));
       setOpenThread((current) => ({ ...current, [mode]: undefined }));
       setPane("main");
-      composerInput.current?.focus();
+      focusComposer();
     },
     // A closed tab's new thread that has nothing in it is forgotten, with what was picked in it.
     onClosed: (keys) => {
       const drafts = registry.get(draftsAtom);
       const empty = keys.filter((key) => isNewDraftKey(key) && !hasContent(drafts[key]));
       if (empty.length > 0) registry.set(draftsAtom, empty.reduce(withoutDraft, drafts));
+      // A closed tab's pane closes with it, and the pane that takes its room shows in its place.
+      if (!isSplit(panes)) return undefined;
+      const left = closeThreads(panes, keys);
+      if (left === undefined) return undefined;
+      setPanesByMode((all) => ({ ...all, [mode]: left }));
+      if (!keys.includes(current)) return undefined;
+      return (
+        focusedThread(left) ??
+        leavesOf(left.root)
+          .map((leaf) => threadOf(leaf.view))
+          .find(Boolean)
+      );
     },
   });
   useEffect(() => {
@@ -399,8 +466,9 @@ function Workspace() {
       blank,
       pane,
       tabs: tabs.strips,
+      panes: panesByMode,
     });
-  }, [resumePending, driven, mode, openThread, blank, pane, tabs.strips]);
+  }, [resumePending, driven, mode, openThread, blank, pane, tabs.strips, panesByMode]);
 
   // A tapped notification opens its thread, once the inbox lists it.
   useNotificationOpens(
@@ -461,15 +529,7 @@ function Workspace() {
   /** The harnesses have answered and none can run a thread: there is nothing to start one with. */
   const noHarness = AsyncResult.isSuccess(harnessesResult) && available.size === 0;
 
-  const lead = viewed ? leadOf(viewed.agents) : undefined;
   const agents = viewed ? toAgentSummaries(viewed.agents, events, models) : [];
-  const leadModel =
-    agents.find((agent) => agent.id === lead?.id)?.model ??
-    (lead ? modelLabel(models, lead.provider, lead.model) : "");
-  const leadRunning = lead?.state === "running" || lead?.state === "queued";
-  // An ended lead picks the thread back up on the user's next message.
-  const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
   const toggleInspector = () => {
     setInspectorOpen(!inspectorOpen);
     setFilesOpen(false);
@@ -508,7 +568,7 @@ function Workspace() {
       setInspectorOpen(true);
       setFilesOpen(false);
     },
-    onMessageLead: () => composerInput.current?.focus(),
+    onMessageLead: () => focusComposer(),
     onInterrupt: (agentId) => void attempt(interrupt({ payload: { agentId: agentId as AgentId } })),
     onStop: (agentId) => void attempt(stop({ payload: { agentId: agentId as AgentId } })),
   };
@@ -525,7 +585,7 @@ function Workspace() {
   const startNew = () => {
     setSettingsOpen(false);
     tabs.newTab();
-    composerInput.current?.focus();
+    focusComposer();
   };
 
   /** Opens a thread not started yet, on the machine it starts on. */
@@ -564,12 +624,81 @@ function Workspace() {
   };
   // Back from settings, the cursor returns to the message box; a phone's keyboard stays down.
   useEffect(() => {
-    if (!settingsOpen && !compact) composerInput.current?.focus();
+    if (!settingsOpen && !compact) focusComposer();
   }, [settingsOpen, compact]);
 
   const chooseFolder = (picked: string) => {
     setFolder(picked);
     remember(folderKey, picked);
+  };
+
+  /**
+   * Lays the panes out as `next` and shows the focused pane's thread. The thread the focused pane
+   * showed before stays in a tab of its own, so no later preview takes its tab while it shows.
+   */
+  const applyPanes = (next: Panes) => {
+    setPanesByMode((all) => ({ ...all, [mode]: next }));
+    const shown = focusedThread(next);
+    if (shown === undefined || shown === current) return;
+    tabs.keep(current);
+    tabs.openAs(shown, "tab");
+    setSettingsOpen(false);
+    setOpenThread((open) => ({ ...open, [mode]: shown }));
+    setPane("main");
+  };
+  /** Asks for the cursor in the focused pane's message box, once it has rendered. */
+  const [composerFocus, setComposerFocus] = useState(0);
+  useEffect(() => {
+    if (composerFocus > 0) focusComposer();
+  }, [composerFocus]);
+  /** The room the panes have, in pixels, which a split needs enough of. */
+  const panesArea = useRef<HTMLDivElement>(null);
+  const paneSize = (id: string) => {
+    const box = layoutOf(panes.root).panes.find(({ leaf }) => leaf.id === id)?.box;
+    const rect = panesArea.current?.getBoundingClientRect();
+    return box === undefined || rect === undefined
+      ? { width: 0, height: 0 }
+      : { width: box.width * rect.width, height: box.height * rect.height };
+  };
+  /** Opens `view` on `side` of the pane `target`, when it has the room. */
+  const splitWith = (target: string, side: Side, view: PaneView) => {
+    if (compact || !canSplit(paneSize(target), side, MIN_PANE)) return false;
+    applyPanes(splitPane(panes, target, side, view, newPaneId()));
+    return true;
+  };
+  /** A new thread on `side` of the pane `target`, ready to write in. */
+  const splitNew = (target: string, side: Side) => {
+    if (splitWith(target, side, threadView(newDraftKey()))) setComposerFocus((count) => count + 1);
+  };
+  const closePaneOf = (id: string) => {
+    const left = closePane(panes, id);
+    if (left !== undefined) applyPanes(left);
+  };
+  const focusOn = (id: string) => {
+    if (id !== panes.focused) applyPanes(focusPane(panes, id));
+  };
+  const canDrop = (
+    source: DragSource,
+    target: string,
+    zone: DropZone,
+    size: { readonly width: number; readonly height: number },
+  ) => {
+    const leaf = findPane(panes.root, target);
+    if (leaf === undefined) return false;
+    if (zone !== "center" && !canSplit(size, zone, MIN_PANE)) return false;
+    if (source.kind === "pane") return source.id !== target && isSplit(panes);
+    return threadOf(leaf.view) !== source.key;
+  };
+  const dropOn = (source: DragSource, target: string, zone: DropZone) => {
+    if (source.kind === "pane") {
+      applyPanes(movePane(panes, source.id, target, zone));
+      return;
+    }
+    const showing = paneShowing(panes.root, source.key);
+    if (zone !== "center") applyPanes(splitPane(panes, target, zone, threadView(source.key), newPaneId()));
+    // Dropped on a pane, a thread shown elsewhere trades places with what it showed.
+    else if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, "center"));
+    else applyPanes(showInPane(panes, target, threadView(source.key)));
   };
 
   const toggleSidebar = () => {
@@ -614,6 +743,12 @@ function Workspace() {
       event.preventDefault();
       return;
     }
+    // Ctrl \ opens a new thread beside the focused pane, and with Shift, below it.
+    if (event.code === "Backslash" && !settingsOpen && !compact) {
+      splitNew(panes.focused, event.shiftKey ? "bottom" : "right");
+      event.preventDefault();
+      return;
+    }
     if (event.shiftKey) {
       // Ctrl and a digit alone opens a sidebar row, which the sidebar listens for.
       if (event.code === "Digit1" || event.code === "Digit2") {
@@ -655,8 +790,13 @@ function Workspace() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const startThread = async (message: OutgoingMessage, setup: ThreadSetup) => {
-    const draft = openDraft;
+  /** Starts a thread from the draft `draft`, whichever pane it's in, and sends it the first message. */
+  const startThread = async (
+    draft: string,
+    message: OutgoingMessage,
+    setup: ThreadSetup,
+    newFolder: string | undefined,
+  ) => {
     const { thread, lead: newLead } = await create({
       payload: {
         title: (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80),
@@ -666,10 +806,147 @@ function Workspace() {
       },
     });
     tabs.started(draft, thread.id);
-    setOpenThread((current) => ({ ...current, [mode]: thread.id }));
+    setPanesByMode((all) => {
+      const before = all[mode];
+      return before ? { ...all, [mode]: renamePaneThread(before, draft, thread.id) } : all;
+    });
+    setOpenThread((open) => ((open[mode] ?? blank[mode]) === draft ? { ...open, [mode]: thread.id } : open));
     refreshThreads();
     await send({ payload: { agentId: newLead.id, ...message } });
   };
+
+  const paneActions: ThreadPaneActions = {
+    attempt,
+    send: (agentId, message) => send({ payload: { agentId, ...message } }),
+    start: startThread,
+    interrupt: (agentId) => interrupt({ payload: { agentId } }),
+    switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
+    respond: (agentId, requestId, decision, scope) =>
+      respond({ payload: { agentId, requestId, decision, scope } }),
+    answerApproval,
+    answerSpawn,
+    answerQuestion: answerQuestionOf,
+    agentActions,
+    keep: tabs.keep,
+    onSetUp: noHarness ? () => openSettings("harnesses") : undefined,
+    chooseFolder,
+  };
+
+  /** Where a thread can't take messages here, what shows in place of its message box. */
+  const barFor = ({ cloud, loading }: ReturnType<typeof resolve>, lead: boolean): ReactNode => {
+    if (WEB && driven === undefined && !cloud) return <NoComputerBar />;
+    if (loading) return <LoadingThreadBar />;
+    if (cloud === undefined) return undefined;
+    const device = deviceOf(cloud.machine);
+    /** The thread's machine is the one the window drives, and it hasn't answered yet. */
+    const connecting =
+      cloud.machine === drivenId && device !== undefined && reachOf(device).kind === "reachable";
+    if (connecting && lead) return undefined;
+    return (
+      <CloudThreadBar
+        machine={nameOf(cloud.machine)}
+        reach={device ? reachOf(device) : { kind: "offline", presence: "Not connected" }}
+        connecting={cloud.machine === drivenId}
+        onOpen={() => {
+          if (device) openOn(device, cloud.overview.thread.id);
+        }}
+        onStartNew={startNew}
+      />
+    );
+  };
+
+  /** The notices over the open thread's conversation. */
+  const notices = (
+    <>
+      {connection === "unreachable" && driven !== undefined ? (
+        <UnreachableNotice
+          machine={driven.name}
+          presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+          onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+        />
+      ) : connection === "unreachable" && !WEB ? (
+        <Notice tone="attention">
+          Reconnecting to Cerium's backend…
+          {import.meta.env.DEV ? (
+            <>
+              {" "}
+              Start it with <code>bun run dev</code>.
+            </>
+          ) : null}
+        </Notice>
+      ) : AsyncResult.isFailure(threadsResult) ? (
+        <Notice tone="error" clamp>
+          {messageOf(Cause.squash(threadsResult.cause))}
+        </Notice>
+      ) : null}
+      <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
+      {WEB ? null : <UpdateNotice />}
+      {actionError ? (
+        <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
+          {actionError}
+        </Notice>
+      ) : null}
+    </>
+  );
+
+  /** A pane showing the thread, or the thread not started yet, `key`. */
+  const threadPane = (key: string, focused: boolean) => {
+    const resolved = resolve(key);
+    const lead = resolved.shown ? leadOf(resolved.shown.agents) !== undefined : false;
+    const opened = key === current;
+    return (
+      <ThreadPane
+        mode={mode}
+        selected={resolved.listed}
+        cloud={
+          resolved.cloud
+            ? {
+                machine: resolved.cloud.machine,
+                name: nameOf(resolved.cloud.machine),
+                overview: resolved.cloud.overview,
+              }
+            : undefined
+        }
+        loading={resolved.loading}
+        draftKey={isNewDraftKey(key) ? key : opened ? openDraft : key}
+        folder={defaultFolder}
+        available={available}
+        bar={barFor(resolved, lead)}
+        // The window's notices and its terminal go with the open thread.
+        {...(opened ? { notices, drawer: terminal.drawer } : {})}
+        focused={focused}
+        paneKey={key}
+        onHandles={onPaneHandles}
+        actions={paneActions}
+      />
+    );
+  };
+
+  /** What a pane's header calls what it shows. */
+  const paneLabel = (leaf: PaneLeaf): PaneLabel => {
+    if (leaf.view.kind === "file") return { title: baseName(leaf.view.path), detail: leaf.view.path };
+    const tab = tabs.tabs.find((each) => each.key === threadOf(leaf.view));
+    const newTitle = mode === "work" ? "New thread" : "New chat";
+    if (tab === undefined) return { title: newTitle };
+    const status = tab.status ?? "idle";
+    return {
+      title: tab.title || newTitle,
+      ...(tab.project ? { detail: tab.project } : {}),
+      icon: tab.draft ? undefined : status !== "idle" || tab.unread ? (
+        <StatusIndicator status={status} unread={tab.unread === true} />
+      ) : tab.provider ? (
+        <ProviderLogo provider={tab.provider} size={12} />
+      ) : undefined,
+    };
+  };
+  /** The threads showing in panes besides the focused one, whose tabs say so. */
+  const beside = new Set(
+    split
+      ? leavesOf(panes.root)
+          .filter((leaf) => leaf.id !== panes.focused)
+          .flatMap((leaf) => threadOf(leaf.view) ?? [])
+      : [],
+  );
 
   return (
     <AppFrame
@@ -770,10 +1047,14 @@ function Workspace() {
       machinePicker={<MachinePicker account={account} />}
       tabs={
         <ThreadTabs
-          tabs={tabs.tabs}
-          active={openThread[mode] ?? blank[mode]}
+          tabs={
+            beside.size === 0 ? tabs.tabs : tabs.tabs.map((tab) => ({ ...tab, beside: beside.has(tab.key) }))
+          }
+          // A focused file pane has no tab of its own.
+          active={focusedThread(panes) === undefined ? undefined : current}
           newLabel={mode === "work" ? "New thread" : "New chat"}
           {...tabs.actions}
+          onSplit={(key, side) => splitWith(panes.focused, side, threadView(key))}
         />
       }
       {...(searchOpen ? { closeDialog: () => setSearchOpen(false) } : {})}
@@ -808,7 +1089,7 @@ function Workspace() {
             selectedId={inspectedAgent}
             onSelect={setInspectedAgent}
             onClose={() => setInspectorOpen(false)}
-            onMessageLead={() => composerInput.current?.focus()}
+            onMessageLead={() => focusComposer()}
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
             onAnswerApproval={answerApproval}
@@ -826,154 +1107,26 @@ function Workspace() {
       onCloseFiles={() => setFilesOpen(false)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
-      {/* The terminal drawer docks under the conversation, which keeps its message box floating above it. */}
-      <div className="relative flex h-full flex-col">
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {connection === "unreachable" && driven !== undefined ? (
-            <UnreachableNotice
-              machine={driven.name}
-              presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-              onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-            />
-          ) : connection === "unreachable" && !WEB ? (
-            <Notice tone="attention">
-              Reconnecting to Cerium's backend…
-              {import.meta.env.DEV ? (
-                <>
-                  {" "}
-                  Start it with <code>bun run dev</code>.
-                </>
-              ) : null}
-            </Notice>
-          ) : AsyncResult.isFailure(threadsResult) ? (
-            <Notice tone="error" clamp>
-              {messageOf(Cause.squash(threadsResult.cause))}
-            </Notice>
-          ) : null}
-          <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
-          {WEB ? null : <UpdateNotice />}
-          {actionError ? (
-            <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
-              {actionError}
-            </Notice>
-          ) : null}
-
-          <div className="relative min-h-0 flex-1">
-            {viewed && lead ? (
-              <Transcript
-                key={viewed.thread.id}
-                folder={viewed.thread.cwd}
-                blocks={buildTranscript(
-                  leadEvents,
-                  (a, b) =>
-                    a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b),
-                )}
-                queued={queuedMessages(leadEvents)}
-                agent={{ provider: lead.provider, model: leadModel }}
-                modelName={(model) => modelLabel(models, lead.provider, model)}
-                {...(cloudSelected ? {} : { messageBox })}
-                activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
-                bottomInset={composerHeight}
-                childState={(childId) => {
-                  const child = agents.find((agent) => agent.id === childId);
-                  return child?.awaitingApproval
-                    ? "needsYou"
-                    : child?.state === "running" || child?.state === "queued"
-                      ? "running"
-                      : child?.state === "failed"
-                        ? "failed"
-                        : "idle";
-                }}
-                childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-                // A thread read from the cloud copy offers no agent actions: they take its machine.
-                agentActions={cloudSelected ? {} : agentActions}
-                onAnswerPermission={(requestId, decision, scope) =>
-                  cloudSelected
-                    ? Promise.resolve(false)
-                    : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
-                }
-                onAnswerQuestion={(requestId, response) =>
-                  cloudSelected ? Promise.resolve(false) : answerQuestionOf(lead.id, requestId, response)
-                }
-              />
-            ) : loadingThread ? null : (
-              <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
-            )}
-          </div>
-
-          {WEB && driven === undefined && !cloudSelected ? (
-            <NoComputerBar />
-          ) : loadingThread ? (
-            <LoadingThreadBar />
-          ) : cloudSelected && !(cloudConnecting && lead) ? (
-            <CloudThreadBar
-              machine={nameOf(cloudSelected.machine)}
-              reach={cloudDevice ? reachOf(cloudDevice) : { kind: "offline", presence: "Not connected" }}
-              connecting={cloudSelected.machine === drivenId}
-              onOpen={() => {
-                if (cloudDevice) openOn(cloudDevice, cloudSelected.overview.thread.id);
-              }}
-              onStartNew={startNew}
-            />
-          ) : (
-            // While the open thread's machine is still connecting, the box keeps its draft and takes
-            // writing; sending waits until the machine answers.
-            <Composer
-              draftKey={viewed && lead ? viewed.thread.id : openDraft}
-              connecting={cloudSelected !== undefined}
-              inputRef={composerInput}
-              messageBox={messageBoxRef}
-              target={
-                viewed && lead
-                  ? {
-                      kind: "thread",
-                      provider: lead.provider,
-                      model: leadModel,
-                      modelId: lead.model,
-                      effort: lead.effort,
-                      folder: viewed.thread.cwd,
-                      ...(leadEnded ? { ended: leadEnded } : {}),
-                      // A thread read from the cloud copy can't be switched: it takes its machine.
-                      ...(cloudSelected
-                        ? {}
-                        : {
-                            onSwitch: (choice) =>
-                              attempt(switchLead({ payload: { agentId: lead.id, ...choice } })),
-                          }),
-                    }
-                  : { kind: "new", mode, folder: newFolder, onChooseFolder: chooseFolder, available }
-              }
-              running={leadRunning && cloudSelected === undefined}
-              above={
-                cloudSelected ? (
-                  <ConnectingNote machine={nameOf(cloudSelected.machine)} />
-                ) : (
-                  <ApprovalTray
-                    agents={agents}
-                    onAnswer={answerApproval}
-                    onAnswerSpawn={answerSpawn}
-                    onAnswerQuestion={answerQuestionOf}
-                  />
-                )
-              }
-              onHeight={setComposerHeight}
-              onSend={(message, setup) => {
-                // Writing to a thread keeps its tab: it's no longer only a preview.
-                if (viewed) tabs.keep(viewed.thread.id);
-                return attempt(
-                  selected && lead
-                    ? send({ payload: { agentId: lead.id, ...message } })
-                    : startThread(message, setup),
-                );
-              }}
-              onStop={() => {
-                if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
-              }}
-            />
-          )}
+      {compact ? (
+        // The narrow window shows one pane: the open thread's.
+        threadPane(current, true)
+      ) : (
+        <div ref={panesArea} className="h-full">
+          <SplitView
+            panes={panes}
+            renderPane={(leaf, focused) =>
+              leaf.view.kind === "thread" ? threadPane(leaf.view.key, focused) : null
+            }
+            label={paneLabel}
+            onFocus={focusOn}
+            onResize={(path, sizes) => applyPanes(resizeSplit(panes, path, sizes))}
+            onClose={closePaneOf}
+            onSplit={splitNew}
+            canDrop={canDrop}
+            onDrop={dropOn}
+          />
         </div>
-        {terminal.drawer}
-      </div>
+      )}
     </AppFrame>
   );
 }

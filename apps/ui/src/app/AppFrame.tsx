@@ -242,13 +242,22 @@ function DesktopFrame({
                 },
               }
             : {})}
-          className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+          // The thread views draw their own cards, one per pane of a split.
+          className="min-w-0 flex-1"
         >
           <ViewStack
             active={view}
             views={[
               ["threads", children],
-              ["settings", settings.page],
+              [
+                "settings",
+                <div
+                  key="settings"
+                  className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                >
+                  {settings.page}
+                </div>,
+              ],
             ]}
           />
         </main>
