@@ -164,6 +164,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts. Spelling suggestions in the text menu stand out from the commands under them.
 - UI: in replies, a long code block scrolls in place instead of pushing the conversation down, a block without a language drops its empty header for a copy button over its corner, task lists use their checkboxes as markers, and scrollbars inside the conversation are thin.
 - UI: Harnesses settings say a version Cerium hasn't tested is "Not tested with Cerium", with the detail behind an info tip, instead of warning about it.
+- UI: Appearance and Archived settings say less, with the rest behind an info tip, and an archived thread's delete button shows on hover or focus.
 
 ### Fixed
 

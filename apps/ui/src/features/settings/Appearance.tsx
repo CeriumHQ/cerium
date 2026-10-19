@@ -3,6 +3,7 @@ import { RadioGroup } from "@base-ui/react/radio-group";
 import { Slider } from "@base-ui/react/slider";
 import { useAtom } from "@effect/atom-react";
 
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { UserMessage } from "../transcript/Blocks.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
 import type { TranscriptBlock } from "../transcript/model.ts";
@@ -17,11 +18,8 @@ export function AppearanceSettings() {
   const [theme, setTheme] = useAtom(themeAtom);
   const [textSize, setTextSize] = useAtom(textSizeAtom);
   return (
-    <SettingsPage title="Appearance" description="How Cerium looks on your screen.">
-      <SettingsSection
-        title="Theme"
-        description="System follows Windows as it switches between light and dark."
-      >
+    <SettingsPage title="Appearance">
+      <SettingsSection title="Theme" description="System follows Windows, light or dark.">
         <RadioGroup
           value={theme}
           onValueChange={(value) => setTheme(value as Theme)}
@@ -61,7 +59,12 @@ export function AppearanceSettings() {
 
       <SettingsSection
         title="Conversation text"
-        description="Scales the conversation: messages, tool calls and approvals. The rest of the window keeps its size."
+        description={
+          <span className="inline-flex flex-wrap items-center gap-x-1.5">
+            Scales messages, tool calls and approvals.
+            <InfoTip label="About conversation text">The rest of the window keeps its size.</InfoTip>
+          </span>
+        }
       >
         <TextSizeSlider
           value={textSize}

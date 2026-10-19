@@ -3,16 +3,17 @@ import type { ThreadId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ArchiveRestore, MessageSquare, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MessageSquare, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { deleteThread, setThreadArchived, threadsAtom } from "../../backend/atoms.ts";
 import { toThreadSummary } from "../../backend/view.ts";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { whenAgo } from "../../lib/time.ts";
 import { DeleteThreadDialog } from "../threads/Delete.tsx";
 import { archivedThreads, canDelete, type ThreadSummary } from "../threads/model.ts";
 import { ProjectBadge } from "../threads/ProjectBadge.tsx";
-import { whenAgo } from "../../lib/time.ts";
-import { SettingsCard, SettingsPage } from "./parts.tsx";
+import { SettingsPage } from "./parts.tsx";
 
 export function ArchivedSettings() {
   const overviews = AsyncResult.getOrElse(useAtomValue(threadsAtom), (): ReadonlyArray<ThreadOverview> => []);
@@ -20,7 +21,6 @@ export function ArchivedSettings() {
   const archive = useAtomSet(setThreadArchived, { mode: "promise" });
   const remove = useAtomSet(deleteThread, { mode: "promise" });
   const [error, setError] = useState<string>();
-  const archived = archivedThreads(overviews.map(toThreadSummary));
 
   const restore = (threadId: string) => {
     setError(undefined);
@@ -37,30 +37,51 @@ export function ArchivedSettings() {
   };
 
   return (
-    <SettingsPage
-      perMachine
-      title="Archived"
-      description="Threads and chats you archived. Restoring one puts it back in the inbox or the chat list."
-    >
-      {error ? <p className="-mt-6 text-[12.5px] text-error">{error}</p> : null}
-      {archived.length === 0 ? (
-        <SettingsCard className="px-4 py-8 text-center text-[13px] text-fg-tertiary">
-          Nothing is archived. Right-click a thread or chat in the sidebar to archive it.
-        </SettingsCard>
+    <SettingsPage perMachine title="Archived">
+      <ArchivedView
+        threads={archivedThreads(overviews.map(toThreadSummary))}
+        {...(error === undefined ? {} : { error })}
+        onRestore={restore}
+        onDelete={deleteForGood}
+      />
+    </SettingsPage>
+  );
+}
+
+/** The archived threads and chats, most recently archived first, each with its restore and delete. */
+export function ArchivedView({
+  threads,
+  error,
+  onRestore,
+  onDelete,
+}: {
+  threads: ReadonlyArray<ThreadSummary>;
+  error?: string;
+  onRestore: (threadId: string) => void;
+  onDelete: (threadId: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
+      {threads.length === 0 ? (
+        <div className="flex items-start gap-3 py-2 text-[13px] leading-relaxed text-fg-tertiary">
+          <Archive size={16} strokeWidth={1.5} className="mt-0.5 shrink-0" />
+          <p>Nothing archived. Right-click a thread or chat in the sidebar to archive it.</p>
+        </div>
       ) : (
         <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
-          {archived.map((thread) => (
+          {threads.map((thread) => (
             <li key={thread.id}>
               <ArchivedRow
                 thread={thread}
-                onRestore={() => restore(thread.id)}
-                onDelete={() => deleteForGood(thread.id)}
+                onRestore={() => onRestore(thread.id)}
+                onDelete={() => onDelete(thread.id)}
               />
             </li>
           ))}
         </ul>
       )}
-    </SettingsPage>
+    </div>
   );
 }
 
@@ -75,7 +96,7 @@ function ArchivedRow({
 }) {
   const [deleting, setDeleting] = useState(false);
   return (
-    <div className="flex items-center gap-3 py-2.5 pr-3 pl-4">
+    <div className="group/archived flex items-center gap-3 py-2.5 pr-3 pl-4">
       {thread.folder && thread.project ? (
         <ProjectBadge folder={thread.folder} name={thread.project} />
       ) : (
@@ -88,7 +109,7 @@ function ArchivedRow({
           {thread.title}
         </span>
         <span className="truncate text-xs text-fg-tertiary">
-          {thread.project ?? "Chat"} · Archived {whenAgo(thread.archivedAt ?? 0)}
+          {thread.project ?? "Chat"} · {whenAgo(thread.archivedAt ?? 0)}
         </span>
       </div>
       <Button
@@ -98,15 +119,17 @@ function ArchivedRow({
         <ArchiveRestore size={13} strokeWidth={1.75} />
         Restore
       </Button>
-      <Button
-        onClick={() => setDeleting(true)}
-        disabled={!canDelete(thread)}
-        aria-label="Delete"
-        title="Delete"
-        className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-error/15 hover:text-error disabled:pointer-events-none disabled:opacity-40"
-      >
-        <Trash2 size={13} strokeWidth={1.75} />
-      </Button>
+      {/* Delete stays out of the way until the row is hovered or focused; a touch screen always shows it. */}
+      <Tooltip label="Delete">
+        <Button
+          onClick={() => setDeleting(true)}
+          disabled={!canDelete(thread)}
+          aria-label={`Delete ${thread.title}`}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 group-focus-within/archived:opacity-100 group-hover/archived:opacity-100 hover:bg-error/15 hover:text-error focus-visible:opacity-100 disabled:pointer-events-none pointer-coarse:opacity-100"
+        >
+          <Trash2 size={13} strokeWidth={1.75} />
+        </Button>
+      </Tooltip>
       <DeleteThreadDialog thread={thread} open={deleting} onOpenChange={setDeleting} onConfirm={onDelete} />
     </div>
   );
