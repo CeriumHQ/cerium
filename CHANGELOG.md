@@ -132,6 +132,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: going back to a thread you had open in the last five minutes shows it at once, without reading it again.
 - Agents are told when to message each other, not only that they can. Every agent's instructions say Cerium's tools replace their harness's own subagents and messaging, and name the moments a message pays off: before changing files another agent works on, when a change affects another's work, to ask what another knows, and on finding a problem in its work. A child asks its lead instead of guessing, and a lead learns what each access mode it gives a child allows. A lead that starts in a folder where other threads are working is told which threads, with their leads. `list_threads` shows each thread's folder and whether its lead is working, and leaves archived threads out. Read-only agents learn they can still look at pages with `ui_open`, `ui_screenshot` and `ui_inspect`.
 - UI: Harnesses settings link a missing harness's install page, copy its sign-in command and where each harness is installed in one click (long paths shortened in the middle), and say when you last checked them.
+- UI: Settings → Notifications sends a test notification, to see that they reach this browser.
 
 ### Changed
 
@@ -166,6 +167,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: Settings → Notifications shows notifications as off when the browser blocks them.
 - UI: Harnesses settings say when the computer they're about can't be reached, instead of "Checking…" forever.
 - UI: a dozen attachments no longer push the message off the screen: the tray scrolls past two rows. A file that couldn't be attached says why under the tray, and touch screens show each file's remove button.
 - UI: a long menu, such as every saved project, scrolls inside the window instead of running off it.

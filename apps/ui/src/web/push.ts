@@ -98,6 +98,19 @@ export const turnOffPush = async () => {
   await (await registration?.pushManager.getSubscription())?.unsubscribe();
 };
 
+/** Shows a notification now, the way one from the relay would, to check this browser shows them. */
+export const showTestNotification = async () => {
+  // Not `serviceWorker.ready`, which waits forever when the worker never registered.
+  const registration = await navigator.serviceWorker.getRegistration("/");
+  if (registration === undefined)
+    throw new Error("Cerium's service worker isn't running. Reload and try again.");
+  // Untagged, so each test shows rather than quietly replacing the last.
+  await registration.showNotification("Cerium", {
+    body: "Notifications are on for this browser.",
+    icon: "/icon-192.png",
+  });
+};
+
 /** The kinds of notification this browser gets, as the relay has them; none while they're off. */
 export const notificationsOf = (account: AccountState) =>
   account._tag === "SignedIn"

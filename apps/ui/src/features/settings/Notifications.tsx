@@ -5,12 +5,14 @@ import { EllipsisVertical, Share, SquarePlus } from "lucide-react";
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { accountAtom, subscribePush, unsubscribePush } from "../../backend/atoms.ts";
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { thisBrowser } from "../../web/device.ts";
 import {
   notificationsOf,
   PushBlocked,
   pushSupport,
   relayPushKey,
+  showTestNotification,
   turnOffPush,
   turnOnPush,
 } from "../../web/push.ts";
@@ -55,7 +57,7 @@ export function NotificationSettings() {
   return (
     <SettingsPage
       title="Notifications"
-      description={`Cerium can tell this ${noun} when an agent needs you, a thread finishes or something fails, on any of your computers.`}
+      description={`Alerts from any of your computers, shown on this ${noun}.`}
     >
       {support === "supported" ? (
         <PushSettings noun={noun} />
@@ -93,15 +95,18 @@ function PushSettings({ noun }: { noun: string }) {
     readonly over: string;
   }>();
   const [error, setError] = useState<string>();
+  const [testSent, setTestSent] = useState(false);
   const savedKey = JSON.stringify(saved ?? null);
   const kinds = chosen !== undefined && chosen.over === savedKey ? (chosen.kinds ?? undefined) : saved;
+  // Blocked in the browser, nothing is on, whatever the relay still has saved for this browser.
+  const shown = allowed === "denied" ? undefined : kinds;
   const online = account?._tag === "SignedIn" && account.connection === "online";
   const masterId = useId();
 
   const blockedText =
     noun === "browser"
-      ? "This browser blocks notifications from Cerium. Allow them in its settings for this site, then try again."
-      : `Notifications for Cerium are off in this ${noun}'s settings. Turn them on there, then try again.`;
+      ? "Blocked. Allow notifications for this site in the browser's settings."
+      : `Blocked. Allow notifications for Cerium in this ${noun}'s settings.`;
 
   const failed = (cause: unknown) => {
     setChosen(undefined);
@@ -138,6 +143,17 @@ function PushSettings({ noun }: { noun: string }) {
     else choose(next);
   };
 
+  /** Shows one now, so the user can see the notifications reach this browser. */
+  const sendTest = () => {
+    setError(undefined);
+    showTestNotification()
+      .then(() => {
+        setTestSent(true);
+        setTimeout(() => setTestSent(false), 2000);
+      })
+      .catch((cause: unknown) => setError(messageOf(cause)));
+  };
+
   if (key === undefined) return <Note>Checking…</Note>;
   if (key === null) return <Note>Cerium's cloud can't send notifications yet.</Note>;
 
@@ -153,30 +169,43 @@ function PushSettings({ noun }: { noun: string }) {
               {allowed === "denied"
                 ? blockedText
                 : online
-                  ? "They arrive while Cerium is closed or in the background, like any app's."
+                  ? "Arrive even when Cerium is closed."
                   : "Connect to Cerium's cloud to change this."}
             </p>
+            {shown !== undefined && allowed === "granted" ? (
+              <button
+                type="button"
+                onClick={sendTest}
+                className="mt-1 w-fit rounded-md px-2 py-1 -ml-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:text-[13.5px]"
+              >
+                {testSent ? "Sent" : "Send a test"}
+              </button>
+            ) : null}
             {error ? <p className="text-[12.5px] text-error max-md:text-[13.5px]">{error}</p> : null}
           </div>
           <SettingsSwitch
-            checked={kinds !== undefined}
+            checked={shown !== undefined}
             onCheckedChange={(on) => (on ? choose(NOTIFICATION_KINDS) : turnOff())}
             disabled={!online || allowed === "denied"}
             labelledBy={masterId}
           />
         </SettingsCard>
       </SettingsSection>
-      {kinds === undefined ? null : (
+      {shown === undefined ? null : (
         <SettingsSection
           title="Tell me when"
-          description="You aren't told about a thread you have open on any of your devices, or anything while Cerium is open here."
+          action={
+            <InfoTip label="When Cerium stays quiet" side="bottom">
+              Not for a thread you have open on any of your devices, or while Cerium is open here.
+            </InfoTip>
+          }
         >
           <SettingsCard className="flex flex-col divide-y divide-line-subtle">
             {NOTIFICATION_KINDS.map((kind) => (
               <KindRow
                 key={kind}
                 kind={kind}
-                checked={kinds.includes(kind)}
+                checked={shown.includes(kind)}
                 disabled={!online}
                 onChange={(on) => toggleKind(kind, on)}
               />
@@ -226,12 +255,12 @@ function InstallSteps() {
       Choose <SquarePlus size={15} strokeWidth={1.75} aria-hidden className={icon} /> Add to Home Screen, or
       Install app.
     </>,
-    <>Open Cerium from your Home Screen, and turn notifications on here.</>,
+    <>Open Cerium from the Home Screen, and turn notifications on there.</>,
   ];
   return (
     <SettingsCard className="flex flex-col gap-3 p-4">
       <p className="text-[13px] leading-relaxed text-fg-secondary max-md:text-[15px]">
-        This browser notifies web apps once they're on your Home Screen.
+        This browser shows notifications only for apps on the Home Screen.
       </p>
       <ol className="flex flex-col gap-2.5">
         {steps.map((step, index) => (
