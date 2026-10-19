@@ -28,7 +28,7 @@ export function EmptyThread({
       {onSetUp ? (
         <>
           <p className="max-w-sm text-[13px] leading-relaxed text-fg-tertiary">
-            Sign in to Claude, Codex, Muse or Cursor to start.
+            Sign in to Claude, Codex or Cursor to start.
           </p>
           <Button
             onClick={onSetUp}

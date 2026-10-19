@@ -1,12 +1,12 @@
-import type {
-  AccountState,
-  AccountThreads,
-  AgentEvent,
-  DeviceId,
-  DeviceInfo,
-  AgentId,
-  ProviderId,
-  ThreadId,
+import {
+  OFFERED_PROVIDERS,
+  type AccountState,
+  type AccountThreads,
+  type AgentEvent,
+  type DeviceId,
+  type DeviceInfo,
+  type AgentId,
+  type ThreadId,
 } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import {
@@ -114,7 +114,6 @@ import { Notice } from "./Notice.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 
-const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
 const SIDEBAR_KEY = "cerium:sidebar";
@@ -449,7 +448,7 @@ function Workspace() {
     );
   };
 
-  const indicators: ReadonlyArray<HarnessIndicator> = providers.map((provider) => {
+  const indicators: ReadonlyArray<HarnessIndicator> = OFFERED_PROVIDERS.map((provider) => {
     const status = harnesses.find((candidate) => candidate.provider === provider);
     if (status === undefined) return { provider, state: "unsupported" };
     if (status._tag === "HarnessMissing") return { provider, state: "missing" };

@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import type { HarnessSetup, HarnessStatus, ProviderId } from "@cerium/protocol";
+import { OFFERED_PROVIDERS, type HarnessSetup, type HarnessStatus, type ProviderId } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
@@ -12,8 +12,6 @@ import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { accessOptions } from "../composer/models.ts";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
-
-const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
 
 /** Each provider's harness by the name its makers give it. */
 const harnessName: Record<ProviderId, string> = {
@@ -106,7 +104,7 @@ export function HarnessesOnMachine({
         </p>
       ) : (
         <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
-          {providers.map((provider) => (
+          {OFFERED_PROVIDERS.map((provider) => (
             <li key={provider}>
               <HarnessRow
                 provider={provider}

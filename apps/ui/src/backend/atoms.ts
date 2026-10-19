@@ -1,6 +1,7 @@
 import {
   isStreamDelta,
   ModelInfo,
+  OFFERED_PROVIDERS,
   type AccountThreads,
   type AgentEvent,
   type AgentId,
@@ -129,7 +130,7 @@ export const manifestsAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("HarnessManifests", undefined));
 });
 
-const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+const providers = OFFERED_PROVIDERS;
 const MODELS_KEY = "cerium:models";
 const CachedModels = Schema.fromJsonString(Schema.Array(ModelInfo));
 

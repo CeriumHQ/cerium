@@ -42,7 +42,6 @@ body:
       options:
         - label: Claude Code
         - label: Codex
-        - label: Muse Code
         - label: Cursor
   - type: textarea
     id: harness-versions

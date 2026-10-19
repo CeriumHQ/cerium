@@ -1,5 +1,12 @@
 import { Button } from "@base-ui/react/button";
-import type { AccessMode, Attachment, Mention, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import {
+  OFFERED_PROVIDERS,
+  type AccessMode,
+  type Attachment,
+  type Mention,
+  type ProviderId,
+  type ReasoningEffort,
+} from "@cerium/protocol";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowUp, Gauge, Paperclip, Square } from "lucide-react";
@@ -54,7 +61,7 @@ import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 
-const providers: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor"];
+const providers = OFFERED_PROVIDERS;
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
 
 /** A message as the box sends it: its text, which names each mention by its token. */

@@ -163,6 +163,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Muse is switched off for now. On Windows, Muse 1.4.11's `muse serve` fails every sandboxed command ("windows elevated sandbox setup has not run") even after `muse sandbox windows setup`, so the backend no longer loads the Muse adapter, and the composer, model pickers, sidebar and Harnesses settings leave Muse out (`OFFERED_PROVIDERS` in `@cerium/protocol`). Threads Muse ran still open and read as before; sending to one says no Muse adapter is installed.
 - `@cerium/harness` takes `AccessMode` from `@cerium/protocol` instead of defining its own.
 - Desktop: nightlies are no longer a separate Cerium Nightly app. Stable and nightly builds are one app, Cerium, and the channel you follow in Settings → Updates decides which you get; releases carry the update files the app reads. A Cerium Nightly installed before this stays a separate app with its own threads (in `%APPDATA%\cerium-nightly`), and updates only reach Cerium: install Cerium, then uninstall Cerium Nightly when you no longer need its threads.
 - The scripted fake harness adapter used in tests is shared from `@cerium/harness/testing`.

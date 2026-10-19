@@ -3,6 +3,12 @@ import { Schema } from "effect";
 export const ProviderId = Schema.Literals(["claude", "codex", "muse", "cursor"]);
 export type ProviderId = typeof ProviderId.Type;
 
+/**
+ * The harnesses this build offers, in display order. Muse is off until `muse serve` runs sandboxed
+ * commands on Windows; its id stays valid so threads it ran still load.
+ */
+export const OFFERED_PROVIDERS: ReadonlyArray<ProviderId> = ["claude", "codex", "cursor"];
+
 export const ThreadId = Schema.NonEmptyString.pipe(Schema.brand("cerium/ThreadId"));
 export type ThreadId = typeof ThreadId.Type;
 
