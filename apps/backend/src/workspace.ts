@@ -17,8 +17,8 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Worksp
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** A folder without git is walked, up to this many entries. */
 const MAX_WALKED = 20_000;
-/** Folders a walk never enters: dependencies, build output, caches. */
-const SKIPPED = new Set([
+/** Folders a walk never enters: dependencies, build output, caches. The file explorer opens them only on request. */
+export const SKIPPED = new Set([
   "node_modules",
   ".git",
   ".hg",

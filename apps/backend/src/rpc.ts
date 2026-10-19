@@ -9,12 +9,13 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { Files, type FilesError } from "./files.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | StoreError) =>
+const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | FilesError | StoreError) =>
   new CeriumError({ message: error.message });
 
 /** How many matches the `@` list shows. */
@@ -30,6 +31,7 @@ export const Handlers = MachineRpcs.toLayer(
     const adapters = yield* Adapters;
     const settings = yield* UserSettings;
     const workspace = yield* Workspace;
+    const files = yield* Files;
     const projects = yield* Projects;
     const store = yield* Store;
 
@@ -121,6 +123,11 @@ export const Handlers = MachineRpcs.toLayer(
       SaveAttachment: ({ name, mediaType, data }) =>
         workspace.saveAttachment(name, mediaType, data).pipe(Effect.mapError(refuse)),
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
+      ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
+      FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),
+      ReadFile: ({ root, path }) => files.read(root, path).pipe(Effect.mapError(refuse)),
+      DiffFile: ({ root, path, from }) => files.diff(root, path, from).pipe(Effect.mapError(refuse)),
+      WatchFiles: ({ root }) => files.watch(root).pipe(Stream.mapError(refuse)),
       ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
       RemoveProject: ({ path }) => projects.remove(path).pipe(Effect.mapError(refuse)),
@@ -173,7 +180,7 @@ export const requireToken = (token: string) =>
   ).layer;
 
 /**
- * The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Projects,
+ * The UI's RPC endpoint. Requires the Orchestrator, Adapters, UserSettings, Workspace, Files, Projects,
  * Account, CloudThreads and an HttpRouter.
  */
 export const rpcRoutes = (token: string) =>

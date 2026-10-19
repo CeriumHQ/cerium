@@ -37,6 +37,10 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
+import { FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
+
+export * from "./files.ts";
+
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
 // results are protocol schemas, so both sides validate them. Lists of threads and events skip what
 // the reading side's version can't read.
@@ -46,7 +50,7 @@ import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 2;
+export const RPC_VERSION = 3;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -232,6 +236,47 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("GitBranch", {
     payload: { cwd: Schema.NonEmptyString },
     success: Schema.Struct({ branch: Schema.optionalKey(Schema.NonEmptyString) }),
+  }),
+  /**
+   * One level of a folder inside a work thread's folder `root`, for the file explorer. `dir` is
+   * relative to `root`, "" for `root` itself. Refused for anything outside `root`.
+   */
+  Rpc.make("ListFiles", {
+    payload: { root: Schema.NonEmptyString, dir: Schema.String },
+    success: FileListing,
+    error: CeriumError,
+  }),
+  /** Which files under `root` differ from the last commit, as git sees them. */
+  Rpc.make("FileStatuses", {
+    payload: { root: Schema.NonEmptyString },
+    success: FileStatuses,
+    error: CeriumError,
+  }),
+  /** A file under `root` as the preview shows it: text up to a size, an image, or neither. */
+  Rpc.make("ReadFile", {
+    payload: { root: Schema.NonEmptyString, path: Schema.NonEmptyString },
+    success: FilePreview,
+    error: CeriumError,
+  }),
+  /** A changed file against the last commit; `from` is where it was before it was renamed. */
+  Rpc.make("DiffFile", {
+    payload: {
+      root: Schema.NonEmptyString,
+      path: Schema.NonEmptyString,
+      from: Schema.optionalKey(Schema.NonEmptyString),
+    },
+    success: FileDiff,
+    error: CeriumError,
+  }),
+  /**
+   * What changes under `root` while it is subscribed to, in batches a moment apart, for keeping the
+   * file explorer current. Unsubscribing stops watching.
+   */
+  Rpc.make("WatchFiles", {
+    payload: { root: Schema.NonEmptyString },
+    success: FilesChanged,
+    stream: true,
+    error: CeriumError,
   }),
   /** A project's own icon (its favicon, icon or logo), when it has one where projects keep them. */
   Rpc.make("ProjectIcon", {

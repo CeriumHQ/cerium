@@ -151,6 +151,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: each thread in the sidebar has a "more" button for its menu (on hover or focus, always on touch screens), and empty lists say what they'll hold.
 - UI: copy a whole response from under it, and a tool call's command or output from inside it.
 - UI: the update notice links to what's new in the version and shows the download's progress.
+- `@cerium/rpc`: browsing a work thread's folder on the machine that runs it: its entries a level at a time, what git says differs from the last commit, a file to preview, a changed file's diff, and word of what changes while it's watched.
 
 ### Changed
 

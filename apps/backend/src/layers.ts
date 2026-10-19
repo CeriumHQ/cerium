@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { thisMachine } from "./device.ts";
 import { Notifier } from "./notify.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
+import { Files } from "./files.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { CloudCopy } from "./sync.ts";
@@ -126,6 +127,7 @@ export const backendLayer = (options: BackendOptions) =>
     // tells the account's browsers when a thread here needs the user, finished or failed.
     Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifier)),
     Layer.provideMerge(Orchestrator.layer),
+    Layer.provideMerge(Files.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(
