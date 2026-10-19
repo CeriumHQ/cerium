@@ -56,12 +56,15 @@ function Cell({
   ranges,
   tokens,
   gutter,
+  wrap = false,
 }: {
   line: NumberedLine | undefined;
   number: number | undefined;
   ranges: ReadonlyArray<Range>;
   tokens: Parameters<typeof pieces>[1];
   gutter: string;
+  /** Long lines wrap rather than run past the side's edge, as each side of a split diff does. */
+  wrap?: boolean;
 }) {
   if (line === undefined) {
     return <div className="min-w-0 flex-1 bg-surface-hover/60" aria-hidden="true" />;
@@ -77,7 +80,7 @@ function Cell({
       {line.kind === "context" ? null : (
         <span className="sr-only">{line.kind === "removed" ? "Removed: " : "Added: "}</span>
       )}
-      <span className="min-w-0 pr-4 whitespace-pre">
+      <span className={`min-w-0 pr-4 ${wrap ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-pre"}`}>
         {line.text === ""
           ? " "
           : pieces(line.text, tokens, ranges).map((piece, index) => (
@@ -168,17 +171,19 @@ export function DiffView({
                   ))
                 : splitRows(hunk.lines).map((row, index) => (
                     <div key={index} className="grid grid-cols-2 divide-x divide-line-subtle">
-                      <div className="flex min-w-0 overflow-hidden">
+                      <div className="flex min-w-0">
                         <Cell
                           line={row.left}
                           number={row.left?.old}
                           ranges={row.left ? (ranges.get(indexOf.get(row.left)!) ?? []) : []}
                           tokens={tokensOf(row.left, "old")}
                           gutter={gutter}
+                          wrap
                         />
                       </div>
-                      <div className="flex min-w-0 overflow-hidden">
+                      <div className="flex min-w-0">
                         <Cell
+                          wrap
                           line={row.right}
                           number={row.right?.new}
                           ranges={

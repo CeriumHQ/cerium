@@ -18,7 +18,7 @@ import {
   splitRows,
   viewsOf,
 } from "../src/features/viewer/model.ts";
-import { htmlDocument, relativeTarget } from "../src/features/viewer/previews.tsx";
+import { htmlDocument, relativeTarget, sizedSvg } from "../src/features/viewer/previews.tsx";
 
 describe("file tabs", () => {
   it("keys a file by its folder and path, and reads both back", () => {
@@ -182,6 +182,15 @@ describe("previews", () => {
     expect(relativeTarget("../../out.png", "docs/README.md")).toBeUndefined();
     expect(relativeTarget("https://example.com/a.png", "README.md")).toBeUndefined();
     expect(relativeTarget("data:image/png;base64,AA", "README.md")).toBeUndefined();
+  });
+
+  it("sizes an SVG that sets no size of its own from its viewBox", () => {
+    expect(sizedSvg('<svg xmlns="x" viewBox="-30 -780 4558 860"><g/></svg>')).toBe(
+      '<svg width="4558" height="860" xmlns="x" viewBox="-30 -780 4558 860"><g/></svg>',
+    );
+    const sized = '<svg width="24" viewBox="0 0 24 24"/>';
+    expect(sizedSvg(sized)).toBe(sized);
+    expect(sizedSvg("<svg><g/></svg>")).toBe("<svg><g/></svg>");
   });
 
   it("puts a policy that admits no script or request at the head of a page", () => {

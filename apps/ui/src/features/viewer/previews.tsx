@@ -76,7 +76,7 @@ function ImageFrame({ src, name, footer }: { src: string; name: string; footer: 
             onLoad={(event) =>
               setDimensions(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)
             }
-            className={`block select-none ${actual ? "max-w-none" : "max-h-[calc(100cqh-4rem)] max-w-full object-contain"}`}
+            className={`block select-none ${actual ? "max-w-none" : "max-h-[calc(100cqh-2px)] max-w-full object-contain"}`}
           />
         </button>
       </div>
@@ -166,12 +166,27 @@ export function MediaPreview({
   );
 }
 
+/**
+ * `svg` with the width and height its `viewBox` gives when it sets neither: an image with no size of
+ * its own draws at none in a frame that fits around it.
+ */
+export const sizedSvg = (svg: string): string => {
+  const open = /<svg\b[^>]*>/i.exec(svg);
+  if (open === null || /\s(width|height)\s*=/i.test(open[0])) return svg;
+  const box = /\sviewBox\s*=\s*["']\s*[-\d.e]+[\s,]+[-\d.e]+[\s,]+([\d.e]+)[\s,]+([\d.e]+)\s*["']/i.exec(
+    open[0],
+  );
+  if (box === null) return svg;
+  const at = open.index + 4;
+  return `${svg.slice(0, at)} width="${box[1]}" height="${box[2]}"${svg.slice(at)}`;
+};
+
 /** An SVG drawn as an image, which runs none of its scripts. */
 export function SvgPreview({ text, path, size }: { text: string; path: string; size: number }) {
   const name = path.slice(path.lastIndexOf("/") + 1);
   return (
     <ImageFrame
-      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`}
+      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(sizedSvg(text))}`}
       name={name}
       footer={byteSize(size)}
     />
