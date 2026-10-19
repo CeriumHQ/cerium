@@ -146,6 +146,28 @@ export const closeBrowser = async (handle: BrowserHandle): Promise<void> => {
   rmSync(handle.profile, { recursive: true, force: true, maxRetries: 5 });
 };
 
+/**
+ * Starts a browser on Windows that outlives this process, through PowerShell's `Start-Process`.
+ * Node puts its children in a job that dies with it, and hands them every inheritable handle, so a
+ * browser it spawned directly either dies with the call or, detached, holds the caller's stdout
+ * pipe open and hangs `bun run ui … | tail`. A shell-executed process gets neither. The returned
+ * process is PowerShell's, which exits once the browser is started.
+ */
+const startOutside = (executable: string, flags: ReadonlyArray<string>): ChildProcess => {
+  const quote = (text: string) => `'${text.replaceAll("'", "''")}'`;
+  const list = flags.map((flag) => quote(`"${flag}"`)).join(",");
+  return spawn(
+    "powershell",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `Start-Process -FilePath ${quote(executable)} -ArgumentList ${list}`,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
+  );
+};
+
 const readPortFile = (path: string): string | undefined => {
   try {
     return readFileSync(path, "utf8");
@@ -167,24 +189,24 @@ export const launchBrowser = async (options: {
   readonly outlive?: boolean | undefined;
 }): Promise<LaunchedBrowser> => {
   const profile = mkdtempSync(join(tmpdir(), "cerium-ui-profile-"));
-  const child = spawn(
-    options.executable,
-    [
-      ...(options.visible ? [] : ["--headless=new"]),
-      "--remote-debugging-port=0",
-      `--user-data-dir=${profile}`,
-      `--window-size=${options.width},${options.height}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-extensions",
-      "--disable-sync",
-      "--disable-features=Translate,msEdgeSidebarV2,msUndersideButton",
-      "--hide-scrollbars",
-      "--mute-audio",
-      "about:blank",
-    ],
-    { stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
-  );
+  const flags = [
+    ...(options.visible ? [] : ["--headless=new"]),
+    "--remote-debugging-port=0",
+    `--user-data-dir=${profile}`,
+    `--window-size=${options.width},${options.height}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-extensions",
+    "--disable-sync",
+    "--disable-features=Translate,msEdgeSidebarV2,msUndersideButton",
+    "--hide-scrollbars",
+    "--mute-audio",
+    "about:blank",
+  ];
+  const child =
+    options.outlive === true && process.platform === "win32"
+      ? startOutside(options.executable, flags)
+      : spawn(options.executable, flags, { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
   // The tail of what the browser printed, to say why it failed to start. The pipe keeps draining
   // afterwards so a chatty browser never blocks on a full buffer.
   let output = "";
