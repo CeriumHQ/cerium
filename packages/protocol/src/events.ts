@@ -183,12 +183,27 @@ export const AgentStateChanged = Schema.TaggedStruct("AgentStateChanged", {
   state: AgentState,
 });
 
+/**
+ * The user switched the agent to another model of its harness, or another effort. Its next turn
+ * runs with them; one that's running finishes on what it started with.
+ */
+export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
+  model: Schema.NonEmptyString,
+  /** Absent for a model its harness offers no effort setting for. */
+  effort: Schema.optionalKey(ReasoningEffort),
+});
+
 /** A spawn outside the catalog waits for the user. */
 export const SpawnApprovalRequested = Schema.TaggedStruct("SpawnApprovalRequested", {
   requestId: Schema.NonEmptyString,
   role: Schema.NonEmptyString,
   provider: ProviderId,
   model: Schema.NonEmptyString,
+  // What the agent would run with and be told, so the user answers knowing it; absent from requests
+  // older versions made.
+  effort: Schema.optionalKey(ReasoningEffort),
+  access: Schema.optionalKey(AccessMode),
+  prompt: Schema.optionalKey(Schema.String),
 });
 
 export const SpawnApprovalResolved = Schema.TaggedStruct("SpawnApprovalResolved", {
@@ -223,6 +238,7 @@ export const EventPayload = Schema.Union([
   MessageQueued,
   AgentSpawned,
   AgentStateChanged,
+  ModelChanged,
   SpawnApprovalRequested,
   SpawnApprovalResolved,
   ThreadRenamed,

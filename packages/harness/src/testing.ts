@@ -1,7 +1,8 @@
-import type { CapabilityManifest, ProviderId } from "@cerium/protocol";
+import type { CapabilityManifest, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
 
 import {
+  HarnessFailure,
   HarnessUnavailable,
   type AdapterEvent,
   type CompletionRequest,
@@ -18,6 +19,8 @@ export interface FakeSession {
   readonly sent: Array<string>;
   /** What each turn carried beside its text, in the same order. */
   readonly extras: Array<TurnExtras | undefined>;
+  /** Each `setModel` and `setEffort` the session took, in order. */
+  readonly switches: Array<{ readonly model: string } | { readonly effort: ReasoningEffort }>;
 }
 
 /** A scripted harness: every turn replies `reply(text)` after `turnDuration`, then completes. */
@@ -41,6 +44,10 @@ export const makeFakeAdapter = (
     readonly complete?: (request: CompletionRequest) => string;
     /** How long each `complete` takes. */
     readonly completeDuration?: Duration.Input;
+    /** What the manifest says sessions can switch (default: model and effort). */
+    readonly switching?: { readonly model: boolean; readonly effort: boolean };
+    /** `setModel` and `setEffort` fail, as a harness refusing a model would. */
+    readonly refuseSwitches?: boolean;
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
@@ -51,7 +58,7 @@ export const makeFakeAdapter = (
     provider,
     harnessVersion: { minimum: "1.0.0", testedMaximum: "1.0.0" },
     session: { resume: true, fork: false },
-    switching: { model: true, effort: true, cacheSafeEffort: true },
+    switching: { model: true, effort: true, ...options.switching, cacheSafeEffort: true },
     input: { images: options.images ?? false },
     permissions: { approvals: "callback", readOnlyMode: true },
     mcpInjection: true,
@@ -84,7 +91,13 @@ export const makeFakeAdapter = (
         }
         const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
         yield* Effect.addFinalizer(() => Queue.end(events));
-        const session: FakeSession = { options: sessionOptions, sent: [], extras: [] };
+        const session: FakeSession = { options: sessionOptions, sent: [], extras: [], switches: [] };
+        const switchTo = (change: FakeSession["switches"][number]) =>
+          options.refuseSwitches
+            ? Effect.fail(
+                new HarnessFailure({ provider, message: "That model isn't available.", cause: null }),
+              )
+            : Effect.sync(() => void session.switches.push(change));
         const decisions = new Map<string, Deferred.Deferred<PermissionDecision>>();
         sessions.push(session);
         yield* Queue.offer(events, {
@@ -140,8 +153,8 @@ export const makeFakeAdapter = (
                 : Deferred.succeed(pending, decision).pipe(Effect.asVoid);
             }),
           interrupt: Effect.void,
-          setModel: () => Effect.void,
-          setEffort: () => Effect.void,
+          setModel: (model: string) => switchTo({ model }),
+          setEffort: (effort: ReasoningEffort) => switchTo({ effort }),
         };
       }),
   };

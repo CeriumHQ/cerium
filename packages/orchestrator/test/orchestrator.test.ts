@@ -307,16 +307,27 @@ describe("Orchestrator", () => {
         role: "reviewer",
         model: "sonnet",
         provider: "claude",
+        access: "fullAccess",
         prompt: "Review",
       });
       assert.strictEqual(outcome._tag, "PendingApproval");
       const requestId = outcome._tag === "PendingApproval" ? outcome.requestId : "";
-      yield* waitFor((events) => events.find((event) => event.payload._tag === "SpawnApprovalRequested"));
+      const asked = yield* waitFor((events) =>
+        events.find((event) => event.payload._tag === "SpawnApprovalRequested"),
+      );
+      // The user sees what the agent would be told, with the access it would really get.
+      assert.deepInclude(asked.payload, { model: "sonnet", access: "ask", prompt: "Review" });
+      assert.isTrue(orchestrator.awaitingApproval(lead.threadId), "the thread waits on the user");
+      const [overview] = (yield* orchestrator.threadOverviews).filter(
+        ({ thread }) => thread.id === lead.threadId,
+      );
+      assert.isTrue(overview?.awaitingApproval);
 
       yield* orchestrator.resolveSpawnApproval(requestId, {
         decision: "allow",
         replacement: { provider: "claude", model: "opus" },
       });
+      assert.isFalse(orchestrator.awaitingApproval(lead.threadId));
       const spawned = yield* waitFor((events) =>
         events.find((event) => event.payload._tag === "AgentSpawned"),
       );
@@ -327,6 +338,38 @@ describe("Orchestrator", () => {
           .find((item) => item._tag === "SystemNotice"),
       );
       assert.include(notice._tag === "SystemNotice" ? notice.text : "", "approved");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("lets a lead's unanswered spawn requests lapse when its session ends", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+      const outcome = yield* orchestrator.spawn(lead.id, {
+        role: "reviewer",
+        model: "sonnet",
+        provider: "claude",
+        prompt: "Review",
+      });
+      const requestId = outcome._tag === "PendingApproval" ? outcome.requestId : "";
+
+      yield* orchestrator.stopAgent(lead.id);
+      assert.isFalse(orchestrator.awaitingApproval(lead.threadId), "a stopped lead waits on nobody");
+      yield* orchestrator.sendUserMessage(lead.id, "back?");
+
+      const resolved = yield* waitFor((events) =>
+        events.find((event) => event.payload._tag === "SpawnApprovalResolved"),
+      );
+      assert.deepInclude(resolved.payload, { requestId, decision: "deny" });
+      const refused = yield* Effect.flip(orchestrator.resolveSpawnApproval(requestId, { decision: "allow" }));
+      assert.strictEqual(refused.reason, "notFound");
+      const items = yield* waitFor((events) =>
+        turnInputs(events, lead.id).find((turn) => turn.some((item) => item._tag === "FromUser")),
+      );
+      const notice = items.find((item) => item._tag === "SystemNotice");
+      assert.include(notice?._tag === "SystemNotice" ? notice.text : "", 'sonnet as "reviewer"');
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

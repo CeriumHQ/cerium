@@ -2,6 +2,7 @@ export { OrchestratorError } from "./errors.ts";
 export {
   Orchestrator,
   type CreateThreadInput,
+  type ModelChoice,
   type SpawnApproval,
   type SpawnOutcome,
   type SpawnRequest,

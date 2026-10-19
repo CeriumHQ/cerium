@@ -5,10 +5,12 @@ import {
   AgentId,
   AgentInfo,
   Attachment,
+  CapabilityManifest,
   DeviceId,
   DeviceName,
   HarnessStatus,
   ImageData,
+  LenientArray,
   LiveUiEvent,
   LoginProgress,
   Mention,
@@ -44,7 +46,7 @@ import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 1;
+export const RPC_VERSION = 2;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -76,6 +78,14 @@ export const CreateThreadPayload = Schema.Struct({
 });
 export type CreateThreadPayload = typeof CreateThreadPayload.Type;
 
+/** A thread whose messages match a search, and the passage around its best match in pieces. */
+export const ThreadMatch = Schema.Struct({
+  threadId: ThreadId,
+  /** The matched words are the pieces marked `match`. */
+  passage: Schema.Array(Schema.Struct({ text: Schema.String, match: Schema.Boolean })),
+});
+export type ThreadMatch = typeof ThreadMatch.Type;
+
 /**
  * What a machine serves its own UI and, through tunnels, the account's other devices: its threads,
  * projects, harnesses and settings.
@@ -105,6 +115,19 @@ export const MachineRpcs = RpcGroup.make(
       attachments: Schema.optionalKey(Schema.Array(Attachment)),
       mentions: Schema.optionalKey(Schema.Array(Mention)),
     },
+    error: CeriumError,
+  }),
+  /**
+   * Switches a thread's lead to another model of its harness, or another effort, from its next turn.
+   * Refused where `HarnessManifests` says the harness can't switch.
+   */
+  Rpc.make("SwitchModel", {
+    payload: {
+      agentId: AgentId,
+      model: Schema.NonEmptyString,
+      effort: Schema.optionalKey(ReasoningEffort),
+    },
+    success: AgentInfo,
     error: CeriumError,
   }),
   Rpc.make("RespondToPermission", {
@@ -143,7 +166,18 @@ export const MachineRpcs = RpcGroup.make(
   }),
   /** Deletes a thread and everything in it for good; refused while its agents work or wait on the user. */
   Rpc.make("DeleteThread", { payload: { threadId: ThreadId }, error: CeriumError }),
+  /**
+   * The threads of one mode whose messages, the user's or the agents', hold every word of `query`,
+   * best match first, for the thread search.
+   */
+  Rpc.make("SearchThreads", {
+    payload: { query: Schema.String, mode: ThreadMode },
+    success: Schema.Array(ThreadMatch),
+    error: CeriumError,
+  }),
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
+  /** What each installed adapter's harness can do; ones this version can't read are skipped. */
+  Rpc.make("HarnessManifests", { success: LenientArray(CapabilityManifest) }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the
    * harness's SDK keeps the credential and Cerium never sees it.

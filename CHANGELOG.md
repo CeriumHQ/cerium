@@ -135,6 +135,9 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Settings → Notifications sends a test notification, to see that they reach this browser.
 - UI: Settings → Updates links to what's new in a version on offer.
 - `@cerium/store`: a full-text index of the words in every message, yours and the agents', built for existing threads by its migration, which finds a mode's threads by what was said in them, with the passage around each match.
+- `@cerium/orchestrator`: a thread's lead can switch to another model of its harness, or another effort, from its next turn. The thread records each switch (`ModelChanged`), which outlasts a stop or a restart; a switch the harness refuses says why and leaves the lead on what its session runs.
+- `@cerium/orchestrator`: a request to start an agent outside the catalog says the effort, access and prompt the agent would run with.
+- `@cerium/rpc`: searching a mode's threads by what was said in them, switching a lead's model and effort, and each harness's capability manifest.
 
 ### Changed
 

@@ -2,7 +2,7 @@ import { deviceHandlers } from "@cerium/account";
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
 import { isStreamDelta, type ProviderId, type SkillInfo } from "@cerium/protocol";
 import { CeriumError, CeriumRpcs, MachineRpcs } from "@cerium/rpc";
-import type { StoreError } from "@cerium/store";
+import { Store, type StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
@@ -20,6 +20,9 @@ const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | Store
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
 
+/** How many threads the thread search lists. */
+const THREAD_SEARCH_LIMIT = 30;
+
 /** What this machine serves its own UI and, through the relay, other devices. */
 export const Handlers = MachineRpcs.toLayer(
   Effect.gen(function* () {
@@ -28,6 +31,7 @@ export const Handlers = MachineRpcs.toLayer(
     const settings = yield* UserSettings;
     const workspace = yield* Workspace;
     const projects = yield* Projects;
+    const store = yield* Store;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -68,6 +72,10 @@ export const Handlers = MachineRpcs.toLayer(
             ...(mentions ? { mentions } : {}),
           })
           .pipe(Effect.mapError(refuse)),
+      SwitchModel: ({ agentId, model, effort }) =>
+        orchestrator
+          .switchModel(agentId, { model, ...(effort ? { effort } : {}) })
+          .pipe(Effect.mapError(refuse)),
       RespondToPermission: ({ agentId, requestId, decision, scope }) =>
         orchestrator
           .respondToPermission(agentId, requestId, { decision, scope })
@@ -86,10 +94,13 @@ export const Handlers = MachineRpcs.toLayer(
       SetThreadArchived: ({ threadId, archived }) =>
         orchestrator.setThreadArchived(threadId, archived).pipe(Effect.mapError(refuse)),
       DeleteThread: ({ threadId }) => orchestrator.deleteThread(threadId).pipe(Effect.mapError(refuse)),
+      SearchThreads: ({ query, mode }) =>
+        store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+      HarnessManifests: () => Effect.succeed([...adapters.values()].map((adapter) => adapter.manifest)),
       LoginHarness: ({ provider }) =>
         Stream.unwrap(
           Effect.fromNullishOr(adapters.get(provider)?.login).pipe(

@@ -111,7 +111,20 @@ interface Runtime {
   /** The last completed message of the current turn, delivered to the lead when a child finishes. */
   lastMessage: string | undefined;
   ended: boolean;
+  /** The model and effort its harness session runs with; its next turn brings them in line with `info`. */
+  applied: ModelChoice;
 }
+
+/** A model of the agent's harness, and its effort (none for a model without an effort setting). */
+export interface ModelChoice {
+  readonly model: string;
+  readonly effort?: ReasoningEffort;
+}
+
+const choiceOf = (info: AgentInfo): ModelChoice => ({
+  model: info.model,
+  ...(info.effort ? { effort: info.effort } : {}),
+});
 
 /** A thread's advisor: the read-only child Cerium starts for `ask_advisor`. */
 const isAdvisor = (info: AgentInfo) => info.parentId !== undefined && info.role === ADVISOR_ROLE;
@@ -145,6 +158,11 @@ export class Orchestrator extends Context.Service<
       text: string,
       extras?: UserMessageExtras,
     ): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Switches a thread's lead to another model of its harness, or another effort, from its next
+     * turn. A lead that stopped or failed starts on them when the user picks the thread back up.
+     */
+    switchModel(agentId: AgentId, choice: ModelChoice): Effect.Effect<AgentInfo, OrchestratorError>;
     respondToPermission(
       agentId: AgentId,
       requestId: string,
@@ -196,7 +214,10 @@ export class Orchestrator extends Context.Service<
     notify(agentId: AgentId, text: string): Effect.Effect<void>;
     /** Every persisted event in a thread, in order. */
     threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
-    /** Whether any agent in the thread is waiting for the user to approve something. */
+    /**
+     * Whether the thread waits for the user to approve something: an agent's permission request, or
+     * its lead's request to start an agent outside the catalog.
+     */
     awaitingApproval(threadId: ThreadId): boolean;
   }
 >()("cerium/orchestrator/Orchestrator") {
@@ -260,13 +281,13 @@ export class Orchestrator extends Context.Service<
           Effect.mapError(() => notFound(`Agent ${agentId} is not running.`)),
         );
 
-      const emit = (rt: Runtime, payload: EventPayload, raw?: unknown) =>
+      /** Stores (unless it's ephemeral) and publishes one of an agent's events, at `sequence`. */
+      const record = (info: AgentInfo, sequence: number, payload: EventPayload, raw?: unknown) =>
         Effect.gen(function* () {
-          const sequence = rt.sequence++;
           const event: AgentEvent = {
-            id: `${rt.info.id}:${sequence}` as EventId,
-            threadId: rt.info.threadId,
-            agentId: rt.info.id,
+            id: `${info.id}:${sequence}` as EventId,
+            threadId: info.threadId,
+            agentId: info.id,
             sequence,
             at: yield* Clock.currentTimeMillis,
             payload,
@@ -274,6 +295,41 @@ export class Orchestrator extends Context.Service<
           };
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
           yield* PubSub.publish(feed, event);
+        });
+
+      const emit = (rt: Runtime, payload: EventPayload, raw?: unknown) =>
+        Effect.suspend(() => record(rt.info, rt.sequence++, payload, raw));
+
+      /** Records an event of an agent that has no runtime, such as a lead stopped before a restart. */
+      const emitStored = (info: AgentInfo, payload: EventPayload) =>
+        Effect.gen(function* () {
+          const last = yield* store.lastSequence(info.id).pipe(Effect.mapError(unavailable));
+          yield* record(info, Option.match(last, { onNone: () => 0, onSome: (at) => at + 1 }), payload);
+        });
+
+      /**
+       * Records the model and effort an agent runs with from its next turn: on its runtime, if it has
+       * one, in the store, and in its transcript. A lead with no runtime starts its next session on them.
+       */
+      const recordModel = (info: AgentInfo, rt: Runtime | undefined, choice: ModelChoice) =>
+        Effect.gen(function* () {
+          const updatedAt = yield* Clock.currentTimeMillis;
+          const { effort: _previous, ...rest } = info;
+          const next: AgentInfo = {
+            ...rest,
+            model: choice.model,
+            ...(choice.effort ? { effort: choice.effort } : {}),
+            updatedAt,
+          };
+          // Stored first, so a switch the store refused isn't half made: the next turn and the next
+          // start of the session agree on what the agent runs.
+          yield* store
+            .updateAgent(info.id, { model: choice.model, effort: choice.effort ?? null, updatedAt })
+            .pipe(Effect.mapError(unavailable));
+          if (rt !== undefined) rt.info = next;
+          const payload: EventPayload = { _tag: "ModelChanged", ...choiceOf(next) };
+          yield* rt === undefined ? emitStored(next, payload) : emit(rt, payload);
+          return next;
         });
 
       const deliver = (agentId: AgentId, item: InputItem) =>
@@ -435,6 +491,47 @@ export class Orchestrator extends Context.Service<
           rt.turn = undefined;
         });
 
+      /**
+       * Switches the session to the model and effort the user picked since its last turn. When the
+       * harness refuses, the thread says why and the agent goes back to what its session runs.
+       */
+      const applyModel = (rt: Runtime, session: AgentSession) =>
+        Effect.gen(function* () {
+          const wanted = choiceOf(rt.info);
+          const switched = Effect.gen(function* () {
+            if (wanted.model !== rt.applied.model) {
+              yield* session
+                .setModel(wanted.model)
+                .pipe(Effect.mapError((error) => `Couldn't switch to ${wanted.model}: ${error.message}`));
+              rt.applied = { ...rt.applied, model: wanted.model };
+            }
+            if (wanted.effort !== undefined && wanted.effort !== rt.applied.effort) {
+              const effort = wanted.effort;
+              yield* session
+                .setEffort(effort)
+                .pipe(
+                  Effect.mapError((error) => `Couldn't change the effort to ${effort}: ${error.message}`),
+                );
+              rt.applied = { ...rt.applied, effort };
+            }
+          });
+          yield* switched.pipe(
+            Effect.catch((message) =>
+              Effect.gen(function* () {
+                yield* emit(rt, { _tag: "AgentError", kind: "unknown", message, retryable: false });
+                // A pick made while this one was being applied stands, for the next turn to try.
+                const now = choiceOf(rt.info);
+                if (now.model === wanted.model && now.effort === wanted.effort) {
+                  yield* recordModel(rt.info, rt, rt.applied);
+                }
+              }),
+            ),
+            // The turn goes ahead on what the session runs, whatever became of the switch: its
+            // messages are already out of the inbox.
+            Effect.catch((error) => Effect.logWarning(`Couldn't record a refused switch: ${error.message}`)),
+          );
+        });
+
       /** Delivers inbox items as turns, one turn at a time, under the concurrency caps. */
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
@@ -452,7 +549,11 @@ export class Orchestrator extends Context.Service<
             Effect.tapError(() => setState(rt, "failed")),
           );
           const permits = providerPermits.get(rt.info.provider) ?? Semaphore.makeUnsafe(1);
-          yield* runTurn(rt, session, items).pipe(permits.withPermits(1), globalPermits.withPermits(1));
+          yield* applyModel(rt, session).pipe(
+            Effect.andThen(runTurn(rt, session, items)),
+            permits.withPermits(1),
+            globalPermits.withPermits(1),
+          );
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
 
@@ -537,6 +638,7 @@ export class Orchestrator extends Context.Service<
             turn: undefined,
             lastMessage: undefined,
             ended: false,
+            applied: choiceOf(info),
           };
           runtimes.set(info.id, rt);
 
@@ -599,6 +701,7 @@ export class Orchestrator extends Context.Service<
           (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
         );
 
+      /** A permission request, or a lead's request to start an agent outside the catalog, waits on the user. */
       const waitsOnUser = (threadId: ThreadId) =>
         awaitingApproval(threadId) ||
         [...pendingSpawns.values()].some(({ leadId }) => runtimes.get(leadId)?.info.threadId === threadId);
@@ -620,10 +723,14 @@ export class Orchestrator extends Context.Service<
           return thread;
         });
 
+      /** A child never gets more access than its lead, and only reads in a chat. */
+      const childAccess = (lead: Runtime, request: SpawnRequest): AccessMode =>
+        (threadModes.get(lead.info.threadId) ?? "work") === "chat"
+          ? "readOnly"
+          : narrowAccess(lead.info.access, request.access ?? lead.info.access);
+
       const launchChild = (lead: Runtime, request: SpawnRequest, target: SpawnTarget) =>
         Effect.gen(function* () {
-          const mode = threadModes.get(lead.info.threadId) ?? "work";
-          const requested = request.access ?? lead.info.access;
           const createdAt = yield* now;
           const effort = target.effort;
           const child: AgentInfo = {
@@ -634,7 +741,7 @@ export class Orchestrator extends Context.Service<
             provider: target.provider,
             model: target.model,
             ...(effort ? { effort } : {}),
-            access: mode === "chat" ? "readOnly" : narrowAccess(lead.info.access, requested),
+            access: childAccess(lead, request),
             state: "idle",
             createdAt,
             updatedAt: createdAt,
@@ -788,17 +895,18 @@ export class Orchestrator extends Context.Service<
         }
         pendingPermissions.delete(agentId);
         const history = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
-        const rt = yield* startRuntime(
-          info,
-          directory,
-          info.providerSessionId === undefined ? {} : { resume: info.providerSessionId },
-        );
-        // Approvals the old session was waiting on died with it; messages it never took go to the new one.
+        // Approvals the old session was waiting on died with it, and so did its requests to start
+        // agents (which a restart of Cerium has forgotten anyway); messages it never took go to the new one.
         const unanswered = new Set<string>();
+        const unansweredSpawns = new Map<string, string>();
         const undelivered = new Map<string, InputItem>();
         for (const { payload } of history) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
           if (payload._tag === "PermissionResolved") unanswered.delete(payload.requestId);
+          if (payload._tag === "SpawnApprovalRequested") {
+            unansweredSpawns.set(payload.requestId, `${payload.model} as "${payload.role}"`);
+          }
+          if (payload._tag === "SpawnApprovalResolved") unansweredSpawns.delete(payload.requestId);
           if (payload._tag === "MessageQueued" && payload.message.id !== undefined) {
             undelivered.set(payload.message.id, payload.message);
           }
@@ -807,9 +915,21 @@ export class Orchestrator extends Context.Service<
               if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
           }
         }
+        // Forgotten before the new session can be reached, so a late answer finds nothing to allow.
+        for (const requestId of unansweredSpawns.keys()) pendingSpawns.delete(requestId);
+        const rt = yield* startRuntime(
+          info,
+          directory,
+          info.providerSessionId === undefined ? {} : { resume: info.providerSessionId },
+        );
         yield* Effect.forEach(
           unanswered,
           (requestId) => emit(rt, { _tag: "PermissionResolved", requestId, decision: "deny", scope: "once" }),
+          { discard: true },
+        );
+        yield* Effect.forEach(
+          unansweredSpawns.keys(),
+          (requestId) => emit(rt, { _tag: "SpawnApprovalResolved", requestId, decision: "deny" }),
           { discard: true },
         );
         yield* setState(rt, "idle");
@@ -818,17 +938,23 @@ export class Orchestrator extends Context.Service<
           // The advisor isn't the lead's to spawn again: the next question starts a new one.
           (agent) => agent.parentId === agentId && !isAdvisor(agent) && !runtimes.has(agent.id),
         );
-        const notices: Array<InputItem> =
-          gone.length === 0
-            ? []
-            : [
-                {
-                  _tag: "SystemNotice",
-                  text: `Your session was resumed after it ended. The agents you spawned before (${gone
-                    .map((agent) => `${agent.id} "${agent.role}"`)
-                    .join(", ")}) are no longer running; spawn new ones if you still need them.`,
-                },
-              ];
+        const notices: Array<InputItem> = [];
+        if (gone.length > 0) {
+          notices.push({
+            _tag: "SystemNotice",
+            text: `Your session was resumed after it ended. The agents you spawned before (${gone
+              .map((agent) => `${agent.id} "${agent.role}"`)
+              .join(", ")}) are no longer running; spawn new ones if you still need them.`,
+          });
+        }
+        if (unansweredSpawns.size > 0) {
+          notices.push({
+            _tag: "SystemNotice",
+            text: `Your session ended before the user answered your request to spawn ${[
+              ...unansweredSpawns.values(),
+            ].join(", ")}. Ask again if you still need it.`,
+          });
+        }
         return { rt, undelivered: [...undelivered.values()], notices };
       });
 
@@ -965,6 +1091,39 @@ export class Orchestrator extends Context.Service<
           );
         },
 
+        // Ordered with the user's messages: one sent before the switch may still run on it, and a
+        // lead being picked back up has its runtime before the switch is recorded.
+        switchModel: (agentId, picked) =>
+          acceptPermit.withPermits(1)(
+            Effect.gen(function* () {
+              const rt = runtimes.get(agentId);
+              const info =
+                rt?.info ??
+                Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+              if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+              if (info.parentId !== undefined) {
+                return yield* notAllowed("Only a thread's lead can be switched to another model.");
+              }
+              const current = choiceOf(info);
+              // No effort for the same model keeps the one it has, which its session also keeps.
+              const choice: ModelChoice =
+                picked.effort === undefined && picked.model === current.model ? current : picked;
+              if (choice.model === current.model && choice.effort === current.effort) return info;
+              const switching = adapters.get(info.provider)?.manifest.switching;
+              if (choice.model !== current.model && switching?.model !== true) {
+                return yield* notAllowed(`${info.provider} can't switch a session to another model.`);
+              }
+              if (
+                choice.effort !== undefined &&
+                choice.effort !== current.effort &&
+                switching?.effort !== true
+              ) {
+                return yield* notAllowed(`${info.provider} can't change a session's effort.`);
+              }
+              return yield* recordModel(info, rt, choice);
+            }),
+          ),
+
         respondToPermission: (agentId, requestId, decision) =>
           runtime(agentId).pipe(
             Effect.flatMap(sessionOf),
@@ -1090,7 +1249,7 @@ export class Orchestrator extends Context.Service<
           return threads.map((thread): ThreadOverview => ({
             thread,
             agents: byThread.get(thread.id) ?? [],
-            awaitingApproval: awaitingApproval(thread.id),
+            awaitingApproval: waitsOnUser(thread.id),
           }));
         }).pipe(Effect.mapError(unavailable)),
 
@@ -1136,6 +1295,9 @@ export class Orchestrator extends Context.Service<
             role: request.role,
             provider: request.provider,
             model: request.model,
+            ...(request.effort ? { effort: request.effort } : {}),
+            access: childAccess(lead, request),
+            prompt: request.prompt,
           });
           return { _tag: "PendingApproval", requestId } satisfies SpawnOutcome;
         }),
@@ -1186,7 +1348,7 @@ export class Orchestrator extends Context.Service<
             return yield* new OrchestratorError({
               reason: "unavailable",
               message:
-                "The user hasn't turned on an advisor (Settings → Agents). Carry on, or ask the user instead.",
+                "The user hasn't turned on an advisor (Settings → Tools). Carry on, or ask the user instead.",
             });
           }
           if (!adapters.has(chosen.model.provider)) {
@@ -1237,7 +1399,7 @@ export class Orchestrator extends Context.Service<
 
         threadEvents: (threadId) => store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable)),
 
-        awaitingApproval,
+        awaitingApproval: waitsOnUser,
       });
     }),
   ).pipe(Layer.provide(ThreadTitles.layer));
