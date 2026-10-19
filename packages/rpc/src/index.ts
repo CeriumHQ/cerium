@@ -19,6 +19,7 @@ import {
   ProjectInfo,
   PushSubscriptionInfo,
   ProviderId,
+  QuestionResponse,
   ReasoningEffort,
   Settings,
   SettingsPatch,
@@ -38,7 +39,7 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
-import { FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
+import { FileListing, FileStatuses, FilesChanged } from "./files.ts";
 import { TerminalRpcs } from "./terminal.ts";
 
 export * from "./files.ts";
@@ -53,7 +54,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 4;
+export const RPC_VERSION = 5;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -140,6 +141,15 @@ export const MachineRpcs = RpcGroup.make(
       requestId: Schema.NonEmptyString,
       decision: Schema.Literals(["allow", "deny"]),
       scope: Schema.Literals(["once", "session"]),
+    },
+    error: CeriumError,
+  }),
+  /** Answers or dismisses a question an agent asked with `ask_user`. Since `RPC_VERSION` 5. */
+  Rpc.make("AnswerQuestion", {
+    payload: {
+      agentId: AgentId,
+      requestId: Schema.NonEmptyString,
+      response: QuestionResponse,
     },
     error: CeriumError,
   }),
@@ -250,22 +260,6 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("FileStatuses", {
     payload: { root: Schema.NonEmptyString },
     success: FileStatuses,
-    error: CeriumError,
-  }),
-  /** A file under `root` as the preview shows it: text up to a size, an image, or neither. */
-  Rpc.make("ReadFile", {
-    payload: { root: Schema.NonEmptyString, path: Schema.NonEmptyString },
-    success: FilePreview,
-    error: CeriumError,
-  }),
-  /** A changed file against the last commit; `from` is where it was before it was renamed. */
-  Rpc.make("DiffFile", {
-    payload: {
-      root: Schema.NonEmptyString,
-      path: Schema.NonEmptyString,
-      from: Schema.optionalKey(Schema.NonEmptyString),
-    },
-    success: FileDiff,
     error: CeriumError,
   }),
   /**

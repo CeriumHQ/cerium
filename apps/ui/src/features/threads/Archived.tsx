@@ -16,7 +16,8 @@ export interface ArchivedActions {
   /** How the inbox leads its rows, so these match. */
   readonly mark: RowMark;
   readonly harness: boolean;
-  readonly onSelect: (threadId: string) => void;
+  /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
+  readonly onSelect: (threadId: string, newTab?: boolean) => void;
   readonly onRename: RenameThread;
   readonly onRestore: (threadId: string) => void;
   readonly onDelete: (threadId: string) => void;

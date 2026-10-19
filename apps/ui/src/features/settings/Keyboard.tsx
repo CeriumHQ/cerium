@@ -15,14 +15,39 @@ const sendKeys: ReadonlyArray<{ readonly value: SendKey; readonly send: string; 
 const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["New thread", "Ctrl N"],
   ["Search threads and chats", "Ctrl K"],
-  ["Switch to Work", "Ctrl 1"],
-  ["Switch to Chat", "Ctrl 2"],
+  ["Open the sidebar's first ten threads", "Ctrl 1–0"],
+  ["Switch to Work", "Ctrl Shift 1"],
+  ["Switch to Chat", "Ctrl Shift 2"],
   ["Show or hide the sidebar", "Ctrl B"],
   ["Show or hide the thread's agents", "Ctrl J"],
   ["Show, focus or hide the terminal", "Ctrl `"],
   ["Open or close settings", "Ctrl ,"],
   ["Stop the running turn, or leave settings", "Esc"],
 ];
+
+const tabShortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
+  ["New thread in a tab", "Ctrl T"],
+  ["Close the tab", "Ctrl W"],
+  ["Reopen the tab closed last", "Ctrl Shift T"],
+  ["Next tab", "Ctrl Tab"],
+  ["Previous tab", "Ctrl Shift Tab"],
+  ["Go to a tab, 9 being the last", "Alt 1–9"],
+  ["Move the tab left or right", "Ctrl Shift PgUp/PgDn"],
+  ["Open a sidebar thread in a tab of its own", "Ctrl Click"],
+];
+
+function ShortcutList({ rows }: { rows: ReadonlyArray<readonly [action: string, keys: string]> }) {
+  return (
+    <SettingsCard className="divide-y divide-line-subtle">
+      {rows.map(([action, keys]) => (
+        <div key={action} className="flex h-11 items-center justify-between gap-4 px-4 text-[13px]">
+          <span className="text-fg-secondary">{action}</span>
+          <Keys keys={keys} size="sm" />
+        </div>
+      ))}
+    </SettingsCard>
+  );
+}
 
 /** What the try-it box last saw: a send or a new line, lighting up the matching keycaps. */
 type Press = "send" | "newLine";
@@ -72,14 +97,11 @@ export function KeyboardSettings() {
       </SettingsSection>
 
       <SettingsSection title="Shortcuts">
-        <SettingsCard className="divide-y divide-line-subtle">
-          {shortcuts.map(([action, keys]) => (
-            <div key={action} className="flex h-11 items-center justify-between gap-4 px-4 text-[13px]">
-              <span className="text-fg-secondary">{action}</span>
-              <Keys keys={keys} size="sm" />
-            </div>
-          ))}
-        </SettingsCard>
+        <ShortcutList rows={shortcuts} />
+      </SettingsSection>
+
+      <SettingsSection title="Tabs">
+        <ShortcutList rows={tabShortcuts} />
       </SettingsSection>
     </SettingsPage>
   );

@@ -6,6 +6,8 @@ import type {
   InputItem,
   Mention,
   ProviderId,
+  Question,
+  QuestionAnswer,
   ReasoningEffort,
 } from "@cerium/protocol";
 
@@ -49,6 +51,14 @@ export type TranscriptBlock =
       readonly input: unknown;
       readonly resolution?: { readonly decision: "allow" | "deny"; readonly scope: "once" | "session" };
     }
+  /** Questions the agent put to the user with `ask_user`, open until answered, dismissed or expired. */
+  | {
+      readonly kind: "question";
+      readonly id: string;
+      readonly requestId: string;
+      readonly questions: ReadonlyArray<Question>;
+      readonly resolution?: QuestionResolution;
+    }
   | {
       readonly kind: "turnEnd";
       readonly id: string;
@@ -74,6 +84,16 @@ export type TranscriptBlock =
     };
 
 export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
+
+/** How a question closed; `answers` holds one per question when the user answered. */
+export interface QuestionResolution {
+  readonly outcome: "answered" | "dismissed" | "expired";
+  readonly answers?: ReadonlyArray<QuestionAnswer>;
+}
+
+/** The notice that hands an agent the user's answer, which the question itself shows. */
+export const isAnswerNotice = (block: TranscriptBlock): boolean =>
+  block.kind === "notice" && block.item._tag === "SystemNotice" && block.item.questionId !== undefined;
 
 const userBlock = (item: FromUser, id: string): UserBlock => ({
   kind: "user",
@@ -226,6 +246,28 @@ export const buildTranscript = (
         const request = existing(key, "permission");
         if (request !== undefined) {
           upsert(key, { ...request, resolution: { decision: payload.decision, scope: payload.scope } });
+        }
+        break;
+      }
+      case "QuestionAsked":
+        upsert(`question:${payload.requestId}`, {
+          kind: "question",
+          id: `question:${payload.requestId}`,
+          requestId: payload.requestId,
+          questions: payload.questions,
+        });
+        break;
+      case "QuestionResolved": {
+        const key = `question:${payload.requestId}`;
+        const asked = existing(key, "question");
+        if (asked !== undefined) {
+          upsert(key, {
+            ...asked,
+            resolution: {
+              outcome: payload.outcome,
+              ...(payload.answers ? { answers: payload.answers } : {}),
+            },
+          });
         }
         break;
       }

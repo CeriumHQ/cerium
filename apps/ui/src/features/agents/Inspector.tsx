@@ -26,7 +26,14 @@ import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { AgentMenuArea, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
-import { AgentApproval, LeadSpawnRequest, type AnswerApproval, type AnswerSpawn } from "./ApprovalTray.tsx";
+import {
+  AgentApproval,
+  AgentQuestion,
+  LeadSpawnRequest,
+  type AnswerApproval,
+  type AnswerQuestion,
+  type AnswerSpawn,
+} from "./ApprovalTray.tsx";
 import {
   accessLabel,
   agentMenuPlan,
@@ -59,6 +66,8 @@ interface InspectorProps {
   readonly onAnswerApproval?: AnswerApproval;
   /** Answers the lead's request to start an agent. */
   readonly onAnswerSpawn?: AnswerSpawn;
+  /** Answers a child's questions; the lead's own are answered in the transcript. */
+  readonly onAnswerQuestion?: AnswerQuestion;
 }
 
 const statusWords = {
@@ -80,6 +89,7 @@ export function Inspector({
   onStop,
   onAnswerApproval,
   onAnswerSpawn,
+  onAnswerQuestion,
 }: InspectorProps) {
   const root = useRef<HTMLDivElement>(null);
   const details = useRef<HTMLElement>(null);
@@ -167,6 +177,7 @@ export function Inspector({
           {...(selected.id === lead.id && onMessageLead ? { onMessage: onMessageLead } : {})}
           {...(selected.id !== lead.id && onAnswerApproval ? { onAnswerApproval } : {})}
           {...(selected.id === lead.id && onAnswerSpawn ? { onAnswerSpawn } : {})}
+          {...(selected.id !== lead.id && onAnswerQuestion ? { onAnswerQuestion } : {})}
         />
         {solo ? null : <ThreadUsage agents={agents} />}
       </ScrollArea>
@@ -267,6 +278,7 @@ function AgentDetails({
   onMessage,
   onAnswerApproval,
   onAnswerSpawn,
+  onAnswerQuestion,
 }: {
   ref: React.Ref<HTMLElement>;
   agent: AgentSummary;
@@ -277,6 +289,7 @@ function AgentDetails({
   onMessage?: () => void;
   onAnswerApproval?: AnswerApproval;
   onAnswerSpawn?: AnswerSpawn;
+  onAnswerQuestion?: AnswerQuestion;
 }) {
   const AccessIcon = accessIcon[agent.access];
   const [confirmingStop, setConfirmingStop] = useState(false);
@@ -286,7 +299,8 @@ function AgentDetails({
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   const reported = inputTokens + outputTokens > 0;
   // The lead's own requests are answered in the conversation, so the panel points there.
-  const asksInConversation = agent.parentId === undefined && agent.approvals.length > 0;
+  const asksInConversation =
+    agent.parentId === undefined && (agent.approvals.length > 0 || agent.questions.length > 0);
   return (
     <section
       ref={ref}
@@ -335,6 +349,9 @@ function AgentDetails({
       ) : null}
       {onAnswerSpawn && agent.spawns.length > 0 ? (
         <LeadSpawnRequest lead={agent} onAnswer={onAnswerSpawn} />
+      ) : null}
+      {onAnswerQuestion && agent.questions.length > 0 ? (
+        <AgentQuestion agent={agent} onAnswer={onAnswerQuestion} />
       ) : null}
       {asksInConversation ? (
         <p className="flex items-center gap-1.5 text-[12.5px] text-attention max-md:text-[14px]">

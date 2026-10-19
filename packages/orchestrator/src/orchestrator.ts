@@ -17,6 +17,8 @@ import {
   type InputItem,
   type Mention,
   type ProviderId,
+  type Question,
+  type QuestionResponse,
   type ReasoningEffort,
   type ThreadId,
   type ThreadInfo,
@@ -46,6 +48,7 @@ import { Base64 } from "effect/encoding";
 
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
+import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { Adapters, BusEndpoint, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
 import { UserSettings } from "./settings.ts";
 import { ThreadTitles } from "./titles.ts";
@@ -95,6 +98,15 @@ interface SpawnTarget {
   readonly model: string;
   readonly effort?: ReasoningEffort;
 }
+
+/**
+ * Questions an agent put to the user with `ask_user`, which returned at once: they wait for the
+ * answers, which reach the agent as a notice whenever they come.
+ */
+type OpenQuestion = readonly [Question, ...Array<Question>];
+
+/** How many `ask_user` calls an agent may have waiting at once. */
+const MAX_OPEN_QUESTIONS = 4;
 
 /** A live agent: the inbox Cerium delivers turns from, and its harness session once that has started. */
 interface Runtime {
@@ -168,6 +180,15 @@ export class Orchestrator extends Context.Service<
       requestId: string,
       decision: PermissionDecision,
     ): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Answers a question an agent asked the user, or dismisses it. Refused once the question is
+     * closed: answered, expired when its turn was interrupted or its session ended, or its agent gone.
+     */
+    answerQuestion(
+      agentId: AgentId,
+      requestId: string,
+      response: QuestionResponse,
+    ): Effect.Effect<void, OrchestratorError>;
     resolveSpawnApproval(requestId: string, approval: SpawnApproval): Effect.Effect<void, OrchestratorError>;
     /** Interrupts the agent's current turn; children follow when configured or asked. */
     interruptAgent(
@@ -208,6 +229,14 @@ export class Orchestrator extends Context.Service<
       callerId: AgentId,
       question: string,
     ): Effect.Effect<{ readonly advisorId: AgentId }, OrchestratorError>;
+    /**
+     * Puts questions to the user for an agent: `ask_user`, the only question tool agents have. Returns
+     * at once; the user's answer reaches the caller later, as a notice.
+     */
+    askUser(
+      callerId: AgentId,
+      questions: readonly [Question, ...Array<Question>],
+    ): Effect.Effect<{ readonly requestId: string }, OrchestratorError>;
     /** The agent record for a live agent. */
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
     /** Hands a live agent a Cerium notice, delivered like any message: as its next turn's input. */
@@ -215,8 +244,8 @@ export class Orchestrator extends Context.Service<
     /** Every persisted event in a thread, in order. */
     threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
     /**
-     * Whether the thread waits for the user to approve something: an agent's permission request, or
-     * its lead's request to start an agent outside the catalog.
+     * Whether the thread waits for the user: an agent's permission request, its lead's request to start
+     * an agent outside the catalog, or a question an agent asked.
      */
     awaitingApproval(threadId: ThreadId): boolean;
   }
@@ -244,6 +273,8 @@ export class Orchestrator extends Context.Service<
       const sentMessages = new Map<string, Array<number>>();
       /** Permission requests each agent is waiting on. */
       const pendingPermissions = new Map<AgentId, Set<string>>();
+      /** The questions each agent has put to the user and not had answered, by request id. */
+      const openQuestions = new Map<AgentId, Map<string, OpenQuestion>>();
       /** Each thread's live advisor. */
       const advisors = new Map<ThreadId, Runtime>();
       /** The agents waiting on each advisor's answers, in the order they asked. */
@@ -371,6 +402,26 @@ export class Orchestrator extends Context.Service<
       const finishTurn = (rt: Runtime) =>
         rt.turn === undefined ? Effect.void : Deferred.succeed(rt.turn, undefined);
 
+      /** Takes a question out of those waiting; what it was, or nothing when it was not waiting. */
+      const closeQuestion = (agentId: AgentId, requestId: string): OpenQuestion | undefined => {
+        const open = openQuestions.get(agentId);
+        const found = open?.get(requestId);
+        open?.delete(requestId);
+        if (open?.size === 0) openQuestions.delete(agentId);
+        return found;
+      };
+
+      /** Closes the agent's waiting questions as expired: it was stopped or interrupted, or its session ended. */
+      const expireQuestions = (rt: Runtime) =>
+        Effect.forEach(
+          [...(openQuestions.get(rt.info.id)?.keys() ?? [])],
+          (requestId) => {
+            closeQuestion(rt.info.id, requestId);
+            return emit(rt, { _tag: "QuestionResolved", requestId, outcome: "expired" });
+          },
+          { discard: true },
+        );
+
       const consumeEvents = (rt: Runtime, session: AgentSession) => {
         /** Requests Cerium approved itself: nobody was asked, so neither end is recorded or shown. */
         const approvedByCerium = new Set<string>();
@@ -421,6 +472,7 @@ export class Orchestrator extends Context.Service<
           Effect.ensuring(
             Effect.gen(function* () {
               rt.ended = true;
+              yield* expireQuestions(rt).pipe(Effect.ignore);
               yield* finishTurn(rt);
               if (rt.info.state !== "stopped") yield* setState(rt, "failed").pipe(Effect.ignore);
             }),
@@ -701,9 +753,19 @@ export class Orchestrator extends Context.Service<
           (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
         );
 
-      /** A permission request, or a lead's request to start an agent outside the catalog, waits on the user. */
+      /** A question an agent of the thread asked is waiting on the user. */
+      const asking = (threadId: ThreadId) =>
+        [...runtimes.values()].some(
+          (rt) => rt.info.threadId === threadId && (openQuestions.get(rt.info.id)?.size ?? 0) > 0,
+        );
+
+      /**
+       * A permission request, a question, or a lead's request to start an agent outside the catalog waits
+       * on the user.
+       */
       const waitsOnUser = (threadId: ThreadId) =>
         awaitingApproval(threadId) ||
+        asking(threadId) ||
         [...pendingSpawns.values()].some(({ leadId }) => runtimes.get(leadId)?.info.threadId === threadId);
 
       const working = (threadId: ThreadId) =>
@@ -845,6 +907,7 @@ export class Orchestrator extends Context.Service<
 
       const stopRuntime = (rt: Runtime) =>
         Effect.gen(function* () {
+          yield* expireQuestions(rt).pipe(Effect.ignore);
           runtimes.delete(rt.info.id);
           pendingPermissions.delete(rt.info.id);
           yield* setState(rt, "stopped").pipe(Effect.ignore);
@@ -894,15 +957,32 @@ export class Orchestrator extends Context.Service<
           yield* Scope.close(previous.scope, Exit.void);
         }
         pendingPermissions.delete(agentId);
+        openQuestions.delete(agentId);
         const history = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
-        // Approvals the old session was waiting on died with it, and so did its requests to start
-        // agents (which a restart of Cerium has forgotten anyway); messages it never took go to the new one.
+        // Approvals and questions the old session was waiting on died with it, and so did its requests to
+        // start agents (which a restart of Cerium has forgotten anyway); messages it never took go to the
+        // new one.
         const unanswered = new Set<string>();
         const unansweredSpawns = new Map<string, string>();
         const undelivered = new Map<string, InputItem>();
-        for (const { payload } of history) {
+        // Questions still open are closed now; those closed as expired since the agent's last turn are
+        // ones it never heard the end of.
+        const askedQuestions = new Map<string, string>();
+        const unansweredQuestions = new Set<string>();
+        const expiredAt = new Map<string, number>();
+        let lastTurnAt = -1;
+        for (const [index, { payload }] of history.entries()) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
           if (payload._tag === "PermissionResolved") unanswered.delete(payload.requestId);
+          if (payload._tag === "QuestionAsked") {
+            askedQuestions.set(payload.requestId, payload.questions[0].question);
+            unansweredQuestions.add(payload.requestId);
+          }
+          if (payload._tag === "QuestionResolved") {
+            unansweredQuestions.delete(payload.requestId);
+            if (payload.outcome === "expired") expiredAt.set(payload.requestId, index);
+          }
+          if (payload._tag === "TurnInput") lastTurnAt = index;
           if (payload._tag === "SpawnApprovalRequested") {
             unansweredSpawns.set(payload.requestId, `${payload.model} as "${payload.role}"`);
           }
@@ -928,6 +1008,11 @@ export class Orchestrator extends Context.Service<
           { discard: true },
         );
         yield* Effect.forEach(
+          unansweredQuestions,
+          (requestId) => emit(rt, { _tag: "QuestionResolved", requestId, outcome: "expired" }),
+          { discard: true },
+        );
+        yield* Effect.forEach(
           unansweredSpawns.keys(),
           (requestId) => emit(rt, { _tag: "SpawnApprovalResolved", requestId, decision: "deny" }),
           { discard: true },
@@ -945,6 +1030,18 @@ export class Orchestrator extends Context.Service<
             text: `Your session was resumed after it ended. The agents you spawned before (${gone
               .map((agent) => `${agent.id} "${agent.role}"`)
               .join(", ")}) are no longer running; spawn new ones if you still need them.`,
+          });
+        }
+        const unheard = [...askedQuestions].filter(
+          ([requestId]) =>
+            unansweredQuestions.has(requestId) || (expiredAt.get(requestId) ?? -1) > lastTurnAt,
+        );
+        if (unheard.length > 0) {
+          notices.push({
+            _tag: "SystemNotice",
+            text: `Your session ended before the user answered ${unheard
+              .map(([, question]) => `"${question.length > 120 ? `${question.slice(0, 119)}…` : question}"`)
+              .join(", ")}. Ask again if you still need the answer.`,
           });
         }
         if (unansweredSpawns.size > 0) {
@@ -1007,6 +1104,30 @@ export class Orchestrator extends Context.Service<
           yield* updateThread(threadId, { title: title.value });
           yield* emit(lead, { _tag: "ThreadRenamed", title: title.value });
         }).pipe(Effect.catchCause((cause) => Effect.logWarning("Couldn't name a thread", cause)));
+
+      // No session survived the last exit, so no question asked before it can be answered. They are closed
+      // in the threads now, not left for a device that reads the thread later to show as open.
+      yield* Effect.gen(function* () {
+        const asked = yield* store.listEventsByTag("QuestionAsked");
+        if (asked.length === 0) return;
+        const closed = new Set(
+          (yield* store.listEventsByTag("QuestionResolved")).flatMap(({ agentId, payload }) =>
+            payload._tag === "QuestionResolved" ? [`${agentId}|${payload.requestId}`] : [],
+          ),
+        );
+        for (const { agentId, payload } of asked) {
+          if (payload._tag !== "QuestionAsked" || closed.has(`${agentId}|${payload.requestId}`)) continue;
+          const agent = Option.getOrUndefined(yield* store.getAgent(agentId));
+          if (agent === undefined) continue;
+          yield* emitStored(agent, {
+            _tag: "QuestionResolved",
+            requestId: payload.requestId,
+            outcome: "expired",
+          });
+        }
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Couldn't close the questions left open", cause)),
+      );
 
       return Orchestrator.of({
         createThread: Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
@@ -1130,6 +1251,62 @@ export class Orchestrator extends Context.Service<
             Effect.flatMap((session) => session.respondToPermission(requestId, decision)),
           ),
 
+        answerQuestion: Effect.fn("Orchestrator.answerQuestion")(function* (
+          agentId: AgentId,
+          requestId: string,
+          response: QuestionResponse,
+        ) {
+          const rt = yield* runtime(agentId);
+          const open = openQuestions.get(agentId)?.get(requestId);
+          if (open === undefined) {
+            return yield* notFound("That question is closed: it was answered, or its agent stopped waiting.");
+          }
+          if (response.outcome === "answered") {
+            const problem = answerProblem(open, response.answers);
+            if (problem !== undefined) {
+              return yield* new OrchestratorError({ reason: "invalid", message: problem });
+            }
+          }
+          closeQuestion(agentId, requestId);
+          const given = tidyResponse(response);
+          yield* emit(
+            rt,
+            given.outcome === "dismissed"
+              ? { _tag: "QuestionResolved", requestId, outcome: "dismissed" }
+              : { _tag: "QuestionResolved", requestId, outcome: "answered", answers: given.answers },
+          );
+          yield* deliver(agentId, {
+            _tag: "SystemNotice",
+            text: answerNotice(open, given),
+            questionId: requestId,
+          });
+        }),
+
+        askUser: Effect.fn("Orchestrator.askUser")(function* (
+          callerId: AgentId,
+          questions: readonly [Question, ...Array<Question>],
+        ) {
+          const asker = yield* runtime(callerId);
+          if (isAdvisor(asker.info)) {
+            return yield* notAllowed("You are the advisor: answer the question you were asked.");
+          }
+          const problem = questionProblem(questions);
+          if (problem !== undefined)
+            return yield* new OrchestratorError({ reason: "invalid", message: problem });
+          const waiting = openQuestions.get(callerId)?.size ?? 0;
+          if (waiting >= MAX_OPEN_QUESTIONS) {
+            return yield* new OrchestratorError({
+              reason: "budgetExceeded",
+              message: `You already have ${waiting} questions waiting for the user. Wait for their answers.`,
+            });
+          }
+          const requestId = yield* makeId("q");
+          const open = openQuestions.get(callerId) ?? new Map<string, OpenQuestion>();
+          openQuestions.set(callerId, open.set(requestId, questions));
+          yield* emit(asker, { _tag: "QuestionAsked", requestId, questions });
+          return { requestId };
+        }),
+
         resolveSpawnApproval: Effect.fn("Orchestrator.resolveSpawnApproval")(function* (
           requestId: string,
           approval: SpawnApproval,
@@ -1171,10 +1348,17 @@ export class Orchestrator extends Context.Service<
               (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
             ),
           );
+          // What the agent was waiting on the user for is no longer worth an answer; the adapter closes
+          // its own, and this closes any it didn't, so a question never outlives the stop.
+          yield* expireQuestions(rt).pipe(Effect.ignore);
           if (options?.includeChildren ?? config.stopChildrenWithLead) {
             yield* Effect.forEach(
               childrenOf(agentId),
-              (child) => (child.session?.interrupt ?? Effect.void).pipe(Effect.ignore),
+              (child) =>
+                (child.session?.interrupt ?? Effect.void).pipe(
+                  Effect.ignore,
+                  Effect.andThen(expireQuestions(child).pipe(Effect.ignore)),
+                ),
               {
                 discard: true,
               },

@@ -6,8 +6,8 @@ import { Tooltip } from "../components/ui/Tooltip.tsx";
 export type AppMode = "work" | "chat";
 
 const modes = [
-  { value: "work", label: "Work", shortcut: "Ctrl 1" },
-  { value: "chat", label: "Chat", shortcut: "Ctrl 2" },
+  { value: "work", label: "Work", shortcut: "Ctrl Shift 1" },
+  { value: "chat", label: "Chat", shortcut: "Ctrl Shift 2" },
 ] as const;
 
 /**

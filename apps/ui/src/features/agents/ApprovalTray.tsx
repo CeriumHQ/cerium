@@ -1,9 +1,11 @@
 import { Button } from "@base-ui/react/button";
+import type { QuestionResponse } from "@cerium/protocol";
 import { ShieldQuestion } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
+import { QuestionCard } from "../questions/QuestionCard.tsx";
 import { PermissionCard } from "../transcript/Blocks.tsx";
 import { effortLabel } from "../composer/models.ts";
 import { ApprovalActions, ApprovalText, approvalShell } from "./ApprovalParts.tsx";
@@ -12,6 +14,7 @@ import {
   requestQueue,
   type AgentSummary,
   type PendingApproval,
+  type PendingQuestion,
   type QueuedRequest,
   type SpawnRequest,
 } from "./model.ts";
@@ -24,6 +27,13 @@ export type AnswerApproval = (
 ) => void;
 
 export type AnswerSpawn = (requestId: string, decision: "allow" | "deny") => void;
+
+/** Resolves to false when the answer didn't reach the agent. */
+export type AnswerQuestion = (
+  agentId: string,
+  requestId: string,
+  response: QuestionResponse,
+) => Promise<boolean>;
 
 /** Where a request stands among those waiting, shown when more than one does. */
 interface Position {
@@ -167,6 +177,45 @@ export function AgentApproval({
   );
 }
 
+/** An agent's questions, with who is asking. */
+function QuestionRequest({
+  agent,
+  request,
+  named,
+  position,
+  onAnswer,
+}: {
+  agent: AgentSummary;
+  request: PendingQuestion;
+  named: boolean;
+  position?: Position | undefined;
+  onAnswer: AnswerQuestion;
+}) {
+  return (
+    <QuestionCard
+      key={request.requestId}
+      questions={request.questions}
+      from={<Asking agent={named ? agent : undefined} position={position} />}
+      onAnswer={(response) => onAnswer(agent.id, request.requestId, response)}
+    />
+  );
+}
+
+/** The oldest questions an agent waits on the user to answer. Renders nothing while it has none. */
+export function AgentQuestion({ agent, onAnswer }: { agent: AgentSummary; onAnswer: AnswerQuestion }) {
+  const [request] = agent.questions;
+  if (request === undefined) return null;
+  return (
+    <QuestionRequest
+      agent={agent}
+      request={request}
+      named={false}
+      position={{ index: 1, total: agent.questions.length }}
+      onAnswer={onAnswer}
+    />
+  );
+}
+
 /** The lead's oldest request to start an agent. Renders nothing while it has none. */
 export function LeadSpawnRequest({ lead, onAnswer }: { lead: AgentSummary; onAnswer: AnswerSpawn }) {
   const [request] = lead.spawns;
@@ -184,7 +233,11 @@ export function LeadSpawnRequest({ lead, onAnswer }: { lead: AgentSummary; onAns
 
 /** What a queued request asks for, in a few words. */
 const askedOf = (item: QueuedRequest) =>
-  item.kind === "permission" ? item.request.summary : `Start ${item.request.role} on ${item.request.model}`;
+  item.kind === "permission"
+    ? item.request.summary
+    : item.kind === "question"
+      ? (item.request.questions[0]?.question ?? "A question")
+      : `Start ${item.request.role} on ${item.request.model}`;
 
 const whoOf = (item: QueuedRequest) => (item.agent.parentId === undefined ? "Lead" : item.agent.role);
 
@@ -223,20 +276,22 @@ export function ApprovalTray({
   agents,
   onAnswer,
   onAnswerSpawn,
+  onAnswerQuestion,
 }: {
   agents: ReadonlyArray<AgentSummary>;
   onAnswer: AnswerApproval;
   onAnswerSpawn: AnswerSpawn;
+  onAnswerQuestion: AnswerQuestion;
 }) {
   const queue = requestQueue(agents);
   const [picked, setPicked] = useState<string>();
   const front = queue.find((item) => item.key === picked) ?? queue[0];
   const others = queue.filter((item) => item !== front);
 
-  const answer = (item: QueuedRequest, decision: "allow" | "deny", scope: "once" | "session") =>
-    item.kind === "permission"
-      ? onAnswer(item.agent.id, item.request.requestId, decision, scope)
-      : onAnswerSpawn(item.request.requestId, decision);
+  const answer = (item: QueuedRequest, decision: "allow" | "deny", scope: "once" | "session") => {
+    if (item.kind === "permission") onAnswer(item.agent.id, item.request.requestId, decision, scope);
+    else if (item.kind === "spawn") onAnswerSpawn(item.request.requestId, decision);
+  };
 
   const tray = useRef<HTMLElement>(null);
   const frontSince = useRef(0);
@@ -244,7 +299,8 @@ export function ApprovalTray({
     frontSince.current = performance.now();
   }, [front?.key]);
   const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (front === undefined || event.repeat) return;
+    // A question is answered by what the user picks and writes, not by a chord.
+    if (front === undefined || front.kind === "question" || event.repeat) return;
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const chord = chordOf(event);
     if (chord === undefined || (front.kind === "spawn" && chord[1] === "session")) return;
@@ -282,6 +338,14 @@ export function ApprovalTray({
           keys
           position={position}
           onAnswer={onAnswer}
+        />
+      ) : front.kind === "question" ? (
+        <QuestionRequest
+          agent={front.agent}
+          request={front.request}
+          named
+          position={position}
+          onAnswer={onAnswerQuestion}
         />
       ) : (
         <SpawnRequestCard

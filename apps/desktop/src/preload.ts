@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // tells the page it is running inside Cerium's shell and where the shell's backend listens, offers
 // the native dialogs it can't open, and passes on the theme Windows should draw the window's glass
 // and caption buttons in. It also tells the page where a pasted file lives and shows a file in
-// File Explorer, neither of which a page can do itself. Right-clicks no page menu claimed come
+// File Explorer or opens it in its own app, none of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page reports whether the
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
 // or off. Updates come through here too: the shell checks, downloads and installs them.
@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("cerium", {
   // Empty for a file that only exists in memory, such as a pasted screenshot.
   pathForFile: (file: File): string | undefined => webUtils.getPathForFile(file) || undefined,
   revealPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:reveal-path", path),
+  openPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:open-path", path),
   saveImage: (source: string, name: string): Promise<boolean> =>
     ipcRenderer.invoke("cerium:save-image", source, name),
   setTheme: (theme: "system" | "dark" | "light"): Promise<boolean> =>

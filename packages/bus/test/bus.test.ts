@@ -117,6 +117,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
           "send_message",
           "kill_agent",
           "ask_advisor",
+          "ask_user",
           "artifact_guide",
           "ui_open",
           "ui_act",
@@ -194,6 +195,74 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
       assert.include(
         fake.sessions[0]!.sent.join("\n"),
         `[Cerium] Message from agent ${advisorId} (thread ${lead.threadId}):\nCheck the lockfile.`,
+      );
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  it.live("puts an agent's questions to the user and hands the answer back as its next turn", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Questions",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "ask" },
+      });
+      const client = mcpClient(yield* busOf(fake, 0));
+      yield* client.initialize;
+
+      const asked = yield* client.callTool("ask_user", {
+        questions: [
+          {
+            header: " Database ",
+            question: "Which database should the cache use?",
+            options: [
+              { label: "SQLite (Recommended)", description: "Already a dependency" },
+              { label: "Redis" },
+            ],
+          },
+        ],
+      });
+      assert.strictEqual(asked?.result?.structuredContent?.status, "asked");
+      const requestId = asked?.result?.structuredContent?.requestId as string;
+      const history = yield* orchestrator.threadEvents(lead.threadId);
+      assert.deepStrictEqual(history.find((event) => event.payload._tag === "QuestionAsked")?.payload, {
+        _tag: "QuestionAsked",
+        requestId,
+        questions: [
+          {
+            header: "Database",
+            question: "Which database should the cache use?",
+            options: [
+              { label: "SQLite (Recommended)", description: "Already a dependency" },
+              { label: "Redis" },
+            ],
+            multiSelect: false,
+            allowOther: true,
+          },
+        ],
+      });
+
+      // Asking nothing breaks the tool's schema, so the call itself is refused.
+      const empty = yield* client.callTool("ask_user", { questions: [] });
+      assert.isUndefined(empty?.result?.structuredContent);
+      assert.isTrue(empty?.error !== undefined || empty?.result?.isError === true);
+
+      yield* orchestrator.answerQuestion(lead.id, requestId, {
+        outcome: "answered",
+        answers: [{ choices: ["Redis"], text: "we run it already" }],
+      });
+      for (
+        let waited = 0;
+        waited < 100 && !fake.sessions[0]!.sent.some((sent) => sent.includes("Answer: Redis"));
+        waited++
+      ) {
+        yield* Effect.sleep(Duration.millis(20));
+      }
+      assert.include(
+        fake.sessions[0]!.sent.join("\n"),
+        "- Which database should the cache use?\n  Answer: Redis, we run it already",
       );
     }).pipe(Effect.provide(stack(fake)), Effect.scoped);
   });

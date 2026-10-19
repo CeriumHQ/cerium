@@ -90,6 +90,18 @@ const seeing = (access: AccessMode) =>
       ];
 
 /**
+ * Newer models keep multi-step work in their heads, and some harnesses defer their todo tool, so
+ * agents rarely reach for it unasked. Cerium shows the list to the user beside the thread, which is
+ * the reason to keep it.
+ */
+const planning = [
+  "",
+  "## Your todo list",
+  "On work with several steps, keep a todo list with your harness's todo or plan tool, if it has one," +
+    " and update it as you go: Cerium shows it to the user beside the thread.",
+];
+
+/**
  * How agents work together. Agents never messaged each other while the
  * prompt only named the tools, so it says what replaced their harness's own, when a message is worth
  * sending, and what one is.
@@ -113,7 +125,7 @@ const together = (agent: AgentInfo) => {
         ]
       : [
           "- Ask your lead with `send_message` when you are blocked on a question or a decision that is the lead's" +
-            " or the user's to make, instead of guessing; the answer arrives as your next turn.",
+            " to make, instead of guessing; the answer arrives as your next turn.",
         ]),
     "- `send_message` reaches any agent in your thread (`list_agents` lists them)" +
       (lead
@@ -129,6 +141,26 @@ const together = (agent: AgentInfo) => {
       " them only within what the user asked of you.",
   ];
 };
+
+/**
+ * When to ask the user, which agents otherwise rarely do: they guess, or ask in a reply nobody sees
+ * in time. Harnesses' own question tools are withheld, so `ask_user` is the one way to ask.
+ */
+const asking = (agent: AgentInfo, busServer: string) => [
+  "",
+  "## Asking the user",
+  "When the answer is the user's to give and you can't find it out yourself, ask instead of guessing:" +
+    " a request that could mean different things, a choice between approaches they would care about, a" +
+    ` decision that is costly to undo. Call \`ask_user\` (\`${busServer}\` MCP server), your only way to put a` +
+    " question to the user. It returns at once and the user's answer arrives later as a message, so end your" +
+    " turn after asking, or carry on with work that doesn't depend on it.",
+  "Offer two to four options with a short description each, your recommendation first, and put related" +
+    " questions in one call. Don't ask what the code, the docs or a quick check can tell you, and don't" +
+    " ask permission for what the user already asked for: Cerium asks them to approve commands and edits itself.",
+  ...(agent.parentId === undefined
+    ? ["The questions of agents you spawn go to the user directly, not to you."]
+    : []),
+];
 
 /** A live thread working in the same folder as a lead that starts. */
 export interface Neighbour {
@@ -186,6 +218,7 @@ export const systemPrompt = (
   busServer: string,
   options: { readonly advisor?: boolean; readonly neighbours?: ReadonlyArray<Neighbour> } = {},
 ): string => {
+  const ask = asking(agent, busServer);
   if (agent.parentId !== undefined && agent.role === ADVISOR_ROLE) return advisorPrompt;
   const help = options.advisor === true ? stuck : [];
   const shared = [
@@ -201,6 +234,8 @@ export const systemPrompt = (
       ...shared,
       "You are this thread's lead agent.",
       ...together(agent),
+      ...ask,
+      ...planning,
       ...neighbourhood(options.neighbours ?? []),
       ...seeing(agent.access),
       ...help,
@@ -213,6 +248,8 @@ export const systemPrompt = (
     "Do the task you were given. Your final message of each turn is delivered to the lead, so end with" +
       " a concise, self-contained result.",
     ...together(agent),
+    ...ask,
+    ...planning,
     ...seeing(agent.access),
     ...help,
   ].join("\n");

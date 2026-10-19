@@ -46,34 +46,6 @@ export const statusAtom = Atom.family((root: string) =>
     .pipe(Atom.setIdleTTL("2 minutes")),
 );
 
-/** A file as the preview shows it, keyed `root` and its path. */
-export const previewKey = (root: string, path: string) => key(root, path);
-
-export const previewAtom = Atom.family((id: string) => {
-  const [root = "", path = ""] = id.split("\n");
-  return Backend.runtime
-    .atom((get) => {
-      get(connectionAtom);
-      get(versionAtoms(key("file", id)));
-      return Backend.use((client) => client("ReadFile", { root, path }));
-    })
-    .pipe(Atom.setIdleTTL("1 minute"));
-});
-
-/** A changed file against the last commit, keyed `root`, its path and where it was before a rename. */
-export const diffKey = (root: string, path: string, from: string | undefined) => key(root, path, from ?? "");
-
-export const diffAtom = Atom.family((id: string) => {
-  const [root = "", path = "", from = ""] = id.split("\n");
-  return Backend.runtime
-    .atom((get) => {
-      get(connectionAtom);
-      get(versionAtoms(key("file", key(root, path))));
-      return Backend.use((client) => client("DiffFile", { root, path, ...(from === "" ? {} : { from }) }));
-    })
-    .pipe(Atom.setIdleTTL("1 minute"));
-});
-
 /**
  * What changes under `root`, batch by batch, for as long as something reads it. A machine that stops
  * watching (or can't) is asked again every few seconds.
@@ -152,34 +124,26 @@ export const refreshListing = (registry: AtomRegistry.AtomRegistry, root: string
 export const refreshStatus = (registry: AtomRegistry.AtomRegistry, root: string) =>
   bump(registry, key("status", root));
 
-export const refreshFile = (registry: AtomRegistry.AtomRegistry, root: string, path: string) =>
-  bump(registry, key("file", key(root, path)));
-
-/** Reads again what a batch of changes touched: the folders it is in that are open, the status, and the file shown. */
+/** Reads again what a batch of changes touched: the folders it is in that are open, and the status. */
 export const applyChanges = (
   registry: AtomRegistry.AtomRegistry,
   root: string,
   batch: FilesChanged,
-  shown: { readonly expanded: ReadonlySet<string>; readonly file?: string | undefined },
+  expanded: ReadonlySet<string>,
 ) => {
   if (batch.overflow === true) {
     refreshListing(registry, root, "");
-    for (const dir of shown.expanded) refreshListing(registry, root, dir);
+    for (const dir of expanded) refreshListing(registry, root, dir);
     refreshStatus(registry, root);
-    if (shown.file !== undefined) refreshFile(registry, root, shown.file);
     return;
   }
   const folders = new Set<string>();
   for (const path of batch.paths) {
     // A change inside a folder changes that folder's listing; the folder's own change, its parent's.
-    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    folders.add(parent);
-    if (path === shown.file) refreshFile(registry, root, path);
+    folders.add(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
   }
   for (const dir of folders) {
-    if (dir === "" || shown.expanded.has(dir)) refreshListing(registry, root, dir);
+    if (dir === "" || expanded.has(dir)) refreshListing(registry, root, dir);
   }
   if (batch.status) refreshStatus(registry, root);
-  // A change to git's own state (a commit) moves what the open file differs from.
-  if (shown.file !== undefined && batch.status) refreshFile(registry, root, shown.file);
 };

@@ -1,26 +1,15 @@
-import type {
-  DiffHunk,
-  DiffLine,
-  FileChange,
-  FileDiff,
-  FileEntry,
-  FileListing,
-  FilePreview,
-  FileState,
-  FileStatuses,
-  FilesChanged,
-} from "@cerium/rpc";
+import type { FileChange, FileEntry, FileListing, FileState, FileStatuses, FilesChanged } from "@cerium/rpc";
 import { Cache, Cause, Context, Effect, FileSystem, Layer, Path, Queue, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { watch as watchFolder } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { posix, win32 } from "node:path";
 
-import { imageType, SKIPPED, Workspace } from "./workspace.ts";
+import { SKIPPED } from "./workspace.ts";
 
 // What the file explorer needs from a work thread's folder: its entries a level at a time, what git
-// says about them, a file to preview, a changed file's diff, and word of what changes while it's open.
-// Every path a request names is relative to the folder it asks about, and never leaves it.
+// says about them, and word of what changes while it's open. Every path a request names is relative
+// to the folder it asks about, and never leaves it.
 
 /** A request about a thread's folder the backend refused; `message` is written for the user. */
 export class FilesError extends Schema.TaggedError<FilesError>()("FilesError", {
@@ -29,20 +18,14 @@ export class FilesError extends Schema.TaggedError<FilesError>()("FilesError", {
 
 /** Entries a folder lists at once; a folder with more is cut short and says so. */
 const MAX_ENTRIES = 5_000;
-/** The part of a file the preview reads; a longer one is shown up to here. */
-export const PREVIEW_BYTES = 256 * 1024;
-/** What a diff may take of git's output. */
-const DIFF_BYTES = 1024 * 1024;
-/** Lines of a diff that are sent. */
-const MAX_DIFF_LINES = 4_000;
+/** What is read of git's output; anything past it is dropped. */
+const MAX_GIT_OUTPUT = 16 * 1024 * 1024;
 /** Changed files that are listed. */
 const MAX_CHANGES = 5_000;
 /** Changed paths one batch lists, beyond which it says to read everything again. */
 const MAX_BATCH = 300;
 /** How long changes are gathered into one batch. */
 const BATCH_WINDOW = "300 millis";
-/** What a file can be as an image; larger ones aren't previewed, as `ReadImage` refuses them. */
-const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 /** Version control's own folders: nobody browses them, so listings leave them out. */
 const VCS_FOLDERS = new Set([".git", ".hg", ".svn"]);
@@ -152,121 +135,6 @@ export const parseStatus = (output: string, prefix: string): ReadonlyArray<FileC
   return changes;
 };
 
-/** The hunks of a unified diff, and whether git said the file isn't text. */
-export const parseDiff = (
-  output: string,
-): { readonly hunks: ReadonlyArray<DiffHunk>; readonly binary: boolean } => {
-  const hunks: Array<{ oldStart: number; newStart: number; lines: Array<DiffLine> }> = [];
-  let binary = false;
-  let current: (typeof hunks)[number] | undefined;
-  for (const line of output.split("\n")) {
-    const header = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (header) {
-      current = { oldStart: Number(header[1]), newStart: Number(header[2]), lines: [] };
-      hunks.push(current);
-      continue;
-    }
-    if (current === undefined) {
-      if (/^Binary files .* differ$|^GIT binary patch$/.test(line)) binary = true;
-      continue;
-    }
-    // The next file's header ends this hunk's lines.
-    if (line.startsWith("diff --git ")) {
-      current = undefined;
-      continue;
-    }
-    const text = line.slice(1).replace(/\r$/, "");
-    if (line.startsWith("+")) current.lines.push({ kind: "added", text });
-    else if (line.startsWith("-")) current.lines.push({ kind: "removed", text });
-    else if (line.startsWith(" ")) current.lines.push({ kind: "context", text });
-    // "\ No newline at end of file", and the empty last element of the split.
-  }
-  return { hunks, binary };
-};
-
-/** A whole file as one hunk of added lines, for a file git has nothing to compare with. */
-export const additions = (text: string): ReadonlyArray<DiffHunk> => {
-  if (text === "") return [];
-  const lines = text.replace(/\n$/, "").split("\n");
-  return [
-    {
-      oldStart: 0,
-      newStart: 1,
-      lines: lines.map((line) => ({ kind: "added", text: line.replace(/\r$/, "") })),
-    },
-  ];
-};
-
-/** At most `limit` lines of `hunks`, cutting the last hunk short. */
-export const limitHunks = (
-  hunks: ReadonlyArray<DiffHunk>,
-  limit: number,
-): { readonly hunks: ReadonlyArray<DiffHunk>; readonly truncated: boolean } => {
-  const kept: Array<DiffHunk> = [];
-  let left = limit;
-  for (const hunk of hunks) {
-    if (left <= 0) return { hunks: kept, truncated: true };
-    if (hunk.lines.length <= left) {
-      kept.push(hunk);
-      left -= hunk.lines.length;
-    } else {
-      kept.push({ ...hunk, lines: hunk.lines.slice(0, left) });
-      return { hunks: kept, truncated: true };
-    }
-  }
-  return { hunks: kept, truncated: false };
-};
-
-// ---------------------------------------------------------------------------------------------
-// Reading files
-
-/** Bytes that say a file is not text when they're a tenth of its start, besides tab, newline and the like. */
-const isControl = (byte: number) =>
-  byte < 32 && byte !== 9 && byte !== 10 && byte !== 13 && byte !== 12 && byte !== 27 && byte !== 8;
-
-/** Drops a character the preview's cut left half-read at the end of `bytes`. */
-export const withoutPartialCharacter = (bytes: Uint8Array): Uint8Array => {
-  for (let back = 1; back <= 3 && back <= bytes.length; back++) {
-    const byte = bytes[bytes.length - back]!;
-    if ((byte & 0b1100_0000) === 0b1000_0000) continue;
-    // A lead byte: whole when the bytes after it are as many as it announces.
-    const needs = byte >= 0b1111_0000 ? 4 : byte >= 0b1110_0000 ? 3 : byte >= 0b1100_0000 ? 2 : 1;
-    return back >= needs ? bytes : bytes.subarray(0, bytes.length - back);
-  }
-  return bytes;
-};
-
-/**
- * A file's text for the preview, or undefined when it isn't text: it holds NUL bytes, or is mostly
- * control characters. UTF-8 (with or without its BOM) and BOM'd UTF-16 read as written; text that
- * isn't valid UTF-8 reads as Windows-1252, as legacy files are.
- */
-export const decodeText = (bytes: Uint8Array, truncated: boolean): string | undefined => {
-  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return new TextDecoder("utf-16le").decode(
-      truncated ? bytes.subarray(0, bytes.length - (bytes.length % 2)) : bytes,
-    );
-  }
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return new TextDecoder("utf-16be").decode(
-      truncated ? bytes.subarray(0, bytes.length - (bytes.length % 2)) : bytes,
-    );
-  }
-  const head = bytes.subarray(0, 8_000);
-  let controls = 0;
-  for (const byte of head) {
-    if (byte === 0) return undefined;
-    if (isControl(byte)) controls++;
-  }
-  if (head.length > 0 && controls / head.length > 0.1) return undefined;
-  const whole = truncated ? withoutPartialCharacter(bytes) : bytes;
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(whole);
-  } catch {
-    return new TextDecoder("windows-1252").decode(whole);
-  }
-};
-
 // ---------------------------------------------------------------------------------------------
 // Watching
 
@@ -309,37 +177,31 @@ export class Files extends Context.Service<
     list(root: string, dir: string): Effect.Effect<FileListing, FilesError>;
     /** The files under `root` that differ from the last commit. */
     statuses(root: string): Effect.Effect<FileStatuses, FilesError>;
-    /** A file under `root` as the preview shows it. */
-    read(root: string, path: string): Effect.Effect<FilePreview, FilesError>;
-    /** A changed file against the last commit; `from` is where it was before a rename. */
-    diff(root: string, path: string, from?: string): Effect.Effect<FileDiff, FilesError>;
     /** What changes under `root`, in batches, until the stream is dropped. */
     watch(root: string): Stream.Stream<FilesChanged, FilesError>;
   }
 >()("cerium/backend/Files") {
-  /** Requires `FileSystem`, `Path`, `ChildProcessSpawner` and `Workspace`. */
+  /** Requires `FileSystem`, `Path` and `ChildProcessSpawner`. */
   static readonly layer = Layer.effect(
     Files,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const workspace = yield* Workspace;
 
       const refuse = (message: string) => () => new FilesError({ message });
 
       /**
        * Runs git in `cwd`, and returns what it printed to stdout, as text. Looking takes none of the
        * locks git would take to tidy its index, so it doesn't set off the watcher, and every path is
-       * taken as written, never as pathspec magic (unless `magic`). `limit` bytes at most are read;
-       * past it the output is cut and `truncated` says so.
+       * taken as written, never as pathspec magic (unless `magic`). At most `MAX_GIT_OUTPUT` bytes
+       * are read; past it the output is cut.
        */
       const git = Effect.fn("Files.git")(function* (
         cwd: string,
         args: ReadonlyArray<string>,
-        options: { readonly stdin?: string; readonly limit?: number; readonly magic?: boolean } = {},
+        options: { readonly stdin?: string; readonly magic?: boolean } = {},
       ) {
-        const limit = options.limit ?? 16 * 1024 * 1024;
         return yield* Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(
@@ -361,13 +223,12 @@ export class Files extends Context.Service<
             );
             let size = 0;
             const chunks = yield* handle.stdout.pipe(
-              Stream.takeUntil((chunk) => (size += chunk.length) >= limit),
+              Stream.takeUntil((chunk) => (size += chunk.length) >= MAX_GIT_OUTPUT),
               Stream.runCollect,
             );
-            const truncated = size >= limit;
             // A cut-off git is still writing: leaving the scope stops it, and its exit tells nothing.
-            const code = truncated ? -1 : Number(yield* handle.exitCode);
-            return { stdout: Buffer.concat(chunks).toString("utf8"), code, truncated };
+            const code = size >= MAX_GIT_OUTPUT ? -1 : Number(yield* handle.exitCode);
+            return { stdout: Buffer.concat(chunks).toString("utf8"), code };
           }),
         );
       });
@@ -423,7 +284,7 @@ export class Files extends Context.Service<
         const { stdout } = yield* git(cwd, ["check-ignore", "-z", "--stdin"], {
           stdin: `${names.join("\0")}\0`,
           magic: true,
-        }).pipe(Effect.orElseSucceed(() => ({ stdout: "", code: 1, truncated: false })));
+        }).pipe(Effect.orElseSucceed(() => ({ stdout: "", code: 1 })));
         return new Set(stdout.split("\0").filter((name) => name !== ""));
       });
 
@@ -495,90 +356,6 @@ export class Files extends Context.Service<
         } satisfies FileStatuses;
       });
 
-      const read = Effect.fn("Files.read")(function* (root: string, relative: string) {
-        const { target } = yield* locate(root, relative);
-        const info = yield* Effect.option(fs.stat(target));
-        if (info._tag === "None") return { _tag: "Missing" } satisfies FilePreview;
-        if (info.value.type !== "File") return yield* new FilesError({ message: "That isn't a file." });
-        const size = Number(info.value.size);
-        if (imageType(target) !== undefined) {
-          if (size > MAX_IMAGE_BYTES) return { _tag: "Binary", size } satisfies FilePreview;
-          const image = yield* workspace
-            .readImage(target)
-            .pipe(Effect.mapError((error) => new FilesError({ message: error.message })));
-          return { _tag: "Image", image, size } satisfies FilePreview;
-        }
-        const chunks = yield* fs
-          .stream(target, { bytesToRead: PREVIEW_BYTES })
-          .pipe(Stream.runCollect, Effect.mapError(refuse("That file couldn't be read.")));
-        const bytes = Buffer.concat(chunks);
-        const truncated = size > bytes.length;
-        const text = decodeText(bytes, truncated);
-        return text === undefined
-          ? ({ _tag: "Binary", size } satisfies FilePreview)
-          : ({ _tag: "Text", text, size, truncated } satisfies FilePreview);
-      });
-
-      const diff = Effect.fn("Files.diff")(function* (root: string, relative: string, from?: string) {
-        const { base, target } = yield* locate(root, relative);
-        const origin = from === undefined ? undefined : resolveInside(base, from);
-        if (from !== undefined && origin === undefined)
-          return yield* new FilesError({ message: "That path isn't inside the thread's folder." });
-        const repository = yield* Cache.get(repositories, base);
-        if (repository === undefined)
-          return yield* new FilesError({ message: "Git isn't tracking this folder." });
-        const paths = [relative, ...(from === undefined ? [] : [from])];
-        const parse = (stdout: string, truncated: boolean): FileDiff => {
-          const { hunks, binary } = parseDiff(stdout);
-          const limited = limitHunks(hunks, MAX_DIFF_LINES);
-          return {
-            hunks: limited.hunks,
-            ...(binary ? { binary: true as const } : {}),
-            ...(truncated || limited.truncated ? { truncated: true as const } : {}),
-          };
-        };
-        const failed = refuse("Git couldn't compare that file.");
-        const tracked = yield* git(
-          base,
-          ["diff", "HEAD", "--no-color", "--no-ext-diff", "--no-textconv", "-M", "-U3", "--", ...paths],
-          { limit: DIFF_BYTES },
-        ).pipe(Effect.mapError(failed));
-        const result = parse(tracked.stdout, tracked.truncated);
-        const compared = tracked.code === 0 || tracked.truncated;
-        if (compared && (result.hunks.length > 0 || result.binary === true)) return result;
-        // Nothing to show: the file is unchanged, or git has nothing to compare it with, because it
-        // hasn't seen the file or the repository has no commit. Then its whole text is new.
-        const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
-        if (!exists) return result;
-        if (compared) {
-          const untracked = yield* git(base, [
-            "ls-files",
-            "-z",
-            "--others",
-            "--exclude-standard",
-            "--",
-            relative,
-          ]).pipe(Effect.mapError(failed));
-          if (untracked.stdout === "") return result;
-        }
-        const added = yield* git(
-          base,
-          [
-            "diff",
-            "--no-index",
-            "--no-color",
-            "--no-ext-diff",
-            "--no-textconv",
-            "-U3",
-            "--",
-            "/dev/null",
-            relative,
-          ],
-          { limit: DIFF_BYTES },
-        ).pipe(Effect.mapError(failed));
-        return parse(added.stdout, added.truncated);
-      });
-
       const watch = (root: string) =>
         Stream.unwrap(
           Effect.gen(function* () {
@@ -634,7 +411,7 @@ export class Files extends Context.Service<
           }),
         );
 
-      return Files.of({ list, statuses, read, diff, watch });
+      return Files.of({ list, statuses, watch });
     }),
   );
 }

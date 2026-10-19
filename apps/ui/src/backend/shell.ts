@@ -57,6 +57,11 @@ export interface ShellBridge {
   /** Shows a file or folder (absolute path) in the system's file manager. */
   readonly revealPath?: (path: string) => Promise<void>;
   /**
+   * Opens a file (absolute path) in the app the system gives its kind. A program or script isn't run:
+   * Windows asks which app to open it with.
+   */
+  readonly openPath?: (path: string) => Promise<void>;
+  /**
    * Saves an image where the user picks with the native Save dialog, suggesting `name`. `source` is
    * a `data:image/…;base64,` URL or an absolute path to an image file. Resolves whether it was saved.
    */
@@ -135,7 +140,13 @@ declare global {
 export const shellBridge = (): ShellBridge | undefined => {
   const bridge = window.cerium;
   if (bridge === undefined || drivenMachine() === undefined) return bridge;
-  const { pickFolder: _pick, pathForFile: _path, revealPath: _reveal, ...elsewhere } = bridge;
+  const {
+    pickFolder: _pick,
+    pathForFile: _path,
+    revealPath: _reveal,
+    openPath: _open,
+    ...elsewhere
+  } = bridge;
   return elsewhere;
 };
 

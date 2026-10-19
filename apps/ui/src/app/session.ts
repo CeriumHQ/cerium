@@ -11,6 +11,13 @@ const SESSION_KEY = "cerium:session";
 
 const Mode = Schema.Literals(["work", "chat"]);
 
+const TabStrip = Schema.Struct({
+  keys: Schema.Array(Schema.String),
+  preview: Schema.optionalKey(Schema.String),
+  active: Schema.optionalKey(Schema.String),
+  closed: Schema.Array(Schema.String),
+});
+
 const Session = Schema.fromJsonString(
   Schema.Struct({
     /** The machine the window drove; none for this computer. */
@@ -21,6 +28,13 @@ const Session = Schema.fromJsonString(
     /** Each mode's blank new thread: the draft "New thread" writes into. */
     blank: Schema.Struct({ work: Schema.String, chat: Schema.String }),
     pane: Schema.Literals(["list", "main"]),
+    /** Each machine's open tabs per mode. */
+    tabs: Schema.optionalKey(
+      Schema.Record(
+        Schema.String,
+        Schema.Struct({ work: Schema.optionalKey(TabStrip), chat: Schema.optionalKey(TabStrip) }),
+      ),
+    ),
   }),
 );
 export type Session = typeof Session.Type;

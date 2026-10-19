@@ -58,7 +58,6 @@ export function ChangesList({
   rows,
   repository,
   root,
-  selected,
   messageBox,
   onOpen,
   onReveal,
@@ -66,9 +65,9 @@ export function ChangesList({
   rows: ReadonlyArray<ChangedRow>;
   repository: boolean;
   root: string;
-  selected: string | undefined;
   messageBox: MessageBox | undefined;
-  onOpen: (path: string) => void;
+  /** Opens a file in its own app; absent where this computer can't. */
+  onOpen: ((path: string) => void) | undefined;
   /** Shows a folder in the tree. */
   onReveal: (path: string) => void;
 }) {
@@ -100,8 +99,7 @@ export function ChangesList({
     event.preventDefault();
     items[next].focus();
   };
-  const first =
-    selected !== undefined && rows.some((row) => row.path === selected) ? selected : rows[0]?.path;
+  const first = rows[0]?.path;
   return (
     // The arrows move between the rows' buttons, which take the keys themselves.
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -122,11 +120,8 @@ export function ChangesList({
             <button
               type="button"
               tabIndex={row.path === first ? 0 : -1}
-              aria-current={!row.folder && row.path === selected ? "true" : undefined}
-              onClick={() => (row.folder ? onReveal(row.path) : onOpen(row.path))}
-              className={`${rowClass} transition-colors ${
-                !row.folder && row.path === selected ? "bg-surface-selected" : "hover:bg-surface-hover"
-              }`}
+              onClick={() => (row.folder ? onReveal(row.path) : onOpen?.(row.path))}
+              className={`${rowClass} transition-colors hover:bg-surface-hover`}
             >
               <RowContent
                 path={row.path}

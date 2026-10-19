@@ -2,15 +2,15 @@ import { Fragment } from "react";
 
 import { editLines, type FileEdit } from "./diff.ts";
 
-export const marker = { context: " ", removed: "−", added: "+" } as const;
+const marker = { context: " ", removed: "−", added: "+" } as const;
 
-export const tint = {
+const tint = {
   context: "text-fg-tertiary",
   removed: "bg-error/10 text-fg-primary",
   added: "bg-success/10 text-fg-primary",
 } as const;
 
-export const markerTint = { context: "", removed: "text-error", added: "text-success" } as const;
+const markerTint = { context: "", removed: "text-error", added: "text-success" } as const;
 
 /** A file edit as a compact diff, several edits to one file separated by a gap marker. */
 export function EditDiff({ edits }: { edits: ReadonlyArray<FileEdit> }) {

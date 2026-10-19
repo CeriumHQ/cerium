@@ -26,7 +26,7 @@ interface TitlebarProps {
   /** The sidebar is being dragged to another width: the controls follow it without easing. */
   readonly resizing: boolean;
   readonly onToggleSidebar: () => void;
-  /** Offered here while the sidebar, which has the main button for it, is folded away. */
+  /** Offered here while the sidebar, which has the main button for it, is folded away, and no tabs show. */
   readonly onNewThread: () => void;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
@@ -38,6 +38,8 @@ interface TitlebarProps {
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
+  /** The open threads' tabs, which take the title's place. */
+  readonly tabs?: ReactNode;
 }
 
 export function Titlebar({
@@ -56,6 +58,7 @@ export function Titlebar({
   files,
   terminal,
   machinePicker,
+  tabs,
 }: TitlebarProps) {
   const showSidebar = sidebarOpen || settingsOpen;
   return (
@@ -83,7 +86,8 @@ export function Titlebar({
             shortcut="Ctrl B"
             onClick={onToggleSidebar}
           />
-          {sidebarOpen ? null : (
+          {/* The tabs bring their own. */}
+          {sidebarOpen || tabs ? null : (
             <IconButton
               icon={SquarePen}
               label={mode === "work" ? "New thread" : "New chat"}
@@ -95,24 +99,35 @@ export function Titlebar({
       </div>
 
       {/*
-       * The title sits in the middle of what's left of the bar, with the controls in a column of its
-       * own at the end, so it stays put as the agents button comes and goes. It gives way to them only
-       * once it's too long for the room.
+       * The thread's tabs start where the conversation does, and what they leave of the bar drags the
+       * window. Without tabs the title sits in the middle of what's left of the bar, with the controls
+       * in a column of their own at the end, so it stays put as the agents button comes and goes; it
+       * gives way to them only once it's too long for the room.
        */}
-      <div className="grid h-full min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] items-center">
-        <div />
-        {/* Plain text until the thread has actions to offer, so it also drags the window. */}
-        {settingsOpen ? (
-          <p className="px-2.5 text-[13px] font-medium text-fg-primary">Settings</p>
-        ) : thread ? (
-          <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
-            <span className="truncate font-medium text-fg-primary">{thread.title}</span>
-            {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
-          </p>
+      <div
+        className={`h-full min-w-0 flex-1 items-center ${
+          tabs && !settingsOpen ? "flex gap-2" : "grid grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)]"
+        }`}
+      >
+        {tabs && !settingsOpen ? (
+          <div className="flex h-full min-w-0 flex-1 items-center">{tabs}</div>
         ) : (
-          <div />
+          <>
+            <div />
+            {/* Plain text until the thread has actions to offer, so it also drags the window. */}
+            {settingsOpen ? (
+              <p className="px-2.5 text-[13px] font-medium text-fg-primary">Settings</p>
+            ) : thread ? (
+              <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
+                <span className="truncate font-medium text-fg-primary">{thread.title}</span>
+                {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
+              </p>
+            ) : (
+              <div />
+            )}
+          </>
         )}
-        <div className="flex h-full items-center justify-end">
+        <div className="flex h-full shrink-0 items-center justify-end">
           {terminal && !settingsOpen ? (
             <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
           ) : null}

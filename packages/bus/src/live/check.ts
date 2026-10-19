@@ -1,5 +1,5 @@
 import type { HarnessAdapter } from "@cerium/harness";
-import { AccessMode, ProviderId } from "@cerium/protocol";
+import { AccessMode, ProviderId, type TodoItem } from "@cerium/protocol";
 import { Deferred, Duration, Effect, Fiber, Schema, Stream } from "effect";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +17,13 @@ export const PROBE_PROMPT =
   "2. Create a file named edit.txt containing the text ok, using your file editing tool.\n" +
   "Then reply with just DONE.";
 export const PROBE_FILES = ["shell.txt", "edit.txt"];
+
+/** The todo-list turn: a two-item list kept up to date, with a command between its updates. */
+export const TODO_PROMPT =
+  "Keep a todo list with your todo or plan tool, with exactly two items: 'List the working directory' " +
+  "and 'Reply with DONE'. Mark each item in progress when you start it and completed when you finish " +
+  "it. Do the first item with one shell command, then reply with just DONE.";
+export const TODO_ITEMS = 2;
 
 const Seconds = Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 600 }));
 
@@ -40,6 +47,10 @@ export const LiveCheckRequest = Schema.Struct({
   }),
   expectReply: Schema.optionalKey(Schema.NonEmptyString).annotate({
     description: "Text the final reply must contain to pass.",
+  }),
+  expectTodos: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))).annotate({
+    description:
+      "Fail unless the agent reports a todo list of at least this many items; the prompt must have it keep one.",
   }),
   maxApprovals: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
     description: "Fail when the harness asks for approval more often than this (0: it must never ask).",
@@ -65,6 +76,13 @@ export const LiveCheckResult = Schema.Struct({
   ),
   files: Schema.Array(Schema.String),
   reply: Schema.optionalKey(Schema.String),
+  /** The agent's todo list as its harness last reported it, and how many times it changed. */
+  todos: Schema.optionalKey(
+    Schema.Struct({
+      items: Schema.Array(Schema.Struct({ text: Schema.String, status: Schema.String })),
+      updates: Schema.Int,
+    }),
+  ),
   problems: Schema.Array(Schema.String),
 });
 export type LiveCheckResult = typeof LiveCheckResult.Type;
@@ -112,6 +130,7 @@ export const checkHarness = (
       tools: [] as Array<string>,
       approvals: [] as Array<{ tool: string; summary: string; answer: string }>,
       reply: undefined as string | undefined,
+      todos: undefined as { items: ReadonlyArray<TodoItem>; updates: number } | undefined,
       problems: [] as Array<string>,
       stopReason: undefined as string | undefined,
       unavailable: false,
@@ -157,6 +176,9 @@ export const checkHarness = (
               }
               case "MessageCompleted":
                 record.reply = payload.text.slice(0, 1_000);
+                break;
+              case "TodosUpdated":
+                record.todos = { items: payload.items, updates: (record.todos?.updates ?? 0) + 1 };
                 break;
               case "AgentError":
                 record.problems.push(`${payload.kind}: ${payload.message}`);
@@ -213,6 +235,14 @@ export const checkHarness = (
       if (request.expectReply !== undefined && !(record.reply ?? "").includes(request.expectReply)) {
         problems.push(`The reply lacks "${request.expectReply}".`);
       }
+      if (request.expectTodos !== undefined) {
+        if (record.todos === undefined) problems.push("The agent reported no todo list.");
+        else if (record.todos.items.length < request.expectTodos) {
+          problems.push(
+            `The todo list has ${record.todos.items.length} items (expected at least ${request.expectTodos}).`,
+          );
+        }
+      }
       if (request.maxApprovals !== undefined && record.approvals.length > request.maxApprovals) {
         problems.push(
           `Asked for approval ${record.approvals.length} times (allowed ${request.maxApprovals}).`,
@@ -241,6 +271,14 @@ export const checkHarness = (
       approvals: record.approvals,
       files,
       ...(record.reply === undefined ? {} : { reply: record.reply }),
+      ...(record.todos === undefined
+        ? {}
+        : {
+            todos: {
+              items: record.todos.items.map(({ text, status }) => ({ text, status })),
+              updates: record.todos.updates,
+            },
+          }),
       problems,
     };
     return result;
@@ -280,6 +318,11 @@ export const renderResults = (results: ReadonlyArray<LiveCheckResult>): string =
         }`,
       );
       lines.push(`  files: ${result.files.length === 0 ? "none" : result.files.join(", ")}`);
+      if (result.todos !== undefined) {
+        const { items, updates } = result.todos;
+        const listed = items.map((item) => `${item.status}: ${item.text}`).join("; ") || "emptied";
+        lines.push(`  todos: ${listed} (${updates} ${updates === 1 ? "update" : "updates"})`);
+      }
       if (result.reply !== undefined)
         lines.push(`  reply: ${result.reply.replace(/\s+/g, " ").slice(0, 300)}`);
       for (const problem of result.problems) lines.push(`  problem: ${problem}`);

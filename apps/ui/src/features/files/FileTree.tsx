@@ -38,7 +38,6 @@ const notes = (row: Row, touch: "created" | "modified" | "deleted" | undefined):
 function TreeRow({
   row,
   root,
-  selected,
   focusable,
   touch,
   touchedInside,
@@ -48,7 +47,6 @@ function TreeRow({
 }: {
   row: Row;
   root: string;
-  selected: boolean;
   /** The one row the Tab key lands on. */
   focusable: boolean;
   touch: "created" | "modified" | "deleted" | undefined;
@@ -92,15 +90,12 @@ function TreeRow({
           tabIndex={focusable ? 0 : -1}
           aria-level={row.depth + 1}
           aria-expanded={row.folder ? row.expanded : undefined}
-          aria-selected={selected}
           data-path={row.path}
           onClick={onActivate}
           onFocus={onFocus}
           style={{ paddingLeft: 4 + row.depth * INDENT }}
-          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
-            selected
-              ? "bg-surface-selected text-fg-primary"
-              : `hover:bg-surface-hover ${changed || touch ? "text-fg-primary" : "text-fg-secondary"}`
+          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
+            changed || touch ? "text-fg-primary" : "text-fg-secondary"
           }`}
         >
           <span className="grid size-4 shrink-0 place-items-center text-fg-tertiary">
@@ -150,7 +145,6 @@ export function FileTree({
   root,
   tree,
   touched,
-  selected,
   messageBox,
   revealed,
   onRevealed,
@@ -159,13 +153,12 @@ export function FileTree({
   root: string;
   tree: Tree;
   touched: Touched;
-  /** The file open in the preview. */
-  selected: string | undefined;
   messageBox: MessageBox | undefined;
   /** A path to bring into view and focus as soon as its row is there. */
   revealed: string | undefined;
   onRevealed: () => void;
-  onOpen: (path: string) => void;
+  /** Opens a file in its own app; absent where this computer can't. */
+  onOpen: ((path: string) => void) | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const container = useRef<HTMLDivElement>(null);
@@ -184,7 +177,7 @@ export function FileTree({
     revealDone();
   }, [revealed, rows]);
 
-  const found = rows.findIndex((row) => row.path === (focused ?? selected));
+  const found = rows.findIndex((row) => row.path === focused);
   const focusIndex = found < 0 ? 0 : found;
 
   const setOpen = (path: string, open: boolean) => {
@@ -216,7 +209,7 @@ export function FileTree({
       case "toggle":
         return setOpen(action.path, !rows.some((row) => row.path === action.path && row.expanded));
       case "open":
-        return onOpen(action.path);
+        return onOpen?.(action.path);
     }
   };
 
@@ -258,7 +251,6 @@ export function FileTree({
           key={row.path}
           row={row}
           root={root}
-          selected={!row.folder && row.path === selected}
           focusable={index === focusIndex}
           touch={row.folder ? undefined : touched.files.get(touchedKey(touched, row.path))?.change}
           touchedInside={row.folder && !row.expanded && touched.folders.has(touchedKey(touched, row.path))}
@@ -267,7 +259,7 @@ export function FileTree({
           onActivate={() => {
             setFocused(row.path);
             if (row.folder) setOpen(row.path, !row.expanded);
-            else onOpen(row.path);
+            else onOpen?.(row.path);
           }}
         />
       ))}

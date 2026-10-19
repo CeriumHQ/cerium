@@ -33,6 +33,7 @@ import {
   renameThread,
   resolveSpawnApproval,
   respondToPermission,
+  answerQuestion,
   sendMessage,
   setThreadArchived,
   stopAgent,
@@ -55,7 +56,12 @@ import {
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
 import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
-import { ApprovalTray, type AnswerApproval, type AnswerSpawn } from "../features/agents/ApprovalTray.tsx";
+import {
+  ApprovalTray,
+  type AnswerApproval,
+  type AnswerQuestion,
+  type AnswerSpawn,
+} from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { hasContent } from "../features/composer/draft.ts";
@@ -63,7 +69,6 @@ import {
   draftsAtom,
   draftStartAtom,
   isNewDraftKey,
-  newDraftKey,
   withoutDraft,
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
@@ -82,6 +87,8 @@ import {
   type SettingsCategory,
 } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
+import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
+import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import {
   CloudThreadBar,
   ConnectingNote,
@@ -178,10 +185,6 @@ function Workspace() {
     setOpenAfterSwitch(undefined);
     setResumePending(false);
   }
-  useEffect(() => {
-    if (resumePending) return;
-    rememberSession({ ...(driven ? { machine: driven.id } : {}), mode, open: openThread, blank, pane });
-  }, [resumePending, driven, mode, openThread, blank, pane]);
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
@@ -357,6 +360,48 @@ function Workspace() {
     setOpenThread((current) => ({ ...current, [summary.mode]: summary.id }));
     setPane("main");
   };
+  const tabs = useThreadTabs({
+    machine: driven?.id ?? "local",
+    mode,
+    active: openThread[mode] ?? blank[mode],
+    threads: summaries,
+    loaded: live,
+    initial: session?.tabs,
+    onShow: (key) => {
+      if (!isNewDraftKey(key)) {
+        const summary = summaries.find((candidate) => candidate.id === key);
+        if (summary) openSummary(summary);
+        return;
+      }
+      setSettingsOpen(false);
+      setOpenThread((current) => ({ ...current, [mode]: key }));
+      setPane("main");
+    },
+    onFresh: (key) => {
+      setSettingsOpen(false);
+      setBlank((current) => ({ ...current, [mode]: key }));
+      setOpenThread((current) => ({ ...current, [mode]: undefined }));
+      setPane("main");
+      composerInput.current?.focus();
+    },
+    // A closed tab's new thread that has nothing in it is forgotten, with what was picked in it.
+    onClosed: (keys) => {
+      const drafts = registry.get(draftsAtom);
+      const empty = keys.filter((key) => isNewDraftKey(key) && !hasContent(drafts[key]));
+      if (empty.length > 0) registry.set(draftsAtom, empty.reduce(withoutDraft, drafts));
+    },
+  });
+  useEffect(() => {
+    if (resumePending) return;
+    rememberSession({
+      ...(driven ? { machine: driven.id } : {}),
+      mode,
+      open: openThread,
+      blank,
+      pane,
+      tabs: tabs.strips,
+    });
+  }, [resumePending, driven, mode, openThread, blank, pane, tabs.strips]);
 
   // A tapped notification opens its thread, once the inbox lists it.
   useNotificationOpens(
@@ -384,6 +429,7 @@ function Workspace() {
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
+  const answer = useAtomSet(answerQuestion, { mode: "promise" });
   const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
@@ -450,7 +496,7 @@ function Workspace() {
     suspended: settingsOpen || searchOpen,
     compact,
   });
-  const explorer = useFilesExplorer({
+  const filesPanel = useFilesExplorer({
     root: filesRoot,
     events,
     messageBox,
@@ -471,16 +517,15 @@ function Workspace() {
     void attempt(respond({ payload: { agentId: agentId as AgentId, requestId, decision, scope } }));
   const answerSpawn: AnswerSpawn = (requestId, decision) =>
     void attempt(resolveSpawn({ payload: { requestId, decision } }));
+  const answerQuestionOf: AnswerQuestion = (agentId, requestId, response) =>
+    attempt(answer({ payload: { agentId: agentId as AgentId, requestId, response } }));
   /**
-   * Opens a blank new thread in this mode, ready to type the first message. A blank one the user wrote
-   * in stays in the sidebar as a draft; an empty one is replaced, forgetting what was picked in it.
+   * Opens a blank new thread in this mode, ready to type the first message: in a tab of its own, unless
+   * a tab already holds an empty one. One the user wrote in stays in the sidebar as a draft.
    */
   const startNew = () => {
     setSettingsOpen(false);
-    const drafts = registry.get(draftsAtom);
-    if (!hasContent(drafts[blank[mode]])) registry.set(draftsAtom, withoutDraft(drafts, blank[mode]));
-    setBlank((current) => ({ ...current, [mode]: newDraftKey() }));
-    setOpenThread((current) => ({ ...current, [mode]: undefined }));
+    tabs.newTab();
     composerInput.current?.focus();
   };
 
@@ -497,14 +542,14 @@ function Workspace() {
     setOpenThread((current) => ({ ...current, [draft.mode]: draft.key }));
   };
 
-  /** Throws a draft away; when it was open, a blank new thread takes its place. */
+  /** Throws a draft away, and its tab with it. */
   const discardDraft = (key: string) => {
     const drafts = registry.get(draftsAtom);
     for (const attachment of drafts[key]?.attachments ?? []) {
       if (attachment.preview) URL.revokeObjectURL(attachment.preview);
     }
     registry.set(draftsAtom, withoutDraft(drafts, key));
-    if (openThread[mode] === key) setOpenThread((current) => ({ ...current, [mode]: undefined }));
+    tabs.drop(key);
   };
 
   /** The user asked for a new thread: in the narrow window, that's its pane. */
@@ -533,6 +578,21 @@ function Workspace() {
     setSidebarOpen(!sidebarOpen);
   };
 
+  /** The tabs' keys with Ctrl, as browsers have them; whether `event` was one. */
+  const tabShortcut = (event: KeyboardEvent) => {
+    if (event.key === "Tab") tabs.step(event.shiftKey ? -1 : 1);
+    else if (event.key === "PageDown" || event.key === "PageUp") {
+      const by = event.key === "PageDown" ? 1 : -1;
+      if (event.shiftKey) tabs.shift(by);
+      else tabs.step(by);
+    } else if (event.key.toLowerCase() === "t") {
+      if (event.shiftKey) tabs.reopen();
+      else newThread();
+    } else if (event.key.toLowerCase() === "w" && !event.shiftKey) tabs.closeActive();
+    else return false;
+    return true;
+  };
+
   // The shortcuts the window's buttons advertise in their tooltips.
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     // Esc backs out of settings, unless something inside them (an open menu) already used it.
@@ -540,12 +600,29 @@ function Workspace() {
       setSettingsOpen(false);
       return;
     }
+    // Alt and a digit goes to a tab, as Ctrl and a digit opens a sidebar row.
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
+      if (digit === undefined || settingsOpen || searchOpen || compact) return;
+      tabs.goTo(Number(digit));
+      event.preventDefault();
+      return;
+    }
     if (!event.ctrlKey || event.altKey || event.metaKey) return;
     // Search has the keys while it's open, but for Ctrl K, which closes it.
     if (searchOpen && event.key.toLowerCase() !== "k") return;
+    if (!settingsOpen && !compact && tabShortcut(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.shiftKey) {
-      if (event.key.toLowerCase() !== "e" || settingsOpen || filesRoot === undefined) return;
-      toggleFiles();
+      // Ctrl and a digit alone opens a sidebar row, which the sidebar listens for.
+      if (event.code === "Digit1" || event.code === "Digit2") {
+        setSettingsOpen(false);
+        setMode(event.code === "Digit1" ? "work" : "chat");
+      } else if (event.key.toLowerCase() === "e" && !settingsOpen && filesRoot !== undefined) {
+        toggleFiles();
+      } else return;
       event.preventDefault();
       return;
     }
@@ -564,11 +641,6 @@ function Workspace() {
         if (settingsOpen) return;
         setSearchOpen((open) => !open);
         break;
-      case "1":
-      case "2":
-        setSettingsOpen(false);
-        setMode(event.key === "1" ? "work" : "chat");
-        break;
       case "j":
         if (selected === undefined || settingsOpen) return;
         toggleInspector();
@@ -585,6 +657,7 @@ function Workspace() {
   }, []);
 
   const startThread = async (message: OutgoingMessage, setup: ThreadSetup) => {
+    const draft = openDraft;
     const { thread, lead: newLead } = await create({
       payload: {
         title: (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80),
@@ -593,6 +666,7 @@ function Workspace() {
         lead: setup,
       },
     });
+    tabs.started(draft, thread.id);
     setOpenThread((current) => ({ ...current, [mode]: thread.id }));
     refreshThreads();
     await send({ payload: { agentId: newLead.id, ...message } });
@@ -623,16 +697,21 @@ function Workspace() {
           mode={mode}
           threads={summaries}
           selectedId={viewed?.thread.id ?? openDraft}
-          onSelectDraft={openNewDraft}
+          onSelectDraft={(draft, newTab) => {
+            if (newTab) tabs.openAs(draft.key, "tab");
+            openNewDraft(draft);
+          }}
           onDiscardDraft={discardDraft}
           draftMachine={(machine) =>
             machine === undefined || machine === thisComputer
               ? undefined
               : { name: nameOf(machine), online: deviceOf(machine)?.online === true }
           }
-          onSelect={(threadId) => {
+          onSelect={(threadId, newTab) => {
             const summary = summaries.find((candidate) => candidate.id === threadId);
-            if (summary) openSummary(summary);
+            if (!summary) return;
+            if (newTab) tabs.openAs(threadId, "tab");
+            openSummary(summary);
           }}
           onNewThread={newThread}
           onMarkRead={(threads) => {
@@ -654,13 +733,13 @@ function Workspace() {
               return renamed;
             })
           }
-          // Archiving the open thread leaves it for a new one.
+          // Archiving a thread closes its tab.
           onArchive={(threadId) =>
             void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: true } })).then(
               (archived) => {
                 if (!archived) return;
                 refreshThreads();
-                if (threadId === selected?.thread.id) startNew();
+                tabs.drop(threadId);
               },
             )
           }
@@ -671,13 +750,13 @@ function Workspace() {
               },
             )
           }
-          // Deleting the open thread leaves it for a new one.
+          // Deleting a thread closes its tab.
           onDelete={(threadId) =>
             void attempt(remove({ payload: { threadId: threadId as ThreadId } })).then((deleted) => {
               if (!deleted) return;
               registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
               refreshThreads();
-              if (threadId === selected?.thread.id) startNew();
+              tabs.drop(threadId);
             })
           }
           harnesses={indicators}
@@ -690,6 +769,14 @@ function Workspace() {
         />
       }
       machinePicker={<MachinePicker account={account} />}
+      tabs={
+        <ThreadTabs
+          tabs={tabs.tabs}
+          active={openThread[mode] ?? blank[mode]}
+          newLabel={mode === "work" ? "New thread" : "New chat"}
+          {...tabs.actions}
+        />
+      }
       {...(searchOpen ? { closeDialog: () => setSearchOpen(false) } : {})}
       settings={{
         open: settingsOpen,
@@ -727,18 +814,17 @@ function Workspace() {
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
             onAnswerApproval={answerApproval}
             onAnswerSpawn={answerSpawn}
+            onAnswerQuestion={answerQuestionOf}
           />
         ) : undefined
       }
       onToggleInspector={toggleInspector}
       onCloseInspector={() => setInspectorOpen(false)}
-      files={inspectorOpen && selected ? undefined : explorer.panel}
+      files={inspectorOpen && selected ? undefined : filesPanel}
       filesAvailable={filesRoot !== undefined}
       filesOpen={filesOpen}
       onToggleFiles={toggleFiles}
       onCloseFiles={() => setFilesOpen(false)}
-      filePreviewOpen={explorer.previewing}
-      onCloseFilePreview={explorer.closePreview}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
       {/* The terminal drawer docks under the conversation, which keeps its message box floating above it. */}
@@ -807,16 +893,13 @@ function Workspace() {
                     ? Promise.resolve(false)
                     : attempt(respond({ payload: { agentId: lead.id, requestId, decision, scope } }))
                 }
+                onAnswerQuestion={(requestId, response) =>
+                  cloudSelected ? Promise.resolve(false) : answerQuestionOf(lead.id, requestId, response)
+                }
               />
             ) : loadingThread ? null : (
               <EmptyThread mode={mode} {...(noHarness ? { onSetUp: () => openSettings("harnesses") } : {})} />
             )}
-            {/* An open file covers the conversation but not the message box, which can mention it. */}
-            {explorer.overlay ? (
-              <div className="absolute inset-x-0 top-0 z-10" style={{ bottom: composerHeight }}>
-                {explorer.overlay}
-              </div>
-            ) : null}
           </div>
 
           {WEB && driven === undefined && !cloudSelected ? (
@@ -866,17 +949,24 @@ function Workspace() {
                 cloudSelected ? (
                   <ConnectingNote machine={nameOf(cloudSelected.machine)} />
                 ) : (
-                  <ApprovalTray agents={agents} onAnswer={answerApproval} onAnswerSpawn={answerSpawn} />
+                  <ApprovalTray
+                    agents={agents}
+                    onAnswer={answerApproval}
+                    onAnswerSpawn={answerSpawn}
+                    onAnswerQuestion={answerQuestionOf}
+                  />
                 )
               }
               onHeight={setComposerHeight}
-              onSend={(message, setup) =>
-                attempt(
+              onSend={(message, setup) => {
+                // Writing to a thread keeps its tab: it's no longer only a preview.
+                if (viewed) tabs.keep(viewed.thread.id);
+                return attempt(
                   selected && lead
                     ? send({ payload: { agentId: lead.id, ...message } })
                     : startThread(message, setup),
-                )
-              }
+                );
+              }}
               onStop={() => {
                 if (lead) void attempt(interrupt({ payload: { agentId: lead.id } }));
               }}

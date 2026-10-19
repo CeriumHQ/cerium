@@ -84,6 +84,8 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator
           .respondToPermission(agentId, requestId, { decision, scope })
           .pipe(Effect.mapError(refuse)),
+      AnswerQuestion: ({ agentId, requestId, response }) =>
+        orchestrator.answerQuestion(agentId, requestId, response).pipe(Effect.mapError(refuse)),
       ResolveSpawnApproval: ({ requestId, decision, replacement }) =>
         orchestrator
           .resolveSpawnApproval(requestId, { decision, ...(replacement ? { replacement } : {}) })
@@ -132,8 +134,6 @@ export const Handlers = MachineRpcs.toLayer(
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
       ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
       FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),
-      ReadFile: ({ root, path }) => files.read(root, path).pipe(Effect.mapError(refuse)),
-      DiffFile: ({ root, path, from }) => files.diff(root, path, from).pipe(Effect.mapError(refuse)),
       WatchFiles: ({ root }) => files.watch(root).pipe(Stream.mapError(refuse)),
       ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),

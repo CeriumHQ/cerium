@@ -11,7 +11,7 @@ export type DraftMachine = (machine: string | undefined) => { name: string; onli
 
 export interface DraftActions {
   readonly selectedId: string | undefined;
-  readonly onSelectDraft: (draft: NewThreadDraft) => void;
+  readonly onSelectDraft: (draft: NewThreadDraft, newTab?: boolean) => void;
   readonly onDiscardDraft: (key: string) => void;
   readonly draftMachine: DraftMachine;
 }
@@ -58,7 +58,14 @@ export function DraftRow({
       }
     >
       <Button
-        onClick={() => onSelectDraft(draft)}
+        onClick={(event) => onSelectDraft(draft, event.ctrlKey || event.metaKey)}
+        onMouseDown={(event) => {
+          if (event.button === 1) event.preventDefault();
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) onSelectDraft(draft, true);
+        }}
+        data-draft={draft.key}
         aria-current={selected ? "page" : undefined}
         aria-label={`Draft: ${draft.title}`}
         // Where it will start, for a row too narrow to say.

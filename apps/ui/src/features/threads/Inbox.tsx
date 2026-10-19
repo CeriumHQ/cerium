@@ -47,7 +47,8 @@ interface InboxProps {
   readonly archived: ReadonlyArray<ThreadSummary>;
   readonly onRestore: (threadId: string) => void;
   readonly selectedId: string | undefined;
-  readonly onSelect: (threadId: string) => void;
+  /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
+  readonly onSelect: (threadId: string, newTab?: boolean) => void;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
   readonly onMarkUnread: (threadId: string) => void;
   /** Opens a new thread in the folder, ready to type. */

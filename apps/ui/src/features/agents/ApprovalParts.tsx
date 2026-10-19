@@ -150,9 +150,10 @@ export function ApprovalText({ children }: { children: string }) {
 
 const base =
   "h-7 rounded-md px-2 text-[12.5px] transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
-const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80`;
+/** The answer buttons' looks: the answer most give, another one, and the one that turns it away. */
+export const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-40`;
 const outlined = `${base} border border-line-strong font-medium text-fg-primary hover:bg-surface-hover`;
-const quiet = `${base} ml-auto text-fg-secondary hover:bg-surface-hover hover:text-fg-primary`;
+export const quiet = `${base} ml-auto text-fg-secondary hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40`;
 
 /** An answer button, naming the chord that gives the same answer where there is one. */
 function Answer({

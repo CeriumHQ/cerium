@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import type { ProviderId } from "@cerium/protocol";
+import type { ProviderId, QuestionResponse } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown } from "lucide-react";
 import { createContext, memo, use, type CSSProperties, type ReactNode } from "react";
@@ -10,6 +10,7 @@ import { useKeyboardOpen } from "../../web/viewport.ts";
 import type { AgentActions } from "../agents/AgentMenu.tsx";
 import type { AgentSummary } from "../agents/model.ts";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
+import { ClosedQuestions, QuestionCard } from "../questions/QuestionCard.tsx";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import {
   ModelSwitch,
@@ -58,6 +59,8 @@ interface TranscriptProps {
     decision: "allow" | "deny",
     scope: "once" | "session",
   ) => void;
+  /** Answers the agent's questions; resolves to false when the answer didn't reach it. */
+  readonly onAnswerQuestion?: (requestId: string, response: QuestionResponse) => Promise<boolean>;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -86,6 +89,7 @@ export function Transcript({
   agentActions,
   bottomInset = 0,
   onAnswerPermission,
+  onAnswerQuestion,
 }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
@@ -119,6 +123,7 @@ export function Transcript({
     childAgent,
     agentActions,
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
+    ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
   };
 
   return (
@@ -209,6 +214,7 @@ interface TranscriptActions {
   readonly childAgent: TranscriptProps["childAgent"];
   readonly agentActions: AgentActions;
   readonly onAnswerPermission?: TranscriptProps["onAnswerPermission"];
+  readonly onAnswerQuestion?: TranscriptProps["onAnswerQuestion"];
 }
 
 const Actions = createContext<TranscriptActions>({
@@ -369,6 +375,8 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
       return <Reasoning block={block} />;
     case "permission":
       return <PermissionBlock block={block} expired={activity === "ended"} />;
+    case "question":
+      return <QuestionBlock block={block} expired={activity === "ended"} />;
     case "error":
       return <p className="text-[13px] text-fg-secondary">{block.message}</p>;
     default:
@@ -390,6 +398,20 @@ function PermissionBlock({ block, expired }: { block: Block<"permission">; expir
       onAnswer={(decision, scope) =>
         onAnswerPermission?.(block.id.replace(/^permission:/, ""), decision, scope)
       }
+    />
+  );
+}
+
+function QuestionBlock({ block, expired }: { block: Block<"question">; expired: boolean }) {
+  const { onAnswerQuestion } = use(Actions);
+  if (block.resolution !== undefined || expired) {
+    return <ClosedQuestions questions={block.questions} resolution={block.resolution} />;
+  }
+  return (
+    <QuestionCard
+      key={block.requestId}
+      questions={block.questions}
+      onAnswer={onAnswerQuestion && ((response) => onAnswerQuestion(block.requestId, response))}
     />
   );
 }

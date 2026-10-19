@@ -1,6 +1,6 @@
 import { artifactGuide } from "@cerium/artifacts";
 import { Orchestrator, OrchestratorError } from "@cerium/orchestrator";
-import { AccessMode, AgentId, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import { AccessMode, AgentId, ProviderId, ReasoningEffort, type Question } from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 import { HttpServerRequest } from "effect/http";
@@ -127,6 +127,59 @@ export const AskAdvisor = Tool.make("ask_advisor", {
   failure: OrchestratorError,
 });
 
+const AskedQuestion = Schema.Struct({
+  header: Schema.optionalKey(
+    Schema.String.check(Schema.isMaxLength(30)).annotate({
+      description: "A label of a word or two naming what is asked, e.g. 'Database' or 'Scope'.",
+    }),
+  ),
+  question: Schema.NonEmptyString.annotate({
+    description: "The question, complete and specific, ending with a question mark.",
+  }),
+  options: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        label: Schema.NonEmptyString.check(Schema.isMaxLength(60)).annotate({
+          description:
+            "The choice in one to five words. Put your recommendation first and end its label with '(Recommended)'.",
+        }),
+        description: Schema.optionalKey(
+          Schema.String.annotate({ description: "What picking it means: its trade-off or consequence." }),
+        ),
+      }),
+    )
+      .check(Schema.isMaxLength(6))
+      .annotate({
+        description:
+          "Two to four distinct choices. Leave out for a question only the user's own words can answer.",
+      }),
+  ),
+  multiSelect: Schema.optionalKey(
+    Schema.Boolean.annotate({ description: "The user may pick several options (default false)." }),
+  ),
+  allowOther: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The user may answer in their own words instead of, or beside, the options (default true).",
+    }),
+  ),
+});
+
+export const AskUser = Tool.make("ask_user", {
+  description:
+    "Ask the user one to four questions, each with options to pick from, when the answer is theirs to give:" +
+    " an ambiguous request, a choice between approaches they would care about, a decision costly to undo." +
+    " Returns at once; the answers arrive later as a [Cerium] message, so end your turn or carry on with" +
+    " work that doesn't depend on them. Don't ask what the code, the docs or a quick check can tell you.",
+  parameters: Schema.Struct({
+    questions: Schema.Array(AskedQuestion)
+      .check(Schema.isMinLength(1), Schema.isMaxLength(4))
+      .annotate({ description: "Related questions, asked together." }),
+  }),
+  success: Schema.Struct({ status: Schema.Literal("asked"), requestId: Schema.String, note: Schema.String }),
+  failure: OrchestratorError,
+});
+
 export const ArtifactGuide = Tool.make("artifact_guide", {
   description:
     "How to write an artifact: the HTML building blocks, tokens and rules for visuals Cerium renders" +
@@ -143,6 +196,7 @@ export const BusToolkit = Toolkit.make(
   SendMessage,
   KillAgent,
   AskAdvisor,
+  AskUser,
   ArtifactGuide,
 );
 
@@ -241,6 +295,28 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
           status: "asked" as const,
           advisorId,
           note: `The answer arrives as a [Cerium] message from agent ${advisorId}, the advisor. End your turn or carry on with other work meanwhile.`,
+        };
+      }),
+
+      ask_user: Effect.fn("Bus.ask_user")(function* ({ questions }) {
+        const [first, ...rest] = questions.map((asked): Question => ({
+          ...(asked.header?.trim() ? { header: asked.header.trim() } : {}),
+          question: asked.question,
+          options: (asked.options ?? []).map(({ label, description }) => ({
+            label: label.trim(),
+            ...(description?.trim() ? { description: description.trim() } : {}),
+          })),
+          multiSelect: asked.multiSelect ?? false,
+          allowOther: asked.allowOther ?? true,
+        }));
+        if (first === undefined) {
+          return yield* new OrchestratorError({ reason: "invalid", message: "Ask at least one question." });
+        }
+        const { requestId } = yield* orchestrator.askUser(yield* caller, [first, ...rest]);
+        return {
+          status: "asked" as const,
+          requestId,
+          note: "The user sees your question now. Their answer arrives as a [Cerium] message; end your turn or carry on with work that doesn't depend on it.",
         };
       }),
 

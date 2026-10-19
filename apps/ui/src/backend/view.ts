@@ -1,7 +1,12 @@
 import type { AgentEvent, AgentInfo, ModelInfo, ProviderId } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
-import type { AgentSummary, PendingApproval, SpawnRequest } from "../features/agents/model.ts";
+import type {
+  AgentSummary,
+  PendingApproval,
+  PendingQuestion,
+  SpawnRequest,
+} from "../features/agents/model.ts";
 import type { ThreadSummary } from "../features/threads/model.ts";
 
 // Maps backend records onto the view models the components render.
@@ -64,6 +69,7 @@ export const toAgentSummaries = (
     let model = agent.model;
     const pending = new Map<string, PendingApproval>();
     const spawning = new Map<string, SpawnRequest>();
+    const asking = new Map<string, PendingQuestion>();
     for (const { agentId, payload, at } of events) {
       if (agentId !== agent.id) continue;
       switch (payload._tag) {
@@ -109,12 +115,19 @@ export const toAgentSummaries = (
         case "SpawnApprovalResolved":
           spawning.delete(payload.requestId);
           break;
+        case "QuestionAsked":
+          asking.set(payload.requestId, { requestId: payload.requestId, questions: payload.questions, at });
+          break;
+        case "QuestionResolved":
+          asking.delete(payload.requestId);
+          break;
       }
     }
     // An agent that stopped or failed can't act on an answer: its requests ended with its session.
     const ended = agent.state === "stopped" || agent.state === "failed";
     const approvals = ended ? [] : [...pending.values()];
     const spawns = ended ? [] : [...spawning.values()];
+    const questions = ended ? [] : [...asking.values()];
     return {
       id: agent.id,
       ...(agent.parentId ? { parentId: agent.parentId } : {}),
@@ -124,9 +137,10 @@ export const toAgentSummaries = (
       ...(agent.effort ? { effort: agent.effort } : {}),
       access: agent.access,
       state: agent.state,
-      awaitingApproval: approvals.length > 0 || spawns.length > 0,
+      awaitingApproval: approvals.length > 0 || spawns.length > 0 || questions.length > 0,
       approvals,
       spawns,
+      questions,
       usage: { inputTokens, outputTokens, ...(costUsd === undefined ? {} : { costUsd }) },
       ...(lastMessage ? { lastMessage } : {}),
       ...(error ? { error } : {}),

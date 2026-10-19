@@ -1,6 +1,6 @@
 import type { ReasoningEffort } from "@cerium/protocol";
 
-import type { TranscriptBlock } from "./model.ts";
+import { isAnswerNotice, type TranscriptBlock } from "./model.ts";
 import { outputText, type ToolBlock } from "./tools.ts";
 
 // How a thread's blocks become what the transcript shows: inputs, a header per response, tool calls
@@ -32,6 +32,9 @@ export type Item =
 const isSpawnCall = (block: TranscriptBlock): block is ToolBlock =>
   block.kind === "tool" && /^mcp__[^_]+__spawn_agent$/.test(block.toolName);
 
+const isAskCall = (block: TranscriptBlock): block is ToolBlock =>
+  block.kind === "tool" && /^mcp__[^_]+__ask_user$/.test(block.toolName);
+
 /** How a spawn call turned out, from its result: the agent started, or the user must approve it first. */
 const spawnResult = (call: ToolBlock): "spawned" | "pendingApproval" | undefined => {
   try {
@@ -48,7 +51,7 @@ const spawnResult = (call: ToolBlock): "spawned" | "pendingApproval" | undefined
  *
  * Cerium's own spawn calls are shown by the agent cards they create. That leaves out the ones that
  * create none: a refused call keeps its row, which says why, and a request waiting for approval gets
- * a line of its own.
+ * a line of its own. Likewise a question shows as its card, and only a refused `ask_user` call as a row.
  */
 const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<TranscriptBlock> => {
   const pending = new Set(
@@ -65,6 +68,7 @@ const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Transcri
     if (isSpawnCall(block) && block.status !== "error" && spawnResult(block) !== "pendingApproval") {
       return false;
     }
+    if (isAskCall(block) && block.status !== "error") return false;
     if (block.kind === "tool") return !pending.has(block.id.replace(/^tool:/, ""));
     if (block.kind === "permission") {
       return block.resolution === undefined || !toolIds.has(block.id.replace(/^permission:/, ""));
@@ -101,6 +105,13 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
       headerDue = true;
       if (last?.kind === "input") items[items.length - 1] = { ...last, blocks: [...last.blocks, block] };
       else items.push({ kind: "input", id: block.id, blocks: [block] });
+      continue;
+    }
+    // The user's answer to a question shows on the question; what the agent does with it is a new
+    // response, as after a message.
+    if (isAnswerNotice(block)) {
+      said = [];
+      headerDue = true;
       continue;
     }
     // One header per response: only the user's own messages start a new one. Results from child
@@ -167,7 +178,8 @@ export const showsProgress = (item: Item | undefined): boolean => {
     case "block":
       return (
         ((item.block.kind === "message" || item.block.kind === "reasoning") && item.block.streaming) ||
-        (item.block.kind === "permission" && item.block.resolution === undefined)
+        ((item.block.kind === "permission" || item.block.kind === "question") &&
+          item.block.resolution === undefined)
       );
     default:
       return false;

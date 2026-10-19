@@ -1,4 +1,4 @@
-import type { AccessMode, AgentState, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, AgentState, ProviderId, Question, ReasoningEffort } from "@cerium/protocol";
 
 /** A permission request an agent is waiting on the user to answer. */
 export interface PendingApproval {
@@ -25,6 +25,13 @@ export interface SpawnRequest {
   readonly at: number;
 }
 
+/** Questions an agent put to the user with `ask_user` that nobody has answered yet. */
+export interface PendingQuestion {
+  readonly requestId: string;
+  readonly questions: ReadonlyArray<Question>;
+  readonly at: number;
+}
+
 /** What the inspector shows for one agent, derived from its record and event log. */
 export interface AgentSummary {
   readonly id: string;
@@ -36,12 +43,14 @@ export interface AgentSummary {
   readonly effort?: ReasoningEffort;
   readonly access: AccessMode;
   readonly state: AgentState;
-  /** A permission request, or a spawn request of the lead's, is waiting on the user. */
+  /** A permission request, a question, or a spawn request of the lead's, is waiting on the user. */
   readonly awaitingApproval: boolean;
   /** The requests waiting on the user, oldest first. */
   readonly approvals: ReadonlyArray<PendingApproval>;
   /** The lead's requests to start an agent that wait on the user, oldest first. */
   readonly spawns: ReadonlyArray<SpawnRequest>;
+  /** The questions waiting on the user's answer, oldest first. */
+  readonly questions: ReadonlyArray<PendingQuestion>;
   readonly usage: { readonly inputTokens: number; readonly outputTokens: number; readonly costUsd?: number };
   /** The agent's latest completed message. */
   readonly lastMessage?: string;
@@ -176,12 +185,18 @@ export type QueuedRequest =
       readonly key: string;
       readonly agent: AgentSummary;
       readonly request: SpawnRequest;
+    }
+  | {
+      readonly kind: "question";
+      readonly key: string;
+      readonly agent: AgentSummary;
+      readonly request: PendingQuestion;
     };
 
 /**
  * Everything the thread's agents wait on the user for, in the order it was asked: the children's
- * permission requests, and the lead's requests to start an agent. The lead's own permission
- * requests are answered in the conversation, beside the work they interrupt.
+ * permission requests and questions, and the lead's requests to start an agent. The lead's own
+ * permission requests and questions are answered in the conversation, beside the work they interrupt.
  */
 export const requestQueue = (agents: ReadonlyArray<AgentSummary>): ReadonlyArray<QueuedRequest> =>
   agents
@@ -191,6 +206,14 @@ export const requestQueue = (agents: ReadonlyArray<AgentSummary>): ReadonlyArray
         : agent.approvals.map((request) => ({
             kind: "permission" as const,
             key: `permission:${request.requestId}`,
+            agent,
+            request,
+          }))),
+      ...(agent.parentId === undefined
+        ? []
+        : agent.questions.map((request) => ({
+            kind: "question" as const,
+            key: `question:${request.requestId}`,
             agent,
             request,
           }))),

@@ -47,9 +47,6 @@ interface AppFrameProps {
   readonly filesOpen: boolean;
   readonly onToggleFiles: () => void;
   readonly onCloseFiles: () => void;
-  /** A file is open in the files pane of the narrow window; the phone's Back closes it before the pane. */
-  readonly filePreviewOpen: boolean;
-  readonly onCloseFilePreview: () => void;
   /**
    * The open thread's terminal drawer, offered while it can have one. The drawer itself is part of
    * `children`; in the narrow window it covers the thread, and the phone's Back hides it.
@@ -76,6 +73,8 @@ interface AppFrameProps {
   readonly onBack: () => void;
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
+  /** The open threads' tabs, in the titlebar of the wide window. */
+  readonly tabs?: ReactNode;
   /** Closes the dialog open over the window, while one is: a phone's Back closes it first. */
   readonly closeDialog?: () => void;
   readonly children: ReactNode;
@@ -132,6 +131,7 @@ function DesktopFrame({
   terminal,
   settings,
   machinePicker,
+  tabs,
   children,
 }: AppFrameProps) {
   const view = settings.open ? "settings" : "threads";
@@ -193,6 +193,7 @@ function DesktopFrame({
         {...(filesAvailable ? { files: { open: filesOpen, onToggle: onToggleFiles } } : {})}
         {...(terminal ? { terminal } : {})}
         machinePicker={machinePicker}
+        tabs={tabs}
       />
       <div ref={body} className="relative flex min-h-0 flex-1 pr-1.5 pb-1.5">
         {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
@@ -303,8 +304,6 @@ function CompactFrame({
   filesAvailable,
   filesOpen,
   onToggleFiles,
-  filePreviewOpen,
-  onCloseFilePreview,
   terminal,
   settings,
   machinePicker,
@@ -320,9 +319,7 @@ function CompactFrame({
   const inspecting = side !== undefined && !settings.open && pane === "main";
   // The terminal is a pane over the thread, and the agents or files a pane over that.
   const terminalOpen = terminal?.open === true && !settings.open && pane === "main";
-  // A file open in the files pane is one more pane down.
-  const previewing = files !== undefined && inspecting && filePreviewOpen;
-  const inspectDepth = (previewing ? 3 : 2) + (terminalOpen ? 1 : 0);
+  const inspectDepth = 2 + (terminalOpen ? 1 : 0);
   // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
   // button takes it up one.
   useBackNavigation(
@@ -342,8 +339,7 @@ function CompactFrame({
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
-      } else if (previewing) onCloseFilePreview();
-      else if (inspecting) (files !== undefined ? onToggleFiles : onToggleInspector)();
+      } else if (inspecting) (files !== undefined ? onToggleFiles : onToggleInspector)();
       else if (terminalOpen) terminal.onToggle();
       else onBack();
     },

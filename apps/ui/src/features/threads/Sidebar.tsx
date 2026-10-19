@@ -12,6 +12,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
@@ -35,8 +36,9 @@ interface SidebarProps {
   readonly threads: ReadonlyArray<ThreadSummary>;
   /** The open thread, or the open draft of a thread not started yet. */
   readonly selectedId: string | undefined;
-  readonly onSelect: (threadId: string) => void;
-  readonly onSelectDraft: (draft: NewThreadDraft) => void;
+  /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
+  readonly onSelect: (threadId: string, newTab?: boolean) => void;
+  readonly onSelectDraft: (draft: NewThreadDraft, newTab?: boolean) => void;
   readonly onDiscardDraft: (key: string) => void;
   readonly draftMachine: DraftMachine;
   readonly onNewThread: () => void;
@@ -91,8 +93,29 @@ export function Sidebar({
   // Read here rather than by the window, so writing a draft's first line re-renders only the list.
   const drafts = useAtomValue(newThreadDraftsAtom).filter((draft) => draft.mode === mode);
   const draftActions: DraftActions = { selectedId, onSelectDraft, onDiscardDraft, draftMachine };
+
+  // Ctrl 1 to 9 open the list's first nine rows and Ctrl 0 its tenth, counted as the list shows them:
+  // its scope, its sections and its folded groups decide, so the rendered rows are what's counted.
+  const root = useRef<HTMLDivElement>(null);
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey || searchOpen) return;
+    const digit = /^Digit(\d)$/.exec(event.code)?.[1];
+    if (digit === undefined) return;
+    event.preventDefault();
+    const rows = root.current?.querySelectorAll<HTMLElement>("nav [data-thread], nav [data-draft]");
+    const row = rows?.[digit === "0" ? 9 : Number(digit) - 1];
+    if (row?.dataset.thread !== undefined) onSelect(row.dataset.thread);
+    const draft = drafts.find((candidate) => candidate.key === row?.dataset.draft);
+    if (draft) onSelectDraft(draft);
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKey(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
   return (
-    <div className="flex h-full flex-col">
+    <div ref={root} className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pb-2">
         <Button
           onClick={onNewThread}
@@ -155,7 +178,8 @@ export function Sidebar({
 
 interface ChatActions {
   readonly selectedId: string | undefined;
-  readonly onSelect: (threadId: string) => void;
+  /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
+  readonly onSelect: (threadId: string, newTab?: boolean) => void;
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
   readonly onDelete: (threadId: string) => void;

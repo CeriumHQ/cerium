@@ -3,6 +3,7 @@ import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
 import { startBackend } from "./backend.ts";
+import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
@@ -156,6 +157,9 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
 ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
   if (typeof target === "string" && isAbsolute(target)) shell.showItemInFolder(normalize(target));
 });
+
+/** Opens a file the explorer lists in its own app (openPath.ts). */
+ipcMain.handle("cerium:open-path", (_event, target: unknown) => openPath(target));
 
 /** Saves an image the transcript shows, where the user picks; resolves whether it was saved. */
 ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>

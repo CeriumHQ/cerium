@@ -2,22 +2,14 @@ import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ChevronsDownUp, RefreshCw, Search, X } from "lucide-react";
-import {
-  useContext,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState, type KeyboardEvent } from "react";
 
 import { applyChanges, expandedAtom, treeAtom } from "../../backend/explorer.ts";
+import { shellBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { useCompact } from "../../app/compact.ts";
-import { SidePanelContext } from "../../app/sidePanel.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
+import { resolvePath } from "../transcript/paths.ts";
 import { Filter, ChangesList } from "./FileLists.tsx";
 import { FileTree } from "./FileTree.tsx";
 import { ancestors, changedRows, type Touched } from "./model.ts";
@@ -34,27 +26,17 @@ const toggleClass =
 export function FilesPanel({
   root,
   touched,
-  selected,
   messageBox,
-  preview,
-  onOpenFile,
   onClose,
 }: {
   /** The thread's folder. */
   root: string;
   /** The files this thread's agents changed. */
   touched: Touched;
-  /** The file open in the preview, relative to `root`. */
-  selected: string | undefined;
   messageBox: MessageBox | undefined;
-  /** In the phone-narrow window the preview fills the panel; this is it, while a file is open. */
-  preview: ReactNode | undefined;
-  onOpenFile: (path: string) => void;
   onClose: () => void;
 }) {
   const registry = useContext(RegistryContext);
-  const compact = useCompact();
-  const layout = useContext(SidePanelContext);
   const tree = useAtomValue(treeAtom(root));
   const [view, setView] = useState<View>("files");
   const [filtering, setFiltering] = useState(false);
@@ -80,11 +62,15 @@ export function FilesPanel({
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  const open = (path: string) => {
-    onOpenFile(path);
-    // A floating panel would cover the file it was asked to show.
-    if (layout.floating) layout.close();
-  };
+  // A file opens in the app the system gives its kind, on this computer only.
+  const opener = shellBridge()?.openPath;
+  const open =
+    opener === undefined
+      ? undefined
+      : (path: string) => {
+          const location = resolvePath(path, root);
+          if (location !== undefined) void opener(location);
+        };
 
   /** Opens the folders above `path` (and `path` itself, a folder) and shows it in the tree. */
   const reveal = (path: string, folder: boolean) => {
@@ -103,7 +89,7 @@ export function FilesPanel({
       registry,
       root,
       { paths: [], status: true, overflow: true },
-      { expanded: registry.get(expandedAtom(root)), file: selected },
+      registry.get(expandedAtom(root)),
     );
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -121,7 +107,6 @@ export function FilesPanel({
           rows={changed}
           repository={tree.changes.repository}
           root={root}
-          selected={selected}
           messageBox={messageBox}
           onOpen={open}
           onReveal={(path) => reveal(path, true)}
@@ -141,7 +126,6 @@ export function FilesPanel({
           root={root}
           tree={tree}
           touched={touched}
-          selected={selected}
           messageBox={messageBox}
           revealed={revealed}
           onRevealed={() => setRevealed(undefined)}
@@ -149,8 +133,6 @@ export function FilesPanel({
         />
       </ScrollArea>
     );
-
-  if (compact && preview !== undefined) return preview;
 
   return (
     // Ctrl F finds a file from anywhere in the panel; everything else keeps its own keys.
@@ -212,7 +194,7 @@ export function FilesPanel({
           onClose={() => setFiltering(false)}
           onChoose={(entry) => {
             reveal(entry.path, entry.folder);
-            if (!entry.folder) open(entry.path);
+            if (!entry.folder) open?.(entry.path);
           }}
         >
           {body}

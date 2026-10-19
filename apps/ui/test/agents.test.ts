@@ -77,6 +77,7 @@ const summary = (
   awaitingApproval: false,
   approvals: [],
   spawns: [],
+  questions: [],
   usage: { inputTokens: 0, outputTokens: 0 },
   startedAt: 0,
   ...overrides,
@@ -173,6 +174,19 @@ describe("requestQueue", () => {
     const queue = requestQueue([summary("lead", { approvals: [asking("p1", 1)] })]);
     expect(queue).toEqual([]);
   });
+
+  it("queues a child's questions among its requests, and leaves the lead's to the conversation", () => {
+    const question = (requestId: string, at: number) => ({
+      requestId,
+      questions: [{ question: "Which one?", options: [], multiSelect: false, allowOther: true }],
+      at,
+    });
+    const queue = requestQueue([
+      summary("lead", { questions: [question("q0", 1)] }),
+      summary("a", { parentId: "lead", approvals: [asking("p1", 10)], questions: [question("q1", 5)] }),
+    ]);
+    expect(queue.map((item) => item.key)).toEqual(["question:q1", "permission:p1"]);
+  });
 });
 
 describe("toAgentSummaries", () => {
@@ -234,6 +248,19 @@ describe("toAgentSummaries", () => {
     });
     const [lead] = toAgentSummaries([info("lead", undefined, "stopped")], [asked], []);
     expect(lead?.spawns).toEqual([]);
+  });
+
+  it("keeps an agent's questions until they close, and counts them as waiting on the user", () => {
+    const questions = [{ question: "Which one?", options: [], multiSelect: false, allowOther: true }];
+    const asked = event("a", 5, { _tag: "QuestionAsked", requestId: "q1", questions });
+    const [agent] = toAgentSummaries([info("a", "lead", "idle")], [asked], []);
+    expect(agent?.questions).toEqual([{ requestId: "q1", questions, at: 5 }]);
+    expect(agent?.awaitingApproval).toBe(true);
+
+    const closed = event("a", 6, { _tag: "QuestionResolved", requestId: "q1", outcome: "dismissed" });
+    const [after] = toAgentSummaries([info("a", "lead", "idle")], [asked, closed], []);
+    expect(after?.questions).toEqual([]);
+    expect(after?.awaitingApproval).toBe(false);
   });
 
   it("carries what a failed agent reported going wrong", () => {

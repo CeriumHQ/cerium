@@ -295,6 +295,7 @@ export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
 export const switchModel = Backend.mutation("SwitchModel");
 export const respondToPermission = Backend.mutation("RespondToPermission");
+export const answerQuestion = Backend.mutation("AnswerQuestion");
 export const resolveSpawnApproval = Backend.mutation("ResolveSpawnApproval");
 /**
  * Interrupting or stopping an agent reads the thread list again once done, so pressing stop on an

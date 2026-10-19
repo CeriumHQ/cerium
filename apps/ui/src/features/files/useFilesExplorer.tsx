@@ -1,31 +1,17 @@
 import type { AgentEvent } from "@cerium/protocol";
 import { RegistryContext } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 
 import { applyChanges, expandedAtom, watchAtom } from "../../backend/explorer.ts";
-import { useCompact } from "../../app/compact.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
-import { FilePreview } from "./FilePreview.tsx";
 import { FilesPanel } from "./FilesPanel.tsx";
-import { noTouched, touchedFiles, touchedKey } from "./model.ts";
-
-/** What the window needs of the file explorer: the panel, the preview over the conversation, and whether either is up. */
-export interface FilesExplorer {
-  /** The files panel, while it is open. */
-  readonly panel: ReactNode | undefined;
-  /** The open file over the conversation, in a window wide enough for that. */
-  readonly overlay: ReactNode | undefined;
-  /** A file is open in the preview. */
-  readonly previewing: boolean;
-  /** Closes the preview. */
-  readonly closePreview: () => void;
-}
+import { noTouched, touchedFiles } from "./model.ts";
 
 /**
- * The explorer of a thread's folder `root`: which file is open, and keeping what it shows current.
- * While the panel or a preview is up, the machine says what changes under `root`, and the files this
- * thread's agents report changing are read again at once, so what's on screen follows their work.
+ * The files panel of a thread's folder `root`, while it is open, kept current: the machine says what
+ * changes under `root`, and the files this thread's agents report changing are read again at once,
+ * so what's on screen follows their work.
  */
 export function useFilesExplorer({
   root,
@@ -42,20 +28,14 @@ export function useFilesExplorer({
   /** The files panel is shown. */
   open: boolean;
   onClose: () => void;
-}): FilesExplorer {
+}): ReactNode | undefined {
   const registry = useContext(RegistryContext);
-  const compact = useCompact();
-  const [shown, setShown] = useState<{ readonly root: string; readonly path: string }>();
-  // In the narrow window a file lives in the panel's pane, so closing the panel closes it too.
-  if (compact && !open && shown !== undefined) setShown(undefined);
-  const file = root !== undefined && shown?.root === root ? shown.path : undefined;
-  const active = root !== undefined && (open || file !== undefined);
+  const active = root !== undefined && open;
   const touched = active ? touchedFiles(events, root) : noTouched;
 
   // The machine says what changed under the folder, in batches.
   const onBatch = useEffectEvent((batch: Parameters<typeof applyChanges>[2]) => {
-    if (root !== undefined)
-      applyChanges(registry, root, batch, { expanded: registry.get(expandedAtom(root)), file });
+    if (root !== undefined) applyChanges(registry, root, batch, registry.get(expandedAtom(root)));
   });
   useEffect(() => {
     if (!active || root === undefined) return;
@@ -86,36 +66,7 @@ export function useFilesExplorer({
     if (fresh.length > 0) onBatch({ paths: fresh, status: true });
   }, [touched, active, root]);
 
-  const closePreview = () => setShown(undefined);
-  const touch = file === undefined ? undefined : touched.files.get(touchedKey(touched, file))?.change;
-  const preview =
-    root !== undefined && file !== undefined ? (
-      <FilePreview
-        key={file}
-        root={root}
-        path={file}
-        touch={touch}
-        variant={compact ? "pane" : "overlay"}
-        onClose={closePreview}
-        messageBox={messageBox}
-      />
-    ) : undefined;
-
-  return {
-    panel:
-      open && root !== undefined ? (
-        <FilesPanel
-          root={root}
-          touched={touched}
-          selected={file}
-          messageBox={messageBox}
-          preview={compact ? preview : undefined}
-          onOpenFile={(path) => setShown({ root, path })}
-          onClose={onClose}
-        />
-      ) : undefined,
-    overlay: compact ? undefined : preview,
-    previewing: file !== undefined,
-    closePreview,
-  };
+  return active ? (
+    <FilesPanel root={root} touched={touched} messageBox={messageBox} onClose={onClose} />
+  ) : undefined;
 }

@@ -108,6 +108,40 @@ describe("layout", () => {
     ]);
     expect(decided.map((item) => item.kind)).toEqual(["input", "header", "run"]);
   });
+
+  it("shows a question as its card, and what the agent does with the answer as a new response", () => {
+    const question = {
+      kind: "question",
+      id: "question:q",
+      requestId: "q",
+      questions: [{ question: "Which?", options: [], multiSelect: false, allowOther: true }],
+      resolution: { outcome: "answered", answers: [{ choices: [], text: "That one" }] },
+    } satisfies TranscriptBlock;
+    const answer = {
+      kind: "notice",
+      id: "n",
+      item: { _tag: "SystemNotice", text: "The user answered…", questionId: "q" },
+    } satisfies TranscriptBlock;
+    const items = layout([
+      user("u"),
+      tool("c", "mcp__cerium__ask_user", { status: "asked" }),
+      question,
+      turnEnd("e1"),
+      answer,
+      message("m", "Going with that one."),
+    ]);
+    expect(items.map((item) => item.kind)).toEqual([
+      "input",
+      "header",
+      "block",
+      "turnEnd",
+      "header",
+      "block",
+    ]);
+
+    const refused = tool("c2", "mcp__cerium__ask_user", "Ask at most four questions.", "error");
+    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "header", "run"]);
+  });
 });
 
 describe("showsProgress", () => {
@@ -118,6 +152,17 @@ describe("showsProgress", () => {
     expect(showsProgress(streaming)).toBe(true);
     const [, , done] = layout([user("u"), message("m", "Hello")]);
     expect(showsProgress(done)).toBe(false);
+  });
+
+  it("is true while a question waits on the user", () => {
+    const question = {
+      kind: "question",
+      id: "question:q",
+      requestId: "q",
+      questions: [{ question: "Which?", options: [], multiSelect: false, allowOther: true }],
+    } satisfies TranscriptBlock;
+    const [, , open] = layout([user("u"), question]);
+    expect(showsProgress(open)).toBe(true);
   });
 });
 

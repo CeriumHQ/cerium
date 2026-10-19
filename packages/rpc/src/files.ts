@@ -1,4 +1,4 @@
-import { ImageData, LenientArray, withFallback } from "@cerium/protocol";
+import { LenientArray, withFallback } from "@cerium/protocol";
 import { Schema } from "effect";
 
 // What the file explorer asks of a machine about a work thread's folder. Every path is relative to
@@ -56,47 +56,6 @@ export const FileStatuses = Schema.Struct({
   truncated: Schema.optionalKey(Schema.Boolean),
 });
 export type FileStatuses = typeof FileStatuses.Type;
-
-/** A file as the preview shows it. */
-export const FilePreview = Schema.Union([
-  /** Text, decoded; `truncated` when the file is longer than the preview reads. */
-  Schema.TaggedStruct("Text", {
-    text: Schema.String,
-    size: Schema.Finite,
-    truncated: Schema.Boolean,
-  }),
-  Schema.TaggedStruct("Image", { image: ImageData, size: Schema.Finite }),
-  /** Not text, or too large to show. */
-  Schema.TaggedStruct("Binary", { size: Schema.Finite }),
-  /** It isn't on disk (any more). */
-  Schema.TaggedStruct("Missing", {}),
-]);
-export type FilePreview = typeof FilePreview.Type;
-
-export const DiffLine = Schema.Struct({
-  kind: Schema.Literals(["context", "removed", "added"]),
-  text: Schema.String,
-});
-export type DiffLine = typeof DiffLine.Type;
-
-/** A stretch of changed lines with the unchanged ones around it, starting at these lines (from 1). */
-export const DiffHunk = Schema.Struct({
-  oldStart: Schema.Finite,
-  newStart: Schema.Finite,
-  lines: Schema.Array(DiffLine),
-});
-export type DiffHunk = typeof DiffHunk.Type;
-
-/** A file against the last commit. */
-export const FileDiff = Schema.Struct({
-  /** Empty for a file that is only renamed, or whose changes git has no lines for. */
-  hunks: Schema.Array(DiffHunk),
-  /** Git has no lines to show: the file isn't text. */
-  binary: Schema.optionalKey(Schema.Boolean),
-  /** The diff is longer than is sent. */
-  truncated: Schema.optionalKey(Schema.Boolean),
-});
-export type FileDiff = typeof FileDiff.Type;
 
 /** What changed in a folder since the last batch, so the explorer reads only that again. */
 export const FilesChanged = Schema.Struct({

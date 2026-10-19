@@ -9,19 +9,6 @@ import { relativePath, resolvePath } from "../transcript/paths.ts";
 /** The `RPC_VERSION` that brought the explorer's calls; an older machine can't be browsed. */
 export const FILES_VERSION = 3;
 
-/** A size as people say it: `812 B`, `14.2 KB`, `3 MB`. */
-export const byteSize = (bytes: number): string => {
-  if (bytes < 1000) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1000;
-  let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit++;
-  }
-  return `${value >= 100 || Number.isInteger(value) ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-};
-
 // ---------------------------------------------------------------------------------------------
 // Git
 

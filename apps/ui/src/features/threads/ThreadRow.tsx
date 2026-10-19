@@ -30,7 +30,8 @@ export interface ThreadRowProps {
   readonly harness: boolean;
   /** An archived thread's row is dimmer. */
   readonly quiet?: boolean;
-  readonly onSelect: (threadId: string) => void;
+  /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
+  readonly onSelect: (threadId: string, newTab?: boolean) => void;
   readonly onRename: RenameThread;
   /** The menu's items, built from what the row lets them do; none when the thread has no actions here. */
   readonly menu?: (controls: RowControls) => ReactNode;
@@ -108,7 +109,15 @@ export function ThreadRow({
   const button = (
     <Button
       ref={row}
-      onClick={() => onSelect(thread.id)}
+      // Ctrl or the middle button opens it in a tab of its own.
+      onClick={(event) => onSelect(thread.id, event.ctrlKey || event.metaKey)}
+      onMouseDown={(event) => {
+        if (event.button === 1) event.preventDefault();
+      }}
+      onAuxClick={(event) => {
+        if (event.button === 1) onSelect(thread.id, true);
+      }}
+      data-thread={thread.id}
       aria-current={selected ? "page" : undefined}
       // The full title, and where it is, for a row too narrow to say.
       title={mark === "badge" && thread.project ? `${title}\n${thread.project}` : title}

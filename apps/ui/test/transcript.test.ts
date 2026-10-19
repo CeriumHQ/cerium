@@ -55,6 +55,33 @@ describe("buildTranscript", () => {
     expect(request).toMatchObject({ kind: "permission", resolution: { decision: "deny", scope: "once" } });
   });
 
+  it("keeps a question open until it closes, with what the user answered", () => {
+    const questions = [
+      {
+        question: "Which?",
+        options: [{ label: "This" }, { label: "That" }],
+        multiSelect: false,
+        allowOther: true,
+      },
+    ] as const;
+    const asked = { _tag: "QuestionAsked", requestId: "q", questions } as const;
+    expect(buildTranscript(events(asked))).toEqual([
+      { kind: "question", id: "question:q", requestId: "q", questions },
+    ]);
+    const [answered] = buildTranscript(
+      events(asked, {
+        _tag: "QuestionResolved",
+        requestId: "q",
+        outcome: "answered",
+        answers: [{ choices: ["That"] }],
+      }),
+    );
+    expect(answered).toMatchObject({
+      kind: "question",
+      resolution: { outcome: "answered", answers: [{ choices: ["That"] }] },
+    });
+  });
+
   it("turns delivered inputs into user messages and notices, and closes turns with their usage", () => {
     const blocks = buildTranscript(transcriptFixture);
     const kinds = blocks.map((block) => block.kind);
