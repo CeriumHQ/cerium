@@ -120,7 +120,9 @@ export class Projects extends Context.Service<
           const names = yield* fs
             .readDirectory(path.join(cwd, workspace))
             .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
-          roots.push(...names.toSorted().map((name) => path.join(cwd, workspace, name)));
+          roots.push(
+            ...names.toSorted((a, b) => a.localeCompare(b)).map((name) => path.join(cwd, workspace, name)),
+          );
         }
         for (const root of roots) {
           for (const name of ICON_NAMES) {

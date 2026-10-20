@@ -155,12 +155,15 @@ export function MentionMenu({
         {files ? "Files and folders" : `${harness} skills`}
         {results.state === "loading" ? <LoaderCircle size={11} className="animate-spin" /> : null}
       </div>
+      {/* The editor keeps focus and points into this list, which a <select> can't be. */}
+      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
       <div ref={list} id="mention-menu" role="listbox" className="max-h-64 overflow-y-auto px-1 pb-1">
         {results.options.map((option, index) => (
           <div
             key={option.key}
             id={`mention-option-${index}`}
             data-index={index}
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="option"
             tabIndex={-1}
             aria-selected={index === active}

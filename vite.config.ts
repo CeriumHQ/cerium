@@ -20,6 +20,8 @@ export default defineConfig({
       // Type-aware rules include Effect's diagnostics (patched in by `effect-tsgo patch`).
       // `tsc -b` remains the authoritative type gate.
       typeAware: true,
+      // A warning fails the check like an error, so `bun run verify` passing means no new ones.
+      denyWarnings: true,
     },
     overrides: [
       {

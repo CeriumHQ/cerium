@@ -308,6 +308,8 @@ export function PromptEditor({
           if (typeof ref === "function") ref(element);
           else if (ref) ref.current = element;
         }}
+        // A <textarea> can't hold the mention chips this editable box does.
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="textbox"
         tabIndex={0}
         aria-multiline

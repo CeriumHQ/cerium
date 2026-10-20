@@ -86,6 +86,8 @@ function OwnWords({
   }
   const used = draft.text.trim() !== "";
   return (
+    // The label holds Base UI's input, which the rule can't see is a control.
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       className={`flex items-center gap-2.5 px-3 py-1.5 transition-colors ${used ? "bg-surface-selected" : ""}`}
     >
@@ -140,6 +142,8 @@ function QuestionBody({
       {question.options.length === 0 ? (
         words
       ) : question.multiSelect ? (
+        // A <fieldset> would bring its own border and legend to undo; the group only names the choices.
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         <div role="group" aria-label={question.question} className={list}>
           {question.options.map((option) => (
             <Checkbox.Root
@@ -230,8 +234,11 @@ export function QuestionCard({
   };
 
   return (
+    // Ctrl Enter from any of the card's fields sends the answers; the fields take the keys themselves.
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className={approvalShell}
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="group"
       aria-label="Questions for you"
       onKeyDown={(event) => {

@@ -126,6 +126,8 @@ export function ProjectPicker({
             {...(returnFocus ? { finalFocus: returnFocus } : {})}
             className="w-80 origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
           >
+            {/* The label holds Base UI's input, which the rule can't see is a control. */}
+            {/* oxlint-disable-next-line jsx-a11y/label-has-associated-control */}
             <label className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
               <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
               <Combobox.Input
