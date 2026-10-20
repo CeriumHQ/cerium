@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { Files, type FilesError } from "./files.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
+import { spendReport } from "./spend.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
@@ -149,6 +150,18 @@ export const Handlers = MachineRpcs.toLayer(
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
       HarnessManifests: () => Effect.succeed([...adapters.values()].map((adapter) => adapter.manifest)),
       WatchSubscriptionUsage: () => usage.watch,
+      SpendReport: ({ edges }) =>
+        Effect.gen(function* () {
+          if (edges.some((edge, index) => index > 0 && edge <= edges[index - 1]!)) {
+            return yield* new CeriumError({ message: "The report's edges must ascend." });
+          }
+          const [events, agents, threads] = yield* Effect.all([
+            store.listSpendEvents(edges[0]!, edges.at(-1)!),
+            store.listAllAgents,
+            store.listThreads,
+          ]);
+          return spendReport({ events, agents, threads, edges });
+        }).pipe(Effect.mapError((error) => (error instanceof CeriumError ? error : refuse(error)))),
       LoginHarness: ({ provider }) =>
         Stream.unwrap(
           Effect.fromNullishOr(adapters.get(provider)?.login).pipe(

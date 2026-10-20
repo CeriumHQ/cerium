@@ -63,6 +63,23 @@ export interface MessageMatch {
   readonly passage: ReadonlyArray<{ readonly text: string; readonly match: boolean }>;
 }
 
+/**
+ * What the spend report reads of one event: the turns' usage, and the events that say which model
+ * those turns ran on. Counts are absent for any other event.
+ */
+export interface SpendEvent {
+  readonly agentId: AgentId;
+  readonly threadId: ThreadId;
+  readonly at: number;
+  readonly tag: "UsageReported" | "SessionStarted" | "ModelChanged" | "TurnInput";
+  /** On `SessionStarted` and `ModelChanged`. */
+  readonly model?: string;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cachedInputTokens?: number;
+  readonly costUsd?: number;
+}
+
 /** How many words of a search count; the rest are ignored. */
 const SEARCH_WORDS = 8;
 
@@ -141,6 +158,11 @@ export class Store extends Context.Service<
       text: string,
       limit: number,
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /**
+     * The usage reported in `[from, to)`, with the events that say which model each turn ran on
+     * (these from all time), by agent and in the order they happened.
+     */
+    listSpendEvents(from: number, to: number): Effect.Effect<ReadonlyArray<SpendEvent>, StoreError>;
     /** How many events of each thread the cloud copy keeps (all but streamed text), by thread id. */
     readonly countSyncedEvents: Effect.Effect<ReadonlyMap<string, number>, StoreError>;
     /**
@@ -359,6 +381,36 @@ export class Store extends Context.Service<
                     .orderBy(desc(events.at), desc(events.sequence))
                     .limit(limit),
                 ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+          // The fields are read in SQL, and only from the events that hold them: a turn's input can
+          // carry attachments, which parsing for a model would read through.
+          listSpendEvents: (from, to) =>
+            query("Could not read usage", async () => {
+              const rows = await db.values<
+                [string, string, number, SpendEvent["tag"], ...Array<string | number | null>]
+              >(sql`
+                SELECT agent_id, thread_id, at, tag,
+                  CASE WHEN tag IN ('SessionStarted', 'ModelChanged')
+                    THEN json_extract(payload, '$.model') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.inputTokens') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.outputTokens') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.cachedInputTokens') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.costUsd') END
+                FROM events
+                WHERE tag IN ('SessionStarted', 'ModelChanged', 'TurnInput')
+                  OR (tag = 'UsageReported' AND at >= ${from} AND at < ${to})
+                ORDER BY agent_id, sequence`);
+              return rows.map(([agentId, threadId, at, tag, model, input, output, cached, cost]) => ({
+                agentId: agentId as AgentId,
+                threadId: threadId as ThreadId,
+                at,
+                tag,
+                ...(typeof model === "string" ? { model } : {}),
+                ...(typeof input === "number" ? { inputTokens: input } : {}),
+                ...(typeof output === "number" ? { outputTokens: output } : {}),
+                ...(typeof cached === "number" ? { cachedInputTokens: cached } : {}),
+                ...(typeof cost === "number" ? { costUsd: cost } : {}),
+              }));
+            }),
           countSyncedEvents: query("Could not count events", () =>
             db
               .select({ threadId: events.threadId, events: count() })

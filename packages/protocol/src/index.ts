@@ -8,6 +8,7 @@ export * from "./models.ts";
 export * from "./orchestration.ts";
 export * from "./push.ts";
 export * from "./settings.ts";
+export * from "./spend.ts";
 export * from "./sync.ts";
 export * from "./todos.ts";
 export * from "./usage.ts";

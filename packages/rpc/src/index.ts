@@ -27,6 +27,8 @@ import {
   Settings,
   SettingsPatch,
   SkillInfo,
+  SpendEdges,
+  SpendReport,
   ThreadId,
   ThreadInfo,
   ThreadMode,
@@ -60,7 +62,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 8;
+export const RPC_VERSION = 9;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -237,6 +239,11 @@ export const MachineRpcs = RpcGroup.make(
    * minutes). Harnesses without one are left out. Since `RPC_VERSION` 6.
    */
   Rpc.make("WatchSubscriptionUsage", { success: UsageSnapshot, stream: true }),
+  /**
+   * What the agents of this machine's threads used between the first and last of `edges`, in tokens
+   * and in the cost harnesses reported, cut at each edge. Since `RPC_VERSION` 9.
+   */
+  Rpc.make("SpendReport", { payload: { edges: SpendEdges }, success: SpendReport, error: CeriumError }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the
    * harness's SDK keeps the credential and Cerium never sees it.

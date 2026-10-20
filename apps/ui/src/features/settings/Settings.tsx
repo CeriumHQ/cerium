@@ -7,6 +7,7 @@ import {
   Bot,
   ChevronRight,
   CircleArrowUp,
+  CircleDollarSign,
   CircleUserRound,
   Gauge,
   Keyboard,
@@ -27,6 +28,7 @@ import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { ToolSettings } from "./Tools.tsx";
 import { UpdateSettings } from "./Updates.tsx";
+import { SpendSettings } from "./Spend.tsx";
 import { UsageSettings } from "./Usage.tsx";
 
 export type SettingsCategory =
@@ -37,6 +39,7 @@ export type SettingsCategory =
   | "tools"
   | "harnesses"
   | "usage"
+  | "spend"
   | "keyboard"
   | "archived"
   | "updates";
@@ -56,6 +59,7 @@ const categories: ReadonlyArray<{
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
   { id: "usage", label: "Usage", icon: Gauge },
+  { id: "spend", label: "Cost", icon: CircleDollarSign },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "archived", label: "Archived", icon: Archive },
   // The installed app updates itself through the shell (apps/desktop/src/updater.ts).
@@ -224,6 +228,8 @@ export function SettingsView({
       return <HarnessSettings key={category} />;
     case "usage":
       return <UsageSettings key={category} {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})} />;
+    case "spend":
+      return <SpendSettings key={category} />;
     case "keyboard":
       return <KeyboardSettings key={category} />;
     case "archived":

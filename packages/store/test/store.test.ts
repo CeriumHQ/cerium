@@ -466,6 +466,51 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("lists the usage reported in a span with the events that name each turn's model", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const at = (sequence: number, time: number, payload: AgentEvent["payload"]): AgentEvent => ({
+          ...event(sequence),
+          at: time,
+          payload,
+        });
+        yield* store.appendEvents([
+          at(0, 1, { _tag: "SessionStarted", provider: "claude", providerSessionId: "s", model: "m1" }),
+          at(1, 2, { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "go" }] }),
+          at(2, 5, { _tag: "UsageReported", inputTokens: 1, outputTokens: 2 }),
+          at(3, 15, { _tag: "ModelChanged", model: "m2" }),
+          at(4, 20, {
+            _tag: "UsageReported",
+            inputTokens: 3,
+            outputTokens: 4,
+            cachedInputTokens: 5,
+            costUsd: 0.5,
+          }),
+          at(5, 30, { _tag: "UsageReported", inputTokens: 9, outputTokens: 9 }),
+          at(6, 31, { _tag: "MessageCompleted", messageId: "m", text: "hi" }),
+        ]);
+        const rest = { agentId: lead.id, threadId: thread.id };
+        assert.deepStrictEqual(yield* store.listSpendEvents(10, 30), [
+          { ...rest, at: 1, tag: "SessionStarted", model: "m1" },
+          { ...rest, at: 2, tag: "TurnInput" },
+          { ...rest, at: 15, tag: "ModelChanged", model: "m2" },
+          {
+            ...rest,
+            at: 20,
+            tag: "UsageReported",
+            inputTokens: 3,
+            outputTokens: 4,
+            cachedInputTokens: 5,
+            costUsd: 0.5,
+          },
+        ]);
+      }),
+    ),
+  );
+
   it.effect("enforces foreign keys", () =>
     withStore(
       Effect.gen(function* () {
