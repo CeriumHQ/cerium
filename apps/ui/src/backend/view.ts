@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentInfo, ModelInfo, ProviderId } from "@cerium/protocol";
+import type { AgentEvent, AgentInfo, ModelInfo, ProviderId, TodoItem } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
 import type {
@@ -57,7 +57,7 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
   };
 };
 
-/** Each agent with what its events say about it: usage, latest message, model and pending approvals. */
+/** Each agent with what its events say about it: usage, todo list, latest message, model and pending approvals. */
 export const toAgentSummaries = (
   agents: ReadonlyArray<AgentInfo>,
   events: ReadonlyArray<AgentEvent>,
@@ -67,6 +67,8 @@ export const toAgentSummaries = (
     let inputTokens = 0;
     let outputTokens = 0;
     let costUsd: number | undefined;
+    let todos: ReadonlyArray<TodoItem> = [];
+    let todosNote: string | undefined;
     let lastMessage: string | undefined;
     let error: string | undefined;
     let model = agent.model;
@@ -83,6 +85,10 @@ export const toAgentSummaries = (
           break;
         case "MessageCompleted":
           lastMessage = payload.text;
+          break;
+        case "TodosUpdated":
+          todos = payload.items;
+          todosNote = payload.explanation;
           break;
         case "SessionStarted":
         case "ModelChanged":
@@ -145,6 +151,8 @@ export const toAgentSummaries = (
       spawns,
       questions,
       usage: { inputTokens, outputTokens, ...(costUsd === undefined ? {} : { costUsd }) },
+      todos,
+      ...(todosNote ? { todosNote } : {}),
       ...(lastMessage ? { lastMessage } : {}),
       ...(error ? { error } : {}),
       startedAt: agent.createdAt,

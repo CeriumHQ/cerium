@@ -79,6 +79,7 @@ const summary = (
   spawns: [],
   questions: [],
   usage: { inputTokens: 0, outputTokens: 0 },
+  todos: [],
   startedAt: 0,
   ...overrides,
 });
@@ -205,6 +206,33 @@ describe("toAgentSummaries", () => {
     }) as unknown as AgentInfo;
   const event = (agentId: string, at: number, payload: Record<string, unknown>) =>
     ({ id: `${agentId}:${at}`, threadId: "t", agentId, sequence: at, at, payload }) as unknown as AgentEvent;
+
+  it("keeps each agent's latest todo list whole, and why its plan changed", () => {
+    const first = event("lead", 1, {
+      _tag: "TodosUpdated",
+      items: [
+        { text: "Write", status: "inProgress" },
+        { text: "Test", status: "pending" },
+      ],
+    });
+    const second = event("lead", 2, {
+      _tag: "TodosUpdated",
+      items: [
+        { text: "Write", status: "completed" },
+        { text: "Test", status: "inProgress" },
+      ],
+      explanation: "Tests come next",
+    });
+    const other = event("child", 3, { _tag: "TodosUpdated", items: [{ text: "Look", status: "pending" }] });
+    const [lead, child] = toAgentSummaries([info("lead"), info("child", "lead")], [first, second, other], []);
+    expect(lead?.todos.map((each) => each.status)).toEqual(["completed", "inProgress"]);
+    expect(lead?.todosNote).toBe("Tests come next");
+    expect(child?.todos).toEqual([{ text: "Look", status: "pending" }]);
+    expect(child?.todosNote).toBeUndefined();
+
+    const cleared = event("lead", 4, { _tag: "TodosUpdated", items: [] });
+    expect(toAgentSummaries([info("lead")], [first, cleared], [])[0]?.todos).toEqual([]);
+  });
 
   it("keeps a lead's spawn request until it is answered, and what the agent would run with", () => {
     const asked = event("lead", 5, {

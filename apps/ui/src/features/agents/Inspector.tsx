@@ -34,6 +34,7 @@ import {
   type AnswerQuestion,
   type AnswerSpawn,
 } from "./ApprovalTray.tsx";
+import { Plan } from "./Plan.tsx";
 import {
   accessLabel,
   agentMenuPlan,
@@ -343,6 +344,13 @@ function AgentDetails({
           {whenAgo(agent.startedAt)}
         </dd>
       </dl>
+
+      <Plan
+        key={agent.id}
+        items={agent.todos}
+        working={agent.state === "running"}
+        explanation={agent.todosNote}
+      />
 
       {onAnswerApproval && agent.approvals.length > 0 ? (
         <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />

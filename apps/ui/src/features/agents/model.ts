@@ -1,4 +1,11 @@
-import type { AccessMode, AgentState, ProviderId, Question, ReasoningEffort } from "@cerium/protocol";
+import type {
+  AccessMode,
+  AgentState,
+  ProviderId,
+  Question,
+  ReasoningEffort,
+  TodoItem,
+} from "@cerium/protocol";
 
 /** A permission request an agent is waiting on the user to answer. */
 export interface PendingApproval {
@@ -52,6 +59,10 @@ export interface AgentSummary {
   /** The questions waiting on the user's answer, oldest first. */
   readonly questions: ReadonlyArray<PendingQuestion>;
   readonly usage: { readonly inputTokens: number; readonly outputTokens: number; readonly costUsd?: number };
+  /** The agent's todo list or plan as its harness last reported it, whole; empty when it keeps none. */
+  readonly todos: ReadonlyArray<TodoItem>;
+  /** Why the agent last changed its plan, when its harness said. */
+  readonly todosNote?: string;
   /** The agent's latest completed message. */
   readonly lastMessage?: string;
   /** What its harness last reported going wrong; what a failed agent stopped on. */
