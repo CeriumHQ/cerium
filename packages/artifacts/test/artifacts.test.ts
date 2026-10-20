@@ -6,11 +6,14 @@ import {
   artifactGuide,
   artifactHostPage,
   DEFAULT_THEMES,
+  imageMediaType,
   isLegacyArtifact,
+  localImages,
   readFrameMessage,
   THEME_TOKENS,
   themeFromTokens,
   themeUpdate,
+  withLocalImages,
 } from "../src/index.ts";
 
 const theme = DEFAULT_THEMES.dark;
@@ -116,6 +119,50 @@ describe("isLegacyArtifact", () => {
     assert.isFalse(isLegacyArtifact('<div class="x"></div><script src="https://x"></script>'));
     assert.isFalse(isLegacyArtifact('<!doctype html><div class="card"></div>'));
     assert.isFalse(isLegacyArtifact("<p>plain</p>"));
+  });
+});
+
+describe("local images", () => {
+  const page = [
+    '<img src="C:\\shots\\after.png" alt="">',
+    "<img src='/home/me/plot.SVG'>",
+    '<div style="background: url(D:/art/bg.webp)"></div>',
+    '<style>.hero { background: url("file:///C:/My%20Pictures/hero.jpg"); }</style>',
+    '<script>const shot = "C:\\\\shots\\\\after.png"; const remote = "https://example.com/a.png";</script>',
+    '<a href="//cdn.example.com/x.png">x</a><p>/not/quoted.png</p><img src="relative/a.png">',
+  ].join("\n");
+
+  it("finds the image files a page names by absolute path, each once", () => {
+    assert.deepStrictEqual(localImages(page), [
+      "C:\\shots\\after.png",
+      "/home/me/plot.SVG",
+      "C:/My Pictures/hero.jpg",
+      "D:/art/bg.webp",
+    ]);
+    assert.deepStrictEqual(localImages("<p>No images</p>"), []);
+  });
+
+  it("puts each file's data URL in place of every way the page wrote it", () => {
+    const images = new Map([
+      ["C:\\shots\\after.png", "data:image/png;base64,AAA"],
+      ["D:/art/bg.webp", "data:image/webp;base64,BBB"],
+      ["C:/My Pictures/hero.jpg", "data:image/jpeg;base64,CCC"],
+    ]);
+    const html = withLocalImages(page, images);
+    assert.include(html, '<img src="data:image/png;base64,AAA" alt="">');
+    assert.include(html, 'const shot = "data:image/png;base64,AAA"');
+    assert.include(html, "url(data:image/webp;base64,BBB)");
+    assert.include(html, 'url("data:image/jpeg;base64,CCC")');
+    // Unread files keep the path they were written with.
+    assert.include(html, "<img src='/home/me/plot.SVG'>");
+    assert.include(html, "https://example.com/a.png");
+    assert.strictEqual(withLocalImages(page, new Map()), page);
+  });
+
+  it("knows image types by extension", () => {
+    assert.strictEqual(imageMediaType("C:\\a\\b.JPEG"), "image/jpeg");
+    assert.strictEqual(imageMediaType("/a/b.svg"), "image/svg+xml");
+    assert.isUndefined(imageMediaType("/a/b.txt"));
   });
 });
 

@@ -1,11 +1,12 @@
 import { findBrowser, launchBrowser, Page, pickPage } from "@cerium/browser";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { artifactDocument, fontFaces } from "./document.ts";
+import { imageMediaType, localImages, withLocalImages } from "./images.ts";
 import { ARTIFACT_MAX_HEIGHT } from "./limits.ts";
 import { BACKDROPS, DEFAULT_THEMES, type ArtifactMode } from "./theme.ts";
 
@@ -46,6 +47,27 @@ const appFonts = (() => {
   };
 })();
 
+/** As large as an image the app reads for the conversation. */
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** The local images a page names, read as the conversation will, and those that couldn't be. */
+const readLocalImages = (html: string) => {
+  const images = new Map<string, string>();
+  const missing: Array<{ level: string; text: string }> = [];
+  for (const path of localImages(html)) {
+    const mediaType = imageMediaType(path);
+    try {
+      if (mediaType === undefined || !isAbsolute(path)) throw new Error("not an image file");
+      if (statSync(path).size > MAX_IMAGE_BYTES) throw new Error("larger than 25 MB");
+      images.set(path, `data:${mediaType};base64,${readFileSync(path).toString("base64")}`);
+    } catch (cause) {
+      const reason = cause instanceof Error && "code" in cause ? String(cause.code) : String(cause);
+      missing.push({ level: "error", text: `Couldn't read the local image ${path}: ${reason}` });
+    }
+  }
+  return { images, missing };
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const MEASURE = `(() => {
@@ -71,9 +93,16 @@ export const previewArtifact = async (input: {
       "Previews need Microsoft Edge or Google Chrome, and neither is installed.",
     );
   }
+  const { images, missing } = readLocalImages(input.html);
   const folder = mkdtempSync(join(tmpdir(), "cerium-artifact-"));
   const file = join(folder, "artifact.html");
-  writeFileSync(file, artifactDocument(input.html, { theme: DEFAULT_THEMES[input.mode], fonts: appFonts() }));
+  writeFileSync(
+    file,
+    artifactDocument(withLocalImages(input.html, images), {
+      theme: DEFAULT_THEMES[input.mode],
+      fonts: appFonts(),
+    }),
+  );
   const browser = await launchBrowser({ executable, visible: false, width: input.width, height: 800 });
   let page: Page | undefined;
   try {
@@ -115,7 +144,7 @@ export const previewArtifact = async (input: {
       width: input.width,
       contentHeight,
       growsWithFrame: second > first + 2,
-      console: [...page.drainConsole(), ...loads].slice(0, 50),
+      console: [...missing, ...page.drainConsole(), ...loads].slice(0, 50),
     };
   } finally {
     page?.close();

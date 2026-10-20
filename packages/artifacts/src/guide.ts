@@ -89,8 +89,10 @@ Canvas and chart libraries can't read CSS variables, so the page gets \`window.c
 
 The page runs sandboxed, in its own origin:
 
-- Nothing over plain http, and nothing on this machine: no \`localhost\`, no local file paths. Images
-  are https URLs or \`data:\` URLs; inline small SVGs.
+- Nothing over plain http, and nothing on this machine: no \`localhost\`, no fetching local files.
+- Images are https URLs, \`data:\` URLs or inline SVG, or an image file on this machine by its absolute
+  path (\`<img src="C:\\shots\\after.png">\`, \`url("/home/me/plot.svg")\`, or a string in a script):
+  the app embeds the file before the page renders. Relative paths don't work.
 - \`localStorage\`, cookies, \`alert\` and popups are unavailable. Forms don't submit; handle them in script.
 - Links open in the user's browser.
 

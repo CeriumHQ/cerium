@@ -3,22 +3,27 @@ import {
   artifactDocument,
   fontFaces,
   isLegacyArtifact,
+  localImages,
   readFrameMessage,
   RENDER_MESSAGE,
   THEME_MESSAGE,
   themeFromTokens,
   themeUpdate,
+  withLocalImages,
   type ArtifactTheme,
 } from "@cerium/artifacts";
 import legacyCss from "@cerium/artifacts/legacy.css?raw";
 import { Button } from "@base-ui/react/button";
 import { Dialog } from "@base-ui/react/dialog";
+import { useAtomValue } from "@effect/atom-react";
 import redHatMono from "@fontsource-variable/red-hat-mono/files/red-hat-mono-latin-wght-normal.woff2?inline";
 import redHatText from "@fontsource-variable/red-hat-text/files/red-hat-text-latin-wght-normal.woff2?inline";
+import { AsyncResult } from "effect/reactivity";
 import { Maximize2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
+import { artifactImagesAtom } from "../../backend/files.ts";
 import { CopyButton } from "./CopyButton.tsx";
 
 // Agents' HTML visuals. Each renders in a frame sandboxed into an opaque origin, which loads the host
@@ -32,6 +37,8 @@ const PLACEHOLDER_HEIGHT = 112;
 const HOST_URL = `${import.meta.env.BASE_URL}artifact.html`;
 
 const FONTS = fontFaces({ sans: redHatText, mono: redHatMono });
+
+const NO_IMAGES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The height each artifact last reported, so one the transcript mounts again (scrolling back, a
@@ -165,20 +172,37 @@ function ArtifactFrame({
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(() => (remember ? heights.get(code) : undefined));
   const [drawn, setDrawn] = useState(false);
+  const [hostReady, setHostReady] = useState(false);
+  const rendered = useRef(false);
   const legacy = isLegacyArtifact(code);
+  // The local images the page names, read through the backend before it renders: the page itself
+  // can't load a file. Ones that can't be read keep their path and fail in the page like any image.
+  const images = useAtomValue(artifactImagesAtom(localImages(code).join("\n")));
+  const imagesRead = AsyncResult.isSuccess(images)
+    ? images.value
+    : AsyncResult.isFailure(images)
+      ? NO_IMAGES
+      : undefined;
+
+  // The page renders once, when both the host page and its images are ready; theme changes after
+  // that restyle it in place (below).
+  useEffect(() => {
+    const target = frame.current?.contentWindow;
+    if (!target || !hostReady || imagesRead === undefined || rendered.current) return;
+    rendered.current = true;
+    const theme = JSON.parse(themeKey) as ArtifactTheme;
+    const html = artifactDocument(withLocalImages(code, imagesRead), { theme, fonts: FONTS, legacyCss });
+    target.postMessage({ type: RENDER_MESSAGE, html }, "*");
+  }, [code, hostReady, imagesRead, themeKey]);
 
   useEffect(() => {
-    const theme = JSON.parse(themeKey) as ArtifactTheme;
     const onMessage = (event: MessageEvent) => {
       const target = frame.current?.contentWindow;
       if (!target || event.source !== target) return;
       const message = readFrameMessage(event.data);
       switch (message?.kind) {
         case "ready":
-          target.postMessage(
-            { type: RENDER_MESSAGE, html: artifactDocument(code, { theme, fonts: FONTS, legacyCss }) },
-            "*",
-          );
+          setHostReady(true);
           return;
         case "height": {
           const next = Math.min(Math.max(Math.ceil(message.height), 1), ARTIFACT_MAX_HEIGHT);
@@ -207,7 +231,7 @@ function ArtifactFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [code, themeKey, remember, onError, onPointer]);
+  }, [code, remember, onError, onPointer]);
 
   // A new theme goes to the page, which restyles in place. Before the page is drawn, the host page
   // ignores it and the page starts in the theme it's sent with.
