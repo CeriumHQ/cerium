@@ -95,3 +95,12 @@ jobs:
             apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest
+      - name: Publish to the update feed
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: ./.github/actions/publish-feed
+        with:
+          tag: ${{ steps.notes.outputs.tag }}
+          title: ${{ steps.notes.outputs.title }}
+          notes-file: ${{ runner.temp }}/notes.md
+          nightly: "false"
+          token: ${{ secrets.CERIUM_RELEASES_TOKEN }}

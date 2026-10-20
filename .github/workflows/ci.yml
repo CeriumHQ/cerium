@@ -131,3 +131,12 @@ jobs:
             while read -r tag; do
               gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"
             done
+      - name: Publish to the update feed
+        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/publish-feed
+        with:
+          tag: ${{ steps.plan.outputs.tag }}
+          title: ${{ steps.plan.outputs.title }}
+          notes-file: ${{ runner.temp }}/notes.md
+          nightly: "true"
+          token: ${{ secrets.CERIUM_RELEASES_TOKEN }}

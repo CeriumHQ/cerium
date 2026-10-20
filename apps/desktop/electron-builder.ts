@@ -56,11 +56,12 @@ export default {
   },
   // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
   // channel's update file beside the installer, latest.yml or nightly.yml, and the release workflows
-  // publish it with the installer and its blockmap.
+  // publish it with the installer and its blockmap. The source repository is private, so the app
+  // reads a public repository that holds only releases (.github/actions/publish-feed).
   publish: {
     provider: "github",
     owner: "nonlooped",
-    repo: "cerium",
+    repo: "cerium-releases",
     channel: nightly ? "nightly" : "latest",
   },
 } satisfies Configuration;
