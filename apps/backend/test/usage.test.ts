@@ -1,7 +1,7 @@
 import { HarnessFailure, HarnessUnavailable, type HarnessAdapter } from "@cerium/harness";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { ProviderId } from "@cerium/protocol";
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
@@ -34,7 +34,7 @@ describe("subscriptionUsage", () => {
         ),
       ];
       const usage = yield* subscriptionUsage(new Map(adapters.map((adapter) => [adapter.provider, adapter])));
-      expect(usage).toEqual([
+      assert.deepStrictEqual(usage, [
         { _tag: "Subscribed", provider: "claude", plan: "max", meters: [meter], checkedAt: 0 },
         { _tag: "UsageUnreadable", provider: "codex", message: "Could not read Codex's usage" },
       ]);
@@ -48,7 +48,7 @@ describe("subscriptionUsage", () => {
         new Map(adapters.map((adapter) => [adapter.provider, adapter])),
       ).pipe(Effect.forkChild);
       yield* TestClock.adjust("30 seconds");
-      expect(yield* Fiber.join(fiber)).toEqual([
+      assert.deepStrictEqual(yield* Fiber.join(fiber), [
         {
           _tag: "UsageUnreadable",
           provider: "claude",
