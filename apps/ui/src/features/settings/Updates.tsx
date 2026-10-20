@@ -2,7 +2,8 @@ import { Button } from "@base-ui/react/button";
 import { Progress } from "@base-ui/react/progress";
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
-import { ExternalLink } from "lucide-react";
+import { useAtomSet } from "@effect/atom-react";
+import { ExternalLink, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { shellBridge, type UpdateChannel, type Updates } from "../../backend/shell.ts";
@@ -16,6 +17,7 @@ import {
   versionLabel,
 } from "../updates/model.ts";
 import { useUpdates } from "../updates/useUpdates.ts";
+import { whatsNewOpenAtom } from "../whatsnew/state.ts";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 
 const channels: ReadonlyArray<{ readonly id: UpdateChannel; readonly description: string }> = [
@@ -94,6 +96,7 @@ function useMinute() {
 }
 
 function VersionSection({ updates }: { updates: Updates }) {
+  const openWhatsNew = useAtomSet(whatsNewOpenAtom);
   const now = useMinute();
   const { status } = updates;
   const bridge = shellBridge();
@@ -127,6 +130,14 @@ function VersionSection({ updates }: { updates: Updates }) {
               {statusText(updates)}
               {at !== undefined ? <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span> : null}
             </p>
+            <button
+              type="button"
+              onClick={() => openWhatsNew(true)}
+              className="mt-1 flex w-fit items-center gap-1.5 rounded-md text-[12.5px] text-fg-secondary transition-colors hover:text-fg-primary"
+            >
+              <Sparkles size={12} strokeWidth={1.75} />
+              What's new in this version
+            </button>
             {offered !== undefined ? (
               <a
                 href={releaseNotesUrl(offered)}

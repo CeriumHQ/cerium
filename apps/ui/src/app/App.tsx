@@ -28,6 +28,7 @@ import {
   RotateCcw,
   Rows2,
   Settings,
+  Sparkles,
   SquarePen,
   SquareTerminal,
   X,
@@ -130,6 +131,8 @@ import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx"
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
+import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
+import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
 import type { DragSource } from "../features/split/drag.ts";
 import {
   canSplit,
@@ -576,6 +579,7 @@ function Workspace() {
       : undefined,
   );
 
+  const openWhatsNew = useAtomSet(whatsNewOpenAtom);
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
@@ -969,6 +973,14 @@ function Workspace() {
       keys: "Ctrl ,",
       run: () => openSettings(),
     },
+    {
+      id: "whats-new",
+      group: "Actions",
+      label: "What's new",
+      icon: Sparkles,
+      keywords: "changelog release notes updates",
+      run: () => openWhatsNew(true),
+    },
     ...settingsPages.map(({ id, label, icon }): PaletteCommand => ({
       id: `settings-${id}`,
       group: "Settings",
@@ -1208,6 +1220,7 @@ function Workspace() {
       ) : null}
       <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
       {WEB ? null : <UpdateNotice />}
+      <WhatsNewHost />
       {actionError ? (
         <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
           {actionError}
