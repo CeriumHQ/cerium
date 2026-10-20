@@ -47,22 +47,23 @@ const field = (value: unknown, key: string): string | undefined => {
   return typeof found === "string" ? found : undefined;
 };
 
+/** A replacement's text, as `old_string` (Claude Code) or `oldString` (OpenCode). */
+const before = (edit: unknown) => field(edit, "old_string") ?? field(edit, "oldString");
+const after = (edit: unknown) => field(edit, "new_string") ?? field(edit, "newString");
+
 /**
- * The edits a tool call's input describes: one replacement (`old_string`/`new_string`), several
- * (`edits`), or a whole new file (`content`). None for anything else.
+ * The edits a tool call's input describes: one replacement, several (`edits`), or a whole new file
+ * (`content`). None for anything else.
  */
 export const fileEdits = (input: unknown): ReadonlyArray<FileEdit> => {
   const edits =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>)["edits"] : undefined;
   if (Array.isArray(edits)) {
-    return edits.map((edit: unknown) => ({
-      before: field(edit, "old_string") ?? "",
-      after: field(edit, "new_string") ?? "",
-    }));
+    return edits.map((edit: unknown) => ({ before: before(edit) ?? "", after: after(edit) ?? "" }));
   }
-  const before = field(input, "old_string");
-  const after = field(input, "new_string");
-  if (before !== undefined || after !== undefined) return [{ before: before ?? "", after: after ?? "" }];
+  const removed = before(input);
+  const added = after(input);
+  if (removed !== undefined || added !== undefined) return [{ before: removed ?? "", after: added ?? "" }];
   const content = field(input, "content");
   return content === undefined ? [] : [{ before: "", after: content }];
 };

@@ -1,0 +1,144 @@
+import { HarnessFailure } from "@cerium/harness";
+import type { ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import { Effect, Schema } from "effect";
+
+import { call, type OpenCodeClient } from "./host.ts";
+
+const failure = (message: string) => (cause: unknown) =>
+  new HarnessFailure({ provider: "opencode", message, cause });
+
+// OpenCode names a model `<provider>/<model>` (`opencode/big-pickle`, `anthropic/claude-sonnet-5-5`), and
+// Cerium uses that as the model id. A model's effort settings are its variants: reasoning levels named
+// like Cerium's efforts (`low`, `high`, `max`), plus toggles such as `none` and `thinking` that have no
+// Cerium name.
+
+/**
+ * The subset of a `model.list` row Cerium reads. Its `settings`, `headers` and `body` can carry the
+ * user's provider keys, so they are never decoded.
+ */
+export const CatalogRow = Schema.Struct({
+  id: Schema.String,
+  providerID: Schema.String,
+  name: Schema.String,
+  variants: Schema.Array(Schema.Struct({ id: Schema.String })),
+  capabilities: Schema.Struct({ input: Schema.Array(Schema.String) }),
+  status: Schema.String,
+  enabled: Schema.Boolean,
+});
+export type CatalogRow = typeof CatalogRow.Type;
+
+/** `model.list` and `model.default` answer with their Location beside the data. */
+export const ModelList = Schema.Struct({ data: Schema.Array(CatalogRow) });
+export const DefaultModel = Schema.Struct({ data: Schema.NullOr(CatalogRow) });
+
+/** Cerium's efforts, lowest first, as OpenCode's reasoning variants are named. */
+const EFFORTS: ReadonlyArray<ReasoningEffort> = ["minimal", "low", "medium", "high", "xhigh", "max"];
+
+export interface ModelRef {
+  readonly providerID: string;
+  readonly id: string;
+}
+
+/** `opencode/big-pickle` → `{ providerID: "opencode", id: "big-pickle" }`. Model ids may hold slashes. */
+export const parseModel = (model: string): ModelRef | undefined => {
+  const slash = model.indexOf("/");
+  if (slash <= 0 || slash === model.length - 1) return undefined;
+  return { providerID: model.slice(0, slash), id: model.slice(slash + 1) };
+};
+
+export const modelId = (row: Pick<CatalogRow, "providerID" | "id">) => `${row.providerID}/${row.id}`;
+
+/** The efforts a model's variants offer, lowest first. */
+export const effortsOf = (variants: ReadonlyArray<string>): ReadonlyArray<ReasoningEffort> =>
+  EFFORTS.filter((effort) => variants.includes(effort));
+
+/**
+ * The variant that runs `effort`: its own name, else the nearest offered one, the lower on a tie.
+ * Undefined for a model without effort variants, which runs on its provider's default.
+ */
+export const variantFor = (
+  effort: ReasoningEffort | undefined,
+  variants: ReadonlyArray<string>,
+): string | undefined => {
+  if (effort === undefined) return undefined;
+  const offered = effortsOf(variants);
+  if (offered.includes(effort)) return effort;
+  const rank = EFFORTS.indexOf(effort);
+  let best: ReasoningEffort | undefined;
+  for (const candidate of offered) {
+    const distance = Math.abs(EFFORTS.indexOf(candidate) - rank);
+    if (best === undefined || distance < Math.abs(EFFORTS.indexOf(best) - rank)) best = candidate;
+  }
+  return best;
+};
+
+/** Models a session can run: enabled ones that call tools are listed by `model.list` already. */
+export const toModelInfo = (row: CatalogRow, defaultId: string | undefined): ModelInfo => {
+  const id = modelId(row);
+  const efforts = effortsOf(row.variants.map((variant) => variant.id));
+  return {
+    provider: "opencode",
+    id,
+    label: row.name,
+    description: id,
+    efforts,
+    ...(id === defaultId ? { isDefault: true } : {}),
+  };
+};
+
+/**
+ * The model a session runs, with the variant for `effort`. A model the catalog doesn't list is still
+ * passed on, without a variant: OpenCode says why it can't run it when the turn starts.
+ */
+export const toModelRef = (
+  model: string,
+  effort: ReasoningEffort | undefined,
+  rows: ReadonlyArray<CatalogRow>,
+): (ModelRef & { readonly variant?: string }) | undefined => {
+  const ref = parseModel(model);
+  if (ref === undefined) return undefined;
+  const row = rows.find((candidate) => modelId(candidate) === model);
+  const variant =
+    row === undefined
+      ? undefined
+      : variantFor(
+          effort,
+          row.variants.map((entry) => entry.id),
+        );
+  return variant === undefined ? ref : { ...ref, variant };
+};
+
+/** The listing as Cerium offers it: deprecated models dropped, the default first. */
+export const toModelInfos = (
+  rows: ReadonlyArray<CatalogRow>,
+  defaultRow: CatalogRow | null,
+): ReadonlyArray<ModelInfo> => {
+  const defaultId = defaultRow === null ? undefined : modelId(defaultRow);
+  const models = rows
+    .filter((row) => row.enabled && row.status !== "deprecated")
+    .map((row) => toModelInfo(row, defaultId));
+  return [...models.filter((model) => model.isDefault), ...models.filter((model) => !model.isDefault)];
+};
+
+const decodeList = Schema.decodeUnknownEffect(ModelList);
+const decodeDefault = Schema.decodeUnknownEffect(DefaultModel);
+
+/** The models OpenCode would run in `directory`, and its default, from a running server. */
+export const readCatalog = Effect.fn("OpenCodeAdapter.readCatalog")(function* (
+  client: OpenCodeClient,
+  directory: string,
+) {
+  const location = { location: { directory } };
+  const [list, preferred] = yield* Effect.all(
+    [
+      call("list its models", (signal) => client.model.list(location, { signal })),
+      call("name its default model", (signal) => client.model.default(location, { signal })),
+    ],
+    { concurrency: 2 },
+  );
+  const rows = yield* decodeList(list).pipe(Effect.mapError(failure("Unexpected `model.list` response")));
+  const fallback = yield* decodeDefault(preferred).pipe(
+    Effect.mapError(failure("Unexpected `model.default` response")),
+  );
+  return { rows: rows.data, defaultRow: fallback.data };
+});

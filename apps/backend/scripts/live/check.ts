@@ -92,6 +92,8 @@ const preferred: Partial<Record<ProviderId, RegExp>> = {
   claude: /haiku/i,
   codex: /mini|spark/i,
   cursor: /composer|auto/i,
+  // OpenCode Zen's free models run without a provider signed in.
+  opencode: /big-pickle|free/i,
   muse: /fast|lite|mini/i,
 };
 

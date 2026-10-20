@@ -37,6 +37,19 @@ describe("describeTool", () => {
     expect(describeCall("delete", { path: "c.ts" })).toEqual({ verb: "Delete", detail: "c.ts" });
   });
 
+  it("reads OpenCode's patch, fetch and search tools", () => {
+    expect(
+      describeCall("patch", { patchText: "*** Begin Patch\n*** Update File: src/a.ts\n*** End Patch" }),
+    ).toEqual({ verb: "Edit", detail: "a.ts" });
+    expect(describeCall("webfetch", { url: "https://opencode.ai", format: "markdown" })).toMatchObject({
+      detail: "https://opencode.ai",
+    });
+    expect(describeCall("websearch", { query: "effect 4" })).toEqual({
+      verb: "Search the web",
+      detail: "effect 4",
+    });
+  });
+
   it("names the files a patch touches, from Codex's changes or Muse's patch text", () => {
     expect(
       describeCall("apply_patch", { changes: [{ path: "C:\\w\\out.txt", kind: { type: "add" } }] }),

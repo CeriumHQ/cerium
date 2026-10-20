@@ -1,6 +1,7 @@
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
 import { CursorAdapter } from "@cerium/adapter-cursor";
+import { OpenCodeAdapter } from "@cerium/adapter-opencode";
 import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
 import {
   Adapters,
@@ -61,10 +62,19 @@ export interface BackendOptions {
 export const AdaptersLive = Layer.effect(
   Adapters,
   Effect.gen(function* () {
-    const adapters = [yield* ClaudeAdapter, yield* CodexAdapter, yield* CursorAdapter];
+    const adapters = [
+      yield* ClaudeAdapter,
+      yield* CodexAdapter,
+      yield* CursorAdapter,
+      yield* OpenCodeAdapter,
+    ];
     return new Map(adapters.map((adapter) => [adapter.provider, adapter]));
   }),
-).pipe(Layer.provide(Layer.mergeAll(ClaudeAdapter.layer, CodexAdapter.layer, CursorAdapter.layer)));
+).pipe(
+  Layer.provide(
+    Layer.mergeAll(ClaudeAdapter.layer, CodexAdapter.layer, CursorAdapter.layer, OpenCodeAdapter.layer),
+  ),
+);
 
 /**
  * Until onboarding builds the catalog with the user, every model a logged-in harness

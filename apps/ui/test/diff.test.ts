@@ -46,6 +46,12 @@ describe("fileEdits", () => {
     ]);
   });
 
+  it("reads OpenCode's replacement", () => {
+    expect(fileEdits({ path: "a.ts", oldString: "x", newString: "y" })).toEqual([
+      { before: "x", after: "y" },
+    ]);
+  });
+
   it("reads several replacements", () => {
     expect(
       fileEdits({

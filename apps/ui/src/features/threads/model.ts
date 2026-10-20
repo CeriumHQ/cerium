@@ -62,4 +62,5 @@ export const providerName: Record<ProviderId, string> = {
   codex: "Codex",
   muse: "Muse",
   cursor: "Cursor",
+  opencode: "OpenCode",
 };

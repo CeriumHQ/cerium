@@ -34,6 +34,8 @@ export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   { provider: "claude", model: "haiku" },
   { provider: "codex", model: "gpt-6-luna" },
   { provider: "cursor", model: "composer-2.5" },
+  // Free on OpenCode Zen, so it names threads even without a provider signed in.
+  { provider: "opencode", model: "opencode/big-pickle" },
   { provider: "muse", model: "muse-spark-1.3-contributor" },
 ];
 

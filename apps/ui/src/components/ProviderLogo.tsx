@@ -6,8 +6,8 @@ import metaMark from "../assets/providers/meta-color.svg";
 
 // Provider marks from LobeHub Icons (MIT, https://github.com/lobehub/lobe-icons). The logos are
 // trademarks of their owners and identify each provider's harness. Marks shown in their official
-// colours where the set has them (Claude, Meta for Muse); OpenAI's (for Codex) and Cursor's official
-// marks are single-colour and follow the surrounding text colour.
+// colours where the set has them (Claude, Meta for Muse); OpenAI's (for Codex), Cursor's and
+// OpenCode's official marks are single-colour and follow the surrounding text colour.
 
 type Mark = { readonly src: string } | { readonly paths: ReactNode };
 
@@ -28,6 +28,7 @@ const marks: Record<ProviderId, Mark> = {
       </>
     ),
   },
+  opencode: { paths: <path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" /> },
 };
 
 interface ProviderLogoProps {

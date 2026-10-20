@@ -13,6 +13,7 @@
     "@cerium/adapter-codex": "workspace:*",
     "@cerium/adapter-cursor": "workspace:*",
     "@cerium/adapter-muse": "workspace:*",
+    "@cerium/adapter-opencode": "workspace:*",
     "@cerium/bus": "workspace:*",
     "@cerium/harness": "workspace:*",
     "@cerium/orchestrator": "workspace:*",

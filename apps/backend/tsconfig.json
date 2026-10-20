@@ -34,6 +34,9 @@
       "path": "../../packages/adapters/cursor"
     },
     {
+      "path": "../../packages/adapters/opencode"
+    },
+    {
       "path": "../../packages/rpc"
     }
   ]

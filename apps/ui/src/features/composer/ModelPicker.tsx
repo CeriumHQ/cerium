@@ -256,7 +256,7 @@ function MenuPopup({
       <Combobox.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
         <Combobox.Popup
           aria-label="Models"
-          className="flex w-68 max-w-(--available-width) origin-(--transform-origin) flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
+          className="flex w-88 max-w-(--available-width) origin-(--transform-origin) flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
         >
           <div className="flex h-9 shrink-0 items-center gap-2 px-2.5">
             <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />

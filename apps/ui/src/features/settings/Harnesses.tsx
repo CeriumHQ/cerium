@@ -19,15 +19,20 @@ export const harnessName: Record<ProviderId, string> = {
   codex: "Codex",
   muse: "Muse Code",
   cursor: "Cursor",
+  opencode: "OpenCode",
 };
 
-/** How each harness reports its sign-in, as people say it. */
+/**
+ * How each harness reports its sign-in, as people say it. OpenCode names its connected providers
+ * themselves ("Anthropic, OpenAI"), which read as they are.
+ */
 const authMethod: Record<string, string> = {
   "claude.ai": "Claude account",
   chatgpt: "ChatGPT account",
   "meta.ai": "Meta account",
   cursorLogin: "Cursor account",
   apiKey: "API key",
+  opencodeFree: "Free models",
 };
 const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 

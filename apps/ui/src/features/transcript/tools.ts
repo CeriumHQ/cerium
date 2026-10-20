@@ -39,12 +39,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const baseName = (path: string) => path.split(/[\\/]/).at(-1) ?? path;
 
-/** The files a patch touches: Codex reports its changes, Muse passes the patch text itself. */
+/** A patch's text: Muse passes it as `patch`, OpenCode as `patchText`. */
+const patchText = (input: unknown): string | undefined =>
+  field(input, "patch") ?? field(input, "patchText") ?? (typeof input === "string" ? input : undefined);
+
+/** The files a patch touches: Codex reports its changes, Muse and OpenCode pass the patch text itself. */
 const patchedFiles = (input: unknown): ReadonlyArray<string> => {
   const changes =
     typeof input === "object" && input !== null ? (input as { changes?: unknown }).changes : undefined;
   if (Array.isArray(changes)) return changes.flatMap((change) => field(change, "path") ?? []);
-  const patch = field(input, "patch") ?? (typeof input === "string" ? input : "");
+  const patch = patchText(input) ?? "";
   return [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]!.trim());
 };
 
@@ -63,7 +67,10 @@ type ToolKind =
   | "fetch"
   | "webSearch";
 
-/** Each harness's built-in tools by what they do: Claude Code, Codex, Muse Code and Cursor name them differently. */
+/**
+ * Each harness's built-in tools by what they do: Claude Code, Codex, Muse Code, Cursor and OpenCode
+ * name them differently.
+ */
 const toolKinds: Readonly<Record<string, ToolKind>> = {
   Read: "read",
   read: "read",
@@ -78,6 +85,7 @@ const toolKinds: Readonly<Record<string, ToolKind>> = {
   write_file: "write",
   delete: "delete",
   apply_patch: "patch",
+  patch: "patch",
   Grep: "search",
   Glob: "search",
   grep: "search",
@@ -94,9 +102,11 @@ const toolKinds: Readonly<Record<string, ToolKind>> = {
   WebFetch: "fetch",
   webFetch: "fetch",
   web_fetch: "fetch",
+  webfetch: "fetch",
   WebSearch: "webSearch",
   webSearch: "webSearch",
   web_search: "webSearch",
+  websearch: "webSearch",
 };
 
 /** The first line of a string, or nothing when it's blank. */
@@ -473,7 +483,7 @@ export const toolInputView = (tool: ToolBlock): ToolInputView | undefined => {
       return command ? { kind: "code", label: "Command", text: command } : undefined;
     }
     case "patch": {
-      const patch = field(input, "patch") ?? (typeof input === "string" ? input : undefined);
+      const patch = patchText(input);
       return patch ? { kind: "code", label: "Patch", text: patch } : undefined;
     }
     case "read":

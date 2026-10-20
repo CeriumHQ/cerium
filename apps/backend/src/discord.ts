@@ -29,6 +29,7 @@ const harnessName: Record<ProviderId, string> = {
   codex: "Codex",
   muse: "Muse Code",
   cursor: "Cursor",
+  opencode: "OpenCode",
 };
 
 /** The events that can change what the activity says: agents starting and stopping, and waits on the user. */
