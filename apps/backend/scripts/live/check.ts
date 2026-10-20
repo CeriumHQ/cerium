@@ -27,7 +27,18 @@ export const TODO_ITEMS = 2;
 
 const Seconds = Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 600 }));
 
+/** The stop turn: long enough to still be running when it is interrupted. */
+export const STOP_PROMPT =
+  "Run a shell command that just waits 120 seconds (`sleep 120`, or `Start-Sleep 120` in PowerShell), " +
+  "with your shell or terminal tool, and wait for it.\nThen reply with just DONE.";
+
 export const LiveCheckRequest = Schema.Struct({
+  interruptAfterSeconds: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 120 })),
+  ).annotate({
+    description:
+      "Interrupt the turn this long after sending it; it passes only if the turn then ends as interrupted, in time.",
+  }),
   providers: Schema.optionalKey(Schema.Array(ProviderId)).annotate({
     description: "Harnesses to check, side by side; default every one this machine has.",
   }),
@@ -202,6 +213,13 @@ export const checkHarness = (
         Effect.forkScoped,
       );
       yield* session.send(prompt);
+      if (request.interruptAfterSeconds !== undefined) {
+        yield* Effect.sleep(Duration.seconds(request.interruptAfterSeconds)).pipe(
+          Effect.andThen(session.interrupt),
+          Effect.catch((error) => Effect.sync(() => record.problems.push(describe(error)))),
+          Effect.forkScoped,
+        );
+      }
       yield* Deferred.await(done);
     }).pipe(
       Effect.scoped,
@@ -230,8 +248,9 @@ export const checkHarness = (
     const missing = expectFiles.filter((file) => !files.includes(file));
     const problems = [...record.problems];
     if (finished._tag === "Some") {
-      if (record.stopReason !== undefined && record.stopReason !== "completed") {
-        problems.push(`The turn ended: ${record.stopReason}.`);
+      const expectedStop = request.interruptAfterSeconds === undefined ? "completed" : "interrupted";
+      if (record.stopReason !== undefined && record.stopReason !== expectedStop) {
+        problems.push(`The turn ended: ${record.stopReason} (expected ${expectedStop}).`);
       }
       if (missing.length > 0) problems.push(`Missing ${missing.join(", ")}.`);
       if (request.expectReply !== undefined && !(record.reply ?? "").includes(request.expectReply)) {

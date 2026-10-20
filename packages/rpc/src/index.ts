@@ -11,6 +11,7 @@ import {
   DeviceName,
   DraftEntry,
   EpochMillis,
+  FromUser,
   HarnessStatus,
   ImageData,
   LenientArray,
@@ -24,6 +25,7 @@ import {
   ProviderId,
   QuestionResponse,
   ReasoningEffort,
+  RestorePreview,
   Settings,
   SettingsPatch,
   SkillInfo,
@@ -62,7 +64,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 9;
+export const RPC_VERSION = 11;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -144,6 +146,40 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
+   * Sends a new version of one of the user's earlier messages to a lead: the conversation goes back
+   * to before `messageId`, keeping what it replaces to look back on, and goes on from this one.
+   * Since `RPC_VERSION` 11.
+   */
+  Rpc.make("EditMessage", {
+    payload: {
+      agentId: AgentId,
+      messageId: Schema.NonEmptyString,
+      text: Schema.String,
+      attachments: Schema.optionalKey(Schema.Array(Attachment)),
+      mentions: Schema.optionalKey(Schema.Array(Mention)),
+    },
+    error: CeriumError,
+  }),
+  /**
+   * What restoring a lead's thread to before one of the user's messages would undo, to show before
+   * it happens. Since `RPC_VERSION` 11.
+   */
+  Rpc.make("PreviewRestore", {
+    payload: { agentId: AgentId, messageId: Schema.NonEmptyString },
+    success: RestorePreview,
+    error: CeriumError,
+  }),
+  /**
+   * Restores a lead's thread to before one of the user's messages: its conversation, its agents and
+   * the files they changed since. Answers with the message, for the user to send again or change.
+   * Since `RPC_VERSION` 11.
+   */
+  Rpc.make("RestoreBefore", {
+    payload: { agentId: AgentId, messageId: Schema.NonEmptyString },
+    success: FromUser,
+    error: CeriumError,
+  }),
+  /**
    * Switches a thread's lead to another model of its harness, or another effort, from its next turn.
    * Refused where `HarnessManifests` says the harness can't switch.
    */
@@ -187,6 +223,16 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
+  /**
+   * Stops all of a thread's work: interrupts every agent's turn and denies what waits on the user.
+   * Answers with how many working agents it stopped and how many requests it denied. Since
+   * `RPC_VERSION` 10.
+   */
+  Rpc.make("StopThread", {
+    payload: { threadId: ThreadId },
+    success: Schema.Struct({ agents: Schema.Number, approvals: Schema.Number }),
+    error: CeriumError,
+  }),
   /** The title is trimmed and must be 1 to 80 characters. */
   Rpc.make("RenameThread", {
     payload: { threadId: ThreadId, title: Schema.String },

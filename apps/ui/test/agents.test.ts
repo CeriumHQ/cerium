@@ -9,6 +9,8 @@ import {
   requestQueue,
   stateLabel,
   statusCounts,
+  stopAllScope,
+  stopAllSummary,
   threadUsage,
 } from "../src/features/agents/model.ts";
 import type { AgentSummary } from "../src/features/agents/model.ts";
@@ -111,6 +113,25 @@ describe("statusCounts", () => {
 
   it("says nothing of a thread at rest", () => {
     expect(statusCounts([summary("lead"), summary("a", { parentId: "lead", state: "stopped" })])).toEqual([]);
+  });
+});
+
+describe("stopAllScope", () => {
+  it("counts the working agents and every request it would deny", () => {
+    const agents = [
+      summary("lead", { state: "running", approvals: [asking("p1", 1)] }),
+      summary("a", { parentId: "lead", state: "queued" }),
+      summary("b", { parentId: "lead", state: "idle", approvals: [asking("p2", 2), asking("p3", 3)] }),
+      summary("c", { parentId: "lead", state: "stopped" }),
+    ];
+    expect(stopAllScope(agents)).toEqual({ agents: 2, approvals: 3 });
+    expect(stopAllSummary(stopAllScope(agents))).toBe("2 working agents and 3 pending approvals");
+  });
+
+  it("names only the parts that apply, singular for one", () => {
+    expect(stopAllSummary({ agents: 1, approvals: 0 })).toBe("1 working agent");
+    expect(stopAllSummary({ agents: 0, approvals: 1 })).toBe("1 pending approval");
+    expect(stopAllScope([summary("lead")])).toEqual({ agents: 0, approvals: 0 });
   });
 });
 

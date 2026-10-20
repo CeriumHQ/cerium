@@ -331,6 +331,7 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
 
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
+export const editMessage = Backend.mutation("EditMessage");
 export const switchModel = Backend.mutation("SwitchModel");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");
@@ -348,6 +349,12 @@ export const interruptAgent = Backend.runtime.fn<{ readonly payload: { readonly 
 export const stopAgent = Backend.runtime.fn<{ readonly payload: { readonly agentId: AgentId } }>()(
   ({ payload }, get) =>
     Backend.use((client) => client("StopAgent", payload)).pipe(
+      Effect.ensuring(Effect.sync(() => get.refresh(threadsAtom))),
+    ),
+);
+export const stopThread = Backend.runtime.fn<{ readonly payload: { readonly threadId: ThreadId } }>()(
+  ({ payload }, get) =>
+    Backend.use((client) => client("StopThread", payload)).pipe(
       Effect.ensuring(Effect.sync(() => get.refresh(threadsAtom))),
     ),
 );

@@ -1,11 +1,12 @@
 import type { CapabilityManifest, ProviderId, ReasoningEffort, TodoItem } from "@cerium/protocol";
-import { Deferred, Duration, Effect, Queue, Stream, type Cause } from "effect";
+import { Deferred, Duration, Effect, Fiber, Queue, Stream, type Cause } from "effect";
 
 import {
   HarnessFailure,
   HarnessUnavailable,
   type AdapterEvent,
   type CompletionRequest,
+  type ForkRequest,
   type HarnessAdapter,
   type PermissionDecision,
   type SessionOptions,
@@ -50,16 +51,19 @@ export const makeFakeAdapter = (
     readonly switching?: { readonly model: boolean; readonly effort: boolean };
     /** `setModel` and `setEffort` fail, as a harness refusing a model would. */
     readonly refuseSwitches?: boolean;
+    /** The harness can fork sessions (`forks` records each request); `"fail"` refuses every fork. */
+    readonly fork?: boolean | "fail";
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
   const completions: Array<CompletionRequest> = [];
+  const forks: Array<ForkRequest> = [];
   let failuresLeft = options.failedStarts ?? 0;
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
     provider,
     harnessVersion: { minimum: "1.0.0", testedMaximum: "1.0.0" },
-    session: { resume: true, fork: false },
+    session: { resume: true, fork: options.fork !== undefined && options.fork !== false },
     switching: { model: true, effort: true, ...options.switching, cacheSafeEffort: true },
     input: { images: options.images ?? false },
     permissions: { approvals: "callback", readOnlyMode: true },
@@ -84,6 +88,17 @@ export const makeFakeAdapter = (
         }
         return options.complete(request);
       }),
+    ...(options.fork === undefined || options.fork === false
+      ? {}
+      : {
+          fork: (request: ForkRequest) =>
+            Effect.suspend(() => {
+              forks.push(request);
+              return options.fork === "fail"
+                ? Effect.fail(new HarnessFailure({ provider, message: "Can't fork that.", cause: null }))
+                : Effect.succeed(`fork-${forks.length}`);
+            }),
+        }),
     startSession: (sessionOptions) =>
       Effect.gen(function* () {
         yield* Effect.sleep(options.startDuration ?? 0);
@@ -101,6 +116,7 @@ export const makeFakeAdapter = (
               )
             : Effect.sync(() => void session.switches.push(change));
         const decisions = new Map<string, Deferred.Deferred<PermissionDecision>>();
+        let current: Fiber.Fiber<void, unknown> | undefined;
         sessions.push(session);
         yield* Queue.offer(events, {
           payload: {
@@ -149,7 +165,11 @@ export const makeFakeAdapter = (
             Effect.sync(() => {
               session.sent.push(text);
               session.extras.push(extras);
-            }).pipe(Effect.andThen(Effect.forkDetach(turn(text))), Effect.asVoid),
+            }).pipe(
+              Effect.andThen(Effect.forkDetach(turn(text))),
+              Effect.tap((fiber) => Effect.sync(() => void (current = fiber))),
+              Effect.asVoid,
+            ),
           respondToPermission: (requestId: string, decision: PermissionDecision) =>
             Effect.suspend(() => {
               const pending = decisions.get(requestId);
@@ -157,11 +177,21 @@ export const makeFakeAdapter = (
                 ? Effect.void
                 : Deferred.succeed(pending, decision).pipe(Effect.asVoid);
             }),
-          interrupt: Effect.void,
+          // A turn still going ends where it is, as a harness's does.
+          interrupt: Effect.suspend(() =>
+            current === undefined || current.pollUnsafe() !== undefined
+              ? Effect.void
+              : Fiber.interrupt(current).pipe(
+                  Effect.andThen(
+                    Queue.offer(events, { payload: { _tag: "TurnCompleted", stopReason: "interrupted" } }),
+                  ),
+                  Effect.asVoid,
+                ),
+          ),
           setModel: (model: string) => switchTo({ model }),
           setEffort: (effort: ReasoningEffort) => switchTo({ effort }),
         };
       }),
   };
-  return { adapter, sessions, completions, running };
+  return { adapter, sessions, completions, forks, running };
 };

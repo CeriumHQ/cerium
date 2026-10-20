@@ -20,6 +20,7 @@ import {
   type Question,
   type QuestionResponse,
   type ReasoningEffort,
+  type RestorePreview,
   type ThreadId,
   type ThreadInfo,
   type ThreadMode,
@@ -51,10 +52,13 @@ import { Base64 } from "effect/encoding";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
+import { planRestore, workSince } from "./restore.ts";
+import { liveEvents, replayNotice, rewindPoint, startsAnew } from "./rewind.ts";
 import {
   Adapters,
   BusEndpoint,
   Catalog,
+  Checkpoints,
   OrchestratorConfig,
   Worktrees,
   type CatalogEntry,
@@ -152,6 +156,8 @@ interface Runtime {
   /** The last completed message of the current turn, delivered to the lead when a child finishes. */
   lastMessage: string | undefined;
   ended: boolean;
+  /** The user stopped the turn in progress with "stop everything": its end wakes nobody. */
+  halted: boolean;
   /** The model and effort its harness session runs with; its next turn brings them in line with `info`. */
   applied: ModelChoice;
 }
@@ -224,6 +230,34 @@ export class Orchestrator extends Context.Service<
       extras?: UserMessageExtras,
     ): Effect.Effect<void, OrchestratorError>;
     /**
+     * Sends a new version of one of the user's earlier messages to a lead: the conversation goes back
+     * to before that message (see `rewindLead`) and goes on from the new one.
+     */
+    editMessage(
+      agentId: AgentId,
+      messageId: string,
+      text: string,
+      extras?: UserMessageExtras,
+    ): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Takes a lead's conversation back to before one of the user's messages, which it resolves with.
+     * Its harness forks its session there where it can; otherwise a new session is told the
+     * conversation so far with the next message. A running turn stops, the agents the replaced turns
+     * spawned stop, and the thread keeps the replaced turns to look back on. Files are left as they are.
+     */
+    rewindLead(agentId: AgentId, messageId: string): Effect.Effect<FromUser, OrchestratorError>;
+    /**
+     * What restoring a lead's thread to before one of the user's messages would undo: the messages
+     * from it on, how the conversation goes back, the agents that stop, and the files put back.
+     */
+    previewRestore(agentId: AgentId, messageId: string): Effect.Effect<RestorePreview, OrchestratorError>;
+    /**
+     * Restores a lead's thread to before one of the user's messages, which it resolves with: the
+     * conversation goes back (see `rewindLead`), the thread's other agents stop, and the files its
+     * agents changed since are put back as they were, except those another thread changed too.
+     */
+    restoreBefore(agentId: AgentId, messageId: string): Effect.Effect<FromUser, OrchestratorError>;
+    /**
      * Switches a thread's lead to another model of its harness, or another effort, from its next
      * turn. A lead that stopped or failed starts on them when the user picks the thread back up.
      */
@@ -260,6 +294,15 @@ export class Orchestrator extends Context.Service<
     ): Effect.Effect<void, OrchestratorError>;
     /** Ends the agent's session. */
     stopAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Stops all of a thread's work at once: every agent's turn is interrupted, what waits on the user
+     * (permission requests, a lead's spawn requests, questions) is denied or closed, and nothing queued
+     * or reported by the stopped turns starts another. Sessions stay open for the user's next message.
+     * Returns how many working agents it stopped and how many requests it denied.
+     */
+    stopThread(
+      threadId: ThreadId,
+    ): Effect.Effect<{ readonly agents: number; readonly approvals: number }, OrchestratorError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, OrchestratorError>;
     /** Renames a thread; the title is trimmed and must be 1 to `MAX_THREAD_TITLE` characters. */
     renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
@@ -341,6 +384,7 @@ export class Orchestrator extends Context.Service<
       const settings = yield* UserSettings;
       const titles = yield* ThreadTitles;
       const worktrees = yield* Worktrees;
+      const checkpoints = yield* Checkpoints;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -369,22 +413,20 @@ export class Orchestrator extends Context.Service<
       const feed = yield* PubSub.unbounded<AgentEvent>();
       /** Threads still waiting for their first message to name them, with the title they started with. */
       const untitled = new Map<ThreadId, string>();
+      /** What a lead picked back up after a rewind keeps for the user's next message. */
+      const held = new Map<
+        AgentId,
+        { readonly undelivered: ReadonlyArray<InputItem>; readonly notices: ReadonlyArray<InputItem> }
+      >();
 
       // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
       // resumes its harness session when the user next messages it.
       yield* store.stopLiveAgents.pipe(Effect.mapError(unavailable));
-      const globalPermits = yield* Semaphore.make(config.globalConcurrency);
       /**
        * One user message accepted at a time, so messages sent together keep their order and don't
        * start two sessions for one lead.
        */
       const acceptPermit = yield* Semaphore.make(1);
-      const providerPermits = new Map(
-        [...adapters].map(([provider, adapter]) => [
-          provider,
-          Semaphore.makeUnsafe(adapter.manifest.defaultConcurrency),
-        ]),
-      );
 
       const makeId = (prefix: string) =>
         crypto.randomUUIDv7().pipe(
@@ -659,6 +701,25 @@ export class Orchestrator extends Context.Service<
           } satisfies TurnExtras;
         });
 
+      /** Whether an agent's turns snapshot its thread's folder: it works in one and may change files. */
+      const savesFiles = (info: AgentInfo) =>
+        threadModes.get(info.threadId) === "work" && info.access !== "readOnly";
+
+      /** A snapshot of the agent's thread's folder now; none when it can't change files or saving failed. */
+      const snapshotFor = (info: AgentInfo) => {
+        const folder = threadDirectories.get(info.threadId);
+        const saved =
+          !savesFiles(info) || folder === undefined
+            ? Effect.succeedNone
+            : checkpoints.save(folder).pipe(
+                Effect.tapError((error) =>
+                  Effect.logWarning(`Couldn't snapshot ${folder}: ${error.message}`),
+                ),
+                Effect.option,
+              );
+        return Effect.map(saved, Option.getOrUndefined);
+      };
+
       const runTurn = (
         rt: Runtime,
         session: AgentSession,
@@ -667,9 +728,14 @@ export class Orchestrator extends Context.Service<
         Effect.gen(function* () {
           yield* setState(rt, "running");
           rt.lastMessage = undefined;
+          rt.halted = false;
           rt.turn = yield* Deferred.make<void>();
-          yield* emit(rt, { _tag: "TurnInput", items });
-          yield* session.send(renderTurn(items), yield* turnExtras(rt, items)).pipe(
+          const turnId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+          // The folder as it was before the turn, which restoring to before its messages goes back to.
+          const files = yield* snapshotFor(rt.info);
+          yield* emit(rt, { _tag: "TurnInput", items, turnId, ...(files === undefined ? {} : { files }) });
+          const extras = yield* turnExtras(rt, items);
+          yield* session.send(renderTurn(items), { ...extras, turnId }).pipe(
             // A turn the harness refused never ends on its own, leaving the agent working with
             // nothing to stop; it ends here with the reason.
             Effect.catch((error) =>
@@ -687,6 +753,11 @@ export class Orchestrator extends Context.Service<
           );
           yield* Deferred.await(rt.turn);
           rt.turn = undefined;
+          // And as it was after, so a restore can tell the files this turn changed from another thread's.
+          if (files !== undefined) {
+            const after = yield* snapshotFor(rt.info);
+            if (after !== undefined) yield* emit(rt, { _tag: "FilesSaved", snapshot: after });
+          }
         });
 
       /**
@@ -730,7 +801,11 @@ export class Orchestrator extends Context.Service<
           );
         });
 
-      /** Delivers inbox items as turns, one turn at a time, under the concurrency caps. */
+      /**
+       * Delivers inbox items as turns, one turn at a time. Agents never wait for one another's turns
+       * to end: a cap on turns at once would leave a messaged thread queued behind other threads' long
+       * turns, or behind a child's turn waiting on an answer from the very lead that is queued.
+       */
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
           const first = yield* Queue.take(rt.inbox);
@@ -746,27 +821,27 @@ export class Orchestrator extends Context.Service<
           const session = yield* Deferred.await(rt.started).pipe(
             Effect.tapError(() => setState(rt, "failed")),
           );
-          const permits = providerPermits.get(rt.info.provider) ?? Semaphore.makeUnsafe(1);
-          yield* applyModel(rt, session).pipe(
-            Effect.andThen(runTurn(rt, session, items)),
-            permits.withPermits(1),
-            globalPermits.withPermits(1),
-          );
+          yield* applyModel(rt, session);
+          yield* runTurn(rt, session, items);
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
+          const halted = rt.halted;
+          rt.halted = false;
 
           if (advisor) {
             if (first._tag !== "FromAgent") return;
             const waiting = advisorQuestions.get(rt.info.id) ?? [];
             const index = waiting.indexOf(first.agentId);
             if (index !== -1) waiting.splice(index, 1);
+            // The asker was stopped with it: a cut-off answer would only wake it again.
+            if (halted) return;
             yield* deliver(first.agentId, {
               _tag: "FromAgent",
               agentId: rt.info.id,
               threadId: rt.info.threadId,
               text: truncate(rt.lastMessage ?? "(no answer)", config.maxDeliveredChars),
             });
-          } else if (rt.info.parentId !== undefined) {
+          } else if (rt.info.parentId !== undefined && !halted) {
             yield* deliver(rt.info.parentId, {
               _tag: "ChildFinishedTurn",
               agentId: rt.info.id,
@@ -836,6 +911,7 @@ export class Orchestrator extends Context.Service<
             turn: undefined,
             lastMessage: undefined,
             ended: false,
+            halted: false,
             applied: choiceOf(info),
           };
           runtimes.set(info.id, rt);
@@ -888,6 +964,8 @@ export class Orchestrator extends Context.Service<
             ),
             scope,
           );
+          // A folder's first snapshot reads every file in it; taken now, the first turn's is quick.
+          if (savesFiles(info)) yield* Effect.forkIn(snapshotFor(info), scope);
           yield* Effect.forkIn(turnLoop(rt), scope);
           if (options.initial !== undefined) yield* Queue.offer(rt.inbox, options.initial);
           return rt;
@@ -1117,10 +1195,17 @@ export class Orchestrator extends Context.Service<
         threadWorktrees.delete(threadId);
       });
 
+      /** The folder a thread's agents run in: the work thread's own, or a chat's private one. */
+      const threadDirectory = (thread: ThreadInfo) =>
+        thread.mode === "work" && thread.cwd !== undefined
+          ? thread.cwd
+          : path.join(config.chatDirectory, thread.id);
+
       /**
        * Starts a stopped or failed lead again on its harness session, so the thread carries on with
-       * the context it had; a lead whose session never started gets a new one. Returns the user's
-       * messages the old runtime never delivered, and notices the lead's next turn should carry.
+       * the context it had; a lead whose session never started gets a new one, as does one a rewind
+       * left without a session. Returns the user's messages the old runtime never delivered (after
+       * the conversation a replaying rewind tells), and notices the lead's next turn should carry.
        */
       const resumeLead = Effect.fn("Orchestrator.resumeLead")(function* (agentId: AgentId) {
         const previous = runtimes.get(agentId);
@@ -1151,10 +1236,7 @@ export class Orchestrator extends Context.Service<
             "This thread's worktree was removed when it was archived; restore it first.",
           );
         }
-        const directory =
-          thread.mode === "work" && thread.cwd !== undefined
-            ? thread.cwd
-            : path.join(config.chatDirectory, thread.id);
+        const directory = threadDirectory(thread);
         threadDirectories.set(thread.id, directory);
         threadModes.set(thread.id, thread.mode);
         if (thread.worktree !== undefined) threadWorktrees.set(thread.id, thread.worktree);
@@ -1166,7 +1248,8 @@ export class Orchestrator extends Context.Service<
         }
         pendingPermissions.delete(agentId);
         openQuestions.delete(agentId);
-        const history = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        // What rewinds replaced is no longer the conversation the session goes on from.
+        const history = liveEvents(yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable)));
         // Approvals and questions the old session was waiting on died with it, and so did its requests to
         // start agents (which a restart of Cerium has forgotten anyway); messages it never took go to the
         // new one.
@@ -1202,13 +1285,17 @@ export class Orchestrator extends Context.Service<
             for (const item of payload.items)
               if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
           }
+          // Every message queued before a rewind went with the turns it replaced.
+          if (payload._tag === "ConversationRewound") undelivered.clear();
         }
         // Forgotten before the new session can be reached, so a late answer finds nothing to allow.
         for (const requestId of unansweredSpawns.keys()) pendingSpawns.delete(requestId);
         const rt = yield* startRuntime(
           info,
           directory,
-          info.providerSessionId === undefined ? {} : { resume: info.providerSessionId },
+          info.providerSessionId === undefined || startsAnew(history)
+            ? {}
+            : { resume: info.providerSessionId },
         );
         yield* Effect.forEach(
           unanswered,
@@ -1227,11 +1314,22 @@ export class Orchestrator extends Context.Service<
         );
         yield* setState(rt, "idle");
 
+        const spawned = new Set(
+          history.flatMap(({ payload }) => (payload._tag === "AgentSpawned" ? [payload.childId] : [])),
+        );
         const gone = (yield* store.listAgents(thread.id).pipe(Effect.mapError(unavailable))).filter(
           // The advisor isn't the lead's to spawn again: the next question starts a new one.
-          (agent) => agent.parentId === agentId && !isAdvisor(agent) && !runtimes.has(agent.id),
+          (agent) =>
+            agent.parentId === agentId &&
+            spawned.has(agent.id) &&
+            !isAdvisor(agent) &&
+            !runtimes.has(agent.id),
         );
         const notices: Array<InputItem> = [];
+        // Told ahead of the messages that go on from it.
+        const replay = replayNotice(history);
+        const before: ReadonlyArray<InputItem> =
+          replay === undefined ? [] : [{ _tag: "SystemNotice", text: replay }];
         if (gone.length > 0) {
           notices.push({
             _tag: "SystemNotice",
@@ -1260,21 +1358,315 @@ export class Orchestrator extends Context.Service<
             ].join(", ")}. Ask again if you still need it.`,
           });
         }
-        return { rt, undelivered: [...undelivered.values()], notices };
+        return { rt, undelivered: [...before, ...undelivered.values()], notices };
       });
 
       /** The lead's live runtime, resuming its session first when it has stopped or failed. */
       const liveLead = (agentId: AgentId) =>
         Effect.suspend(() => {
           const live = runtimes.get(agentId);
+          const kept = held.get(agentId);
+          held.delete(agentId);
           return live !== undefined && !live.ended
             ? Effect.succeed({
                 rt: live,
-                undelivered: [] as ReadonlyArray<InputItem>,
-                notices: [] as ReadonlyArray<InputItem>,
+                undelivered: kept?.undelivered ?? ([] as ReadonlyArray<InputItem>),
+                notices: kept?.notices ?? ([] as ReadonlyArray<InputItem>),
               })
             : resumeLead(agentId);
         });
+
+      /**
+       * Takes a lead's conversation back to before one of the user's messages: the session it goes on
+       * in holds only what came before, by its harness's own fork where it has one, else a new session
+       * told the conversation so far. The agents the replaced turns spawned stop, and their files stay
+       * as they are. Resolves with the message it went back before.
+       */
+      const rewind = Effect.fn("Orchestrator.rewind")(function* (agentId: AgentId, messageId: string) {
+        const live = runtimes.get(agentId);
+        const stored =
+          live?.info ??
+          Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+        if (stored === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+        if (stored.parentId !== undefined) {
+          return yield* notAllowed("Only the conversation with a thread's lead can go back.");
+        }
+        const thread = Option.getOrUndefined(
+          yield* store.getThread(stored.threadId).pipe(Effect.mapError(unavailable)),
+        );
+        if (thread === undefined) return yield* notFound(`Thread ${stored.threadId} does not exist.`);
+        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const point = rewindPoint(events, messageId);
+        if ("problem" in point) {
+          return yield* new OrchestratorError({ reason: "invalid", message: point.problem });
+        }
+
+        // The session the replaced turns ran in ends, and so do the agents they spawned.
+        if (live !== undefined) yield* stopRuntime(live);
+        held.delete(agentId);
+        yield* Effect.forEach(
+          point.spawned,
+          (childId) => {
+            const child = runtimes.get(childId);
+            return child === undefined ? Effect.void : stopRuntime(child);
+          },
+          { discard: true },
+        );
+        // What the replaced turns still waited on is closed with them.
+        const replaced = events.filter((event) => event.sequence >= point.fromSequence);
+        const info = Option.getOrElse(
+          yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)),
+          () => stored,
+        );
+        const permissions = new Set<string>();
+        const spawns = new Set<string>();
+        for (const { payload } of replaced) {
+          if (payload._tag === "PermissionRequested") permissions.add(payload.requestId);
+          if (payload._tag === "PermissionResolved") permissions.delete(payload.requestId);
+          if (payload._tag === "SpawnApprovalRequested") spawns.add(payload.requestId);
+          if (payload._tag === "SpawnApprovalResolved") spawns.delete(payload.requestId);
+        }
+        for (const requestId of permissions) {
+          yield* emitStored(info, { _tag: "PermissionResolved", requestId, decision: "deny", scope: "once" });
+        }
+        for (const requestId of spawns) {
+          pendingSpawns.delete(requestId);
+          yield* emitStored(info, { _tag: "SpawnApprovalResolved", requestId, decision: "deny" });
+        }
+
+        let via = point.via;
+        if (via === "fork") {
+          const adapter = adapters.get(info.provider);
+          const sessionId = info.providerSessionId;
+          // A session that hasn't reported its id yet can't be forked; nor can a harness without forks.
+          const forked =
+            adapter?.fork === undefined ||
+            !adapter.manifest.session.fork ||
+            sessionId === undefined ||
+            startsAnew(liveEvents(events))
+              ? undefined
+              : yield* adapter.fork({ cwd: threadDirectory(thread), sessionId, before: point.turn }).pipe(
+                  Effect.tapError((error) =>
+                    Effect.logWarning(
+                      `Couldn't fork ${info.provider} session ${sessionId}: ${error.message}`,
+                    ),
+                  ),
+                  Effect.option,
+                  Effect.map(Option.getOrUndefined),
+                );
+          if (forked === undefined) via = "replay";
+          else {
+            yield* store
+              .updateAgent(agentId, { providerSessionId: forked, updatedAt: yield* now })
+              .pipe(Effect.mapError(unavailable));
+          }
+        }
+        yield* emitStored(info, {
+          _tag: "ConversationRewound",
+          fromSequence: point.fromSequence,
+          messageId,
+          via,
+        });
+        // Picked back up at once, so the thread reads as waiting for the user rather than stopped.
+        const { undelivered, notices } = yield* resumeLead(agentId);
+        held.set(agentId, { undelivered, notices });
+        return point.message;
+      });
+
+      /**
+       * Where restoring a lead's thread to before one of the user's messages goes back to: the turn
+       * that delivered it, when that turn began, and the snapshot of the folder taken just before it.
+       */
+      const restorePoint = Effect.fn("Orchestrator.restorePoint")(function* (
+        agentId: AgentId,
+        messageId: string,
+      ) {
+        const lead =
+          runtimes.get(agentId)?.info ??
+          Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+        if (lead === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+        if (lead.parentId !== undefined) {
+          return yield* notAllowed("Only a thread's lead can go back to before one of your messages.");
+        }
+        const thread = yield* threadInfo(lead.threadId);
+        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const point = rewindPoint(events, messageId);
+        if ("problem" in point) {
+          return yield* new OrchestratorError({ reason: "invalid", message: point.problem });
+        }
+        const turn = events.find((event) => event.sequence === point.fromSequence);
+        const snapshot = turn?.payload._tag === "TurnInput" ? turn.payload.files : undefined;
+        return { lead, thread, events, point, since: turn?.at ?? 0, snapshot };
+      });
+
+      /** A file an agent named, relative to `folder` with forward slashes; none when it lies outside. */
+      const inFolder = (folder: string, file: string) => {
+        const relative = path.relative(folder, path.resolve(folder, file));
+        return relative === "" || relative.startsWith("..") || path.isAbsolute(relative)
+          ? undefined
+          : relative.replaceAll("\\", "/");
+      };
+
+      /** The files of `folder` a thread's agents changed in their turns since `since`. */
+      const changedBy = Effect.fn("Orchestrator.changedBy")(function* (
+        threadId: ThreadId,
+        folder: string,
+        since: number,
+        now: string,
+      ) {
+        const events = yield* store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable));
+        const changed = new Set<string>();
+        for (const agentEvents of Map.groupBy(events, (event) => event.agentId).values()) {
+          const work = workSince(agentEvents, since);
+          for (const file of work.files) {
+            const relative = inFolder(folder, file);
+            if (relative !== undefined) changed.add(relative);
+          }
+          for (const span of work.spans) {
+            const to = span.to ?? now;
+            if (span.from === to) continue;
+            for (const { path: file } of yield* checkpoints.changes(folder, span.from, to)) changed.add(file);
+          }
+        }
+        return changed;
+      });
+
+      /**
+       * What restoring a thread's files to `snapshot` does: those its agents changed since `since` go
+       * back, except those another thread in the same folder changed too. Absent for a chat.
+       */
+      const filePlan = Effect.fn("Orchestrator.filePlan")(function* (
+        thread: ThreadInfo,
+        since: number,
+        snapshot: string | undefined,
+      ) {
+        if (thread.mode !== "work") return undefined;
+        if (snapshot === undefined) {
+          return {
+            unavailable:
+              "No snapshot of the folder was taken before this message, so its files stay as they are.",
+          } as const;
+        }
+        const folder = threadDirectory(thread);
+        return yield* Effect.gen(function* () {
+          const now = yield* checkpoints.save(folder);
+          const differing = yield* checkpoints.changes(folder, snapshot, now);
+          if (differing.length === 0) return { restored: [], kept: [] };
+          const ours = yield* changedBy(thread.id, folder, since, now);
+          const theirs = new Map<string, string>();
+          const neighbours = (yield* store.listThreads.pipe(Effect.mapError(unavailable))).filter(
+            (other) =>
+              other.id !== thread.id &&
+              other.mode === "work" &&
+              other.cwd !== undefined &&
+              path.relative(other.cwd, folder) === "",
+          );
+          for (const other of neighbours) {
+            for (const file of yield* changedBy(other.id, folder, since, now)) {
+              if (!theirs.has(file)) theirs.set(file, other.title);
+            }
+          }
+          return planRestore(differing, ours, theirs);
+        }).pipe(
+          // The conversation can still go back when the files can't be read.
+          Effect.catchTag("CheckpointError", (error) =>
+            Effect.succeed({ unavailable: error.message } as const),
+          ),
+        );
+      });
+
+      /** Whether going back to `point` copies the lead's session with its harness, or starts a new one. */
+      const conversationVia = (
+        lead: AgentInfo,
+        events: ReadonlyArray<AgentEvent>,
+        via: RestorePreview["conversation"],
+      ): RestorePreview["conversation"] => {
+        if (via !== "fork") return via;
+        const adapter = adapters.get(lead.provider);
+        const forks =
+          adapter?.fork !== undefined &&
+          adapter.manifest.session.fork &&
+          lead.providerSessionId !== undefined &&
+          !startsAnew(liveEvents(events));
+        return forks ? "fork" : "replay";
+      };
+
+      /** The thread's agents besides its lead that are live: a restore stops them. */
+      const liveChildren = (threadId: ThreadId) =>
+        [...runtimes.values()].filter(
+          (rt) => rt.info.threadId === threadId && rt.info.parentId !== undefined && !rt.ended,
+        );
+
+      const previewRestore = Effect.fn("Orchestrator.previewRestore")(function* (
+        agentId: AgentId,
+        messageId: string,
+      ) {
+        const { lead, thread, events, point, since, snapshot } = yield* restorePoint(agentId, messageId);
+        // The user's messages from this one on: those the replaced turns delivered, and any still waiting.
+        const delivered = new Set<string>();
+        const going = new Set<string>();
+        for (const { payload, sequence } of liveEvents(events)) {
+          if (payload._tag === "TurnInput") {
+            for (const item of payload.items) {
+              if (item._tag !== "FromUser" || item.id === undefined) continue;
+              (sequence >= point.fromSequence ? going : delivered).add(item.id);
+            }
+          }
+          if (payload._tag === "MessageQueued" && payload.message.id !== undefined) {
+            going.add(payload.message.id);
+          }
+        }
+        for (const id of delivered) going.delete(id);
+        const files = yield* filePlan(thread, since, snapshot);
+        return {
+          messageId,
+          messages: going.size,
+          conversation: conversationVia(lead, events, point.via),
+          agents: liveChildren(thread.id).map(({ info }) => ({
+            id: info.id,
+            role: info.role,
+            model: info.model,
+          })),
+          ...(files === undefined ? {} : { files }),
+        } satisfies RestorePreview;
+      });
+
+      const restoreBefore = Effect.fn("Orchestrator.restoreBefore")(function* (
+        agentId: AgentId,
+        messageId: string,
+      ) {
+        const { thread, since, snapshot } = yield* restorePoint(agentId, messageId);
+        // Every agent stops before a file goes back, so none changes one meanwhile; the lead's
+        // conversation then goes back, and it hears the agents it spawned are gone.
+        yield* Effect.forEach(liveChildren(thread.id), stopRuntime, { discard: true });
+        const message = yield* rewind(agentId, messageId);
+        const plan = yield* filePlan(thread, since, snapshot);
+        if (
+          snapshot === undefined ||
+          plan === undefined ||
+          !("restored" in plan) ||
+          plan.restored.length === 0
+        ) {
+          return message;
+        }
+        const paths = plan.restored.map((file) => file.path);
+        yield* checkpoints.restore(threadDirectory(thread), snapshot, paths).pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorError({
+                reason: "unavailable",
+                message: `The conversation went back, but the files couldn't: ${error.message}`,
+              }),
+          ),
+        );
+        const payload: EventPayload = { _tag: "FilesRestored", messageId, paths };
+        const rt = runtimes.get(agentId);
+        if (rt === undefined) {
+          const info = yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable));
+          if (Option.isSome(info)) yield* emitStored(info.value, payload);
+        } else yield* emit(rt, payload);
+        return message;
+      });
 
       /** The agent's harness session, which a live agent only lacks while it starts. */
       const sessionOf = (rt: Runtime) =>
@@ -1401,11 +1793,15 @@ export class Orchestrator extends Context.Service<
         return { thread, lead };
       });
 
-      /** The user's message to a lead; one a lead wrote for them when it started the thread says so. */
+      /**
+       * The user's message to a lead; one a lead wrote for them when it started the thread says so.
+       * With `rewindBefore`, the conversation first goes back to before that earlier message.
+       */
       const acceptUserMessage = (
         agentId: AgentId,
         text: string,
         extras: UserMessageExtras & Pick<FromUser, "writtenBy"> = {},
+        options: { readonly rewindBefore?: string } = {},
       ) => {
         const { attachments = [], mentions = [], writtenBy } = extras;
         if (text.trim() === "" && attachments.length === 0) {
@@ -1413,6 +1809,7 @@ export class Orchestrator extends Context.Service<
         }
         return acceptPermit.withPermits(1)(
           Effect.gen(function* () {
+            if (options.rewindBefore !== undefined) yield* rewind(agentId, options.rewindBefore);
             const { rt, undelivered, notices } = yield* liveLead(agentId);
             const message: FromUser = {
               _tag: "FromUser",
@@ -1443,6 +1840,23 @@ export class Orchestrator extends Context.Service<
             ...(extras.attachments ? { attachments: extras.attachments } : {}),
             ...(extras.mentions ? { mentions: extras.mentions } : {}),
           }),
+
+        editMessage: (agentId, messageId, text, extras = {}) =>
+          acceptUserMessage(
+            agentId,
+            text,
+            {
+              ...(extras.attachments ? { attachments: extras.attachments } : {}),
+              ...(extras.mentions ? { mentions: extras.mentions } : {}),
+            },
+            { rewindBefore: messageId },
+          ),
+
+        rewindLead: (agentId, messageId) => acceptPermit.withPermits(1)(rewind(agentId, messageId)),
+
+        previewRestore,
+
+        restoreBefore: (agentId, messageId) => acceptPermit.withPermits(1)(restoreBefore(agentId, messageId)),
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.
@@ -1627,6 +2041,58 @@ export class Orchestrator extends Context.Service<
               text: `The user stopped agent ${rt.info.id} "${rt.info.role}"; it will not report back. Carry on without it, or spawn a new agent if you still need that work.`,
             });
           }
+        }),
+
+        stopThread: Effect.fn("Orchestrator.stopThread")(function* (threadId: ThreadId) {
+          yield* threadInfo(threadId);
+          const members = [...runtimes.values()].filter((rt) => rt.info.threadId === threadId && !rt.ended);
+          const deny = {
+            decision: "deny",
+            scope: "once",
+            message: "The user stopped everything in this thread.",
+          } as const;
+          let approvals = 0;
+          // Requests are denied before the turns are interrupted, so a harness blocked on one is free to end.
+          for (const rt of members) {
+            const waiting = new Set([
+              ...(pendingPermissions.get(rt.info.id) ?? []),
+              ...(leadRequests.get(rt.info.id) ?? []),
+            ]);
+            leadRequests.delete(rt.info.id);
+            approvals += waiting.size;
+            const session = rt.session;
+            if (session === undefined) continue;
+            yield* Effect.forEach(waiting, (requestId) => session.respondToPermission(requestId, deny), {
+              discard: true,
+              concurrency: "unbounded",
+            }).pipe(Effect.ignore);
+          }
+          for (const [requestId, { leadId }] of [...pendingSpawns]) {
+            const lead = runtimes.get(leadId);
+            if (lead?.info.threadId !== threadId) continue;
+            pendingSpawns.delete(requestId);
+            approvals++;
+            yield* emit(lead, { _tag: "SpawnApprovalResolved", requestId, decision: "deny" });
+          }
+          const working = members.filter((rt) => rt.info.state === "running" || rt.info.state === "queued");
+          for (const rt of working) rt.halted = true;
+          yield* Effect.forEach(
+            members,
+            (rt) =>
+              Effect.gen(function* () {
+                // Notices waiting to be delivered would start the turn the user just stopped; their own
+                // messages stay queued, as they wrote them.
+                const waiting = yield* Queue.clear(rt.inbox);
+                yield* Queue.offerAll(
+                  rt.inbox,
+                  waiting.filter((item) => item._tag === "FromUser"),
+                );
+                yield* (rt.session?.interrupt ?? Effect.void).pipe(Effect.ignore);
+                yield* expireQuestions(rt).pipe(Effect.ignore);
+              }),
+            { discard: true, concurrency: "unbounded" },
+          );
+          return { agents: working.length, approvals };
         }),
 
         listThreads: store.listThreads.pipe(Effect.mapError(unavailable)),

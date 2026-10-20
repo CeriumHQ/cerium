@@ -236,3 +236,28 @@ export const requestQueue = (agents: ReadonlyArray<AgentSummary>): ReadonlyArray
       })),
     ])
     .toSorted((a, b) => a.request.at - b.request.at);
+
+/** The `RPC_VERSION` that brought `StopThread`; an older machine's threads are stopped agent by agent. */
+export const STOP_THREAD_VERSION = 10;
+
+/** The shortcut the window listens for to stop everything in the open thread. */
+export const STOP_ALL_SHORTCUT = "Ctrl Shift .";
+
+/** What "Stop everything" would end in a thread: the agents at work and the requests it would deny. */
+export const stopAllScope = (
+  agents: ReadonlyArray<AgentSummary>,
+): { readonly agents: number; readonly approvals: number } => ({
+  agents: agents.filter(({ state }) => state === "running" || state === "queued").length,
+  approvals: agents.reduce((sum, { approvals, spawns }) => sum + approvals.length + spawns.length, 0),
+});
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/** The confirmation's sentence: only the parts that apply. */
+export const stopAllSummary = (scope: { readonly agents: number; readonly approvals: number }): string => {
+  const parts = [
+    ...(scope.agents > 0 ? [plural(scope.agents, "working agent", "working agents")] : []),
+    ...(scope.approvals > 0 ? [plural(scope.approvals, "pending approval", "pending approvals")] : []),
+  ];
+  return parts.join(" and ");
+};

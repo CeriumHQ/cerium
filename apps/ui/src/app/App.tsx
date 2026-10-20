@@ -24,6 +24,7 @@ import {
   Columns2,
   FolderTree,
   MessagesSquare,
+  OctagonX,
   PanelLeft,
   RotateCcw,
   Rows2,
@@ -49,6 +50,7 @@ import {
   cloudEventsAtom,
   createThread,
   deleteThread,
+  editMessage,
   harnessesAtom,
   interruptAgent,
   localWorkingAtom,
@@ -60,6 +62,7 @@ import {
   sendMessage,
   setThreadArchived,
   stopAgent,
+  stopThread,
   switchModel,
   threadEventsAtom,
   threadsAtom,
@@ -85,6 +88,8 @@ import {
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
+import { STOP_ALL_SHORTCUT, STOP_THREAD_VERSION, stopAllScope } from "../features/agents/model.ts";
+import { StopAllDialog } from "../features/agents/StopAllDialog.tsx";
 import { ArtifactsPanel } from "../features/artifacts/ArtifactsPanel.tsx";
 import {
   ARTIFACTS_VERSION,
@@ -129,6 +134,7 @@ import type { ThreadSummary } from "../features/threads/model.ts";
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
+import { EDIT_VERSION } from "../features/transcript/model.ts";
 import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
@@ -582,12 +588,16 @@ function Workspace() {
   const openWhatsNew = useAtomSet(whatsNewOpenAtom);
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
+  const edit = useAtomSet(editMessage, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
   const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
+  const stopEverything = useAtomSet(stopThread, { mode: "promise" });
+  /** Waiting on the user to confirm stopping every agent in the open thread. */
+  const [stopAllOpen, setStopAllOpen] = useState(false);
   const rename = useAtomSet(renameThread, { mode: "promise" });
   const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
   const remove = useAtomSet(deleteThread, { mode: "promise" });
@@ -634,6 +644,16 @@ function Workspace() {
   const noHarness = AsyncResult.isSuccess(harnessesResult) && available.size === 0;
 
   const agents = viewed ? toAgentSummaries(viewed.agents, events, models) : [];
+  /** What stopping everything in the open thread would end; offered for a live thread whose machine can. */
+  const stopScope = stopAllScope(agents);
+  const canStopAll =
+    selected !== undefined &&
+    cloudSelected === undefined &&
+    (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STOP_THREAD_VERSION) &&
+    (stopScope.agents > 0 || stopScope.approvals > 0);
+  const askStopAll = () => {
+    if (canStopAll) setStopAllOpen(true);
+  };
   const toggleInspector = () => {
     setInspectorOpen(!inspectorOpen);
     setFilesOpen(false);
@@ -899,6 +919,16 @@ function Workspace() {
       run: toggleInspector,
     },
     {
+      id: "stop-all",
+      group: "Actions",
+      label: "Stop everything",
+      icon: OctagonX,
+      keys: STOP_ALL_SHORTCUT,
+      keywords: "interrupt cancel halt agents deny approvals",
+      when: canStopAll,
+      run: askStopAll,
+    },
+    {
       id: "files",
       group: "Actions",
       label: filesOpen ? "Hide files" : "Show files",
@@ -1048,6 +1078,8 @@ function Workspace() {
         setMode(event.code === "Digit1" ? "work" : "chat");
       } else if (event.key.toLowerCase() === "e" && !settingsOpen && filesRoot !== undefined) {
         toggleFiles();
+      } else if ((event.code === "Period" || event.key === ">") && !settingsOpen) {
+        askStopAll();
       } else return;
       event.preventDefault();
       return;
@@ -1157,6 +1189,10 @@ function Workspace() {
   const paneActions: ThreadPaneActions = {
     attempt,
     send: (agentId, message) => send({ payload: { agentId, ...message } }),
+    edit:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= EDIT_VERSION
+        ? (agentId, messageId, message) => edit({ payload: { agentId, messageId, ...message } })
+        : undefined,
     start: startThread,
     interrupt: (agentId) => interrupt({ payload: { agentId } }),
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
@@ -1467,6 +1503,7 @@ function Workspace() {
             onMessageLead={() => focusComposer()}
             onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
             onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
+            {...(canStopAll ? { onStopAll: askStopAll } : {})}
             onAnswerApproval={answerApproval}
             onAnswerSpawn={answerSpawn}
             onAnswerQuestion={answerQuestionOf}
@@ -1520,6 +1557,14 @@ function Workspace() {
           />
         </div>
       )}
+      {selected ? (
+        <StopAllDialog
+          scope={stopScope}
+          open={stopAllOpen && canStopAll}
+          onOpenChange={setStopAllOpen}
+          onConfirm={() => void attempt(stopEverything({ payload: { threadId: selected.thread.id } }))}
+        />
+      ) : null}
       {archiving?.thread.worktree ? (
         <ArchiveWorktreeDialog
           thread={{ ...archiving.thread, worktree: archiving.thread.worktree }}

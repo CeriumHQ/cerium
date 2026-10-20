@@ -12,7 +12,14 @@ import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
 import { AdaptersLive } from "../src/layers.ts";
-import { LiveCheckRequest, renderResults, runLiveChecks, TODO_ITEMS, TODO_PROMPT } from "./live/check.ts";
+import {
+  LiveCheckRequest,
+  renderResults,
+  runLiveChecks,
+  STOP_PROMPT,
+  TODO_ITEMS,
+  TODO_PROMPT,
+} from "./live/check.ts";
 
 const flag = (name: string) =>
   process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -36,6 +43,7 @@ if (process.argv.includes("--help")) {
       "  --max-approvals=0          fail past this many approval requests",
       "  --approvals=deny|allow     how requests are answered (default deny)",
       "  --timeout=180              seconds per harness",
+      "  --interrupt-after=8        run a long command, interrupt after this many seconds; must end as interrupted",
     ].join("\n"),
   );
   process.exit(0);
@@ -49,12 +57,14 @@ const input: unknown = {
     ? { models: Object.fromEntries(list("model")!.map((pair) => pair.split(":") as [string, string])) }
     : {}),
   ...(todos ? { prompt: TODO_PROMPT, expectTodos: TODO_ITEMS } : {}),
+  ...(flag("interrupt-after") ? { prompt: STOP_PROMPT, expectFiles: [] } : {}),
   ...(flag("prompt") ? { prompt: flag("prompt") } : {}),
   ...(list("expect") ? { expectFiles: list("expect") } : {}),
   ...(flag("expect-reply") ? { expectReply: flag("expect-reply") } : {}),
   ...(flag("max-approvals") ? { maxApprovals: Number(flag("max-approvals")) } : {}),
   ...(flag("approvals") ? { approvals: flag("approvals") } : {}),
   ...(flag("timeout") ? { timeoutSeconds: Number(flag("timeout")) } : {}),
+  ...(flag("interrupt-after") ? { interruptAfterSeconds: Number(flag("interrupt-after")) } : {}),
 };
 
 const request = Schema.decodeUnknownSync(LiveCheckRequest)(input);

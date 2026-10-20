@@ -6,6 +6,7 @@ import {
   Eye,
   FilePen,
   MessageSquareText,
+  OctagonX,
   Pause,
   ShieldCheck,
   ShieldOff,
@@ -39,8 +40,10 @@ import {
   accessLabel,
   agentMenuPlan,
   displayState,
+  STOP_ALL_SHORTCUT,
   stateLabel,
   statusCounts,
+  stopAllScope,
   threadUsage,
   type AgentSummary,
 } from "./model.ts";
@@ -63,6 +66,8 @@ interface InspectorProps {
   readonly onMessageLead?: () => void;
   readonly onInterrupt?: (agentId: string) => void;
   readonly onStop?: (agentId: string) => void;
+  /** Asks to stop every agent and deny every request in the thread; offered while any is left to stop. */
+  readonly onStopAll?: () => void;
   /** Answers a request a child is waiting on; the lead's own are answered in the transcript. */
   readonly onAnswerApproval?: AnswerApproval;
   /** Answers the lead's request to start an agent. */
@@ -88,6 +93,7 @@ export function Inspector({
   onMessageLead,
   onInterrupt,
   onStop,
+  onStopAll,
   onAnswerApproval,
   onAnswerSpawn,
   onAnswerQuestion,
@@ -128,6 +134,8 @@ export function Inspector({
   };
 
   const counts = statusCounts(agents);
+  const scope = stopAllScope(agents);
+  const canStopAll = onStopAll !== undefined && (scope.agents > 0 || scope.approvals > 0);
 
   return (
     <div ref={root} className="flex h-full flex-col">
@@ -144,12 +152,21 @@ export function Inspector({
             ))}
           </span>
         )}
+        {canStopAll ? (
+          <IconButton
+            icon={OctagonX}
+            label="Stop everything"
+            shortcut={STOP_ALL_SHORTCUT}
+            onClick={onStopAll}
+            className="ml-auto text-error/80 hover:text-error max-md:size-10"
+          />
+        ) : null}
         <IconButton
           icon={X}
           label="Close"
           shortcut="Ctrl J"
           onClick={onClose}
-          className="ml-auto max-md:size-10"
+          className={`max-md:size-10 ${canStopAll ? "" : "ml-auto"}`}
         />
       </header>
 

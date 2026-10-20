@@ -110,6 +110,17 @@ export const Handlers = MachineRpcs.toLayer(
             ...(mentions ? { mentions } : {}),
           })
           .pipe(Effect.mapError(refuse)),
+      EditMessage: ({ agentId, messageId, text, attachments, mentions }) =>
+        orchestrator
+          .editMessage(agentId, messageId, text, {
+            ...(attachments ? { attachments } : {}),
+            ...(mentions ? { mentions } : {}),
+          })
+          .pipe(Effect.mapError(refuse)),
+      PreviewRestore: ({ agentId, messageId }) =>
+        orchestrator.previewRestore(agentId, messageId).pipe(Effect.mapError(refuse)),
+      RestoreBefore: ({ agentId, messageId }) =>
+        orchestrator.restoreBefore(agentId, messageId).pipe(Effect.mapError(refuse)),
       SwitchModel: ({ agentId, model, effort }) =>
         orchestrator
           .switchModel(agentId, { model, ...(effort ? { effort } : {}) })
@@ -129,6 +140,7 @@ export const Handlers = MachineRpcs.toLayer(
           .interruptAgent(agentId, includeChildren === undefined ? {} : { includeChildren })
           .pipe(Effect.mapError(refuse)),
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
+      StopThread: ({ threadId }) => orchestrator.stopThread(threadId).pipe(Effect.mapError(refuse)),
       RenameThread: ({ threadId, title }) =>
         orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
       SetThreadArchived: ({ threadId, archived, discardWork }) =>
