@@ -8,9 +8,12 @@ import {
   Mail,
   MailOpen,
   Pencil,
+  Pin,
+  PinOff,
   SquarePen,
   Trash2,
 } from "lucide-react";
+import { useAtomValue, useAtomSet } from "@effect/atom-react";
 import { Fragment, useState } from "react";
 
 import {
@@ -32,6 +35,7 @@ import { ArchivedSection } from "./Archived.tsx";
 import { DraftSection, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
 import { canArchive, canDelete, type ThreadSummary } from "./model.ts";
+import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 import { type RenameThread } from "./Rename.tsx";
 import { ThreadRow, type RowControls, type RowMark } from "./ThreadRow.tsx";
@@ -88,7 +92,11 @@ export function Inbox({ threads, drafts, draftActions, archived, onRestore, ...a
   );
   // Drafts follow what needs the user: a request waiting on them still comes first.
   const needsYou = sections.filter((section) => section.key === "needsYou");
-  const rest = sections.filter((section) => section.key !== "needsYou");
+  // A pinned thread that needs the user stays where it asks; the rest lead the history, in a group of their own.
+  const rest = withPinned(
+    sections.filter((section) => section.key !== "needsYou"),
+    useAtomValue(pinnedAtom),
+  );
   const unread = scoped.filter((thread) => thread.unread);
   const inView = [...scoped, ...archived.filter(inScope)];
   const mark: RowMark = new Set(inView.map((thread) => thread.folder)).size > 1 ? "badge" : "dot";
@@ -235,6 +243,9 @@ function InboxRow({
   harness,
 }: { thread: ThreadSummary } & RowProps) {
   const { folder, project } = thread;
+  const pins = useAtomValue(pinnedAtom);
+  const setPins = useAtomSet(pinnedAtom);
+  const pinned = pins.includes(thread.id);
   const menu = ({ rename, remove }: RowControls) => (
     <>
       {thread.unread ? (
@@ -246,6 +257,9 @@ function InboxRow({
           Mark as unread
         </MenuItem>
       )}
+      <MenuItem icon={pinned ? PinOff : Pin} onClick={() => setPins(togglePin(pins, thread.id))}>
+        {pinned ? "Unpin" : "Pin"}
+      </MenuItem>
       {folder && project ? (
         <>
           {thread.elsewhere ? null : (

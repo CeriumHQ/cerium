@@ -1,12 +1,14 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   Archive,
   ChevronRight,
   MessagesSquare,
   Pencil,
+  Pin,
+  PinOff,
   Search,
   Settings,
   SquarePen,
@@ -27,6 +29,7 @@ import { EmptyList } from "./EmptyList.tsx";
 import { Inbox } from "./Inbox.tsx";
 import { archivedWork, canArchive, canDelete, isListed, providerName, type ThreadSummary } from "./model.ts";
 import { type RenameThread } from "./Rename.tsx";
+import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ThreadSearch } from "./Search.tsx";
 import { ThreadRow } from "./ThreadRow.tsx";
 
@@ -196,7 +199,7 @@ function ChatList({
   drafts: ReadonlyArray<NewThreadDraft>;
   draftActions: DraftActions;
 } & ChatActions) {
-  const sections = chatSections(threads);
+  const sections = withPinned(chatSections(threads), useAtomValue(pinnedAtom));
   return (
     <ScrollArea className="flex-1">
       <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
@@ -244,6 +247,9 @@ function ChatRow({
   onArchive,
   onDelete,
 }: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
+  const pins = useAtomValue(pinnedAtom);
+  const setPins = useAtomSet(pinnedAtom);
+  const pinned = pins.includes(thread.id);
   return (
     <ThreadRow
       thread={thread}
@@ -259,6 +265,9 @@ function ChatRow({
         : {
             menu: ({ rename, remove }) => (
               <>
+                <MenuItem icon={pinned ? PinOff : Pin} onClick={() => setPins(togglePin(pins, thread.id))}>
+                  {pinned ? "Unpin" : "Pin"}
+                </MenuItem>
                 <MenuItem icon={Pencil} onClick={rename}>
                   Rename
                 </MenuItem>
