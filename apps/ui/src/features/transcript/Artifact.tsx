@@ -4,13 +4,14 @@ import {
   artifactDocument,
   fontFaces,
   isLegacyArtifact,
-  localImages,
+  localFiles,
+  localFileType,
   readFrameMessage,
   RENDER_MESSAGE,
   THEME_MESSAGE,
   themeFromTokens,
   themeUpdate,
-  withLocalImages,
+  withLocalFiles,
   type ArtifactTheme,
 } from "@cerium/artifacts";
 import legacyCss from "@cerium/artifacts/legacy.css?raw";
@@ -30,15 +31,17 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
-import { artifactImagesAtom, renderArtifact } from "../../backend/files.ts";
+import { artifactFilesAtom, renderArtifact, type ArtifactFile } from "../../backend/files.ts";
 import { shellBridge } from "../../backend/shell.ts";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { artifactFileName, download, openInTab } from "./artifactExport.ts";
 import { CopyButton } from "./CopyButton.tsx";
+import { WorkspaceFolder } from "./FileChip.tsx";
+import { relativePath } from "./paths.ts";
 
 // Agents' HTML visuals. Each renders in a frame sandboxed into an opaque origin, which loads the host
 // page (`artifact.html`, served with its own policy) and is sent the agent's page to render, with
@@ -52,7 +55,7 @@ const HOST_URL = `${import.meta.env.BASE_URL}artifact.html`;
 
 const FONTS = fontFaces({ sans: redHatText, mono: redHatMono });
 
-const NO_IMAGES: ReadonlyMap<string, string> = new Map();
+const NO_FILES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The height each artifact last reported, so one the transcript mounts again (scrolling back, a
@@ -208,13 +211,13 @@ function ArtifactMenu({
   widthOf: () => number;
   onError: (message: string) => void;
 }) {
-  const images = useArtifactImages(code);
+  const files = useArtifactFiles(code);
   const render = useAtomSet(renderArtifact, { mode: "promise" });
   const [saving, setSaving] = useState(false);
   const bridge = shellBridge();
   const name = title ?? "Artifact";
   const standalone = () =>
-    artifactDocument(withLocalImages(code, images ?? NO_IMAGES), {
+    artifactDocument(withLocalFiles(code, files ?? NO_FILES), {
       theme: JSON.parse(themeSnapshot()) as ArtifactTheme,
       fonts: FONTS,
       legacyCss,
@@ -228,7 +231,7 @@ function ArtifactMenu({
     try {
       const { mediaType, data } = await render({
         payload: {
-          html: withLocalImages(code, images ?? NO_IMAGES),
+          html: withLocalFiles(code, files ?? NO_FILES),
           width: Math.round(widthOf()) + SAVED_MARGIN * 2,
           mode: theme.mode,
           variables: theme.variables,
@@ -279,11 +282,23 @@ function ArtifactMenu({
   );
 }
 
-/** The local images a page names, read through the backend; undefined until they are. */
-const useArtifactImages = (code: string): ReadonlyMap<string, string> | undefined => {
-  const images = useAtomValue(artifactImagesAtom(localImages(code).join("\n")));
-  if (AsyncResult.isSuccess(images)) return images.value;
-  return AsyncResult.isFailure(images) ? NO_IMAGES : undefined;
+/**
+ * The local files a page names as `data:` URLs, read through the backend; undefined until they are.
+ * Images come from anywhere, data files only from inside the thread's folder.
+ */
+const useArtifactFiles = (code: string): ReadonlyMap<string, string> | undefined => {
+  const folder = useContext(WorkspaceFolder);
+  const files = localFiles(code).flatMap((path): ReadonlyArray<ArtifactFile> => {
+    const type = localFileType(path);
+    if (type?.kind === "image") return [{ path, kind: "image" }];
+    const relative = type === undefined ? undefined : relativePath(path, folder);
+    return type === undefined || folder === undefined || relative === undefined
+      ? []
+      : [{ path, kind: "data", mediaType: type.mediaType, root: folder, relative }];
+  });
+  const read = useAtomValue(artifactFilesAtom(JSON.stringify(files)));
+  if (AsyncResult.isSuccess(read)) return read.value;
+  return AsyncResult.isFailure(read) ? NO_FILES : undefined;
 };
 
 /**
@@ -312,20 +327,20 @@ function ArtifactFrame({
   const [hostReady, setHostReady] = useState(false);
   const rendered = useRef(false);
   const legacy = isLegacyArtifact(code);
-  // The local images the page names, read through the backend before it renders: the page itself
-  // can't load a file. Ones that can't be read keep their path and fail in the page like any image.
-  const imagesRead = useArtifactImages(code);
+  // The local files the page names, read through the backend before it renders: the page itself
+  // can't load a file. Ones that can't be read keep their path and fail in the page.
+  const filesRead = useArtifactFiles(code);
 
-  // The page renders once, when both the host page and its images are ready; theme changes after
+  // The page renders once, when both the host page and its files are ready; theme changes after
   // that restyle it in place (below).
   useEffect(() => {
     const target = frame.current?.contentWindow;
-    if (!target || !hostReady || imagesRead === undefined || rendered.current) return;
+    if (!target || !hostReady || filesRead === undefined || rendered.current) return;
     rendered.current = true;
     const theme = JSON.parse(themeKey) as ArtifactTheme;
-    const html = artifactDocument(withLocalImages(code, imagesRead), { theme, fonts: FONTS, legacyCss });
+    const html = artifactDocument(withLocalFiles(code, filesRead), { theme, fonts: FONTS, legacyCss });
     target.postMessage({ type: RENDER_MESSAGE, html }, "*");
-  }, [code, hostReady, imagesRead, themeKey]);
+  }, [code, hostReady, filesRead, themeKey]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

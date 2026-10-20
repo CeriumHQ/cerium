@@ -1,3 +1,4 @@
+import { dataFileUrl } from "@cerium/artifacts";
 import type { ProviderId } from "@cerium/protocol";
 import { Effect } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -18,20 +19,48 @@ export const imageAtom = Atom.family((path: string) =>
 );
 
 /**
- * The local images an artifact names, as data URLs by path; keyed by the paths on separate lines.
- * One that can't be read is left out, and the page keeps the path it wrote.
+ * A local file an artifact names, and how it is read: an image from anywhere, or a data file under
+ * the thread's folder (`root`, at `relative`), whose text is embedded only whole.
  */
-export const artifactImagesAtom = Atom.family(
-  (key: string): Atom.Atom<AsyncResult.AsyncResult<ReadonlyMap<string, string>, unknown>> =>
-    key === ""
+export type ArtifactFile =
+  | { readonly path: string; readonly kind: "image" }
+  | {
+      readonly path: string;
+      readonly kind: "data";
+      readonly mediaType: string;
+      readonly root: string;
+      readonly relative: string;
+    };
+
+const readArtifactFile = (file: ArtifactFile) =>
+  file.kind === "image"
+    ? Backend.use((client) => client("ReadImage", { path: file.path })).pipe(
+        Effect.map(({ mediaType, data }) => `data:${mediaType};base64,${data}`),
+      )
+    : Backend.use((client) => client("ReadFile", { root: file.root, path: file.relative })).pipe(
+        Effect.flatMap((preview) =>
+          preview._tag === "Text" && !preview.truncated
+            ? Effect.succeed(dataFileUrl(file.mediaType, preview.text))
+            : Effect.fail(preview),
+        ),
+      );
+
+/**
+ * The local files an artifact names, as data URLs by path; keyed by the files as JSON. One that
+ * can't be read is left out, and the page keeps the path it wrote.
+ */
+export const artifactFilesAtom = Atom.family(
+  (key: string): Atom.Atom<AsyncResult.AsyncResult<ReadonlyMap<string, string>, unknown>> => {
+    const files = JSON.parse(key) as ReadonlyArray<ArtifactFile>;
+    return files.length === 0
       ? Atom.make(AsyncResult.success(new Map()))
       : Backend.runtime
           .atom(
             Effect.forEach(
-              key.split("\n"),
-              (path) =>
-                Backend.use((client) => client("ReadImage", { path })).pipe(
-                  Effect.map(({ mediaType, data }) => [path, `data:${mediaType};base64,${data}`] as const),
+              files,
+              (file) =>
+                readArtifactFile(file).pipe(
+                  Effect.map((url) => [file.path, url] as const),
                   Effect.orElseSucceed(() => undefined),
                 ),
               { concurrency: 4 },
@@ -41,7 +70,8 @@ export const artifactImagesAtom = Atom.family(
               ),
             ),
           )
-          .pipe(Atom.setIdleTTL("5 minutes")),
+          .pipe(Atom.setIdleTTL("5 minutes"));
+  },
 );
 
 /** Files and folders matching a query; keyed `cwd` and query on separate lines. */

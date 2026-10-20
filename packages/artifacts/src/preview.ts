@@ -2,11 +2,11 @@ import { findBrowser, launchBrowser, Page, pickPage } from "@cerium/browser";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { artifactDocument, fontFaces } from "./document.ts";
-import { imageMediaType, localImages, withLocalImages } from "./images.ts";
+import { dataFileUrl, localFiles, localFileType, MAX_DATA_BYTES, withLocalFiles } from "./local.ts";
 import { ARTIFACT_MAX_HEIGHT } from "./limits.ts";
 import { BACKDROPS, DEFAULT_THEMES, type ArtifactMode, type ArtifactTheme } from "./theme.ts";
 
@@ -50,22 +50,36 @@ const appFonts = (() => {
 /** As large as an image the app reads for the conversation. */
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
-/** The local images a page names, read as the conversation will, and those that couldn't be. */
-const readLocalImages = (html: string) => {
-  const images = new Map<string, string>();
+/**
+ * The local files a page names, read as the conversation will (data files only inside `folder`), and
+ * those that couldn't be.
+ */
+const readLocalFiles = (html: string, folder: string | undefined) => {
+  const urls = new Map<string, string>();
   const missing: Array<{ level: string; text: string }> = [];
-  for (const path of localImages(html)) {
-    const mediaType = imageMediaType(path);
+  for (const path of localFiles(html)) {
+    const type = localFileType(path);
     try {
-      if (mediaType === undefined || !isAbsolute(path)) throw new Error("not an image file");
-      if (statSync(path).size > MAX_IMAGE_BYTES) throw new Error("larger than 25 MB");
-      images.set(path, `data:${mediaType};base64,${readFileSync(path).toString("base64")}`);
+      if (type === undefined || !isAbsolute(path))
+        throw new Error("not an absolute path to a known kind of file");
+      const size = statSync(path).size;
+      if (type.kind === "image") {
+        if (size > MAX_IMAGE_BYTES) throw new Error("larger than 25 MB");
+        urls.set(path, `data:${type.mediaType};base64,${readFileSync(path).toString("base64")}`);
+        continue;
+      }
+      const inside = folder === undefined ? undefined : relative(resolve(folder), resolve(path));
+      if (inside === undefined || inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
+        throw new Error("data files are embedded only from the thread's folder");
+      }
+      if (size > MAX_DATA_BYTES) throw new Error("larger than 2 MB");
+      urls.set(path, dataFileUrl(type.mediaType, readFileSync(path, "utf8")));
     } catch (cause) {
       const reason = cause instanceof Error && "code" in cause ? String(cause.code) : String(cause);
-      missing.push({ level: "error", text: `Couldn't read the local image ${path}: ${reason}` });
+      missing.push({ level: "error", text: `Couldn't embed the local file ${path}: ${reason}` });
     }
   }
-  return { images, missing };
+  return { urls, missing };
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,6 +106,8 @@ export const previewArtifact = async (input: {
   readonly scale?: number | undefined;
   /** As a page of its own (`artifactDocument`'s `standalone`) rather than inside the conversation. */
   readonly standalone?: boolean | undefined;
+  /** The thread's folder, the only place data files are embedded from. */
+  readonly folder?: string | undefined;
 }): Promise<ArtifactPreview> => {
   const scale = input.scale ?? 1;
   const executable = findBrowser();
@@ -100,12 +116,12 @@ export const previewArtifact = async (input: {
       "Previews need Microsoft Edge or Google Chrome, and neither is installed.",
     );
   }
-  const { images, missing } = readLocalImages(input.html);
+  const { urls, missing } = readLocalFiles(input.html, input.folder);
   const folder = mkdtempSync(join(tmpdir(), "cerium-artifact-"));
   const file = join(folder, "artifact.html");
   writeFileSync(
     file,
-    artifactDocument(withLocalImages(input.html, images), {
+    artifactDocument(withLocalFiles(input.html, urls), {
       theme: input.theme ?? DEFAULT_THEMES[input.mode],
       fonts: appFonts(),
       standalone: input.standalone,

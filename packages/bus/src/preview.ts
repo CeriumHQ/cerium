@@ -1,5 +1,6 @@
 import { ARTIFACT_COLUMN_WIDTH } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
+import { Orchestrator } from "@cerium/orchestrator";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { McpSchema, McpServer } from "effect/ai";
 import { HttpServerRequest } from "effect/http";
@@ -50,11 +51,12 @@ const BEARER = /^Bearer\s+(.+)$/i;
 const failure = (message: string) =>
   new McpSchema.CallToolResult({ isError: true, content: [{ type: "text", text: message }] });
 
-/** Registers `artifact_preview` on the bus's MCP server. Requires the BusRegistry. */
+/** Registers `artifact_preview` on the bus's MCP server. Requires the BusRegistry and the Orchestrator. */
 export const ArtifactPreviewTool = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
     const registry = yield* BusRegistry;
+    const orchestrator = yield* Orchestrator;
     yield* server.addTool({
       tool,
       annotations: Context.empty(),
@@ -65,15 +67,23 @@ export const ArtifactPreviewTool = Layer.effectDiscard(
           const token = Option.flatMap(request, (http) =>
             Option.fromNullishOr(BEARER.exec(http.headers["authorization"] ?? "")?.[1]),
           );
-          if (Option.isNone(Option.flatMap(token, (value) => registry.agentFor(value)))) {
-            return failure("Unknown Cerium agent.");
-          }
+          const agentId = Option.flatMap(token, (value) => registry.agentFor(value));
+          if (Option.isNone(agentId)) return failure("Unknown Cerium agent.");
+          // Data files are embedded only from the caller's thread's folder, as in the conversation.
+          const folder = yield* orchestrator.agent(agentId.value).pipe(
+            Effect.flatMap(({ threadId }) =>
+              orchestrator.listThreads.pipe(
+                Effect.map((threads) => threads.find((thread) => thread.id === threadId)?.cwd),
+              ),
+            ),
+            Effect.orElseSucceed(() => undefined),
+          );
           const input = yield* Schema.decodeUnknownEffect(Input)(payload).pipe(Effect.option);
           if (Option.isNone(input)) {
             return failure("Give `html` (a non-empty string), and optionally `width` (280-1600) and `mode`.");
           }
           const { html, width = ARTIFACT_COLUMN_WIDTH, mode = "dark" } = input.value;
-          const preview = yield* Effect.tryPromise(() => previewArtifact({ html, width, mode })).pipe(
+          const preview = yield* Effect.tryPromise(() => previewArtifact({ html, width, mode, folder })).pipe(
             Effect.result,
           );
           if (preview._tag === "Failure") {

@@ -89,10 +89,14 @@ Canvas and chart libraries can't read CSS variables, so the page gets \`window.c
 
 The page runs sandboxed, in its own origin:
 
-- Nothing over plain http, and nothing on this machine: no \`localhost\`, no fetching local files.
+- Nothing over plain http, and nothing on this machine: no \`localhost\`, and local files only as below.
 - Images are https URLs, \`data:\` URLs or inline SVG, or an image file on this machine by its absolute
   path (\`<img src="C:\\shots\\after.png">\`, \`url("/home/me/plot.svg")\`, or a string in a script):
   the app embeds the file before the page renders. Relative paths don't work.
+- Data the same way: a CSV, TSV, JSON or JSONL file in your working folder, named by its absolute path
+  in a script's string, is embedded (up to 2 MB) so the page reads real numbers instead of copies:
+  \`const rows = d3.csvParse(await (await fetch("C:/work/app/bench/results.csv")).text())\`, or
+  \`d3.csv(…)\` and \`d3.json(…)\` directly. Files outside your folder aren't embedded.
 - \`localStorage\`, cookies, \`alert\` and popups are unavailable. Forms don't submit; handle them in script.
 - Links open in the user's browser.
 

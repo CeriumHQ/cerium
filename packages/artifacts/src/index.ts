@@ -11,8 +11,15 @@ export {
   themeUpdate,
 } from "./document.ts";
 export { artifactGuide } from "./guide.ts";
-export { imageMediaType, localImages, withLocalImages } from "./images.ts";
 export { ARTIFACT_COLUMN_WIDTH, ARTIFACT_MAX_HEIGHT } from "./limits.ts";
+export {
+  dataFileUrl,
+  localFiles,
+  localFileType,
+  MAX_DATA_BYTES,
+  withLocalFiles,
+  type LocalFileKind,
+} from "./local.ts";
 export { readFrameMessage, RENDER_MESSAGE, THEME_MESSAGE, type FrameMessage } from "./runtime.ts";
 export {
   BACKDROPS,

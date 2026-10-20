@@ -5,15 +5,16 @@ import {
   artifactDocument,
   artifactGuide,
   artifactHostPage,
+  dataFileUrl,
   DEFAULT_THEMES,
-  imageMediaType,
   isLegacyArtifact,
-  localImages,
+  localFiles,
+  localFileType,
   readFrameMessage,
   THEME_TOKENS,
   themeFromTokens,
   themeUpdate,
-  withLocalImages,
+  withLocalFiles,
 } from "../src/index.ts";
 
 const theme = DEFAULT_THEMES.dark;
@@ -135,7 +136,7 @@ describe("isLegacyArtifact", () => {
   });
 });
 
-describe("local images", () => {
+describe("local files", () => {
   const page = [
     '<img src="C:\\shots\\after.png" alt="">',
     "<img src='/home/me/plot.SVG'>",
@@ -143,16 +144,28 @@ describe("local images", () => {
     '<style>.hero { background: url("file:///C:/My%20Pictures/hero.jpg"); }</style>',
     '<script>const shot = "C:\\\\shots\\\\after.png"; const remote = "https://example.com/a.png";</script>',
     '<a href="//cdn.example.com/x.png">x</a><p>/not/quoted.png</p><img src="relative/a.png">',
+    '<script>fetch("C:/work/app/data/sales.csv"); d3.json(`/srv/app/stats.json`); const label = "package.json";</script>',
   ].join("\n");
 
-  it("finds the image files a page names by absolute path, each once", () => {
-    assert.deepStrictEqual(localImages(page), [
+  it("finds the files a page names by absolute path, each once", () => {
+    assert.deepStrictEqual(localFiles(page), [
       "C:\\shots\\after.png",
       "/home/me/plot.SVG",
       "C:/My Pictures/hero.jpg",
+      "C:/work/app/data/sales.csv",
+      "/srv/app/stats.json",
       "D:/art/bg.webp",
     ]);
-    assert.deepStrictEqual(localImages("<p>No images</p>"), []);
+    assert.deepStrictEqual(localFiles("<p>No files</p>"), []);
+  });
+
+  it("embeds a data file's text so fetch reads it back", async () => {
+    const url = dataFileUrl("text/csv", "region,total\nNord,1 204 €\n");
+    assert.match(url, /^data:text\/csv;charset=utf-8;base64,/);
+    assert.strictEqual(await (await fetch(url)).text(), "region,total\nNord,1 204 €\n");
+    const html = withLocalFiles(page, new Map([["C:/work/app/data/sales.csv", url]]));
+    assert.include(html, `fetch("${url}")`);
+    assert.include(html, 'const label = "package.json"');
   });
 
   it("puts each file's data URL in place of every way the page wrote it", () => {
@@ -161,7 +174,7 @@ describe("local images", () => {
       ["D:/art/bg.webp", "data:image/webp;base64,BBB"],
       ["C:/My Pictures/hero.jpg", "data:image/jpeg;base64,CCC"],
     ]);
-    const html = withLocalImages(page, images);
+    const html = withLocalFiles(page, images);
     assert.include(html, '<img src="data:image/png;base64,AAA" alt="">');
     assert.include(html, 'const shot = "data:image/png;base64,AAA"');
     assert.include(html, "url(data:image/webp;base64,BBB)");
@@ -169,13 +182,14 @@ describe("local images", () => {
     // Unread files keep the path they were written with.
     assert.include(html, "<img src='/home/me/plot.SVG'>");
     assert.include(html, "https://example.com/a.png");
-    assert.strictEqual(withLocalImages(page, new Map()), page);
+    assert.strictEqual(withLocalFiles(page, new Map()), page);
   });
 
-  it("knows image types by extension", () => {
-    assert.strictEqual(imageMediaType("C:\\a\\b.JPEG"), "image/jpeg");
-    assert.strictEqual(imageMediaType("/a/b.svg"), "image/svg+xml");
-    assert.isUndefined(imageMediaType("/a/b.txt"));
+  it("knows images from data by extension", () => {
+    assert.deepStrictEqual(localFileType("C:\\a\\b.JPEG"), { kind: "image", mediaType: "image/jpeg" });
+    assert.deepStrictEqual(localFileType("/a/b.svg"), { kind: "image", mediaType: "image/svg+xml" });
+    assert.deepStrictEqual(localFileType("/a/b.Json"), { kind: "data", mediaType: "application/json" });
+    assert.isUndefined(localFileType("/a/b.txt"));
   });
 });
 
