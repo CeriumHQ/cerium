@@ -12,6 +12,8 @@ const MAX_BYTES = 20 * 1024 * 1024;
 /** A file name for `name`: no path, nothing Windows refuses, and short. */
 const fileName = (name: string): string =>
   (name
+    // Control characters are among what Windows refuses in a file name.
+    // oxlint-disable-next-line no-control-regex
     .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
