@@ -74,7 +74,6 @@ import {
   FixedChip,
   ModelPicker,
   ModelsPicker,
-  MultiAgentToggle,
   type ShownModel,
 } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
@@ -683,6 +682,7 @@ export function Composer({
             open={modelsOpen}
             onOpenChange={setModelsOpen}
             onPick={(keys) => pickForDraft({ models: keys })}
+            onSingle={() => setMulti(false)}
             // Agents that may edit share the one folder, where they can undo each other's work.
             {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
               ? { note: "They share the folder, so their edits can collide" }
@@ -695,11 +695,11 @@ export function Composer({
             providers={providers}
             available={target.available}
             onPick={(picked) => setModelId(modelKey(picked))}
+            {...(models.filter((each) => target.available.has(each.provider)).length > 1
+              ? { onMulti: () => setMulti(true) }
+              : {})}
           />
         )}
-        {models.filter((each) => target.available.has(each.provider)).length > 1 ? (
-          <MultiAgentToggle on={multi} onChange={setMulti} />
-        ) : null}
         {activeEffort ? <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} /> : null}
       </>
     ) : null;

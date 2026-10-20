@@ -22,7 +22,8 @@ export function SelectTrigger({ children, label }: { children: ReactNode; label:
   );
 }
 
-export function SelectPopup({ children }: { children: ReactNode }) {
+/** `footer` stays in view below the list while a long list scrolls. */
+export function SelectPopup({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   return (
     <BaseSelect.Portal>
       <BaseSelect.Positioner
@@ -31,8 +32,9 @@ export function SelectPopup({ children }: { children: ReactNode }) {
         alignItemWithTrigger={false}
         className="z-50 outline-none"
       >
-        <BaseSelect.Popup className="max-h-(--available-height) min-w-(--anchor-width) origin-(--transform-origin) overflow-y-auto rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
-          <BaseSelect.List>{children}</BaseSelect.List>
+        <BaseSelect.Popup className="flex max-h-(--available-height) min-w-(--anchor-width) origin-(--transform-origin) flex-col rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+          <BaseSelect.List className="min-h-0 overflow-y-auto">{children}</BaseSelect.List>
+          {footer ? <div className="shrink-0">{footer}</div> : null}
         </BaseSelect.Popup>
       </BaseSelect.Positioner>
     </BaseSelect.Portal>

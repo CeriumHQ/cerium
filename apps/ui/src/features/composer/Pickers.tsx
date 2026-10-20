@@ -1,9 +1,9 @@
 import { Button } from "@base-ui/react/button";
-import { Toggle } from "@base-ui/react/toggle";
 import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import {
   Columns3,
   Eye,
+  MessageSquare,
   FilePen,
   Gauge,
   ShieldCheck,
@@ -26,6 +26,9 @@ import {
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { providerName } from "../threads/model.ts";
 import { accessOptions, effortLabel, modelKey } from "./models.ts";
+
+/** The row at a model list's foot that switches between one model and several. */
+const SWITCH_COUNT = "cerium:switch-count";
 
 // The pickers in the message box's toolbar. A new thread picks all of them; an open thread's lead
 // can pick its model and effort again, within its harness, when the harness allows it.
@@ -56,6 +59,7 @@ export function ModelPicker({
   providers,
   available,
   onPick,
+  onMulti,
   note,
 }: {
   readonly models: ReadonlyArray<ModelInfo>;
@@ -65,6 +69,8 @@ export function ModelPicker({
   readonly providers: ReadonlyArray<ProviderId>;
   readonly available: ReadonlySet<ProviderId>;
   readonly onPick: (model: ModelInfo) => void;
+  /** Offers multi agent at the foot of the list. */
+  readonly onMulti?: () => void;
   /** Said at the foot of the list. */
   readonly note?: string;
 }) {
@@ -72,6 +78,10 @@ export function ModelPicker({
     <SelectRoot
       value={shown?.key ?? null}
       onValueChange={(key) => {
+        if (key === SWITCH_COUNT) {
+          onMulti?.();
+          return;
+        }
         const picked = models.find((model) => modelKey(model) === key);
         if (picked !== undefined) onPick(picked);
       }}
@@ -86,7 +96,22 @@ export function ModelPicker({
           <span className="text-fg-tertiary">Finding models…</span>
         )}
       </SelectTrigger>
-      <SelectPopup>
+      <SelectPopup
+        footer={
+          onMulti ? (
+            <>
+              <SelectSeparator />
+              <SelectItem
+                value={SWITCH_COUNT}
+                icon={Columns3}
+                description="Each in its own thread, side by side"
+              >
+                Several models
+              </SelectItem>
+            </>
+          ) : undefined
+        }
+      >
         <ModelList models={models} providers={providers} available={available} />
         {note ? <p className="px-2 pt-1.5 pb-1 text-2xs text-fg-tertiary">{note}</p> : null}
       </SelectPopup>
@@ -158,6 +183,7 @@ export function ModelsPicker({
   open,
   onOpenChange,
   onPick,
+  onSingle,
   note,
 }: {
   readonly models: ReadonlyArray<ModelInfo>;
@@ -169,6 +195,8 @@ export function ModelsPicker({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onPick: (keys: ReadonlyArray<string>) => void;
+  /** Turns multi agent off, back to one model. */
+  readonly onSingle: () => void;
   readonly note?: string;
 }) {
   const keys = chosen.map(modelKey);
@@ -182,6 +210,10 @@ export function ModelsPicker({
       open={open}
       onOpenChange={onOpenChange}
       onValueChange={(next: Array<string>) => {
+        if (next.includes(SWITCH_COUNT)) {
+          onSingle();
+          return;
+        }
         // Kept in the order picked: the first goes on the left.
         const ordered = [
           ...keys.filter((key) => next.includes(key)),
@@ -201,35 +233,22 @@ export function ModelsPicker({
         ) : null}
         <span className="font-medium text-fg-primary">{label}</span>
       </SelectTrigger>
-      <SelectPopup>
+      <SelectPopup
+        footer={
+          <>
+            <p className="px-2 pt-1.5 pb-1 text-2xs text-fg-tertiary">
+              {note ?? `Up to ${max}, each in its own thread`}
+            </p>
+            <SelectSeparator />
+            <SelectItem value={SWITCH_COUNT} icon={MessageSquare}>
+              One model
+            </SelectItem>
+          </>
+        }
+      >
         <ModelList models={models} providers={providers} available={available} full={full} chosen={keys} />
-        <p className="px-2 pt-1.5 pb-1 text-2xs text-fg-tertiary">
-          {note ?? `Up to ${max}, each in its own thread`}
-        </p>
       </SelectPopup>
     </SelectRoot>
-  );
-}
-
-/** Turns multi agent on: the first message goes to several models at once, a thread each. */
-export function MultiAgentToggle({
-  on,
-  onChange,
-}: {
-  readonly on: boolean;
-  readonly onChange: (on: boolean) => void;
-}) {
-  return (
-    <Tooltip label={on ? "Send to one model" : "Send to several models side by side"}>
-      <Toggle
-        pressed={on}
-        onPressedChange={onChange}
-        aria-label="Multi agent"
-        className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-      >
-        <Columns3 size={15} strokeWidth={1.75} />
-      </Toggle>
-    </Tooltip>
   );
 }
 
