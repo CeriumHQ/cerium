@@ -14,7 +14,7 @@ import { accessOptions } from "../composer/models.ts";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
 /** Each provider's harness by the name its makers give it. */
-const harnessName: Record<ProviderId, string> = {
+export const harnessName: Record<ProviderId, string> = {
   claude: "Claude Code",
   codex: "Codex",
   muse: "Muse Code",
