@@ -34,6 +34,8 @@ export type Item =
       readonly id: string;
       readonly items: ReadonlyArray<Item>;
       readonly turns: number;
+      /** The files a restore put back as they were before these turns. */
+      readonly files?: number;
     };
 
 const isSpawnCall = (block: TranscriptBlock): block is ToolBlock =>
@@ -115,6 +117,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
         id: block.id,
         items: layout(block.blocks),
         turns: block.blocks.filter((each) => each.kind === "user").length,
+        ...(block.files === undefined ? {} : { files: block.files }),
       });
       continue;
     }

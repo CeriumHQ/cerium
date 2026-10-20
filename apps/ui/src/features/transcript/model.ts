@@ -93,7 +93,13 @@ export type TranscriptBlock =
    * What the conversation went back on: the turns from one of the user's messages on, which the user
    * edited and sent again (or restored to before), kept to look back on.
    */
-  | { readonly kind: "replaced"; readonly id: string; readonly blocks: ReadonlyArray<TranscriptBlock> };
+  | {
+      readonly kind: "replaced";
+      readonly id: string;
+      readonly blocks: ReadonlyArray<TranscriptBlock>;
+      /** The files a restore put back as they were before these turns. */
+      readonly files?: number;
+    };
 
 export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
 
@@ -159,6 +165,15 @@ export const buildTranscript = (
         for (const [key, index] of indexOf) if (index >= start) indexOf.delete(key);
         if (replaced.length > 0) blocks.push({ kind: "replaced", id: `replaced:${id}`, blocks: replaced });
         lastUsage = undefined;
+        break;
+      }
+      // A restore's files follow the rewind of its conversation.
+      case "FilesRestored": {
+        const index = blocks.findLastIndex((block) => block.kind === "replaced");
+        const block = blocks[index];
+        if (block?.kind === "replaced" && payload.paths.length > 0) {
+          blocks[index] = { ...block, files: payload.paths.length };
+        }
         break;
       }
       case "SessionStarted":

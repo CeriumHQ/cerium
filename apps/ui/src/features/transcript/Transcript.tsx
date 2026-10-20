@@ -1,8 +1,8 @@
 import { Button } from "@base-ui/react/button";
-import type { ProviderId, QuestionResponse } from "@cerium/protocol";
+import type { ProviderId, QuestionResponse, RestorePreview } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown, History } from "lucide-react";
-import { createContext, memo, use, type CSSProperties, type ReactNode } from "react";
+import { createContext, memo, use, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
@@ -11,9 +11,11 @@ import { useKeyboardOpen } from "../../web/viewport.ts";
 import type { AgentActions } from "../agents/AgentMenu.tsx";
 import type { AgentSummary } from "../agents/model.ts";
 import type { OutgoingMessage } from "../composer/Composer.tsx";
-import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
+import { segmentsOf } from "../composer/draft.ts";
+import { MessageBoxContext, useMessageBox, type MessageBox } from "../composer/messageBox.ts";
 import { ClosedQuestions, QuestionCard } from "../questions/QuestionCard.tsx";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
+import { providerName } from "../threads/model.ts";
 import {
   ModelSwitch,
   Notice,
@@ -32,6 +34,8 @@ import { currentModel, layout, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { AgentActivity, QueuedMessages, TranscriptBlock } from "./model.ts";
+import { previewFailure } from "./restore.ts";
+import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
@@ -68,6 +72,13 @@ interface TranscriptProps {
    * it; resolves whether it went. Without it, messages can't be edited.
    */
   readonly onEditMessage?: (messageId: string, message: OutgoingMessage) => Promise<boolean>;
+  /** What restoring the thread to before one of the user's messages would undo. */
+  readonly onPreviewRestore?: (messageId: string) => Promise<RestorePreview>;
+  /**
+   * Restores the thread to before one of the user's messages; resolves whether it did. Without it
+   * (or the preview), messages offer no restore.
+   */
+  readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -98,6 +109,8 @@ export function Transcript({
   onAnswerPermission,
   onAnswerQuestion,
   onEditMessage,
+  onPreviewRestore,
+  onRestoreMessage,
 }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
@@ -133,12 +146,21 @@ export function Transcript({
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
     ...(onEditMessage ? { onEditMessage } : {}),
+    ...(onPreviewRestore && onRestoreMessage
+      ? {
+          restore: {
+            preview: onPreviewRestore,
+            restore: onRestoreMessage,
+            harness: providerName[agent.provider],
+          },
+        }
+      : {}),
   };
   // A version a rewind replaced is there to read: its messages can't be edited, and what it asked
   // the user can't be answered any more.
   const renderItem = (item: Item, replaced: boolean): ReactNode =>
     item.kind === "replaced" ? (
-      <EarlierVersion key={item.id} turns={item.turns}>
+      <EarlierVersion key={item.id} turns={item.turns} files={item.files}>
         {item.items.map((each) => renderItem(each, true))}
       </EarlierVersion>
     ) : (
@@ -231,6 +253,12 @@ interface TranscriptActions {
   readonly onAnswerPermission?: TranscriptProps["onAnswerPermission"];
   readonly onAnswerQuestion?: TranscriptProps["onAnswerQuestion"];
   readonly onEditMessage?: TranscriptProps["onEditMessage"];
+  readonly restore?: {
+    readonly preview: NonNullable<TranscriptProps["onPreviewRestore"]>;
+    readonly restore: NonNullable<TranscriptProps["onRestoreMessage"]>;
+    /** The lead's harness by name, which the restore's preview says what becomes of. */
+    readonly harness: string;
+  };
 }
 
 const Actions = createContext<TranscriptActions>({
@@ -408,23 +436,80 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
   }
 }
 
-/** One of the user's messages, which they can edit and send again unless a rewind replaced it. */
+/**
+ * One of the user's messages, which they can edit and send again, or restore the thread to before,
+ * unless a rewind replaced it.
+ */
 function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: boolean }) {
-  const { onEditMessage } = use(Actions);
+  const { onEditMessage, restore } = use(Actions);
+  const messageBox = useMessageBox();
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [check, setCheck] = useState<RestoreCheck>({ status: "loading" });
+  /** The latest preview asked for, so an earlier one answering late is dropped. */
+  const asked = useRef(0);
+  const restorable = restore !== undefined && !replaced;
+
+  const openRestore = () => {
+    if (!restore) return;
+    const ask = ++asked.current;
+    setCheck({ status: "loading" });
+    setRestoreOpen(true);
+    restore.preview(block.id).then(
+      (preview) => {
+        if (ask === asked.current) setCheck({ status: "ready", preview });
+      },
+      (error: unknown) => {
+        if (ask === asked.current) setCheck({ status: "failed", message: previewFailure(error) });
+      },
+    );
+  };
+
   return (
-    <UserMessage
-      block={block}
-      onEdit={
-        onEditMessage && !replaced
-          ? (message: OutgoingMessage) => onEditMessage(block.id, message)
-          : undefined
-      }
-    />
+    <>
+      <UserMessage
+        block={block}
+        onEdit={
+          onEditMessage && !replaced
+            ? (message: OutgoingMessage) => onEditMessage(block.id, message)
+            : undefined
+        }
+        onRestore={restorable ? openRestore : undefined}
+      />
+      {restorable ? (
+        <RestoreDialog
+          open={restoreOpen}
+          onOpenChange={setRestoreOpen}
+          message={block.text.trim()}
+          harness={restore.harness}
+          check={check}
+          onRestore={async () => {
+            const done = await restore.restore(block.id);
+            // The message comes back to the box, to send again as it was or changed.
+            if (done) {
+              messageBox?.append({
+                segments: segmentsOf(block.text.trim(), block.mentions),
+                attachments: block.attachments,
+              });
+            }
+            return done;
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
 /** The turns the conversation went back on, folded under one line until the user opens them. */
-function EarlierVersion({ turns, children }: { turns: number; children: ReactNode }) {
+function EarlierVersion({
+  turns,
+  files,
+  children,
+}: {
+  turns: number;
+  /** The files a restore put back, when it did. */
+  files: number | undefined;
+  children: ReactNode;
+}) {
   return (
     <Disclosure
       summary={
@@ -433,7 +518,10 @@ function EarlierVersion({ turns, children }: { turns: number; children: ReactNod
           Earlier version
         </span>
       }
-      hint={turns === 1 ? "1 turn" : `${turns} turns`}
+      hint={[
+        turns === 1 ? "1 turn" : `${turns} turns`,
+        ...(files === undefined ? [] : [files === 1 ? "1 file put back" : `${files} files put back`]),
+      ].join(" · ")}
     >
       <div className="flex flex-col gap-3 border-l border-line-subtle pl-4 opacity-75">{children}</div>
     </Disclosure>

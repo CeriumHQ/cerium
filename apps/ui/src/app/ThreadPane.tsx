@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentId, ProviderId } from "@cerium/protocol";
+import type { AgentEvent, AgentId, ProviderId, RestorePreview } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -37,6 +37,16 @@ export interface ThreadPaneActions {
    */
   readonly edit?:
     | ((agentId: AgentId, messageId: string, message: OutgoingMessage) => Promise<unknown>)
+    | undefined;
+  /**
+   * Reads what restoring a lead's thread to before one of the user's messages would undo, and does
+   * it; absent when the machine's backend can't.
+   */
+  readonly restore?:
+    | {
+        readonly preview: (agentId: AgentId, messageId: string) => Promise<RestorePreview>;
+        readonly restore: (agentId: AgentId, messageId: string) => Promise<unknown>;
+      }
     | undefined;
   /**
    * Starts a thread from the draft `draft`, in `folder`, with `message`: one with each setup, laid
@@ -158,7 +168,7 @@ export function ThreadPane({
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
-  const { attempt } = actions;
+  const { attempt, restore } = actions;
 
   return (
     // The terminal drawer docks under the conversation, which keeps its message box floating above it.
@@ -207,6 +217,15 @@ export function ThreadPane({
                     onEditMessage: (messageId: string, message: OutgoingMessage) => {
                       actions.keep(viewed.thread.id);
                       return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                    },
+                  })}
+              {...(cloud || !restore
+                ? {}
+                : {
+                    onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
+                    onRestoreMessage: (messageId: string) => {
+                      actions.keep(viewed.thread.id);
+                      return attempt(restore.restore(lead.id, messageId));
                     },
                   })}
             />

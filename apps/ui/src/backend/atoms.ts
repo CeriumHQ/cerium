@@ -332,6 +332,8 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
 export const editMessage = Backend.mutation("EditMessage");
+export const previewRestore = Backend.mutation("PreviewRestore");
+export const restoreBefore = Backend.mutation("RestoreBefore");
 export const switchModel = Backend.mutation("SwitchModel");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");

@@ -10,6 +10,7 @@ import {
   Clock,
   CornerDownRight,
   Pencil,
+  RotateCcw,
   ShieldQuestion,
   Split,
   Workflow,
@@ -38,19 +39,28 @@ import type { TranscriptBlock, UserBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
+/** A quiet button beside a message's foot, out of the way until the message is under the pointer. */
+const footButton =
+  "grid size-7 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[color,background-color,opacity] duration-150 group-hover/user:opacity-100 hover:bg-surface-hover hover:text-fg-secondary focus-visible:opacity-100 pointer-coarse:opacity-100";
+
 export function UserMessage({
   block,
   onEdit,
+  onRestore,
 }: {
   block: Block<"user">;
   /** Sends a new version of the message; resolves whether it went. Absent where it can't be edited. */
   onEdit?: ((message: OutgoingMessage) => Promise<boolean>) | undefined;
+  /** Asks to restore the thread to before the message. Absent where it can't be. */
+  onRestore?: (() => void) | undefined;
 }) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
   const messageBox = useMessageBox();
   const [editing, setEditing] = useState(false);
   const editable = onEdit !== undefined && block.delivered === true;
+  // A message the agent never got began nothing to go back on.
+  const restorable = onRestore !== undefined && block.delivered === true;
   if (editing && editable) {
     return <MessageEditor block={block} onSend={onEdit} onCancel={() => setEditing(false)} />;
   }
@@ -67,19 +77,26 @@ export function UserMessage({
           : undefined
       }
       onEdit={editable ? () => setEditing(true) : undefined}
+      onRestore={restorable ? onRestore : undefined}
       className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
     >
-      {editable ? (
-        // Beside the message's foot, out of the way until the message is under the pointer.
-        <Tooltip label="Edit message">
-          <Button
-            aria-label="Edit message"
-            onClick={() => setEditing(true)}
-            className="absolute right-full bottom-0.5 mr-1 grid size-7 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[color,background-color,opacity] duration-150 group-hover/user:opacity-100 hover:bg-surface-hover hover:text-fg-secondary focus-visible:opacity-100 pointer-coarse:opacity-100"
-          >
-            <Pencil size={13} strokeWidth={1.75} />
-          </Button>
-        </Tooltip>
+      {editable || restorable ? (
+        <div className="absolute right-full bottom-0.5 mr-1 flex">
+          {restorable ? (
+            <Tooltip label="Restore to before this message">
+              <Button aria-label="Restore to before this message" onClick={onRestore} className={footButton}>
+                <RotateCcw size={13} strokeWidth={1.75} />
+              </Button>
+            </Tooltip>
+          ) : null}
+          {editable ? (
+            <Tooltip label="Edit message">
+              <Button aria-label="Edit message" onClick={() => setEditing(true)} className={footButton}>
+                <Pencil size={13} strokeWidth={1.75} />
+              </Button>
+            </Tooltip>
+          ) : null}
+        </div>
       ) : null}
       {block.writtenIn === undefined ? null : (
         <p className="flex max-w-full min-w-0 items-center gap-1.5 text-[12px] text-fg-tertiary">

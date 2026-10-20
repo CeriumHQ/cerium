@@ -55,8 +55,10 @@ import {
   interruptAgent,
   localWorkingAtom,
   markThreadsRead,
+  previewRestore,
   renameThread,
   resolveSpawnApproval,
+  restoreBefore,
   respondToPermission,
   answerQuestion,
   sendMessage,
@@ -135,6 +137,7 @@ import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { EDIT_VERSION } from "../features/transcript/model.ts";
+import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
@@ -589,6 +592,8 @@ function Workspace() {
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const edit = useAtomSet(editMessage, { mode: "promise" });
+  const checkRestore = useAtomSet(previewRestore, { mode: "promise" });
+  const restore = useAtomSet(restoreBefore, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
@@ -1192,6 +1197,13 @@ function Workspace() {
     edit:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= EDIT_VERSION
         ? (agentId, messageId, message) => edit({ payload: { agentId, messageId, ...message } })
+        : undefined,
+    restore:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= RESTORE_VERSION
+        ? {
+            preview: (agentId, messageId) => checkRestore({ payload: { agentId, messageId } }),
+            restore: (agentId, messageId) => restore({ payload: { agentId, messageId } }),
+          }
         : undefined,
     start: startThread,
     interrupt: (agentId) => interrupt({ payload: { agentId } }),
