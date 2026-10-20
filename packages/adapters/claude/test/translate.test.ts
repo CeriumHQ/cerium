@@ -148,6 +148,23 @@ describe("ClaudeTranslator edge cases", () => {
     expect(costs[1]).toBeCloseTo(0.05);
   });
 
+  it("ends a turn interrupted during a tool call as interrupted, not as an error", () => {
+    const [, completed] = new ClaudeTranslator().translate({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      terminal_reason: "aborted_tools",
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        output_tokens: 1,
+      },
+    } as unknown as SDKMessage);
+    expect(completed?.payload).toEqual({ _tag: "TurnCompleted", stopReason: "interrupted" });
+  });
+
   it("pairs streamed reasoning with its completed thinking block", () => {
     const translator = new ClaudeTranslator();
     const stream = (event: object) =>

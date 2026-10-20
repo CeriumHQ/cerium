@@ -216,7 +216,8 @@ const fileChange = (toolUseResult: unknown): EventPayload | undefined => {
 
 const stopReason = (message: SDKResultMessage) => {
   if (message.subtype === "error_max_turns") return "maxTurns";
-  if (message.subtype !== "success") return "error";
+  // An interrupt during a tool call reports `error_during_execution` with `aborted_tools`.
   if (message.terminal_reason?.startsWith("aborted") === true) return "interrupted";
+  if (message.subtype !== "success") return "error";
   return message.is_error ? "error" : "completed";
 };
