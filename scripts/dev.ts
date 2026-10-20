@@ -6,9 +6,6 @@
 // The UI is served on the first free port from 5173, whose URL is written to .cerium-dev/ui-url while
 // it runs. When this checkout's dev servers already run, they are reused: `--browser` only says where,
 // and the full command starts just the desktop shell against them.
-//
-// Usage: bun run dev [--browser]
-//   --browser  leaves out the desktop shell, for working on the UI in a browser
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -19,7 +16,22 @@ import { styleText } from "node:util";
 
 const root = join(import.meta.dirname, "..");
 const urlFile = join(root, ".cerium-dev", "ui-url");
-const browserOnly = process.argv.includes("--browser");
+
+const USAGE = `bun run dev [--browser]
+  --browser  leaves out the desktop shell, for working on the UI in a browser`;
+
+// Any other flag, --help included, prints the usage and starts nothing.
+const flags = process.argv.slice(2).filter((arg) => arg !== "--");
+const unknown = flags.filter((flag) => flag !== "--browser");
+if (unknown.length > 0) {
+  if (unknown.every((flag) => flag === "--help" || flag === "-h")) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  console.error(`Unknown option ${unknown.join(" ")}.\n\n${USAGE}`);
+  process.exit(1);
+}
+const browserOnly = flags.includes("--browser");
 
 // T3 Code runs its agents with ELECTRON_RUN_AS_NODE set, which would start the desktop shell as plain Node.
 const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = process.env;

@@ -243,6 +243,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- `bun run dev --help` prints its options instead of starting every dev server, and an option it doesn't know stops it with the list.
 - `bun run ui` no longer takes seconds over every step on a page out of sight, which slowed a step from a fraction of a second to five and a screenshot to thirty. A page in its own browser that a popup or another tab covered comes back to the front, `bun run dev`'s desktop window keeps drawing behind other windows, and a minimized window fails at once, saying to restore it. Each action also gives its target 5 s to show and each step lets the page's animations finish, so a batch needs no `sleep` between clicks and a screenshot no longer catches a fade halfway.
 - CI: the driven-page browser tests time out after the browser's own start-up wait, so a slow first start on the runner reports why the browser failed instead of a bare timeout.
 - Web client: installed on an iPhone's Home Screen under iOS 26 or later, the top bar is no longer blurred and the window reaches the bottom of the screen. iOS blurs the top of a web app drawn under a see-through status bar, and stops it short of the bottom by the status bar's height, so Cerium now starts below an opaque status bar in the chosen theme's colour. Remove Cerium from the Home Screen and add it again to pick this up.
