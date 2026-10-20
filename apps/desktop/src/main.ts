@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, type IpcMainEvent } from "electron";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
@@ -50,6 +50,9 @@ const notifications = nativeNotifications({ window: () => mainWindow, show: back
 const opensExternally = (url: string) =>
   url.startsWith("https://") || (!app.isPackaged && /^http:\/\/(localhost|127\.0\.0\.1):\d+\//.test(url));
 
+/** How long after its first paint the window waits for the page's launch screen before showing. */
+const WINDOW_READY_TIMEOUT_MS = 1_500;
+
 /** Matches the UI titlebar's height so the caption buttons line up with it. */
 const TITLEBAR_HEIGHT = 40;
 
@@ -93,13 +96,24 @@ const createWindow = () => {
     window.on("unmaximize", reapply);
     window.on("restore", reapply);
   }
-  window.once("ready-to-show", () => {
+  // The window shows once the page has painted its launch screen in the user's theme, so it never
+  // opens empty or in the other theme; a page that doesn't say so in time shows anyway.
+  let shown = false;
+  const showOnce = () => {
+    if (shown || window.isDestroyed()) return;
+    shown = true;
     if (!startHidden) window.show();
-  });
+  };
+  const onReady = (event: IpcMainEvent) => {
+    if (event.sender === window.webContents) showOnce();
+  };
+  ipcMain.on("cerium:window-ready", onReady);
+  window.once("ready-to-show", () => setTimeout(showOnce, WINDOW_READY_TIMEOUT_MS));
   window.on("close", (event) => {
     if (background.interceptClose()) event.preventDefault();
   });
   window.on("closed", () => {
+    ipcMain.off("cerium:window-ready", onReady);
     mainWindow = undefined;
   });
   notifications.watch(window);

@@ -73,6 +73,8 @@ export interface ShellBridge {
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
   /** Calls back whenever Windows' colours turn dark or light; returns how to stop. */
   readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
+  /** The launch screen has painted in the user's theme, so the shell may show the window. */
+  readonly windowReady?: () => void;
   /** Calls back on every right-click no page menu claimed; returns how to stop. */
   readonly onTextMenu?: (listener: (request: TextMenuRequest) => void) => () => void;
   /** Runs a text menu command on the last right-click, in the focused field or frame. */

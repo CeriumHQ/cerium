@@ -142,7 +142,7 @@ import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
 import { useLaunched } from "./launch.ts";
-import { LaunchScreen } from "./LaunchScreen.tsx";
+import { Launch } from "./LaunchScreen.tsx";
 import { useCompact } from "./compact.ts";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
@@ -190,10 +190,11 @@ export function App() {
     <RegistryProvider>
       <TooltipProvider delay={400}>
         <Themed>
-          <WebGate>
-            <Workspace />
-          </WebGate>
-          <LaunchScreen />
+          <Launch>
+            <WebGate>
+              <Workspace />
+            </WebGate>
+          </Launch>
         </Themed>
         <TextMenu />
       </TooltipProvider>

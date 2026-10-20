@@ -1,8 +1,19 @@
 /**
  * Cerium's mark, "Prism C": an open C with a facet in its mouth, after cerium oxide, the compound used
  * to polish glass. Below 24px a heavier drawing keeps the stroke and facet legible.
+ *
+ * `landing` marks the one the launch screen's mark flies to when it hands the window over: the one at
+ * the top of whatever the window shows first (app/LaunchScreen.tsx).
  */
-export function CeriumMark({ size = 18, className }: { size?: number; className?: string }) {
+export function CeriumMark({
+  size = 18,
+  className,
+  landing = false,
+}: {
+  size?: number;
+  className?: string;
+  landing?: boolean;
+}) {
   const small = size < 24;
   return (
     <svg
@@ -11,6 +22,7 @@ export function CeriumMark({ size = 18, className }: { size?: number; className?
       viewBox="0 0 48 48"
       fill="none"
       aria-hidden="true"
+      data-launch-mark={landing ? "" : undefined}
       className={`shrink-0 ${className ?? ""}`}
     >
       <path

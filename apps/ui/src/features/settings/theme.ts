@@ -11,6 +11,15 @@ const show = (dark: boolean) => {
   document.documentElement.dataset["theme"] = dark ? "dark" : "light";
 };
 
+let settle: () => void = () => undefined;
+/**
+ * Resolves once the page shows the theme it starts in: at once in a browser, and in the desktop
+ * shell once Windows has said what "system" means and tinted the glass to match.
+ */
+export const themeSettled = new Promise<void>((resolve) => {
+  settle = resolve;
+});
+
 /**
  * Keeps the page on the chosen theme, following the operating system while it's "system", and in the
  * chosen palette. Applied before paint, so the window never flashes the other theme. In the desktop
@@ -33,7 +42,8 @@ export const useTheme = (theme: Theme) => {
       let current = true;
       void bridge.setTheme(theme).then((dark) => {
         if (current && follows) show(dark);
-      });
+        settle();
+      }, settle);
       const stop = bridge.onDarkColorsChange?.((dark) => {
         if (follows) show(dark);
       });
@@ -42,6 +52,7 @@ export const useTheme = (theme: Theme) => {
         stop?.();
       };
     }
+    settle();
 
     if (!follows) return;
     const query = darkScheme();

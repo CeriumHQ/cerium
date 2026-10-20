@@ -74,7 +74,7 @@ export function Titlebar({
           resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
       >
-        <CeriumMark size={16} className="ml-1.5 text-fg-primary" />
+        <CeriumMark size={16} landing className="ml-1.5 text-fg-primary" />
         <ModeSwitch mode={mode} onChange={onModeChange} />
         <div
           inert={settingsOpen}

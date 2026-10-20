@@ -145,46 +145,49 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
-/* The launch screen (app/LaunchScreen.tsx): the mark's C draws, its facet sets, light runs across it. */
-@keyframes launch-draw {
-  from {
-    stroke-dashoffset: 1;
-    opacity: 0;
-  }
-  12% {
-    opacity: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes launch-facet {
+/* The launch screen (app/LaunchScreen.tsx): the mark comes into focus, as if the frost were polished off. */
+@keyframes launch-settle {
   from {
     opacity: 0;
-    transform: scale(0.2) rotate(-90deg);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes launch-glint {
-  from {
-    transform: translateX(0);
-  }
-  55%,
-  to {
-    transform: translateX(92px);
+    filter: blur(12px);
+    scale: 0.92;
   }
 }
 
 @keyframes launch-fade {
   from {
     opacity: 0;
-    transform: translateY(2px);
   }
+}
+
+/*
+ * Handing the window over: the launch screen's mark flies to the window's own, which only takes the
+ * name once the window shows, while the window fades in around it.
+ */
+[data-launch-mark] {
+  view-transition-name: cerium-mark;
+}
+
+[data-launching] [data-launch-mark] {
+  view-transition-name: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-launch-mark] {
+    view-transition-name: none;
+  }
+}
+
+html:active-view-transition-type(launch)::view-transition-group(cerium-mark) {
+  animation-duration: 680ms;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.1, 1);
+}
+
+/* One length and easing for both, so the glass they share stays as it is while the rest crossfades. */
+html:active-view-transition-type(launch)::view-transition-old(root),
+html:active-view-transition-type(launch)::view-transition-new(root) {
+  animation-duration: 480ms;
+  animation-timing-function: ease-in-out;
 }
 
 /* In the base layer so a component with its own focus style can opt out with `outline-none`. */

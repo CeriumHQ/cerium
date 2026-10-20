@@ -33,7 +33,7 @@ export function WebGate({ children }: { children: ReactNode }) {
     <main className="flex h-full flex-col items-center justify-center overflow-y-auto bg-surface-window px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-[max(env(safe-area-inset-bottom),2rem)]">
       <div className="flex w-full max-w-sm flex-col gap-7">
         <div className="flex items-center gap-2.5 text-fg-primary">
-          <CeriumMark size={22} />
+          <CeriumMark size={22} landing />
           <span className="text-[17px] font-semibold tracking-tight">Cerium</span>
         </div>
         {account === undefined ? null : account._tag === "SignedIn" ? (

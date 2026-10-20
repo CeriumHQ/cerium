@@ -1,123 +1,157 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useState } from "react";
+import { AsyncResult } from "effect/reactivity";
+import { useEffect, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 
+import { accountAtom } from "../backend/atoms.ts";
+import { connectionAtom, localConnectionAtom } from "../backend/client.ts";
 import { machineAtom } from "../backend/machine.ts";
+import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
-import { launchedAtom } from "./launch.ts";
+import { CeriumMark } from "../components/CeriumMark.tsx";
+import { themeSettled } from "../features/settings/theme.ts";
+import { launchedAtom, launchProgress, launchStatus, type LaunchState } from "./launch.ts";
 
-/** How long the mark takes to draw itself; the screen never lifts halfway through. */
-const INTRO_MS = 900;
-/** How long the frost takes to clear once the window is ready. */
-const EXIT_MS = 560;
+/** How long the mark takes to settle; the window is never handed over before it has. */
+const SETTLE_MS = 700;
+/** How long starting goes before the screen says what it waits on. */
+const QUIET_MS = 1_400;
+/** How long the full progress line holds before the window takes over. */
+const FULL_MS = 280;
 /** The window shows whatever it has by now, with its own notices for what's still missing. */
 const GIVE_UP_MS = 12_000;
-
-// Cerium's mark as it draws itself (components/CeriumMark.tsx), in the larger drawing.
-const ARC = "M34.6 13.4A15 15 0 1 0 34.6 34.6";
-const FACET = "M36 19.5 40.5 24 36 28.5 31.5 24Z";
+/** How much of the step under way the progress line creeps through while it waits, and how slowly. */
+const CREEP = 0.7;
+const CREEP_MS = 4_000;
+const STEP_MS = 360;
 
 /**
- * What the window shows while it starts: the mark polishing itself on frosted glass, after cerium
- * oxide, which polishes glass. Its C draws, its facet sets, and light runs across it until the window
- * is ready; then the frost clears onto the window underneath, which has been loading all along.
+ * The window while Cerium starts: its glass, the mark settling into focus as if polished (cerium oxide
+ * polishes glass), and a line that fills as each step of starting finishes. The window underneath
+ * loads all along, unseen; when it's ready the mark flies to its place at the top of it and the window
+ * fades in around it.
  */
-export function LaunchScreen() {
-  const launched = useAtomValue(launchedAtom);
-  const driven = useAtomValue(machineAtom);
-  const [introDone, setIntroDone] = useState(false);
-  const [gaveUp, setGaveUp] = useState(false);
-  const [gone, setGone] = useState(false);
-  const leaving = (launched && introDone) || gaveUp;
-
-  useEffect(() => {
-    const intro = setTimeout(() => setIntroDone(true), INTRO_MS);
-    const giveUp = setTimeout(() => setGaveUp(true), GIVE_UP_MS);
-    return () => {
-      clearTimeout(intro);
-      clearTimeout(giveUp);
-    };
-  }, []);
-  useEffect(() => {
-    if (!leaving) return;
-    const timer = setTimeout(() => setGone(true), EXIT_MS);
-    return () => clearTimeout(timer);
-  }, [leaving]);
-
-  if (gone) return null;
-  const status = driven ? `Connecting to ${driven.name}` : WEB ? "Connecting" : "Starting up";
+export function Launch({ children }: { children: ReactNode }) {
+  const [launching, setLaunching] = useState(true);
+  const handOver = () => {
+    const finish = () => flushSync(() => setLaunching(false));
+    // Without view transitions the screen simply gives way; the types keep these styles to this one.
+    if (document.startViewTransition === undefined) finish();
+    else if ("types" in ViewTransition.prototype) {
+      document.startViewTransition({ update: finish, types: ["launch"] });
+    } else document.startViewTransition(finish);
+  };
   return (
-    <div
-      aria-hidden={leaving}
-      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-surface-window transition-[opacity,backdrop-filter] duration-[560ms] ease-out-soft motion-reduce:transition-opacity ${
-        leaving ? "pointer-events-none opacity-0 backdrop-blur-none" : "backdrop-blur-3xl"
-      }`}
-    >
-      {/* The window can still be moved while it starts; Windows draws its buttons over this. */}
-      <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
-      <div
-        className={`flex flex-col items-center gap-6 transition-[opacity,scale] duration-300 ease-out-soft ${
-          leaving ? "scale-[1.06] opacity-0" : ""
-        }`}
-      >
-        <PolishedMark />
-        {/* Said only once starting takes long enough to wonder about. */}
-        <output className="h-4 animate-[launch-fade_480ms_ease-out_1.4s_both] text-[12.5px] leading-4 tracking-[0.01em] text-fg-tertiary">
-          {status}
-        </output>
+    <>
+      {/* Mounted from the start, so it loads while the screen shows; kept the same element after. */}
+      <div data-launching={launching ? "" : undefined} className={`h-full ${launching ? "opacity-0" : ""}`}>
+        {children}
       </div>
-    </div>
+      {launching ? <LaunchScreen onReady={handOver} /> : null}
+    </>
   );
 }
 
-function PolishedMark() {
+function LaunchScreen({ onReady }: { onReady: () => void }) {
+  const driven = useAtomValue(machineAtom);
+  const backend = useAtomValue(localConnectionAtom) === "connected";
+  const account = AsyncResult.isSuccess(useAtomValue(accountAtom));
+  const connection = useAtomValue(connectionAtom);
+  const launched = useAtomValue(launchedAtom);
+  const [shown, setShown] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const [talking, setTalking] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false);
+  const state: LaunchState = {
+    backend,
+    account,
+    machine: WEB || driven !== undefined ? connection === "connected" : undefined,
+    ready: launched || gaveUp,
+  };
+  const leaving = state.ready && settled;
+  const { done, next } = launchProgress(state);
+
+  // Shown once painted in the user's theme: the desktop shell opens the window then.
+  useEffect(() => {
+    let frame = 0;
+    void themeSettled.then(() => {
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          shellBridge()?.windowReady?.();
+          setShown(true);
+        });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => {
+    if (!shown) return;
+    const timers = [
+      setTimeout(() => setSettled(true), SETTLE_MS),
+      setTimeout(() => setTalking(true), QUIET_MS),
+      setTimeout(() => setGaveUp(true), GIVE_UP_MS),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [shown]);
+  // Each finished step fills the line to it; then it creeps on through the next until that finishes.
+  const target = leaving ? 1 : done;
+  const [creepingFrom, setCreepingFrom] = useState<number>();
+  const line =
+    creepingFrom === target && !leaving
+      ? { at: target + next * CREEP, ms: CREEP_MS }
+      : { at: target, ms: STEP_MS };
+  useEffect(() => {
+    if (!shown) return;
+    const creep = setTimeout(() => setCreepingFrom(target), STEP_MS);
+    return () => clearTimeout(creep);
+  }, [shown, target]);
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(onReady, STEP_MS + FULL_MS);
+    return () => clearTimeout(timer);
+  }, [leaving, onReady]);
+
+  const status = launchStatus(state, { web: WEB, ...(driven ? { machineName: driven.name } : {}) });
   return (
-    <svg
-      width={60}
-      height={60}
-      viewBox="0 0 48 48"
-      fill="none"
-      aria-hidden="true"
-      // At rest the mark sits a step below the light that runs across it: a brighter sheen on dark
-      // glass, a pale one on light.
-      className="overflow-visible [--glint:var(--accent-fg)] [--mark:var(--fg-primary)] dark:[--glint:var(--accent-strong)] dark:[--mark:var(--fg-secondary)]"
+    <div
+      aria-busy="true"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-surface-window pb-10"
     >
-      <defs>
-        <linearGradient id="launch-glint">
-          <stop offset="0" style={{ stopColor: "var(--glint)", stopOpacity: 0 }} />
-          <stop offset="0.5" style={{ stopColor: "var(--glint)", stopOpacity: 0.95 }} />
-          <stop offset="1" style={{ stopColor: "var(--glint)", stopOpacity: 0 }} />
-        </linearGradient>
-        <mask id="launch-mark" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
-          <path d={ARC} stroke="white" strokeWidth={6} strokeLinecap="round" />
-          <path d={FACET} fill="white" />
-        </mask>
-      </defs>
-      <path
-        d={ARC}
-        pathLength={1}
-        strokeDasharray="1 1"
-        stroke="var(--mark)"
-        strokeWidth={6}
-        strokeLinecap="round"
-        className="animate-[launch-draw_820ms_cubic-bezier(0.65,0,0.35,1)_80ms_both] motion-reduce:animate-none"
-      />
-      <path
-        d={FACET}
-        fill="var(--mark)"
-        className="origin-center animate-[launch-facet_520ms_cubic-bezier(0.34,1.56,0.64,1)_560ms_both] [transform-box:fill-box] motion-reduce:animate-none"
-      />
-      <g mask="url(#launch-mark)" className="motion-reduce:hidden">
-        <g transform="rotate(24 24 24)">
-          <rect
-            x={-22}
-            y={-20}
-            width={22}
-            height={88}
-            fill="url(#launch-glint)"
-            className="animate-[launch-glint_2.6s_cubic-bezier(0.45,0,0.25,1)_1s_infinite_both]"
+      {/* The window can still be moved while it starts; Windows draws its buttons over this. */}
+      <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
+      {shown ? (
+        <>
+          <CeriumMark
+            size={64}
+            landing
+            className="animate-[launch-settle_700ms_var(--ease-out-soft)_both] text-fg-primary motion-reduce:animate-[launch-fade_300ms_ease-out_both]"
           />
-        </g>
-      </g>
-    </svg>
+          <div
+            // A <progress> can't ease its fill from one step to the next.
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+            role="progressbar"
+            aria-label="Starting Cerium"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(line.at * 100)}
+            className="mt-10 h-0.5 w-24 animate-[launch-fade_400ms_ease-out_200ms_both] overflow-hidden rounded-full bg-line-subtle"
+          >
+            <div
+              style={{ scale: `${line.at} 1`, transitionDuration: `${line.ms}ms` }}
+              className="h-full origin-left rounded-full bg-accent transition-[scale] ease-out-soft motion-reduce:transition-none"
+            />
+          </div>
+          {/* Said only once starting takes long enough to wonder about. */}
+          <output
+            key={talking ? status : "quiet"}
+            className={`mt-4 h-4 text-[12.5px] leading-4 text-fg-tertiary ${
+              talking ? "animate-[launch-fade_360ms_ease-out_both]" : "invisible"
+            }`}
+          >
+            {status}
+          </output>
+        </>
+      ) : null}
+    </div>
   );
 }

@@ -364,7 +364,7 @@ function CompactFrame({
               <CompactBar
                 leading={
                   <div className="flex items-center gap-2 pl-2">
-                    <CeriumMark size={18} className="text-fg-primary" />
+                    <CeriumMark size={18} landing className="text-fg-primary" />
                     <ModeSwitch mode={mode} onChange={onModeChange} />
                   </div>
                 }
