@@ -9,4 +9,4 @@
 - **Security problems:** see [SECURITY.md](SECURITY.md).
 
 A harness's own login, billing or model behaviour is up to its vendor: Anthropic for Claude Code,
-OpenAI for Codex, Meta for Muse Code and Cursor for Cursor.
+OpenAI for Codex, Meta for Muse Code, Cursor for Cursor and Anomaly for OpenCode.

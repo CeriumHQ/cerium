@@ -32,5 +32,5 @@ Things that are especially in scope, because Cerium is built to guarantee them:
 - Another program or website reaching the local backend or the MCP bus without the launch token.
 - Agent-drawn artifacts running scripts or loading anything from the network.
 
-Problems inside a harness itself (Claude Code, Codex, Muse Code or Cursor) belong to its vendor.
+Problems inside a harness itself (Claude Code, Codex, Muse Code, Cursor or OpenCode) belong to its vendor.
 If you're unsure where one belongs, report it here and we'll help route it.

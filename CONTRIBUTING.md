@@ -15,8 +15,8 @@ request that adds an unplanned feature may be held back even when the code is go
 ## Setting up
 
 You need **Node.js 24.11+** and **Bun 1.4+**, on Windows (the shipping platform) or any OS for the
-backend and UI. Install at least one harness (Claude Code, Codex or Cursor) and sign in to
-it if you want to run real agents.
+backend and UI. Install at least one harness (Claude Code, Codex, Cursor or OpenCode) and sign in
+to it if you want to run real agents; OpenCode's free models need no sign-in.
 
 ```sh
 bun install
@@ -57,7 +57,7 @@ reuses the servers already running.
 | `apps/desktop`          | The Electron shell and installer                                         |
 | `packages/protocol`     | Canonical event, capability and settings schemas shared by every package |
 | `packages/harness`      | The adapter contract every provider implements                           |
-| `packages/adapters/*`   | One adapter per harness: Claude, Codex, Cursor and Muse (switched off)   |
+| `packages/adapters/*`   | One adapter per harness: Claude, Codex, Cursor, OpenCode and Muse (off)  |
 | `packages/orchestrator` | Threads, leads and children, delivery, limits and approvals              |
 | `packages/bus`          | The MCP server injected into every session (spawn, message, stop)        |
 | `packages/store`        | SQLite persistence: threads, agents and the append-only event log        |

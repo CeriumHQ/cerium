@@ -22,10 +22,11 @@
   <img alt="Works with Claude Code" src="https://img.shields.io/badge/Claude%20Code-D97757?style=for-the-badge&logo=claude&logoColor=white" />
   <img alt="Works with Codex" src="https://img.shields.io/badge/Codex-111111?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik05LjIwNSA4LjY1OHYtMi4yNmMwLS4xOS4wNzItLjMzMy4yMzgtLjQyOGw0LjU0My0yLjYxNmMuNjE5LS4zNTcgMS4zNTYtLjUyMyAyLjExNy0uNTIzIDIuODU0IDAgNC42NjIgMi4yMTIgNC42NjIgNC41NjYgMCAuMTY3IDAgLjM1Ny0uMDI0LjU0N2wtNC43MS0yLjc1OWEuNzk3Ljc5NyAwIDAwLS44NTYgMGwtNS45NyAzLjQ3M3ptMTAuNjA5IDguOFYxMi4wNmMwLS4zMzMtLjE0My0uNTctLjQyOS0uNzM3bC01Ljk3LTMuNDczIDEuOTUtMS4xMThhLjQzMy40MzMgMCAwMS40NzYgMGw0LjU0MyAyLjYxN2MxLjMwOS43NiAyLjE4OSAyLjM3OCAyLjE4OSAzLjk0OCAwIDEuODA4LTEuMDcgMy40NzMtMi43NiA0LjE2M3pNNy44MDIgMTIuNzAzbC0xLjk1LTEuMTQyYy0uMTY3LS4wOTUtLjIzOS0uMjM4LS4yMzktLjQyOFY1Ljg5OWMwLTIuNTQ1IDEuOTUtNC40NzIgNC41OTEtNC40NzIgMSAwIDEuOTI3LjMzMyAyLjcxMi45MjhMOC4yMyA1LjA2N2MtLjI4NS4xNjYtLjQyOC40MDQtLjQyOC43Mzd2Ni44OTh6TTEyIDE1LjEyOGwtMi43OTUtMS41N3YtMy4zM0wxMiA4LjY1OGwyLjc5NSAxLjU3djMuMzNMMTIgMTUuMTI4em0xLjc5NiA3LjIzYy0xIDAtMS45MjctLjMzMi0yLjcxMi0uOTI3bDQuNjg2LTIuNzEyYy4yODUtLjE2Ni40MjgtLjQwNC40MjgtLjczN3YtNi44OThsMS45NzQgMS4xNDJjLjE2Ny4wOTUuMjM4LjIzOC4yMzguNDI4djUuMjMzYzAgMi41NDUtMS45NzQgNC40NzItNC42MTQgNC40NzJ6bS01LjYzNy01LjMwM2wtNC41NDQtMi42MTdjLTEuMzA4LS43NjEtMi4xODgtMi4zNzgtMi4xODgtMy45NDhBNC40ODIgNC40ODIgMCAwMTQuMjEgNi4zMjd2NS40MjNjMCAuMzMzLjE0My41NzEuNDI4LjczOGw1Ljk0NyAzLjQ0OS0xLjk1IDEuMTE4YS40MzIuNDMyIDAgMDEtLjQ3NiAwem0tLjI2MiAzLjljLTIuNjg4IDAtNC42NjItMi4wMjEtNC42NjItNC41MTkgMC0uMTkuMDI0LS4zOC4wNDctLjU3bDQuNjg2IDIuNzFjLjI4Ni4xNjcuNTcxLjE2Ny44NTYgMGw1Ljk3LTMuNDQ4djIuMjZjMCAuMTktLjA3LjMzMy0uMjM3LjQyOGwtNC41NDMgMi42MTZjLS42MTkuMzU3LTEuMzU2LjUyMy0yLjExNy41MjN6bTUuODk5IDIuODNhNS45NDcgNS45NDcgMCAwMDUuODI3LTQuNzU2QzIyLjI4NyAxOC4zMzkgMjQgMTUuODQgMjQgMTMuMjk2YzAtMS42NjUtLjcxMy0zLjI4Mi0xLjk5OC00LjQ0OC4xMTktLjUuMTktLjk5OS4xOS0xLjQ5OCAwLTMuNDAxLTIuNzU5LTUuOTQ3LTUuOTQ2LTUuOTQ3LS42NDIgMC0xLjI2LjA5NS0xLjg4LjMxQTUuOTYyIDUuOTYyIDAgMDAxMC4yMDUgMGE1Ljk0NyA1Ljk0NyAwIDAwLTUuODI3IDQuNzU3QzEuNzEzIDUuNDQ3IDAgNy45NDUgMCAxMC40OWMwIDEuNjY2LjcxMyAzLjI4MyAxLjk5OCA0LjQ0OC0uMTE5LjUtLjE5IDEtLjE5IDEuNDk5IDAgMy40MDEgMi43NTkgNS45NDYgNS45NDYgNS45NDYuNjQyIDAgMS4yNi0uMDk1IDEuODgtLjMwOWE1Ljk2IDUuOTYgMCAwMDQuMTYyIDEuNzEzeiIvPjwvc3ZnPg==" />
   <img alt="Works with Cursor" src="https://img.shields.io/badge/Cursor-1c1c1c?style=for-the-badge&logo=cursor&logoColor=white" />
+  <img alt="Works with OpenCode" src="https://img.shields.io/badge/OpenCode-211e1e?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2IDZIOHYxMmg4VjZ6bTQgMTZINFYyaDE2djIweiIvPjwvc3ZnPg==" />
 </p>
 
-**A desktop harness of harnesses.** Cerium drives Claude Code, Codex and Cursor through their own
-official SDKs, and lets one conversation coordinate agents from all of them at once.
+**A desktop harness of harnesses.** Cerium drives Claude Code, Codex, Cursor and OpenCode through
+their own official SDKs, and lets one conversation coordinate agents from all of them at once.
 
 [**Download**](https://github.com/nonlooped/cerium/releases) ·
 [Features](#features) ·
@@ -138,6 +139,10 @@ it, all in one thread you can follow, steer and stop.
 | **Claude Code** | Anthropic | Claude Agent SDK, running your installed `claude`                   | `claude` login           |
 | **Codex**       | OpenAI    | `codex app-server` JSON-RPC, with types generated from your install | `codex login`            |
 | **Cursor**      | Cursor    | `@cursor/sdk`, running Cursor's agent locally                       | Cursor's browser sign-in |
+| **OpenCode**    | Anomaly   | `@opencode/client`, over a private `opencode serve` per session     | `opencode auth login`    |
+
+OpenCode runs the free models of OpenCode Zen without any sign-in, so an install alone is enough to
+start.
 
 Muse Code (Meta, `@muse-code/sdk` over `muse serve`) is switched off for now: on Windows, `muse serve`
 fails every sandboxed command even after `muse sandbox windows setup`.
@@ -150,8 +155,8 @@ are blocked, with upgrade instructions.
   <img src=".github/media/harnesses.png" alt="Harnesses settings showing each installed harness, its version, whether Cerium has tested it and how it's signed in" width="62%" />
 </p>
 
-Cerium is an independent project and is not affiliated with or endorsed by Anthropic, OpenAI, Meta
-or Anysphere. Product names are the trademarks of their owners.
+Cerium is an independent project and is not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+Anysphere or Anomaly. Product names are the trademarks of their owners.
 
 ## How it works
 
@@ -162,7 +167,8 @@ flowchart LR
   Backend --> Claude["Claude Code"]
   Backend --> Codex["Codex"]
   Backend --> Cursor["Cursor"]
-  Claude & Codex & Cursor <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
+  Backend --> OpenCode["OpenCode"]
+  Claude & Codex & Cursor & OpenCode <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
 ```
 
 - **Adapters** translate each harness's own stream into one canonical event schema. The UI, the
