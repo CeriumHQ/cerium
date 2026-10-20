@@ -181,6 +181,19 @@ export function PromptEditor({
     show();
   }, [resetKey]);
 
+  // The draft changed elsewhere, in another tab or on another device: show it, the caret at its end.
+  // What the editor reported itself always matches what it shows.
+  const follow = useEffectEvent(() => {
+    const element = root.current;
+    if (!element || JSON.stringify(read(element)) === JSON.stringify(segments)) return;
+    const focused = document.activeElement === element;
+    render(element, segments);
+    if (focused) placeCaretAtEnd(element);
+  });
+  useEffect(() => {
+    follow();
+  }, [segments]);
+
   const report = () => {
     if (!root.current) return;
     keepCaret();

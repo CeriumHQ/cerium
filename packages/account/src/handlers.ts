@@ -37,6 +37,8 @@ export const deviceHandlers = <W, N>(own: {
         CloudThreadEvents: ({ machine, threadId }) =>
           cloud.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),
         MarkThreadsRead: ({ entries }) => cloud.markRead(entries).pipe(Effect.mapError(refuse)),
+        WatchAccountDrafts: () => cloud.accountDrafts,
+        SaveDrafts: ({ drafts }) => cloud.saveDrafts(drafts).pipe(Effect.mapError(refuse)),
         WatchWorking: () => workingNow,
         ReportPresence: (presence) => account.reportPresence(presence),
         SubscribePush: ({ subscription, kinds }) =>

@@ -2,6 +2,7 @@ import {
   isStreamDelta,
   ModelInfo,
   OFFERED_PROVIDERS,
+  type AccountDrafts,
   type AccountThreads,
   type AgentEvent,
   type AgentId,
@@ -217,6 +218,14 @@ export const accountThreadsAtom = LocalBackend.runtime.atom(
   { initialValue: { threads: [], read: [] } satisfies AccountThreads },
 );
 
+/** The account's drafts as this device last heard them, and whether it has heard since connecting. */
+export const accountDraftsAtom = LocalBackend.runtime.atom(
+  Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchAccountDrafts", undefined)))).pipe(
+    resubscribe,
+  ),
+  { initialValue: { ready: false, drafts: [] } satisfies AccountDrafts },
+);
+
 /** A notification from this computer's own threads, numbered in the order it arrived. */
 export interface Arrived {
   readonly seq: number;
@@ -354,6 +363,7 @@ export const approveDevice = LocalBackend.mutation("ApproveDevice");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");
+export const saveDrafts = LocalBackend.mutation("SaveDrafts");
 // Push notifications: what the window shows, and a browser's subscription.
 export const reportPresence = LocalBackend.mutation("ReportPresence");
 export const subscribePush = LocalBackend.mutation("SubscribePush");

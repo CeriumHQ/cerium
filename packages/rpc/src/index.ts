@@ -1,5 +1,6 @@
 import {
   AccessMode,
+  AccountDrafts,
   AccountState,
   AccountThreads,
   AgentId,
@@ -8,6 +9,7 @@ import {
   CapabilityManifest,
   DeviceId,
   DeviceName,
+  DraftEntry,
   HarnessStatus,
   ImageData,
   LenientArray,
@@ -374,6 +376,10 @@ export const DeviceRpcs = RpcGroup.make(
   }),
   /** Tells the account's other devices these threads were seen here. */
   Rpc.make("MarkThreadsRead", { payload: { entries: Schema.Array(ReadEntry) }, error: CeriumError }),
+  /** The account's drafts, now and after every change. Empty, and not ready, while signed out. */
+  Rpc.make("WatchAccountDrafts", { success: AccountDrafts, stream: true }),
+  /** Shares drafts written, sent or discarded here with the account's other devices. */
+  Rpc.make("SaveDrafts", { payload: { drafts: Schema.Array(DraftEntry) }, error: CeriumError }),
   /**
    * Whether this device's own agents are working, now and after every change; always false for a
    * browser. The shell keeps a desktop awake for them while its window drives another machine.

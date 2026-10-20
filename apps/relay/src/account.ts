@@ -3,6 +3,7 @@ import {
   credentialFromProtocols,
   DeviceMessage,
   hashSecret,
+  MAX_DRAFT_BYTES,
   randomToken,
   RELAY_PROTOCOL,
   type AccountId,
@@ -12,6 +13,7 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceId,
+  type DraftEntry,
   type NotificationKind,
   type PushMessage,
   type PushPayload,
@@ -60,6 +62,9 @@ type Attachment = Live & Presence;
 
 /** How long a push service keeps a notification for a phone that's off or out of reach. */
 const PUSH_TTL_S = 24 * 60 * 60;
+
+/** How long a sent or discarded draft is remembered as gone, against devices that were offline. */
+const GONE_DRAFTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 
 const decodeDeviceMessage = Schema.decodeUnknownOption(Schema.fromJsonString(DeviceMessage));
 
@@ -123,6 +128,13 @@ export class Account extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS read_state (
       thread TEXT PRIMARY KEY,
       seen_at INTEGER NOT NULL
+    )`);
+    // Drafts being written, by thread or new thread; a gone one keeps its row (draft NULL) a while,
+    // so a device that was offline doesn't bring it back.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS drafts (
+      key TEXT PRIMARY KEY,
+      draft TEXT,
+      updated_at INTEGER NOT NULL
     )`);
     // Browsers' push subscriptions, one per browser, with the kinds of notification each wants.
     this.sql.exec(`CREATE TABLE IF NOT EXISTS push (
@@ -461,7 +473,52 @@ export class Account extends DurableObject<Env> {
         // Every device hears it, the sender too: its other windows and its own list keep up.
         return this.toApproved({ _tag: "ReadChanged", entries: message.entries });
       }
+      case "SaveDrafts": {
+        const accepted: Array<DraftEntry> = [];
+        const lost: Array<DraftEntry> = [];
+        for (const entry of message.drafts) {
+          const content = entry.draft === undefined ? null : JSON.stringify(entry.draft);
+          if (content !== null && content.length > MAX_DRAFT_BYTES) continue;
+          const written = this.sql.exec(
+            `INSERT INTO drafts (key, draft, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT (key) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at
+             WHERE excluded.updated_at > drafts.updated_at`,
+            entry.key,
+            content,
+            entry.updatedAt,
+          ).rowsWritten;
+          if (written > 0) {
+            accepted.push(entry);
+            continue;
+          }
+          const newer = this.draftRows("WHERE key = ?", entry.key)[0];
+          if (newer !== undefined && newer.updatedAt > entry.updatedAt) lost.push(newer);
+        }
+        this.sql.exec("DELETE FROM drafts WHERE draft IS NULL AND updated_at < ?", now - GONE_DRAFTS_KEPT_MS);
+        // The sender has its own edits already; it hears only of the ones they lost to.
+        if (lost.length > 0) send(socket, { _tag: "DraftsChanged", drafts: lost });
+        if (accepted.length > 0)
+          this.toApproved({ _tag: "DraftsChanged", drafts: accepted }, self.connection);
+        return;
+      }
     }
+  }
+
+  /** Drafts as devices see them, those `where` picks. */
+  private draftRows(where = "", ...bindings: Array<SqlStorageValue>): Array<DraftEntry> {
+    return this.sql
+      .exec<{ key: string; draft: string | null; updated_at: number }>(
+        `SELECT key, draft, updated_at FROM drafts ${where}`,
+        ...bindings,
+      )
+      .toArray()
+      .map((row) => ({
+        key: row.key,
+        updatedAt: row.updated_at,
+        ...(row.draft === null
+          ? {}
+          : { draft: JSON.parse(row.draft) as Exclude<DraftEntry["draft"], undefined> }),
+      }));
   }
 
   /** A window saying what it shows, a machine saying a thread needs the user, a browser's push settings. */
@@ -589,6 +646,7 @@ export class Account extends DurableObject<Env> {
       })),
       read: read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seen_at })),
     });
+    send(socket, { _tag: "AccountDrafts", drafts: this.draftRows() });
   }
 
   /** Sends every approved device's sockets a message, but for the connection it came from. */

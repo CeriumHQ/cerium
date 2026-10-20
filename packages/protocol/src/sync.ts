@@ -51,6 +51,29 @@ export const AccountThreads = Schema.Struct({
 });
 export type AccountThreads = typeof AccountThreads.Type;
 
+/**
+ * A message being written, as the account's devices share it: keyed by its thread's id, or
+ * `new:<uuid>` for a thread not started yet, and gone (`draft` absent) once sent, emptied or
+ * discarded. The most recent edit wins. Its content is the UI's to read, so a version that writes
+ * something new into it never makes another version's relay or device drop the message.
+ */
+export const DraftEntry = Schema.Struct({
+  key: Schema.NonEmptyString.check(Schema.isMaxLength(128)),
+  updatedAt: EpochMillis,
+  draft: Schema.optionalKey(Schema.Json),
+});
+export type DraftEntry = typeof DraftEntry.Type;
+
+/**
+ * The account's drafts as a device knows them: `ready` once the relay sent them since this
+ * device last connected, before which the list may be missing some.
+ */
+export const AccountDrafts = Schema.Struct({ ready: Schema.Boolean, drafts: Schema.Array(DraftEntry) });
+export type AccountDrafts = typeof AccountDrafts.Type;
+
+/** The relay keeps a draft only while its content stays under this size. */
+export const MAX_DRAFT_BYTES = 256_000;
+
 /** Streamed text isn't kept in the cloud copy: each stream ends in a completed event that holds it all. */
 export const isStreamDelta = (tag: string) => tag === "MessageDelta" || tag === "ReasoningDelta";
 
@@ -72,6 +95,8 @@ export const SyncMessage = Schema.Union([
   }),
   /** The user saw these threads, on this device. */
   Schema.TaggedStruct("MarkRead", { entries: Schema.Array(ReadEntry) }),
+  /** Drafts written, sent or discarded on this device. */
+  Schema.TaggedStruct("SaveDrafts", { drafts: Schema.Array(DraftEntry) }),
 ]);
 export type SyncMessage = typeof SyncMessage.Type;
 
@@ -93,6 +118,13 @@ export const SyncNotice = Schema.Union([
   }),
   /** Threads seen on some device. */
   Schema.TaggedStruct("ReadChanged", { entries: Schema.Array(ReadEntry) }),
+  /** On connecting: every draft of the account, gone ones included for a while. */
+  Schema.TaggedStruct("AccountDrafts", { drafts: Schema.Array(DraftEntry) }),
+  /**
+   * Drafts changed on another connection; or, to the one that sent them, the newer drafts its
+   * edits lost to.
+   */
+  Schema.TaggedStruct("DraftsChanged", { drafts: Schema.Array(DraftEntry) }),
 ]);
 export type SyncNotice = typeof SyncNotice.Type;
 

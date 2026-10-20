@@ -83,11 +83,13 @@ import {
 import type { MessageBox } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
+import { useDraftSync } from "../features/composer/useDraftSync.ts";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
-import { themeAtom } from "../features/settings/preferences.ts";
+import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
+import { canScale, scaleShortcut, useScale } from "../features/settings/scale.ts";
 import {
   settingsLabel,
   SettingsNav,
@@ -202,9 +204,10 @@ export function App() {
   );
 }
 
-/** Keeps the page on the chosen theme, the web client's sign-in included. */
+/** Keeps the page on the chosen theme and scale, the web client's sign-in included. */
 function Themed({ children }: { children: ReactNode }) {
   useTheme(useAtomValue(themeAtom));
+  useScale();
   return children;
 }
 
@@ -319,6 +322,7 @@ function Workspace() {
   const drivenId = driven?.id ?? thisComputer;
   const deviceOf = (id: string) => devices.find((device) => device.id === id);
   const nameOf = (id: string) => deviceOf(id)?.name ?? "another computer";
+  useDraftSync(account._tag === "SignedIn", WEB ? undefined : thisComputer);
   // Until the driven machine answers, or while it can't, its threads read from the copy too.
   const elsewhere = accountThreads.threads.filter(
     (each) =>
@@ -836,6 +840,13 @@ function Workspace() {
       return;
     }
     if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    // Ctrl + and Ctrl − scale the desktop window wherever focus is; a browser zooms the page itself.
+    const scaling = canScale() ? scaleShortcut(event) : undefined;
+    if (scaling !== undefined) {
+      registry.set(scaleAtom, scaling === "reset" ? 100 : stepScale(registry.get(scaleAtom), scaling));
+      event.preventDefault();
+      return;
+    }
     // Search has the keys while it's open, but for Ctrl K, which closes it.
     if (searchOpen && event.key.toLowerCase() !== "k") return;
     if (!settingsOpen && !compact && tabShortcut(event)) {

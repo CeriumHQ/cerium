@@ -1,7 +1,7 @@
 import type { AccountThreads, DeviceId, ThreadId, ThreadOverview } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { applyNotice } from "../src/cloud.ts";
+import { applyDraftNotice, applyNotice } from "../src/cloud.ts";
 
 const overview = (id: string, title = id): ThreadOverview => ({
   thread: { id: id as ThreadId, title, mode: "work", createdAt: 1, updatedAt: 1 },
@@ -47,5 +47,36 @@ describe("the account's threads", () => {
       { threadId: "a", seenAt: 5 },
       { threadId: "b", seenAt: 9 },
     ]);
+  });
+});
+
+describe("the account's drafts", () => {
+  it("are ready once the relay sent them, keeping each key's latest edit", () => {
+    const sent = applyDraftNotice(
+      { ready: false, drafts: [{ key: "a", updatedAt: 9, draft: "mine" }] },
+      {
+        _tag: "AccountDrafts",
+        drafts: [
+          { key: "a", updatedAt: 4, draft: "old" },
+          { key: "b", updatedAt: 2 },
+        ],
+      },
+    );
+    expect(sent).toEqual({
+      ready: true,
+      drafts: [
+        { key: "a", updatedAt: 9, draft: "mine" },
+        { key: "b", updatedAt: 2 },
+      ],
+    });
+  });
+
+  it("take newer changes, and wait for the relay again once the connection drops", () => {
+    const changed = applyDraftNotice(
+      { ready: true, drafts: [{ key: "a", updatedAt: 1, draft: "old" }] },
+      { _tag: "DraftsChanged", drafts: [{ key: "a", updatedAt: 3 }] },
+    );
+    expect(changed).toEqual({ ready: true, drafts: [{ key: "a", updatedAt: 3 }] });
+    expect(applyDraftNotice(changed, { _tag: "RelayLost" }).ready).toBe(false);
   });
 });
