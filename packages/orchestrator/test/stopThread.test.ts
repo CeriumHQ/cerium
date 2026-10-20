@@ -41,7 +41,8 @@ describe("Orchestrator.stopThread", () => {
       const outcome = yield* orchestrator.spawn(lead.id, { role: "scout", model: "scout", prompt: "look" });
       const childId = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
       // The child's request goes to its lead, not the user.
-      yield* Effect.sleep(Duration.millis(100));
+      // Nothing shows when the orchestrator has taken the request, so it gets time, even on a busy machine.
+      yield* Effect.sleep(Duration.millis(600));
       assert.strictEqual(fake.sessions[1]?.sent.length, 1, "the child is mid-turn");
       yield* orchestrator.spawn(lead.id, {
         role: "reviewer",
