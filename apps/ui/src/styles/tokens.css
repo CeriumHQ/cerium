@@ -28,8 +28,10 @@
 
   /* What the glass sits on where Windows' Acrylic doesn't reach: the browser preview, theme samples. */
   --backdrop: oklch(calc(0.24 + var(--lift)) var(--tint-c) var(--tint-h));
+  /* The window's glass, before it lets the backdrop through. */
+  --window: oklch(calc(0.17 + var(--lift)) var(--tint-c) var(--tint-h));
   --window-alpha: 0.62;
-  --surface-window: oklch(calc(0.17 + var(--lift)) var(--tint-c) var(--tint-h) / var(--window-alpha));
+  --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
   --surface-panel: oklch(calc(0.2 + var(--lift)) var(--tint-c) var(--tint-h) / 0.66);
   --surface-raised: oklch(calc(0.255 + var(--lift)) var(--tint-c) var(--tint-h) / 0.78);
   --surface-overlay: oklch(calc(0.22 + var(--lift)) var(--tint-c) var(--tint-h) / 0.94);
@@ -91,8 +93,9 @@
 
   /* Light glass would go grey with a full tint; the brightest surfaces carry less of it. */
   --backdrop: oklch(calc(0.88 - var(--lift)) var(--tint-c) var(--tint-h));
+  --window: oklch(0.96 var(--tint-c) var(--tint-h));
   --window-alpha: 0.62;
-  --surface-window: oklch(0.96 var(--tint-c) var(--tint-h) / var(--window-alpha));
+  --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
   --surface-panel: oklch(0.985 calc(var(--tint-c) * 0.6) var(--tint-h) / 0.7);
   --surface-raised: oklch(0.995 calc(var(--tint-c) * 0.3) var(--tint-h) / 0.82);
   --surface-overlay: oklch(0.995 calc(var(--tint-c) * 0.3) var(--tint-h) / 0.95);

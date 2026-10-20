@@ -116,7 +116,14 @@ const webHead = `
  */
 const webClient = (artifact: string, version: string): Plugin => ({
   name: "cerium-web-client",
-  transformIndexHtml: (html) => html.replace("</head>", `${webHead}  </head>`),
+  // After #root, so it paints over the window and under the menus and dialogs portalled after it (app.css).
+  transformIndexHtml: (html) =>
+    html
+      .replace("</head>", `${webHead}  </head>`)
+      .replace(
+        '<div id="root"></div>',
+        '<div id="root"></div>\n    <div id="status-bar" aria-hidden="true"></div>',
+      ),
   configureServer(server) {
     server.middlewares.use("/sw.js", (_request, response) => {
       void serviceWorkerScript().then((script) => {
