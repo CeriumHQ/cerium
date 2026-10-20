@@ -110,6 +110,9 @@ const createWindow = () => {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
+      // Under `bun run dev` the page keeps drawing behind other windows, so `bun run ui` driving it
+      // gets frames, input and screenshots without bringing it over the user's work.
+      backgroundThrottling: devUrl === undefined,
     },
   });
 

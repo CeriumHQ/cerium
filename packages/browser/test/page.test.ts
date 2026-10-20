@@ -77,6 +77,47 @@ describe.skipIf(browser === undefined)("a driven page", () => {
   );
 
   it(
+    "waits for late targets and finished transitions, and copes with a page a popup hid",
+    { timeout: 90_000 },
+    async () => {
+      const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
+      try {
+        const target = await pickPage(launched.origin);
+        const page = await Page.open(target.webSocketDebuggerUrl);
+        await page.navigate(`data:text/html,${encodeURIComponent(LATE)}`);
+
+        await page.click({ text: "Appears later" }, { button: "left", count: 1 });
+        assert.strictEqual(await page.evaluate("document.getElementById('log').textContent"), "clicked");
+
+        await page.evaluate("document.getElementById('fade').classList.add('in')");
+        await page.settle();
+        assert.strictEqual(
+          await page.evaluate("getComputedStyle(document.getElementById('fade')).opacity"),
+          "1",
+        );
+
+        // A popup puts the page behind it, where it draws no frames, so settling skips them…
+        await page.evaluate("void window.open('about:blank')");
+        assert.strictEqual(await page.evaluate("document.visibilityState"), "hidden");
+        const settling = Date.now();
+        await page.settle();
+        assert.isBelow(Date.now() - settling, 1_000);
+        page.close();
+
+        // …and a page in the tool's own browser comes back to the front, where input answers at once.
+        const front = await Page.open(target.webSocketDebuggerUrl, { front: true });
+        assert.strictEqual(await front.evaluate("document.visibilityState"), "visible");
+        const hovering = Date.now();
+        await front.hover({ text: "Fades in" });
+        assert.isBelow(Date.now() - hovering, 1_000);
+        front.close();
+      } finally {
+        launched.close();
+      }
+    },
+  );
+
+  it(
     "drags with pointer events and with native drag and drop, and holds a drag midway",
     { timeout: 90_000 },
     async () => {
@@ -103,6 +144,19 @@ describe.skipIf(browser === undefined)("a driven page", () => {
     },
   );
 });
+
+const LATE = `<!doctype html><title>Late</title>
+<style>#fade { opacity: 0; transition: opacity 600ms } #fade.in { opacity: 1 }</style>
+<div id="fade">Fades in</div>
+<p id="log"></p>
+<script>
+  setTimeout(() => {
+    const button = document.createElement("button");
+    button.textContent = "Appears later";
+    button.onclick = () => (document.getElementById("log").textContent = "clicked");
+    document.body.append(button);
+  }, 800);
+</script>`;
 
 const DRAGS = `<!doctype html><title>Drags</title>
 <div id="native" draggable="true" style="width:120px;height:40px">Native card</div>

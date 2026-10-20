@@ -41,6 +41,7 @@ const HELP = `bun run ui <command> [options]
           eval=<js>  viewport=390x844@3  upload@css:input[type=file]=a.png,b.png
           Drags work on pointer-event and native (HTML5) drag and drop alike.
           Targets: visible text or accessible name, css:<selector>, or @x,y; [n] after one picks the nth match.
+          An action gives its target 5 s to show, and each step lets the page's animations finish.
           A JSON step works too: '{"action":"click","selector":"#go"}'.
   Screenshots (act, open, shot):  --no-shot  --full (whole page)  --crop=<target> (one element)
   --session=name      a page of your own beside other threads' (default: default)`;
@@ -121,12 +122,22 @@ const connect = async (state: Session): Promise<Page> => {
     await forget(name, state);
     throw new Error("The page is gone. Run `bun run ui open <url>` again.");
   }
-  const page = await Page.open(target.webSocketDebuggerUrl);
+  const page = await Page.open(target.webSocketDebuggerUrl, { front: state.browser !== undefined });
   // A new connection is sent the page's earlier console messages again; earlier calls reported them.
   page.drainConsole();
   if (state.viewport !== undefined) await page.viewport(state.viewport);
   if (state.colorScheme !== undefined) await page.colorScheme(state.colorScheme);
   return page;
+};
+
+/** Fails at once on a page off screen, whose every step and screenshot would take seconds. */
+const ensureShown = async (page: Page) => {
+  if (!(await page.shown())) {
+    page.close();
+    throw new Error(
+      "The page's window is minimized or hidden, which stalls every step. Restore it, then try again.",
+    );
+  }
 };
 
 const location = (page: Page) =>
@@ -239,6 +250,7 @@ const act = async (): Promise<Record<string, unknown>> => {
   const steps: Array<Step> = positional.flatMap(parseStep);
   const state = current();
   const page = await connect(state);
+  await ensureShown(page);
   try {
     const results: Array<Record<string, unknown>> = [];
     let failed: Record<string, unknown> | undefined;
@@ -286,6 +298,7 @@ const look = async (what: "shot" | "inspect"): Promise<Record<string, unknown>> 
       return { ...((await page.inspect(options.has("text"))) as object), console: page.drainConsole() };
     }
     options.delete("no-shot");
+    await ensureShown(page);
     return { ...(await location(page)), ...(await shoot(page, state)) };
   } finally {
     page.close();

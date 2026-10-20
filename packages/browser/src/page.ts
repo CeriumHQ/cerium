@@ -189,6 +189,21 @@ export const parseKeys = (combo: string): KeyPress => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long an action gives its target to show, as a user waits for a control to appear. */
+const ACTION_WAIT_MS = 5_000;
+
+/** `Page.settle` in the page; endless animations (spinners) are left running. */
+const SETTLE = String.raw`new Promise((resolve) => {
+  if (document.visibilityState === "hidden") return resolve(false);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const ending = document.getAnimations().filter((a) => a.playState === "running" && a.effect?.getComputedTiming().endTime !== Infinity);
+    Promise.race([
+      Promise.all(ending.map((a) => a.finished.catch(() => undefined))),
+      new Promise((done) => setTimeout(done, 1000)),
+    ]).then(() => resolve(true));
+  }));
+})`;
+
 /** The left button held down between `down` and `up`, and the native drag it started, if any. */
 interface Held {
   x: number;
@@ -201,6 +216,7 @@ interface Held {
 export class Page {
   private readonly console: Array<ConsoleEntry> = [];
   private held: Held | undefined;
+  private front = false;
   readonly cdp: Cdp;
 
   private constructor(cdp: Cdp) {
@@ -230,10 +246,31 @@ export class Page {
     });
   }
 
-  static async open(webSocketUrl: string): Promise<Page> {
+  /**
+   * With `front`, for a browser this tool launched, a page another tab or a popup hid is brought back
+   * before each step: a hidden page answers input events after 5 s and screenshots never.
+   */
+  static async open(webSocketUrl: string, options: { readonly front?: boolean } = {}): Promise<Page> {
     const page = new Page(await Cdp.connect(webSocketUrl));
+    page.front = options.front ?? false;
     await Promise.all([page.cdp.send("Page.enable"), page.cdp.send("Runtime.enable")]);
+    if (page.front) await page.bringBack();
     return page;
+  }
+
+  /**
+   * Whether the page is on screen. A hidden page, or a window Windows minimized (and parked far
+   * off-screen), draws a frame a second or none, so each input event and screenshot takes seconds.
+   */
+  async shown(): Promise<boolean> {
+    return this.evaluate<boolean>('document.visibilityState === "visible" && screenX > -10000').catch(
+      () => false,
+    );
+  }
+
+  private async bringBack(): Promise<void> {
+    if ((await this.evaluate("document.visibilityState")) === "hidden")
+      await this.cdp.send("Page.bringToFront");
   }
 
   get closed(): boolean {
@@ -288,13 +325,15 @@ export class Page {
     await this.settle();
   }
 
-  /** Lets the page paint what the last action changed: two animation frames, then a short pause. */
+  /**
+   * Lets the page paint what the last action changed: a short pause, two animation frames, then the
+   * animations and transitions it started, up to a second. A page left hidden (minimized, say) draws
+   * no frames, so it gets the pause alone.
+   */
   async settle(ms = 120): Promise<void> {
     await sleep(ms);
-    await this.evaluate(
-      "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
-      5_000,
-    ).catch(() => undefined);
+    if (this.front) await this.bringBack().catch(() => undefined);
+    await this.evaluate(SETTLE, 2_000).catch(() => undefined);
   }
 
   async viewport(options: {
@@ -347,6 +386,14 @@ export class Page {
     return found as Found;
   }
 
+  /** `find` for an action: gives the target up to `ACTION_WAIT_MS` to show before failing. */
+  private async locate(target: Target): Promise<Found> {
+    if (target.x === undefined) {
+      await this.waitFor(target, { gone: false, timeoutMs: ACTION_WAIT_MS }).catch(() => undefined);
+    }
+    return this.find(target);
+  }
+
   /** Waits until the target shows, or with `gone` until it no longer does. */
   async waitFor(
     target: Target,
@@ -376,7 +423,7 @@ export class Page {
     target: Target,
     options: { readonly button: "left" | "right" | "middle"; readonly count: number },
   ): Promise<Found> {
-    const found = await this.find(target);
+    const found = await this.locate(target);
     const buttons = { left: 1, right: 2, middle: 4 }[options.button];
     await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: found.x, y: found.y });
     for (let click = 1; click <= options.count; click++) {
@@ -388,7 +435,7 @@ export class Page {
   }
 
   async hover(target: Target): Promise<Found> {
-    const found = await this.find(target);
+    const found = await this.locate(target);
     await this.cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: found.x, y: found.y });
     return found;
   }
@@ -405,7 +452,7 @@ export class Page {
    */
   async down(target: Target): Promise<Found> {
     if (this.held !== undefined) throw new CdpError("The button is already down; `up` first.");
-    const found = await this.find(target);
+    const found = await this.locate(target);
     await this.cdp.send("Input.setInterceptDrags", { enabled: true });
     const held: Held = {
       x: found.x,
@@ -430,7 +477,7 @@ export class Page {
   async move(target: Target): Promise<Found> {
     const held = this.held;
     if (held === undefined) throw new CdpError("Nothing is held; `down` first.");
-    const end = await this.find(target);
+    const end = await this.locate(target);
     for (let step = 1; step <= 10; step++) {
       await this.cdp.send("Input.dispatchMouseEvent", {
         type: "mouseMoved",
@@ -515,7 +562,7 @@ export class Page {
   }
 
   async scroll(deltaX: number, deltaY: number, at?: Target): Promise<void> {
-    const point = at !== undefined ? await this.find(at) : await this.center();
+    const point = at !== undefined ? await this.locate(at) : await this.center();
     await this.cdp.send("Input.dispatchMouseEvent", {
       type: "mouseWheel",
       x: point.x,
@@ -553,7 +600,7 @@ export class Page {
     await this.settle(60);
     let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined;
     if (options.of !== undefined) {
-      const found = await this.find(options.of);
+      const found = await this.locate(options.of);
       const pad = 8;
       const box = await this.evaluate<{ x: number; y: number }>("({ x: scrollX, y: scrollY })");
       clip = {
