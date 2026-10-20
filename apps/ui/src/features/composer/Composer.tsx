@@ -668,32 +668,11 @@ export function Composer({
       </>
     ) : null;
 
+  // A new thread's setup splits in two: what runs sits in the box, beside the message; where it
+  // runs and what it may do sit just under the box, so the box's own row stays uncrowded.
   const newSetup =
     target.kind === "new" ? (
       <>
-        {target.mode === "work" ? (
-          <ProjectPicker
-            folder={target.folder}
-            open={projectsOpen}
-            onOpenChange={setProjectsOpen}
-            needed={asksForProject}
-            returnFocus={input}
-            onChoose={(folder) => {
-              target.onChooseFolder(folder);
-              pickForDraft({ folder });
-            }}
-          />
-        ) : null}
-        {gitFolder !== undefined && branch !== undefined ? (
-          <WorktreePicker
-            branch={branch}
-            value={worktree}
-            onPick={(picked) => {
-              setWorkplace(picked ? "worktree" : "local");
-              pickForDraft({ worktree: picked });
-            }}
-          />
-        ) : null}
         {multi ? (
           <ModelsPicker
             models={models}
@@ -722,8 +701,37 @@ export function Composer({
           <MultiAgentToggle on={multi} onChange={setMulti} />
         ) : null}
         {activeEffort ? <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} /> : null}
-        {target.mode === "work" ? <AccessPicker value={access} onPick={setAccess} /> : null}
       </>
+    ) : null;
+
+  const newPlace =
+    target.kind === "new" && target.mode === "work" ? (
+      <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-0.5 px-2 pt-1">
+        <ProjectPicker
+          folder={target.folder}
+          open={projectsOpen}
+          onOpenChange={setProjectsOpen}
+          needed={asksForProject}
+          returnFocus={input}
+          onChoose={(folder) => {
+            target.onChooseFolder(folder);
+            pickForDraft({ folder });
+          }}
+        />
+        {gitFolder !== undefined && branch !== undefined ? (
+          <WorktreePicker
+            branch={branch}
+            value={worktree}
+            onPick={(picked) => {
+              setWorkplace(picked ? "worktree" : "local");
+              pickForDraft({ worktree: picked });
+            }}
+          />
+        ) : null}
+        <div className="ml-auto">
+          <AccessPicker value={access} onPick={setAccess} />
+        </div>
+      </div>
     ) : null;
 
   return (
@@ -816,6 +824,7 @@ export function Composer({
             </div>
           )}
         </div>
+        {oneLine ? null : newPlace}
       </div>
     </div>
   );
