@@ -41,6 +41,7 @@ import {
   selfNoun,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
+import { DiscordSection } from "./Discord.tsx";
 import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
 
 type SignedIn = Extract<AccountState, { _tag: "SignedIn" }>;
@@ -76,6 +77,7 @@ export function AccountSettings() {
       </SettingsSection>
       {account?._tag === "SignedIn" && isApproved(account) ? <DevicesSection account={account} /> : null}
       {account?._tag === "SignedIn" && !WEB ? <ThisComputerSection /> : null}
+      <DiscordSection />
     </SettingsPage>
   );
 }

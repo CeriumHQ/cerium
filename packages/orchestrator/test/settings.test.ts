@@ -2,7 +2,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import { defaultSettings } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect } from "effect";
+import { Duration, Effect, Fiber, Layer, Stream } from "effect";
 import { join } from "node:path";
 
 import { Orchestrator, UserSettings } from "../src/index.ts";
@@ -45,6 +45,32 @@ describe("UserSettings", () => {
       assert.deepStrictEqual(yield* store.readSettings, { includeUserMcpServers: false });
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
+
+  it.effect("streams the settings now and each change saved", () =>
+    Effect.gen(function* () {
+      const settings = yield* UserSettings;
+      const seen = yield* settings.changes.pipe(Stream.take(2), Stream.runCollect, Effect.forkScoped);
+      yield* Effect.yieldNow;
+      const discord = { enabled: true, showProject: false };
+      yield* settings.update({ discord });
+      assert.deepStrictEqual(Array.from(yield* Fiber.join(seen)), [
+        defaultSettings,
+        { ...defaultSettings, discord },
+      ]);
+    }).pipe(
+      Effect.provide(
+        UserSettings.layer.pipe(
+          Layer.provide(
+            Store.layer({
+              filename: ":memory:",
+              migrationsFolder: join(import.meta.dirname, "../../store/migrations"),
+            }),
+          ),
+        ),
+      ),
+      Effect.scoped,
+    ),
+  );
 
   it.effect("reads saved settings back, and defaults any it can't decode", () =>
     Effect.gen(function* () {

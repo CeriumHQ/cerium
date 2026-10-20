@@ -1,6 +1,6 @@
 import { defaultSettings, Settings, type SettingsPatch } from "@cerium/protocol";
 import { Store, type StoreError } from "@cerium/store";
-import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
+import { Context, Effect, Layer, Option, Schema, Semaphore, Stream, SubscriptionRef } from "effect";
 
 import { OrchestratorError } from "./errors.ts";
 
@@ -27,13 +27,15 @@ export class UserSettings extends Context.Service<
     readonly get: Effect.Effect<Settings>;
     /** Saves the given settings and returns them all. */
     update(patch: SettingsPatch): Effect.Effect<Settings, OrchestratorError>;
+    /** The settings now and each time they're saved, for what applies a change at once. */
+    readonly changes: Stream.Stream<Settings>;
   }
 >()("cerium/orchestrator/UserSettings") {
   static readonly layer = Layer.effect(
     UserSettings,
     Effect.gen(function* () {
       const store = yield* Store;
-      const current = yield* Ref.make(
+      const current = yield* SubscriptionRef.make(
         decodeSettings(yield* store.readSettings.pipe(Effect.mapError(unavailable))),
       );
       // Saving and remembering happen together, so concurrent updates can't land out of order.
@@ -41,10 +43,14 @@ export class UserSettings extends Context.Service<
 
       const update = Effect.fn("UserSettings.update")(function* (patch: SettingsPatch) {
         yield* store.writeSettings(patch).pipe(Effect.mapError(unavailable));
-        return yield* Ref.updateAndGet(current, (settings) => ({ ...settings, ...patch }));
+        return yield* SubscriptionRef.updateAndGet(current, (settings) => ({ ...settings, ...patch }));
       }, lock.withPermits(1));
 
-      return UserSettings.of({ get: Ref.get(current), update });
+      return UserSettings.of({
+        get: SubscriptionRef.get(current),
+        update,
+        changes: SubscriptionRef.changes(current),
+      });
     }),
   );
 }

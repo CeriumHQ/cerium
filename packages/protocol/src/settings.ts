@@ -49,6 +49,19 @@ export type TitleSettings = typeof TitleSettings.Type;
 const defaultTitles: TitleSettings = { enabled: true };
 
 /**
+ * Discord Rich Presence: the user's Discord profile says they're using Cerium, how many agents are
+ * working and in which harnesses. Thread titles never leave the machine; folder names only when asked.
+ */
+export const DiscordSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Name the folder the working agents are in, such as "in cerium". */
+  showProject: Schema.Boolean,
+});
+export type DiscordSettings = typeof DiscordSettings.Type;
+
+const defaultDiscord: DiscordSettings = { enabled: false, showProject: false };
+
+/**
  * The user's settings the backend applies. Preferences that only change the window (theme, text
  * size, keys) stay in the UI.
  */
@@ -59,6 +72,8 @@ export const Settings = Schema.Struct({
   advisor: AdvisorSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAdvisor))),
   /** Read as its default from a backend that predates it. */
   titles: TitleSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultTitles))),
+  /** Read as its default from a backend that predates it. */
+  discord: DiscordSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultDiscord))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -70,4 +85,5 @@ export const defaultSettings: Settings = {
   includeUserMcpServers: true,
   advisor: defaultAdvisor,
   titles: defaultTitles,
+  discord: defaultDiscord,
 };
