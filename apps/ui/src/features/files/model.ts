@@ -291,30 +291,20 @@ export interface ChangedRow {
   readonly folder: boolean;
   readonly state?: FileState;
   readonly from?: string;
-  /** The thread's agents touched it. */
-  readonly touch?: "created" | "modified" | "deleted";
 }
 
-/** What differs from the last commit, and what the agents touched that git has nothing to say about, by path. */
-export const changedRows = (changes: ChangeIndex, touched: Touched): ReadonlyArray<ChangedRow> => {
+/** What differs from the last commit, by path: git's own view of the folder, whoever changed it. */
+export const changedRows = (changes: ChangeIndex): ReadonlyArray<ChangedRow> => {
   const rows = new Map<string, ChangedRow>();
   for (const [path, change] of changes.files) {
-    const touch = touched.files.get(touchedKey(touched, path))?.change;
     rows.set(path, {
       path,
       folder: false,
       state: change.state,
       ...(change.from === undefined ? {} : { from: change.from }),
-      ...(touch === undefined ? {} : { touch }),
     });
   }
   for (const path of changes.newFolders) rows.set(path, { path, folder: true, state: "untracked" });
-  for (const { path, change } of touched.files.values()) {
-    if (rows.has(path) || change === "deleted") continue;
-    // Inside a folder git calls new, the folder says it already.
-    if (ancestors(path).some((above) => changes.newFolders.has(above))) continue;
-    rows.set(path, { path, folder: false, touch: change });
-  }
   return [...rows.values()].toSorted(
     (a, b) => collator.compare(a.path, b.path) || (a.path < b.path ? -1 : 1),
   );

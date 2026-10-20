@@ -189,36 +189,20 @@ describe("touchedFiles", () => {
 });
 
 describe("changedRows", () => {
-  it("lists what git says, new folders whole, and what the agents touched that git doesn't mention", () => {
+  it("lists what git says and nothing else, whatever a thread's agents changed", () => {
     const changes = indexChanges(
       statuses(
         { path: "src/a.ts", state: "modified" },
         { path: "fresh/", state: "untracked" },
         { path: "gone.ts", state: "deleted" },
+        { path: "renamed.ts", state: "renamed", from: "original.ts" },
       ),
     );
-    const edits: ReadonlyArray<{ path: string; change: "created" | "modified" | "deleted" }> = [
-      { path: "/w/src/a.ts", change: "modified" },
-      { path: "/w/committed.ts", change: "modified" },
-      { path: "/w/fresh/inside.ts", change: "created" },
-      { path: "/w/removed.ts", change: "deleted" },
-    ];
-    const touched = touchedFiles(
-      edits.map(({ path, change }, at) => ({
-        id: `evt_${at}` as EventId,
-        threadId: "thr_1" as ThreadId,
-        agentId: "agt_1" as AgentId,
-        sequence: at,
-        at,
-        payload: { _tag: "FileChanged" as const, path, change },
-      })),
-      "/w",
-    );
-    expect(changedRows(changes, touched)).toEqual([
-      { path: "committed.ts", folder: false, touch: "modified" },
+    expect(changedRows(changes)).toEqual([
       { path: "fresh", folder: true, state: "untracked" },
       { path: "gone.ts", folder: false, state: "deleted" },
-      { path: "src/a.ts", folder: false, state: "modified", touch: "modified" },
+      { path: "renamed.ts", folder: false, state: "renamed", from: "original.ts" },
+      { path: "src/a.ts", folder: false, state: "modified" },
     ]);
   });
 });

@@ -13,7 +13,7 @@ import { ContextMenuArea } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FileMenuItems } from "./FileMenu.tsx";
-import { StateLetter, TouchedMark } from "./FileStatus.tsx";
+import { StateLetter } from "./FileStatus.tsx";
 import { dirOf, nameOf, type ChangedRow, type OpenFile } from "./model.ts";
 
 /** A file or folder in a flat list: its icon, its name, where it is, and what happened to it. */
@@ -51,8 +51,8 @@ const Empty = ({ children }: { children: ReactNode }) => (
 );
 
 /**
- * What changed in the folder: the files git says differ from the last commit, and the ones this
- * thread's agents touched that git has nothing to say about, by path.
+ * What changed in the folder: the files git says differ from the last commit, by path, whoever
+ * changed them.
  */
 export function ChangesList({
   rows,
@@ -83,7 +83,7 @@ export function ChangesList({
       <Empty>
         {repository
           ? "Nothing differs from the last commit."
-          : "This folder isn't in git. Files the agents change show up here."}
+          : "This folder isn't in git, so there's nothing to compare with."}
       </Empty>
     );
   }
@@ -147,7 +147,6 @@ export function ChangesList({
                 gone={row.state === "deleted"}
                 trailing={
                   <span className="flex shrink-0 items-center gap-1.5">
-                    {row.touch ? <TouchedMark change={row.touch} /> : null}
                     {row.state ? <StateLetter state={row.state} /> : null}
                   </span>
                 }

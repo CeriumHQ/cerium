@@ -20,8 +20,8 @@ const toggleClass =
   "rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
- * The thread's folder, beside the conversation: its files as a tree, or just what changed; a way to
- * find a file by name; and what git and this thread's agents did to each.
+ * The thread's folder, beside the conversation: its files as a tree, or just what git says differs
+ * from the last commit; a way to find a file by name; and which of them this thread's agents worked on.
  */
 export function FilesPanel({
   root,
@@ -50,7 +50,7 @@ export function FilesPanel({
   const [revealed, setRevealed] = useState<string>();
   const element = useRef<HTMLDivElement>(null);
 
-  const changed = changedRows(tree.changes, touched);
+  const changed = changedRows(tree.changes);
 
   // Esc closes the panel while focus is inside it, unless something there (the filter, a menu) used the key first.
   const onEscape = useEffectEvent((event: globalThis.KeyboardEvent) => {
