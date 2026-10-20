@@ -1,4 +1,4 @@
-import { ClipboardCopy, Copy, ExternalLink, Link, TextQuote } from "lucide-react";
+import { ClipboardCopy, Copy, ExternalLink, Link, Pencil, TextQuote } from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
@@ -34,26 +34,32 @@ const hitAt = (event: MouseEvent<HTMLElement>): Hit => {
 
 /**
  * A message in the transcript, with its right-click menu: the link under the pointer, the selected
- * text, the whole message, and (for the user's own) putting it back into the message box. Chips and
+ * text, the whole message, and (for the user's own) putting it back into the message box or editing
+ * it. Chips and
  * images inside keep their own menus.
  */
 export function MessageMenuArea({
   text,
   onCopyToMessageBox,
+  onEdit,
   className,
   children,
 }: {
   /** What "Copy message" copies; nothing to copy leaves the item out. */
   text: string;
   onCopyToMessageBox?: (() => void) | undefined;
+  /** Opens the user's own message for editing, to send it again. */
+  onEdit?: (() => void) | undefined;
   className?: string;
   children: ReactNode;
 }) {
   const [hit, setHit] = useState<Hit>({ selection: "" });
   const { link, selection } = hit;
-  const hasMain = selection !== "" || text !== "" || onCopyToMessageBox !== undefined;
+  const hasMain = selection !== "" || text !== "" || onCopyToMessageBox !== undefined || onEdit !== undefined;
   // Links and selections live in the text, so without any there is nothing to offer.
-  if (text === "" && onCopyToMessageBox === undefined) return <div className={className}>{children}</div>;
+  if (text === "" && onCopyToMessageBox === undefined && onEdit === undefined) {
+    return <div className={className}>{children}</div>;
+  }
   return (
     <ContextMenuArea
       menu={
@@ -83,6 +89,11 @@ export function MessageMenuArea({
           {onCopyToMessageBox ? (
             <MenuItem icon={TextQuote} onClick={onCopyToMessageBox}>
               Copy to message box
+            </MenuItem>
+          ) : null}
+          {onEdit ? (
+            <MenuItem icon={Pencil} onClick={onEdit}>
+              Edit message
             </MenuItem>
           ) : null}
         </>

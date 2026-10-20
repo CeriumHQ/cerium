@@ -27,7 +27,14 @@ export type Item =
   | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock }
   /** The end of a response, with the response's text for its copy button. */
   | { readonly kind: "turnEnd"; readonly id: string; readonly block: Block<"turnEnd">; readonly text: string }
-  | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> };
+  | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> }
+  /** The turns a rewind replaced, laid out like the conversation, with how many of the user's messages began them. */
+  | {
+      readonly kind: "replaced";
+      readonly id: string;
+      readonly items: ReadonlyArray<Item>;
+      readonly turns: number;
+    };
 
 const isSpawnCall = (block: TranscriptBlock): block is ToolBlock =>
   block.kind === "tool" && /^mcp__[^_]+__spawn_agent$/.test(block.toolName);
@@ -98,6 +105,17 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
           change: block.change,
         });
       }
+      continue;
+    }
+    if (block.kind === "replaced") {
+      said = [];
+      headerDue = true;
+      items.push({
+        kind: "replaced",
+        id: block.id,
+        items: layout(block.blocks),
+        turns: block.blocks.filter((each) => each.kind === "user").length,
+      });
       continue;
     }
     if (block.kind === "user") {

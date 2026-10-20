@@ -9,19 +9,22 @@ import {
   ChevronRight,
   Clock,
   CornerDownRight,
+  Pencil,
   ShieldQuestion,
   Split,
   Workflow,
   X,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
 import { AgentMenuArea, type AgentActions } from "../agents/AgentMenu.tsx";
 import { approvalShell, ApprovalActions, ApprovalDetail } from "../agents/ApprovalParts.tsx";
 import { accessLabel, type AgentSummary } from "../agents/model.ts";
+import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { effortLabel } from "../composer/models.ts";
@@ -29,15 +32,28 @@ import { CopyButton } from "./CopyButton.tsx";
 import { FileChip } from "./FileChip.tsx";
 import { FoldedText } from "./FoldedText.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { TranscriptBlock, UserBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
-export function UserMessage({ block }: { block: Block<"user"> }) {
+export function UserMessage({
+  block,
+  onEdit,
+}: {
+  block: Block<"user">;
+  /** Sends a new version of the message; resolves whether it went. Absent where it can't be edited. */
+  onEdit?: ((message: OutgoingMessage) => Promise<boolean>) | undefined;
+}) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
   const messageBox = useMessageBox();
+  const [editing, setEditing] = useState(false);
+  const editable = onEdit !== undefined && block.delivered === true;
+  if (editing && editable) {
+    return <MessageEditor block={block} onSend={onEdit} onCancel={() => setEditing(false)} />;
+  }
   return (
     <MessageMenuArea
       text={block.text.trim()}
@@ -50,8 +66,21 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
               })
           : undefined
       }
-      className="flex max-w-[85%] flex-col items-end gap-1.5"
+      onEdit={editable ? () => setEditing(true) : undefined}
+      className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
     >
+      {editable ? (
+        // Beside the message's foot, out of the way until the message is under the pointer.
+        <Tooltip label="Edit message">
+          <Button
+            aria-label="Edit message"
+            onClick={() => setEditing(true)}
+            className="absolute right-full bottom-0.5 mr-1 grid size-7 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[color,background-color,opacity] duration-150 group-hover/user:opacity-100 hover:bg-surface-hover hover:text-fg-secondary focus-visible:opacity-100 pointer-coarse:opacity-100"
+          >
+            <Pencil size={13} strokeWidth={1.75} />
+          </Button>
+        </Tooltip>
+      ) : null}
       {block.writtenIn === undefined ? null : (
         <p className="flex max-w-full min-w-0 items-center gap-1.5 text-[12px] text-fg-tertiary">
           <Split size={12} strokeWidth={1.75} className="shrink-0" />

@@ -262,6 +262,44 @@ export type InputItem = typeof InputItem.Type;
 /** The batch of inputs sent to the harness as one turn. */
 export const TurnInput = Schema.TaggedStruct("TurnInput", {
   items: Schema.NonEmptyArray(InputItem),
+  /** The UUID the turn went to the harness with, which a fork of its session names it by. */
+  turnId: Schema.optionalKey(Schema.NonEmptyString),
+  /** The snapshot of a work thread's folder taken just before the turn, which a restore goes back to. */
+  files: Schema.optionalKey(Schema.NonEmptyString),
+});
+
+/** The snapshot of a work thread's folder taken as one of its agents' turns ended. */
+export const FilesSaved = Schema.TaggedStruct("FilesSaved", {
+  snapshot: Schema.NonEmptyString,
+  /** The `turnId` of the turn it ended; it is saved behind the turn, so another may have begun. */
+  turnId: Schema.optionalKey(Schema.NonEmptyString),
+});
+
+/**
+ * The files the thread's agents changed since one of the user's messages went back to how they were
+ * before it. Recorded on the lead, beside the `ConversationRewound` that took the conversation back.
+ */
+export const FilesRestored = Schema.TaggedStruct("FilesRestored", {
+  messageId: Schema.NonEmptyString,
+  /** Relative to the thread's folder, with forward slashes. */
+  paths: Schema.Array(Schema.NonEmptyString),
+});
+
+/**
+ * The conversation went back to before one of the user's messages, to go on from there: this
+ * agent's events from `fromSequence` up to this one are the version it replaced, kept to look back
+ * on, and the agent's session no longer holds them.
+ */
+export const ConversationRewound = Schema.TaggedStruct("ConversationRewound", {
+  fromSequence: NonNegativeInt,
+  /** The user's message the conversation went back to before. */
+  messageId: Schema.NonEmptyString,
+  /**
+   * How the session went back: `fork`, the harness's own copy of it ending there; `fresh`, a new
+   * session, the message having been the first; `replay`, a new session that is told the
+   * conversation so far with the next message, where the harness can't fork.
+   */
+  via: withFallback(Schema.Literals(["fork", "fresh", "replay"]), "replay"),
 });
 
 /**
@@ -339,6 +377,9 @@ export const EventPayload = Schema.Union([
   AuthRequired,
   AgentError,
   TurnInput,
+  ConversationRewound,
+  FilesSaved,
+  FilesRestored,
   MessageQueued,
   AgentSpawned,
   AgentStateChanged,

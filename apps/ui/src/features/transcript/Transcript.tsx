@@ -1,14 +1,16 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId, QuestionResponse } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, History } from "lucide-react";
 import { createContext, memo, use, type CSSProperties, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import type { AgentActions } from "../agents/AgentMenu.tsx";
 import type { AgentSummary } from "../agents/model.ts";
+import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import { ClosedQuestions, QuestionCard } from "../questions/QuestionCard.tsx";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
@@ -61,6 +63,11 @@ interface TranscriptProps {
   ) => void;
   /** Answers the agent's questions; resolves to false when the answer didn't reach it. */
   readonly onAnswerQuestion?: (requestId: string, response: QuestionResponse) => Promise<boolean>;
+  /**
+   * Sends a new version of one of the user's earlier messages, the conversation going back to before
+   * it; resolves whether it went. Without it, messages can't be edited.
+   */
+  readonly onEditMessage?: (messageId: string, message: OutgoingMessage) => Promise<boolean>;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -90,6 +97,7 @@ export function Transcript({
   bottomInset = 0,
   onAnswerPermission,
   onAnswerQuestion,
+  onEditMessage,
 }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
@@ -124,7 +132,32 @@ export function Transcript({
     agentActions,
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
+    ...(onEditMessage ? { onEditMessage } : {}),
   };
+  // A version a rewind replaced is there to read: its messages can't be edited, and what it asked
+  // the user can't be answered any more.
+  const renderItem = (item: Item, replaced: boolean): ReactNode =>
+    item.kind === "replaced" ? (
+      <EarlierVersion key={item.id} turns={item.turns}>
+        {item.items.map((each) => renderItem(each, true))}
+      </EarlierVersion>
+    ) : (
+      <div
+        key={item.id}
+        className={
+          item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : undefined
+        }
+      >
+        <TranscriptItem
+          item={item}
+          last={!replaced && item === last}
+          activity={replaced ? "ended" : activity}
+          provider={agent.provider}
+          model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
+          replaced={replaced}
+        />
+      </div>
+    );
 
   return (
     <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
@@ -149,20 +182,7 @@ export function Transcript({
             {/* Every item is laid out for real. `content-visibility: auto` skipped those out of view
                 on a guessed height, so scrolling up through unseen items swapped each guess for its
                 true height, and the content jumped under the scroll position. */}
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className={item.kind === "turnEnd" ? quietFooter(item, latestFooter) : undefined}
-              >
-                <TranscriptItem
-                  item={item}
-                  last={item === last}
-                  activity={activity}
-                  provider={agent.provider}
-                  model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
-                />
-              </div>
-            ))}
+            {items.map((item) => renderItem(item, false))}
             {working && !responding ? (
               <ResponseHeader agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }} />
             ) : null}
@@ -210,6 +230,7 @@ interface TranscriptActions {
   readonly agentActions: AgentActions;
   readonly onAnswerPermission?: TranscriptProps["onAnswerPermission"];
   readonly onAnswerQuestion?: TranscriptProps["onAnswerQuestion"];
+  readonly onEditMessage?: TranscriptProps["onEditMessage"];
 }
 
 const Actions = createContext<TranscriptActions>({
@@ -265,6 +286,8 @@ interface ItemProps {
   readonly activity: AgentActivity;
   readonly provider: ProviderId;
   readonly model: string;
+  /** The item belongs to a version a rewind replaced. */
+  readonly replaced: boolean;
 }
 
 /**
@@ -273,14 +296,16 @@ interface ItemProps {
  * a long thread's updates three times as slow (scratch transcript benchmark, 1,900 events).
  */
 const TranscriptItem = memo(
-  function TranscriptItem({ item, last, activity, provider, model }: ItemProps) {
+  function TranscriptItem({ item, last, activity, provider, model, replaced }: ItemProps) {
     const render = (each: Item): ReactNode => {
       switch (each.kind) {
         case "input":
           return (
             <div key={each.id} className="flex flex-col items-end gap-2 py-3">
               {each.blocks.map((block) =>
-                block.kind === "user" ? <UserMessage key={block.id} block={block} /> : null,
+                block.kind === "user" ? (
+                  <EditableMessage key={block.id} block={block} replaced={replaced} />
+                ) : null,
               )}
             </div>
           );
@@ -316,6 +341,9 @@ const TranscriptItem = memo(
           return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
         case "turnEnd":
           return <TurnFooter key={each.id} block={each.block} text={each.text} />;
+        // Laid out by the transcript itself, around the items it holds.
+        case "replaced":
+          return null;
       }
     };
     return render(item);
@@ -325,6 +353,7 @@ const TranscriptItem = memo(
     before.activity === after.activity &&
     before.provider === after.provider &&
     before.model === after.model &&
+    before.replaced === after.replaced &&
     same(before.item, after.item),
 );
 
@@ -377,6 +406,38 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
     default:
       return null;
   }
+}
+
+/** One of the user's messages, which they can edit and send again unless a rewind replaced it. */
+function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: boolean }) {
+  const { onEditMessage } = use(Actions);
+  return (
+    <UserMessage
+      block={block}
+      onEdit={
+        onEditMessage && !replaced
+          ? (message: OutgoingMessage) => onEditMessage(block.id, message)
+          : undefined
+      }
+    />
+  );
+}
+
+/** The turns the conversation went back on, folded under one line until the user opens them. */
+function EarlierVersion({ turns, children }: { turns: number; children: ReactNode }) {
+  return (
+    <Disclosure
+      summary={
+        <span className="flex items-center gap-1.5">
+          <History size={13} strokeWidth={1.75} className="text-fg-tertiary" />
+          Earlier version
+        </span>
+      }
+      hint={turns === 1 ? "1 turn" : `${turns} turns`}
+    >
+      <div className="flex flex-col gap-3 border-l border-line-subtle pl-4 opacity-75">{children}</div>
+    </Disclosure>
+  );
 }
 
 function NoticeBlock({ block }: { block: Block<"notice"> }) {

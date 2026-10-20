@@ -32,6 +32,13 @@ export interface ThreadPaneActions {
   readonly attempt: (action: Promise<unknown>) => Promise<boolean>;
   readonly send: (agentId: AgentId, message: OutgoingMessage) => Promise<unknown>;
   /**
+   * Sends a new version of one of the user's earlier messages to a lead; absent when the machine's
+   * backend can't.
+   */
+  readonly edit?:
+    | ((agentId: AgentId, messageId: string, message: OutgoingMessage) => Promise<unknown>)
+    | undefined;
+  /**
    * Starts a thread from the draft `draft`, in `folder`, with `message`: one with each setup, laid
    * side by side, the first in the draft's place.
    */
@@ -193,6 +200,15 @@ export function ThreadPane({
               onAnswerQuestion={(requestId, response) =>
                 cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
               }
+              // A thread read from the cloud copy can't go back: that takes its machine.
+              {...(cloud || !actions.edit
+                ? {}
+                : {
+                    onEditMessage: (messageId: string, message: OutgoingMessage) => {
+                      actions.keep(viewed.thread.id);
+                      return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                    },
+                  })}
             />
           ) : loading ? null : (
             <EmptyThread mode={mode} {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})} />

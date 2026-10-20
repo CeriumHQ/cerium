@@ -11,6 +11,9 @@ import type {
   ReasoningEffort,
 } from "@cerium/protocol";
 
+/** The `RPC_VERSION` that brought `EditMessage`; an older machine's messages can't be edited. */
+export const EDIT_VERSION = 11;
+
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
 
@@ -23,6 +26,8 @@ export type TranscriptBlock =
       readonly mentions: ReadonlyArray<Mention>;
       /** The title of the thread whose lead wrote this for the user when it started this thread. */
       readonly writtenIn?: string;
+      /** Whether the message reached the agent, so the user can edit it and send it again. */
+      readonly delivered?: true;
     }
   | { readonly kind: "notice"; readonly id: string; readonly item: Exclude<InputItem, { _tag: "FromUser" }> }
   | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
@@ -83,7 +88,12 @@ export type TranscriptBlock =
       readonly effort?: ReasoningEffort;
       /** `start` is a session beginning, which says nothing; the others are the user's switches. */
       readonly change: "start" | "model" | "effort";
-    };
+    }
+  /**
+   * What the conversation went back on: the turns from one of the user's messages on, which the user
+   * edited and sent again (or restored to before), kept to look back on.
+   */
+  | { readonly kind: "replaced"; readonly id: string; readonly blocks: ReadonlyArray<TranscriptBlock> };
 
 export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
 
@@ -137,8 +147,20 @@ export const buildTranscript = (
     return block?.kind === kind ? (block as Extract<TranscriptBlock, { kind: K }>) : undefined;
   };
 
-  for (const { payload, id } of events) {
+  /** Where each event's blocks begin, for a rewind to find what it replaced. */
+  const startOf: Array<{ readonly sequence: number; readonly index: number }> = [];
+
+  for (const { payload, id, sequence } of events) {
+    startOf.push({ sequence, index: blocks.length });
     switch (payload._tag) {
+      case "ConversationRewound": {
+        const start = startOf.find((entry) => entry.sequence >= payload.fromSequence)?.index ?? blocks.length;
+        const replaced = blocks.splice(start);
+        for (const [key, index] of indexOf) if (index >= start) indexOf.delete(key);
+        if (replaced.length > 0) blocks.push({ kind: "replaced", id: `replaced:${id}`, blocks: replaced });
+        lastUsage = undefined;
+        break;
+      }
       case "SessionStarted":
       case "ModelChanged": {
         const effort = payload.effort;
@@ -167,7 +189,9 @@ export const buildTranscript = (
           const key = `${id}:${index}`;
           // A message keeps the key it had while queued.
           blocks.push(
-            item._tag === "FromUser" ? userBlock(item, item.id ?? key) : { kind: "notice", id: key, item },
+            item._tag === "FromUser"
+              ? { ...userBlock(item, item.id ?? key), ...(item.id ? { delivered: true as const } : {}) }
+              : { kind: "notice", id: key, item },
           );
         });
         break;
@@ -322,6 +346,11 @@ export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessage
         for (const item of payload.items) if (item._tag === "FromUser" && item.id) queued.delete(item.id);
         break;
       case "TurnCompleted":
+        turnOpen = false;
+        break;
+      // Every message queued before a rewind went with the turns it replaced.
+      case "ConversationRewound":
+        queued.clear();
         turnOpen = false;
         break;
       default:
