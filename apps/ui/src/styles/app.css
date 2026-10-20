@@ -145,6 +145,48 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/* The launch screen (app/LaunchScreen.tsx): the mark's C draws, its facet sets, light runs across it. */
+@keyframes launch-draw {
+  from {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes launch-facet {
+  from {
+    opacity: 0;
+    transform: scale(0.2) rotate(-90deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes launch-glint {
+  from {
+    transform: translateX(0);
+  }
+  55%,
+  to {
+    transform: translateX(92px);
+  }
+}
+
+@keyframes launch-fade {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
 /* In the base layer so a component with its own focus style can opt out with `outline-none`. */
 @layer base {
   :focus-visible {

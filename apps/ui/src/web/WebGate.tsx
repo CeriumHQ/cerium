@@ -5,6 +5,7 @@ import { AsyncResult } from "effect/reactivity";
 import { Clock, LogIn, RefreshCw, Smartphone } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { useLaunched } from "../app/launch.ts";
 import { accountAtom, cancelSignIn, signIn, signOut } from "../backend/atoms.ts";
 import { openSignIn } from "../backend/signIn.ts";
 import { WEB } from "../backend/target.ts";
@@ -23,9 +24,11 @@ const messageOf = (error: unknown) =>
 /** The web client's window once this device may see the account; until then, the way there. */
 export function WebGate({ children }: { children: ReactNode }) {
   const result = useAtomValue(accountAtom);
-  if (!WEB) return children;
   const account = AsyncResult.isSuccess(result) ? result.value : undefined;
-  if (account?._tag === "SignedIn" && isApproved(account)) return children;
+  const admitted = account?._tag === "SignedIn" && isApproved(account);
+  // Signing in shows once the account is known; past it, the window says when it's ready.
+  useLaunched(WEB && account !== undefined && !admitted);
+  if (!WEB || admitted) return children;
   return (
     <main className="flex h-full flex-col items-center justify-center overflow-y-auto bg-surface-window px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-[max(env(safe-area-inset-bottom),2rem)]">
       <div className="flex w-full max-w-sm flex-col gap-7">

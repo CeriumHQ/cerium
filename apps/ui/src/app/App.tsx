@@ -141,6 +141,8 @@ import { useDesktopNotifications } from "../desktop/notifications.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
+import { useLaunched } from "./launch.ts";
+import { LaunchScreen } from "./LaunchScreen.tsx";
 import { useCompact } from "./compact.ts";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
@@ -191,6 +193,7 @@ export function App() {
           <WebGate>
             <Workspace />
           </WebGate>
+          <LaunchScreen />
         </Themed>
         <TextMenu />
       </TooltipProvider>
@@ -301,7 +304,8 @@ function Workspace() {
       ? // A list call that fails while the backend restarts keeps the last list it gave.
         Option.getOrElse(AsyncResult.value(threadsResult), () => [])
       : [];
-  const account = AsyncResult.getOrElse(useAtomValue(accountAtom), (): AccountState => ({
+  const accountResult = useAtomValue(accountAtom);
+  const account = AsyncResult.getOrElse(accountResult, (): AccountState => ({
     _tag: "SignedOut",
   }));
   const accountThreads = AsyncResult.getOrElse(useAtomValue(accountThreadsAtom), (): AccountThreads => ({
@@ -426,6 +430,13 @@ function Workspace() {
     if (toDrive !== undefined) driveMachine(registry, toDrive);
   });
   useEffect(() => driveChosen(), [toDrive?.id]);
+  // The window shows once it has its threads, or has no machine to list them from yet; one that
+  // can't be reached shows its notice instead.
+  useLaunched(
+    connection === "unreachable" ||
+      (AsyncResult.isSuccess(accountResult) &&
+        (AsyncResult.isSuccess(threadsResult) || (WEB && driven === undefined && toDrive === undefined))),
+  );
   const markSeen = useEffectEvent(() => {
     if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
       readState.markRead([selectedSummary]);
