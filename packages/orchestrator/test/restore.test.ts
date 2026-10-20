@@ -1,6 +1,6 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { AgentEvent, AgentId, EventPayload } from "@cerium/protocol";
-import { assert, describe, expect, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 
 import { Checkpoints, Orchestrator, type SnapshotChange } from "../src/index.ts";
@@ -166,7 +166,7 @@ describe("Orchestrator restore", () => {
         )[0];
         assert.isDefined(two);
         const preview = yield* orchestrator.previewRestore(lead.id, two ?? "");
-        expect(preview).toMatchObject({
+        assert.deepStrictEqual(preview, {
           messageId: two,
           messages: 2,
           conversation: "replay",

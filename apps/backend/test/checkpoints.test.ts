@@ -60,12 +60,15 @@ describe("Checkpoints", { timeout: 30_000 }, () => {
 
       const changes = yield* checkpoints.changes(folder, before, after);
       // Ignored files and dependencies are never saved, so they never differ.
-      expect(changes.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual([
-        { path: "other.ts", change: "added" },
-        { path: "src/a.ts", change: "modified" },
-        { path: "src/b.ts", change: "deleted" },
-        { path: "src/c.ts", change: "added" },
-      ]);
+      assert.deepStrictEqual(
+        changes.toSorted((a, b) => a.path.localeCompare(b.path)),
+        [
+          { path: "other.ts", change: "added" },
+          { path: "src/a.ts", change: "modified" },
+          { path: "src/b.ts", change: "deleted" },
+          { path: "src/c.ts", change: "added" },
+        ],
+      );
 
       yield* checkpoints.restore(folder, before, ["src/a.ts", "src/b.ts", "src/c.ts"]);
       // Byte for byte, line endings included.
