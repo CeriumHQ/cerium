@@ -68,14 +68,8 @@ import {
   useModels,
   type ModelSwitch,
 } from "./models.ts";
-import {
-  AccessPicker,
-  EffortPicker,
-  FixedChip,
-  ModelPicker,
-  ModelsPicker,
-  type ShownModel,
-} from "./Pickers.tsx";
+import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
+import { AccessPicker, EffortPicker, FixedChip } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
@@ -694,6 +688,9 @@ export function Composer({
             shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
             providers={providers}
             available={target.available}
+            // Shared with multi agent's menu, so switching between them keeps the menu open.
+            open={modelsOpen}
+            onOpenChange={setModelsOpen}
             onPick={(picked) => setModelId(modelKey(picked))}
             {...(models.filter((each) => target.available.has(each.provider)).length > 1
               ? { onMulti: () => setMulti(true) }

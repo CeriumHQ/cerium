@@ -3,6 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 
 import { modelsAtom } from "../../backend/atoms.ts";
+import { providerName } from "../threads/model.ts";
 
 /** Model ids are only unique within a provider, so choices are remembered by both. */
 export const modelKey = (model: Pick<ModelInfo, "provider" | "id">) => `${model.provider}/${model.id}`;
@@ -34,6 +35,31 @@ export const pickModel = (
   if (chosen !== undefined && (available.has(chosen.provider) || usable.length === 0)) return chosen;
   const provider = (usable[0] ?? models[0])?.provider;
   return provider === undefined ? undefined : defaultModel(models, provider);
+};
+
+/**
+ * The models that match what's typed, best first: labels that start with it, labels that contain it,
+ * then models whose harness, label and id together hold every word typed ("cursor opus"). Each group
+ * keeps the list's own order.
+ */
+export const findModels = (models: ReadonlyArray<ModelInfo>, query: string): ReadonlyArray<ModelInfo> => {
+  const typed = query.trim().toLowerCase();
+  if (typed === "") return models;
+  const words = typed.split(/\s+/);
+  const rank = (model: ModelInfo) => {
+    const label = model.label.toLowerCase();
+    if (label.startsWith(typed)) return 0;
+    if (label.includes(typed)) return 1;
+    const haystack = `${providerName[model.provider]} ${model.label} ${model.id}`.toLowerCase();
+    return words.every((word) => haystack.includes(word)) ? 2 : undefined;
+  };
+  return models
+    .flatMap((model) => {
+      const score = rank(model);
+      return score === undefined ? [] : [{ model, score }];
+    })
+    .sort((a, b) => a.score - b.score)
+    .map(({ model }) => model);
 };
 
 /** How many models one message can start threads with at once, side by side. */

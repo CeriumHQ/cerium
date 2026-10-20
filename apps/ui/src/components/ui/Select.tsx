@@ -7,13 +7,14 @@ import type { ReactNode } from "react";
 export const SelectRoot = BaseSelect.Root;
 export const SelectGroup = BaseSelect.Group;
 
+/** The toolbar trigger's look, for other primitives' triggers that sit beside it. */
+export const triggerClass =
+  "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary";
+
 /** A compact, quiet trigger for toolbars: content, then a small chevron. */
 export function SelectTrigger({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <BaseSelect.Trigger
-      aria-label={label}
-      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
-    >
+    <BaseSelect.Trigger aria-label={label} className={triggerClass}>
       {children}
       <BaseSelect.Icon className="text-fg-tertiary">
         <ChevronDown size={12} strokeWidth={2} />

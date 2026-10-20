@@ -4,6 +4,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   effortFor,
   effortsOf,
+  findModels,
   MAX_AGENTS,
   modelKey,
   pickModel,
@@ -98,5 +99,29 @@ describe("effortsOf", () => {
   it("offers every effort any of the models has, weakest first", () => {
     expect(effortsOf([luna, opus, haiku])).toEqual(["low", "medium", "high", "max"]);
     expect(effortsOf([haiku])).toEqual([]);
+  });
+});
+
+describe("findModels", () => {
+  const sonnet = model("claude", "sonnet", { label: "Sonnet 5.5" });
+  const cursorOpus = model("cursor", "claude-opus", { label: "Claude Opus 5.5" });
+  const claudeOpus = model("claude", "opus", { label: "Opus 5.5" });
+  const list = [sonnet, claudeOpus, luna, cursorOpus];
+
+  it("lists every model while nothing is typed", () => {
+    expect(findModels(list, "  ")).toEqual(list);
+  });
+
+  it("puts labels that start with what's typed before ones that contain it", () => {
+    expect(findModels(list, "opus")).toEqual([claudeOpus, cursorOpus]);
+  });
+
+  it("matches the harness's name with the model's, word by word", () => {
+    expect(findModels(list, "cursor opus")).toEqual([cursorOpus]);
+    expect(findModels(list, "CLAUDE")).toEqual([cursorOpus, sonnet, claudeOpus]);
+  });
+
+  it("finds none when a word matches nothing", () => {
+    expect(findModels(list, "opus gemini")).toEqual([]);
   });
 });

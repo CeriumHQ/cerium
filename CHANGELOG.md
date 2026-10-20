@@ -173,7 +173,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
-- UI: multi agent is no longer an unlabelled icon in the message box: "Several models" at the foot of the model menu turns it on and "One model" turns it off, both pinned below the list while it scrolls.
+- UI: multi agent is no longer an unlabelled icon in the message box: a "Several at once" switch at the foot of the model menu turns it on and off, keeping the menu open, with how many of the four are picked beside it.
+- UI: the model menu is compact and searchable. A tab per harness lists that harness's models, opening on the one in use (a dot marks the tabs holding the pick, ← → switch tabs), and the search finds models across every harness ("opus", "cursor opus"), Enter taking the top match. Every harness's models are plain rows of one size.
 - UI: a new work thread's message box holds only what runs (model and effort); the project, Local or Worktree, and access pickers sit in a row just under the box, so the box keeps to one row of controls, on a phone too.
 - UI: the files panel's Changes tab lists only what git says differs from the last commit, so every thread on a folder shows the same list; files an agent changed that since came to match HEAD no longer stay listed, and the list no longer pairs a sparkle with each git change.
 - A child agent's permission requests go to its lead instead of the user. Cerium hands each to the lead as a notice with the tool, its summary and input, and the lead answers it with the bus's new `answer_permission` tool (allow once, allow for the child's session, or deny with a reason the child reads). The user only answers their leads' requests: children's never show as cards, in the requests tray or as notifications, and no longer mark the thread as waiting on you. A request still waiting when its lead stops is denied.
