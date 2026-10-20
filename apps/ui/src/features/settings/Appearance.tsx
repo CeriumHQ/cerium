@@ -3,6 +3,7 @@ import { RadioGroup } from "@base-ui/react/radio-group";
 import { Slider } from "@base-ui/react/slider";
 import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { UserMessage } from "../transcript/Blocks.tsx";
@@ -12,7 +13,17 @@ import { ToolGroup } from "../transcript/ToolGroup.tsx";
 import { ResponseHeader } from "../transcript/Transcript.tsx";
 import { paletteAtom, palettes, type Palette } from "./palettes.ts";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
-import { textScale, textSizeAtom, textSizes, themeAtom, themes, type Theme } from "./preferences.ts";
+import {
+  scaleAtom,
+  scales,
+  textScale,
+  textSizeAtom,
+  textSizes,
+  themeAtom,
+  themes,
+  type Theme,
+} from "./preferences.ts";
+import { canScale } from "./scale.ts";
 import { useShownTheme } from "./theme.ts";
 
 const modes: Record<Theme, { label: string; icon: LucideIcon }> = {
@@ -59,6 +70,8 @@ export function AppearanceSettings() {
           ))}
         </RadioGroup>
       </SettingsSection>
+
+      {canScale() ? <ScaleSection /> : null}
 
       <SettingsSection
         title="Conversation text"
@@ -153,7 +166,77 @@ function WindowSample({ palette, theme }: { palette: Palette; theme: "dark" | "l
 
 function TextSizeSlider({ value, onChange }: { value: string; onChange: (index: number) => void }) {
   const index = textSizes.findIndex((size) => size.id === value);
-  const last = textSizes.length - 1;
+  return (
+    <StepSlider
+      label="Conversation text size"
+      stops={textSizes.length}
+      index={index}
+      onChange={onChange}
+      valueText={(at) => textSizes[at]?.label ?? ""}
+      readout={
+        <>
+          {textSizes[index]?.label} <span className="text-fg-tertiary">· {textSizes[index]?.px}px</span>
+        </>
+      }
+    />
+  );
+}
+
+/** The whole window's size, Ctrl + and Ctrl − included; a way back to 100% once it's changed. */
+function ScaleSection() {
+  const [scale, setScale] = useAtom(scaleAtom);
+  return (
+    <SettingsSection
+      title="Scale"
+      description={
+        <span className="inline-flex flex-wrap items-center gap-x-1.5">
+          Sizes the whole window.
+          <InfoTip label="About scale">
+            Ctrl + and Ctrl − change it from anywhere; Ctrl 0 on the numpad goes back to 100%.
+          </InfoTip>
+        </span>
+      }
+      action={
+        scale === 100 ? undefined : (
+          <button
+            type="button"
+            onClick={() => setScale(100)}
+            className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            Reset to 100%
+          </button>
+        )
+      }
+    >
+      <StepSlider
+        label="Window scale"
+        stops={scales.length}
+        index={scales.indexOf(scale)}
+        onChange={(index) => setScale(scales[index] ?? 100)}
+        valueText={(at) => `${scales[at] ?? 100}%`}
+        readout={`${scale}%`}
+      />
+    </SettingsSection>
+  );
+}
+
+/** A slider that snaps to `stops` evenly spaced stops, each marked on its track. */
+function StepSlider({
+  label,
+  stops,
+  index,
+  onChange,
+  valueText,
+  readout,
+}: {
+  label: string;
+  stops: number;
+  index: number;
+  onChange: (index: number) => void;
+  valueText: (index: number) => string;
+  readout: ReactNode;
+}) {
+  const last = stops - 1;
   return (
     <div className="flex items-center gap-4">
       <span aria-hidden="true" className="w-4 text-center text-[12px] font-medium text-fg-tertiary">
@@ -170,9 +253,9 @@ function TextSizeSlider({ value, onChange }: { value: string; onChange: (index: 
         <Slider.Control className="flex h-6 touch-none items-center select-none">
           <Slider.Track className="relative h-1 w-full rounded-full bg-line-strong">
             <Slider.Indicator className="rounded-full bg-fg-secondary" />
-            {textSizes.map((size, mark) => (
+            {Array.from({ length: stops }, (_, mark) => (
               <span
-                key={size.id}
+                key={mark}
                 aria-hidden="true"
                 className={`absolute top-1/2 size-1.5 -translate-1/2 rounded-full ${
                   mark <= index ? "bg-fg-secondary" : "bg-fg-disabled"
@@ -181,8 +264,8 @@ function TextSizeSlider({ value, onChange }: { value: string; onChange: (index: 
               />
             ))}
             <Slider.Thumb
-              aria-label="Conversation text size"
-              getAriaValueText={(_formatted, at) => textSizes[at]?.label ?? ""}
+              aria-label={label}
+              getAriaValueText={(_formatted, at) => valueText(at)}
               className="size-4 rounded-full bg-accent shadow-raised outline-none transition-[scale] duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface-panel data-dragging:scale-110"
             />
           </Slider.Track>
@@ -191,9 +274,7 @@ function TextSizeSlider({ value, onChange }: { value: string; onChange: (index: 
       <span aria-hidden="true" className="w-4 text-center text-[17px] font-medium text-fg-tertiary">
         A
       </span>
-      <span className="w-24 text-right text-[12.5px] text-fg-secondary tabular-nums">
-        {textSizes[index]?.label} <span className="text-fg-tertiary">· {textSizes[index]?.px}px</span>
-      </span>
+      <span className="w-24 text-right text-[12.5px] text-fg-secondary tabular-nums">{readout}</span>
     </div>
   );
 }

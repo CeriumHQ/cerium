@@ -46,6 +46,24 @@ export const textSizeAtom = preference<TextSize>(
 /** How much the conversation is scaled from its 14px design. */
 export const textScale = (size: TextSize) => (textSizes.find((each) => each.id === size)?.px ?? 14) / 14;
 
+/** How much the desktop window is scaled, in percent, smallest first: the stops Ctrl + and Ctrl − step through. */
+export const scales = [75, 80, 90, 100, 110, 125, 150] as const;
+export type Scale = (typeof scales)[number];
+const SCALE_KEY = "cerium:scale";
+/** 100% until changed. */
+export const scaleAtom = Atom.writable(
+  (): Scale => scales.find((scale) => String(scale) === stored(SCALE_KEY)) ?? 100,
+  (context, value: Scale) => {
+    context.setSelf(value);
+    remember(SCALE_KEY, String(value));
+  },
+).pipe(Atom.keepAlive);
+/** The scale `by` stops from `scale`, held at the smallest and largest. */
+export const stepScale = (scale: Scale, by: number): Scale => {
+  const at = Math.min(scales.length - 1, Math.max(0, scales.indexOf(scale) + by));
+  return scales[at] ?? 100;
+};
+
 /** Which key sends a message; the other way of pressing Enter starts a new line. */
 export type SendKey = "enter" | "ctrlEnter";
 export const sendKeyAtom = preference<SendKey>("cerium:sendKey", ["enter", "ctrlEnter"], "enter");

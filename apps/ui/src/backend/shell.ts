@@ -73,6 +73,8 @@ export interface ShellBridge {
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
   /** Calls back whenever Windows' colours turn dark or light; returns how to stop. */
   readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
+  /** Scales the whole window by `factor` (1 is 100%), caption buttons included. */
+  readonly setZoom?: (factor: number) => void;
   /** The launch screen has painted in the user's theme, so the shell may show the window. */
   readonly windowReady?: () => void;
   /** Calls back on every right-click no page menu claimed; returns how to stop. */

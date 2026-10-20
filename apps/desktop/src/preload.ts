@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // Sandboxed preload: the UI talks to the backend over its own RPC connection, so the bridge only
 // tells the page it is running inside Cerium's shell and where the shell's backend listens, offers
 // the native dialogs it can't open, and passes on the theme Windows should draw the window's glass
-// and caption buttons in. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
+// and caption buttons in, and the scale it is drawn at. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
 // File Explorer or opens it in its own app, none of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page reports whether the
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.on("cerium:dark-colors", forward);
     return () => ipcRenderer.off("cerium:dark-colors", forward);
   },
+  setZoom: (factor: number): void => ipcRenderer.send("cerium:set-zoom", factor),
   windowReady: (): void => ipcRenderer.send("cerium:window-ready"),
   onTextMenu: (listener: (request: unknown) => void): (() => void) => {
     const forward = (_event: unknown, request: unknown) => listener(request);

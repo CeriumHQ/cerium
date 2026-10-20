@@ -1,6 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { isSendKey, textScale } from "../src/features/settings/preferences.ts";
+import { isSendKey, stepScale, textScale } from "../src/features/settings/preferences.ts";
+
+describe("stepScale", () => {
+  it("steps through the stops and holds at either end", () => {
+    expect(stepScale(100, 1)).toBe(110);
+    expect(stepScale(100, -1)).toBe(90);
+    expect(stepScale(150, 1)).toBe(150);
+    expect(stepScale(75, -1)).toBe(75);
+  });
+});
 
 const press = (key: string, modifiers: { shift?: boolean; ctrl?: boolean; composing?: boolean } = {}) => ({
   key,

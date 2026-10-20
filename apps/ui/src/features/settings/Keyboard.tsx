@@ -5,6 +5,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 
 import { Keys, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import { isSendKey, sendKeyAtom, type SendKey } from "./preferences.ts";
+import { canScale } from "./scale.ts";
 
 const sendKeys: ReadonlyArray<{ readonly value: SendKey; readonly send: string; readonly newLine: string }> =
   [
@@ -23,6 +24,14 @@ const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["Show, focus or hide the terminal", "Ctrl `"],
   ["Open or close settings", "Ctrl ,"],
   ["Stop the running turn, or leave settings", "Esc"],
+  // The desktop window scales itself; a browser keeps its own zoom keys.
+  ...(canScale()
+    ? ([
+        ["Make everything larger", "Ctrl +"],
+        ["Make everything smaller", "Ctrl −"],
+        ["Back to 100%", "Ctrl Num0"],
+      ] as const)
+    : []),
 ];
 
 const tabShortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [

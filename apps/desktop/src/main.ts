@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from "electron";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
@@ -56,12 +56,36 @@ const WINDOW_READY_TIMEOUT_MS = 1_500;
 /** Matches the UI titlebar's height so the caption buttons line up with it. */
 const TITLEBAR_HEIGHT = 40;
 
-/** Windows draws the caption buttons; their symbols follow the theme like the UI's own text. */
-const titleBarOverlay = () => ({
+/**
+ * Windows draws the caption buttons; their symbols follow the theme like the UI's own text, and they
+ * grow with the window's zoom as the titlebar does.
+ */
+const titleBarOverlay = (zoom = 1) => ({
   color: "#00000000",
   symbolColor: nativeTheme.shouldUseDarkColors ? "#e6e6e6" : "#262626",
-  height: TITLEBAR_HEIGHT,
+  height: Math.round(TITLEBAR_HEIGHT * zoom),
 });
+
+/**
+ * Electron's default menu without its zoom items: the UI keeps the scale the user picked and applies
+ * it through `cerium:set-zoom`, so Ctrl + and Ctrl − reach the page, and Ctrl 0 opens a thread.
+ */
+const applicationMenu = () =>
+  Menu.buildFromTemplate([
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    { role: "windowMenu" },
+  ]);
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -211,10 +235,18 @@ ipcMain.handle("cerium:set-theme", (_event, theme: unknown) => {
   return nativeTheme.shouldUseDarkColors;
 });
 
+/** The scale the user picked in the UI, 1 being 100%; the page sends it before its window shows. */
+ipcMain.on("cerium:set-zoom", (event, factor: unknown) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window === null || typeof factor !== "number" || !(factor >= 0.5 && factor <= 2)) return;
+  event.sender.setZoomFactor(factor);
+  window.setTitleBarOverlay(titleBarOverlay(factor));
+});
+
 // Windows switching between light and dark, or the UI changing the theme.
 nativeTheme.on("updated", () => {
   for (const window of BrowserWindow.getAllWindows()) {
-    window.setTitleBarOverlay(titleBarOverlay());
+    window.setTitleBarOverlay(titleBarOverlay(window.webContents.getZoomFactor()));
     window.webContents.send("cerium:dark-colors", nativeTheme.shouldUseDarkColors);
   }
 });
@@ -224,6 +256,7 @@ nameAppForNotifications();
 void app.whenReady().then(() => {
   if (devUrl === undefined) backend = startBackend();
   updater = startUpdater();
+  Menu.setApplicationMenu(applicationMenu());
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();
