@@ -166,6 +166,22 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
       assert.isTrue(unasked?.result?.isError);
       assert.include(JSON.stringify(unasked?.result?.content), "isn't waiting on request p9");
 
+      // Threads whose lead can't take messages are left out of the list.
+      const thread = (title: string) =>
+        orchestrator.createThread({
+          title,
+          mode: "work",
+          cwd: ".",
+          lead: { provider: "claude", model: "opus", access: "ask" },
+        });
+      yield* thread("Working");
+      yield* orchestrator.stopAgent((yield* thread("Stopped")).lead.id);
+      const threads = yield* leadClient.callTool("list_threads");
+      assert.sameMembers(
+        threads?.result?.structuredContent?.threads?.map((listed: { title: string }) => listed.title),
+        ["Bus", "Working"],
+      );
+
       const anonymous = yield* leadClient.callTool("list_agents", {}, { authorization: "Bearer forged" });
       assert.isTrue(anonymous?.result?.isError);
       assert.include(JSON.stringify(anonymous?.result?.content), "Unknown Cerium agent.");

@@ -99,9 +99,8 @@ export const ListAgents = Tool.make("list_agents", {
 
 export const ListThreads = Tool.make("list_threads", {
   description:
-    "List the user's threads (archived ones left out) with each one's folder and lead agent, to find threads" +
-    " working in your folder or to message another thread's lead. Only a lead that is running or idle takes" +
-    " messages.",
+    "List the user's threads whose lead is working or idle, with each one's folder and lead agent, to find" +
+    " threads working in your folder or to message another thread's lead.",
   success: Schema.Struct({
     threads: Schema.Array(
       Schema.Struct({
@@ -319,8 +318,11 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
         const overviews = yield* orchestrator.threadOverviews;
         return {
           threads: overviews.flatMap(({ thread, agents }) => {
-            if (thread.archivedAt !== undefined) return [];
+            const yours = thread.id === self.threadId;
             const lead = agents.find((agent) => agent.parentId === undefined);
+            // Only a live lead takes messages; the user's dozens of finished threads would bury the few that do.
+            const live = lead !== undefined && lead.state !== "stopped" && lead.state !== "failed";
+            if (thread.archivedAt !== undefined || !(live || yours)) return [];
             return [
               {
                 threadId: thread.id,
@@ -328,7 +330,7 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
                 mode: thread.mode,
                 ...(thread.cwd ? { folder: thread.cwd } : {}),
                 ...(lead ? { leadAgentId: lead.id, leadState: lead.state } : {}),
-                yours: thread.id === self.threadId,
+                yours,
               },
             ];
           }),

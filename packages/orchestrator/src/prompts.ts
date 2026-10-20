@@ -164,8 +164,8 @@ const together = (agent: AgentInfo) => {
         ]),
     "- `send_message` reaches any agent in your thread (`list_agents` lists them)" +
       (lead
-        ? ", and the lead of another thread (`list_threads` lists the user's threads with their folders and" +
-          " whether their leads are working)."
+        ? ", and the lead of another thread (`list_threads` lists the threads whose leads are working or idle," +
+          " with their folders)."
         : ".") +
       " A message arrives as the receiver's next turn once it is idle, and a reply comes back to you the same" +
       " way, so end your turn or carry on instead of waiting for one.",
