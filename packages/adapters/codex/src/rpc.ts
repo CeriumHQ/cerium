@@ -15,10 +15,14 @@ import type { GetAccountRateLimitsResponse } from "./protocol/v2/GetAccountRateL
 import type { GetAccountResponse } from "./protocol/v2/GetAccountResponse.ts";
 import type { ModelListParams } from "./protocol/v2/ModelListParams.ts";
 import type { ModelListResponse } from "./protocol/v2/ModelListResponse.ts";
+import type { ThreadForkParams } from "./protocol/v2/ThreadForkParams.ts";
+import type { ThreadForkResponse } from "./protocol/v2/ThreadForkResponse.ts";
 import type { ThreadResumeParams } from "./protocol/v2/ThreadResumeParams.ts";
 import type { ThreadResumeResponse } from "./protocol/v2/ThreadResumeResponse.ts";
 import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
 import type { ThreadStartResponse } from "./protocol/v2/ThreadStartResponse.ts";
+import type { ThreadTurnsListParams } from "./protocol/v2/ThreadTurnsListParams.ts";
+import type { ThreadTurnsListResponse } from "./protocol/v2/ThreadTurnsListResponse.ts";
 import type { SkillsListParams } from "./protocol/v2/SkillsListParams.ts";
 import type { SkillsListResponse } from "./protocol/v2/SkillsListResponse.ts";
 import type { TurnInterruptParams } from "./protocol/v2/TurnInterruptParams.ts";
@@ -38,6 +42,8 @@ interface Methods {
   "skills/list": readonly [SkillsListParams, SkillsListResponse];
   "thread/start": readonly [ThreadStartParams, ThreadStartResponse];
   "thread/resume": readonly [ThreadResumeParams, ThreadResumeResponse];
+  "thread/fork": readonly [ThreadForkParams, ThreadForkResponse];
+  "thread/turns/list": readonly [ThreadTurnsListParams, ThreadTurnsListResponse];
   "turn/start": readonly [TurnStartParams, TurnStartResponse];
   "turn/interrupt": readonly [TurnInterruptParams, TurnInterruptResponse];
 }

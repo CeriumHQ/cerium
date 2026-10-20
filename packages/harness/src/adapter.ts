@@ -86,6 +86,28 @@ export interface TurnExtras {
   readonly images?: ReadonlyArray<TurnImage>;
   /** Skills the user picked; the text names each as `$name`. */
   readonly skills?: ReadonlyArray<{ readonly name: string; readonly path?: string }>;
+  /**
+   * A UUID Cerium gave the turn, which `fork` names it by later. Adapters whose harness takes an id
+   * for the user's message give it this one.
+   */
+  readonly turnId?: string;
+}
+
+/** One of the turns Cerium sent a session. */
+export interface TurnRef {
+  /** The `turnId` it was sent with; absent for turns sent before Cerium gave them ids. */
+  readonly id?: string;
+  /** How many turns the session had before it, counted from its first. */
+  readonly index: number;
+}
+
+/** A copy of a session that ends before one of its turns. */
+export interface ForkRequest {
+  readonly cwd: string;
+  /** The harness's session id to copy from; it stays as it was. */
+  readonly sessionId: string;
+  /** The first turn the copy leaves out, with every turn after it. Never the session's first turn. */
+  readonly before: TurnRef;
 }
 
 /** A one-off question Cerium asks for its own small jobs, such as naming a thread. */
@@ -141,6 +163,12 @@ export interface HarnessAdapter {
    * no MCP servers, none of the user's configuration, and nothing saved. Resolves with the reply's text.
    */
   complete(request: CompletionRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
+  /**
+   * Copies a session's history up to a turn into a new session of the harness's own, which
+   * `SessionOptions.resume` then continues, and resolves with its id. Present when the manifest's
+   * `session.fork` is.
+   */
+  fork?(request: ForkRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

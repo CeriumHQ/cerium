@@ -19,6 +19,7 @@ import {
 } from "@cerium/harness";
 import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
+import type { UUID } from "node:crypto";
 
 import { NATIVE_QUESTION_TOOLS, NATIVE_SUBAGENT_TOOLS, TODO_TOOLS, TODO_TOOLS_ENV } from "./manifest.ts";
 import { ClaudeTranslator } from "./translate.ts";
@@ -223,6 +224,8 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
         type: "user",
         message: { role: "user", content: toUserContent(text, extras) },
         parent_tool_use_id: null,
+        // The prompt's id in the transcript, where `fork` finds the turn by it.
+        ...(extras?.turnId ? { uuid: extras.turnId as UUID } : {}),
       }).pipe(Effect.asVoid),
     respondToPermission: (requestId, decision) =>
       Effect.suspend(() => {

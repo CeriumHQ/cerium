@@ -3,6 +3,7 @@ import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithCodex } from "./complete.ts";
+import { forkCodexThread } from "./fork.ts";
 import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
@@ -74,6 +75,11 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         complete: (request) =>
           readyForCompletion.pipe(
             Effect.flatMap((executablePath) => completeWithCodex(executablePath, request)),
+            Effect.provide(platform),
+          ),
+        fork: (request) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) => forkCodexThread(executablePath, request)),
             Effect.provide(platform),
           ),
         startSession,

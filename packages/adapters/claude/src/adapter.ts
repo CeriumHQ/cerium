@@ -3,6 +3,7 @@ import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithClaude } from "./complete.ts";
+import { forkClaudeSession } from "./fork.ts";
 import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
@@ -69,6 +70,7 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
           readyForCompletion.pipe(
             Effect.flatMap((executablePath) => completeWithClaude(executablePath, request)),
           ),
+        fork: forkClaudeSession,
         startSession,
       });
     }),

@@ -9,9 +9,8 @@ export const codexManifest: CapabilityManifest = {
   // Raise `testedMaximum` after regenerating src/protocol, re-recording fixtures and re-running the
   // live smoke test against the newer version.
   harnessVersion: { minimum: "0.162.1", testedMaximum: "0.162.1" },
-  // `thread/resume` reopens a thread by id. `thread/fork` exists but the adapter contract has no way
-  // to ask for a fork yet.
-  session: { resume: true, fork: false },
+  // `thread/resume` reopens a thread by id; `thread/fork` copies one through a turn.
+  session: { resume: true, fork: true },
   // `turn/start` takes `model` and `effort` overrides that apply from that turn on.
   switching: { model: true, effort: true, cacheSafeEffort: false },
   // `turn/start` accepts image and local-image inputs, and the listed models take images.

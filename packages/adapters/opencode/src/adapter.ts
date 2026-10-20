@@ -4,6 +4,7 @@ import { ChildProcessSpawner } from "effect/process";
 import { tmpdir } from "node:os";
 
 import { completeWithOpenCode } from "./complete.ts";
+import { forkOpenCodeSession } from "./fork.ts";
 import { openHost, type OpenCodeClient } from "./host.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, opencodeManifest } from "./manifest.ts";
 import { readCatalog, toModelInfos } from "./models.ts";
@@ -118,6 +119,12 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
                   Effect.flatMap(({ rows }) => completeWithOpenCode(client, request, rows)),
                 ),
               ),
+            ),
+          ),
+        fork: (request) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) =>
+              withServer(executablePath, (client) => forkOpenCodeSession(client, request)),
             ),
           ),
         startSession,

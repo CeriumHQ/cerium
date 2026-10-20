@@ -14,9 +14,9 @@ export const opencodeManifest: CapabilityManifest = {
   // The v2 API the pinned `@opencode/client` 2.0.32 is generated from. Raise `testedMaximum` after
   // re-recording the fixture and re-running the live check.
   harnessVersion: { minimum: "2.0.32", testedMaximum: "2.0.32" },
-  // A session id resumes on any server sharing the user's data. `session.fork` exists but sessions
-  // have no fork option yet.
-  session: { resume: true, fork: false },
+  // A session id resumes on any server sharing the user's data; `session.fork` copies one up to a
+  // message.
+  session: { resume: true, fork: true },
   // `session.switchModel` takes the model and its variant (OpenCode's effort) together, from the next
   // step. Whether a variant switch keeps the provider's prompt cache depends on the provider.
   switching: { model: true, effort: true, cacheSafeEffort: false },
