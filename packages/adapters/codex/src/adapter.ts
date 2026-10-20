@@ -7,6 +7,7 @@ import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
 import { startCodexSession } from "./session.ts";
+import { readCodexUsage } from "./usage.ts";
 
 export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>()(
   "cerium/adapters/codex/CodexAdapter",
@@ -69,6 +70,7 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
             Effect.flatMap((executablePath) => listCodexSkills(executablePath, cwd)),
             Effect.provide(platform),
           ),
+        usage: ready.pipe(Effect.flatMap(readCodexUsage), Effect.provide(platform)),
         complete: (request) =>
           readyForCompletion.pipe(
             Effect.flatMap((executablePath) => completeWithCodex(executablePath, request)),

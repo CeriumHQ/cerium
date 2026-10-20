@@ -8,6 +8,7 @@ import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
 import { startClaudeSession } from "./session.ts";
 import { listClaudeSkills } from "./skills.ts";
+import { readClaudeUsage } from "./usage.ts";
 
 export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter>()(
   "cerium/adapters/claude/ClaudeAdapter",
@@ -63,6 +64,7 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
         listSkills: (cwd) =>
           ready.pipe(Effect.flatMap((executablePath) => listClaudeSkills(executablePath, cwd))),
+        usage: ready.pipe(Effect.flatMap(readClaudeUsage)),
         complete: (request) =>
           readyForCompletion.pipe(
             Effect.flatMap((executablePath) => completeWithClaude(executablePath, request)),

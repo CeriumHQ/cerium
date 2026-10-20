@@ -10,6 +10,8 @@ import type { ServerRequest } from "./protocol/ServerRequest.ts";
 import type { ConfigReadParams } from "./protocol/v2/ConfigReadParams.ts";
 import type { ConfigReadResponse } from "./protocol/v2/ConfigReadResponse.ts";
 import type { GetAccountParams } from "./protocol/v2/GetAccountParams.ts";
+import type { GetAccountRateLimitsParams } from "./protocol/v2/GetAccountRateLimitsParams.ts";
+import type { GetAccountRateLimitsResponse } from "./protocol/v2/GetAccountRateLimitsResponse.ts";
 import type { GetAccountResponse } from "./protocol/v2/GetAccountResponse.ts";
 import type { ModelListParams } from "./protocol/v2/ModelListParams.ts";
 import type { ModelListResponse } from "./protocol/v2/ModelListResponse.ts";
@@ -30,6 +32,7 @@ import type { TurnStartResponse } from "./protocol/v2/TurnStartResponse.ts";
 interface Methods {
   initialize: readonly [InitializeParams, InitializeResponse];
   "account/read": readonly [GetAccountParams, GetAccountResponse];
+  "account/rateLimits/read": readonly [GetAccountRateLimitsParams, GetAccountRateLimitsResponse];
   "config/read": readonly [ConfigReadParams, ConfigReadResponse];
   "model/list": readonly [ModelListParams, ModelListResponse];
   "skills/list": readonly [SkillsListParams, SkillsListResponse];

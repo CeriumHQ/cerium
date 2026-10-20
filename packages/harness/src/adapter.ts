@@ -8,8 +8,9 @@ import type {
   ProviderId,
   ReasoningEffort,
   SkillInfo,
+  UsageMeter,
 } from "@cerium/protocol";
-import { Schema, type Effect, type Scope, type Stream } from "effect";
+import { Schema, type Effect, type Option, type Scope, type Stream } from "effect";
 
 // The contract every provider adapter implements. Adapters translate; they never decide policy
 // (spawn limits, approvals, persistence) — that belongs to the orchestrator.
@@ -97,6 +98,12 @@ export interface CompletionRequest {
   readonly cwd: string;
 }
 
+/** A subscription's plan and meters, as an adapter reads them. */
+export interface SubscriptionReport {
+  readonly plan?: string;
+  readonly meters: ReadonlyArray<UsageMeter>;
+}
+
 /** A live harness session. Closing the scope it was started in ends the session. */
 export interface AgentSession {
   readonly events: Stream.Stream<AdapterEvent, HarnessFailure>;
@@ -123,6 +130,11 @@ export interface HarnessAdapter {
    * when the harness can't say without starting a session.
    */
   listSkills?(cwd: string): Effect.Effect<ReadonlyArray<SkillInfo>, HarnessUnavailable | HarnessFailure>;
+  /**
+   * The subscription's usage meters, as the harness reports them right now. `None` when the harness
+   * is signed in without a subscription; absent when the harness can't report its limits.
+   */
+  readonly usage?: Effect.Effect<Option.Option<SubscriptionReport>, HarnessUnavailable | HarnessFailure>;
   /**
    * Answers a `CompletionRequest` as quickly as the harness can: the model's lowest effort, no tools,
    * no MCP servers, none of the user's configuration, and nothing saved. Resolves with the reply's text.
