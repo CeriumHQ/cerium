@@ -51,6 +51,12 @@ const startsOf = (folded: string, word: string): ReadonlyArray<number> => {
   return at;
 };
 
+/** Whether each of `words` starts a word of `text`. */
+export const hasWords = (text: string, words: ReadonlyArray<string>): boolean => {
+  const folded = fold(text);
+  return words.every((word) => startsOf(folded, word).length > 0);
+};
+
 /** `text` cut into plain and matched pieces, wherever a word of `words` starts a word in it. */
 export const highlight = (text: string, words: ReadonlyArray<string>): ReadonlyArray<Piece> => {
   const folded = fold(text);

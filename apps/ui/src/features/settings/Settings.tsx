@@ -64,6 +64,9 @@ const categories: ReadonlyArray<{
     : []),
 ];
 
+/** The categories this window offers, which the command palette lists as pages to jump to. */
+export const settingsPages = categories;
+
 /** A category's name, as the narrow window's top bar shows it over its page. */
 export const settingsLabel = (category: SettingsCategory) =>
   categories.find((each) => each.id === category)?.label ?? "Settings";

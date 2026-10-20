@@ -22,6 +22,8 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
+import { CommandPalette } from "../palette/CommandPalette.tsx";
+import type { PaletteCommand } from "../palette/palette.ts";
 import type { SettingsCategory } from "../settings/Settings.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
@@ -30,7 +32,6 @@ import { Inbox } from "./Inbox.tsx";
 import { archivedWork, canArchive, canDelete, isListed, providerName, type ThreadSummary } from "./model.ts";
 import { type RenameThread } from "./Rename.tsx";
 import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
-import { ThreadSearch } from "./Search.tsx";
 import { ThreadRow } from "./ThreadRow.tsx";
 
 interface SidebarProps {
@@ -56,9 +57,11 @@ interface SidebarProps {
   readonly onDelete: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   readonly onOpenSettings: (category?: SettingsCategory) => void;
-  /** The thread search: opened by its button here and by Ctrl K, which the window listens for. */
+  /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
   readonly searchOpen: boolean;
   readonly onSearchOpenChange: (open: boolean) => void;
+  /** What the palette can run besides opening a thread. */
+  readonly commands: ReadonlyArray<PaletteCommand>;
   /** Whether the machine the window drives can search what was said in threads, or only their titles. */
   readonly messageSearch: boolean;
 }
@@ -90,6 +93,7 @@ export function Sidebar({
   onOpenSettings,
   searchOpen,
   onSearchOpenChange,
+  commands,
   messageSearch,
 }: SidebarProps) {
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
@@ -130,7 +134,7 @@ export function Sidebar({
         </Button>
         <IconButton
           icon={Search}
-          label={mode === "work" ? "Search threads" : "Search chats"}
+          label="Search and commands"
           shortcut="Ctrl K"
           onClick={() => onSearchOpenChange(true)}
           className="max-md:size-10"
@@ -167,13 +171,14 @@ export function Sidebar({
       )}
 
       <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
-      <ThreadSearch
+      <CommandPalette
         open={searchOpen}
         onOpenChange={onSearchOpenChange}
         mode={mode}
         threads={threads.filter((thread) => thread.mode === mode)}
         messageSearch={messageSearch}
         onOpenThread={onSelect}
+        commands={commands}
       />
     </div>
   );

@@ -20,6 +20,19 @@ import {
 import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
+  Bot,
+  Columns2,
+  FolderTree,
+  MessagesSquare,
+  PanelLeft,
+  RotateCcw,
+  Rows2,
+  Settings,
+  SquarePen,
+  SquareTerminal,
+  X,
+} from "lucide-react";
+import {
   useContext,
   useEffect,
   useEffectEvent,
@@ -92,6 +105,7 @@ import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { useDraftSync } from "../features/composer/useDraftSync.ts";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
+import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
@@ -100,6 +114,7 @@ import { canScale, scaleShortcut, useScale } from "../features/settings/scale.ts
 import {
   settingsLabel,
   SettingsNav,
+  settingsPages,
   SettingsView,
   type SettingsCategory,
 } from "../features/settings/Settings.tsx";
@@ -848,6 +863,122 @@ function Workspace() {
     setSidebarOpen(!sidebarOpen);
   };
 
+  /**
+   * What the command palette (Ctrl K) runs besides opening a thread. To offer a new action, add an entry
+   * to the "Actions" below: `keys` shows the shortcut it already has, `when` hides it while it can't run.
+   */
+  const paletteCommands: ReadonlyArray<PaletteCommand> = [
+    {
+      id: "new-thread",
+      group: "Actions",
+      label: mode === "work" ? "New thread" : "New chat",
+      icon: SquarePen,
+      keys: "Ctrl N",
+      run: newThread,
+    },
+    {
+      id: "sidebar",
+      group: "Actions",
+      label: sidebarOpen ? "Hide sidebar" : "Show sidebar",
+      icon: PanelLeft,
+      keys: "Ctrl B",
+      run: toggleSidebar,
+    },
+    {
+      id: "agents",
+      group: "Actions",
+      label: inspectorOpen ? "Hide agents" : "Show agents",
+      icon: Bot,
+      keys: "Ctrl J",
+      keywords: "inspector",
+      when: selected !== undefined,
+      run: toggleInspector,
+    },
+    {
+      id: "files",
+      group: "Actions",
+      label: filesOpen ? "Hide files" : "Show files",
+      icon: FolderTree,
+      keys: "Ctrl Shift E",
+      when: filesRoot !== undefined,
+      run: toggleFiles,
+    },
+    {
+      id: "terminal",
+      group: "Actions",
+      label: terminal.open ? "Hide terminal" : "Show terminal",
+      icon: SquareTerminal,
+      keys: "Ctrl `",
+      when: terminal.available,
+      run: terminal.toggle,
+    },
+    {
+      id: "mode",
+      group: "Actions",
+      label: mode === "work" ? "Switch to Chat" : "Switch to Work",
+      icon: MessagesSquare,
+      keys: mode === "work" ? "Ctrl Shift 2" : "Ctrl Shift 1",
+      run: () => {
+        setSettingsOpen(false);
+        setMode(mode === "work" ? "chat" : "work");
+      },
+    },
+    {
+      id: "split-right",
+      group: "Actions",
+      label: "Split right",
+      icon: Columns2,
+      keys: "Ctrl \\",
+      keywords: "new thread beside pane",
+      when: !compact,
+      run: () => splitNew(panes.focused, "right"),
+    },
+    {
+      id: "split-below",
+      group: "Actions",
+      label: "Split below",
+      icon: Rows2,
+      keys: "Ctrl Shift \\",
+      keywords: "new thread pane",
+      when: !compact,
+      run: () => splitNew(panes.focused, "bottom"),
+    },
+    {
+      id: "close-tab",
+      group: "Actions",
+      label: "Close tab",
+      icon: X,
+      keys: "Ctrl W",
+      when: !compact,
+      run: tabs.closeActive,
+    },
+    {
+      id: "reopen-tab",
+      group: "Actions",
+      label: "Reopen closed tab",
+      icon: RotateCcw,
+      keys: "Ctrl Shift T",
+      when: !compact,
+      run: tabs.reopen,
+    },
+    {
+      id: "settings",
+      group: "Actions",
+      label: "Open settings",
+      icon: Settings,
+      keys: "Ctrl ,",
+      run: () => openSettings(),
+    },
+    ...settingsPages.map(({ id, label, icon }): PaletteCommand => ({
+      id: `settings-${id}`,
+      group: "Settings",
+      label,
+      icon,
+      keywords: "settings",
+      run: () => openSettings(id),
+    })),
+  ];
+
   /** The tabs' keys with Ctrl, as browsers have them; whether `event` was one. */
   const tabShortcut = (event: KeyboardEvent) => {
     if (event.key === "Tab") tabs.step(event.shiftKey ? -1 : 1);
@@ -1270,6 +1401,7 @@ function Workspace() {
           onOpenSettings={openSettings}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
+          commands={paletteCommands}
           messageSearch={
             drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= THREAD_SEARCH_VERSION
           }

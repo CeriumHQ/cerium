@@ -9,7 +9,8 @@ import { Fragment, useState } from "react";
 import { threadSearchAtom, threadSearchKey } from "../../backend/search.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { shortAgo } from "../../lib/time.ts";
-import type { ThreadSummary } from "./model.ts";
+import type { ThreadSummary } from "../threads/model.ts";
+import { StatusIndicator } from "../threads/StatusIndicator.tsx";
 import {
   highlight,
   MIN_MESSAGE_QUERY,
@@ -18,16 +19,19 @@ import {
   type MessageHit,
   type Piece,
   type SearchResult,
-} from "./threadSearch.ts";
-import { StatusIndicator } from "./StatusIndicator.tsx";
+} from "../threads/threadSearch.ts";
+import { paletteGroups, type PaletteCommand, type PaletteEntry, type PaletteGroup } from "./palette.ts";
 
 const noMatches: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<ThreadMatch>, unknown>> = Atom.make(
   AsyncResult.success<ReadonlyArray<ThreadMatch>>([]),
 );
 
+/** How many recent threads the palette offers before anything is typed. */
+const RECENT = 4;
+
 const hitOf = ({ threadId, passage }: ThreadMatch): MessageHit => ({ threadId, passage });
 
-export interface ThreadSearchProps {
+export interface CommandPaletteProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly mode: "work" | "chat";
@@ -36,28 +40,35 @@ export interface ThreadSearchProps {
   /** Whether the machine the window drives can search messages; older ones are searched by title. */
   readonly messageSearch: boolean;
   readonly onOpenThread: (threadId: string) => void;
+  /** The actions and settings pages it can run. */
+  readonly commands: ReadonlyArray<PaletteCommand>;
 }
 
 /**
- * Finds a thread: Ctrl K, or the sidebar's search button. Titles filter as the user types; what was
- * said in the threads is looked up on the machine after a pause and joins the list below the titles,
- * each with the passage that matched. Arrows move, Enter opens, Esc closes.
+ * Finds a thread or runs a command: Ctrl K, or the sidebar's search button. Commands (actions, with the
+ * key each has, and settings pages) and thread titles filter as the user types; what was said in the
+ * threads is looked up on the machine after a pause and joins the list below, each with the passage
+ * that matched. Arrows move, Enter opens or runs, Esc closes.
  */
-export function ThreadSearch({ open, onOpenChange, ...panel }: ThreadSearchProps) {
+export function CommandPalette({ open, onOpenChange, ...panel }: CommandPaletteProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Viewport className="fixed inset-0 flex items-start justify-center px-2 pt-[12vh] pb-2 max-md:pt-[max(0.5rem,env(safe-area-inset-top))]">
           <Dialog.Popup
-            aria-label={panel.mode === "work" ? "Search threads" : "Search chats"}
+            aria-label="Command palette"
             className="flex max-h-[min(34rem,calc(100dvh-5rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale,translate] duration-150 ease-out-soft outline-none data-ending-style:-translate-y-2 data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:-translate-y-2 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
-            <SearchPanel
+            <PalettePanel
               {...panel}
               onOpenThread={(threadId) => {
                 onOpenChange(false);
                 panel.onOpenThread(threadId);
+              }}
+              onRun={(command) => {
+                onOpenChange(false);
+                command.run();
               }}
             />
           </Dialog.Popup>
@@ -67,13 +78,17 @@ export function ThreadSearch({ open, onOpenChange, ...panel }: ThreadSearchProps
   );
 }
 
-/** The search itself, which starts empty each time the dialog opens. */
-function SearchPanel({
+/** The palette itself, which starts empty each time the dialog opens. */
+function PalettePanel({
   mode,
   threads,
   messageSearch,
   onOpenThread,
-}: Omit<ThreadSearchProps, "open" | "onOpenChange">) {
+  commands,
+  onRun,
+}: Omit<CommandPaletteProps, "open" | "onOpenChange"> & {
+  readonly onRun: (command: PaletteCommand) => void;
+}) {
   const [typed, setTyped] = useState("");
   const query = typed.trim();
   const asking = messageSearch && queryWords(query).length > 0 && query.length >= MIN_MESSAGE_QUERY;
@@ -87,6 +102,13 @@ function SearchPanel({
   const failed = asking && AsyncResult.isFailure(found);
   const hits = !asking || failed ? [] : (answered ? found.value : kept).map(hitOf);
   const results = searchResults(threads, query, hits);
+  // Nothing typed lists fewer recent threads, to leave the actions below them in view.
+  const groups = paletteGroups(
+    query === "" ? results.slice(0, RECENT) : results,
+    commands,
+    query,
+    mode === "work" ? "Threads" : "Chats",
+  );
   const looking = asking && !answered && !failed;
   const note = !messageSearch
     ? query === ""
@@ -106,19 +128,21 @@ function SearchPanel({
     <Autocomplete.Root
       open
       inline
-      items={results}
+      items={groups}
       value={typed}
       onValueChange={setTyped}
       filter={null}
       autoHighlight="always"
       keepHighlight
-      itemToStringValue={(result: SearchResult) => result.thread.title}
+      itemToStringValue={(entry: PaletteEntry) =>
+        entry.kind === "thread" ? entry.result.thread.title : entry.command.label
+      }
     >
       <Autocomplete.InputGroup className="flex shrink-0 items-center gap-2.5 border-b border-line-subtle pr-2 pl-3.5">
         <Search size={15} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" aria-hidden />
         <Autocomplete.Input
-          aria-label={mode === "work" ? "Search threads" : "Search chats"}
-          placeholder="Search titles and messages"
+          aria-label={mode === "work" ? "Search threads and commands" : "Search chats and commands"}
+          placeholder={`Search ${noun}, settings and actions`}
           className="h-12 min-w-0 flex-1 bg-transparent text-[14px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-base"
         />
         <Dialog.Close
@@ -129,38 +153,64 @@ function SearchPanel({
         </Dialog.Close>
       </Autocomplete.InputGroup>
 
-      {results.length === 0 ? (
+      {groups.length === 0 ? (
         <output className="block px-4 py-8 text-center text-[13px] text-fg-tertiary max-md:text-[15px]">
-          {query === "" ? `No ${noun} yet.` : (note ?? `No ${noun} match.`)}
+          {query === "" ? `No ${noun} yet.` : (note ?? `Nothing matches.`)}
         </output>
       ) : (
         <ScrollArea
           className="flex-1"
           viewportClassName="max-h-[min(24rem,calc(100dvh-10rem))] max-md:max-h-[min(26rem,calc(100dvh-20rem))]"
         >
-          {query === "" ? (
-            <p className="px-3.5 pt-2.5 pb-0.5 text-xs font-medium text-fg-secondary/80">Recent</p>
-          ) : null}
-          <Autocomplete.List className="flex flex-col gap-px p-1.5 outline-none">
-            {(result: SearchResult) => (
-              <Autocomplete.Item
-                key={result.thread.id}
-                value={result}
-                onClick={() => onOpenThread(result.thread.id)}
-                className="flex cursor-default items-start gap-2.5 rounded-lg px-2 py-1.5 outline-none select-none [scroll-margin-block:0.375rem] data-highlighted:bg-surface-active max-md:gap-3 max-md:py-2.5"
-              >
-                <ResultRow result={result} words={words} projects={projects} />
-              </Autocomplete.Item>
+          <Autocomplete.List className="flex flex-col p-1.5 outline-none">
+            {(group: PaletteGroup) => (
+              <Autocomplete.Group key={group.value} items={group.items} className="flex flex-col gap-px">
+                <Autocomplete.GroupLabel className="px-2 pt-2 pb-0.5 text-xs font-medium text-fg-secondary/80 first:pt-1">
+                  {group.value}
+                </Autocomplete.GroupLabel>
+                <Autocomplete.Collection>
+                  {(entry: PaletteEntry) => (
+                    <Autocomplete.Item
+                      key={entry.key}
+                      value={entry}
+                      onClick={() =>
+                        entry.kind === "thread" ? onOpenThread(entry.result.thread.id) : onRun(entry.command)
+                      }
+                      className="flex cursor-default items-start gap-2.5 rounded-lg px-2 py-1.5 outline-none select-none [scroll-margin-block:0.375rem] data-highlighted:bg-surface-active max-md:gap-3 max-md:py-2.5"
+                    >
+                      {entry.kind === "thread" ? (
+                        <ResultRow result={entry.result} words={words} projects={projects} />
+                      ) : (
+                        <CommandRow command={entry.command} words={words} />
+                      )}
+                    </Autocomplete.Item>
+                  )}
+                </Autocomplete.Collection>
+              </Autocomplete.Group>
             )}
           </Autocomplete.List>
         </ScrollArea>
       )}
-      {results.length > 0 && note !== undefined ? (
+      {groups.length > 0 && note !== undefined ? (
         <output className="block shrink-0 border-t border-line-subtle px-4 py-2 text-xs text-fg-tertiary">
           {note}
         </output>
       ) : null}
     </Autocomplete.Root>
+  );
+}
+
+function CommandRow({ command, words }: { command: PaletteCommand; words: ReadonlyArray<string> }) {
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-2.5">
+      <command.icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-fg-secondary max-md:text-[15px]">
+        <Marked pieces={highlight(command.label, words)} />
+      </span>
+      {command.keys ? (
+        <kbd className="shrink-0 font-sans text-2xs text-fg-tertiary max-md:hidden">{command.keys}</kbd>
+      ) : null}
+    </span>
   );
 }
 
