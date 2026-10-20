@@ -42,7 +42,10 @@ export const CapabilityManifest = Schema.Struct({
   mcpInjection: Schema.Boolean,
   nativeSubagents: Schema.Literals(["disableable", "notDisableable"]),
   usageReporting: Schema.Literals(["tokensAndCost", "tokens", "none"]),
-  /** Default account-wide concurrency cap before plan-tier adjustment. */
+  /**
+   * Unused: Cerium caps no harness's turns at once. Kept because builds that require it would drop
+   * manifests sent without it.
+   */
   defaultConcurrency: PositiveInt,
 });
 export type CapabilityManifest = typeof CapabilityManifest.Type;

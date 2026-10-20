@@ -117,12 +117,15 @@ describe("Orchestrator", () => {
         sees.sessions[0]?.sent[0],
         `Check @src/app.ts with $review\n\nAttached files:\n- ${image}\n- ${notes}`,
       );
-      assert.deepStrictEqual(sees.sessions[0]?.extras[0], {
+      const { turnId, ...seen } = sees.sessions[0]?.extras[0] ?? {};
+      assert.isString(turnId, "each turn goes with its id");
+      assert.deepStrictEqual(seen, {
         images: [{ path: image, mediaType: "image/png", data: "iVBORw==" }],
         skills: [{ name: "review", path: "/skills/review/SKILL.md" }],
       });
       // A harness that takes no images still gets their paths, and the skills.
-      assert.deepStrictEqual(blind.sessions[0]?.extras[0], {
+      const { turnId: _blindTurn, ...blinded } = blind.sessions[0]?.extras[0] ?? {};
+      assert.deepStrictEqual(blinded, {
         skills: [{ name: "review", path: "/skills/review/SKILL.md" }],
       });
       assert.include(sees.sessions[0]?.options.appendSystemPrompt ?? "", "`$name` names a skill");
@@ -569,20 +572,27 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { messageLimit: 2 })), Effect.scoped);
   });
 
-  it.live("never runs more turns at once than the provider allows", () => {
-    const fake = makeFakeAdapter("claude", { concurrency: 1, turnDuration: Duration.millis(40) });
+  it.live("starts a messaged thread's turn whatever other threads' turns are waiting on", () => {
+    const fake = makeFakeAdapter("claude", { askPermission: true });
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const { waitFor } = yield* recordEvents;
-      const first = yield* startWorkThread;
-      const second = yield* startWorkThread;
-      yield* orchestrator.sendUserMessage(first.lead.id, "a");
-      yield* orchestrator.sendUserMessage(second.lead.id, "b");
+      // More threads than any harness's old turn cap, each turn left waiting on the user.
+      const threads = yield* Effect.forEach(Array.from({ length: 8 }), () => startWorkThread);
+      const waiting = threads.slice(0, -1);
+      yield* Effect.forEach(waiting, ({ lead }) => orchestrator.sendUserMessage(lead.id, "run the tests"));
       yield* waitFor((events) => {
-        const done = events.filter((event) => event.payload._tag === "TurnCompleted");
-        return done.length === 2 ? done : undefined;
+        const asked = events.filter((event) => event.payload._tag === "PermissionRequested");
+        return asked.length === waiting.length ? asked : undefined;
       });
-      assert.strictEqual(fake.running.max, 1);
+
+      const last = threads.at(-1)!;
+      yield* orchestrator.sendMessage(threads[0]!.lead.id, last.lead.id, "are you done?");
+      yield* waitFor((events) =>
+        events.find(
+          (event) => event.agentId === last.lead.id && event.payload._tag === "PermissionRequested",
+        ),
+      );
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
