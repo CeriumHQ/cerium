@@ -1,3 +1,4 @@
+import type { ThreadNotification } from "@cerium/protocol";
 import { CeriumError, DeviceRpcs } from "@cerium/rpc";
 import { Effect, type Stream } from "effect";
 
@@ -10,15 +11,20 @@ import { CloudThreads } from "./cloud.ts";
 const refuse = (error: AccountError) => new CeriumError({ message: error.message });
 
 /**
- * The handlers of `DeviceRpcs`. `working` says whether this device's own agents are working; a
- * browser has none. Requires `Account` and `CloudThreads`.
+ * The handlers of `DeviceRpcs`. `working` says whether this device's own agents are working, and
+ * `notifications` tells what its threads need the user for; a browser has neither. Requires
+ * `Account` and `CloudThreads`.
  */
-export const deviceHandlers = <R>(working: Effect.Effect<Stream.Stream<boolean>, never, R>) =>
+export const deviceHandlers = <W, N>(own: {
+  readonly working: Effect.Effect<Stream.Stream<boolean>, never, W>;
+  readonly notifications: Effect.Effect<Stream.Stream<ThreadNotification>, never, N>;
+}) =>
   DeviceRpcs.toLayer(
     Effect.gen(function* () {
       const account = yield* Account;
       const cloud = yield* CloudThreads;
-      const workingNow = yield* working;
+      const workingNow = yield* own.working;
+      const notifications = yield* own.notifications;
       return DeviceRpcs.of({
         WatchAccount: () => account.changes,
         SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
@@ -36,6 +42,7 @@ export const deviceHandlers = <R>(working: Effect.Effect<Stream.Stream<boolean>,
         SubscribePush: ({ subscription, kinds }) =>
           account.send({ _tag: "PushSubscribe", subscription, kinds }).pipe(Effect.mapError(refuse)),
         UnsubscribePush: () => account.send({ _tag: "PushUnsubscribe" }).pipe(Effect.mapError(refuse)),
+        WatchNotifications: () => notifications,
       });
     }),
   );

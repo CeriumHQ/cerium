@@ -156,7 +156,8 @@ const tappedAtLaunch = (): Tapped | undefined => {
 
 /**
  * Opens the thread of a tapped notification once `find` knows it: from the address, when the tap
- * opened Cerium, or from the service worker, when Cerium was open already. Threads arrive after
+ * opened Cerium, from the service worker, when Cerium was open already, or from the desktop's
+ * shell, when its own notification was clicked. Threads arrive after
  * Cerium starts, so a tap waits for its thread.
  */
 export function useNotificationOpens<T>(
@@ -175,7 +176,9 @@ export function useNotificationOpens<T>(
   useEffect(() => {
     if (new URLSearchParams(location.search).has(OPEN_PARAMS.thread))
       history.replaceState(history.state, "", location.pathname);
-    // Only the web client gets notifications.
+    // The desktop's own notifications come through its shell (desktop/notifications.ts).
+    const shell = window.cerium?.onOpenThread;
+    if (shell !== undefined) return shell((threadId) => setTapped({ threadId, tap: ++taps }));
     if (!WEB || !("serviceWorker" in navigator)) return;
     const listener = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; threadId?: unknown } | null;

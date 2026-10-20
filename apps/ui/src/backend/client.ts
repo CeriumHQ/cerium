@@ -193,7 +193,10 @@ const desktopDevice = () =>
 const webDevice = () =>
   AtomRpc.Service<LocalBackendId>()("cerium/ui/LocalBackend", {
     group: DeviceRpcs,
-    protocol: deviceHandlers(Effect.succeed(Stream.succeed(false))).pipe(Layer.provideMerge(WebDevice)),
+    protocol: deviceHandlers({
+      working: Effect.succeed(Stream.succeed(false)),
+      notifications: Effect.succeed(Stream.never),
+    }).pipe(Layer.provideMerge(WebDevice)),
     makeEffect: RpcTest.makeClient(DeviceRpcs, { flatten: true }),
   });
 

@@ -7,7 +7,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // File Explorer or opens it in its own app, none of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page reports whether the
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
-// or off. Updates come through here too: the shell checks, downloads and installs them.
+// or off. Updates come through here too: the shell checks, downloads and installs them. The page
+// asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
@@ -49,5 +50,20 @@ contextBridge.exposeInMainWorld("cerium", {
     const forward = (_event: unknown, updates: unknown) => listener(updates);
     ipcRenderer.on("cerium:updates", forward);
     return () => ipcRenderer.off("cerium:updates", forward);
+  },
+  notify: (request: {
+    threadId: string;
+    title: string;
+    body: string;
+    silent: boolean;
+    attention: boolean;
+  }): void => ipcRenderer.send("cerium:notify", request),
+  setBadge: (badge: { count: number; icon?: string }): void => ipcRenderer.send("cerium:set-badge", badge),
+  onOpenThread: (listener: (threadId: string) => void): (() => void) => {
+    const forward = (_event: unknown, threadId: unknown) => {
+      if (typeof threadId === "string") listener(threadId);
+    };
+    ipcRenderer.on("cerium:open-thread", forward);
+    return () => ipcRenderer.off("cerium:open-thread", forward);
   },
 });

@@ -3,6 +3,12 @@ import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
 import { startBackend } from "./backend.ts";
+import {
+  isBadgeRequest,
+  isNotificationRequest,
+  nameAppForNotifications,
+  nativeNotifications,
+} from "./notifications.ts";
 import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
@@ -37,6 +43,8 @@ const background = backgroundMode({
   icon: join(import.meta.dirname, "..", "build", "icon.ico"),
   window: () => mainWindow,
 });
+
+const notifications = nativeNotifications({ window: () => mainWindow, show: background.show });
 
 /** Links the UI may open in the browser: https, and the local relay while developing. */
 const opensExternally = (url: string) =>
@@ -94,6 +102,7 @@ const createWindow = () => {
   window.on("closed", () => {
     mainWindow = undefined;
   });
+  notifications.watch(window);
 
   // Links open in the user's browser, never inside the app window.
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -133,6 +142,14 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
 );
 
 app.on("second-instance", () => background.show());
+
+/** A toast about a thread, and the count of threads waiting over the taskbar icon (notifications.ts). */
+ipcMain.on("cerium:notify", (_event, request: unknown) => {
+  if (isNotificationRequest(request)) notifications.notify(request);
+});
+ipcMain.on("cerium:set-badge", (_event, request: unknown) => {
+  if (isBadgeRequest(request)) notifications.setBadge(request);
+});
 
 /** Updating Cerium: the chosen channel, what it offers, and downloading and installing it. */
 ipcMain.handle("cerium:updates", () => updater?.updates());
@@ -187,6 +204,8 @@ nativeTheme.on("updated", () => {
     window.webContents.send("cerium:dark-colors", nativeTheme.shouldUseDarkColors);
   }
 });
+
+nameAppForNotifications();
 
 void app.whenReady().then(() => {
   if (devUrl === undefined) backend = startBackend();

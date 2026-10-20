@@ -16,10 +16,12 @@ import type { ModelInfo } from "@cerium/protocol";
 import { Effect, Layer, type FileSystem, type Path } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { Socket } from "effect/socket";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { thisMachine } from "./device.ts";
-import { Notifier } from "./notify.ts";
+import { discordPresence } from "./discord.ts";
+import { Notifications } from "./notify.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { Files } from "./files.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
@@ -29,6 +31,7 @@ import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
 import { fileVault } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
+import { worktreesLayer } from "./worktree.ts";
 
 export interface BackendOptions {
   /** Where Cerium keeps its database and chat-thread folders (the app's user-data directory). */
@@ -41,6 +44,11 @@ export interface BackendOptions {
   readonly migrationsFolder?: string;
   /** The relay this machine signs in to and how it describes itself; Cerium's own, as a development build, by default. */
   readonly account?: AccountOptions;
+  /**
+   * Where threads' worktrees go, a folder per repository; `~/.cerium/worktrees` by default, outside
+   * any project, whichever data folder the backend runs with.
+   */
+  readonly worktreeDirectory?: string;
   /** Where the sign-in is kept; by default a plain file in the data folder, as a development backend keeps it. */
   readonly vault?: Layer.Layer<Vault, never, FileSystem.FileSystem | Path.Path>;
 }
@@ -124,9 +132,13 @@ export const backendLayer = (options: BackendOptions) =>
     },
   ).pipe(
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
-    // tells the account's browsers when a thread here needs the user, finished or failed.
-    Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifier)),
+    // tells the account's browsers when a thread here needs the user, finished or failed. Shows
+    // what the agents do on the user's Discord profile when they ask for it.
+    Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifications.layer, discordPresence())),
     Layer.provideMerge(Orchestrator.layer),
+    Layer.provideMerge(
+      worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),
+    ),
     Layer.provideMerge(Files.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),

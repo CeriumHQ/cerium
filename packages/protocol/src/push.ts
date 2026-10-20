@@ -28,6 +28,34 @@ export type ThreadRef = typeof ThreadRef.Type;
 /** The longest detail a notification carries, in characters. */
 export const MAX_NOTIFICATION_DETAIL = 240;
 
+/**
+ * A thread of this machine needs the user, finished or failed: what its home machine tells the relay,
+ * and its own desktop shows natively.
+ */
+export const ThreadNotification = Schema.Struct({
+  threadId: ThreadId,
+  kind: NotificationKind,
+  title: Schema.String.check(Schema.isMaxLength(MAX_THREAD_TITLE)),
+  /** What happened, in a line: the request, the last message, the error. */
+  detail: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MAX_NOTIFICATION_DETAIL))),
+});
+export type ThreadNotification = typeof ThreadNotification.Type;
+
+const headlines: Record<NotificationKind, string> = {
+  needsYou: "Waiting for your approval",
+  finished: "Finished",
+  failed: "Failed",
+};
+
+/**
+ * The text under a notification's title: what happened, on which computer when the account has
+ * more than one, then the detail on a line of its own.
+ */
+export const notificationBody = (kind: NotificationKind, detail?: string, machine?: string): string => {
+  const headline = machine === undefined ? headlines[kind] : `${headlines[kind]} on ${machine}`;
+  return detail === undefined || detail.trim() === "" ? headline : `${headline}\n${detail.trim()}`;
+};
+
 /** What a device sends its relay socket about notifications. */
 export const PushMessage = Schema.Union([
   /**
@@ -36,13 +64,7 @@ export const PushMessage = Schema.Union([
    */
   Schema.TaggedStruct("Presence", { visible: Schema.Boolean, viewing: Schema.optionalKey(ThreadRef) }),
   /** From a thread's home machine: the thread needs the user, finished or failed. */
-  Schema.TaggedStruct("Notify", {
-    threadId: ThreadId,
-    kind: NotificationKind,
-    title: Schema.String.check(Schema.isMaxLength(MAX_THREAD_TITLE)),
-    /** What happened, in a line: the request, the last message, the error. */
-    detail: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MAX_NOTIFICATION_DETAIL))),
-  }),
+  Schema.TaggedStruct("Notify", ThreadNotification.fields),
   /** From a browser: send it these kinds of notifications, here. Replaces what it had. */
   Schema.TaggedStruct("PushSubscribe", {
     subscription: PushSubscriptionInfo,

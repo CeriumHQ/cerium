@@ -67,17 +67,5 @@ export const recipients = (
   );
 };
 
-const headlines: Record<NotificationKind, string> = {
-  needsYou: "Waiting for your approval",
-  finished: "Finished",
-  failed: "Failed",
-};
-
-/**
- * The text under a notification's title: what happened, on which computer when the account has
- * more than one, then the detail on a line of its own.
- */
-export const notificationBody = (kind: NotificationKind, detail?: string, machine?: string): string => {
-  const headline = machine === undefined ? headlines[kind] : `${headlines[kind]} on ${machine}`;
-  return detail === undefined || detail.trim() === "" ? headline : `${headline}\n${detail.trim()}`;
-};
+/** Shared with the desktop, whose own notifications read the same. */
+export { notificationBody } from "@cerium/protocol";

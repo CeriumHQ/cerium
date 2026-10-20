@@ -1,4 +1,9 @@
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import {
+  NOTIFICATION_KINDS,
+  type AccessMode,
+  type NotificationKind,
+  type ReasoningEffort,
+} from "@cerium/protocol";
 import { Atom } from "effect/reactivity";
 
 import { WEB } from "../../backend/target.ts";
@@ -64,6 +69,27 @@ export const isSendKey = (
   !event.nativeEvent.isComposing &&
   (sendKey === "enter" || event.ctrlKey);
 
+// The desktop's own notifications about this computer's threads; the web client's are Web Push,
+// which the relay keeps.
+const NOTIFY_KINDS_KEY = "cerium:notifyKinds";
+/** The kinds the desktop shows a notification for; none turns them off. All until changed. */
+export const notifyKindsAtom = Atom.writable(
+  (): ReadonlyArray<NotificationKind> => {
+    const saved = stored(NOTIFY_KINDS_KEY);
+    if (saved === undefined) return NOTIFICATION_KINDS;
+    const kinds = saved.split(",");
+    return NOTIFICATION_KINDS.filter((kind) => kinds.includes(kind));
+  },
+  (context, kinds: ReadonlyArray<NotificationKind>) => {
+    context.setSelf(kinds);
+    remember(NOTIFY_KINDS_KEY, kinds.join(","));
+  },
+).pipe(Atom.keepAlive);
+/** Windows plays its notification sound with each one. */
+export const notifySoundAtom = preference<"on" | "off">("cerium:notifySound", ["on", "off"], "on");
+/** The taskbar icon counts the threads that notified since the user last looked at them. */
+export const notifyBadgeAtom = preference<"on" | "off">("cerium:notifyBadge", ["on", "off"], "on");
+
 // What a new thread starts with. The composer offers the same choices and remembers the last one.
 /** The chosen model's `modelKey`; the harnesses decide which models exist, so any value is kept. */
 export const modelAtom = Atom.writable(
@@ -86,4 +112,10 @@ export const accessAtom = preference<AccessMode>(
   "cerium:defaultAccess",
   accessOptions.map((option) => option.value),
   "auto",
+);
+/** Where new work threads in a git project run: the project's own folder, or a worktree each, as last picked. */
+export const workplaceAtom = preference<"local" | "worktree">(
+  "cerium:workplace",
+  ["local", "worktree"],
+  "local",
 );

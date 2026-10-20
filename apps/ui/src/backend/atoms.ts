@@ -8,6 +8,7 @@ import {
   type DeviceId,
   type ProviderId,
   type ThreadId,
+  type ThreadNotification,
 } from "@cerium/protocol";
 import { Effect, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { Atom } from "effect/reactivity";
@@ -214,6 +215,33 @@ export const accountThreadsAtom = LocalBackend.runtime.atom(
     resubscribe,
   ),
   { initialValue: { threads: [], read: [] } satisfies AccountThreads },
+);
+
+/** A notification from this computer's own threads, numbered in the order it arrived. */
+export interface Arrived {
+  readonly seq: number;
+  readonly notification: ThreadNotification;
+}
+
+/** How many of the latest notifications the window holds; more never arrive between two renders. */
+const ARRIVED_KEPT = 16;
+
+/**
+ * This computer's own threads' latest notifications, whatever machine the window drives, picked
+ * back up after a reconnect. Empty in the web client, whose notifications come by Web Push.
+ */
+export const notificationsAtom = LocalBackend.runtime.atom(
+  Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchNotifications", undefined)))).pipe(
+    resubscribe,
+    Stream.scan(
+      (): ReadonlyArray<Arrived> => [],
+      (kept, notification): ReadonlyArray<Arrived> => [
+        ...kept.slice(1 - ARRIVED_KEPT),
+        { seq: (kept.at(-1)?.seq ?? 0) + 1, notification },
+      ],
+    ),
+  ),
+  { initialValue: [] as ReadonlyArray<Arrived> },
 );
 
 /** A thread of another machine, read from the cloud copy. Keyed `machine:thread`. */

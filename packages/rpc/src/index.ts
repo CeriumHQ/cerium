@@ -17,6 +17,7 @@ import {
   ModelInfo,
   NotificationKind,
   ProjectInfo,
+  ProviderUsage,
   PushSubscriptionInfo,
   ProviderId,
   QuestionResponse,
@@ -27,12 +28,14 @@ import {
   ThreadId,
   ThreadInfo,
   ThreadMode,
+  ThreadNotification,
   ThreadOverview,
   ThreadOverviews,
   ThreadRef,
   UiEvent,
   UiEvents,
   WorkspaceEntry,
+  WorktreeChanges,
   ReadEntry,
 } from "@cerium/protocol";
 import { Schema } from "effect";
@@ -54,7 +57,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 6;
+export const RPC_VERSION = 7;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -74,6 +77,8 @@ export const CreateThreadPayload = Schema.Struct({
   title: Schema.String,
   mode: ThreadMode,
   cwd: Schema.optionalKey(Schema.NonEmptyString),
+  /** A work thread runs in a git worktree of its own. Since `RPC_VERSION` 7. */
+  worktree: Schema.optionalKey(Schema.Boolean),
   lead: Schema.Struct({
     provider: ProviderId,
     model: Schema.NonEmptyString,
@@ -172,14 +177,34 @@ export const MachineRpcs = RpcGroup.make(
     success: ThreadInfo,
     error: CeriumError,
   }),
-  /** Archiving hides a thread until it is restored; refused while its agents work or wait on the user. */
+  /**
+   * Archiving hides a thread until it is restored; refused while its agents work or wait on the user.
+   * A thread's worktree goes with it, refused while it holds work its base doesn't (`WorktreeChanges`)
+   * unless `discardWork` (since `RPC_VERSION` 7); restoring puts it back.
+   */
   Rpc.make("SetThreadArchived", {
-    payload: { threadId: ThreadId, archived: Schema.Boolean },
+    payload: {
+      threadId: ThreadId,
+      archived: Schema.Boolean,
+      discardWork: Schema.optionalKey(Schema.Boolean),
+    },
     success: ThreadInfo,
     error: CeriumError,
   }),
-  /** Deletes a thread and everything in it for good; refused while its agents work or wait on the user. */
-  Rpc.make("DeleteThread", { payload: { threadId: ThreadId }, error: CeriumError }),
+  /**
+   * Deletes a thread and everything in it for good, its worktree too; refused while its agents work
+   * or wait on the user, and, without `discardWork`, while its worktree holds unmerged work.
+   */
+  Rpc.make("DeleteThread", {
+    payload: { threadId: ThreadId, discardWork: Schema.optionalKey(Schema.Boolean) },
+    error: CeriumError,
+  }),
+  /** What a thread's worktree holds that its base doesn't; none without one. Since `RPC_VERSION` 7. */
+  Rpc.make("WorktreeChanges", {
+    payload: { threadId: ThreadId },
+    success: WorktreeChanges,
+    error: CeriumError,
+  }),
   /**
    * The threads of one mode whose messages, the user's or the agents', hold every word of `query`,
    * best match first, for the thread search.
@@ -192,6 +217,11 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
   /** What each installed adapter's harness can do; ones this version can't read are skipped. */
   Rpc.make("HarnessManifests", { success: LenientArray(CapabilityManifest) }),
+  /**
+   * The usage limits of each harness signed in with a subscription, read from the harness now;
+   * harnesses without one are left out. Since `RPC_VERSION` 6.
+   */
+  Rpc.make("SubscriptionUsage", { success: LenientArray(ProviderUsage) }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the
    * harness's SDK keeps the credential and Cerium never sees it.
@@ -362,6 +392,11 @@ export const DeviceRpcs = RpcGroup.make(
   }),
   /** Sends this browser no more push notifications. */
   Rpc.make("UnsubscribePush", { error: CeriumError }),
+  /**
+   * Each time one of this device's own threads needs the user, finished or failed, once it settled,
+   * signed in or not; a desktop shows it natively. Nothing for a browser.
+   */
+  Rpc.make("WatchNotifications", { success: ThreadNotification, stream: true }),
 );
 
 /** A desktop backend's own endpoint, for its own UI: the machine and the device. */

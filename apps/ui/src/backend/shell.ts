@@ -96,6 +96,24 @@ export interface ShellBridge {
   readonly installUpdate?: () => Promise<void>;
   /** Calls back whenever what the updater knows changes; returns how to stop. */
   readonly onUpdatesChange?: (listener: (updates: Updates) => void) => () => void;
+  /**
+   * Shows a native notification about a thread, with the system's sound unless `silent`; `attention`
+   * also flashes the taskbar button until the window is focused.
+   */
+  readonly notify?: (request: NativeNotification) => void;
+  /** The number over the taskbar icon, drawn in `icon` (a PNG data URL); 0 clears it. */
+  readonly setBadge?: (badge: { count: number; icon?: string }) => void;
+  /** Calls back with the thread of each clicked notification; returns how to stop. */
+  readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
+}
+
+/** Mirrors the shell's `NotificationRequest` in apps/desktop/src/notifications.ts. */
+export interface NativeNotification {
+  readonly threadId: string;
+  readonly title: string;
+  readonly body: string;
+  readonly silent: boolean;
+  readonly attention: boolean;
 }
 
 export interface StartAtLogin {

@@ -7,11 +7,12 @@ import {
   type AgentInfo,
   type NotificationKind,
   type ThreadId,
+  type ThreadNotification,
 } from "@cerium/protocol";
-import { Effect, FiberMap, Layer, Stream } from "effect";
+import { Context, Effect, FiberMap, Layer, PubSub, Stream } from "effect";
 
-// Push notifications. This machine tells the relay when one of its
-// threads waits on the user, finished or failed; the relay tells the account's browsers. A change
+// Notifications. This machine says when one of its threads waits on the user, finished or failed:
+// to its own window, which shows it natively, and to the relay, which tells the account's browsers. A change
 // settles before it's told, and is checked again then: a child handing its answer to the lead leaves
 // the thread idle for a couple of seconds, and a request answered at once needs nobody told.
 
@@ -80,13 +81,39 @@ export const notificationLine = (text: string): string | undefined => {
 };
 
 /**
- * Tells the account's browsers about this machine's threads while it's signed in. Requires
- * `Account` and `Orchestrator`.
+ * Tells this machine's own window about its threads (`told`), and the account's browsers too while
+ * it's signed in. Requires `Account` and `Orchestrator`.
  */
-export const Notifier = Layer.effectDiscard(
+export class Notifications extends Context.Service<
+  Notifications,
+  {
+    /** Each notification from when it's subscribed to, once its thread settled. */
+    readonly told: Stream.Stream<ThreadNotification>;
+  }
+>()("cerium/backend/Notifications") {
+  static readonly layer = Layer.effect(
+    Notifications,
+    Effect.gen(function* () {
+      const account = yield* Account;
+      const orchestrator = yield* Orchestrator;
+      const feed = yield* PubSub.unbounded<ThreadNotification>();
+      yield* startNotifier(orchestrator, (notification) =>
+        Effect.gen(function* () {
+          yield* PubSub.publish(feed, notification);
+          yield* account.send({ _tag: "Notify", ...notification }).pipe(Effect.ignore);
+        }),
+      );
+      return Notifications.of({ told: Stream.fromPubSub(feed) });
+    }),
+  );
+}
+
+/** Follows the orchestrator's events and calls `notify` once each thread's changes settled. */
+const startNotifier = (
+  orchestrator: Orchestrator["Service"],
+  notify: (notification: ThreadNotification) => Effect.Effect<void>,
+) =>
   Effect.gen(function* () {
-    const account = yield* Account;
-    const orchestrator = yield* Orchestrator;
     const settling = yield* FiberMap.make<ThreadId>();
     const happened = new Map<ThreadId, Happened>();
     const turnEnds = new Map<AgentId, TurnEnd>();
@@ -94,7 +121,7 @@ export const Notifier = Layer.effectDiscard(
     const endTurn = (agentId: AgentId, change: TurnEnd) =>
       turnEnds.set(agentId, { ...turnEnd(agentId), ...change });
 
-    /** Tells the relay about a thread whose changes settled, if there's anything to tell. */
+    /** Tells about a thread whose changes settled, if there's anything to tell. */
     const tell = (threadId: ThreadId) =>
       Effect.gen(function* () {
         const changes = happened.get(threadId) ?? {};
@@ -105,7 +132,7 @@ export const Notifier = Layer.effectDiscard(
         const thread = (yield* orchestrator.listThreads).find((each) => each.id === threadId);
         if (thread === undefined) return;
         const title = thread.title.slice(0, MAX_THREAD_TITLE);
-        yield* account.send({ _tag: "Notify", threadId, title, ...verdict });
+        yield* notify({ threadId, title, ...verdict });
       }).pipe(Effect.ignore);
 
     const note = (threadId: ThreadId, change: Happened) =>
@@ -146,5 +173,4 @@ export const Notifier = Layer.effectDiscard(
       }),
       Effect.forkScoped,
     );
-  }),
-);
+  });

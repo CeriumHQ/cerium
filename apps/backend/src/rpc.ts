@@ -10,8 +10,10 @@ import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
 import { Files, type FilesError } from "./files.ts";
+import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
+import { subscriptionUsage } from "./usage.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
@@ -59,14 +61,16 @@ export const Handlers = MachineRpcs.toLayer(
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       ThreadEvents: ({ threadId }) => orchestrator.threadEvents(threadId).pipe(Effect.mapError(refuse)),
       WatchEvents: () => orchestrator.events,
-      // A work thread's folder joins the projects the composer offers, as the one used last.
+      // A work thread's folder joins the projects the composer offers, as the one used last: the
+      // project's own, for a thread in a worktree.
       CreateThread: (payload) =>
         orchestrator.createThread(payload).pipe(
-          Effect.tap(({ thread }) =>
-            thread.mode === "work" && thread.cwd !== undefined
-              ? projects.save(thread.cwd).pipe(Effect.ignore)
-              : Effect.void,
-          ),
+          Effect.tap(({ thread }) => {
+            const folder = thread.worktree?.project ?? thread.cwd;
+            return thread.mode === "work" && folder !== undefined
+              ? projects.save(folder).pipe(Effect.ignore)
+              : Effect.void;
+          }),
           Effect.mapError(refuse),
         ),
       SendMessage: ({ agentId, text, attachments, mentions }) =>
@@ -97,14 +101,17 @@ export const Handlers = MachineRpcs.toLayer(
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
       RenameThread: ({ threadId, title }) =>
         orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
-      SetThreadArchived: ({ threadId, archived }) =>
-        orchestrator.setThreadArchived(threadId, archived).pipe(Effect.mapError(refuse)),
+      SetThreadArchived: ({ threadId, archived, discardWork }) =>
+        orchestrator
+          .setThreadArchived(threadId, archived, discardWork === undefined ? {} : { discardWork })
+          .pipe(Effect.mapError(refuse)),
       // A deleted thread's terminals end with it.
-      DeleteThread: ({ threadId }) =>
-        orchestrator.deleteThread(threadId).pipe(
+      DeleteThread: ({ threadId, discardWork }) =>
+        orchestrator.deleteThread(threadId, discardWork === undefined ? {} : { discardWork }).pipe(
           Effect.tap(() => terminals.closeThread(threadId)),
           Effect.mapError(refuse),
         ),
+      WorktreeChanges: ({ threadId }) => orchestrator.worktreeChanges(threadId).pipe(Effect.mapError(refuse)),
       SearchThreads: ({ query, mode }) =>
         store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
@@ -112,6 +119,7 @@ export const Handlers = MachineRpcs.toLayer(
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
       HarnessManifests: () => Effect.succeed([...adapters.values()].map((adapter) => adapter.manifest)),
+      SubscriptionUsage: () => subscriptionUsage(adapters),
       LoginHarness: ({ provider }) =>
         Stream.unwrap(
           Effect.fromNullishOr(adapters.get(provider)?.login).pipe(
@@ -171,8 +179,16 @@ const working = Effect.gen(function* () {
   );
 });
 
-/** What this machine answers its own UI about itself: its account, the account's threads, its work. */
-const DeviceHandlers = deviceHandlers(working);
+/**
+ * What this machine answers its own UI about itself: its account, the account's threads, its work
+ * and what its threads need the user for.
+ */
+const DeviceHandlers = deviceHandlers({
+  working,
+  notifications: Effect.gen(function* () {
+    return (yield* Notifications).told;
+  }),
+});
 
 const sameSecret = (given: string, expected: string) =>
   given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected));

@@ -7,6 +7,7 @@ import {
   type DeviceInfo,
   type AgentId,
   type ThreadId,
+  type WorktreeChanges,
 } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import {
@@ -51,9 +52,9 @@ import {
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
-import { saveProject } from "../backend/projects.ts";
+import { saveProject, worktreeChanges } from "../backend/projects.ts";
 import { WEB } from "../backend/target.ts";
-import { leadOf, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
+import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import {
   DeviceRequestNotice,
@@ -98,7 +99,9 @@ import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
+import { ArchiveWorktreeDialog } from "../features/threads/ArchiveWorktree.tsx";
 import type { ThreadSummary } from "../features/threads/model.ts";
+import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
@@ -122,6 +125,7 @@ import {
   showInPane,
   singlePane,
   splitPane,
+  spreadBeside,
   type DropZone,
   type PaneLeaf,
   type Panes,
@@ -133,6 +137,7 @@ import { fileKey, fileOfKey, fileViewAtom, isFileKey, VIEWER_VERSION } from "../
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
+import { useDesktopNotifications } from "../desktop/notifications.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
@@ -153,6 +158,26 @@ const messageOf = (error: unknown) =>
     : "Something went wrong.";
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+
+/**
+ * `run` on each of `items`, one after another, and how each went. A backend action takes one call at
+ * a time: a second call made while the first is in flight interrupts it.
+ */
+const settleInTurn = async <A, B>(
+  items: ReadonlyArray<A>,
+  run: (item: A) => Promise<B>,
+): Promise<ReadonlyArray<PromiseSettledResult<B>>> => {
+  const results: Array<PromiseSettledResult<B>> = [];
+  for (const item of items) {
+    results.push(
+      await run(item).then(
+        (value) => ({ status: "fulfilled", value }) as const,
+        (reason: unknown) => ({ status: "rejected", reason }) as const,
+      ),
+    );
+  }
+  return results;
+};
 
 /** The main area's pane until the user splits it. */
 const MAIN_PANE = "main";
@@ -492,15 +517,22 @@ function Workspace() {
     },
   );
   useRenewPush(account);
+  const threadShown = viewed !== undefined && !settingsOpen && (!compact || pane === "main");
   // Nobody is told about the thread this window shows, unless settings or the narrow
   // window's inbox cover it.
   useAccountPresence(
     account,
-    viewed && drivenId !== undefined && !settingsOpen && (!compact || pane === "main")
+    viewed && threadShown && drivenId !== undefined
       ? {
           machine: (cloudSelected?.machine ?? drivenId) as DeviceId,
           threadId: viewed.thread.id,
         }
+      : undefined,
+  );
+  // This computer's own notifications, about any of its threads but the one shown here.
+  useDesktopNotifications(
+    viewed && threadShown && (cloudSelected ? cloudSelected.machine === thisComputer : driven === undefined)
+      ? viewed.thread.id
       : undefined,
   );
 
@@ -517,6 +549,10 @@ function Workspace() {
   const remove = useAtomSet(deleteThread, { mode: "promise" });
   const save = useAtomSet(saveProject, { mode: "promise" });
   /** Runs a backend action, reporting a failure in the notice bar; resolves whether it worked. */
+  const changesOf = useAtomSet(worktreeChanges, { mode: "promise" });
+  /** A thread whose worktree holds unmerged work, waiting on the user to confirm archiving it. */
+  const [archiving, setArchiving] = useState<{ thread: ThreadSummary; changes: WorktreeChanges }>();
+
   const attempt = (action: Promise<unknown>): Promise<boolean> => {
     setActionError(undefined);
     return action.then(
@@ -527,6 +563,18 @@ function Workspace() {
       },
     );
   };
+
+  /** Archives a thread and closes its tab; `discardWork` once the user confirmed losing its worktree's work. */
+  const archive = (threadId: string, discardWork = false) =>
+    void attempt(
+      setArchived({
+        payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
+      }),
+    ).then((archived) => {
+      if (!archived) return;
+      refreshThreads();
+      tabs.drop(threadId);
+    });
 
   const indicators: ReadonlyArray<HarnessIndicator> = OFFERED_PROVIDERS.map((provider) => {
     const status = harnesses.find((candidate) => candidate.provider === provider);
@@ -562,6 +610,8 @@ function Workspace() {
         : openFile?.root;
   /** Its files open in Cerium's viewer, when the machine can serve them. */
   const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
+  /** New threads there can have worktrees of their own. */
+  const worktreesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WORKTREE_VERSION;
   /** Opens the folder `root`'s files in the viewer. */
   const openerIn =
     (root: string): OpenFile =>
@@ -827,29 +877,66 @@ function Workspace() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
-  /** Starts a thread from the draft `draft`, whichever pane it's in, and sends it the first message. */
+  /**
+   * Starts a thread from the draft `draft`, whichever pane it's in, and sends it the first message.
+   * Multi agent starts one with each setup: the first takes the draft's tab and pane, and the rest
+   * open in tabs after it and in panes to its right, as many as have the room.
+   */
   const startThread = async (
     draft: string,
     message: OutgoingMessage,
-    setup: ThreadSetup,
+    setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
     newFolder: string | undefined,
   ) => {
-    const { thread, lead: newLead } = await create({
-      payload: {
-        title: (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80),
-        mode,
-        ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
-        lead: setup,
-      },
-    });
-    tabs.started(draft, thread.id);
+    const title = (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80);
+    const created = await settleInTurn(setups, ({ worktree, ...lead }) =>
+      create({
+        payload: {
+          title,
+          mode,
+          ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
+          ...(worktree ? { worktree } : {}),
+          lead,
+        },
+      }),
+    );
+    const started = created.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+    const [first, ...others] = started;
+    if (first === undefined) throw (created[0] as PromiseRejectedResult).reason;
+    const beside = others.map(({ thread }) => thread.id as string);
+    tabs.started(draft, first.thread.id, beside);
+    const shownBefore = openKey.current ?? draft;
     setPanesByMode((all) => {
-      const before = all[mode];
-      return before ? { ...all, [mode]: renameKey(before, draft, thread.id) } : all;
+      const stored = all[mode];
+      const before = stored ?? (beside.length > 0 ? singlePane(MAIN_PANE, shownBefore) : undefined);
+      if (before === undefined) return all;
+      const renamed = renameKey(before, draft, first.thread.id);
+      const target = paneShowing(renamed.root, first.thread.id);
+      if (target === undefined || beside.length === 0 || compact) {
+        return stored === undefined ? all : { ...all, [mode]: renamed };
+      }
+      // Each pane keeps the least room a pane has; the threads past what fits wait in their tabs.
+      const box = layoutOf(renamed.root).panes.find(({ leaf }) => leaf.id === target.id)?.box;
+      const width = (box?.width ?? 0) * (panesArea.current?.getBoundingClientRect().width ?? 0);
+      const fit = Math.max(0, Math.floor(width / MIN_PANE.width) - 1);
+      const placed = beside.slice(0, fit).map((key) => ({ key, id: newPaneId() }));
+      return { ...all, [mode]: spreadBeside(renamed, target.id, placed) };
     });
-    setOpenThread((open) => ((open[mode] ?? blank[mode]) === draft ? { ...open, [mode]: thread.id } : open));
+    setOpenThread((open) =>
+      (open[mode] ?? blank[mode]) === draft ? { ...open, [mode]: first.thread.id } : open,
+    );
     refreshThreads();
-    await send({ payload: { agentId: newLead.id, ...message } });
+    const sent = await settleInTurn(started, ({ lead }) =>
+      send({ payload: { agentId: lead.id, ...message } }),
+    );
+    const unsent = sent.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
+    // The draft comes back only when no thread took the message; else the ones that didn't say so.
+    if (unsent.length === sent.length) throw unsent[0];
+    const failed = setups.length - started.length + unsent.length;
+    const reason = created.find((result) => result.status === "rejected")?.reason ?? unsent[0];
+    if (failed > 0) {
+      setActionError(`${failed} of ${setups.length} threads didn't start: ${messageOf(reason)}`);
+    }
   };
 
   const paneActions: ThreadPaneActions = {
@@ -948,6 +1035,7 @@ function Workspace() {
         draftKey={isNewDraftKey(key) ? key : opened ? openDraft : key}
         folder={defaultFolder}
         available={available}
+        worktrees={worktreesOk}
         bar={barFor(resolved, lead)}
         // The window's notices and its terminal go with the open thread.
         {...(opened ? { notices, drawer: terminal.drawer } : {})}
@@ -987,9 +1075,15 @@ function Workspace() {
     const newTitle = mode === "work" ? "New thread" : "New chat";
     if (tab === undefined) return { title: newTitle };
     const status = tab.status ?? "idle";
+    // Threads side by side often differ only in their model (multi agent), so it leads the detail.
+    const shownLead = resolve(leaf.key).shown;
+    const lead = shownLead ? leadOf(shownLead.agents) : undefined;
+    const detail = [lead ? modelLabel(models, lead.provider, lead.model) : undefined, tab.project]
+      .filter((part) => part !== undefined && part !== "")
+      .join(" · ");
     return {
       title: tab.title || newTitle,
-      ...(tab.project ? { detail: tab.project } : {}),
+      ...(detail ? { detail } : {}),
       icon: tab.draft ? undefined : status !== "idle" || tab.unread ? (
         <StatusIndicator status={status} unread={tab.unread === true} />
       ) : tab.provider ? (
@@ -1069,16 +1163,18 @@ function Workspace() {
               return renamed;
             })
           }
-          // Archiving a thread closes its tab.
-          onArchive={(threadId) =>
-            void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: true } })).then(
-              (archived) => {
-                if (!archived) return;
-                refreshThreads();
-                tabs.drop(threadId);
-              },
-            )
-          }
+          // A thread whose worktree holds work its base doesn't asks first.
+          onArchive={(threadId) => {
+            const thread = summaries.find((summary) => summary.id === threadId);
+            if (thread?.worktree === undefined) return archive(threadId);
+            void changesOf({ payload: { threadId: threadId as ThreadId } }).then(
+              (changes) =>
+                changes.uncommitted + changes.unmerged === 0
+                  ? archive(threadId)
+                  : setArchiving({ thread, changes }),
+              (error: unknown) => setActionError(messageOf(error)),
+            );
+          }}
           onRestore={(threadId) =>
             void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
               (restored) => {
@@ -1087,13 +1183,16 @@ function Workspace() {
             )
           }
           // Deleting a thread closes its tab.
+          // Its dialog said a worktree goes with it.
           onDelete={(threadId) =>
-            void attempt(remove({ payload: { threadId: threadId as ThreadId } })).then((deleted) => {
-              if (!deleted) return;
-              registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
-              refreshThreads();
-              tabs.drop(threadId);
-            })
+            void attempt(remove({ payload: { threadId: threadId as ThreadId, discardWork: true } })).then(
+              (deleted) => {
+                if (!deleted) return;
+                registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
+                refreshThreads();
+                tabs.drop(threadId);
+              },
+            )
           }
           harnesses={indicators}
           onOpenSettings={openSettings}
@@ -1184,6 +1283,17 @@ function Workspace() {
           />
         </div>
       )}
+      {archiving?.thread.worktree ? (
+        <ArchiveWorktreeDialog
+          thread={{ ...archiving.thread, worktree: archiving.thread.worktree }}
+          changes={archiving.changes}
+          open
+          onOpenChange={(open) => {
+            if (!open) setArchiving(undefined);
+          }}
+          onConfirm={() => archive(archiving.thread.id, true)}
+        />
+      ) : null}
     </AppFrame>
   );
 }

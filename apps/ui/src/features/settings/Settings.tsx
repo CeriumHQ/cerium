@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleArrowUp,
   CircleUserRound,
+  Gauge,
   Keyboard,
   Palette,
   Wrench,
@@ -26,6 +27,7 @@ import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { ToolSettings } from "./Tools.tsx";
 import { UpdateSettings } from "./Updates.tsx";
+import { UsageSettings } from "./Usage.tsx";
 
 export type SettingsCategory =
   | "account"
@@ -34,6 +36,7 @@ export type SettingsCategory =
   | "agents"
   | "tools"
   | "harnesses"
+  | "usage"
   | "keyboard"
   | "archived"
   | "updates";
@@ -44,12 +47,15 @@ const categories: ReadonlyArray<{
   readonly icon: LucideIcon;
 }> = [
   { id: "account", label: "Account", icon: CircleUserRound },
-  // Push notifications reach browsers only.
-  ...(WEB ? [{ id: "notifications" as const, label: "Notifications", icon: Bell }] : []),
+  // Push notifications in a browser; the desktop's own through its shell.
+  ...(WEB || window.cerium?.notify
+    ? [{ id: "notifications" as const, label: "Notifications", icon: Bell }]
+    : []),
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "tools", label: "Tools", icon: Wrench },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
+  { id: "usage", label: "Usage", icon: Gauge },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "archived", label: "Archived", icon: Archive },
   // The installed app updates itself through the shell (apps/desktop/src/updater.ts).
@@ -213,6 +219,8 @@ export function SettingsView({
       return <ToolSettings key={category} harnesses={harnesses} />;
     case "harnesses":
       return <HarnessSettings key={category} />;
+    case "usage":
+      return <UsageSettings key={category} {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})} />;
     case "keyboard":
       return <KeyboardSettings key={category} />;
     case "archived":

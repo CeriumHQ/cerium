@@ -1,4 +1,4 @@
-import { Account } from "@cerium/account";
+import { Account, AccountError } from "@cerium/account";
 import { Orchestrator } from "@cerium/orchestrator";
 import type {
   AgentEvent,
@@ -9,12 +9,13 @@ import type {
   EventPayload,
   ThreadId,
   ThreadInfo,
+  ThreadNotification,
 } from "@cerium/protocol";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Context, Effect, Layer, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
-import { decide, Notifier, notificationLine, type TurnEnd } from "../src/notify.ts";
+import { decide, Notifications, notificationLine, type TurnEnd } from "../src/notify.ts";
 
 const thread: ThreadInfo = {
   id: "thr_1" as ThreadId,
@@ -105,43 +106,69 @@ describe("a notification's line", () => {
 
 describe("the notifier", () => {
   /** A machine with one thread whose agents and events the test sets, and what it sends the relay. */
-  const machine = Effect.gen(function* () {
-    const events = yield* Queue.unbounded<AgentEvent>();
-    const sent: Array<DeviceMessage> = [];
-    const state = { agents: [agent("lead", "idle")], awaiting: false };
-    let sequence = 0;
-    const orchestrator = Layer.succeed(Orchestrator, {
-      events: Stream.fromQueue(events),
-      listAgents: () => Effect.succeed(state.agents),
-      awaitingApproval: () => state.awaiting,
-      listThreads: Effect.succeed([thread]),
-    } as never);
-    const account = Layer.succeed(Account, {
-      send: (message: DeviceMessage) => Effect.sync(() => void sent.push(message)),
-    } as never);
-    yield* Layer.build(Notifier.pipe(Layer.provide(Layer.merge(orchestrator, account))));
-    const emit = (agentId: string, payload: EventPayload) =>
-      Queue.offer(events, {
-        id: `evt_${sequence}` as EventId,
-        threadId: thread.id,
-        agentId: agentId as AgentId,
-        sequence: sequence++,
-        at: sequence,
-        payload,
-      });
-    /** Lets the notifier take what was emitted, then lets `seconds` pass. */
-    const wait = (seconds: number) =>
-      Effect.gen(function* () {
-        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-        yield* TestClock.adjust(`${seconds} seconds`);
-        for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-      });
-    return { sent, state, emit, wait };
-  });
+  const machine = (signedIn = true) =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<AgentEvent>();
+      const sent: Array<DeviceMessage> = [];
+      const state = { agents: [agent("lead", "idle")], awaiting: false };
+      let sequence = 0;
+      const orchestrator = Layer.succeed(Orchestrator, {
+        events: Stream.fromQueue(events),
+        listAgents: () => Effect.succeed(state.agents),
+        awaitingApproval: () => state.awaiting,
+        listThreads: Effect.succeed([thread]),
+      } as never);
+      const account = Layer.succeed(Account, {
+        send: (message: DeviceMessage) =>
+          signedIn
+            ? Effect.sync(() => void sent.push(message))
+            : Effect.fail(new AccountError({ message: "Signed out" })),
+      } as never);
+      const context = yield* Layer.build(
+        Notifications.layer.pipe(Layer.provide(Layer.merge(orchestrator, account))),
+      );
+      /** What this machine's own window was told. */
+      const shown: Array<ThreadNotification> = [];
+      yield* Context.get(context, Notifications).told.pipe(
+        Stream.runForEach((notification) => Effect.sync(() => void shown.push(notification))),
+        Effect.forkScoped,
+      );
+      const emit = (agentId: string, payload: EventPayload) =>
+        Queue.offer(events, {
+          id: `evt_${sequence}` as EventId,
+          threadId: thread.id,
+          agentId: agentId as AgentId,
+          sequence: sequence++,
+          at: sequence,
+          payload,
+        });
+      /** Lets the notifier take what was emitted, then lets `seconds` pass. */
+      const wait = (seconds: number) =>
+        Effect.gen(function* () {
+          for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+          yield* TestClock.adjust(`${seconds} seconds`);
+          for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
+        });
+      return { sent, shown, state, emit, wait };
+    });
+
+  it.effect("tells this machine's window too, signed in or not", () =>
+    Effect.gen(function* () {
+      const { sent, shown, emit, wait } = yield* machine(false);
+      yield* emit("lead", { _tag: "MessageCompleted", messageId: "m1", text: "Done." });
+      yield* emit("lead", { _tag: "TurnCompleted", stopReason: "completed" });
+      yield* emit("lead", { _tag: "AgentStateChanged", state: "idle" });
+      yield* wait(5);
+      assert.deepStrictEqual(sent, []);
+      assert.deepStrictEqual(shown, [
+        { threadId: thread.id, title: "Fix the login redirect", kind: "finished", detail: "Done." },
+      ]);
+    }).pipe(Effect.scoped),
+  );
 
   it.effect("tells the relay a thread finished once it settled, with the lead's last message", () =>
     Effect.gen(function* () {
-      const { sent, emit, wait } = yield* machine;
+      const { sent, emit, wait } = yield* machine();
       yield* emit("lead", { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "Fix it" }] });
       yield* emit("lead", { _tag: "MessageCompleted", messageId: "m1", text: "**Fixed** the redirect." });
       yield* emit("lead", { _tag: "TurnCompleted", stopReason: "completed" });
@@ -163,7 +190,7 @@ describe("the notifier", () => {
 
   it.effect("tells nothing when the thread is working again by the time it settles", () =>
     Effect.gen(function* () {
-      const { sent, state, emit, wait } = yield* machine;
+      const { sent, state, emit, wait } = yield* machine();
       state.agents = [agent("lead", "idle"), agent("child", "running", "lead")];
       yield* emit("child", { _tag: "TurnCompleted", stopReason: "completed" });
       yield* emit("child", { _tag: "AgentStateChanged", state: "idle" });
@@ -177,7 +204,7 @@ describe("the notifier", () => {
 
   it.effect("tells a request once, as the latest one, while it's still open", () =>
     Effect.gen(function* () {
-      const { sent, state, emit, wait } = yield* machine;
+      const { sent, state, emit, wait } = yield* machine();
       state.agents = [agent("lead", "running")];
       state.awaiting = true;
       yield* emit("lead", {

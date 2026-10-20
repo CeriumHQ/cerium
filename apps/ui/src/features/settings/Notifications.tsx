@@ -1,10 +1,11 @@
 import { NOTIFICATION_KINDS, type NotificationKind } from "@cerium/protocol";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { EllipsisVertical, Share, SquarePlus } from "lucide-react";
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { accountAtom, subscribePush, unsubscribePush } from "../../backend/atoms.ts";
+import { WEB } from "../../backend/target.ts";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { thisBrowser } from "../../web/device.ts";
 import {
@@ -16,11 +17,13 @@ import {
   turnOffPush,
   turnOnPush,
 } from "../../web/push.ts";
-import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import { SettingsCard, SettingsPage, SettingsRow, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import { notifyBadgeAtom, notifyKindsAtom, notifySoundAtom } from "./preferences.ts";
 
-// Push notifications on this phone, tablet or browser: turning them on,
-// and which kinds. Only the web client has this page. Some mobile browsers notify only web apps on
-// the Home Screen; there it says how to put Cerium there first.
+// Notifications. In the web client, push notifications on this phone, tablet or browser: turning
+// them on, and which kinds. Some mobile browsers notify only web apps on the Home Screen; there it
+// says how to put Cerium there first. On the desktop, its own notifications about this computer's
+// threads, with their sound and taskbar count.
 
 const kindText: Record<NotificationKind, { readonly label: string; readonly description: string }> = {
   needsYou: {
@@ -52,6 +55,7 @@ const messageOf = (error: unknown) =>
     : "Something went wrong. Try again.";
 
 export function NotificationSettings() {
+  if (!WEB) return <DesktopNotificationSettings />;
   const noun = deviceNoun();
   const support = pushSupport();
   return (
@@ -214,6 +218,104 @@ function PushSettings({ noun }: { noun: string }) {
         </SettingsSection>
       )}
     </>
+  );
+}
+
+/** The desktop's own notifications about this computer's threads, shown by its shell. */
+function DesktopNotificationSettings() {
+  const [kinds, setKinds] = useAtom(notifyKindsAtom);
+  const [sound, setSound] = useAtom(notifySoundAtom);
+  const [badge, setBadge] = useAtom(notifyBadgeAtom);
+  const [testSent, setTestSent] = useState(false);
+  const on = kinds.length > 0;
+
+  const sendTest = () => {
+    window.cerium?.notify?.({
+      threadId: "",
+      title: "Cerium",
+      body: "Notifications are on for this computer.",
+      silent: sound === "off",
+      attention: false,
+    });
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 2000);
+  };
+
+  return (
+    <SettingsPage title="Notifications" description="When agents on this computer need you, finish or fail.">
+      <SettingsSection
+        title="On this computer"
+        info="Only while you're away from Cerium's window, and never for the thread you have open."
+        action={
+          on ? (
+            <button
+              type="button"
+              onClick={sendTest}
+              className="rounded-md px-2 py-1 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            >
+              {testSent ? "Sent" : "Send a test"}
+            </button>
+          ) : null
+        }
+      >
+        <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+          <SettingsRow
+            label="Show notifications"
+            control={(labelledBy) => (
+              <SettingsSwitch
+                checked={on}
+                onCheckedChange={(next) => setKinds(next ? NOTIFICATION_KINDS : [])}
+                labelledBy={labelledBy}
+              />
+            )}
+          />
+          {on ? (
+            <>
+              <SettingsRow
+                label="Play a sound"
+                control={(labelledBy) => (
+                  <SettingsSwitch
+                    checked={sound === "on"}
+                    onCheckedChange={(next) => setSound(next ? "on" : "off")}
+                    labelledBy={labelledBy}
+                  />
+                )}
+              />
+              <SettingsRow
+                label="Count on the taskbar"
+                hint="Threads that notified since you last opened them."
+                control={(labelledBy) => (
+                  <SettingsSwitch
+                    checked={badge === "on"}
+                    onCheckedChange={(next) => setBadge(next ? "on" : "off")}
+                    labelledBy={labelledBy}
+                  />
+                )}
+              />
+            </>
+          ) : null}
+        </SettingsCard>
+      </SettingsSection>
+      {on ? (
+        <SettingsSection title="Tell me when">
+          <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+            {NOTIFICATION_KINDS.map((kind) => (
+              <KindRow
+                key={kind}
+                kind={kind}
+                checked={kinds.includes(kind)}
+                disabled={false}
+                onChange={(checked) =>
+                  setKinds(
+                    NOTIFICATION_KINDS.filter((each) => (each === kind ? checked : kinds.includes(each))),
+                  )
+                }
+              />
+            ))}
+          </SettingsCard>
+        </SettingsSection>
+      ) : null}
+    </SettingsPage>
   );
 }
 
