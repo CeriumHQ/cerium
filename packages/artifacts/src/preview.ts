@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { artifactDocument, fontFaces } from "./document.ts";
 import { imageMediaType, localImages, withLocalImages } from "./images.ts";
 import { ARTIFACT_MAX_HEIGHT } from "./limits.ts";
-import { BACKDROPS, DEFAULT_THEMES, type ArtifactMode } from "./theme.ts";
+import { BACKDROPS, DEFAULT_THEMES, type ArtifactMode, type ArtifactTheme } from "./theme.ts";
 
 // Renders an artifact the way the conversation will, in the user's own Edge or Chrome without a
 // window, so an agent can look at its page before it replies. Node only: exported from
@@ -86,7 +86,14 @@ export const previewArtifact = async (input: {
   readonly html: string;
   readonly width: number;
   readonly mode: ArtifactMode;
+  /** The theme to draw in, such as the user's own; the mode's default otherwise. */
+  readonly theme?: ArtifactTheme | undefined;
+  /** Device pixels per CSS pixel; 2 for a sharp image to keep. */
+  readonly scale?: number | undefined;
+  /** As a page of its own (`artifactDocument`'s `standalone`) rather than inside the conversation. */
+  readonly standalone?: boolean | undefined;
 }): Promise<ArtifactPreview> => {
+  const scale = input.scale ?? 1;
   const executable = findBrowser();
   if (executable === undefined) {
     throw new ArtifactPreviewError(
@@ -99,8 +106,9 @@ export const previewArtifact = async (input: {
   writeFileSync(
     file,
     artifactDocument(withLocalImages(input.html, images), {
-      theme: DEFAULT_THEMES[input.mode],
+      theme: input.theme ?? DEFAULT_THEMES[input.mode],
       fonts: appFonts(),
+      standalone: input.standalone,
     }),
   );
   const browser = await launchBrowser({ executable, visible: false, width: input.width, height: 800 });
@@ -115,9 +123,9 @@ export const previewArtifact = async (input: {
       }
     });
     await page.cdp.send("Log.enable");
-    await page.viewport({ width: input.width, height: 800, scale: 1, mobile: false });
+    await page.viewport({ width: input.width, height: 800, scale, mobile: false });
     await page.cdp.send("Emulation.setDefaultBackgroundColorOverride", {
-      color: rgba(BACKDROPS[input.mode]),
+      color: rgba(BACKDROPS[input.theme?.mode ?? input.mode]),
     });
     // A slow CDN only delays the load event; the page is measured as it stands.
     await page.navigate(pathToFileURL(file).href, 15_000).catch(() => undefined);
@@ -125,7 +133,7 @@ export const previewArtifact = async (input: {
     const first = await page.evaluate<number>(MEASURE);
     // The conversation's frame takes the page's height, so the page is measured again at it.
     const frame = Math.max(1, Math.min(first, ARTIFACT_MAX_HEIGHT));
-    await page.viewport({ width: input.width, height: frame, scale: 1, mobile: false });
+    await page.viewport({ width: input.width, height: frame, scale, mobile: false });
     await page.settle(250);
     const second = await page.evaluate<number>(MEASURE);
     const contentHeight = Math.min(second, ARTIFACT_MAX_HEIGHT);
@@ -133,7 +141,7 @@ export const previewArtifact = async (input: {
       await page.viewport({
         width: input.width,
         height: Math.max(1, contentHeight),
-        scale: 1,
+        scale,
         mobile: false,
       });
       await page.settle(150);

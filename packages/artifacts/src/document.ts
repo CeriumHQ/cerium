@@ -55,6 +55,13 @@ code, kbd, pre, samp { font-family: var(--font-mono); }
 :where(:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }`;
 
 /**
+ * A page on its own, saved or opened in a browser: on the conversation's colour with room around it,
+ * as wide as a reading column at most, and scrolling like any page.
+ */
+const STANDALONE_CSS = `html { background: var(--background); scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+body { box-sizing: border-box; max-width: 1048px; margin: 0 auto; padding: 32px 24px; }`;
+
+/**
  * Whether an artifact was written for the frozen building blocks: a fragment with classes and neither
  * a stylesheet nor a script of its own, since a page designed for itself always brings one.
  */
@@ -102,6 +109,9 @@ export const artifactDocument = (
     readonly fonts?: string | undefined;
     /** The frozen building blocks' stylesheet, for legacy artifacts (`isLegacyArtifact`). */
     readonly legacyCss?: string | undefined;
+    /** A page of its own, outside the conversation (`STANDALONE_CSS`), titled `title` if it has none. */
+    readonly standalone?: boolean | undefined;
+    readonly title?: string | undefined;
   },
 ): string => {
   const legacy = options.legacyCss !== undefined && isLegacyArtifact(html);
@@ -116,11 +126,21 @@ export const artifactDocument = (
     `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_POLICY}">`,
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<style id="cerium-theme">${themeUpdate(options.theme, legacy).css}</style>`,
-    `<style id="cerium-base">${options.fonts ?? ""}\n${BASE_CSS}${legacy ? `\n${options.legacyCss}` : ""}</style>`,
+    `<style id="cerium-base">${options.fonts ?? ""}\n${BASE_CSS}${options.standalone ? `\n${STANDALONE_CSS}` : ""}${legacy ? `\n${options.legacyCss}` : ""}</style>`,
     `<script>(${artifactRuntime.toString()})(${scriptJson(runtime)});</script>`,
-  ].join("\n");
-
+  ];
   const scan = blankRawText(html);
+  if (options.title !== undefined && !/<title[\s>]/i.test(html)) {
+    head.push(`<title>${escapeHtml(options.title)}</title>`);
+  }
+  return withHead(html, scan, head.join("\n"));
+};
+
+const escapeHtml = (text: string): string =>
+  text.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]!);
+
+/** `html` with `head` put in at the start of its own head, made if it has none. */
+const withHead = (html: string, scan: string, head: string): string => {
   const headOpen = /<head(?:\s[^>]*)?>/i.exec(scan);
   const htmlOpen = /<html(?:\s[^>]*)?>/i.exec(scan);
   const doctype = /^\s*<!doctype[^>]*>/i.exec(scan);
@@ -143,7 +163,8 @@ export const artifactDocument = (
 /**
  * The page an artifact's frame loads (served as `artifact.html` beside the app's index). It renders
  * the document the window sends it, once, and only when sandboxed: without the sandbox it would run
- * in the app's own origin, so another site framing it gets an empty page.
+ * in the app's own origin, so another site framing it gets an empty page. Another site may frame it
+ * sandboxed, but then renders only what that site sends: the page holds nothing of the app's.
  */
 export const artifactHostPage = (): string => `<!doctype html>
 <html>
@@ -154,7 +175,10 @@ export const artifactHostPage = (): string => `<!doctype html>
 if (self.origin === "null" && window.parent !== window) {
   addEventListener("message", function (event) {
     var data = event.data;
-    if (event.source !== window.parent || !data || data.type !== ${JSON.stringify(RENDER_MESSAGE)} || typeof data.html !== "string") return;
+    // The window around the frame, or the app that opened that window: a tab the app opens for an
+    // artifact is driven by the app's own code.
+    var trusted = event.source === window.parent || (window.parent.opener !== null && event.source === window.parent.opener);
+    if (!trusted || !data || data.type !== ${JSON.stringify(RENDER_MESSAGE)} || typeof data.html !== "string") return;
     document.open();
     document.write(data.html);
     document.close();

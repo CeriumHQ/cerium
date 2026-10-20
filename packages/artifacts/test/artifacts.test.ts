@@ -102,6 +102,19 @@ describe("artifactDocument", () => {
     assert.doesNotThrow(() => new Script(script!));
   });
 
+  it("makes a page of its own, titled, to save or open", () => {
+    const html = artifactDocument("<p>x</p>", { theme, standalone: true, title: 'Q3 <"plan">' });
+    assert.include(html, "background: var(--background)");
+    assert.include(html, "<title>Q3 &lt;&quot;plan&quot;&gt;</title>");
+    const titled = artifactDocument("<title>Own</title><p>x</p>", {
+      theme,
+      standalone: true,
+      title: "Other",
+    });
+    assert.notInclude(titled, "<title>Other</title>");
+    assert.notInclude(artifactDocument("<p>x</p>", { theme }), "background: var(--background)");
+  });
+
   it("brings the frozen stylesheet to legacy pages only", () => {
     const legacyCss = ".card{border:1px solid}";
     assert.include(artifactDocument('<div class="card">x</div>', { theme, legacyCss }), legacyCss);
@@ -212,5 +225,8 @@ describe("artifactHostPage", () => {
     assert.include(page, 'self.origin === "null"');
     assert.include(page, "default-src 'none'");
     assert.include(page, "cerium-artifact:render");
+    // A tab the app opens for an artifact is driven by the app, its opener.
+    assert.include(page, "window.parent.opener");
+    assert.doesNotThrow(() => new Script(/<script>([\s\S]*?)<\/script>/.exec(page)![1]!));
   });
 });

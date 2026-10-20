@@ -1,4 +1,5 @@
 import {
+  ARTIFACT_COLUMN_WIDTH,
   ARTIFACT_MAX_HEIGHT,
   artifactDocument,
   fontFaces,
@@ -15,16 +16,28 @@ import {
 import legacyCss from "@cerium/artifacts/legacy.css?raw";
 import { Button } from "@base-ui/react/button";
 import { Dialog } from "@base-ui/react/dialog";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import redHatMono from "@fontsource-variable/red-hat-mono/files/red-hat-mono-latin-wght-normal.woff2?inline";
 import redHatText from "@fontsource-variable/red-hat-text/files/red-hat-text-latin-wght-normal.woff2?inline";
 import { AsyncResult } from "effect/reactivity";
-import { Maximize2, TriangleAlert, X } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  FileCode,
+  ImageDown,
+  LoaderCircle,
+  Maximize2,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
-import { artifactImagesAtom } from "../../backend/files.ts";
+import { artifactImagesAtom, renderArtifact } from "../../backend/files.ts";
+import { shellBridge } from "../../backend/shell.ts";
+import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { useMessageBox } from "../composer/messageBox.ts";
+import { artifactFileName, download, openInTab } from "./artifactExport.ts";
 import { CopyButton } from "./CopyButton.tsx";
 
 // Agents' HTML visuals. Each renders in a frame sandboxed into an opaque origin, which loads the host
@@ -123,9 +136,17 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
         setExpanded(false);
       }
     : undefined;
+  // A saved image is as wide as the artifact in the conversation, whichever view it's saved from.
+  const view = useRef<HTMLDivElement>(null);
+  const widthOf = () => view.current?.clientWidth || ARTIFACT_COLUMN_WIDTH;
 
   return (
-    <div data-artifact {...(pointerInside ? { "data-hover": "" } : {})} className="group/artifact relative">
+    <div
+      ref={view}
+      data-artifact
+      {...(pointerInside ? { "data-hover": "" } : {})}
+      className="group/artifact relative"
+    >
       <ArtifactFrame
         code={code}
         title={title}
@@ -135,7 +156,7 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
         onReply={onReply}
       />
       {/* On touch screens, with no hover to reveal them, the tools sit under the page instead of over it. */}
-      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-lg border border-line-subtle bg-surface-overlay p-0.5 opacity-0 shadow-raised backdrop-blur-xl transition-opacity duration-150 group-hover/artifact:opacity-100 group-data-hover/artifact:opacity-100 focus-within:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:w-fit pointer-coarse:border-0 pointer-coarse:bg-transparent pointer-coarse:opacity-100 pointer-coarse:shadow-none pointer-coarse:backdrop-blur-none">
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-lg border border-line-subtle bg-surface-overlay p-0.5 opacity-0 shadow-raised backdrop-blur-xl transition-opacity duration-150 group-hover/artifact:opacity-100 group-data-hover/artifact:opacity-100 focus-within:opacity-100 has-data-popup-open:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:w-fit pointer-coarse:border-0 pointer-coarse:bg-transparent pointer-coarse:opacity-100 pointer-coarse:shadow-none pointer-coarse:backdrop-blur-none">
         {errors.length > 0 ? (
           <span title={errors.join("\n")} className="grid size-6 place-items-center text-status-attention">
             <TriangleAlert size={13} strokeWidth={2} aria-hidden />
@@ -143,6 +164,7 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
           </span>
         ) : null}
         <CopyButton text={code} label="Copy HTML" />
+        <ArtifactMenu code={code} title={title} widthOf={widthOf} onError={onError} />
         <Button aria-label="Expand" title="Expand" onClick={() => setExpanded(true)} className={toolClass}>
           <Maximize2 size={13} strokeWidth={1.75} />
         </Button>
@@ -156,6 +178,7 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
                 {title ?? "Artifact"}
               </Dialog.Title>
               <CopyButton text={code} label="Copy HTML" />
+              <ArtifactMenu code={code} title={title} widthOf={widthOf} onError={onError} />
               <Dialog.Close aria-label="Close" className={toolClass}>
                 <X size={14} strokeWidth={2} />
               </Dialog.Close>
@@ -169,6 +192,99 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
     </div>
   );
 }
+
+/** Room around a page saved as an image, beside the page's own width. */
+const SAVED_MARGIN = 24;
+
+/** Taking the artifact out of the conversation: an image or a page to keep, or a browser tab. */
+function ArtifactMenu({
+  code,
+  title,
+  widthOf,
+  onError,
+}: {
+  code: string;
+  title: string | undefined;
+  widthOf: () => number;
+  onError: (message: string) => void;
+}) {
+  const images = useArtifactImages(code);
+  const render = useAtomSet(renderArtifact, { mode: "promise" });
+  const [saving, setSaving] = useState(false);
+  const bridge = shellBridge();
+  const name = title ?? "Artifact";
+  const standalone = () =>
+    artifactDocument(withLocalImages(code, images ?? NO_IMAGES), {
+      theme: JSON.parse(themeSnapshot()) as ArtifactTheme,
+      fonts: FONTS,
+      legacyCss,
+      standalone: true,
+      title: name,
+    });
+
+  const savePng = async () => {
+    const theme = JSON.parse(themeSnapshot()) as ArtifactTheme;
+    setSaving(true);
+    try {
+      const { mediaType, data } = await render({
+        payload: {
+          html: withLocalImages(code, images ?? NO_IMAGES),
+          width: Math.round(widthOf()) + SAVED_MARGIN * 2,
+          mode: theme.mode,
+          variables: theme.variables,
+        },
+      });
+      const fileName = artifactFileName(title, "png");
+      if (bridge?.saveImage) await bridge.saveImage(`data:${mediaType};base64,${data}`, fileName);
+      else {
+        const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+        download(new Blob([bytes], { type: mediaType }), fileName);
+      }
+    } catch (error) {
+      onError(`Couldn't save as PNG: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const saveHtml = () =>
+    download(new Blob([standalone()], { type: "text/html" }), artifactFileName(title, "html"));
+  const openInBrowser = () => {
+    if (bridge?.openHtml) void bridge.openHtml(standalone(), name);
+    else openInTab(standalone(), name, HOST_URL);
+  };
+
+  return (
+    <MenuRoot>
+      <MenuTrigger>
+        <button type="button" aria-label="Save or open" title="Save or open" className={toolClass}>
+          {saving ? (
+            <LoaderCircle size={13} strokeWidth={1.75} className="animate-spin" />
+          ) : (
+            <Download size={13} strokeWidth={1.75} />
+          )}
+        </button>
+      </MenuTrigger>
+      <MenuPopup>
+        <MenuItem icon={ImageDown} onClick={() => void savePng()} disabled={saving}>
+          Save as PNG
+        </MenuItem>
+        <MenuItem icon={FileCode} onClick={saveHtml}>
+          Save as HTML
+        </MenuItem>
+        <MenuItem icon={ExternalLink} onClick={openInBrowser}>
+          Open in browser
+        </MenuItem>
+      </MenuPopup>
+    </MenuRoot>
+  );
+}
+
+/** The local images a page names, read through the backend; undefined until they are. */
+const useArtifactImages = (code: string): ReadonlyMap<string, string> | undefined => {
+  const images = useAtomValue(artifactImagesAtom(localImages(code).join("\n")));
+  if (AsyncResult.isSuccess(images)) return images.value;
+  return AsyncResult.isFailure(images) ? NO_IMAGES : undefined;
+};
 
 /**
  * The frame itself, as tall as the page inside it. `remember` keeps its height for the next time the
@@ -198,12 +314,7 @@ function ArtifactFrame({
   const legacy = isLegacyArtifact(code);
   // The local images the page names, read through the backend before it renders: the page itself
   // can't load a file. Ones that can't be read keep their path and fail in the page like any image.
-  const images = useAtomValue(artifactImagesAtom(localImages(code).join("\n")));
-  const imagesRead = AsyncResult.isSuccess(images)
-    ? images.value
-    : AsyncResult.isFailure(images)
-      ? NO_IMAGES
-      : undefined;
+  const imagesRead = useArtifactImages(code);
 
   // The page renders once, when both the host page and its images are ready; theme changes after
   // that restyle it in place (below).

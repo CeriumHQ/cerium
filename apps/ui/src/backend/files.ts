@@ -65,3 +65,6 @@ export const skillsAtom = Atom.family((key: string) => {
 export const skillsKey = (provider: ProviderId, cwd: string | undefined) => `${provider}\n${cwd ?? ""}`;
 
 export const saveAttachment = Backend.mutation("SaveAttachment");
+
+/** An artifact drawn as a PNG to keep, in the theme it's given. */
+export const renderArtifact = Backend.mutation("RenderArtifact");

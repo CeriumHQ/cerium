@@ -38,6 +38,9 @@
     },
     {
       "path": "../../packages/rpc"
+    },
+    {
+      "path": "../../packages/artifacts"
     }
   ]
 }

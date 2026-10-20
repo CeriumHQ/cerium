@@ -1,4 +1,5 @@
 import { deviceHandlers } from "@cerium/account";
+import { previewArtifact } from "@cerium/artifacts/preview";
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
 import { isStreamDelta, type ProviderId, type SkillInfo } from "@cerium/protocol";
 import { CeriumError, CeriumRpcs, MachineRpcs } from "@cerium/rpc";
@@ -140,6 +141,17 @@ export const Handlers = MachineRpcs.toLayer(
       ListSkills: ({ provider, cwd }) => Cache.get(skills, `${provider}:${cwd ?? homedir()}`),
       SaveAttachment: ({ name, mediaType, data }) =>
         workspace.saveAttachment(name, mediaType, data).pipe(Effect.mapError(refuse)),
+      RenderArtifact: ({ html, width, mode, variables }) =>
+        Effect.tryPromise({
+          try: () =>
+            previewArtifact({ html, width, mode, theme: { mode, variables }, scale: 2, standalone: true }),
+          catch: (cause) =>
+            new CeriumError({
+              message: cause instanceof Error ? cause.message : "Couldn't draw the artifact.",
+            }),
+        }).pipe(
+          Effect.map(({ png }) => ({ mediaType: "image/png", data: Buffer.from(png).toString("base64") })),
+        ),
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
       ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
       FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),

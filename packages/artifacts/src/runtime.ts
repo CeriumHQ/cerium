@@ -60,7 +60,9 @@ export function artifactRuntime(options: RuntimeOptions) {
      */
     reply(text: string): boolean {
       const activation = (navigator as { userActivation?: { isActive: boolean } }).userActivation;
-      if (typeof text !== "string" || text.trim() === "" || activation?.isActive !== true) return false;
+      if (!framed || typeof text !== "string" || text.trim() === "" || activation?.isActive !== true) {
+        return false;
+      }
       post("reply", { text: text.trim().slice(0, 4000) });
       return true;
     },
@@ -90,7 +92,8 @@ export function artifactRuntime(options: RuntimeOptions) {
     }
   });
 
-  // Links open in the user's browser, never inside the frame.
+  // Links open in the user's browser, never inside the frame. A page saved or opened on its own is
+  // already in a browser, and its links work as they are.
   const openLink = (href: string) => {
     let url: URL;
     try {
@@ -109,16 +112,18 @@ export function artifactRuntime(options: RuntimeOptions) {
         return target instanceof Element && target.matches("a[href]");
       });
       const href = link?.getAttribute("href");
-      if (href === undefined || href === null || href.startsWith("#")) return;
+      if (!framed || href === undefined || href === null || href.startsWith("#")) return;
       event.preventDefault();
       openLink(href);
     },
     true,
   );
-  window.open = (href?: string | URL) => {
-    if (href !== undefined) openLink(String(href));
-    return null;
-  };
+  if (framed) {
+    window.open = (href?: string | URL) => {
+      if (href !== undefined) openLink(String(href));
+      return null;
+    };
+  }
 
   // An element with `data-cerium-reply` answers with its text when clicked, and is marked
   // `data-chosen` (the others lose it) so the page can show the choice.

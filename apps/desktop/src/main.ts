@@ -9,6 +9,7 @@ import {
   nameAppForNotifications,
   nativeNotifications,
 } from "./notifications.ts";
+import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
@@ -216,6 +217,9 @@ ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
 
 /** Opens a file the explorer lists in its own app (openPath.ts). */
 ipcMain.handle("cerium:open-path", (_event, target: unknown) => openPath(target));
+
+/** Opens an artifact as a page of its own in the user's browser (openHtml.ts). */
+ipcMain.handle("cerium:open-html", (_event, html: unknown, name: unknown) => openHtml(html, name));
 
 /** Saves an image the transcript shows, where the user picks; resolves whether it was saved. */
 ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>

@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("cerium", {
   openPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:open-path", path),
   saveImage: (source: string, name: string): Promise<boolean> =>
     ipcRenderer.invoke("cerium:save-image", source, name),
+  openHtml: (html: string, name: string): Promise<void> => ipcRenderer.invoke("cerium:open-html", html, name),
   setTheme: (theme: "system" | "dark" | "light"): Promise<boolean> =>
     ipcRenderer.invoke("cerium:set-theme", theme),
   onDarkColorsChange: (listener: (dark: boolean) => void): (() => void) => {

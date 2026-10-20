@@ -259,6 +259,20 @@ export const MachineRpcs = RpcGroup.make(
     success: Attachment,
     error: CeriumError,
   }),
+  /**
+   * An artifact drawn as a PNG to keep, as a page of its own in the user's theme, at twice `width`
+   * in pixels; rendered in a browser on the machine.
+   */
+  Rpc.make("RenderArtifact", {
+    payload: {
+      html: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(5_000_000)),
+      width: Schema.Int.check(Schema.isBetween({ minimum: 280, maximum: 2000 })),
+      mode: Schema.Literals(["dark", "light"]),
+      variables: Schema.Record(Schema.String, Schema.String),
+    },
+    success: ImageData,
+    error: CeriumError,
+  }),
   /** An image file's bytes, for showing attachments and images agents read. */
   Rpc.make("ReadImage", {
     payload: { path: Schema.NonEmptyString },

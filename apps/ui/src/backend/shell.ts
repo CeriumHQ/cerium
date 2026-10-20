@@ -66,6 +66,8 @@ export interface ShellBridge {
    * a `data:image/…;base64,` URL or an absolute path to an image file. Resolves whether it was saved.
    */
   readonly saveImage?: (source: string, name: string) => Promise<boolean>;
+  /** Opens `html`, a page of its own, in the user's browser, from a file named after `name`. */
+  readonly openHtml?: (html: string, name: string) => Promise<void>;
   /**
    * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether
    * that means dark colours, which for "system" is Windows' own choice.
