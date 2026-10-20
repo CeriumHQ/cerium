@@ -4,6 +4,7 @@ import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter } from "effect/http";
 import { createServer } from "node:http";
 
+import { ArtifactPreviewTool } from "./preview.ts";
 import { BUS_PATH, BUS_SERVER_NAME, BusRegistry } from "./registry.ts";
 import { BusToolkit, BusToolkitHandlers } from "./tools.ts";
 
@@ -18,11 +19,11 @@ const INSTRUCTIONS = [
     " A lead answers its children's permission requests with answer_permission, and starts threads for the" +
     " user with create_thread when asked.",
   "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",
-  "Artifacts: artifact_guide before writing your first visual.",
+  "Artifacts: artifact_guide before writing your first visual, artifact_preview to look at it before you reply.",
 ].join("\n");
 
 /** The MCP endpoint's routes, for serving alongside other routes. Requires the Orchestrator and BusRegistry. */
-export const BusRoutes = McpServer.toolkit(BusToolkit).pipe(
+export const BusRoutes = Layer.merge(McpServer.toolkit(BusToolkit), ArtifactPreviewTool).pipe(
   Layer.provide(BusToolkitHandlers),
   Layer.provideMerge(
     McpServer.layerHttp({

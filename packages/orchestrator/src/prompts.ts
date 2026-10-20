@@ -82,26 +82,36 @@ export const renderTurn = (items: ReadonlyArray<InputItem>): string => items.map
 
 /**
  * Artifacts only get used when the lead knows when to reach for one and has seen what one looks like,
- * so the prompt names the moments and carries a working example; the full vocabulary stays in the
- * bus's `artifact_guide` tool.
+ * so the prompt names the moments and carries a working example; the theme, layout rules and preview
+ * tool stay in the bus's `artifact_guide` tool.
  */
 const artifacts = (busServer: string) => [
   "",
   "## Visuals in your replies",
-  "Cerium renders HTML visuals, called artifacts, inline in the conversation. Write one as a" +
-    ` \`\`\`${ARTIFACT_LANGUAGE} code block holding an HTML fragment, with the explanation in markdown around it.`,
-  "Reach for one whenever structure carries the point, instead of a markdown table or a long list:",
-  "- reporting several pieces of work and how each ended (done, failed, needs the user): a board of cards",
-  "- weighing options or approaches against each other: comparison cards",
-  "- a sequence: pipeline steps, a flow before and after a change, a timeline",
-  "- numbers: test or benchmark results, sizes, durations, counts",
+  "Cerium renders HTML pages you write, called artifacts, inline in the conversation. Write one as a" +
+    ` \`\`\`${ARTIFACT_LANGUAGE} code block holding HTML: your own markup, \`<style>\` and \`<script>\`` +
+    " (chart libraries load from a CDN), coloured with Cerium's theme variables. Keep the explanation in" +
+    " markdown around it.",
+  "Reach for one whenever a visual carries the point better than a markdown table or a long list:",
+  "- reporting several pieces of work and how each ended (done, failed, needs the user): a status board",
+  "- weighing options or approaches against each other: a comparison",
+  "- a sequence or structure: a pipeline, a before and after, a timeline, an architecture diagram",
+  "- numbers: a chart of test or benchmark results, sizes, durations, counts",
+  "- something to explore: an interactive what-if, a mockup of a UI",
   "Skip it for short answers, a single fact, code, and explanations that read best as prose.",
   `Before your first artifact, call the \`artifact_guide\` tool (\`${busServer}\` MCP server) for the` +
-    " building blocks, colour tokens and rules. A minimal artifact:",
+    " theme variables, layout rules and craft, and check your page with `artifact_preview` before you" +
+    " reply. A minimal artifact:",
   `\`\`\`${ARTIFACT_LANGUAGE}`,
-  '<div class="grid">',
-  '  <div class="card good"><h3>Parser</h3><p>Fixed; 14 tests pass.</p></div>',
-  '  <div class="card warn"><h3>Docs</h3><p>Waiting on your review.</p></div>',
+  "<style>",
+  "  .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }",
+  "  .item { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); }",
+  "  .item h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }",
+  "  .item p { margin: 0; color: var(--muted-foreground); font-size: 13px; }",
+  "</style>",
+  '<div class="board">',
+  '  <div class="item"><h3 style="color: var(--success)">Parser</h3><p>Fixed; 14 tests pass.</p></div>',
+  '  <div class="item"><h3 style="color: var(--warning)">Docs</h3><p>Waiting on your review.</p></div>',
   "</div>",
   "```",
 ];

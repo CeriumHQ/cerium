@@ -1,10 +1,10 @@
 /*
- * The stylesheet every artifact renders with. Agents write HTML against the vocabulary below (tokens,
- * tones and building blocks) and are taught it by `guide.ts`, so it is a public API: artifacts persist
- * in transcripts and re-render with the current stylesheet. Add to it; never rename or remove.
+ * The building blocks artifacts were written with before agents designed their own (tokens, tones,
+ * cards, flows, ranges, bars, tabs …). Frozen: agents no longer learn it, but artifacts already in
+ * transcripts keep rendering with it, so leave it as it is.
  *
- * The UI defines Cerium's own tokens (`--fg-*`, `--line-*`, `--surface-*`, `--status-*`, `--series-*`)
- * on `:root` before this sheet, with the values of the theme the window is showing.
+ * The document (document.ts) defines Cerium's own tokens (`--fg-*`, `--line-*`, `--surface-*`,
+ * `--status-*`, `--series-*`) on `:root` before this sheet, with the values of the theme on screen.
  */
 
 :root {

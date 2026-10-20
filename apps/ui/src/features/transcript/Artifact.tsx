@@ -1,10 +1,48 @@
+import {
+  ARTIFACT_MAX_HEIGHT,
+  artifactDocument,
+  fontFaces,
+  isLegacyArtifact,
+  readFrameMessage,
+  RENDER_MESSAGE,
+  THEME_MESSAGE,
+  themeFromTokens,
+  themeUpdate,
+  type ArtifactTheme,
+} from "@cerium/artifacts";
+import legacyCss from "@cerium/artifacts/legacy.css?raw";
+import { Button } from "@base-ui/react/button";
+import { Dialog } from "@base-ui/react/dialog";
+import redHatMono from "@fontsource-variable/red-hat-mono/files/red-hat-mono-latin-wght-normal.woff2?inline";
+import redHatText from "@fontsource-variable/red-hat-text/files/red-hat-text-latin-wght-normal.woff2?inline";
+import { Maximize2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
-import { artifactDocument, HEIGHT_MESSAGE, sanitizeArtifact, tokenValues } from "./artifactDocument.ts";
+import { CopyButton } from "./CopyButton.tsx";
+
+// Agents' HTML visuals. Each renders in a frame sandboxed into an opaque origin, which loads the host
+// page (`artifact.html`, served with its own policy) and is sent the agent's page to render, with
+// the window's theme; the theme follows the window live, without reloading the page.
 
 /** Height held while the artifact streams and until its frame reports its own. */
 const PLACEHOLDER_HEIGHT = 112;
+
+/** The host page, beside index.html in every build. */
+const HOST_URL = `${import.meta.env.BASE_URL}artifact.html`;
+
+const FONTS = fontFaces({ sans: redHatText, mono: redHatMono });
+
+/**
+ * The height each artifact last reported, so one the transcript mounts again (scrolling back, a
+ * reload of the list) opens at its size instead of growing from the placeholder.
+ */
+const heights = new Map<string, number>();
+const rememberHeight = (code: string, height: number) => {
+  heights.delete(code);
+  heights.set(code, height);
+  if (heights.size > 200) heights.delete(heights.keys().next().value!);
+};
 
 /** Changes to the mode (`data-theme`) or the palette, which together decide the window's colours. */
 const subscribeTheme = (onChange: () => void) => {
@@ -12,53 +50,194 @@ const subscribeTheme = (onChange: () => void) => {
   observer.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
   return () => observer.disconnect();
 };
-const currentTheme = (): "dark" | "light" =>
-  document.documentElement.dataset["theme"] === "light" ? "light" : "dark";
 
-/** An agent's HTML visual, rendered in a sandboxed frame once its code fence closes. */
+/** The window's theme as a page sees it, as a string so the same theme compares equal. */
+const themeSnapshot = (): string => {
+  const style = getComputedStyle(document.documentElement);
+  const mode = document.documentElement.dataset["theme"] === "light" ? "light" : "dark";
+  return JSON.stringify(themeFromTokens(mode, (token) => style.getPropertyValue(token)));
+};
+
+/** The artifact's `<title>`, which agents are asked to give it. */
+const artifactTitle = (code: string): string | undefined => {
+  const markup = code.replace(/<(script|style)\b[\s\S]*?(<\/\1\s*>|$)/gi, "");
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(markup)?.[1]?.replace(/\s+/g, " ").trim();
+  return title ? title.slice(0, 80) : undefined;
+};
+
+/** An agent's HTML visual: drawn once its code fence closes, with a placeholder while it streams. */
 export function Artifact({ code, isIncomplete }: CustomRendererProps) {
-  const theme = useSyncExternalStore(subscribeTheme, currentTheme);
-  const tokens = useSyncExternalStore(subscribeTheme, tokenValues);
+  const title = artifactTitle(code);
+  if (isIncomplete) return <Drawing title={title} />;
+  return <ArtifactView key={code} code={code} title={title} />;
+}
+
+function Drawing({
+  title,
+  height = PLACEHOLDER_HEIGHT,
+  className = "",
+}: {
+  title: string | undefined;
+  height?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      style={{ height }}
+      className={`grid place-items-center rounded-[0.625rem] border border-line-subtle bg-surface-hover text-[12.5px] ${className}`}
+    >
+      <span className="text-shimmer">{title ? `Drawing ${title}…` : "Drawing…"}</span>
+    </div>
+  );
+}
+
+const toolClass =
+  "grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary pointer-coarse:size-8";
+
+/** The rendered artifact in the transcript, with its tools on hover and a full-size view. */
+function ArtifactView({ code, title }: { code: string; title: string | undefined }) {
+  const [errors, setErrors] = useState<ReadonlyArray<string>>([]);
+  const [expanded, setExpanded] = useState(false);
+  // The pointer over the frame, which the frame reports: the window's own hover stops at its edge.
+  const [pointerInside, setPointerInside] = useState(false);
+  const onError = (message: string) =>
+    setErrors((current) =>
+      current.includes(message) || current.length >= 5 ? current : [...current, message],
+    );
+
+  return (
+    <div data-artifact {...(pointerInside ? { "data-hover": "" } : {})} className="group/artifact relative">
+      <ArtifactFrame code={code} title={title} remember onError={onError} onPointer={setPointerInside} />
+      {/* On touch screens, with no hover to reveal them, the tools sit under the page instead of over it. */}
+      <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-lg border border-line-subtle bg-surface-overlay p-0.5 opacity-0 shadow-raised backdrop-blur-xl transition-opacity duration-150 group-hover/artifact:opacity-100 group-data-hover/artifact:opacity-100 focus-within:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:w-fit pointer-coarse:border-0 pointer-coarse:bg-transparent pointer-coarse:opacity-100 pointer-coarse:shadow-none pointer-coarse:backdrop-blur-none">
+        {errors.length > 0 ? (
+          <span title={errors.join("\n")} className="grid size-6 place-items-center text-status-attention">
+            <TriangleAlert size={13} strokeWidth={2} aria-hidden />
+            <span className="sr-only">{`Errors: ${errors.join("; ")}`}</span>
+          </span>
+        ) : null}
+        <CopyButton text={code} label="Copy HTML" />
+        <Button aria-label="Expand" title="Expand" onClick={() => setExpanded(true)} className={toolClass}>
+          <Maximize2 size={13} strokeWidth={1.75} />
+        </Button>
+      </div>
+      <Dialog.Root open={expanded} onOpenChange={setExpanded}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+          <Dialog.Popup className="fixed top-1/2 left-1/2 flex h-[calc(100dvh-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
+              <Dialog.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-secondary">
+                {title ?? "Artifact"}
+              </Dialog.Title>
+              <CopyButton text={code} label="Copy HTML" />
+              <Dialog.Close aria-label="Close" className={toolClass}>
+                <X size={14} strokeWidth={2} />
+              </Dialog.Close>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6">
+              <ArtifactFrame code={code} title={title} />
+            </div>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}
+
+/**
+ * The frame itself, as tall as the page inside it. `remember` keeps its height for the next time the
+ * transcript mounts it; the full-size view, at another width, leaves it alone.
+ */
+function ArtifactFrame({
+  code,
+  title,
+  remember = false,
+  onError,
+  onPointer,
+}: {
+  code: string;
+  title: string | undefined;
+  remember?: boolean;
+  onError?: (message: string) => void;
+  onPointer?: (inside: boolean) => void;
+}) {
+  const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState<number>();
-  const [nonce] = useState(() => crypto.randomUUID());
+  const [height, setHeight] = useState(() => (remember ? heights.get(code) : undefined));
+  const [drawn, setDrawn] = useState(false);
+  const legacy = isLegacyArtifact(code);
 
   useEffect(() => {
+    const theme = JSON.parse(themeKey) as ArtifactTheme;
     const onMessage = (event: MessageEvent) => {
-      if (event.source !== frame.current?.contentWindow) return;
-      const data: unknown = event.data;
-      if (typeof data !== "object" || data === null) return;
-      const { type, height } = data as { type?: unknown; height?: unknown };
-      if (type === HEIGHT_MESSAGE && typeof height === "number" && Number.isFinite(height)) {
-        setHeight(Math.max(height, 1));
+      const target = frame.current?.contentWindow;
+      if (!target || event.source !== target) return;
+      const message = readFrameMessage(event.data);
+      switch (message?.kind) {
+        case "ready":
+          target.postMessage(
+            { type: RENDER_MESSAGE, html: artifactDocument(code, { theme, fonts: FONTS, legacyCss }) },
+            "*",
+          );
+          return;
+        case "height": {
+          const next = Math.min(Math.max(Math.ceil(message.height), 1), ARTIFACT_MAX_HEIGHT);
+          setHeight(next);
+          setDrawn(true);
+          if (remember) rememberHeight(code, next);
+          return;
+        }
+        case "link":
+          window.open(message.url, "_blank", "noopener,noreferrer");
+          return;
+        case "key": {
+          const { kind: _kind, ...init } = message;
+          document.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true }));
+          return;
+        }
+        case "error":
+          onError?.(message.message);
+          return;
+        case "pointer":
+          onPointer?.(message.inside);
+          return;
+        default:
+          return;
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [code, themeKey, remember, onError, onPointer]);
 
-  if (isIncomplete) {
-    return (
-      <div
-        data-artifact
-        style={{ height: PLACEHOLDER_HEIGHT }}
-        className="grid place-items-center rounded-[0.625rem] border border-line-subtle bg-surface-hover text-[12.5px]"
-      >
-        <span className="text-shimmer">Drawing…</span>
-      </div>
+  // A new theme goes to the page, which restyles in place. Before the page is drawn, the host page
+  // ignores it and the page starts in the theme it's sent with.
+  useEffect(() => {
+    const theme = JSON.parse(themeKey) as ArtifactTheme;
+    frame.current?.contentWindow?.postMessage(
+      { type: THEME_MESSAGE, theme: themeUpdate(theme, legacy) },
+      "*",
     );
-  }
+  }, [themeKey, legacy]);
 
   return (
-    <iframe
-      ref={frame}
-      data-artifact
-      title="Artifact"
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      srcDoc={artifactDocument(sanitizeArtifact(code), theme, tokens, nonce)}
-      style={{ height: height ?? PLACEHOLDER_HEIGHT }}
-      className="block w-full border-0"
-    />
+    <div className="relative">
+      <iframe
+        ref={frame}
+        title={title ?? "Artifact"}
+        src={HOST_URL}
+        sandbox="allow-scripts allow-forms"
+        allow="clipboard-write"
+        referrerPolicy="no-referrer"
+        style={{ height: height ?? PLACEHOLDER_HEIGHT }}
+        className={`block w-full border-0 bg-transparent transition-opacity duration-150 ${drawn ? "opacity-100" : "opacity-0"}`}
+      />
+      {drawn ? null : (
+        <Drawing
+          title={title}
+          height={height ?? PLACEHOLDER_HEIGHT}
+          className="pointer-events-none absolute inset-x-0 top-0"
+        />
+      )}
+    </div>
   );
 }

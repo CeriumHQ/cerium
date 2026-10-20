@@ -1,0 +1,104 @@
+import { ARTIFACT_COLUMN_WIDTH } from "@cerium/artifacts";
+import { previewArtifact } from "@cerium/artifacts/preview";
+import { Context, Effect, Layer, Option, Schema } from "effect";
+import { McpSchema, McpServer } from "effect/ai";
+import { HttpServerRequest } from "effect/http";
+
+import { BusRegistry } from "./registry.ts";
+
+// `artifact_preview`: an agent's artifact rendered as the conversation will draw it, returned as an
+// image. Registered on the server directly, since a toolkit's tools answer with JSON text only.
+
+const NAME = "artifact_preview";
+
+const Input = Schema.Struct({
+  html: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_000_000)),
+  width: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 280, maximum: 1600 }))),
+  mode: Schema.optional(Schema.Literals(["dark", "light"])),
+});
+
+const tool = new McpSchema.Tool({
+  name: NAME,
+  title: "Preview artifact",
+  description:
+    "Render an artifact's HTML as the conversation will show it, in Cerium's theme, and get back a" +
+    " screenshot, the height its frame takes and its console output (errors, failed loads). Use it to" +
+    " check and fix a page before you put it in your reply; see `artifact_guide`.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      html: { type: "string", description: "The page, exactly as it will go in the artifact block." },
+      width: {
+        type: "integer",
+        description: `Width in CSS pixels, 280-1600. Defaults to ${ARTIFACT_COLUMN_WIDTH}, the conversation's column; about 380 checks phones.`,
+      },
+      mode: { type: "string", enum: ["dark", "light"], description: "Light or dark mode. Defaults to dark." },
+    },
+    required: ["html"],
+  },
+  annotations: {
+    title: "Preview artifact",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+});
+
+const BEARER = /^Bearer\s+(.+)$/i;
+
+const failure = (message: string) =>
+  new McpSchema.CallToolResult({ isError: true, content: [{ type: "text", text: message }] });
+
+/** Registers `artifact_preview` on the bus's MCP server. Requires the BusRegistry. */
+export const ArtifactPreviewTool = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const registry = yield* BusRegistry;
+    yield* server.addTool({
+      tool,
+      annotations: Context.empty(),
+      handle: (payload) =>
+        Effect.gen(function* () {
+          // Only agents Cerium started get a browser on this machine.
+          const request = yield* Effect.serviceOption(HttpServerRequest.HttpServerRequest);
+          const token = Option.flatMap(request, (http) =>
+            Option.fromNullishOr(BEARER.exec(http.headers["authorization"] ?? "")?.[1]),
+          );
+          if (Option.isNone(Option.flatMap(token, (value) => registry.agentFor(value)))) {
+            return failure("Unknown Cerium agent.");
+          }
+          const input = yield* Schema.decodeUnknownEffect(Input)(payload).pipe(Effect.option);
+          if (Option.isNone(input)) {
+            return failure("Give `html` (a non-empty string), and optionally `width` (280-1600) and `mode`.");
+          }
+          const { html, width = ARTIFACT_COLUMN_WIDTH, mode = "dark" } = input.value;
+          const preview = yield* Effect.tryPromise(() => previewArtifact({ html, width, mode })).pipe(
+            Effect.result,
+          );
+          if (preview._tag === "Failure") {
+            const cause = preview.failure.cause;
+            return failure(`The preview failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+          }
+          const { png, contentHeight, growsWithFrame, console } = preview.success;
+          const summary = [
+            `Rendered at ${width}px in ${mode} mode; the frame takes ${contentHeight}px.`,
+            ...(growsWithFrame
+              ? [
+                  "The page grew when its frame did: a height in vh units or height: 100% on html/body never settles. Let content set the height.",
+                ]
+              : []),
+            console.length === 0
+              ? "Console: nothing."
+              : `Console:\n${console.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")}`,
+          ].join("\n");
+          return new McpSchema.CallToolResult({
+            content: [
+              { type: "text", text: summary },
+              { type: "image", data: png, mimeType: "image/png" },
+            ],
+          });
+        }),
+    });
+  }),
+);

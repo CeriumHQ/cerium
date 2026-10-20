@@ -188,6 +188,11 @@
     "packages/artifacts": {
       "name": "@cerium/artifacts",
       "version": "0.0.0",
+      "dependencies": {
+        "@cerium/browser": "workspace:*",
+        "@fontsource-variable/red-hat-mono": "5.3.0",
+        "@fontsource-variable/red-hat-text": "5.3.0",
+      },
       "devDependencies": {
         "@effect/vitest": "4.0.5",
       },

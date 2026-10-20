@@ -1,162 +1,155 @@
-// What agents read, through the bus's `artifact_guide` tool, before writing an artifact. Every class
-// and token it names must exist in `artifact.css`; the package's test checks that.
+// What agents read, through the bus's `artifact_guide` tool, before writing an artifact. Every theme
+// variable it names must be one the document sets; the package's test checks that.
 
 export const artifactGuide = `# Cerium artifacts
 
-An artifact is a small HTML visual inside your reply. Cerium renders it inline, between your
-paragraphs, with a stylesheet of building blocks already loaded. Use one when structure carries the
-point: a timeline, a before/after, a pipeline, a comparison, metrics, a status board. Keep plain
-lists and small tables in markdown.
+An artifact is an HTML page that Cerium shows inline in your reply, right where you write it. You
+design it: your own markup, CSS and scripts, on Cerium's theme. Use one when a visual explains better
+than prose: a chart, a timeline, a comparison, a status board, a diagram, an interactive what-if, a UI
+mockup. Keep short answers, single facts and plain lists in markdown.
 
 ## Format
 
-Write a fenced code block with the language \`artifact\` holding an HTML fragment:
+Write a fenced code block with the language \`artifact\`. It holds an HTML fragment (the usual case:
+a \`<style>\`, your markup and any \`<script>\`) or a complete document. If the page itself contains
+three backticks, fence it with four.
 
 \`\`\`\`
 \`\`\`artifact
-<h2>What changed</h2>
-<p>…</p>
+<style> … </style>
+<div class="report"> … </div>
+<script> … </script>
 \`\`\`
 \`\`\`\`
 
-- A fragment only: no \`<html>\`, \`<head>\` or \`<body>\`. It renders the full width of the
-  conversation (about 720px, down to 400px) and grows to fit its content.
-- Compose the building blocks below. A short \`<style>\` block or \`style\` attribute for something
-  bespoke is fine, written with the tokens. Never write colours as hex, rgb or names.
-- No scripts, external images, fonts or stylesheets (all blocked), no forms; links do not navigate.
-  Inline \`<svg>\` and \`data:\` images work. In SVG set colours with \`style="fill: var(--series-1)"\`.
-- Text always uses the text tokens. Colour belongs to marks (bars, pills, swatches, cards).
-- Label marks directly and put exact values in a \`title\` attribute, which shows on hover.
-- Keep the prose that explains the visual in markdown around the artifact, not inside it.
+Give it a short \`<title>\`: Cerium shows it while the page is drawn and over its full-size view.
+The reader sees the page between your paragraphs, so the prose around it adds only what the page
+doesn't say; don't announce or describe it.
 
-## Tokens
+## Layout
 
-| Token | Use |
+- The page is as wide as the conversation column, about 720px on a desktop and 360px on a phone, and
+  its left edge lines up with your text. Use fluid widths: \`grid-template-columns:
+  repeat(auto-fit, minmax(180px, 1fr))\`, flex wrap, percentages. No horizontal padding on the
+  outermost element.
+- It sits on the conversation's own background. Leave \`html\`, \`body\` and your outermost element
+  without a background, border or banner title: the page is part of your reply, not a card in it.
+- A box that must stand apart (a panel, a mock of a screen) gets \`var(--card)\` or a border, at least
+  16px of padding on every side and \`var(--radius)\` corners.
+- The frame grows to the page's height, so let content set it. Never size with \`vh\`, \`svh\` or
+  \`dvh\` units or \`height: 100%\` on \`html\`/\`body\`: the frame would grow with the page forever.
+  Give charts a fixed pixel height.
+
+## Theme
+
+Cerium sets these variables on \`:root\` and changes them live when the user switches theme or
+light/dark mode, so colour everything with them and the page always matches the app:
+
+| Variable | Use |
 | --- | --- |
-| \`--text\`, \`--text-2\`, \`--text-3\` | Primary, secondary and muted text |
-| \`--border\`, \`--border-strong\` | Hairlines and emphasised edges |
-| \`--fill\`, \`--fill-2\` | Subtle and stronger neutral fills |
-| \`--info\`, \`--good\`, \`--warn\`, \`--bad\` | Status colours: in progress or planned, success, needs attention, failure |
-| \`--series-1\` … \`--series-8\` | Categorical colours for identities (models, providers, files) |
-| \`--font\`, \`--mono\` | Sans and monospace families |
-| \`--radius\`, \`--radius-sm\` | Corner radii |
+| \`--foreground\`, \`--muted-foreground\`, \`--subtle-foreground\` | Text: primary, secondary, faint |
+| \`--card\`, \`--card-foreground\` | A raised surface and its text |
+| \`--popover\`, \`--popover-foreground\` | Tooltips, menus, anything floating |
+| \`--muted\`, \`--secondary\`, \`--accent\` (+ \`-foreground\`) | Subtle fills: rows, tracks, hover, selected |
+| \`--primary\`, \`--primary-foreground\`, \`--primary-soft\` | The theme's accent: solid buttons, the one emphasis |
+| \`--border\`, \`--border-strong\`, \`--input\`, \`--ring\` | Hairlines, emphasised edges, fields, focus |
+| \`--background\` | The conversation's colour, opaque: for sticky headers or masks, not page backgrounds |
+| \`--success\`, \`--warning\`, \`--destructive\`, \`--info\` | Status only: done, needs attention, failed, in progress |
+| \`--chart-1\` … \`--chart-8\` | Categorical colours, validated for colour-blind separation in this order |
+| \`--shadow\`, \`--shadow-lg\` | Raised and floating shadows |
+| \`--radius\` (10px), \`--radius-sm\` (6px) | Corners |
+| \`--font-sans\`, \`--font-mono\` | The app's fonts; the page starts in sans at 14px / 1.6 |
 
-## Tones
+- The default theme is monochrome: \`--primary\` is near-white in dark mode. Colour carries meaning:
+  status colours for state, the chart colours for categories. Assign chart colours in order and keep
+  each category on its colour throughout the page.
+- Surfaces are translucent glass; don't stack many of them.
+- \`<html>\` carries \`data-theme="dark"\` or \`"light"\` for the rare rule one mode needs.
+  \`prefers-color-scheme\` does not follow the app; the variables and \`data-theme\` do.
 
-Add a tone class to a mark to colour it: \`info\`, \`good\`, \`warn\`, \`bad\` for state; \`s1\` … \`s8\`
-for categories. Status tones mean state only and never stand for a category. Assign series in order
-(s1, s2, s3 …) and keep each category on the same series everywhere. With more than four series,
-fold the rest into "Other". A tone never inherits: toning a card leaves its contents alone.
+## Scripts and libraries
 
-## Building blocks
+Inline scripts run, and scripts, styles, fonts and images load over https, so chart and diagram
+libraries work from a CDN. Pin the major version, for example:
 
-Text: \`h2\` sections, \`h3\` sub-headings, \`p\`, \`ul\`/\`ol\`, \`code\`, \`strong\`. Classes \`muted\`,
-\`note\` (small muted print), \`mono\`, \`num\` (aligned digits).
+- Chart.js: \`https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\`
+- D3: \`https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js\`
+- ECharts: \`https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js\`
+- Mermaid: \`https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js\`
 
-**Cards and grid.** A grid of equal columns that wraps on narrow widths. Set \`style="--cols: 3"\` to
-fix the column count.
+Reach for a library when a chart needs real axes, many points or interaction; HTML, CSS and inline SVG
+draw simple bars, timelines and diagrams with less weight.
+
+Canvas and chart libraries can't read CSS variables, so the page gets \`window.cerium\`:
+
+- \`cerium.color("--chart-1")\` gives a variable's colour resolved, for a library's options.
+- \`cerium.mode\` is \`"dark"\` or \`"light"\`.
+- \`cerium.onThemeChange(() => …)\` runs after the user switches theme: update the chart's colours
+  there (Chart.js: set them again and call \`chart.update()\`).
+
+The page runs sandboxed, in its own origin:
+
+- Nothing over plain http, and nothing on this machine: no \`localhost\`, no local file paths. Images
+  are https URLs or \`data:\` URLs; inline small SVGs.
+- \`localStorage\`, cookies, \`alert\` and popups are unavailable. Forms don't submit; handle them in script.
+- Links open in the user's browser.
+
+Interaction earns its place: tabs over long sections, toggles between views, hover tooltips with exact
+values, sortable tables, a slider for a what-if. Keep animation brief and honour
+\`prefers-reduced-motion\`.
+
+## Preview before you reply
+
+Call \`artifact_preview\` (Cerium's MCP server) with the page's HTML. It renders it as the reader will,
+at the column's width in the theme you ask for, and returns a screenshot, the page's height and its
+console output, errors included. Fix what you see, then put the same HTML in your reply. Check light
+mode when colours matter, and a width of about 380 when the layout is dense.
+
+## Craft
+
+- One idea per page, with a clear hierarchy: a short heading (\`h2\`-sized, 15–17px, weight 600) only
+  when the page needs one, then the content. Prose belongs in your reply.
+- Align to a grid and space generously and consistently (multiples of 4px). Restraint reads as
+  quality: no gradients, glows or emoji for decoration; at most one accent.
+- Numbers: \`font-variant-numeric: tabular-nums\`, units in muted text, exact values in tooltips or
+  \`title\` attributes. Label marks directly; add a legend when two or more colours encode categories.
+- Make it robust: no overflow at 360px, long labels truncate with an ellipsis or wrap, empty states
+  are handled.
+
+## Example
 
 \`\`\`html
-<div class="grid">
-  <div class="card"><h3>Still open</h3><p>…</p></div>
-  <div class="card warn"><h3>Needs you</h3><p>…</p></div>
+<style>
+  .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .item { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+  .item h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .item p { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chart { height: 180px; margin-top: 16px; }
+</style>
+<div class="board">
+  <div class="item"><h3><span class="dot" style="background: var(--success)"></span>Parser</h3><p>Fixed; 14 tests pass.</p></div>
+  <div class="item"><h3><span class="dot" style="background: var(--warning)"></span>Docs</h3><p>Waiting on your review.</p></div>
 </div>
+<div class="chart"><canvas id="runs"></canvas></div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+  const style = () => ({ color: cerium.color("--muted-foreground"), grid: cerium.color("--border"), bar: cerium.color("--chart-1") });
+  let s = style();
+  Chart.defaults.font.family = getComputedStyle(document.documentElement).getPropertyValue("--font-sans");
+  const chart = new Chart(document.getElementById("runs"), {
+    type: "bar",
+    data: { labels: ["Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [{ data: [12, 7, 15, 9, 18], backgroundColor: s.bar, borderRadius: 4 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { ticks: { color: s.color }, grid: { display: false } }, y: { ticks: { color: s.color }, grid: { color: s.grid } } } },
+  });
+  cerium.onThemeChange(() => {
+    s = style();
+    chart.data.datasets[0].backgroundColor = s.bar;
+    chart.options.scales.x.ticks.color = chart.options.scales.y.ticks.color = s.color;
+    chart.options.scales.y.grid.color = s.grid;
+    chart.update();
+  });
+</script>
 \`\`\`
-
-**Tabs.** Each \`section\` becomes a tab named by \`data-tab\`. Add \`numbered\` to number them.
-
-\`\`\`html
-<div class="tabs numbered">
-  <section data-tab="Window past the end">…</section>
-  <section data-tab="HTTP 416">…</section>
-</div>
-\`\`\`
-
-**Pills and flows.** A pill is a label; a flow chains pills with arrows. Stack flows to compare.
-
-\`\`\`html
-<div class="flow"><span class="label">Before</span><span class="pill">download</span><span class="pill bad">check fails</span><span class="pill bad">clip missing</span></div>
-<div class="flow"><span class="label">Now</span><span class="pill">download</span><span class="pill good">check passes</span></div>
-\`\`\`
-
-**Steps.** A pipeline of boxes in one row: a monospace title, then optional muted detail lines.
-Keep it to five boxes with short lines.
-
-\`\`\`html
-<div class="steps">
-  <div class="step"><span>branch host-ventana</span><span>from 0f0e1e74</span></div>
-  <div class="step good"><span>image 7a9038f4</span><span>GitHub Actions build</span></div>
-</div>
-\`\`\`
-
-**Ranges.** Spans on one shared scale: timelines, windows, overlaps. \`--max\` (and optional \`--min\`)
-on the container sets the scale; each \`bar\` spans \`--from\` (default \`--min\`) to \`--to\` and may hold
-a short label. A track can hold several bars. \`hatch\` stripes a bar (overflow, projected, missing);
-a \`marker\` is a thin line at \`--at\` (add \`dashed\`). The \`axis\` places tick labels at \`--at\`.
-
-\`\`\`html
-<div class="ranges" style="--max: 180">
-  <div class="row"><span class="label">Video file</span><div class="track"><span class="bar" style="--to: 143">143 s</span></div></div>
-  <div class="row"><span class="label">Cutter asks for</span><div class="track">
-    <span class="bar info" style="--to: 143">0–174 s</span>
-    <span class="bar bad hatch" style="--from: 143; --to: 174" title="31 s past the end"></span>
-  </div></div>
-  <div class="row"><span class="label">New check</span><div class="track">
-    <span class="bar good" style="--to: 141.5">download kept</span><span class="marker good" style="--at: 141.5"></span>
-  </div></div>
-  <div class="axis"><span style="--at: 0">0 s</span><span style="--at: 60">60</span><span style="--at: 120">120</span><span style="--at: 180">180 s</span></div>
-</div>
-\`\`\`
-
-**Bars.** Horizontal magnitudes with a label and a value per row; same \`--max\` and \`--to\`. Bars
-default to \`--series-1\`; tone a bar to highlight it.
-
-\`\`\`html
-<div class="bars" style="--max: 40">
-  <div class="row"><span class="label">auth.spec.ts</span><div class="track"><span class="bar" style="--to: 31"></span></div><span class="value">31 s</span></div>
-  <div class="row"><span class="label">db.spec.ts</span><div class="track"><span class="bar" style="--to: 12"></span></div><span class="value">12 s</span></div>
-</div>
-\`\`\`
-
-**Columns.** Vertical bars over ordered categories such as days. \`--max\` on the container, \`--value\`
-per column, optional \`--height\` (default 150px). Use \`hatch\` for estimates.
-
-\`\`\`html
-<div class="columns" style="--max: 20">
-  <div class="col" style="--value: 12" title="Mon: 12 runs"><span class="value">12</span><span class="label">Mon</span></div>
-  <div class="col hatch" style="--value: 7" title="Tue: 7 runs (estimate)"><span class="value">7</span><span class="label">Tue</span></div>
-</div>
-\`\`\`
-
-**Legend.** Required whenever a visual uses two or more series.
-
-\`\`\`html
-<div class="legend"><span class="s1">Claude</span><span class="s2">Codex</span></div>
-\`\`\`
-
-**Stats.** Headline numbers. A \`delta\` takes a tone.
-
-\`\`\`html
-<div class="stats">
-  <div class="stat"><span class="label">Clips recovered</span><span class="value">5 of 8</span><span class="delta good">+3 since the fix</span></div>
-</div>
-\`\`\`
-
-**Meter.** Progress or share: \`--value\` out of \`--max\` (default 100).
-
-\`\`\`html
-<div class="meter good" style="--value: 62" title="62%"></div>
-\`\`\`
-
-**Definitions.** A \`dl\` lays terms out beside their descriptions; wrap identifiers in \`code\`.
-
-\`\`\`html
-<dl>
-  <dt><code>f39dd456</code></dt><dd>Clip cutter uses the IP chain.</dd>
-  <dt><code>2da27a8d</code></dt><dd>Download cap grows with the clip.</dd>
-</dl>
-\`\`\`
-
-**Tables and disclosure.** \`table\` is styled; give numeric cells \`class="num"\`. \`details\` with a
-\`summary\` hides secondary material.
 `;

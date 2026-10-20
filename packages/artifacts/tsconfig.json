@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src", "test"]
+  "compilerOptions": { "lib": ["es2024", "dom", "dom.iterable"] },
+  "include": ["src", "test"],
+  "references": [{ "path": "../browser" }]
 }

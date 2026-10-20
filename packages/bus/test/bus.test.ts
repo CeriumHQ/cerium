@@ -128,6 +128,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
           "ask_advisor",
           "ask_user",
           "artifact_guide",
+          "artifact_preview",
         ],
       );
 

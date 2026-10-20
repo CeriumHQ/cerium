@@ -1,9 +1,9 @@
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { artifactHostPage } from "@cerium/artifacts";
 import { defineConfig, transformWithOxc, type Plugin } from "vite-plus";
 
 /** Written by `bun run dev:backend`: where the development backend listens and its launch token. */
@@ -37,19 +37,24 @@ const devBackendConnection = (): Plugin => ({
   },
 });
 
-const artifactRuntimeFile = fileURLToPath(
-  new URL("src/features/transcript/artifactRuntime.ts", import.meta.url),
-);
-
 /**
- * The one script an artifact's frame runs (src/features/transcript/artifactRuntime.ts), as a fixed
- * string, so the web client's policy can admit it by its hash.
+ * The page an artifact's frame loads, `artifact.html` beside index.html in every build and at the dev
+ * server's root. It carries its own policy, which lets an agent's page run its scripts; a sandboxed
+ * frame keeps them in an opaque origin, away from the app.
  */
-const artifactScript = async () => {
-  const source = await readFile(artifactRuntimeFile, "utf8");
-  const { code } = await transformWithOxc(source, artifactRuntimeFile, { lang: "ts" });
-  return `(() => {\n${code.replace(/^export /gm, "").trim()}\nartifactRuntime(HEIGHT_MESSAGE);\n})();`;
-};
+const artifactHost = (): Plugin => ({
+  name: "cerium-artifact-host",
+  configureServer(server) {
+    server.middlewares.use("/artifact.html", (_request, response) => {
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.setHeader("cache-control", "no-cache");
+      response.end(artifactHostPage());
+    });
+  },
+  generateBundle() {
+    this.emitFile({ type: "asset", fileName: "artifact.html", source: artifactHostPage() });
+  },
+});
 
 const serviceWorkerFile = fileURLToPath(new URL("src/web/serviceWorker.ts", import.meta.url));
 
@@ -61,13 +66,13 @@ const serviceWorkerScript = async () => {
 };
 
 /**
- * The web client's Content-Security-Policy: every script is the app's
- * own, or an artifact frame's runtime, which the frame inherits this policy for.
+ * The web client's Content-Security-Policy: every script is the app's own. Artifact frames load
+ * `artifact.html`, which brings a policy of its own.
  */
-const contentPolicy = (artifactScript: string) =>
+const contentPolicy = () =>
   [
     "default-src 'self'",
-    `script-src 'self' 'sha256-${createHash("sha256").update(artifactScript).digest("base64")}'`,
+    "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     // The file viewer plays a thread's sounds and videos from the bytes it read.
@@ -119,7 +124,7 @@ const webHead = `
  * `/v/<version>/` and the newest at its root too; scripts/assets.ts in apps/relay lays the
  * builds out and writes their `_headers`.
  */
-const webClient = (artifact: string, version: string): Plugin => ({
+const webClient = (version: string): Plugin => ({
   name: "cerium-web-client",
   transformIndexHtml: (html) => html.replace("</head>", `${webHead}  </head>`),
   configureServer(server) {
@@ -137,7 +142,7 @@ const webClient = (artifact: string, version: string): Plugin => ({
     }
     this.emitFile({ type: "asset", fileName: "sw.js", source: await serviceWorkerScript() });
     const pageHeaders = [
-      `Content-Security-Policy: ${contentPolicy(artifact)}`,
+      `Content-Security-Policy: ${contentPolicy()}`,
       "X-Content-Type-Options: nosniff",
       "Referrer-Policy: no-referrer",
       "Permissions-Policy: camera=(), microphone=(), geolocation=()",
@@ -161,14 +166,12 @@ const relay = process.env["CERIUM_RELAY"] ?? "http://localhost:8787";
 
 export default defineConfig(async ({ command, mode }) => {
   const web = mode === "web";
-  const artifact = await artifactScript();
   return {
     // The packaged shell loads the built UI from a file, so asset URLs stay relative to index.html.
     // The relay serves each version's web build from a folder of its own; the dev server, from its
     // root.
     base: web ? (command === "build" ? `/v/${version}/` : "/") : "./",
     define: {
-      __ARTIFACT_RUNTIME__: JSON.stringify(artifact),
       __CERIUM_VERSION__: JSON.stringify(version),
     },
     build: web ? { outDir: "dist-web" } : {},
@@ -176,7 +179,8 @@ export default defineConfig(async ({ command, mode }) => {
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),
-      web ? webClient(artifact, version) : devBackendConnection(),
+      artifactHost(),
+      web ? webClient(version) : devBackendConnection(),
     ],
     server: web
       ? {
