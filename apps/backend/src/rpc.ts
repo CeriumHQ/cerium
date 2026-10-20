@@ -13,7 +13,7 @@ import { Files, type FilesError } from "./files.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
-import { subscriptionUsage } from "./usage.ts";
+import { SubscriptionUsage } from "./usage.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
@@ -38,6 +38,7 @@ export const Handlers = MachineRpcs.toLayer(
     const projects = yield* Projects;
     const terminals = yield* Terminals;
     const store = yield* Store;
+    const usage = yield* SubscriptionUsage;
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -119,7 +120,7 @@ export const Handlers = MachineRpcs.toLayer(
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
       HarnessManifests: () => Effect.succeed([...adapters.values()].map((adapter) => adapter.manifest)),
-      SubscriptionUsage: () => subscriptionUsage(adapters),
+      WatchSubscriptionUsage: () => usage.watch,
       LoginHarness: ({ provider }) =>
         Stream.unwrap(
           Effect.fromNullishOr(adapters.get(provider)?.login).pipe(

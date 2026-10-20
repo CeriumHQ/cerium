@@ -17,7 +17,6 @@ import {
   ModelInfo,
   NotificationKind,
   ProjectInfo,
-  ProviderUsage,
   PushSubscriptionInfo,
   ProviderId,
   QuestionResponse,
@@ -34,6 +33,7 @@ import {
   ThreadRef,
   UiEvent,
   UiEvents,
+  UsageSnapshot,
   WorkspaceEntry,
   WorktreeChanges,
   ReadEntry,
@@ -218,10 +218,11 @@ export const MachineRpcs = RpcGroup.make(
   /** What each installed adapter's harness can do; ones this version can't read are skipped. */
   Rpc.make("HarnessManifests", { success: LenientArray(CapabilityManifest) }),
   /**
-   * The usage limits of each harness signed in with a subscription, read from the harness now;
-   * harnesses without one are left out. Since `RPC_VERSION` 6.
+   * The usage limits of each harness signed in with a subscription: the last reading at once, then
+   * each change as the harnesses are read again (on subscribing, after their turns end, and every few
+   * minutes). Harnesses without one are left out. Since `RPC_VERSION` 6.
    */
-  Rpc.make("SubscriptionUsage", { success: LenientArray(ProviderUsage) }),
+  Rpc.make("WatchSubscriptionUsage", { success: UsageSnapshot, stream: true }),
   /**
    * Runs a harness's own browser sign-in (status `browserLogin`). Unsubscribing cancels it; the
    * harness's SDK keeps the credential and Cerium never sees it.

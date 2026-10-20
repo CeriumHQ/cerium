@@ -4,8 +4,10 @@ import {
   leftLabel,
   leftPercent,
   meterLevel,
+  paceOf,
   planName,
   resetLabel,
+  runsOutLabel,
   spendLabel,
 } from "../src/features/settings/usageModel.ts";
 
@@ -45,6 +47,25 @@ describe("usage meters", () => {
     expect(resetLabel(new Date(2026, 9, 22, 15, 59).getTime(), now)).toMatch(/^Resets Thu 3:59\sPM$/u);
     expect(resetLabel(new Date(2026, 10, 17).getTime(), now)).toBe("Resets Nov 17");
     expect(resetLabel(new Date(2027, 0, 3).getTime(), now)).toBe("Resets Jan 3, 2027");
+  });
+
+  it("paces a window: how much of it has gone, and when use outruns it", () => {
+    const now = 1_000_000_000;
+    const hour = 3_600_000;
+    // A 5-hour window with 2 hours left: 60% of it gone.
+    const window = (usedPercent: number) =>
+      meter(usedPercent, { resetsAt: now + 2 * hour, windowMinutes: 300 });
+    expect(paceOf(window(50), now)).toEqual({ elapsed: 60, fast: false });
+    const fast = paceOf(window(80), now);
+    expect(fast?.fast).toBe(true);
+    // 80% in 3 hours: the last 20% goes in 45 minutes, before the reset.
+    expect(fast?.runsOutAt).toBe(now + 0.75 * hour);
+    expect(meterLevel(window(80), fast)).toBe("warning");
+    expect(meterLevel(window(50), paceOf(window(50), now))).toBe("normal");
+    expect(paceOf(meter(50), now)).toBeUndefined();
+    expect(paceOf(window(100), now)).toBeUndefined();
+    expect(runsOutLabel(now + 0.75 * hour, now)).toBe("Runs out in ~45 min");
+    expect(runsOutLabel(now + 50 * hour, now)).toBe("Runs out in ~2 days");
   });
 
   it("names plans", () => {

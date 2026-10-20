@@ -1,14 +1,18 @@
+import { Effect, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
 import { Backend, connectionAtom } from "./client.ts";
 
 /**
- * The driven machine's subscribed harnesses and their usage meters. Kept a minute after Settings →
- * Usage closes, so moving between categories doesn't ask the harnesses again; refreshing does.
+ * The driven machine's subscribed harnesses and their usage meters: the last reading, then each
+ * change as the backend reads them again. Refreshing subscribes again, which reads them now. Kept a
+ * minute after Settings → Usage closes, so moving between categories doesn't ask again.
  */
 export const usageAtom = Backend.runtime
   .atom((get) => {
     get(connectionAtom);
-    return Backend.use((client) => client("SubscriptionUsage", undefined));
+    return Stream.unwrap(
+      Backend.use((client) => Effect.succeed(client("WatchSubscriptionUsage", undefined))),
+    );
   })
   .pipe(Atom.setIdleTTL("1 minute"));

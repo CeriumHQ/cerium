@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
 import { Notifications } from "./notify.ts";
+import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { Files } from "./files.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
@@ -133,8 +134,17 @@ export const backendLayer = (options: BackendOptions) =>
   ).pipe(
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
-    // what the agents do on the user's Discord profile when they ask for it.
-    Layer.provideMerge(Layer.mergeAll(CloudCopy, CloudThreads.layer, Notifications.layer, discordPresence())),
+    // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
+    // subscription usage for Settings → Usage.
+    Layer.provideMerge(
+      Layer.mergeAll(
+        CloudCopy,
+        CloudThreads.layer,
+        Notifications.layer,
+        discordPresence(),
+        SubscriptionUsage.layer,
+      ),
+    ),
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(
       worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),

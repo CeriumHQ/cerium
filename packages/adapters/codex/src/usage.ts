@@ -28,6 +28,8 @@ export const CodexRateLimits = Schema.Struct({
   rateLimits: Snapshot,
   /** Every metered bucket by its `limitId`; null from servers that report only one. */
   rateLimitsByLimitId: Schema.NullOr(Schema.Record(Schema.String, Snapshot)),
+  /** Free resets of the limits; only the count is read. */
+  rateLimitResetCredits: Schema.optionalKey(Schema.NullOr(Schema.Struct({ availableCount: Schema.Finite }))),
 });
 export type CodexRateLimits = typeof CodexRateLimits.Type;
 const decodeRateLimits = Schema.decodeUnknownEffect(CodexRateLimits);
@@ -80,7 +82,12 @@ export const toCodexReport = (limits: CodexRateLimits): Option.Option<Subscripti
   const ordered = buckets.length === 0 ? [limits.rateLimits] : buckets;
   const main = ordered.filter((each) => each.limitId === null || each.limitId === MAIN_BUCKET);
   const rest = ordered.filter((each) => !main.includes(each));
-  return Option.some({ plan, meters: [...main, ...rest].flatMap(toMeters) });
+  const credits = limits.rateLimitResetCredits?.availableCount;
+  return Option.some({
+    plan,
+    meters: [...main, ...rest].flatMap(toMeters),
+    ...(credits === undefined || credits < 0 ? {} : { resetCredits: Math.floor(credits) }),
+  });
 };
 
 const failure = (message: string) => (cause: unknown) =>

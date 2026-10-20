@@ -1,9 +1,9 @@
 import { Button } from "@base-ui/react/button";
-import type { ProviderUsage, UsageMeter } from "@cerium/protocol";
+import type { ProviderUsage, UsageMeter, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Gauge, RefreshCw } from "lucide-react";
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
 import { usageAtom } from "../../backend/usage.ts";
@@ -16,16 +16,15 @@ import {
   leftLabel,
   leftPercent,
   meterLevel,
+  paceOf,
   planName,
   resetLabel,
   resetMoment,
+  runsOutLabel,
   spendLabel,
 } from "./usageModel.ts";
 
-/** How often an open page asks the harnesses again. */
-const REFRESH_EVERY = 5 * 60_000;
-
-/** Ticks twice a minute, so "Resets in 4 min" keeps up. */
+/** Ticks twice a minute, so "Resets in 4 min" and the time bands keep up. */
 function useNow() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -40,17 +39,20 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
   const refresh = useAtomRefresh(usageAtom);
   const driven = useAtomValue(machineAtom);
   const now = useNow();
-  const refreshLater = useEffectEvent(refresh);
-  useEffect(() => {
-    const timer = setInterval(() => refreshLater(), REFRESH_EVERY);
-    return () => clearInterval(timer);
-  }, []);
 
-  const usage = AsyncResult.getOrElse(result, (): ReadonlyArray<ProviderUsage> | undefined => undefined);
-  const checking = result.waiting;
+  // The backend reads the harnesses again after their turns and every few minutes, and sends each
+  // change; Refresh subscribes again, which reads them now.
+  const snapshot = AsyncResult.getOrElse(result, (): UsageSnapshot | undefined => undefined);
+  const checking = snapshot === undefined ? result.waiting : snapshot.checking;
+  // While the first read runs, the page waits for it rather than saying there's nothing to show.
+  const usage =
+    snapshot === undefined || (snapshot.usage.length === 0 && snapshot.checking) ? undefined : snapshot.usage;
   const checkedAt = usage
     ?.flatMap((each) => (each._tag === "Subscribed" ? [each.checkedAt] : []))
     .reduce((latest, at) => Math.max(latest, at), 0);
+  const paced = usage?.some(
+    (each) => each._tag === "Subscribed" && each.meters.some((meter) => paceOf(meter, now) !== undefined),
+  );
 
   return (
     <SettingsPage
@@ -77,7 +79,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
       }
     >
       <div className="flex flex-col gap-4">
-        {AsyncResult.isFailure(result) && usage === undefined ? (
+        {AsyncResult.isFailure(result) && snapshot === undefined ? (
           <SettingsCard className="px-4 py-3.5 text-[13px] text-error">
             {driven
               ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
@@ -90,10 +92,26 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
         ) : (
           usage.map((each) => <ProviderCard key={each.provider} usage={each} now={now} />)
         )}
-        {checkedAt ? (
-          <p className="text-right text-xs text-fg-tertiary tabular-nums">
-            Updated {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-          </p>
+        {checkedAt || paced ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-fg-tertiary">
+            {paced ? (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-3 rounded-full bg-fg-secondary" />
+                  Left
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-3 rounded-full bg-line-strong" />
+                  Time left in the window
+                </span>
+              </>
+            ) : null}
+            {checkedAt ? (
+              <span className="ml-auto tabular-nums">
+                Updated {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </SettingsPage>
@@ -111,6 +129,15 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg-primary">
           {harnessName[usage.provider]}
         </span>
+        {usage._tag === "Subscribed" && usage.resetCredits ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-secondary tabular-nums">
+            {usage.resetCredits} free reset{usage.resetCredits === 1 ? "" : "s"}
+            <InfoTip label="About free resets">
+              {harnessName[usage.provider]} grants these. Each one restores your limits once; use one from{" "}
+              {harnessName[usage.provider]} when you hit a limit.
+            </InfoTip>
+          </span>
+        ) : null}
         {usage._tag === "Subscribed" && usage.plan ? (
           <span className="shrink-0 rounded-md bg-surface-hover px-2 py-0.5 text-xs font-medium text-fg-secondary">
             {planName(usage.plan)}
@@ -134,6 +161,15 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
           ))}
         </ul>
       )}
+      {usage._tag === "Subscribed" && usage.refreshError ? (
+        <p className="flex items-start gap-2 border-t border-line-subtle px-4 py-2.5 text-xs leading-relaxed text-fg-tertiary">
+          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-attention" />
+          <span>
+            Couldn't refresh: {usage.refreshError} These are from{" "}
+            {new Date(usage.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+          </span>
+        </p>
+      ) : null}
     </SettingsCard>
   );
 }
@@ -141,11 +177,17 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
 const fillTone = { normal: "bg-fg-secondary", warning: "bg-attention", critical: "bg-error" } as const;
 const textTone = { normal: "text-fg-primary", warning: "text-attention", critical: "text-error" } as const;
 
-/** One meter: what's left of it as a bar that empties, and when it starts again. */
+/**
+ * One meter: what's left of it as a bar that empties, and when it starts again. Behind the bar, a
+ * lighter band shows how much of the window is left: a bar shorter than its band is running out
+ * faster than time.
+ */
 function Meter({ meter, now }: { meter: UsageMeter; now: number }) {
-  const level = meterLevel(meter);
+  const pace = paceOf(meter, now);
+  const level = meterLevel(meter, pace);
   const left = leftPercent(meter);
   const spent = spendLabel(meter);
+  const runsOut = pace?.fast && pace.runsOutAt !== undefined ? runsOutLabel(pace.runsOutAt, now) : undefined;
   return (
     <div className="flex flex-col gap-2 px-4 py-3">
       <div className="flex items-baseline gap-3">
@@ -155,9 +197,15 @@ function Meter({ meter, now }: { meter: UsageMeter; now: number }) {
         </span>
       </div>
       {/* The words above say what the bar shows, so it is drawn for the eye only. */}
-      <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-surface-hover">
+      <div aria-hidden className="relative h-1.5 overflow-hidden rounded-full bg-surface-hover">
+        {pace ? (
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-line-strong transition-[width] duration-500 ease-out-soft"
+            style={{ width: `${100 - pace.elapsed}%` }}
+          />
+        ) : null}
         <div
-          className={`h-full rounded-full transition-[width] duration-500 ease-out-soft ${fillTone[level]}`}
+          className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ease-out-soft ${fillTone[level]}`}
           style={{ width: `${left}%` }}
         />
       </div>
@@ -169,9 +217,13 @@ function Meter({ meter, now }: { meter: UsageMeter; now: number }) {
         ) : (
           <span className="min-w-0 truncate">{spent}</span>
         )}
-        <span className="ml-auto shrink-0">
-          {meter.resetsAt !== undefined && spent ? spent : `${Math.round(meter.usedPercent)}% used`}
-        </span>
+        {runsOut ? (
+          <span className="ml-auto shrink-0 text-attention">{runsOut}</span>
+        ) : (
+          <span className="ml-auto shrink-0">
+            {meter.resetsAt !== undefined && spent ? spent : `${Math.round(meter.usedPercent)}% used`}
+          </span>
+        )}
       </div>
     </div>
   );

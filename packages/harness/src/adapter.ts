@@ -102,6 +102,7 @@ export interface CompletionRequest {
 export interface SubscriptionReport {
   readonly plan?: string;
   readonly meters: ReadonlyArray<UsageMeter>;
+  readonly resetCredits?: number;
 }
 
 /** A live harness session. Closing the scope it was started in ends the session. */

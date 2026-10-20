@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { LenientArray } from "./compat.ts";
 import { EpochMillis, ProviderId } from "./ids.ts";
 
 // A subscription's usage limits as each harness reports them, for Settings → Usage. Cerium shows
@@ -44,8 +45,12 @@ export const ProviderUsage = Schema.Union([
     plan: Schema.optionalKey(Schema.NonEmptyString),
     /** In the harness's order; the first is the one it treats as the headline. */
     meters: Schema.Array(UsageMeter),
+    /** Free resets of the limits the plan holds, as Codex grants them; absent when it says nothing. */
+    resetCredits: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
     /** When the harness answered. */
     checkedAt: EpochMillis,
+    /** Why the latest read failed, when these meters are the last good ones. Written for the user. */
+    refreshError: Schema.optionalKey(Schema.String),
   }),
   Schema.TaggedStruct("UsageUnreadable", {
     provider: ProviderId,
@@ -54,3 +59,11 @@ export const ProviderUsage = Schema.Union([
   }),
 ]);
 export type ProviderUsage = typeof ProviderUsage.Type;
+
+/** Every subscribed harness's usage as the backend last read it, in harness order. */
+export const UsageSnapshot = Schema.Struct({
+  usage: LenientArray(ProviderUsage),
+  /** A read is under way, so harnesses not listed yet may still appear. */
+  checking: Schema.Boolean,
+});
+export type UsageSnapshot = typeof UsageSnapshot.Type;
