@@ -143,8 +143,11 @@ export class Store extends Context.Service<
       offset: number,
       limit: number,
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
-    /** Marks agents that were live when the app last exited as stopped: their sessions are gone. */
-    stopLiveAgents(updatedAt: number): Effect.Effect<void, StoreError>;
+    /**
+     * Marks agents that were live when the app last exited as stopped: their sessions are gone. They
+     * keep when they last changed, so a restart doesn't make their threads look new.
+     */
+    readonly stopLiveAgents: Effect.Effect<void, StoreError>;
     /** Every stored setting by key; the values are whatever was written, undecoded. */
     readonly readSettings: Effect.Effect<Readonly<Record<string, unknown>>, StoreError>;
     /** Stores each given setting atomically, replacing what was there. */
@@ -347,13 +350,12 @@ export class Store extends Context.Service<
                 .limit(limit)
                 .offset(offset),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
-          stopLiveAgents: (updatedAt) =>
-            query("Could not stop live agents", () =>
-              db
-                .update(agents)
-                .set({ state: "stopped", updatedAt })
-                .where(inArray(agents.state, ["queued", "running", "idle"])),
-            ),
+          stopLiveAgents: query("Could not stop live agents", () =>
+            db
+              .update(agents)
+              .set({ state: "stopped" })
+              .where(inArray(agents.state, ["queued", "running", "idle"])),
+          ),
           readSettings: query("Could not read settings", () => db.select().from(settings)).pipe(
             Effect.map((rows) => Object.fromEntries(rows.map((row) => [row.key, row.value]))),
           ),

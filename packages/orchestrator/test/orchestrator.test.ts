@@ -57,6 +57,12 @@ describe("Orchestrator", () => {
       assert.notInclude(stored, "MessageDelta");
       const agents = yield* orchestrator.listAgents(lead.threadId);
       assert.strictEqual(agents[0]?.providerSessionId, "fake-1");
+
+      yield* Effect.sleep("5 millis");
+      yield* orchestrator.stopAgent(lead.id);
+      const stopped = (yield* orchestrator.listAgents(lead.threadId))[0];
+      assert.strictEqual(stopped?.state, "stopped");
+      assert.strictEqual(stopped?.updatedAt, agents[0]?.updatedAt, "stopping isn't activity");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

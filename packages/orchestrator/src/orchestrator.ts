@@ -348,7 +348,7 @@ export class Orchestrator extends Context.Service<
 
       // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
       // resumes its harness session when the user next messages it.
-      yield* store.stopLiveAgents(yield* Clock.currentTimeMillis).pipe(Effect.mapError(unavailable));
+      yield* store.stopLiveAgents.pipe(Effect.mapError(unavailable));
       const globalPermits = yield* Semaphore.make(config.globalConcurrency);
       /**
        * One user message accepted at a time, so messages sent together keep their order and don't
@@ -453,7 +453,9 @@ export class Orchestrator extends Context.Service<
       const setState = (rt: Runtime, state: AgentState) =>
         Effect.gen(function* () {
           if (rt.info.state === state) return;
-          const updatedAt = yield* Clock.currentTimeMillis;
+          // Stopping isn't activity: agents stop as the app quits, and that mustn't make their
+          // threads unread or reorder them.
+          const updatedAt = state === "stopped" ? rt.info.updatedAt : yield* Clock.currentTimeMillis;
           rt.info = { ...rt.info, state, updatedAt };
           yield* store.updateAgent(rt.info.id, { state, updatedAt }).pipe(Effect.mapError(unavailable));
           yield* emit(rt, { _tag: "AgentStateChanged", state });

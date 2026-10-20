@@ -298,9 +298,13 @@ describe("Store", () => {
         );
 
         yield* store.updateAgent(child.id, { state: "failed", updatedAt: 20 });
-        yield* store.stopLiveAgents(30);
-        const states = (yield* store.listAgents(thread.id)).map((agent) => agent.state);
-        assert.deepStrictEqual(states, ["stopped", "failed"]);
+        yield* store.stopLiveAgents;
+        const stopped = yield* store.listAgents(thread.id);
+        assert.deepStrictEqual(
+          stopped.map((agent) => agent.state),
+          ["stopped", "failed"],
+        );
+        assert.strictEqual(stopped[0]?.updatedAt, lead.updatedAt, "stopping isn't activity");
       }),
     ),
   );
