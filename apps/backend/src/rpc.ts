@@ -1,8 +1,9 @@
 import { deviceHandlers } from "@cerium/account";
+import { newestArtifacts } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
-import { isStreamDelta, type ProviderId, type SkillInfo } from "@cerium/protocol";
-import { CeriumError, CeriumRpcs, MachineRpcs } from "@cerium/rpc";
+import { isStreamDelta, LEAD_ROLE, type AgentEvent, type ProviderId, type SkillInfo } from "@cerium/protocol";
+import { CeriumError, CeriumRpcs, MachineRpcs, type ListedArtifact } from "@cerium/rpc";
 import { Store, type StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -27,6 +28,32 @@ const SEARCH_LIMIT = 50;
 
 /** How many threads the thread search lists. */
 const THREAD_SEARCH_LIMIT = 30;
+
+/** How an artifact's fence starts in a message; a longer backtick fence holds the first. */
+const ARTIFACT_FENCES = ["```artifact", "~~~artifact"];
+
+/** How many messages, and artifacts, the artifacts panel lists for a project. */
+const ARTIFACT_MESSAGES = 200;
+const ARTIFACT_LIMIT = 120;
+
+/** The artifacts in completed messages given newest first (each once), newest first. */
+const listedArtifacts = (messages: ReadonlyArray<AgentEvent>): Array<ListedArtifact> => {
+  const completed = new Map<
+    string,
+    { threadId: AgentEvent["threadId"]; at: number; messageId: string; text: string }
+  >();
+  for (const { id, threadId, at, payload } of messages) {
+    if (payload._tag === "MessageCompleted" && !completed.has(id)) {
+      completed.set(id, { threadId, at, messageId: payload.messageId, text: payload.text });
+    }
+  }
+  return newestArtifacts(completed.values(), ARTIFACT_LIMIT).map(({ message, code }) => ({
+    threadId: message.threadId,
+    messageId: message.messageId,
+    at: message.at,
+    code,
+  }));
+};
 
 /** What this machine serves its own UI and, through the relay, other devices. */
 export const Handlers = MachineRpcs.toLayer(
@@ -152,6 +179,20 @@ export const Handlers = MachineRpcs.toLayer(
         }).pipe(
           Effect.map(({ png }) => ({ mediaType: "image/png", data: Buffer.from(png).toString("base64") })),
         ),
+      ListArtifacts: ({ folder }) =>
+        Effect.gen(function* () {
+          const leads = (yield* orchestrator.threadOverviews).flatMap(({ thread, agents }) =>
+            thread.archivedAt === undefined && (thread.worktree?.project ?? thread.cwd) === folder
+              ? agents.flatMap((agent) => (agent.role === LEAD_ROLE ? [agent.id] : []))
+              : [],
+          );
+          const messages = (yield* Effect.forEach(ARTIFACT_FENCES, (fence) =>
+            store.listMessagesContaining(leads, fence, ARTIFACT_MESSAGES),
+          ))
+            .flat()
+            .toSorted((a, b) => b.at - a.at || b.sequence - a.sequence);
+          return listedArtifacts(messages);
+        }).pipe(Effect.mapError(refuse)),
       ReadImage: ({ path }) => workspace.readImage(path).pipe(Effect.mapError(refuse)),
       ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
       FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),

@@ -3,6 +3,8 @@ export const SIDEBAR = { key: "cerium:sidebarWidth", fallback: 278, min: 232, ma
 export const INSPECTOR = { key: "cerium:inspectorWidth", fallback: 320, min: 280, max: 560 } as const;
 /** The files panel takes the inspector's place, a little wider for names and their status. */
 export const FILES = { key: "cerium:filesWidth", fallback: 340, min: 280, max: 560 } as const;
+/** The artifacts panel takes it too, wider for the pages it shows. */
+export const ARTIFACTS = { key: "cerium:artifactsWidth", fallback: 360, min: 280, max: 640 } as const;
 
 /** What a panel beside the transcript is allowed in width. */
 export interface SidePanelSpec {

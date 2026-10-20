@@ -2,6 +2,10 @@ import { assert, describe, it } from "@effect/vitest";
 import { Script } from "node:vm";
 
 import {
+  artifactBlocks,
+  artifactId,
+  artifactTitle,
+  newestArtifacts,
   artifactDocument,
   artifactGuide,
   artifactHostPage,
@@ -242,5 +246,62 @@ describe("artifactHostPage", () => {
     // A tab the app opens for an artifact is driven by the app, its opener.
     assert.include(page, "window.parent.opener");
     assert.doesNotThrow(() => new Script(/<script>([\s\S]*?)<\/script>/.exec(page)![1]!));
+  });
+});
+
+describe("finding artifacts", () => {
+  it("takes each closed artifact fence's body, in order", () => {
+    const text = [
+      "Here are two.",
+      "```artifact",
+      "<p>one</p>",
+      "```",
+      "```ts",
+      "const x = 1;",
+      "```",
+      "````artifact",
+      "<pre>```</pre>",
+      "````",
+      "~~~ARTIFACT",
+      "<p>three</p>",
+      "~~~",
+    ].join("\r\n");
+    assert.deepStrictEqual(artifactBlocks(text), ["<p>one</p>", "<pre>```</pre>", "<p>three</p>"]);
+  });
+
+  it("skips fences still open, empty ones and inline code", () => {
+    assert.deepStrictEqual(artifactBlocks("```artifact\n<p>half"), []);
+    assert.deepStrictEqual(artifactBlocks("```artifact\n\n```"), []);
+    assert.deepStrictEqual(artifactBlocks("```artifact``` in a sentence"), []);
+    assert.deepStrictEqual(artifactBlocks("```html\n```artifact\n```\n"), []);
+  });
+
+  it("lists pages newest first, each once", () => {
+    const messages = [
+      { text: "```artifact\n<p>b</p>\n```\n```artifact\n<p>c</p>\n```", at: 2 },
+      { text: "```artifact\n<p>a</p>\n```\n```artifact\n<p>b</p>\n```", at: 1 },
+    ];
+    const listed = newestArtifacts(messages, 10);
+    assert.deepStrictEqual(
+      listed.map(({ code, message }) => [code, message.at]),
+      [
+        ["<p>c</p>", 2],
+        ["<p>b</p>", 2],
+        ["<p>a</p>", 1],
+      ],
+    );
+    assert.lengthOf(newestArtifacts(messages, 2), 2);
+    assert.strictEqual(listed[0]!.id, artifactId("  <p>c</p>\n"));
+    assert.notStrictEqual(artifactId("<p>c</p>"), artifactId("<p>b</p>"));
+  });
+
+  it("reads the page's title, not a script's", () => {
+    assert.strictEqual(artifactTitle("<title> Run  times </title><p>x</p>"), "Run times");
+    assert.isUndefined(artifactTitle("<script>const t = '<title>no</title>'</script>"));
+    assert.strictEqual(
+      artifactTitle('<div><h3 class="x">Before &amp; <em>after</em></h3><h2>Later</h2></div>'),
+      "Before & after",
+    );
+    assert.strictEqual(artifactTitle("<title>Page</title><h1>Heading</h1>"), "Page");
   });
 });

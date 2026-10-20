@@ -4,6 +4,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 const SLACK = 48;
 
 /**
+ * Dispatched (bubbling) from inside the viewport by whatever brings a part of the conversation into
+ * view, such as the artifacts panel: the viewport stops following the end, so it stays there.
+ */
+export const REVEAL_EVENT = "cerium:reveal";
+
+/**
  * Keeps a scroll viewport at its end while the content grows, until the user scrolls up to read.
  * A new `pinKey` (the user's latest message) brings it back to the end. Returns the ref for the
  * scrolling element, whether it is following the end, and a way back to the end.
@@ -33,11 +39,19 @@ export function useStickToBottom(pinKey: unknown) {
     const observer = new ResizeObserver(() => {
       if (pinned.current) element.scrollTop = element.scrollHeight;
     });
+    // A scroll made to show something comes too late to unpin: the content growing in the same
+    // frame would take the viewport back to the end first.
+    const onReveal = () => {
+      pinned.current = false;
+      setFollowing(false);
+    };
     element.addEventListener("scroll", onScroll, { passive: true });
+    element.addEventListener(REVEAL_EVENT, onReveal);
     observer.observe(content);
     observer.observe(element);
     return () => {
       element.removeEventListener("scroll", onScroll);
+      element.removeEventListener(REVEAL_EVENT, onReveal);
       observer.disconnect();
     };
   }, []);

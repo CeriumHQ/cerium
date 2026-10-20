@@ -10,6 +10,7 @@ import {
   DeviceId,
   DeviceName,
   DraftEntry,
+  EpochMillis,
   HarnessStatus,
   ImageData,
   LenientArray,
@@ -59,7 +60,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 7;
+export const RPC_VERSION = 8;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -71,6 +72,17 @@ export const MIN_RPC_VERSION = 1;
 export const TUNNEL_HELLO = JSON.stringify(RpcMessage.constPing);
 
 export { CeriumError };
+
+/** An artifact as the artifacts panel lists it: its page and where in which thread it was drawn. */
+export const ListedArtifact = Schema.Struct({
+  threadId: ThreadId,
+  /** The message that holds it. */
+  messageId: Schema.String,
+  /** When that message was completed. */
+  at: EpochMillis,
+  code: Schema.String,
+});
+export type ListedArtifact = typeof ListedArtifact.Type;
 
 // Shared with Cerium's relay, which keeps a copy of every thread.
 export { ThreadOverview, UiEvent };
@@ -271,6 +283,15 @@ export const MachineRpcs = RpcGroup.make(
       variables: Schema.Record(Schema.String, Schema.String),
     },
     success: ImageData,
+    error: CeriumError,
+  }),
+  /**
+   * The artifacts lead agents drew in the threads of a project (the folder, or worktrees of it),
+   * newest first.
+   */
+  Rpc.make("ListArtifacts", {
+    payload: { folder: Schema.NonEmptyString },
+    success: Schema.Array(ListedArtifact),
     error: CeriumError,
   }),
   /** An image file's bytes, for showing attachments and images agents read. */

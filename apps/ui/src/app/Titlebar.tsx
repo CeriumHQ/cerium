@@ -1,6 +1,15 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
-import { FolderTree, Minus, PanelLeft, Square, SquarePen, SquareTerminal, X } from "lucide-react";
+import {
+  FolderTree,
+  GalleryVerticalEnd,
+  Minus,
+  PanelLeft,
+  Square,
+  SquarePen,
+  SquareTerminal,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CeriumMark } from "../components/CeriumMark.tsx";
@@ -34,6 +43,8 @@ interface TitlebarProps {
   readonly onToggleInspector: () => void;
   /** The files panel's button, offered while there is a folder to browse. */
   readonly files?: { readonly open: boolean; readonly onToggle: () => void };
+  /** The artifacts panel's button, offered while the open thread has artifacts to list. */
+  readonly artifacts?: { readonly open: boolean; readonly onToggle: () => void };
   /** The terminal drawer's button, offered while the thread can have a terminal. */
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** Which of the account's computers the window drives, once there's a choice. */
@@ -56,6 +67,7 @@ export function Titlebar({
   inspectorOpen,
   onToggleInspector,
   files,
+  artifacts,
   terminal,
   machinePicker,
   tabs,
@@ -131,6 +143,9 @@ export function Titlebar({
           {terminal && !settingsOpen ? (
             <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
           ) : null}
+          {artifacts && !settingsOpen ? (
+            <ArtifactsToggle open={artifacts.open} onToggle={artifacts.onToggle} />
+          ) : null}
           {files && !settingsOpen ? <FilesToggle open={files.open} onToggle={files.onToggle} /> : null}
           {agents.length > 0 && !settingsOpen ? (
             <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
@@ -158,6 +173,26 @@ export function FilesToggle({ open, onToggle }: { open: boolean; onToggle: () =>
         }`}
       >
         <FolderTree size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
+  );
+}
+
+/** Opens the artifacts panel, which shares the agents panel's place. */
+export function ArtifactsToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={open ? "Hide artifacts" : "Show artifacts"}>
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="Artifacts"
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <GalleryVerticalEnd size={15} strokeWidth={1.75} />
       </Button>
     </Tooltip>
   );

@@ -71,6 +71,13 @@ import {
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
+import { ArtifactsPanel } from "../features/artifacts/ArtifactsPanel.tsx";
+import {
+  ARTIFACTS_VERSION,
+  revealArtifact,
+  threadArtifacts,
+  type PanelArtifact,
+} from "../features/artifacts/model.ts";
 import type { OutgoingMessage, ThreadSetup } from "../features/composer/Composer.tsx";
 import { hasContent } from "../features/composer/draft.ts";
 import {
@@ -231,6 +238,8 @@ function Workspace() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   /** The files panel, which takes the inspector's place: one of the two is open at a time. */
   const [filesOpen, setFilesOpen] = useState(false);
+  /** The artifacts panel, which takes the same place. */
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
   /** The narrow window's pane: the threads, or the open (or new) thread. */
@@ -609,10 +618,17 @@ function Workspace() {
   const toggleInspector = () => {
     setInspectorOpen(!inspectorOpen);
     setFilesOpen(false);
+    setArtifactsOpen(false);
   };
   const toggleFiles = () => {
     setFilesOpen(!filesOpen);
     setInspectorOpen(false);
+    setArtifactsOpen(false);
+  };
+  const toggleArtifacts = () => {
+    setArtifactsOpen(!artifactsOpen);
+    setInspectorOpen(false);
+    setFilesOpen(false);
   };
   /**
    * The open work thread's folder, or the open file's, can be browsed here: it's on the machine the
@@ -665,11 +681,34 @@ function Workspace() {
     activePath: openFile?.root === filesRoot ? openFile?.path : undefined,
     onClose: () => setFilesOpen(false),
   });
+  // The artifacts the open thread's lead drew, and its project's, which its machine lists when it can.
+  const viewedLead = viewed ? leadOf(viewed.agents) : undefined;
+  const viewedArtifacts = viewedLead ? threadArtifacts(events, viewedLead.id) : [];
+  const artifactsProject =
+    selected && (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ARTIFACTS_VERSION)
+      ? (selected.thread.worktree?.project ?? selected.thread.cwd)
+      : undefined;
+  const artifactsAvailable =
+    viewed !== undefined && (viewedArtifacts.length > 0 || artifactsProject !== undefined);
+  const threadOf = (threadId: string) =>
+    overviews.find((overview) => overview.thread.id === threadId)?.thread;
+  /** Brings an artifact into view in its conversation, opening that thread first when it isn't open. */
+  const showArtifact = (artifact: PanelArtifact) => {
+    if (artifact.threadId !== viewed?.thread.id) {
+      const summary = summaries.find((candidate) => candidate.id === artifact.threadId);
+      if (summary === undefined) return;
+      openSummary(summary);
+    }
+    // The narrow window shows one pane: the conversation takes the panel's place.
+    if (compact) setArtifactsOpen(false);
+    void revealArtifact(artifact.id);
+  };
   const agentActions: AgentActions = {
     onShow: (agentId) => {
       setInspectedAgent(agentId);
       setInspectorOpen(true);
       setFilesOpen(false);
+      setArtifactsOpen(false);
     },
     onMessageLead: () => focusComposer(),
     onInterrupt: (agentId) => void attempt(interrupt({ payload: { agentId: agentId as AgentId } })),
@@ -1286,6 +1325,26 @@ function Workspace() {
       filesOpen={filesOpen}
       onToggleFiles={toggleFiles}
       onCloseFiles={() => setFilesOpen(false)}
+      artifacts={
+        artifactsOpen && artifactsAvailable && viewed && !inspectorOpen && !filesOpen ? (
+          <ArtifactsPanel
+            threadId={viewed.thread.id}
+            artifacts={viewedArtifacts}
+            project={artifactsProject}
+            threadTitle={(threadId) => threadOf(threadId)?.title}
+            folderOf={(threadId) => threadOf(threadId)?.cwd}
+            onShow={showArtifact}
+            onReply={
+              cloudSelected ? undefined : (text) => messageBox.append({ segments: [{ kind: "text", text }] })
+            }
+            onClose={() => setArtifactsOpen(false)}
+          />
+        ) : undefined
+      }
+      artifactsAvailable={artifactsAvailable}
+      artifactsOpen={artifactsOpen}
+      onToggleArtifacts={toggleArtifacts}
+      onCloseArtifacts={() => setArtifactsOpen(false)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
       {compact ? (

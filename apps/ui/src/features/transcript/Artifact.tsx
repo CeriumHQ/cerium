@@ -2,6 +2,8 @@ import {
   ARTIFACT_COLUMN_WIDTH,
   ARTIFACT_MAX_HEIGHT,
   artifactDocument,
+  artifactId,
+  artifactTitle,
   fontFaces,
   isLegacyArtifact,
   localFiles,
@@ -82,13 +84,6 @@ const themeSnapshot = (): string => {
   return JSON.stringify(themeFromTokens(mode, (token) => style.getPropertyValue(token)));
 };
 
-/** The artifact's `<title>`, which agents are asked to give it. */
-const artifactTitle = (code: string): string | undefined => {
-  const markup = code.replace(/<(script|style)\b[\s\S]*?(<\/\1\s*>|$)/gi, "");
-  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(markup)?.[1]?.replace(/\s+/g, " ").trim();
-  return title ? title.slice(0, 80) : undefined;
-};
-
 /** An agent's HTML visual: drawn once its code fence closes, with a placeholder while it streams. */
 export function Artifact({ code, isIncomplete }: CustomRendererProps) {
   const title = artifactTitle(code);
@@ -147,6 +142,8 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
     <div
       ref={view}
       data-artifact
+      // The artifacts panel finds it in the conversation by it.
+      data-artifact-id={artifactId(code)}
       {...(pointerInside ? { "data-hover": "" } : {})}
       className="group/artifact relative"
     >
@@ -172,29 +169,137 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
           <Maximize2 size={13} strokeWidth={1.75} />
         </Button>
       </div>
-      <Dialog.Root open={expanded} onOpenChange={setExpanded}>
-        <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-          <Dialog.Popup className="fixed top-1/2 left-1/2 flex h-[calc(100dvh-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
-            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
-              <Dialog.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-secondary">
-                {title ?? "Artifact"}
-              </Dialog.Title>
-              <CopyButton text={code} label="Copy HTML" />
-              <ArtifactMenu code={code} title={title} widthOf={widthOf} onError={onError} />
-              <Dialog.Close aria-label="Close" className={toolClass}>
-                <X size={14} strokeWidth={2} />
-              </Dialog.Close>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6">
-              <ArtifactFrame code={code} title={title} onReply={onReply} />
-            </div>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <ArtifactDialog
+        code={code}
+        title={title}
+        open={expanded}
+        onOpenChange={setExpanded}
+        widthOf={widthOf}
+        onError={onError}
+        onReply={onReply}
+      />
     </div>
   );
 }
+
+/** The artifact at full size, over the window, with its tools. */
+export function ArtifactDialog({
+  code,
+  title,
+  open,
+  onOpenChange,
+  widthOf = () => ARTIFACT_COLUMN_WIDTH,
+  onError,
+  onReply,
+}: {
+  code: string;
+  title: string | undefined;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** How wide a saved image is: the artifact's width in the conversation. */
+  widthOf?: () => number;
+  onError?: (message: string) => void;
+  onReply?: ((text: string) => void) | undefined;
+}) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <Dialog.Popup className="fixed top-1/2 left-1/2 flex h-[calc(100dvh-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
+            <Dialog.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-secondary">
+              {title ?? "Artifact"}
+            </Dialog.Title>
+            <CopyButton text={code} label="Copy HTML" />
+            <ArtifactMenu
+              code={code}
+              title={title}
+              widthOf={widthOf}
+              onError={onError ?? (() => undefined)}
+            />
+            <Dialog.Close aria-label="Close" className={toolClass}>
+              <X size={14} strokeWidth={2} />
+            </Dialog.Close>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6">
+            <ArtifactFrame code={code} title={title} onReply={onReply} />
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/**
+ * The artifact drawn small, as the conversation's column shows it scaled to the box's width: only
+ * once the box comes into view, and not to be used.
+ */
+export function ArtifactThumbnail({
+  code,
+  title,
+  className = "",
+}: {
+  code: string;
+  title: string | undefined;
+  className?: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [pageHeight, setPageHeight] = useState(PLACEHOLDER_HEIGHT);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const sizes = new ResizeObserver(() => setWidth(element.clientWidth - THUMBNAIL_INSET * 2));
+    sizes.observe(element);
+    const views = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setSeen(true);
+          views.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    views.observe(element);
+    return () => {
+      sizes.disconnect();
+      views.disconnect();
+    };
+  }, []);
+  // The box takes the page's height, scaled, up to a limit: a short page doesn't leave it empty.
+  useEffect(() => {
+    const element = page.current;
+    if (!element) return;
+    const sizes = new ResizeObserver(() => setPageHeight(element.offsetHeight));
+    sizes.observe(element);
+    return () => sizes.disconnect();
+  }, [seen, width]);
+  const scale = Math.max(width, 0) / ARTIFACT_COLUMN_WIDTH;
+  const height = Math.round(
+    Math.min(Math.max(pageHeight * scale, THUMBNAIL_MIN), THUMBNAIL_MAX) + THUMBNAIL_INSET * 2,
+  );
+  return (
+    // A mask or filter over the frame would stop it being drawn: the frame runs in a process of its own.
+    <div ref={box} inert aria-hidden style={{ height }} className={`relative overflow-hidden ${className}`}>
+      {seen && width > 0 ? (
+        <div
+          ref={page}
+          style={{ width: ARTIFACT_COLUMN_WIDTH, scale, top: THUMBNAIL_INSET, left: THUMBNAIL_INSET }}
+          className="pointer-events-none absolute origin-top-left"
+        >
+          <ArtifactFrame code={code} title={title} quiet />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A thumbnail's room around the page, and the least and most of the page it shows, in its pixels. */
+const THUMBNAIL_INSET = 10;
+const THUMBNAIL_MIN = 36;
+const THUMBNAIL_MAX = 150;
 
 /** Room around a page saved as an image, beside the page's own width. */
 const SAVED_MARGIN = 24;
@@ -309,6 +414,7 @@ function ArtifactFrame({
   code,
   title,
   remember = false,
+  quiet = false,
   onError,
   onPointer,
   onReply,
@@ -316,6 +422,8 @@ function ArtifactFrame({
   code: string;
   title: string | undefined;
   remember?: boolean;
+  /** Nothing shows until the page is drawn, for a page shown too small to read "Drawing…". */
+  quiet?: boolean;
   onError?: (message: string) => void;
   onPointer?: (inside: boolean) => void;
   onReply?: ((text: string) => void) | undefined;
@@ -405,7 +513,7 @@ function ArtifactFrame({
         style={{ height: height ?? PLACEHOLDER_HEIGHT }}
         className={`block w-full border-0 bg-transparent transition-opacity duration-150 ${drawn ? "opacity-100" : "opacity-0"}`}
       />
-      {drawn ? null : (
+      {drawn || quiet ? null : (
         <Drawing
           title={title}
           height={height ?? PLACEHOLDER_HEIGHT}

@@ -337,6 +337,47 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("finds the given agents' completed messages holding some text, newest first", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const other: ThreadInfo = { ...thread, id: "thr_2" as ThreadId };
+        const otherLead: AgentInfo = { ...lead, id: "agt_other" as AgentId, threadId: other.id };
+        const message = (id: string, agent: AgentInfo, at: number, text: string): AgentEvent => ({
+          id: id as EventId,
+          threadId: agent.threadId,
+          agentId: agent.id,
+          sequence: at,
+          at,
+          payload: { _tag: "MessageCompleted", messageId: id, text },
+        });
+        yield* store.createThread(thread);
+        yield* store.createThread(other);
+        yield* store.createAgent(lead);
+        yield* store.createAgent(otherLead);
+        yield* store.appendEvents([
+          message("evt_old", lead, 10, "```artifact\n<p>old</p>\n```"),
+          message("evt_plain", lead, 20, "No visuals here."),
+          message("evt_new", lead, 30, "```artifact\n<p>new</p>\n```"),
+          message("evt_elsewhere", otherLead, 40, "```artifact\n<p>other</p>\n```"),
+        ]);
+
+        const found = yield* store.listMessagesContaining([lead.id], "```artifact", 10);
+        assert.deepStrictEqual(
+          found.map((stored) => stored.id),
+          ["evt_new", "evt_old"],
+        );
+        assert.deepStrictEqual(
+          (yield* store.listMessagesContaining([lead.id, otherLead.id], "```artifact", 1)).map(
+            (stored) => stored.id,
+          ),
+          ["evt_elsewhere"],
+        );
+        assert.deepStrictEqual(yield* store.listMessagesContaining([], "```artifact", 10), []);
+      }),
+    ),
+  );
+
   it.effect(
     "counts and pages the events the cloud copy keeps, in stored order and without streamed text",
     () =>

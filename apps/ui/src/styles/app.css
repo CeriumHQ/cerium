@@ -133,6 +133,28 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/* An artifact the artifacts panel brought into view, ringed for a moment so the eye finds it. */
+[data-artifact][data-found] {
+  border-radius: 0.625rem;
+  animation: artifact-found 1.6s ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-duration: 0.01s;
+  }
+}
+
+@keyframes artifact-found {
+  0%,
+  45% {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 6px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 6px;
+  }
+}
+
 /* The launch screen (app/LaunchScreen.tsx): the mark comes into focus, as if the frost were polished off. */
 @keyframes launch-settle {
   from {

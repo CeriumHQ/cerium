@@ -1,9 +1,9 @@
 import { dataFileUrl } from "@cerium/artifacts";
 import type { ProviderId } from "@cerium/protocol";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
-import { Backend } from "./client.ts";
+import { Backend, connectionAtom } from "./client.ts";
 
 // The user's files as the message box and transcript need them: what `@` and `$` offer, and images.
 
@@ -95,6 +95,16 @@ export const skillsAtom = Atom.family((key: string) => {
 export const skillsKey = (provider: ProviderId, cwd: string | undefined) => `${provider}\n${cwd ?? ""}`;
 
 export const saveAttachment = Backend.mutation("SaveAttachment");
+
+/** The artifacts drawn in a project's threads, newest first; read again when refreshed or reconnected. */
+export const projectArtifactsAtom = Atom.family((folder: string) =>
+  Backend.runtime.atom((get) => {
+    get(connectionAtom);
+    return Backend.use((client) => client("ListArtifacts", { folder })).pipe(
+      Effect.retry({ schedule: Schedule.spaced("1 second"), times: 3 }),
+    );
+  }),
+);
 
 /** An artifact drawn as a PNG to keep, in the theme it's given. */
 export const renderArtifact = Backend.mutation("RenderArtifact");

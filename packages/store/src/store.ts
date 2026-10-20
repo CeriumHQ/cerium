@@ -132,6 +132,15 @@ export class Store extends Context.Service<
     listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** Every thread's events of one kind, in the order they happened. */
     listEventsByTag(tag: EventPayload["_tag"]): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /**
+     * These agents' completed messages whose text holds `text`, newest first and at most `limit`:
+     * finding messages without reading every one.
+     */
+    listMessagesContaining(
+      agentIds: ReadonlyArray<AgentId>,
+      text: string,
+      limit: number,
+    ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** How many events of each thread the cloud copy keeps (all but streamed text), by thread id. */
     readonly countSyncedEvents: Effect.Effect<ReadonlyMap<string, number>, StoreError>;
     /**
@@ -333,6 +342,23 @@ export class Store extends Context.Service<
                 .where(eq(events.tag, tag))
                 .orderBy(asc(events.at), asc(events.sequence)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+          listMessagesContaining: (agentIds, text, limit) =>
+            agentIds.length === 0
+              ? Effect.succeed([])
+              : query("Could not list messages", () =>
+                  db
+                    .select(eventColumns)
+                    .from(events)
+                    .where(
+                      and(
+                        eq(events.tag, "MessageCompleted"),
+                        inArray(events.agentId, [...agentIds]),
+                        sql`instr(json_extract(${events.payload}, '$.text'), ${text}) > 0`,
+                      ),
+                    )
+                    .orderBy(desc(events.at), desc(events.sequence))
+                    .limit(limit),
+                ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
           countSyncedEvents: query("Could not count events", () =>
             db
               .select({ threadId: events.threadId, events: count() })

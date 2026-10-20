@@ -10,6 +10,7 @@ export {
   isLegacyArtifact,
   themeUpdate,
 } from "./document.ts";
+export { ARTIFACT_LANGUAGE, artifactBlocks, artifactId, artifactTitle, newestArtifacts } from "./extract.ts";
 export { artifactGuide } from "./guide.ts";
 export { ARTIFACT_COLUMN_WIDTH, ARTIFACT_MAX_HEIGHT } from "./limits.ts";
 export {
@@ -29,6 +30,3 @@ export {
   type ArtifactMode,
   type ArtifactTheme,
 } from "./theme.ts";
-
-/** The code fence language that marks an artifact in agent markdown. */
-export const ARTIFACT_LANGUAGE = "artifact";

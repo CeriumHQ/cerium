@@ -16,10 +16,10 @@ import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
-import { FILES, GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
+import { ARTIFACTS, FILES, GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
-import { AgentsToggle, FilesToggle, TerminalToggle, Titlebar } from "./Titlebar.tsx";
+import { AgentsToggle, ArtifactsToggle, FilesToggle, TerminalToggle, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -47,6 +47,15 @@ interface AppFrameProps {
   readonly filesOpen: boolean;
   readonly onToggleFiles: () => void;
   readonly onCloseFiles: () => void;
+  /**
+   * The artifacts panel, in the same place, given only while neither of the others is. Offered while
+   * `artifactsAvailable`: the open thread can have artifacts.
+   */
+  readonly artifacts: ReactNode | undefined;
+  readonly artifactsAvailable: boolean;
+  readonly artifactsOpen: boolean;
+  readonly onToggleArtifacts: () => void;
+  readonly onCloseArtifacts: () => void;
   /**
    * The open thread's terminal drawer, offered while it can have one. The drawer itself is part of
    * `children`; in the narrow window it covers the thread, and the phone's Back hides it.
@@ -128,6 +137,11 @@ function DesktopFrame({
   filesOpen,
   onToggleFiles,
   onCloseFiles,
+  artifacts,
+  artifactsAvailable,
+  artifactsOpen,
+  onToggleArtifacts,
+  onCloseArtifacts,
   terminal,
   settings,
   machinePicker,
@@ -136,11 +150,13 @@ function DesktopFrame({
 }: AppFrameProps) {
   const view = settings.open ? "settings" : "threads";
   const showSidebar = sidebarOpen || settings.open;
-  // The agents and the files take the same place beside the transcript, one at a time.
-  const side = inspector ?? files;
+  // The agents, the files and the artifacts take the same place beside the transcript, one at a time.
+  const side = inspector ?? files ?? artifacts;
+  const shownSide = inspector !== undefined ? "inspector" : files !== undefined ? "files" : "artifacts";
   const showInspector = side !== undefined && !settings.open;
-  const sideSpec = files !== undefined ? FILES : INSPECTOR;
-  const onCloseSide = files !== undefined ? onCloseFiles : onCloseInspector;
+  const sideSpec = shownSide === "files" ? FILES : shownSide === "artifacts" ? ARTIFACTS : INSPECTOR;
+  const onCloseSide =
+    shownSide === "files" ? onCloseFiles : shownSide === "artifacts" ? onCloseArtifacts : onCloseInspector;
 
   const body = useRef<HTMLDivElement>(null);
   const floatingInspector = useRef<HTMLElement>(null);
@@ -151,26 +167,46 @@ function DesktopFrame({
     INSPECTOR.fallback,
   );
   const [savedFiles, setSavedFiles, rememberFiles] = usePanelWidth(FILES.key, FILES.fallback);
+  const [savedArtifacts, setSavedArtifacts, rememberArtifacts] = usePanelWidth(
+    ARTIFACTS.key,
+    ARTIFACTS.fallback,
+  );
   /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
+  /** The panel beside the transcript's own width, as the user left it. */
+  const sideWidth = {
+    inspector: {
+      label: "Resize agents panel",
+      saved: savedInspector,
+      set: setSavedInspector,
+      remember: rememberInspector,
+    },
+    files: { label: "Resize files panel", saved: savedFiles, set: setSavedFiles, remember: rememberFiles },
+    artifacts: {
+      label: "Resize artifacts panel",
+      saved: savedArtifacts,
+      set: setSavedArtifacts,
+      remember: rememberArtifacts,
+    },
+  }[shownSide];
 
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
     bodyWidth,
-    { sidebar: savedSidebar, inspector: files !== undefined ? savedFiles : savedInspector },
+    { sidebar: savedSidebar, inspector: sideWidth.saved },
     showSidebar,
     sideSpec,
   );
 
   const inspectorHandle = (
     <ResizeHandle
-      label={files !== undefined ? "Resize files panel" : "Resize agents panel"}
+      label={sideWidth.label}
       edge="start"
       width={inspectorWidth}
       min={sideSpec.min}
       max={inspectorMax}
       fallback={sideSpec.fallback}
-      onResize={files !== undefined ? setSavedFiles : setSavedInspector}
-      onCommit={files !== undefined ? rememberFiles : rememberInspector}
+      onResize={sideWidth.set}
+      onCommit={sideWidth.remember}
       onDragChange={(active) => setDragging(active ? "inspector" : undefined)}
     />
   );
@@ -191,6 +227,7 @@ function DesktopFrame({
         inspectorOpen={inspector !== undefined}
         onToggleInspector={onToggleInspector}
         {...(filesAvailable ? { files: { open: filesOpen, onToggle: onToggleFiles } } : {})}
+        {...(artifactsAvailable ? { artifacts: { open: artifactsOpen, onToggle: onToggleArtifacts } } : {})}
         {...(terminal ? { terminal } : {})}
         machinePicker={machinePicker}
         tabs={tabs}
@@ -313,6 +350,10 @@ function CompactFrame({
   filesAvailable,
   filesOpen,
   onToggleFiles,
+  artifacts,
+  artifactsAvailable,
+  artifactsOpen,
+  onToggleArtifacts,
   terminal,
   settings,
   machinePicker,
@@ -324,7 +365,7 @@ function CompactFrame({
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
-  const side = inspector ?? files;
+  const side = inspector ?? files ?? artifacts;
   const inspecting = side !== undefined && !settings.open && pane === "main";
   // The terminal is a pane over the thread, and the agents or files a pane over that.
   const terminalOpen = terminal?.open === true && !settings.open && pane === "main";
@@ -348,7 +389,12 @@ function CompactFrame({
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
-      } else if (inspecting) (files !== undefined ? onToggleFiles : onToggleInspector)();
+      } else if (inspecting)
+        (inspector !== undefined
+          ? onToggleInspector
+          : files !== undefined
+            ? onToggleFiles
+            : onToggleArtifacts)();
       else if (terminalOpen) terminal.onToggle();
       else onBack();
     },
@@ -381,12 +427,15 @@ function CompactFrame({
                 folded={keyboardOpen}
                 title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
                 {...(thread?.project ? { subtitle: thread.project } : {})}
-                {...(agents.length > 0 || filesAvailable || terminal
+                {...(agents.length > 0 || filesAvailable || artifactsAvailable || terminal
                   ? {
                       trailing: (
                         <>
                           {terminal ? (
                             <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
+                          ) : null}
+                          {artifactsAvailable ? (
+                            <ArtifactsToggle open={artifactsOpen} onToggle={onToggleArtifacts} />
                           ) : null}
                           {filesAvailable ? <FilesToggle open={filesOpen} onToggle={onToggleFiles} /> : null}
                           {agents.length > 0 ? (
