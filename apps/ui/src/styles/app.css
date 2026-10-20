@@ -2,6 +2,7 @@
 @import "@fontsource-variable/red-hat-text";
 @import "@fontsource-variable/red-hat-mono";
 @import "./tokens.css";
+@import "./themes.css";
 @import "streamdown/styles.css";
 @import "./markdown.css";
 @import "./terminal.css";
@@ -36,7 +37,7 @@ body {
  */
 /* Real Acrylic already tints and blurs the desktop, so the window tint can be lighter. */
 html[data-shell="electron"][data-theme="dark"] {
-  --surface-window: oklch(0.17 0 0 / 0.45);
+  --window-alpha: 0.45;
 }
 
 html[data-shell="browser"] body {

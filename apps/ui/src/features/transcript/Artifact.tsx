@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
-import { artifactDocument, HEIGHT_MESSAGE, sanitizeArtifact } from "./artifactDocument.ts";
+import { artifactDocument, HEIGHT_MESSAGE, sanitizeArtifact, tokenValues } from "./artifactDocument.ts";
 
 /** Height held while the artifact streams and until its frame reports its own. */
 const PLACEHOLDER_HEIGHT = 112;
 
+/** Changes to the mode (`data-theme`) or the palette, which together decide the window's colours. */
 const subscribeTheme = (onChange: () => void) => {
   const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, { attributeFilter: ["data-theme"] });
+  observer.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
   return () => observer.disconnect();
 };
 const currentTheme = (): "dark" | "light" =>
@@ -17,6 +18,7 @@ const currentTheme = (): "dark" | "light" =>
 /** An agent's HTML visual, rendered in a sandboxed frame once its code fence closes. */
 export function Artifact({ code, isIncomplete }: CustomRendererProps) {
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
+  const tokens = useSyncExternalStore(subscribeTheme, tokenValues);
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState<number>();
   const [nonce] = useState(() => crypto.randomUUID());
@@ -54,7 +56,7 @@ export function Artifact({ code, isIncomplete }: CustomRendererProps) {
       title="Artifact"
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
-      srcDoc={artifactDocument(sanitizeArtifact(code), theme, nonce)}
+      srcDoc={artifactDocument(sanitizeArtifact(code), theme, tokens, nonce)}
       style={{ height: height ?? PLACEHOLDER_HEIGHT }}
       className="block w-full border-0"
     />

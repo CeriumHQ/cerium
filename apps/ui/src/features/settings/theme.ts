@@ -1,6 +1,8 @@
-import { useLayoutEffect } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
+import { paletteAtom } from "./palettes.ts";
 import type { Theme } from "./preferences.ts";
 
 const darkScheme = () => window.matchMedia("(prefers-color-scheme: dark)");
@@ -10,11 +12,17 @@ const show = (dark: boolean) => {
 };
 
 /**
- * Keeps the page on the chosen theme, following the operating system while it's "system". Applied
- * before paint, so the window never flashes the other theme. In the desktop shell, Windows also tints
- * the glass and draws the caption buttons to match, and says what "system" currently means.
+ * Keeps the page on the chosen theme, following the operating system while it's "system", and in the
+ * chosen palette. Applied before paint, so the window never flashes the other theme. In the desktop
+ * shell, Windows also tints the glass and draws the caption buttons to match, and says what "system"
+ * currently means.
  */
 export const useTheme = (theme: Theme) => {
+  const palette = useAtomValue(paletteAtom);
+  useLayoutEffect(() => {
+    document.documentElement.dataset["palette"] = palette;
+  }, [palette]);
+
   useLayoutEffect(() => {
     const follows = theme === "system";
     // The page's own guess for "system" holds until the shell answers.
@@ -42,3 +50,14 @@ export const useTheme = (theme: Theme) => {
     return () => query.removeEventListener("change", follow);
   }, [theme]);
 };
+
+const subscribeShown = (onChange: () => void) => {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributeFilter: ["data-theme"] });
+  return () => observer.disconnect();
+};
+const shown = (): "dark" | "light" =>
+  document.documentElement.dataset["theme"] === "light" ? "light" : "dark";
+
+/** The mode on screen now: the chosen one, or what "system" currently means. */
+export const useShownTheme = () => useSyncExternalStore(subscribeShown, shown);

@@ -33,8 +33,11 @@ const hostTokens = [
   ),
 ];
 
-/** The window's current values for those tokens, so the artifact matches the theme on screen. */
-const tokenValues = (): string => {
+/**
+ * The window's current values for those tokens, so the artifact matches the theme on screen. The
+ * same theme always gives the same string, so it can stand for the theme in a store's snapshot.
+ */
+export const tokenValues = (): string => {
   const style = getComputedStyle(document.documentElement);
   return hostTokens.map((name) => `${name}: ${style.getPropertyValue(name).trim()};`).join(" ");
 };
@@ -44,11 +47,17 @@ const fonts = `
 @font-face { font-family: "Red Hat Mono Variable"; font-weight: 300 700; font-display: block; src: url(${redHatMono}) format("woff2"); }`;
 
 /**
- * The full `srcdoc` for a sanitized artifact body, in the window's current theme. The nonce admits
- * the runtime alone; keep it stable per artifact so re-renders don't reload the frame. The web
- * client's policy, which the frame inherits, admits the runtime by its hash (vite.config.ts).
+ * The full `srcdoc` for a sanitized artifact body, in the given mode and token values (`tokenValues`).
+ * The nonce admits the runtime alone; keep it stable per artifact so re-renders don't reload the
+ * frame. The web client's policy, which the frame inherits, admits the runtime by its hash
+ * (vite.config.ts).
  */
-export const artifactDocument = (body: string, theme: "dark" | "light", nonce: string): string => {
+export const artifactDocument = (
+  body: string,
+  theme: "dark" | "light",
+  tokens: string,
+  nonce: string,
+): string => {
   const policy = [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
@@ -62,7 +71,7 @@ export const artifactDocument = (body: string, theme: "dark" | "light", nonce: s
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${policy}">
 <style>${fonts}
-:root { ${tokenValues()} }
+:root { ${tokens} }
 ${stylesheet}</style>
 </head>
 <body>${body}

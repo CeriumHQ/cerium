@@ -2,21 +2,37 @@
  * Cerium's design tokens. Components use only these (through the Tailwind theme below), so the whole
  * look lives here: themes, and later macOS vibrancy, are token swaps.
  *
- * The chrome is monochrome: neutral translucent tints layered over the window's Acrylic, from the
- * window itself up to floating overlays, each a little more opaque. Colour is reserved for meaning:
- * status (running, attention, error, success), providers' own logos, and data in agents' artifacts.
+ * Two settings shape them, independently: the mode (`data-theme`: dark or light) and the theme
+ * (`data-palette`, styles/themes.css). The mode blocks below lay out the ramp, from the window's
+ * glass up to floating overlays, each a little more opaque. A theme tints that ramp with a hue of its
+ * own (`--tint-h`, `--tint-c`, `--lift`) and recolours the accent, the code and any status hue its
+ * accent would be mistaken for, once for each mode. The default theme, Cerium, is monochrome: colour
+ * is reserved for meaning: status (running, attention, error, success), providers' own logos, and
+ * data in agents' artifacts.
+ *
+ * Each block is an attribute selector, never `html` alone, so a theme sample in Settings can set both
+ * attributes on any element and draw itself in that theme.
  */
+
+:root,
+[data-palette] {
+  /* The neutral ramp's hue and chroma, and how much lighter its dark surfaces sit; none by default. */
+  --tint-h: 0;
+  --tint-c: 0;
+  --lift: 0;
+}
 
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
   /* What the glass sits on where Windows' Acrylic doesn't reach: the browser preview, theme samples. */
-  --backdrop: oklch(0.24 0 0);
-  --surface-window: oklch(0.17 0 0 / 0.62);
-  --surface-panel: oklch(0.2 0 0 / 0.66);
-  --surface-raised: oklch(0.255 0 0 / 0.78);
-  --surface-overlay: oklch(0.22 0 0 / 0.94);
+  --backdrop: oklch(calc(0.24 + var(--lift)) var(--tint-c) var(--tint-h));
+  --window-alpha: 0.62;
+  --surface-window: oklch(calc(0.17 + var(--lift)) var(--tint-c) var(--tint-h) / var(--window-alpha));
+  --surface-panel: oklch(calc(0.2 + var(--lift)) var(--tint-c) var(--tint-h) / 0.66);
+  --surface-raised: oklch(calc(0.255 + var(--lift)) var(--tint-c) var(--tint-h) / 0.78);
+  --surface-overlay: oklch(calc(0.22 + var(--lift)) var(--tint-c) var(--tint-h) / 0.94);
   --surface-hover: oklch(1 0 0 / 0.05);
   --surface-active: oklch(1 0 0 / 0.085);
   --surface-selected: oklch(1 0 0 / 0.09);
@@ -24,19 +40,19 @@
   --line-subtle: oklch(1 0 0 / 0.07);
   --line-strong: oklch(1 0 0 / 0.14);
 
-  --fg-primary: oklch(0.96 0 0);
-  --fg-secondary: oklch(0.78 0 0);
-  --fg-tertiary: oklch(0.6 0 0);
-  --fg-disabled: oklch(0.46 0 0);
+  --fg-primary: oklch(0.96 calc(var(--tint-c) * 0.3) var(--tint-h));
+  --fg-secondary: oklch(0.78 calc(var(--tint-c) * 0.6) var(--tint-h));
+  --fg-tertiary: oklch(0.6 calc(var(--tint-c) * 0.8) var(--tint-h));
+  --fg-disabled: oklch(0.46 calc(var(--tint-c) * 0.8) var(--tint-h));
 
-  /* The "accent" is the strongest contrast available: near-white on dark. */
+  /* Cerium's accent is the strongest contrast available: near-white on dark. Themes colour it. */
   --accent: oklch(0.95 0 0);
   --accent-strong: oklch(1 0 0);
-  --accent-soft: oklch(1 0 0 / 0.1);
   --accent-fg: oklch(0.17 0 0);
+  --accent-soft: color-mix(in oklab, var(--accent) 11%, transparent);
 
-  --selection: oklch(1 0 0 / 0.22);
-  --focus-ring: oklch(1 0 0 / 0.55);
+  --selection: color-mix(in oklab, var(--accent) 24%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent) 58%, transparent);
   /* Dims the window behind a modal dialog. */
   --scrim: oklch(0 0 0 / 0.45);
 
@@ -73,11 +89,13 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --backdrop: oklch(0.88 0 0);
-  --surface-window: oklch(0.96 0 0 / 0.62);
-  --surface-panel: oklch(0.985 0 0 / 0.7);
-  --surface-raised: oklch(1 0 0 / 0.82);
-  --surface-overlay: oklch(1 0 0 / 0.95);
+  /* Light glass would go grey with a full tint; the brightest surfaces carry less of it. */
+  --backdrop: oklch(calc(0.88 - var(--lift)) var(--tint-c) var(--tint-h));
+  --window-alpha: 0.62;
+  --surface-window: oklch(0.96 var(--tint-c) var(--tint-h) / var(--window-alpha));
+  --surface-panel: oklch(0.985 calc(var(--tint-c) * 0.6) var(--tint-h) / 0.7);
+  --surface-raised: oklch(0.995 calc(var(--tint-c) * 0.3) var(--tint-h) / 0.82);
+  --surface-overlay: oklch(0.995 calc(var(--tint-c) * 0.3) var(--tint-h) / 0.95);
   --surface-hover: oklch(0 0 0 / 0.04);
   --surface-active: oklch(0 0 0 / 0.07);
   --surface-selected: oklch(0 0 0 / 0.07);
@@ -85,18 +103,18 @@
   --line-subtle: oklch(0 0 0 / 0.07);
   --line-strong: oklch(0 0 0 / 0.14);
 
-  --fg-primary: oklch(0.18 0 0);
-  --fg-secondary: oklch(0.38 0 0);
-  --fg-tertiary: oklch(0.54 0 0);
-  --fg-disabled: oklch(0.68 0 0);
+  --fg-primary: oklch(0.18 calc(var(--tint-c) * 0.8) var(--tint-h));
+  --fg-secondary: oklch(0.38 calc(var(--tint-c) * 1.2) var(--tint-h));
+  --fg-tertiary: oklch(0.54 calc(var(--tint-c) * 1.2) var(--tint-h));
+  --fg-disabled: oklch(0.68 var(--tint-c) var(--tint-h));
 
   --accent: oklch(0.2 0 0);
   --accent-strong: oklch(0.1 0 0);
-  --accent-soft: oklch(0 0 0 / 0.08);
   --accent-fg: oklch(0.98 0 0);
+  --accent-soft: color-mix(in oklab, var(--accent) 9%, transparent);
 
-  --selection: oklch(0 0 0 / 0.14);
-  --focus-ring: oklch(0 0 0 / 0.5);
+  --selection: color-mix(in oklab, var(--accent) 16%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent) 55%, transparent);
   --scrim: oklch(0 0 0 / 0.2);
 
   --status-running: oklch(0.56 0.17 250);
