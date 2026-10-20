@@ -20,6 +20,7 @@ import { Socket } from "effect/socket";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
 import { limitWarnings } from "./limits.ts";
@@ -169,6 +170,8 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(
       worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),
     ),
+    // Snapshots of work threads' folders, so the user can put them back as they were before a message.
+    Layer.provideMerge(checkpointsLayer({ directory: join(options.dataDirectory, "checkpoints") })),
     Layer.provideMerge(Files.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),

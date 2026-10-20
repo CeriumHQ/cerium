@@ -7,6 +7,7 @@ export * from "./ids.ts";
 export * from "./models.ts";
 export * from "./orchestration.ts";
 export * from "./push.ts";
+export * from "./restore.ts";
 export * from "./settings.ts";
 export * from "./spend.ts";
 export * from "./sync.ts";

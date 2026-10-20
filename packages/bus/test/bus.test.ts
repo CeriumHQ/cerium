@@ -6,6 +6,7 @@ import {
   OrchestratorConfig,
   UserSettings,
   Worktrees,
+  Checkpoints,
 } from "@cerium/orchestrator";
 import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
@@ -31,6 +32,7 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
         }),
         Adapters.fromList([fake.adapter]),
         Worktrees.unavailable,
+        Checkpoints.unavailable,
         Catalog.fromEntries([
           { alias: "scout", provider: "claude", model: "haiku", description: "Quick lookups" },
         ]),

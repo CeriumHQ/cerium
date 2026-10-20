@@ -11,6 +11,7 @@ import {
   Adapters,
   BusEndpoint,
   Catalog,
+  Checkpoints,
   Orchestrator,
   OrchestratorConfig,
   UserSettings,
@@ -31,6 +32,7 @@ export const testLayer = (
     readonly messageLimit?: number;
     readonly threadLimit?: number;
     readonly worktrees?: Layer.Layer<Worktrees>;
+    readonly checkpoints?: Layer.Layer<Checkpoints>;
   } = {},
 ) =>
   Orchestrator.layer.pipe(
@@ -45,6 +47,7 @@ export const testLayer = (
     Layer.provide(Catalog.fromEntries(options.catalog ?? [])),
     Layer.provide(fakeBus),
     Layer.provide(options.worktrees ?? Worktrees.unavailable),
+    Layer.provide(options.checkpoints ?? Checkpoints.unavailable),
     Layer.provide(
       OrchestratorConfig.layer({
         chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),

@@ -13,12 +13,15 @@ export {
   Adapters,
   BusEndpoint,
   Catalog,
+  CheckpointError,
+  Checkpoints,
   OrchestratorConfig,
   WorktreeError,
   Worktrees,
   type CatalogEntry,
   type NewWorktree,
   type OrchestratorSettings,
+  type SnapshotChange,
 } from "./services.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

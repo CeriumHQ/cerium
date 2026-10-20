@@ -91,6 +91,50 @@ export class Worktrees extends Context.Service<
   });
 }
 
+/** Why a folder's files couldn't be saved, compared or put back; `message` is written for the user. */
+export class CheckpointError extends Schema.TaggedError<CheckpointError>()("CheckpointError", {
+  message: Schema.String,
+}) {}
+
+/** A file that differs between two snapshots, and what became of it from the first to the second. */
+export interface SnapshotChange {
+  /** Relative to the folder, with forward slashes. */
+  readonly path: string;
+  readonly change: "added" | "modified" | "deleted";
+}
+
+/**
+ * Snapshots of a work thread's folder, taken as its agents' turns start and end, so the user can put
+ * the files back as they were before one of their messages. Kept apart from the folder's own
+ * repository: nothing of the user's changes.
+ */
+export class Checkpoints extends Context.Service<
+  Checkpoints,
+  {
+    /** Saves the files in `folder` as they are now; resolves with the snapshot's id. */
+    save(folder: string): Effect.Effect<string, CheckpointError>;
+    /** The files that differ between two snapshots of `folder`. */
+    changes(
+      folder: string,
+      from: string,
+      to: string,
+    ): Effect.Effect<ReadonlyArray<SnapshotChange>, CheckpointError>;
+    /** Puts `paths` back as `snapshot` holds them, removing those it doesn't hold. */
+    restore(
+      folder: string,
+      snapshot: string,
+      paths: ReadonlyArray<string>,
+    ): Effect.Effect<void, CheckpointError>;
+  }
+>()("cerium/orchestrator/Checkpoints") {
+  /** For builds and tests without git: no turn saves the files, so a restore leaves them as they are. */
+  static readonly unavailable = Layer.succeed(Checkpoints, {
+    save: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
+    changes: () => Effect.succeed([]),
+    restore: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
+  });
+}
+
 export interface OrchestratorSettings {
   /** Chat threads have no folder; each gets an empty directory under here as the harness's cwd. */
   readonly chatDirectory: string;
@@ -98,8 +142,6 @@ export interface OrchestratorSettings {
   readonly titleDirectory?: string;
   /** How long to wait for more notices before delivering a batch to an idle agent. */
   readonly batchWindow: Duration.Duration;
-  /** Agents running a turn at once across every provider. */
-  readonly globalConcurrency: number;
   /** Messages one agent may send another within `messageBudget.window`. */
   readonly messageBudget: { readonly limit: number; readonly window: Duration.Duration };
   /**
@@ -119,7 +161,6 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
   static layer = (settings: Pick<OrchestratorSettings, "chatDirectory"> & Partial<OrchestratorSettings>) =>
     Layer.succeed(OrchestratorConfig, {
       batchWindow: Duration.seconds(2),
-      globalConcurrency: 12,
       // Placeholder until tuned from real usage.
       messageBudget: { limit: 10, window: Duration.minutes(30) },
       threadBudget: { limit: 12, window: Duration.minutes(30) },

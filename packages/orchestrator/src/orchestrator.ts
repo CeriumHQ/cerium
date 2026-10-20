@@ -753,10 +753,20 @@ export class Orchestrator extends Context.Service<
           );
           yield* Deferred.await(rt.turn);
           rt.turn = undefined;
-          // And as it was after, so a restore can tell the files this turn changed from another thread's.
+          // And as it was after, so a restore can tell the files this turn changed from another thread's:
+          // saved behind the turn, so the agent is free at once.
           if (files !== undefined) {
-            const after = yield* snapshotFor(rt.info);
-            if (after !== undefined) yield* emit(rt, { _tag: "FilesSaved", snapshot: after });
+            yield* Effect.forkIn(
+              snapshotFor(rt.info).pipe(
+                Effect.flatMap((after) =>
+                  after === undefined
+                    ? Effect.void
+                    : emit(rt, { _tag: "FilesSaved", snapshot: after, turnId }),
+                ),
+                Effect.ignore,
+              ),
+              rt.scope,
+            );
           }
         });
 
