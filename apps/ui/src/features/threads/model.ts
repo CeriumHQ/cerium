@@ -7,8 +7,10 @@ export interface ThreadSummary {
   readonly mode: "work" | "chat";
   /** The folder's name for work threads. */
   readonly project?: string;
-  /** The folder's full path for work threads. */
+  /** The folder's full path for work threads: the project's, for one in a worktree. */
   readonly folder?: string;
+  /** The thread's own worktree's branch, and the branch it was made from. */
+  readonly worktree?: { readonly branch: string; readonly base: string };
   readonly status: "running" | "awaitingApproval" | "idle" | "failed";
   /** Providers of the agents in the thread, lead first. */
   readonly providers: ReadonlyArray<ProviderId>;

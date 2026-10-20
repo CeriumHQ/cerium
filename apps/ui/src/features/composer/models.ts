@@ -36,6 +36,29 @@ export const pickModel = (
   return provider === undefined ? undefined : defaultModel(models, provider);
 };
 
+/** How many models one message can start threads with at once, side by side. */
+export const MAX_AGENTS = 4;
+
+/** The chosen models, by `modelKey`, whose harnesses can run them: each once, in the order chosen. */
+export const pickModels = (
+  models: ReadonlyArray<ModelInfo>,
+  keys: ReadonlyArray<string>,
+  available: ReadonlySet<ProviderId>,
+): ReadonlyArray<ModelInfo> =>
+  keys
+    .filter((key, index) => keys.indexOf(key) === index)
+    .flatMap((key) => {
+      const model = models.find((candidate) => modelKey(candidate) === key);
+      return model !== undefined && available.has(model.provider) ? [model] : [];
+    })
+    .slice(0, MAX_AGENTS);
+
+const effortOrder = (): ReadonlyArray<ReasoningEffort> => Object.keys(effortLabel) as Array<ReasoningEffort>;
+
+/** Every effort any of `models` offers, weakest first: what one pick for all of them chooses from. */
+export const effortsOf = (models: ReadonlyArray<ModelInfo>): ReadonlyArray<ReasoningEffort> =>
+  effortOrder().filter((level) => models.some((model) => model.efforts.includes(level)));
+
 /** The effort a model runs at: the chosen one when it has it, else its default or strongest. */
 export const effortFor = (
   model: ModelInfo,

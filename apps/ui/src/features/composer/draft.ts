@@ -37,8 +37,15 @@ export interface DraftStart {
   readonly folder?: string;
   /** Picks made in this draft's message box, which win over the defaults. */
   readonly model?: string;
+  /**
+   * Multi agent: the models (by `modelKey`) the first message starts a thread each with, side by
+   * side, in place of `model`. Absent while the draft starts one thread.
+   */
+  readonly models?: ReadonlyArray<string>;
   readonly effort?: ReasoningEffort;
   readonly access?: AccessMode;
+  /** The thread runs in a git worktree of its own. */
+  readonly worktree?: boolean;
 }
 
 export interface Draft {

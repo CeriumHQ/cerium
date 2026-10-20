@@ -196,6 +196,7 @@ export class Store extends Context.Service<
               db.insert(threads).values({
                 ...thread,
                 cwd: thread.cwd ?? null,
+                worktree: thread.worktree ?? null,
                 archivedAt: thread.archivedAt ?? null,
               }),
             ),

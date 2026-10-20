@@ -10,6 +10,7 @@ import {
   emptyStrip,
   keepTab,
   moveTab,
+  openBeside,
   renameTab,
   reopenTab,
   showTab,
@@ -185,9 +186,12 @@ export function useThreadTabs({
     openAs: (key: string, as: OpenAs) => setOpening({ key, as }),
     /** The user worked in the tab: it's no longer the preview. */
     keep: (key: string) => update((current) => keepTab(current, key)),
-    /** A new thread started: its tab is now the thread's. */
-    started: (draft: string, thread: string) =>
-      update((current) => renameTab(keepTab(current, draft), draft, thread)),
+    /**
+     * A new thread started: its tab is now the thread's, and the threads started with it (multi
+     * agent) open in tabs right after it.
+     */
+    started: (draft: string, thread: string, beside: ReadonlyArray<string> = []) =>
+      update((current) => openBeside(renameTab(keepTab(current, draft), draft, thread), thread, beside)),
     /** Closes `key`'s tab, if it has one, without offering to reopen it: its thread is gone. */
     drop: (key: string) => {
       if (keys.includes(key)) close([key], false);

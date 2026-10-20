@@ -16,6 +16,7 @@ import {
   showInPane,
   singlePane,
   splitPane,
+  spreadBeside,
   type PaneNode,
   type Panes,
 } from "../src/features/split/model.ts";
@@ -169,6 +170,46 @@ describe("threads closing and starting", () => {
     const panes = renameKey(twoAcross(), "b", "t");
     expect(shape(panes.root)).toEqual({ row: ["a", "t"], sizes: [50, 50] });
     expect(panes.shown).toBe("t");
+  });
+});
+
+describe("spreadBeside", () => {
+  it("lays threads started together across the pane, evenly, keeping the focus", () => {
+    const panes = spreadBeside(singlePane("1", "a"), "1", [
+      { key: "b", id: "2" },
+      { key: "c", id: "3" },
+    ]);
+    expect(shape(panes.root)).toEqual({ row: ["a", "b", "c"], sizes: [33, 33, 33] });
+    expect(panes.focused).toBe("1");
+    expect(panes.shown).toBe("a");
+  });
+
+  it("shares a pane's own room in a row", () => {
+    const panes = spreadBeside(twoAcross(), "1", [{ key: "c", id: "3" }]);
+    expect(shape(panes.root)).toEqual({ row: ["a", "c", "b"], sizes: [25, 25, 50] });
+  });
+
+  it("opens a row inside a column", () => {
+    const stacked = splitPane(singlePane("1", "a"), "1", "bottom", "b", "2");
+    const panes = spreadBeside(stacked, "2", [{ key: "c", id: "3" }]);
+    expect(shape(panes.root)).toEqual({
+      column: ["a", { row: ["b", "c"], sizes: [50, 50] }],
+      sizes: [50, 50],
+    });
+  });
+
+  it("moves a thread already showing rather than showing it twice", () => {
+    const panes = spreadBeside(twoAcross(), "1", [{ key: "b", id: "3" }]);
+    expect(leavesOf(panes.root).map((leaf) => leaf.id)).toEqual(["1", "3"]);
+  });
+
+  it("shows no thread twice", () => {
+    const panes = spreadBeside(singlePane("1", "a"), "1", [
+      { key: "a", id: "2" },
+      { key: "b", id: "3" },
+      { key: "b", id: "4" },
+    ]);
+    expect(shape(panes.root)).toEqual({ row: ["a", "b"], sizes: [50, 50] });
   });
 });
 

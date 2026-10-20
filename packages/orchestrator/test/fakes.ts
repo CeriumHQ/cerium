@@ -14,6 +14,7 @@ import {
   Orchestrator,
   OrchestratorConfig,
   UserSettings,
+  Worktrees,
   type CatalogEntry,
 } from "../src/index.ts";
 
@@ -25,7 +26,11 @@ export const fakeBus = Layer.succeed(BusEndpoint, {
 
 export const testLayer = (
   adapters: ReadonlyArray<HarnessAdapter>,
-  options: { readonly catalog?: ReadonlyArray<CatalogEntry>; readonly messageLimit?: number } = {},
+  options: {
+    readonly catalog?: ReadonlyArray<CatalogEntry>;
+    readonly messageLimit?: number;
+    readonly worktrees?: Layer.Layer<Worktrees>;
+  } = {},
 ) =>
   Orchestrator.layer.pipe(
     Layer.provideMerge(UserSettings.layer),
@@ -38,6 +43,7 @@ export const testLayer = (
     Layer.provide(Adapters.fromList(adapters)),
     Layer.provide(Catalog.fromEntries(options.catalog ?? [])),
     Layer.provide(fakeBus),
+    Layer.provide(options.worktrees ?? Worktrees.unavailable),
     Layer.provide(
       OrchestratorConfig.layer({
         chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),

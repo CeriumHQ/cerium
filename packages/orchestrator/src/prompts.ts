@@ -5,6 +5,7 @@ import {
   type AgentInfo,
   type AgentState,
   type InputItem,
+  type ThreadWorktree,
 } from "@cerium/protocol";
 
 // Text Cerium hands to harnesses. Agents learn about the bus from these instructions, and every
@@ -203,6 +204,22 @@ const neighbourhood = (neighbours: ReadonlyArray<Neighbour>) =>
           " with `send_message`; `list_threads` shows which are working now.",
       ];
 
+/**
+ * A thread in a worktree of its own: agents otherwise take the folder for the user's checkout, and
+ * switch branches or reach for the original folder by its path.
+ */
+const isolation = (worktree: ThreadWorktree | undefined) =>
+  worktree === undefined
+    ? []
+    : [
+        "",
+        "## Your worktree",
+        `This thread works in a git worktree of its own, on branch \`${worktree.branch}\`, made from` +
+          ` \`${worktree.base}\` of the project at ${worktree.project}. Other threads don't see your changes,` +
+          " nor you theirs, until the branch is merged. Stay on this branch and in this folder: don't check out" +
+          " other branches here or change files in the project's own folder.",
+      ];
+
 /** Named only while the user has an advisor, so agents never reach for a tool that answers "off". */
 const stuck = [
   "",
@@ -229,7 +246,11 @@ const advisorPrompt = [
 export const systemPrompt = (
   agent: AgentInfo,
   busServer: string,
-  options: { readonly advisor?: boolean; readonly neighbours?: ReadonlyArray<Neighbour> } = {},
+  options: {
+    readonly advisor?: boolean;
+    readonly neighbours?: ReadonlyArray<Neighbour>;
+    readonly worktree?: ThreadWorktree | undefined;
+  } = {},
 ): string => {
   const ask = asking(agent, busServer);
   if (agent.parentId !== undefined && agent.role === ADVISOR_ROLE) return advisorPrompt;
@@ -249,6 +270,7 @@ export const systemPrompt = (
       ...together(agent),
       ...ask,
       ...planning,
+      ...isolation(options.worktree),
       ...neighbourhood(options.neighbours ?? []),
       ...help,
       ...artifacts(busServer),
@@ -262,6 +284,7 @@ export const systemPrompt = (
     ...together(agent),
     ...ask,
     ...planning,
+    ...isolation(options.worktree),
     ...help,
   ].join("\n");
 };

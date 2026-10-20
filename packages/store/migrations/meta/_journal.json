@@ -29,6 +29,13 @@
       "when": 1792373806619,
       "tag": "0003_thread_search",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792457388754,
+      "tag": "0004_thread_worktree",
+      "breakpoints": true
     }
   ]
 }

@@ -82,6 +82,18 @@ export const renameTab = (strip: TabStrip, from: string, to: string): TabStrip =
   };
 };
 
+/** `strip` with kept tabs for `keys` right after the tab `anchor`, in order; the active tab stays. */
+export const openBeside = (strip: TabStrip, anchor: string, keys: ReadonlyArray<string>): TabStrip => {
+  const adding = keys.filter((key, index) => key !== anchor && keys.indexOf(key) === index);
+  const rest = strip.keys.filter((key) => !adding.includes(key));
+  const at = rest.indexOf(anchor);
+  return {
+    ...strip,
+    keys: at === -1 ? [...rest, ...adding] : [...rest.slice(0, at + 1), ...adding, ...rest.slice(at + 1)],
+    closed: strip.closed.filter((key) => !adding.includes(key)),
+  };
+};
+
 /**
  * `strip` without the tabs `keys`, and the tab to show next when the active one was among them:
  * its neighbour on the right, else on the left. None when no tab is left.

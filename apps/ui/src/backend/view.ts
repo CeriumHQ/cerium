@@ -41,11 +41,14 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
       : agents.some((agent) => agent.state === "failed")
         ? "failed"
         : "idle";
+  // A thread in a worktree belongs with its project's other threads.
+  const folder = thread.worktree?.project ?? thread.cwd;
   return {
     id: thread.id,
     title: thread.title,
     mode: thread.mode,
-    ...(thread.cwd ? { project: baseName(thread.cwd), folder: thread.cwd } : {}),
+    ...(folder ? { project: baseName(folder), folder } : {}),
+    ...(thread.worktree ? { worktree: { branch: thread.worktree.branch, base: thread.worktree.base } } : {}),
     status,
     providers: ordered.map((agent) => agent.provider),
     unread: false,

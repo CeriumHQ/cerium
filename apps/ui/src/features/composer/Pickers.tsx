@@ -1,6 +1,16 @@
 import { Button } from "@base-ui/react/button";
+import { Toggle } from "@base-ui/react/toggle";
 import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
-import { Eye, FilePen, Gauge, ShieldCheck, ShieldOff, ShieldQuestion, type LucideIcon } from "lucide-react";
+import {
+  Columns3,
+  Eye,
+  FilePen,
+  Gauge,
+  ShieldCheck,
+  ShieldOff,
+  ShieldQuestion,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -77,49 +87,159 @@ export function ModelPicker({
         )}
       </SelectTrigger>
       <SelectPopup>
-        {providers.map((provider, index) => {
-          const usable = available.has(provider);
-          // Harnesses that can't run follow each other as plain rows, with no rule between them.
-          const previous = providers[index - 1];
-          return (
-            <SelectGroup key={provider}>
-              {previous !== undefined && (usable || available.has(previous)) ? <SelectSeparator /> : null}
-              {providers.length > 1 || !usable ? (
-                <SelectGroupLabel>
-                  <ProviderLogo
-                    provider={provider}
-                    size={11}
-                    {...(usable ? {} : { className: "opacity-35 grayscale" })}
-                  />
-                  {providerName[provider]}
-                  {usable ? null : <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>}
-                </SelectGroupLabel>
-              ) : null}
-              {usable
-                ? models
-                    .filter((model) => model.provider === provider)
-                    .map((model) => (
-                      <SelectItem key={model.id} value={modelKey(model)}>
-                        {model.label}
-                      </SelectItem>
-                    ))
-                : null}
-            </SelectGroup>
-          );
-        })}
+        <ModelList models={models} providers={providers} available={available} />
         {note ? <p className="px-2 pt-1.5 pb-1 text-2xs text-fg-tertiary">{note}</p> : null}
       </SelectPopup>
     </SelectRoot>
   );
 }
 
-/** Picks among the efforts the model offers. */
+/** The harnesses' models as a picker's rows, grouped under each harness. */
+function ModelList({
+  models,
+  providers,
+  available,
+  full = false,
+  chosen,
+}: {
+  readonly models: ReadonlyArray<ModelInfo>;
+  readonly providers: ReadonlyArray<ProviderId>;
+  readonly available: ReadonlySet<ProviderId>;
+  /** No more can be chosen: the rows not chosen yet wait. */
+  readonly full?: boolean;
+  readonly chosen?: ReadonlyArray<string>;
+}) {
+  return providers.map((provider, index) => {
+    const usable = available.has(provider);
+    // Harnesses that can't run follow each other as plain rows, with no rule between them.
+    const previous = providers[index - 1];
+    return (
+      <SelectGroup key={provider}>
+        {previous !== undefined && (usable || available.has(previous)) ? <SelectSeparator /> : null}
+        {providers.length > 1 || !usable ? (
+          <SelectGroupLabel>
+            <ProviderLogo
+              provider={provider}
+              size={11}
+              {...(usable ? {} : { className: "opacity-35 grayscale" })}
+            />
+            {providerName[provider]}
+            {usable ? null : <span className="ml-auto font-normal text-fg-disabled">Unavailable</span>}
+          </SelectGroupLabel>
+        ) : null}
+        {usable
+          ? models
+              .filter((model) => model.provider === provider)
+              .map((model) => (
+                <SelectItem
+                  key={model.id}
+                  value={modelKey(model)}
+                  disabled={full && chosen?.includes(modelKey(model)) !== true}
+                >
+                  {model.label}
+                </SelectItem>
+              ))
+          : null}
+      </SelectGroup>
+    );
+  });
+}
+
+/**
+ * Multi agent: picks the models a new thread's first message goes to, a thread each, side by side.
+ * At least one stays picked, and no more than `max`.
+ */
+export function ModelsPicker({
+  models,
+  chosen,
+  providers,
+  available,
+  max,
+  open,
+  onOpenChange,
+  onPick,
+  note,
+}: {
+  readonly models: ReadonlyArray<ModelInfo>;
+  /** The models picked, in the order picked. */
+  readonly chosen: ReadonlyArray<ModelInfo>;
+  readonly providers: ReadonlyArray<ProviderId>;
+  readonly available: ReadonlySet<ProviderId>;
+  readonly max: number;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onPick: (keys: ReadonlyArray<string>) => void;
+  readonly note?: string;
+}) {
+  const keys = chosen.map(modelKey);
+  const full = keys.length >= max;
+  const label =
+    chosen.length === 1 ? chosen[0]!.label : chosen.length === 0 ? "Pick models" : `${chosen.length} models`;
+  return (
+    <SelectRoot
+      multiple
+      value={keys}
+      open={open}
+      onOpenChange={onOpenChange}
+      onValueChange={(next: Array<string>) => {
+        // Kept in the order picked: the first goes on the left.
+        const ordered = [
+          ...keys.filter((key) => next.includes(key)),
+          ...next.filter((key) => !keys.includes(key)),
+        ];
+        if (ordered.length > 0 && ordered.length <= max) onPick(ordered);
+      }}
+    >
+      <SelectTrigger label="Models">
+        {chosen.length > 0 ? (
+          // Each harness among them once.
+          <span className="flex items-center gap-1">
+            {[...new Set(chosen.map((model) => model.provider))].map((provider) => (
+              <ProviderLogo key={provider} provider={provider} size={13} />
+            ))}
+          </span>
+        ) : null}
+        <span className="font-medium text-fg-primary">{label}</span>
+      </SelectTrigger>
+      <SelectPopup>
+        <ModelList models={models} providers={providers} available={available} full={full} chosen={keys} />
+        <p className="px-2 pt-1.5 pb-1 text-2xs text-fg-tertiary">
+          {note ?? `Up to ${max}, each in its own thread`}
+        </p>
+      </SelectPopup>
+    </SelectRoot>
+  );
+}
+
+/** Turns multi agent on: the first message goes to several models at once, a thread each. */
+export function MultiAgentToggle({
+  on,
+  onChange,
+}: {
+  readonly on: boolean;
+  readonly onChange: (on: boolean) => void;
+}) {
+  return (
+    <Tooltip label={on ? "Send to one model" : "Send to several models side by side"}>
+      <Toggle
+        pressed={on}
+        onPressedChange={onChange}
+        aria-label="Multi agent"
+        className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+      >
+        <Columns3 size={15} strokeWidth={1.75} />
+      </Toggle>
+    </Tooltip>
+  );
+}
+
+/** Picks among the efforts the model, or the models, offer. */
 export function EffortPicker({
-  model,
+  efforts,
   value,
   onPick,
 }: {
-  readonly model: ModelInfo;
+  readonly efforts: ReadonlyArray<ReasoningEffort>;
   readonly value: ReasoningEffort;
   readonly onPick: (effort: ReasoningEffort) => void;
 }) {
@@ -135,7 +255,7 @@ export function EffortPicker({
         {effortLabel[value]}
       </SelectTrigger>
       <SelectPopup>
-        {model.efforts.map((level) => (
+        {efforts.map((level) => (
           <SelectItem key={level} value={level}>
             {effortLabel[level]}
           </SelectItem>

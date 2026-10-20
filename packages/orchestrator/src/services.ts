@@ -1,6 +1,13 @@
 import type { HarnessAdapter, McpServerSpec } from "@cerium/harness";
-import type { AgentId, ProviderId, ReasoningEffort } from "@cerium/protocol";
-import { Context, Duration, Layer, type Effect } from "effect";
+import type {
+  AgentId,
+  ProviderId,
+  ReasoningEffort,
+  ThreadId,
+  ThreadWorktree,
+  WorktreeChanges,
+} from "@cerium/protocol";
+import { Context, Duration, Effect, Layer, Schema } from "effect";
 
 /** The harness adapters installed in this build, by provider. */
 export class Adapters extends Context.Service<Adapters, ReadonlyMap<ProviderId, HarnessAdapter>>()(
@@ -37,6 +44,47 @@ export class BusEndpoint extends Context.Service<
     unregister(agentId: AgentId): Effect.Effect<void>;
   }
 >()("cerium/orchestrator/BusEndpoint") {}
+
+/** Why a worktree couldn't be made, removed or read; `message` is written for the user. */
+export class WorktreeError extends Schema.TaggedError<WorktreeError>()("WorktreeError", {
+  message: Schema.String,
+}) {}
+
+/** A new thread's worktree, and the folder its agents work in there. */
+export interface NewWorktree {
+  readonly worktree: ThreadWorktree;
+  readonly cwd: string;
+}
+
+/** Git worktrees threads run in, so threads in one project keep out of each other's files. */
+export class Worktrees extends Context.Service<
+  Worktrees,
+  {
+    /**
+     * Checks the repository `project` is in out into a worktree of its own, on a new branch named after
+     * `name`, from the branch checked out there; the git-ignored files its include list names are
+     * copied in.
+     */
+    create(project: string, name: string): Effect.Effect<NewWorktree, WorktreeError>;
+    /** What the worktree holds that its base doesn't. */
+    changes(worktree: ThreadWorktree): Effect.Effect<WorktreeChanges, WorktreeError>;
+    /**
+     * Removes the worktree of thread `threadId` with what isn't committed there; its branch stays
+     * while it holds commits its base doesn't.
+     */
+    remove(threadId: ThreadId, worktree: ThreadWorktree): Effect.Effect<void, WorktreeError>;
+    /** Puts a removed worktree back where it was, on its branch, or afresh from its base without one. */
+    restore(worktree: ThreadWorktree): Effect.Effect<void, WorktreeError>;
+  }
+>()("cerium/orchestrator/Worktrees") {
+  /** For builds and tests without git: no thread gets a worktree. */
+  static readonly unavailable = Layer.succeed(Worktrees, {
+    create: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),
+    changes: () => Effect.succeed({ uncommitted: 0, unmerged: 0 }),
+    remove: () => Effect.void,
+    restore: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),
+  });
+}
 
 export interface OrchestratorSettings {
   /** Chat threads have no folder; each gets an empty directory under here as the harness's cwd. */

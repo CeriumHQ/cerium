@@ -5,6 +5,7 @@ import {
   emptyStrip,
   keepTab,
   moveTab,
+  openBeside,
   othersOf,
   renameTab,
   reopenTab,
@@ -117,6 +118,18 @@ describe("renameTab", () => {
     expect(renameTab(strip(["a", "new", "b"], { active: "new", preview: "new" }), "new", "t")).toEqual(
       strip(["a", "t", "b"], { active: "t", preview: "t" }),
     );
+  });
+});
+
+describe("openBeside", () => {
+  it("opens kept tabs right after the anchor, in order, leaving the active tab", () => {
+    expect(openBeside(strip(["a", "t", "b"], { active: "t" }), "t", ["u", "v"])).toEqual(
+      strip(["a", "t", "u", "v", "b"], { active: "t" }),
+    );
+  });
+
+  it("moves a tab already open beside the anchor and forgets it among the closed", () => {
+    expect(openBeside(strip(["u", "t"], { closed: ["v"] }), "t", ["u", "v"])).toEqual(strip(["t", "u", "v"]));
   });
 });
 

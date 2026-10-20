@@ -52,10 +52,24 @@ describe("Store", () => {
           createdAt: 3,
           updatedAt: 3,
         };
+        const isolated: ThreadInfo = {
+          ...thread,
+          id: "thr_isolated" as ThreadId,
+          cwd: "/home/me/.cerium/worktrees/proj/fix",
+          worktree: {
+            project: "/home/me/proj",
+            root: "/home/me/.cerium/worktrees/proj/fix",
+            branch: "cerium/fix",
+            base: "main",
+          },
+          createdAt: 4,
+        };
         yield* store.createThread(thread);
         yield* store.createThread(chat);
+        yield* store.createThread(isolated);
         assert.deepStrictEqual(yield* store.getThread(thread.id), Option.some(thread));
-        assert.deepStrictEqual(yield* store.listThreads, [thread, chat]);
+        assert.deepStrictEqual(yield* store.getThread(isolated.id), Option.some(isolated));
+        assert.deepStrictEqual(yield* store.listThreads, [thread, chat, isolated]);
         assert.isTrue(Option.isNone(yield* store.getThread("missing" as ThreadId)));
       }),
     ),

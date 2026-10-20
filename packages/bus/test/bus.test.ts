@@ -1,5 +1,12 @@
 import type { McpServerSpec } from "@cerium/harness";
-import { Adapters, Catalog, Orchestrator, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
+import {
+  Adapters,
+  Catalog,
+  Orchestrator,
+  OrchestratorConfig,
+  UserSettings,
+  Worktrees,
+} from "@cerium/orchestrator";
 import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
@@ -23,6 +30,7 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
           migrationsFolder: join(import.meta.dirname, "../../store/migrations"),
         }),
         Adapters.fromList([fake.adapter]),
+        Worktrees.unavailable,
         Catalog.fromEntries([
           { alias: "scout", provider: "claude", model: "haiku", description: "Quick lookups" },
         ]),

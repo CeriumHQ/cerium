@@ -24,6 +24,8 @@ import {
   type ThreadInfo,
   type ThreadMode,
   type ThreadOverview,
+  type ThreadWorktree,
+  type WorktreeChanges,
 } from "@cerium/protocol";
 import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
 import {
@@ -49,7 +51,16 @@ import { Base64 } from "effect/encoding";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
-import { Adapters, BusEndpoint, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
+import {
+  Adapters,
+  BusEndpoint,
+  Catalog,
+  OrchestratorConfig,
+  Worktrees,
+  type CatalogEntry,
+  type NewWorktree,
+  type WorktreeError,
+} from "./services.ts";
 import { UserSettings } from "./settings.ts";
 import { ThreadTitles } from "./titles.ts";
 
@@ -58,6 +69,8 @@ export interface CreateThreadInput {
   readonly mode: ThreadMode;
   /** Required for work threads: the folder the agents work in. */
   readonly cwd?: string;
+  /** A work thread runs in a git worktree of `cwd`'s repository of its own instead of `cwd` itself. */
+  readonly worktree?: boolean;
   readonly lead: {
     readonly provider: ProviderId;
     readonly model: string;
@@ -161,6 +174,27 @@ type PermissionRequest = Extract<EventPayload, { readonly _tag: "PermissionReque
 const unavailable = (error: StoreError) =>
   new OrchestratorError({ reason: "unavailable", message: error.message });
 
+const refusedWorktree = (error: WorktreeError) =>
+  new OrchestratorError({ reason: "invalid", message: error.message });
+
+/** How archiving or deleting a thread treats the work in its worktree. */
+export interface PutAwayOptions {
+  /**
+   * The user saw what the worktree holds that its base doesn't and still wants it gone. Without it, a
+   * worktree with uncommitted changes or unmerged commits keeps its thread from being put away.
+   */
+  readonly discardWork?: boolean;
+}
+
+/** What a worktree's changes are, in words, for the refusal that asks the user to confirm. */
+const describeChanges = ({ uncommitted, unmerged }: WorktreeChanges, base: string) =>
+  [
+    uncommitted > 0 ? `${uncommitted} uncommitted ${uncommitted === 1 ? "change" : "changes"}` : undefined,
+    unmerged > 0 ? `${unmerged} ${unmerged === 1 ? "commit" : "commits"} not merged into ${base}` : undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join(" and ");
+
 export class Orchestrator extends Context.Service<
   Orchestrator,
   {
@@ -215,14 +249,22 @@ export class Orchestrator extends Context.Service<
     renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
      * Archives or restores a thread. One whose agents are working or waiting on the user can't be
-     * archived, so a request never ends up where the user doesn't look.
+     * archived, so a request never ends up where the user doesn't look. Archiving a thread that runs
+     * in a worktree ends its sessions and removes the worktree, refused while it holds work its base
+     * doesn't unless `discardWork`; restoring puts the worktree back.
      */
-    setThreadArchived(threadId: ThreadId, archived: boolean): Effect.Effect<ThreadInfo, OrchestratorError>;
+    setThreadArchived(
+      threadId: ThreadId,
+      archived: boolean,
+      options?: PutAwayOptions,
+    ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
-     * Deletes a thread for good: its agents' sessions end and its agents and events are removed.
-     * Refused while its agents work or wait on the user, like archiving.
+     * Deletes a thread for good: its agents' sessions end and its agents and events are removed, and
+     * its worktree with them. Refused while its agents work or wait on the user, like archiving.
      */
-    deleteThread(threadId: ThreadId): Effect.Effect<void, OrchestratorError>;
+    deleteThread(threadId: ThreadId, options?: PutAwayOptions): Effect.Effect<void, OrchestratorError>;
+    /** What a thread's worktree holds that its base doesn't; none for a thread without one. */
+    worktreeChanges(threadId: ThreadId): Effect.Effect<WorktreeChanges, OrchestratorError>;
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, OrchestratorError>;
     /** Every thread with its agents and whether it waits on the user, oldest first, read at once. */
     readonly threadOverviews: Effect.Effect<ReadonlyArray<ThreadOverview>, OrchestratorError>;
@@ -273,6 +315,7 @@ export class Orchestrator extends Context.Service<
       const config = yield* OrchestratorConfig;
       const settings = yield* UserSettings;
       const titles = yield* ThreadTitles;
+      const worktrees = yield* Worktrees;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -281,6 +324,8 @@ export class Orchestrator extends Context.Service<
       const runtimes = new Map<AgentId, Runtime>();
       const threadDirectories = new Map<ThreadId, string>();
       const threadModes = new Map<ThreadId, ThreadMode>();
+      /** The worktree of each live thread that runs in one, for its agents' instructions. */
+      const threadWorktrees = new Map<ThreadId, ThreadWorktree>();
       const pendingSpawns = new Map<string, { readonly leadId: AgentId; readonly request: SpawnRequest }>();
       /** Send times per `from->to` pair, for the message budget. */
       const sentMessages = new Map<string, Array<number>>();
@@ -786,6 +831,7 @@ export class Orchestrator extends Context.Service<
                 appendSystemPrompt: systemPrompt(info, bus.serverName, {
                   advisor: advisor.enabled && advisor.model !== undefined,
                   neighbours,
+                  worktree: threadWorktrees.get(info.threadId),
                 }),
               })
               .pipe(
@@ -990,6 +1036,44 @@ export class Orchestrator extends Context.Service<
           yield* Scope.close(rt.scope, Exit.void);
         });
 
+      const threadInfo = (threadId: ThreadId) =>
+        store.getThread(threadId).pipe(
+          Effect.mapError(unavailable),
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.fail(notFound(`Thread ${threadId} does not exist.`)),
+              onSome: Effect.succeed,
+            }),
+          ),
+        );
+
+      /**
+       * Removes a thread's worktree once its sessions have ended: a harness still running in the folder
+       * would hold it open. Refused while the worktree holds work its base doesn't, unless the user
+       * chose to discard it.
+       */
+      const removeWorktree = Effect.fn("Orchestrator.removeWorktree")(function* (
+        threadId: ThreadId,
+        worktree: ThreadWorktree,
+        options: PutAwayOptions,
+      ) {
+        if (options.discardWork !== true) {
+          const changes = yield* worktrees.changes(worktree).pipe(Effect.mapError(refusedWorktree));
+          if (changes.uncommitted > 0 || changes.unmerged > 0) {
+            return yield* notAllowed(
+              `This thread's worktree has ${describeChanges(changes, worktree.base)}; confirm to put it away.`,
+            );
+          }
+        }
+        yield* Effect.forEach(
+          [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+          stopRuntime,
+          { discard: true },
+        );
+        yield* worktrees.remove(threadId, worktree).pipe(Effect.mapError(refusedWorktree));
+        threadWorktrees.delete(threadId);
+      });
+
       /**
        * Starts a stopped or failed lead again on its harness session, so the thread carries on with
        * the context it had; a lead whose session never started gets a new one. Returns the user's
@@ -1019,12 +1103,18 @@ export class Orchestrator extends Context.Service<
           yield* store.getThread(info.threadId).pipe(Effect.mapError(unavailable)),
         );
         if (thread === undefined) return yield* notFound(`Thread ${info.threadId} does not exist.`);
+        if (thread.worktree !== undefined && thread.archivedAt !== undefined) {
+          return yield* notAllowed(
+            "This thread's worktree was removed when it was archived; restore it first.",
+          );
+        }
         const directory =
           thread.mode === "work" && thread.cwd !== undefined
             ? thread.cwd
             : path.join(config.chatDirectory, thread.id);
         threadDirectories.set(thread.id, directory);
         threadModes.set(thread.id, thread.mode);
+        if (thread.worktree !== undefined) threadWorktrees.set(thread.id, thread.worktree);
 
         // A failed lead still holds its ended session and bus registration; release them first.
         if (previous !== undefined) {
@@ -1214,18 +1304,24 @@ export class Orchestrator extends Context.Service<
           }
           const createdAt = yield* now;
           const threadId = (yield* makeId("thr")) as ThreadId;
+          const isolated: NewWorktree | undefined =
+            input.mode === "work" && input.cwd !== undefined && input.worktree === true
+              ? yield* worktrees.create(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
+              : undefined;
+          const directory =
+            isolated?.cwd ??
+            (input.cwd !== undefined && input.mode === "work"
+              ? input.cwd
+              : path.join(config.chatDirectory, threadId));
           const thread: ThreadInfo = {
             id: threadId,
             title: input.title,
             mode: input.mode,
-            ...(input.mode === "work" && input.cwd !== undefined ? { cwd: input.cwd } : {}),
+            ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
+            ...(isolated ? { worktree: isolated.worktree } : {}),
             createdAt,
             updatedAt: createdAt,
           };
-          const directory =
-            input.cwd !== undefined && input.mode === "work"
-              ? input.cwd
-              : path.join(config.chatDirectory, threadId);
           if (input.mode === "chat") {
             yield* fs
               .makeDirectory(directory, { recursive: true })
@@ -1248,10 +1344,16 @@ export class Orchestrator extends Context.Service<
             createdAt,
             updatedAt: createdAt,
           };
-          yield* store.createThread(thread).pipe(Effect.mapError(unavailable));
-          yield* store.createAgent(lead).pipe(Effect.mapError(unavailable));
+          yield* Effect.all([store.createThread(thread), store.createAgent(lead)], { discard: true }).pipe(
+            Effect.mapError(unavailable),
+            // A worktree no thread records would never be removed.
+            Effect.onError(() =>
+              isolated ? worktrees.remove(threadId, isolated.worktree).pipe(Effect.ignore) : Effect.void,
+            ),
+          );
           threadDirectories.set(threadId, directory);
           threadModes.set(threadId, input.mode);
+          if (isolated) threadWorktrees.set(threadId, isolated.worktree);
           untitled.set(threadId, input.title);
           yield* startRuntime(lead, directory);
           return { thread, lead };
@@ -1490,22 +1592,35 @@ export class Orchestrator extends Context.Service<
         setThreadArchived: Effect.fn("Orchestrator.setThreadArchived")(function* (
           threadId: ThreadId,
           archived: boolean,
+          options: PutAwayOptions = {},
         ) {
           if (archived && (working(threadId) || waitsOnUser(threadId))) {
             return yield* notAllowed(
               "A thread can't be archived while its agents are working or waiting on you.",
             );
           }
+          const thread = yield* threadInfo(threadId);
+          if (thread.worktree !== undefined && archived !== (thread.archivedAt !== undefined)) {
+            yield* archived
+              ? removeWorktree(thread.id, thread.worktree, options)
+              : worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
+          }
           return yield* updateThread(threadId, { archivedAt: archived ? yield* now : null });
         }),
 
-        deleteThread: Effect.fn("Orchestrator.deleteThread")(function* (threadId: ThreadId) {
-          const thread = yield* store.getThread(threadId).pipe(Effect.mapError(unavailable));
-          if (Option.isNone(thread)) return yield* notFound(`Thread ${threadId} does not exist.`);
+        deleteThread: Effect.fn("Orchestrator.deleteThread")(function* (
+          threadId: ThreadId,
+          options: PutAwayOptions = {},
+        ) {
+          const thread = yield* threadInfo(threadId);
           if (working(threadId) || waitsOnUser(threadId)) {
             return yield* notAllowed(
               "A thread can't be deleted while its agents are working or waiting on you.",
             );
+          }
+          // An archived thread's worktree is gone already; its branch keeps any commits.
+          if (thread.worktree !== undefined && thread.archivedAt === undefined) {
+            yield* removeWorktree(thread.id, thread.worktree, options);
           }
           // Sessions end first, so nothing they record lands after the rows are gone.
           yield* Effect.forEach(
@@ -1516,6 +1631,12 @@ export class Orchestrator extends Context.Service<
           threadDirectories.delete(threadId);
           threadModes.delete(threadId);
           yield* store.deleteThread(threadId).pipe(Effect.mapError(unavailable));
+        }),
+
+        worktreeChanges: Effect.fn("Orchestrator.worktreeChanges")(function* (threadId: ThreadId) {
+          const { worktree, archivedAt } = yield* threadInfo(threadId);
+          if (worktree === undefined || archivedAt !== undefined) return { uncommitted: 0, unmerged: 0 };
+          return yield* worktrees.changes(worktree).pipe(Effect.mapError(refusedWorktree));
         }),
 
         listAgents: (threadId) => store.listAgents(threadId).pipe(Effect.mapError(unavailable)),

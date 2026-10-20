@@ -131,6 +131,53 @@ export const splitPane = (panes: Panes, target: string, side: Side, key: string,
   return withShown({ ...from, root: flatten(insertBeside(from.root, target, side, leaf)), focused: id });
 };
 
+/**
+ * `panes` with a pane for each of `added` to the right of the pane `target`, in order, all of them
+ * sharing the target's room evenly: threads started together, to read side by side. The focus stays.
+ */
+export const spreadBeside = (
+  panes: Panes,
+  target: string,
+  added: ReadonlyArray<{ readonly key: string; readonly id: string }>,
+): Panes => {
+  // A tab shows once: none twice, and none the target already shows.
+  const targetKey = findPane(panes.root, target)?.key;
+  const adding = added.filter(
+    ({ key }, index) => key !== targetKey && added.findIndex((each) => each.key === key) === index,
+  );
+  const from = adding.reduce((current, { key }) => {
+    const elsewhere = paneShowing(current.root, key);
+    return elsewhere !== undefined && elsewhere.id !== target
+      ? (closePane(current, elsewhere.id) ?? current)
+      : current;
+  }, panes);
+  const leaves: ReadonlyArray<PaneLeaf> = adding.map(({ key, id }) => ({ kind: "pane", id, key }));
+  if (leaves.length === 0 || findPane(from.root, target) === undefined) return from;
+  const spread = (node: PaneNode): PaneNode => {
+    if (node.kind === "pane") {
+      if (node.id !== target) return node;
+      const children = [node, ...leaves];
+      return { kind: "split", axis: "row", children, sizes: children.map(() => 1 / children.length) };
+    }
+    const at = node.children.findIndex((child) => child.kind === "pane" && child.id === target);
+    // A pane already in a row shares its own room there with the new ones.
+    if (at !== -1 && node.axis === "row") {
+      const share = (node.sizes[at] ?? 0) / (leaves.length + 1);
+      return {
+        ...node,
+        children: [...node.children.slice(0, at + 1), ...leaves, ...node.children.slice(at + 1)],
+        sizes: [
+          ...node.sizes.slice(0, at),
+          ...Array.from({ length: leaves.length + 1 }, () => share),
+          ...node.sizes.slice(at + 1),
+        ],
+      };
+    }
+    return { ...node, children: node.children.map(spread) };
+  };
+  return withShown({ ...from, root: flatten(spread(from.root)) });
+};
+
 const without = (node: PaneNode, id: string): PaneNode | undefined => {
   if (node.kind === "pane") return node.id === id ? undefined : node;
   const at = node.children.findIndex((child) => leavesOf(child).some((leaf) => leaf.id === id));

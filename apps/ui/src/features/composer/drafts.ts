@@ -36,8 +36,10 @@ const StoredDraft = Schema.Struct({
       machine: Schema.optionalKey(Schema.String),
       folder: Schema.optionalKey(Schema.String),
       model: Schema.optionalKey(Schema.String),
+      models: Schema.optionalKey(Schema.Array(Schema.String)),
       effort: Schema.optionalKey(ReasoningEffort),
       access: Schema.optionalKey(AccessMode),
+      worktree: Schema.optionalKey(Schema.Boolean),
     }),
   ),
 });

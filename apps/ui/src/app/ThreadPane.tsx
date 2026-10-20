@@ -31,11 +31,14 @@ export interface ThreadPaneActions {
   /** Runs a backend action, reporting a failure; resolves whether it worked. */
   readonly attempt: (action: Promise<unknown>) => Promise<boolean>;
   readonly send: (agentId: AgentId, message: OutgoingMessage) => Promise<unknown>;
-  /** Starts a thread from the draft `draft`, in `folder`, with `message`. */
+  /**
+   * Starts a thread from the draft `draft`, in `folder`, with `message`: one with each setup, laid
+   * side by side, the first in the draft's place.
+   */
   readonly start: (
     draft: string,
     message: OutgoingMessage,
-    setup: ThreadSetup,
+    setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
     folder: string | undefined,
   ) => Promise<unknown>;
   readonly interrupt: (agentId: AgentId) => Promise<unknown>;
@@ -74,6 +77,8 @@ export interface ThreadPaneProps {
   readonly folder: string | undefined;
   /** The providers ready to run a new thread. */
   readonly available: ReadonlySet<ProviderId>;
+  /** The machine can give a new thread a worktree of its own. */
+  readonly worktrees: boolean;
   /** Shown in place of the message box (the thread can't take messages here). */
   readonly bar?: ReactNode;
   /** Notices over the conversation. */
@@ -107,6 +112,7 @@ export function ThreadPane({
   draftKey,
   folder,
   available,
+  worktrees,
   bar,
   notices,
   drawer,
@@ -212,6 +218,7 @@ export function ThreadPane({
                     modelId: lead.model,
                     effort: lead.effort,
                     folder: viewed.thread.cwd,
+                    worktree: viewed.thread.worktree,
                     ...(leadEnded ? { ended: leadEnded } : {}),
                     // A thread read from the cloud copy can't be switched: it takes its machine.
                     ...(cloud ? {} : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
@@ -222,6 +229,7 @@ export function ThreadPane({
                     folder: newFolder,
                     onChooseFolder: actions.chooseFolder,
                     available,
+                    worktrees,
                   }
             }
             running={leadRunning && cloud === undefined}
@@ -238,13 +246,13 @@ export function ThreadPane({
               )
             }
             onHeight={setComposerHeight}
-            onSend={(message, setup) => {
+            onSend={(message, setups) => {
               // Writing to a thread keeps its tab: it's no longer only a preview.
               if (viewed) actions.keep(viewed.thread.id);
               return attempt(
                 selected && lead
                   ? actions.send(lead.id, message)
-                  : actions.start(draftKey, message, setup, newFolder),
+                  : actions.start(draftKey, message, setups, newFolder),
               );
             }}
             onStop={() => {

@@ -13,7 +13,10 @@ export {
   BusEndpoint,
   Catalog,
   OrchestratorConfig,
+  WorktreeError,
+  Worktrees,
   type CatalogEntry,
+  type NewWorktree,
   type OrchestratorSettings,
 } from "./services.ts";
 export { UserSettings } from "./settings.ts";

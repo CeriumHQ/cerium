@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { ReasoningEffort } from "./capabilities.ts";
 import { withFallback } from "./compat.ts";
-import { AgentId, EpochMillis, ProviderId, ThreadId } from "./ids.ts";
+import { AgentId, EpochMillis, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 
 /**
  * What an agent may do without asking, ordered from least to most permissive:
@@ -43,12 +43,39 @@ export type AgentState = typeof AgentState.Type;
 export const ThreadMode = Schema.Literals(["work", "chat"]);
 export type ThreadMode = typeof ThreadMode.Type;
 
+/**
+ * A work thread's own git worktree: a checkout of its project's repository on a branch of its own,
+ * so threads in one project don't change each other's files. Archiving the thread removes the
+ * worktree, and restoring it puts the worktree back.
+ */
+export const ThreadWorktree = Schema.Struct({
+  /** The folder the user chose; the thread's `cwd` is the same folder inside the worktree. */
+  project: Schema.NonEmptyString,
+  /** The worktree's own folder: `cwd`, or above it when the project is a subfolder of its repository. */
+  root: Schema.NonEmptyString,
+  branch: Schema.NonEmptyString,
+  /** The branch the worktree started from (a commit, when that was detached), which its work merges into. */
+  base: Schema.NonEmptyString,
+});
+export type ThreadWorktree = typeof ThreadWorktree.Type;
+
+/** What a thread's worktree holds that its base doesn't: what archiving would put away. */
+export const WorktreeChanges = Schema.Struct({
+  /** Changed and new files not committed yet, which archiving discards. */
+  uncommitted: NonNegativeInt,
+  /** Commits on the thread's branch that its base doesn't have; the branch keeps them. */
+  unmerged: NonNegativeInt,
+});
+export type WorktreeChanges = typeof WorktreeChanges.Type;
+
 export const ThreadInfo = Schema.Struct({
   id: ThreadId,
   title: Schema.String,
   mode: ThreadMode,
   /** The folder agents work in; absent for chat threads. */
   cwd: Schema.optionalKey(Schema.NonEmptyString),
+  /** The thread's own worktree, when it runs in one; `cwd` is inside it. */
+  worktree: Schema.optionalKey(ThreadWorktree),
   createdAt: EpochMillis,
   updatedAt: EpochMillis,
   /** When the user archived it; archived threads leave the sidebar until restored. */

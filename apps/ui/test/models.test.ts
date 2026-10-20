@@ -1,7 +1,15 @@
 import type { ModelInfo } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { effortFor, pickModel, switchTo } from "../src/features/composer/models.ts";
+import {
+  effortFor,
+  effortsOf,
+  MAX_AGENTS,
+  modelKey,
+  pickModel,
+  pickModels,
+  switchTo,
+} from "../src/features/composer/models.ts";
 
 const model = (provider: ModelInfo["provider"], id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({
   provider,
@@ -60,5 +68,35 @@ describe("pickModel", () => {
 
   it("falls back to the first usable harness's default", () => {
     expect(pickModel(models, "codex/luna", new Set(["claude"]))?.id).toBe("opus");
+  });
+});
+
+describe("pickModels", () => {
+  const all = [opus, haiku, luna, model("codex", "sol"), model("codex", "terra")];
+  const both = new Set<ModelInfo["provider"]>(["claude", "codex"]);
+
+  it("keeps each chosen model once, in the order chosen", () => {
+    expect(pickModels(all, ["codex/luna", "claude/opus", "codex/luna"], both).map((each) => each.id)).toEqual(
+      ["luna", "opus"],
+    );
+  });
+
+  it("drops models whose harness can't run and ones no longer listed", () => {
+    expect(
+      pickModels(all, ["codex/luna", "claude/gone", "claude/opus"], new Set(["claude"])).map(
+        (each) => each.id,
+      ),
+    ).toEqual(["opus"]);
+  });
+
+  it("starts no more than MAX_AGENTS", () => {
+    expect(pickModels(all, all.map(modelKey), both)).toHaveLength(MAX_AGENTS);
+  });
+});
+
+describe("effortsOf", () => {
+  it("offers every effort any of the models has, weakest first", () => {
+    expect(effortsOf([luna, opus, haiku])).toEqual(["low", "medium", "high", "max"]);
+    expect(effortsOf([haiku])).toEqual([]);
   });
 });

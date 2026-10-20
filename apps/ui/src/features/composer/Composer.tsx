@@ -4,6 +4,7 @@ import {
   type AccessMode,
   type Attachment,
   type Mention,
+  type ModelInfo,
   type ProviderId,
   type ReasoningEffort,
 } from "@cerium/protocol";
@@ -30,7 +31,15 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
-import { accessAtom, effortAtom, isSendKey, modelAtom, sendKeyAtom } from "../settings/preferences.ts";
+import { gitBranchAtom } from "../../backend/projects.ts";
+import {
+  accessAtom,
+  effortAtom,
+  isSendKey,
+  modelAtom,
+  sendKeyAtom,
+  workplaceAtom,
+} from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
 import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
@@ -50,16 +59,28 @@ import type { MessageBox } from "./messageBox.ts";
 import {
   effortFor,
   effortLabel,
+  effortsOf,
+  MAX_AGENTS,
   modelKey,
   pickModel,
+  pickModels,
   switchTo,
   useModels,
   type ModelSwitch,
 } from "./models.ts";
-import { AccessPicker, EffortPicker, FixedChip, ModelPicker, type ShownModel } from "./Pickers.tsx";
+import {
+  AccessPicker,
+  EffortPicker,
+  FixedChip,
+  ModelPicker,
+  ModelsPicker,
+  MultiAgentToggle,
+  type ShownModel,
+} from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
+import { WorktreeChip, WorktreePicker } from "./WorktreePicker.tsx";
 
 const providers = OFFERED_PROVIDERS;
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
@@ -78,6 +99,8 @@ export interface ThreadSetup {
   /** Absent for models the harness offers no effort setting for. */
   readonly effort?: ReasoningEffort;
   readonly access: AccessMode;
+  /** A work thread runs in a git worktree of its own. */
+  readonly worktree?: boolean;
 }
 
 export type ComposerTarget =
@@ -93,6 +116,8 @@ export type ComposerTarget =
       readonly effort?: ReasoningEffort | undefined;
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
+      /** The thread's own worktree's branch, and the branch it was made from. */
+      readonly worktree?: { readonly branch: string; readonly base: string } | undefined;
       /** The lead stopped or failed; the next message picks the thread back up. */
       readonly ended?: "stopped" | "failed";
       /**
@@ -110,6 +135,8 @@ export type ComposerTarget =
       readonly onChooseFolder: (folder: string) => void;
       /** Providers whose harness is installed and logged in. */
       readonly available: ReadonlySet<ProviderId>;
+      /** The machine can give a thread a worktree of its own. */
+      readonly worktrees?: boolean;
     };
 
 interface ComposerProps {
@@ -124,8 +151,14 @@ interface ComposerProps {
   readonly messageBox?: Ref<MessageBox | null>;
   /** A turn is in progress: the send button becomes stop. */
   readonly running: boolean;
-  /** Resolves false when the message didn't go through, so the box can give the draft back. */
-  readonly onSend: (message: OutgoingMessage, setup: ThreadSetup) => Promise<boolean>;
+  /**
+   * Resolves false when the message didn't go through, so the box can give the draft back. A new
+   * thread starts with the first setup; multi agent starts one more thread with each of the rest.
+   */
+  readonly onSend: (
+    message: OutgoingMessage,
+    setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
+  ) => Promise<boolean>;
   readonly onStop: () => void;
   /** Shown just above the box, such as requests waiting on the user. */
   readonly above?: ReactNode;
@@ -174,14 +207,33 @@ export function Composer({
   const modelId = draft.start?.model ?? defaultModel;
   const effort = draft.start?.effort ?? defaultEffort;
   const access = draft.start?.access ?? defaultAccess;
+  const [workplace, setWorkplace] = useAtom(workplaceAtom);
+  /** A worktree is offered for a work thread in a folder git keeps, on a machine that makes them. */
+  const gitFolder =
+    target.kind === "new" && target.mode === "work" && target.worktrees === true ? target.folder : undefined;
+  const branch = AsyncResult.getOrElse(useAtomValue(gitBranchAtom(gitFolder ?? "")), () => undefined);
+  const worktree =
+    gitFolder !== undefined && branch !== undefined && (draft.start?.worktree ?? workplace === "worktree");
   const sendKey = useAtomValue(sendKeyAtom);
   const touch = useCoarsePointer();
 
   const models = useModels();
-  const model = pickModel(models, modelId, target.kind === "new" ? target.available : allProviders);
-  // Keep the effort valid when switching to a model with fewer levels.
-  const activeEffort = model ? effortFor(model, effort) : undefined;
+  const usable = target.kind === "new" ? target.available : allProviders;
+  const model = pickModel(models, modelId, usable);
   const isNew = target.kind === "new";
+  /** Multi agent: the models the first message starts a thread each with, side by side. */
+  const multi = isNew && draft.start?.models !== undefined;
+  const chosen = multi ? pickModels(models, draft.start?.models ?? [], usable) : [];
+  /** What the message starts: a thread with each chosen model, else one with the model. */
+  const starting = multi && chosen.length > 0 ? chosen : model ? [model] : [];
+  /** One effort for every model starting; each model that lacks it runs at its own default. */
+  const efforts = effortsOf(starting);
+  // Keep the effort valid when switching to a model with fewer levels.
+  const activeEffort =
+    multi && effort !== undefined && efforts.includes(effort)
+      ? effort
+      : starting.map((each) => effortFor(each, effort)).find((each) => each !== undefined);
+  const [modelsOpen, setModelsOpen] = useState(false);
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
   const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
@@ -189,7 +241,7 @@ export function Composer({
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   );
   const written = text.trim() !== "" || ready.length > 0;
-  const sendable = written && !preparing && !connecting && (!isNew || model !== undefined);
+  const sendable = written && !preparing && !connecting && (!isNew || starting.length > 0);
   const canSend = sendable && !needsFolder;
   /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
   const asksForProject = sendable && needsFolder;
@@ -197,7 +249,7 @@ export function Composer({
   // `@` tags files in the thread's folder; `$` the skills of the harness the message goes to.
   const sources = {
     folder: target.kind === "thread" ? target.folder : target.mode === "work" ? target.folder : undefined,
-    provider: target.kind === "thread" ? target.provider : model?.provider,
+    provider: target.kind === "thread" ? target.provider : starting[0]?.provider,
     chat: target.kind === "thread" ? target.folder === undefined : target.mode === "chat",
   };
   const menuTrigger =
@@ -253,11 +305,28 @@ export function Composer({
     );
 
   /** Remembers a pick in the open new thread's draft; nothing else changes it. */
-  const pickForDraft = (pick: Partial<Pick<DraftStart, "folder" | "model" | "effort" | "access">>) =>
+  const pickForDraft = (
+    pick: Partial<Pick<DraftStart, "folder" | "model" | "models" | "effort" | "access" | "worktree">>,
+  ) =>
     updateDraft(draftKey, (current) => {
       const start = startOf(current);
       return start ? { ...current, start: { ...start, ...pick } } : current;
     });
+  /** Multi agent on, starting from the model picked so far with its list open to add more, or off, back to the first one picked. */
+  const setMulti = (on: boolean) => {
+    if (on) {
+      pickForDraft({ models: model ? [modelKey(model)] : [] });
+      setModelsOpen(true);
+      return;
+    }
+    const first = chosen[0];
+    if (first) setDefaultModel(modelKey(first));
+    updateDraft(draftKey, (current) => {
+      if (current.start === undefined) return current;
+      const { models: _, ...start } = current.start;
+      return { ...current, start: first ? { ...start, model: modelKey(first) } : start };
+    });
+  };
   const setModelId = (value: string) => {
     setDefaultModel(value);
     pickForDraft({ model: value });
@@ -423,21 +492,27 @@ export function Composer({
       setProjectsOpen(true);
       return;
     }
-    if (!canSend || model === undefined) return;
+    const setupOf = (each: ModelInfo): ThreadSetup => {
+      const level = effortFor(each, activeEffort);
+      return {
+        provider: each.provider,
+        model: each.id,
+        ...(level ? { effort: level } : {}),
+        access: isNew && target.mode === "chat" ? "readOnly" : access,
+        ...(worktree ? { worktree } : {}),
+      };
+    };
+    const [first, ...rest] = starting;
+    if (!canSend || first === undefined) return;
     const key = draftKey;
     const sent = draft;
     setDrafts((current) => withoutDraft(current, key));
     setEpoch((current) => current + 1);
     setTrigger(undefined);
-    void onSend(
-      { text: text.trim(), attachments: ready, mentions: draftMentions(draft.segments) },
-      {
-        provider: model.provider,
-        model: model.id,
-        ...(activeEffort ? { effort: activeEffort } : {}),
-        access: isNew && target.mode === "chat" ? "readOnly" : access,
-      },
-    ).then((delivered) => {
+    void onSend({ text: text.trim(), attachments: ready, mentions: draftMentions(draft.segments) }, [
+      setupOf(first),
+      ...rest.map(setupOf),
+    ]).then((delivered) => {
       if (delivered) {
         for (const attachment of sent.attachments) {
           if (attachment.preview) URL.revokeObjectURL(attachment.preview);
@@ -542,9 +617,11 @@ export function Composer({
       ? "Send a message to try again"
       : "Send a message to pick this thread back up"
     : isNew
-      ? target.mode === "chat"
-        ? "Ask anything"
-        : "Describe the task"
+      ? starting.length > 1
+        ? `Message ${starting.length} models at once`
+        : target.mode === "chat"
+          ? "Ask anything"
+          : "Describe the task"
       : `Message ${threadShown?.label}`;
 
   const threadSetup =
@@ -576,7 +653,7 @@ export function Composer({
         {threadModel && threadEffort ? (
           switching?.effort ? (
             <EffortPicker
-              model={threadModel}
+              efforts={threadModel.efforts}
               value={threadEffort}
               onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
             />
@@ -587,6 +664,7 @@ export function Composer({
             </FixedChip>
           )
         ) : null}
+        {thread.worktree ? <WorktreeChip {...thread.worktree} /> : null}
       </>
     ) : null;
 
@@ -606,16 +684,44 @@ export function Composer({
             }}
           />
         ) : null}
-        <ModelPicker
-          models={models}
-          shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
-          providers={providers}
-          available={target.available}
-          onPick={(picked) => setModelId(modelKey(picked))}
-        />
-        {model && activeEffort ? (
-          <EffortPicker model={model} value={activeEffort} onPick={setEffort} />
+        {gitFolder !== undefined && branch !== undefined ? (
+          <WorktreePicker
+            branch={branch}
+            value={worktree}
+            onPick={(picked) => {
+              setWorkplace(picked ? "worktree" : "local");
+              pickForDraft({ worktree: picked });
+            }}
+          />
         ) : null}
+        {multi ? (
+          <ModelsPicker
+            models={models}
+            chosen={starting}
+            providers={providers}
+            available={target.available}
+            max={MAX_AGENTS}
+            open={modelsOpen}
+            onOpenChange={setModelsOpen}
+            onPick={(keys) => pickForDraft({ models: keys })}
+            // Agents that may edit share the one folder, where they can undo each other's work.
+            {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
+              ? { note: "They share the folder, so their edits can collide" }
+              : {})}
+          />
+        ) : (
+          <ModelPicker
+            models={models}
+            shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
+            providers={providers}
+            available={target.available}
+            onPick={(picked) => setModelId(modelKey(picked))}
+          />
+        )}
+        {models.filter((each) => target.available.has(each.provider)).length > 1 ? (
+          <MultiAgentToggle on={multi} onChange={setMulti} />
+        ) : null}
+        {activeEffort ? <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} /> : null}
         {target.mode === "work" ? <AccessPicker value={access} onPick={setAccess} /> : null}
       </>
     ) : null;
