@@ -8,20 +8,11 @@ export interface TextMenuEntry {
 }
 
 /**
- * The text menu's groups for a right-click, only those that apply: spelling, then editing, then
- * copying read-only text, then the link. None means no menu.
+ * The text menu's groups for a right-click, only those that apply: editing, then copying read-only
+ * text, then the link. None means no menu.
  */
 export const textMenuGroups = (request: TextMenuRequest): ReadonlyArray<ReadonlyArray<TextMenuEntry>> => {
   const groups: Array<ReadonlyArray<TextMenuEntry>> = [];
-  if (request.misspelling) {
-    groups.push([
-      ...request.misspelling.suggestions.map((label, suggestion) => ({
-        command: { kind: "replaceMisspelling" as const, suggestion },
-        label,
-      })),
-      { command: { kind: "addToDictionary" }, label: "Add to dictionary" },
-    ]);
-  }
   if (request.editable) {
     groups.push([
       { command: { kind: "cut" }, label: "Cut", disabled: !request.canCut },

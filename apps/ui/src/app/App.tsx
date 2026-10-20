@@ -939,6 +939,16 @@ function Workspace() {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
+  // Middle click never latches Chromium's autoscroll (the round arrows a website scrolls with):
+  // the only middle click with a job of its own is a files row opening a thread tab.
+  useEffect(() => {
+    const listener = (event: MouseEvent) => {
+      if (event.button === 1) event.preventDefault();
+    };
+    window.addEventListener("mousedown", listener);
+    return () => window.removeEventListener("mousedown", listener);
+  }, []);
+
   /**
    * Starts a thread from the draft `draft`, whichever pane it's in, and sends it the first message.
    * Multi agent starts one with each setup: the first takes the draft's tab and pane, and the rest

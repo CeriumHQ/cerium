@@ -1,5 +1,4 @@
 import {
-  BookPlus,
   ClipboardPaste,
   Copy,
   ExternalLink,
@@ -15,7 +14,6 @@ import { MenuItem, MenuSeparator, PointMenu } from "../components/ui/Menu.tsx";
 import { textMenuGroups } from "./textMenuGroups.ts";
 
 const icons: Partial<Record<TextCommand["kind"], LucideIcon>> = {
-  addToDictionary: BookPlus,
   cut: Scissors,
   copy: Copy,
   paste: ClipboardPaste,
@@ -76,7 +74,7 @@ const restore = (caret: Caret) => {
 };
 
 /**
- * The app-wide menu for text and links: Cut, Copy, Paste, spelling fixes and link items wherever no
+ * The app-wide menu for text and links: Cut, Copy, Paste, Selection and link items wherever no
  * page menu claimed the right-click. The shell reports the right-click and runs the commands;
  * in the browser preview the browser's own menu shows instead.
  */
@@ -142,12 +140,7 @@ export function TextMenu() {
               {...(entry.disabled ? { disabled: true } : {})}
               onClick={() => run(entry.command)}
             >
-              {/* Spelling fixes stand out from the commands below them, as in a native menu. */}
-              {entry.command.kind === "replaceMisspelling" ? (
-                <span className="font-medium text-fg-primary">{entry.label}</span>
-              ) : (
-                entry.label
-              )}
+              {entry.label}
             </MenuItem>
           ))}
         </Fragment>

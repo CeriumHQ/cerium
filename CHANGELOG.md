@@ -221,7 +221,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: every new work thread starts in Auto access. Agents settings changes that default; picking another mode in the composer covers just the thread it starts, instead of becoming the next thread's mode too. An access remembered from before starts over at Auto.
 - UI: the composer and Agents settings offer three access modes for every provider, in this order: Auto, Read only and Full access. Ask first and Accept edits are no longer offered; threads already running in them keep their mode, and a default set to either starts over at Auto.
 - Desktop: the development shell (`bun run dev`) listens for a debugger on port 9222, so agents can drive it.
-- UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts. Spelling suggestions in the text menu stand out from the commands under them.
+- UI: on a phone, menus, pickers and confirmation dialogs have taller rows and larger text, and menus leave out keyboard shortcuts.
 - UI: in replies, a long code block scrolls in place instead of pushing the conversation down, a block without a language drops its empty header for a copy button over its corner, task lists use their checkboxes as markers, and scrollbars inside the conversation are thin.
 - UI: Harnesses settings say a version Cerium hasn't tested is "Not tested with Cerium", with the detail behind an info tip, instead of warning about it.
 - UI: Appearance and Archived settings say less, with the rest behind an info tip, and an archived thread's delete button shows on hover or focus.
@@ -242,6 +242,9 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Work and Chat switch with Ctrl Shift 1 and Ctrl Shift 2, leaving Ctrl and a digit to open the sidebar's threads.
 - Adapters: the harnesses' own question tools are off (Claude's `AskUserQuestion`, Codex's and Muse's `request_user_input`, Cursor's `askQuestion`), so every agent asks through the bus's `ask_user` and every question looks the same.
 - `@cerium/bus` keeps to orchestration: its `ui_*` and `live_check` tools became `bun run ui` and `bun run live-check`, which reach agents in every harness and app working in this repo, not only those Cerium runs. Agents' instructions no longer name them.
+- Desktop: the browser's own keys and habits are out of the shell. Ctrl+W closes the window's active thread tab and never the app now that the Window menu's Close row is gone; Ctrl+R and Ctrl+Shift+R no longer reload the whole window; DevTools can't open in an installed build; the wheel with Ctrl no longer zooms the page Chromium's own way, which could drift it from the scale the titlebar's caption buttons follow; and Chromium's spellchecker is off, so the composer shows no website squiggles and the text menu drops its spelling fixes.
+- Desktop: nothing moves the app window off its own page. The guard that denies navigation (a file dropped anywhere, a link) and hands links to the user's browser instead now covers every app window, not only the one the shell makes first.
+- UI: middle click no longer latches the website's autoscroll over scrolling panes; it stays the "open in a thread tab" gesture on a file.
 
 ### Fixed
 

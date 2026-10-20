@@ -34,26 +34,6 @@ describe("textMenuGroups", () => {
     ]);
   });
 
-  it("puts spelling suggestions first, each replacing the word by its index", () => {
-    const groups = textMenuGroups({
-      ...nothing,
-      editable: true,
-      misspelling: { word: "teh", suggestions: ["the", "ten"] },
-    });
-    expect(groups[0]).toEqual([
-      { command: { kind: "replaceMisspelling", suggestion: 0 }, label: "the" },
-      { command: { kind: "replaceMisspelling", suggestion: 1 }, label: "ten" },
-      { command: { kind: "addToDictionary" }, label: "Add to dictionary" },
-    ]);
-    expect(groups).toHaveLength(2);
-  });
-
-  it("offers adding a word without suggestions to the dictionary", () => {
-    expect(
-      labels({ ...nothing, editable: true, misspelling: { word: "cerium", suggestions: [] } })[0],
-    ).toEqual(["Add to dictionary"]);
-  });
-
   it("copies selected read-only text", () => {
     expect(textMenuGroups({ ...nothing, selection: true, canCopy: true })).toEqual([
       [{ command: { kind: "copySelection" }, label: "Copy" }],

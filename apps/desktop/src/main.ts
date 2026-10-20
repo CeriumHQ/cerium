@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type IpcMainEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  session,
+  shell,
+  type IpcMainEvent,
+} from "electron";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
@@ -68,8 +78,10 @@ const titleBarOverlay = (zoom = 1) => ({
 });
 
 /**
- * Electron's default menu without its zoom items: the UI keeps the scale the user picked and applies
- * it through `cerium:set-zoom`, so Ctrl + and Ctrl − reach the page, and Ctrl 0 opens a thread.
+ * The menu a desktop app needs, with the browser's keys left out: no Close (Ctrl+W closes a thread
+ * tab), no Reload rows (a reload tears the whole UI down), no zoom items (the UI keeps the scale the
+ * user picked and applies it through `cerium:set-zoom`, so Ctrl + and Ctrl − reach the page, and
+ * Ctrl 0 opens a thread), and DevTools only while the app isn't packaged.
  */
 const applicationMenu = () =>
   Menu.buildFromTemplate([
@@ -77,16 +89,30 @@ const applicationMenu = () =>
     { role: "editMenu" },
     {
       label: "View",
-      submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { role: "toggleDevTools" },
-        { type: "separator" },
-        { role: "togglefullscreen" },
-      ],
+      submenu: app.isPackaged
+        ? [{ role: "togglefullscreen" }]
+        : [{ role: "toggleDevTools" }, { type: "separator" }, { role: "togglefullscreen" }],
     },
-    { role: "windowMenu" },
+    // Minimized and shown from the taskbar as a family of apps does; no Close row beside it.
+    { label: "Window", submenu: [{ role: "minimize" }] },
   ]);
+
+/**
+ * Chromium in every app window: no navigation, no window of the page's own. A dropped file never
+ * replaces the app (the composer's own drop handler takes files when it shows), a link never opens
+ * inside it, and a reload stays on the same page it is on: nothing may move the shell elsewhere.
+ */
+app.on("web-contents-created", (_event, contents) => {
+  if (contents.getType() !== "window") return;
+  // Links open in the user's browser, never inside the app window.
+  contents.setWindowOpenHandler(({ url }) => {
+    if (opensExternally(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  contents.on("will-navigate", (event, url) => {
+    if (url !== contents.getURL()) event.preventDefault();
+  });
+});
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -124,6 +150,9 @@ const createWindow = () => {
     window.on("unmaximize", reapply);
     window.on("restore", reapply);
   }
+  // The page scales itself only through `cerium:set-zoom`: Chromium's automatic handling (the
+  // wheel with Ctrl) is off, so it can't drift from the scale the titlebar caption buttons follow.
+  window.webContents.setZoomMode("manual");
   // The window shows once the page has painted its launch screen in the user's theme, so it never
   // opens empty or in the other theme; a page that doesn't say so in time shows anyway.
   let shown = false;
@@ -145,15 +174,6 @@ const createWindow = () => {
     mainWindow = undefined;
   });
   notifications.watch(window);
-
-  // Links open in the user's browser, never inside the app window.
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (opensExternally(url)) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-  window.webContents.on("will-navigate", (event, url) => {
-    if (url !== window.webContents.getURL()) event.preventDefault();
-  });
   forwardTextMenus(window.webContents);
 
   if (devUrl === undefined) {
@@ -263,6 +283,9 @@ nameAppForNotifications();
 void app.whenReady().then(() => {
   if (devUrl === undefined) backend = startBackend();
   updater = startUpdater();
+  // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
+  // gets its groups from what a right-click was on now.
+  session.defaultSession.setSpellCheckerEnabled(false);
   Menu.setApplicationMenu(applicationMenu());
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";

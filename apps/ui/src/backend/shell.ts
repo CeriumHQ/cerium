@@ -8,7 +8,7 @@ export interface BackendConnection {
 
 /**
  * A right-click no page menu claimed, as the app-wide text menu needs it. The shell keeps the rest
- * (the selected text, the word, the link) and acts on it when the page names a command.
+ * (the selected text, the link) and acts on it when the page names a command.
  */
 export interface TextMenuRequest {
   /** Where, in the window's CSS pixels. */
@@ -21,26 +21,14 @@ export interface TextMenuRequest {
   readonly canSelectAll: boolean;
   /** Some text is selected. */
   readonly selection: boolean;
-  /** The misspelled word right-clicked, with up to three replacements. */
-  readonly misspelling?: { readonly word: string; readonly suggestions: ReadonlyArray<string> };
   /** A link was right-clicked; only `https` links open. */
   readonly link?: { readonly openable: boolean };
 }
 
 /** What the text menu asks the shell to do with the right-click it last reported. */
-export type TextCommand =
-  | {
-      readonly kind:
-        | "cut"
-        | "copy"
-        | "paste"
-        | "selectAll"
-        | "copySelection"
-        | "addToDictionary"
-        | "openLink"
-        | "copyLink";
-    }
-  | { readonly kind: "replaceMisspelling"; readonly suggestion: number };
+export type TextCommand = {
+  readonly kind: "cut" | "copy" | "paste" | "selectAll" | "copySelection" | "openLink" | "copyLink";
+};
 
 /** What Electron's preload exposes as `window.cerium`; absent in the browser preview. */
 export interface ShellBridge {
