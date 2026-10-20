@@ -11,6 +11,7 @@ import {
   CircleUserRound,
   Gauge,
   Keyboard,
+  Mic,
   Palette,
   Wrench,
   type LucideIcon,
@@ -23,6 +24,7 @@ import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { ArchivedSettings } from "./Archived.tsx";
+import { DictationSettings } from "./Dictation.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
@@ -41,6 +43,7 @@ export type SettingsCategory =
   | "usage"
   | "spend"
   | "keyboard"
+  | "dictation"
   | "archived"
   | "updates";
 
@@ -61,6 +64,8 @@ const categories: ReadonlyArray<{
   { id: "usage", label: "Usage", icon: Gauge },
   { id: "spend", label: "Cost", icon: CircleDollarSign },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
+  // The desktop's message boxes dictate; a phone's keyboard has a microphone of its own.
+  ...(WEB ? [] : [{ id: "dictation" as const, label: "Dictation", icon: Mic }]),
   { id: "archived", label: "Archived", icon: Archive },
   // The installed app updates itself through the shell (apps/desktop/src/updater.ts).
   ...(!WEB && window.cerium?.updates
@@ -232,6 +237,8 @@ export function SettingsView({
       return <SpendSettings key={category} />;
     case "keyboard":
       return <KeyboardSettings key={category} />;
+    case "dictation":
+      return <DictationSettings key={category} />;
     case "archived":
       return <ArchivedSettings key={category} />;
     case "updates":

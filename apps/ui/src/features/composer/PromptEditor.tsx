@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { baseName, fileIconSvg, skillIconSvg } from "../../components/fileIcons/index.ts";
+import { spacedInsert } from "../dictation/model.ts";
 import { chipClass } from "../transcript/FileChip.tsx";
 import {
   appendSegments,
@@ -31,6 +32,11 @@ export interface PromptEditorHandle {
    * `replacing` line the content ends with goes first.
    */
   append(segments: ReadonlyArray<Segment>, replacing?: string): void;
+  /**
+   * `text` at the caret the editor last had (the end when none), spaced from the words beside it,
+   * then focus after it. Ctrl Z takes it back like typing.
+   */
+  insertText(text: string): void;
 }
 
 interface PromptEditorProps {
@@ -141,18 +147,25 @@ const besideCaret = (range: Range, side: "before" | "after"): Node | null => {
   return container.childNodes[side === "before" ? offset - 1 : offset] ?? null;
 };
 
+/**
+ * The character right before (or after) the caret: undefined at an edge, a line break for a `br`,
+ * and a letter for a chip, which reads as a word.
+ */
+const charBeside = (range: Range, side: "before" | "after"): string | undefined => {
+  const node = besideCaret(range, side);
+  if (node === null) return undefined;
+  if (node instanceof HTMLElement) return node.tagName === "BR" ? "\n" : "x";
+  const text = node.textContent ?? "";
+  return node === range.startContainer
+    ? text[side === "before" ? range.startOffset - 1 : range.startOffset]
+    : side === "before"
+      ? text.at(-1)
+      : text[0];
+};
+
 /** Whether the caret sits after (or before) a space, a line break or an edge, not a word or chip. */
 const spacedAt = (range: Range, side: "before" | "after"): boolean => {
-  const node = besideCaret(range, side);
-  if (node === null || (node instanceof HTMLElement && node.tagName === "BR")) return true;
-  if (node instanceof HTMLElement) return false;
-  const text = node.textContent ?? "";
-  const char =
-    node === range.startContainer
-      ? text[side === "before" ? range.startOffset - 1 : range.startOffset]
-      : side === "before"
-        ? text.at(-1)
-        : text[0];
+  const char = charBeside(range, side);
   return char === undefined || /\s/.test(char);
 };
 
@@ -275,6 +288,23 @@ export function PromptEditor({
       placeCaretAtEnd(element);
       element.scrollTop = element.scrollHeight;
       report();
+    },
+    insertText: (text) => {
+      const element = root.current;
+      if (!element) return;
+      const saved = caret.current;
+      const range = saved && element.contains(saved.startContainer) ? saved.cloneRange() : undefined;
+      const at = range ?? document.createRange();
+      if (range === undefined) {
+        at.selectNodeContents(element);
+        at.collapse(false);
+      }
+      element.focus();
+      placeCaret(at);
+      const spaced = spacedInsert(text, charBeside(at, "before"), charBeside(at, "after"));
+      // The editor's own undo history takes it, as it does typing and pasting.
+      document.execCommand("insertText", false, spaced);
+      keepCaret();
     },
   }));
 

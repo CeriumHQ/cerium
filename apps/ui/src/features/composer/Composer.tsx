@@ -32,6 +32,9 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
+import { WEB } from "../../backend/target.ts";
+import { DictationControl, DictationNotice } from "../dictation/DictationControl.tsx";
+import { useDictation } from "../dictation/useDictation.ts";
 import {
   accessAtom,
   effortAtom,
@@ -74,6 +77,10 @@ import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 import { WorktreeChip, WorktreePicker } from "./WorktreePicker.tsx";
+
+/** Ctrl M starts and stops dictation, which no browser or Windows key takes in a text box. */
+const isDictationKey = (event: KeyboardEvent<HTMLDivElement>) =>
+  event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyM";
 
 const providers = OFFERED_PROVIDERS;
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
@@ -446,6 +453,15 @@ export function Composer({
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
 
+  // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
+  // client is a phone's, whose keyboard has a microphone of its own.
+  const dictation = useDictation((spoken) => editor.current?.insertText(spoken));
+  const dictates = !WEB && !oneLine && navigator.mediaDevices !== undefined;
+  const listening = dictation.state.phase === "recording" || dictation.state.phase === "starting";
+  // Another thread's draft never takes what was said for this one.
+  const stopDictating = useEffectEvent(() => dictation.cancel());
+  useEffect(() => () => stopDictating(), [draftKey]);
+
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
     append: ({ segments, attachments = [], replacing }) => {
@@ -537,6 +553,17 @@ export function Composer({
       setDismissed(menuTrigger);
       return;
     }
+    if (dictates && isDictationKey(event)) {
+      event.preventDefault();
+      dictation.toggle();
+      return;
+    }
+    // Esc while listening drops the recording rather than stopping the turn.
+    if (listening && event.key === "Escape") {
+      event.preventDefault();
+      dictation.cancel();
+      return;
+    }
     if (isSendKey(event, touch ? "ctrlEnter" : sendKey)) {
       event.preventDefault();
       send();
@@ -587,13 +614,12 @@ export function Composer({
     </Tooltip>
   );
   // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop.
-  const actions = running ? (
+  const actions = (
     <div className="flex shrink-0 items-center gap-1">
-      {stopButton}
-      {written ? sendButton : null}
+      {dictates ? <DictationControl dictation={dictation} /> : null}
+      {running ? stopButton : null}
+      {running && !written ? null : sendButton}
     </div>
-  ) : (
-    sendButton
   );
 
   /** What the model picker shows for an open thread: the model it runs, or the name the transcript gives it. */
@@ -605,17 +631,19 @@ export function Composer({
       }
     : undefined;
 
-  const placeholder = resumes
-    ? thread?.ended === "failed"
-      ? "Send a message to try again"
-      : "Send a message to pick this thread back up"
-    : isNew
-      ? starting.length > 1
-        ? `Message ${starting.length} models at once`
-        : target.mode === "chat"
-          ? "Ask anything"
-          : "Describe the task"
-      : `Message ${threadShown?.label}`;
+  const placeholder = listening
+    ? "Listening…"
+    : resumes
+      ? thread?.ended === "failed"
+        ? "Send a message to try again"
+        : "Send a message to pick this thread back up"
+      : isNew
+        ? starting.length > 1
+          ? `Message ${starting.length} models at once`
+          : target.mode === "chat"
+            ? "Ask anything"
+            : "Describe the task"
+        : `Message ${threadShown?.label}`;
 
   const threadSetup =
     thread && threadShown ? (
@@ -766,6 +794,7 @@ export function Composer({
           ) : null}
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
+          {dictates ? <DictationNotice dictation={dictation} /> : null}
           {draft.attachments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />

@@ -99,6 +99,10 @@ export interface ShellBridge {
   readonly setBadge?: (badge: { count: number; icon?: string }) => void;
   /** Calls back with the thread of each clicked notification; returns how to stop. */
   readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
+  /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */
+  readonly microphoneAccess?: () => Promise<string>;
+  /** Opens Windows' microphone privacy settings, where dictation's access is turned back on. */
+  readonly openMicrophoneSettings?: () => Promise<void>;
 }
 
 /** Mirrors the shell's `NotificationRequest` in apps/desktop/src/notifications.ts. */

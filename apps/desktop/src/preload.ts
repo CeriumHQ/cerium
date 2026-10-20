@@ -9,6 +9,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
 // or off. Updates come through here too: the shell checks, downloads and installs them. The page
 // asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
+// Dictation opens Windows' microphone privacy settings when they block it.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
@@ -69,4 +70,6 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.on("cerium:open-thread", forward);
     return () => ipcRenderer.off("cerium:open-thread", forward);
   },
+  microphoneAccess: (): Promise<string> => ipcRenderer.invoke("cerium:microphone-access"),
+  openMicrophoneSettings: (): Promise<void> => ipcRenderer.invoke("cerium:open-microphone-settings"),
 });

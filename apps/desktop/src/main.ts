@@ -7,6 +7,7 @@ import {
   nativeTheme,
   session,
   shell,
+  systemPreferences,
   type IpcMainEvent,
 } from "electron";
 import { isAbsolute, join, normalize } from "node:path";
@@ -236,6 +237,21 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
 /** Shows a file the transcript names in File Explorer; only absolute paths, and nothing is opened. */
 ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
   if (typeof target === "string" && isAbsolute(target)) shell.showItemInFolder(normalize(target));
+});
+
+/**
+ * Whether Windows' privacy settings let Cerium use the microphone: Chromium reports a block as a
+ * device that failed to start, or as silence, so dictation asks here what it meant.
+ */
+ipcMain.handle("cerium:microphone-access", () =>
+  process.platform === "win32" || process.platform === "darwin"
+    ? systemPreferences.getMediaAccessStatus("microphone")
+    : "granted",
+);
+
+/** Windows' microphone privacy page, for dictation the settings there block. */
+ipcMain.handle("cerium:open-microphone-settings", async () => {
+  if (process.platform === "win32") await shell.openExternal("ms-settings:privacy-microphone");
 });
 
 /** Opens a file the explorer lists in its own app (openPath.ts). */

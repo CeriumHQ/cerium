@@ -3,6 +3,7 @@ import { RadioGroup } from "@base-ui/react/radio-group";
 import { useAtom } from "@effect/atom-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 
+import { WEB } from "../../backend/target.ts";
 import { Keys, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import { isSendKey, sendKeyAtom, type SendKey } from "./preferences.ts";
 import { canScale } from "./scale.ts";
@@ -24,6 +25,8 @@ const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["Show, focus or hide the terminal", "Ctrl `"],
   ["Open or close settings", "Ctrl ,"],
   ["Stop the running turn, or leave settings", "Esc"],
+  // Only the desktop's message boxes dictate.
+  ...(WEB ? [] : ([["Start or stop dictating in the message box", "Ctrl M"]] as const)),
   // The desktop window scales itself; a browser keeps its own zoom keys.
   ...(canScale()
     ? ([
