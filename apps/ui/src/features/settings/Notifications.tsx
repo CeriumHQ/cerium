@@ -32,6 +32,10 @@ const kindText: Record<NotificationKind, { readonly label: string; readonly desc
   },
   finished: { label: "A thread finishes", description: "Its agents are done, and it's your turn." },
   failed: { label: "Something fails", description: "An agent stopped with an error." },
+  limit: {
+    label: "A usage limit nears",
+    description: "A subscription's meter turns amber or red, or would run out before it resets.",
+  },
 };
 
 /** Whether this is a phone or a tablet, or just a browser. */

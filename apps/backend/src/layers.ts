@@ -22,6 +22,7 @@ import { join } from "node:path";
 
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
+import { limitWarnings } from "./limits.ts";
 import { Notifications } from "./notify.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
@@ -149,6 +150,8 @@ export const backendLayer = (options: BackendOptions) =>
       disableLogger: true,
     },
   ).pipe(
+    // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
+    Layer.provideMerge(limitWarnings),
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
     // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'

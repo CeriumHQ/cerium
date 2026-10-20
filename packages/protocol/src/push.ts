@@ -3,14 +3,23 @@ import { Schema } from "effect";
 import { DeviceId, ThreadId } from "./ids.ts";
 import { MAX_THREAD_TITLE } from "./orchestration.ts";
 
-// Push notifications: a thread's home machine says when it needs the user, finished or failed, and
-// the relay tells the account's browsers by Web Push, unless the user is looking at it already.
+// Push notifications: a thread's home machine says when it needs the user, finished or failed, or
+// when a subscription's usage limit nears, and the relay tells the account's browsers by Web Push,
+// unless the user is looking at it already.
 
-/** What a notification is about: a thread waits on the user, its agents finished, or one failed. */
-export const NotificationKind = Schema.Literals(["needsYou", "finished", "failed"]);
+/**
+ * What a notification is about: a thread waits on the user, its agents finished, or one failed; or a
+ * usage meter of a harness's subscription nears its limit, which belongs to no thread.
+ */
+export const NotificationKind = Schema.Literals(["needsYou", "finished", "failed", "limit"]);
 export type NotificationKind = typeof NotificationKind.Type;
 
-export const NOTIFICATION_KINDS: ReadonlyArray<NotificationKind> = ["needsYou", "finished", "failed"];
+export const NOTIFICATION_KINDS: ReadonlyArray<NotificationKind> = [
+  "needsYou",
+  "finished",
+  "failed",
+  "limit",
+];
 
 const Base64Url = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/));
 
@@ -29,14 +38,16 @@ export type ThreadRef = typeof ThreadRef.Type;
 export const MAX_NOTIFICATION_DETAIL = 240;
 
 /**
- * A thread of this machine needs the user, finished or failed: what its home machine tells the relay,
- * and its own desktop shows natively.
+ * A thread of this machine needs the user, finished or failed, or a usage limit of this machine's
+ * harnesses nears: what its home machine tells the relay, and its own desktop shows natively.
  */
 export const ThreadNotification = Schema.Struct({
-  threadId: ThreadId,
+  /** The thread it is about; absent for a `limit`, which is about a subscription. */
+  threadId: Schema.optionalKey(ThreadId),
   kind: NotificationKind,
+  /** The thread's title, or the meter a `limit` is about. */
   title: Schema.String.check(Schema.isMaxLength(MAX_THREAD_TITLE)),
-  /** What happened, in a line: the request, the last message, the error. */
+  /** What happened, in a line: the request, the last message, the error, what is left of a meter. */
   detail: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MAX_NOTIFICATION_DETAIL))),
 });
 export type ThreadNotification = typeof ThreadNotification.Type;
@@ -45,6 +56,7 @@ const headlines: Record<NotificationKind, string> = {
   needsYou: "Waiting for your approval",
   finished: "Finished",
   failed: "Failed",
+  limit: "Usage limit",
 };
 
 /**
@@ -79,7 +91,7 @@ export type PushMessage = typeof PushMessage.Type;
 export const PushPayload = Schema.Struct({
   kind: NotificationKind,
   machine: DeviceId,
-  threadId: ThreadId,
+  threadId: Schema.optionalKey(ThreadId),
   title: Schema.String,
   body: Schema.String,
 });

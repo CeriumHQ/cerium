@@ -78,10 +78,10 @@ export function useDesktopNotifications(viewing: string | undefined) {
     for (const { notification } of fresh) {
       const action = handling(notification, kinds, looking);
       if (action === "ignore") continue;
-      counted.push(notification.threadId);
+      if (notification.threadId !== undefined) counted.push(notification.threadId);
       if (action === "show")
         bridge.notify({
-          threadId: notification.threadId,
+          threadId: notification.threadId ?? "",
           title: notification.title,
           body: notificationBody(notification.kind, notification.detail),
           silent: sound === "off",

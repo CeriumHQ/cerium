@@ -24,7 +24,7 @@ const UPDATE_GAP = "4 seconds";
 const MAX_LINE = 128;
 
 /** Each provider's harness by the name its makers give it. */
-const harnessName: Record<ProviderId, string> = {
+export const harnessName: Record<ProviderId, string> = {
   claude: "Claude Code",
   codex: "Codex",
   muse: "Muse Code",

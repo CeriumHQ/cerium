@@ -580,7 +580,7 @@ export class Account extends DurableObject<Env> {
         ? [attachment]
         : [],
     );
-    const key = threadKey(machine.id, message.threadId);
+    const key = message.threadId === undefined ? undefined : threadKey(machine.id, message.threadId);
     const targets = recipients(message.kind, key, this.pushRows(), rows, showing);
     if (targets.length === 0) return;
     // The computer is named once the account has more than one.
@@ -588,14 +588,15 @@ export class Account extends DurableObject<Env> {
     const payload = JSON.stringify({
       kind: message.kind,
       machine: machine.id as DeviceId,
-      threadId: message.threadId,
-      title: message.title.trim() || "Untitled thread",
+      ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
+      title: message.title.trim() || (message.kind === "limit" ? "Usage limit" : "Untitled thread"),
       body: notificationBody(message.kind, message.detail, desktops.length > 1 ? machine.name : undefined),
     } satisfies PushPayload);
     const options = {
       ttl: PUSH_TTL_S,
       urgency: message.kind === "needsYou" ? "high" : "normal",
-      topic: await pushTopic(key),
+      // A newer warning about a meter replaces one the push service still holds for it.
+      topic: await pushTopic(key ?? `${machine.id}:limit:${message.title}`),
     } as const;
     const results = await Promise.all(
       targets.map((row) =>

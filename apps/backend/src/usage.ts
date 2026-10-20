@@ -87,7 +87,7 @@ interface State {
 /**
  * The usage of every subscribed harness, kept as last read. It is read again whenever someone starts
  * watching, a few seconds after a harness's turns end while someone watches, and every five minutes
- * while someone does; nobody watching, it reads nothing.
+ * while someone does; nobody watching, it reads nothing. The limit warnings (limits.ts) always watch.
  */
 export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(function* (
   adapters: ReadonlyMap<ProviderId, HarnessAdapter>,

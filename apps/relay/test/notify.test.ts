@@ -40,7 +40,7 @@ const devices = [
   device("tablet", "browser"),
   device("new", "browser", false),
 ];
-const everything = ["needsYou", "finished", "failed"];
+const everything = ["needsYou", "finished", "failed", "limit"];
 const thread = threadKey("pc", "thread_1");
 
 describe("who a notification goes to", () => {
@@ -63,6 +63,19 @@ describe("who a notification goes to", () => {
     expect(recipients("finished", thread, rows, devices, showing)).toEqual([]);
     const elsewhere = [{ deviceId: "pc", visible: true, viewing: threadKey("pc", "thread_2") }];
     expect(recipients("finished", thread, rows, devices, elsewhere)).toHaveLength(1);
+  });
+
+  it("sends a usage limit, which has no thread, to browsers that want it and aren't showing Cerium", () => {
+    const rows = [
+      subscription("phone", everything),
+      subscription("tablet", ["needsYou", "finished", "failed"]),
+    ];
+    // A window open on some thread doesn't hush it: the limit isn't about that thread.
+    const showing = [{ deviceId: "pc", visible: true, viewing: thread }];
+    expect(recipients("limit", undefined, rows, devices, showing).map((row) => row.device)).toEqual([
+      "phone",
+    ]);
+    expect(recipients("limit", undefined, rows, devices, [{ deviceId: "phone", visible: true }])).toEqual([]);
   });
 
   it("skips a browser that shows Cerium now: it sees what happened itself", () => {

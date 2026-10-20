@@ -89,14 +89,20 @@ export const isSendKey = (
 
 // The desktop's own notifications about this computer's threads; the web client's are Web Push,
 // which the relay keeps.
-const NOTIFY_KINDS_KEY = "cerium:notifyKinds";
+// Usage limit warnings came after the other kinds, so the choice is kept under a new key: what the
+// old one held carries over with the warnings on, rather than silently off.
+const NOTIFY_KINDS_KEY = "cerium:notifyKinds:v2";
+const LEGACY_NOTIFY_KINDS_KEY = "cerium:notifyKinds";
 /** The kinds the desktop shows a notification for; none turns them off. All until changed. */
 export const notifyKindsAtom = Atom.writable(
   (): ReadonlyArray<NotificationKind> => {
     const saved = stored(NOTIFY_KINDS_KEY);
-    if (saved === undefined) return NOTIFICATION_KINDS;
-    const kinds = saved.split(",");
-    return NOTIFICATION_KINDS.filter((kind) => kinds.includes(kind));
+    const legacy = stored(LEGACY_NOTIFY_KINDS_KEY);
+    // A legacy choice of none was turning every notification off, the warnings too.
+    const kinds = saved ?? (legacy === undefined ? undefined : legacy === "" ? "" : `${legacy},limit`);
+    if (kinds === undefined) return NOTIFICATION_KINDS;
+    const chosen = kinds.split(",");
+    return NOTIFICATION_KINDS.filter((kind) => chosen.includes(kind));
   },
   (context, kinds: ReadonlyArray<NotificationKind>) => {
     context.setSelf(kinds);

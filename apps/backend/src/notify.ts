@@ -37,7 +37,8 @@ export interface TurnEnd {
 }
 
 export interface Verdict {
-  readonly kind: NotificationKind;
+  /** What a thread tells; a `limit` is told by `LimitWarnings` (limits.ts). */
+  readonly kind: Exclude<NotificationKind, "limit">;
   readonly detail?: string;
 }
 
@@ -89,6 +90,8 @@ export class Notifications extends Context.Service<
   {
     /** Each notification from when it's subscribed to, once its thread settled. */
     readonly told: Stream.Stream<ThreadNotification>;
+    /** Tells this machine's window and the account's browsers now: for what no thread's events say. */
+    readonly tell: (notification: ThreadNotification) => Effect.Effect<void>;
   }
 >()("cerium/backend/Notifications") {
   static readonly layer = Layer.effect(
@@ -97,13 +100,13 @@ export class Notifications extends Context.Service<
       const account = yield* Account;
       const orchestrator = yield* Orchestrator;
       const feed = yield* PubSub.unbounded<ThreadNotification>();
-      yield* startNotifier(orchestrator, (notification) =>
+      const tell = (notification: ThreadNotification) =>
         Effect.gen(function* () {
           yield* PubSub.publish(feed, notification);
           yield* account.send({ _tag: "Notify", ...notification }).pipe(Effect.ignore);
-        }),
-      );
-      return Notifications.of({ told: Stream.fromPubSub(feed) });
+        });
+      yield* startNotifier(orchestrator, tell);
+      return Notifications.of({ told: Stream.fromPubSub(feed), tell });
     }),
   );
 }

@@ -12,6 +12,7 @@ export interface Looking {
 /**
  * What a notification that arrived does: nothing when its kind is off or the user is looking at
  * its thread; it counts on the taskbar while they're in another one; it shows when they're away.
+ * A usage limit belongs to no thread, so it shows whatever the user looks at: no open page tells them.
  */
 export const handling = (
   notification: Pick<ThreadNotification, "threadId" | "kind">,
@@ -19,6 +20,7 @@ export const handling = (
   looking: Looking,
 ): "ignore" | "count" | "show" => {
   if (!kinds.includes(notification.kind)) return "ignore";
+  if (notification.kind === "limit") return "show";
   if (looking.atWindow && looking.viewing === notification.threadId) return "ignore";
   return looking.atWindow ? "count" : "show";
 };

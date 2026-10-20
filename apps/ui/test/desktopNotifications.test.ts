@@ -25,6 +25,21 @@ describe("a desktop notification", () => {
   });
 });
 
+describe("a usage limit notification", () => {
+  const limit = { kind: "limit" as const };
+
+  it("shows whatever the user looks at, as no open page tells them", () => {
+    expect(handling(limit, NOTIFICATION_KINDS, { atWindow: false, viewing: undefined })).toBe("show");
+    expect(handling(limit, NOTIFICATION_KINDS, { atWindow: true, viewing: "thr_1" })).toBe("show");
+  });
+
+  it("does nothing once the user turned it off", () => {
+    expect(handling(limit, ["needsYou", "finished", "failed"], { atWindow: false, viewing: undefined })).toBe(
+      "ignore",
+    );
+  });
+});
+
 describe("the taskbar badge", () => {
   it("reads the count up to nine", () => {
     expect(badgeText(1)).toBe("1");
