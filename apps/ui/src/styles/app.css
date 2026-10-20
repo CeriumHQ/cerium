@@ -67,26 +67,10 @@ html[data-target="web"] #root {
 }
 
 /*
- * Installed on iOS 26 and later, the page runs under the status bar, and iOS blurs the top of it,
- * over the top bar, unless a fixed, full-width box at the very top paints one solid colour. This strip
- * is that box: as tall as the status bar, in the window's glass over the backdrop, made opaque.
+ * Installed, the page sits below a status bar in the window's one colour (web/statusBar.ts). The grain
+ * would leave the window a shade off it; on a phone's screen it doesn't show.
  */
-#status-bar {
-  display: none;
-}
-
 @media (display-mode: standalone) {
-  html[data-target="web"] #status-bar {
-    display: block;
-    position: fixed;
-    inset-inline: 0;
-    top: var(--app-top, 0);
-    height: env(safe-area-inset-top);
-    pointer-events: none;
-    background-color: color-mix(in srgb, var(--window) calc(var(--window-alpha) * 100%), var(--backdrop));
-  }
-
-  /* The grain would leave the window a shade off the strip's one colour; on a phone's screen it doesn't show. */
   html[data-target="web"] #root::before {
     display: none;
   }

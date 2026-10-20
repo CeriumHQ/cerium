@@ -93,8 +93,14 @@ const webFiles = [
 const webFolder = fileURLToPath(new URL("web/", import.meta.url));
 
 /**
- * What a Home Screen web app needs in its page; the theme colours match the window over its backdrop.
- * These files live at the relay's root, which every version's build shares.
+ * What a Home Screen web app needs in its page; the theme colours match the window over its backdrop,
+ * and follow the chosen theme once it loads (src/web/statusBar.ts). These files live at the relay's
+ * root, which every version's build shares.
+ *
+ * No `apple-mobile-web-app-status-bar-style`: since iOS 26 a page drawn under a `black-translucent`
+ * status bar has its top blurred and stops short of the screen's bottom by the status bar's height
+ * (WebKit bugs 301108, 317153). Without it the page starts below an opaque bar in the theme colour.
+ * iOS reads the style when the app is added to the Home Screen, so a change takes adding it again.
  */
 const webHead = `
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -102,7 +108,6 @@ const webHead = `
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Cerium" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151515" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e8e8e8" />
     <meta name="referrer" content="no-referrer" />
@@ -116,14 +121,7 @@ const webHead = `
  */
 const webClient = (artifact: string, version: string): Plugin => ({
   name: "cerium-web-client",
-  // After #root, so it paints over the window and under the menus and dialogs portalled after it (app.css).
-  transformIndexHtml: (html) =>
-    html
-      .replace("</head>", `${webHead}  </head>`)
-      .replace(
-        '<div id="root"></div>',
-        '<div id="root"></div>\n    <div id="status-bar" aria-hidden="true"></div>',
-      ),
+  transformIndexHtml: (html) => html.replace("</head>", `${webHead}  </head>`),
   configureServer(server) {
     server.middlewares.use("/sw.js", (_request, response) => {
       void serviceWorkerScript().then((script) => {

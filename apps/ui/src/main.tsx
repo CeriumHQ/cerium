@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App.tsx";
 import { WEB } from "./backend/target.ts";
 import { registerServiceWorker } from "./web/push.ts";
+import { followThemeColor } from "./web/statusBar.ts";
 import { followKeyboard, followVisualViewport } from "./web/viewport.ts";
 
 // Electron's preload exposes `window.cerium`; anywhere else this is the browser preview.
@@ -15,6 +16,7 @@ document.documentElement.dataset["theme"] ??= "dark";
 if (WEB) {
   document.documentElement.dataset["target"] = "web";
   followVisualViewport();
+  followThemeColor();
   // Shows push notifications and opens their threads.
   if ("serviceWorker" in navigator) void registerServiceWorker().catch(() => undefined);
 }

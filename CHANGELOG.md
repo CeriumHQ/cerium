@@ -230,7 +230,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
-- Web client: installed on an iPhone's Home Screen under iOS 26 or later, the top bar is no longer blurred. iOS blurs the top of a web app drawn under the status bar unless one solid colour sits there, so the status bar's band now paints the window's colour.
+- Web client: installed on an iPhone's Home Screen under iOS 26 or later, the top bar is no longer blurred and the window reaches the bottom of the screen. iOS blurs the top of a web app drawn under a see-through status bar, and stops it short of the bottom by the status bar's height, so Cerium now starts below an opaque status bar in the chosen theme's colour. Remove Cerium from the Home Screen and add it again to pick this up.
 - UI: scrolling up through a thread no longer lags, jumps or rubber-bands, in the desktop app and the web client. Every message is laid out for real instead of skipped on a guessed height (`content-visibility`), which shifted the page under the scroll position as unseen messages came into view, and a short scroll up while an answer streams no longer snaps back to the end.
 - UI: clicking a file in the explorer opens it in a new tab beside the thread, instead of replacing the thread's tab.
 - UI: a failed agent says why, agents that cost nothing no longer show $0.00, and a request to start an agent names its access the way the rest of the app does.
