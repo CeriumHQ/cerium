@@ -155,6 +155,17 @@ const webClient = (version: string): Plugin => ({
   },
 });
 
+/**
+ * Builds the web client's speech worker empty: the web client doesn't dictate (its page may not use
+ * the microphone), and the ONNX runtime's 26 MB of WebAssembly is more than the relay may serve in
+ * one file.
+ */
+const withoutSpeech = (): Plugin => ({
+  name: "cerium-without-speech",
+  enforce: "pre",
+  load: (id) => (/[\\/]dictation[\\/]speech\.worker\.ts$/.test(id) ? "export {};" : undefined),
+});
+
 /** The version a build carries: the release's, which the release workflows set, else `dev`. */
 const version = process.env["CERIUM_VERSION"]?.trim() || "dev";
 // It names the web build's folder on the relay.
@@ -175,6 +186,7 @@ export default defineConfig(async ({ command, mode }) => {
       __CERIUM_VERSION__: JSON.stringify(version),
     },
     build: web ? { outDir: "dist-web" } : {},
+    worker: { plugins: () => (web ? [withoutSpeech()] : []) },
     plugins: [
       react(),
       babel({ presets: [reactCompilerPreset()] }),
