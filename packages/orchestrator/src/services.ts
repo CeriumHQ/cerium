@@ -27,11 +27,16 @@ export interface CatalogEntry {
   readonly description: string;
 }
 
-/** Models the lead may spawn without asking the user. */
-export class Catalog extends Context.Service<Catalog, { readonly entries: ReadonlyArray<CatalogEntry> }>()(
-  "cerium/orchestrator/Catalog",
-) {
-  static fromEntries = (entries: ReadonlyArray<CatalogEntry>) => Layer.succeed(Catalog, { entries });
+/**
+ * Models the lead may spawn without asking the user. `entries` waits for the catalog to be known, which
+ * the backend learns from the harnesses after it starts serving.
+ */
+export class Catalog extends Context.Service<
+  Catalog,
+  { readonly entries: Effect.Effect<ReadonlyArray<CatalogEntry>> }
+>()("cerium/orchestrator/Catalog") {
+  static fromEntries = (entries: ReadonlyArray<CatalogEntry>) =>
+    Layer.succeed(Catalog, { entries: Effect.succeed(entries) });
 }
 
 /** How a session reaches Cerium's MCP bus. Implemented by the bus; each agent gets its own credentials. */

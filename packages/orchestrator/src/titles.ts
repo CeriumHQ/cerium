@@ -1,7 +1,7 @@
 import { MAX_THREAD_TITLE, TITLE_MODELS, type ModelChoice, type TitleSettings } from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 
-import { Adapters, Catalog, OrchestratorConfig } from "./services.ts";
+import { Adapters, Catalog, OrchestratorConfig, type CatalogEntry } from "./services.ts";
 import { UserSettings } from "./settings.ts";
 
 // Naming threads. A new thread shows the first line of its first
@@ -99,7 +99,7 @@ export class ThreadTitles extends Context.Service<
     ThreadTitles,
     Effect.gen(function* () {
       const adapters = yield* Adapters;
-      const { entries } = yield* Catalog;
+      const catalog = yield* Catalog;
       const settings = yield* UserSettings;
       const config = yield* OrchestratorConfig;
       const fs = yield* FileSystem.FileSystem;
@@ -107,7 +107,7 @@ export class ThreadTitles extends Context.Service<
       const cwd = config.titleDirectory ?? path.join(config.chatDirectory, ".titles");
 
       // The catalog lists what the logged-in harnesses offered at startup, so no harness is asked.
-      const offered = (choice: ModelChoice) =>
+      const offered = (entries: ReadonlyArray<CatalogEntry>) => (choice: ModelChoice) =>
         entries.some((entry) => entry.provider === choice.provider && entry.model === choice.model);
 
       const ask = (choice: ModelChoice, input: TitleInput) =>
@@ -133,7 +133,8 @@ export class ThreadTitles extends Context.Service<
           const { titles } = yield* settings.get;
           if (!titles.enabled) return Option.none();
           yield* fs.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
-          for (const choice of titleModels(titles, offered, input.lead)) {
+          const entries = yield* catalog.entries;
+          for (const choice of titleModels(titles, offered(entries), input.lead)) {
             const title = yield* ask(choice, input);
             if (title !== undefined) return Option.some(title);
           }

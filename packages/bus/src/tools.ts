@@ -243,15 +243,15 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
 
     return BusToolkit.of({
       list_models: () =>
-        Effect.succeed({
-          models: orchestrator.catalog.map(({ alias, provider, model, effort, description }) => ({
+        Effect.map(orchestrator.catalog, (catalog) => ({
+          models: catalog.map(({ alias, provider, model, effort, description }) => ({
             alias,
             provider,
             model,
             ...(effort ? { effort } : {}),
             description,
           })),
-        }),
+        })),
 
       spawn_agent: Effect.fn("Bus.spawn_agent")(function* (request) {
         const outcome = yield* orchestrator.spawn(yield* caller, request);

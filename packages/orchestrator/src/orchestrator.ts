@@ -272,7 +272,8 @@ export class Orchestrator extends Context.Service<
     readonly events: Stream.Stream<AgentEvent>;
 
     // Bus-facing operations: `callerId` is the agent invoking the tool.
-    readonly catalog: ReadonlyArray<CatalogEntry>;
+    /** Waits for the catalog while the backend is still learning it from the harnesses. */
+    readonly catalog: Effect.Effect<ReadonlyArray<CatalogEntry>>;
     spawn(callerId: AgentId, request: SpawnRequest): Effect.Effect<SpawnOutcome, OrchestratorError>;
     sendMessage(callerId: AgentId, to: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
@@ -310,7 +311,7 @@ export class Orchestrator extends Context.Service<
     Effect.gen(function* () {
       const store = yield* Store;
       const adapters = yield* Adapters;
-      const { entries: catalog } = yield* Catalog;
+      const catalog = yield* Catalog;
       const bus = yield* BusEndpoint;
       const config = yield* OrchestratorConfig;
       const settings = yield* UserSettings;
@@ -1012,10 +1013,13 @@ export class Orchestrator extends Context.Service<
           sentMessages.set(key, [...recent, sentAt]);
         });
 
-      const resolveTarget = (request: SpawnRequest): SpawnTarget | undefined => {
+      const resolveTarget = (
+        entries: ReadonlyArray<CatalogEntry>,
+        request: SpawnRequest,
+      ): SpawnTarget | undefined => {
         const entry =
-          catalog.find((candidate) => candidate.alias === request.model) ??
-          catalog.find(
+          entries.find((candidate) => candidate.alias === request.model) ??
+          entries.find(
             (candidate) =>
               candidate.model === request.model &&
               (request.provider === undefined || candidate.provider === request.provider),
@@ -1653,7 +1657,7 @@ export class Orchestrator extends Context.Service<
 
         events: Stream.fromPubSub(feed),
 
-        catalog,
+        catalog: catalog.entries,
 
         spawn: Effect.fn("Orchestrator.spawn")(function* (callerId: AgentId, request: SpawnRequest) {
           const lead = yield* runtime(callerId);
@@ -1666,7 +1670,7 @@ export class Orchestrator extends Context.Service<
               message: `The role "${ADVISOR_ROLE}" belongs to the user's advisor: ask it with \`ask_advisor\`, or give your agent another role.`,
             });
           }
-          const target = resolveTarget(request);
+          const target = resolveTarget(yield* catalog.entries, request);
           if (target !== undefined) {
             return {
               _tag: "Spawned",

@@ -174,6 +174,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Backend: starts serving without waiting for the harnesses to list their models, which took seconds (Cursor's longest), so the window has its threads that much sooner. The catalog fills in behind it; a spawn, `list_models` or a thread title made in the meantime waits for it.
 - UI: multi agent is no longer an unlabelled icon in the message box: a "Several at once" switch at the foot of the model menu turns it on and off, keeping the menu open, with how many of the four are picked beside it.
 - UI: the model menu is compact and searchable. A tab per harness lists that harness's models, opening on the one in use (a dot marks the tabs holding the pick, ← → switch tabs), and the search finds models across every harness ("opus", "cursor opus"), Enter taking the top match. Every harness's models are plain rows of one size.
 - UI: a new work thread's message box holds only what runs (model and effort); the project, Local or Worktree, and access pickers sit in a row just under the box, so the box keeps to one row of controls, on a phone too.

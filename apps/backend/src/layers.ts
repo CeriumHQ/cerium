@@ -13,7 +13,7 @@ import {
 import { Store } from "@cerium/store";
 import { Account, CloudThreads, DEFAULT_RELAY_URL, type AccountOptions, type Vault } from "@cerium/account";
 import type { ModelInfo } from "@cerium/protocol";
-import { Effect, Layer, type FileSystem, type Path } from "effect";
+import { Deferred, Effect, Layer, type FileSystem, type Path } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { Socket } from "effect/socket";
 import { homedir } from "node:os";
@@ -95,13 +95,17 @@ export const catalogFrom = (
 /** How long each harness may take to list its models while the backend starts. */
 const MODEL_LIST_TIMEOUT = "20 seconds";
 
-/** The catalog, read once at startup: a harness logged in later joins it after a restart. */
+/**
+ * The catalog, read once at startup: a harness logged in later joins it after a restart. The harnesses
+ * take seconds to list their models, so the backend serves meanwhile and only a spawn waits for them.
+ */
 const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
   Layer.effect(
     Catalog,
     Effect.gen(function* () {
       const adapters = yield* Adapters;
-      const offered = yield* Effect.forEach(
+      const known = yield* Deferred.make<ReadonlyArray<CatalogEntry>>();
+      yield* Effect.forEach(
         [...adapters.values()],
         (adapter) =>
           adapter.listModels.pipe(
@@ -109,8 +113,11 @@ const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
             Effect.orElseSucceed((): ReadonlyArray<ModelInfo> => []),
           ),
         { concurrency: "unbounded" },
+      ).pipe(
+        Effect.flatMap((offered) => Deferred.succeed(known, catalogFrom(curated, offered.flat()))),
+        Effect.forkScoped,
       );
-      return { entries: catalogFrom(curated, offered.flat()) };
+      return { entries: Deferred.await(known) };
     }),
   ).pipe(Layer.provide(AdaptersLive));
 
