@@ -133,6 +133,25 @@ export const appendSegments = (
   return normalizeSegments([...trimmed, { kind: "text", text: "\n" }, ...added]);
 };
 
+/**
+ * `segments` without `text` at their end, and the line break before it, when they end with it: an
+ * earlier answer the same source put there, which a new one replaces.
+ */
+export const withoutEnding = (segments: ReadonlyArray<Segment>, text: string): ReadonlyArray<Segment> => {
+  const last = segments.at(-1);
+  if (last?.kind !== "text" || text === "") return segments;
+  const kept = last.text.trimEnd();
+  if (!kept.endsWith(text)) return segments;
+  const before = kept.slice(0, -text.length);
+  // Only a whole line: the answer was put on one of its own.
+  if (before !== "" && !before.endsWith("\n")) return segments;
+  const rest = before.slice(0, -1);
+  return normalizeSegments([
+    ...segments.slice(0, -1),
+    ...(rest === "" ? [] : [{ kind: "text" as const, text: rest }]),
+  ]);
+};
+
 /** What is being typed after `@` or `$` right before the caret, if anything. */
 export interface Trigger {
   readonly char: "@" | "$";

@@ -94,7 +94,8 @@ const artifacts = (busServer: string) => [
     " markdown around it.",
   "Reach for one whenever a visual carries the point better than a markdown table or a long list:",
   "- reporting several pieces of work and how each ended (done, failed, needs the user): a status board",
-  "- weighing options or approaches against each other: a comparison",
+  "- weighing options or approaches against each other: a comparison, with a `data-cerium-reply` button" +
+    " on each option so the user answers with a click",
   "- a sequence or structure: a pipeline, a before and after, a timeline, an architecture diagram",
   "- numbers: a chart of test or benchmark results, sizes, durations, counts",
   "- something to explore: an interactive what-if, a mockup of a UI",

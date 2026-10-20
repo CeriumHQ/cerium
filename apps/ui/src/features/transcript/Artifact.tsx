@@ -24,6 +24,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CustomRendererProps } from "streamdown";
 
 import { artifactImagesAtom } from "../../backend/files.ts";
+import { useMessageBox } from "../composer/messageBox.ts";
 import { CopyButton } from "./CopyButton.tsx";
 
 // Agents' HTML visuals. Each renders in a frame sandboxed into an opaque origin, which loads the host
@@ -111,10 +112,28 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
     setErrors((current) =>
       current.includes(message) || current.length >= 5 ? current : [...current, message],
     );
+  // A choice made in the page goes to the message box for the user to send, in place of the one
+  // made before it if that's still there untouched.
+  const messageBox = useMessageBox();
+  const lastReply = useRef<string>(undefined);
+  const onReply = messageBox
+    ? (text: string) => {
+        messageBox.append({ segments: [{ kind: "text", text }], replacing: lastReply.current });
+        lastReply.current = text;
+        setExpanded(false);
+      }
+    : undefined;
 
   return (
     <div data-artifact {...(pointerInside ? { "data-hover": "" } : {})} className="group/artifact relative">
-      <ArtifactFrame code={code} title={title} remember onError={onError} onPointer={setPointerInside} />
+      <ArtifactFrame
+        code={code}
+        title={title}
+        remember
+        onError={onError}
+        onPointer={setPointerInside}
+        onReply={onReply}
+      />
       {/* On touch screens, with no hover to reveal them, the tools sit under the page instead of over it. */}
       <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-lg border border-line-subtle bg-surface-overlay p-0.5 opacity-0 shadow-raised backdrop-blur-xl transition-opacity duration-150 group-hover/artifact:opacity-100 group-data-hover/artifact:opacity-100 focus-within:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:w-fit pointer-coarse:border-0 pointer-coarse:bg-transparent pointer-coarse:opacity-100 pointer-coarse:shadow-none pointer-coarse:backdrop-blur-none">
         {errors.length > 0 ? (
@@ -142,7 +161,7 @@ function ArtifactView({ code, title }: { code: string; title: string | undefined
               </Dialog.Close>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6">
-              <ArtifactFrame code={code} title={title} />
+              <ArtifactFrame code={code} title={title} onReply={onReply} />
             </div>
           </Dialog.Popup>
         </Dialog.Portal>
@@ -161,12 +180,14 @@ function ArtifactFrame({
   remember = false,
   onError,
   onPointer,
+  onReply,
 }: {
   code: string;
   title: string | undefined;
   remember?: boolean;
   onError?: (message: string) => void;
   onPointer?: (inside: boolean) => void;
+  onReply?: ((text: string) => void) | undefined;
 }) {
   const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -225,13 +246,16 @@ function ArtifactFrame({
         case "pointer":
           onPointer?.(message.inside);
           return;
+        case "reply":
+          onReply?.(message.text);
+          return;
         default:
           return;
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [code, remember, onError, onPointer]);
+  }, [code, remember, onError, onPointer, onReply]);
 
   // A new theme goes to the page, which restyles in place. Before the page is drawn, the host page
   // ignores it and the page starts in the theme it's sent with.

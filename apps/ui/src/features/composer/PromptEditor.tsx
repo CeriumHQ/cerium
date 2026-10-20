@@ -12,15 +12,25 @@ import {
 
 import { baseName, fileIconSvg, skillIconSvg } from "../../components/fileIcons/index.ts";
 import { chipClass } from "../transcript/FileChip.tsx";
-import { appendSegments, normalizeSegments, triggerAt, type Segment, type Trigger } from "./draft.ts";
+import {
+  appendSegments,
+  normalizeSegments,
+  triggerAt,
+  withoutEnding,
+  type Segment,
+  type Trigger,
+} from "./draft.ts";
 
 export interface PromptEditorHandle {
   /** Replaces the tag being typed before the caret with a chip for `mention`. */
   insertMention(mention: Mention): void;
   /** A chip for `mention` at the caret the editor last had (the end when none), then focus. */
   mentionAtCaret(mention: Mention): void;
-  /** `segments` after the content, on a line of their own, then focus with the caret at the end. */
-  append(segments: ReadonlyArray<Segment>): void;
+  /**
+   * `segments` after the content, on a line of their own, then focus with the caret at the end. A
+   * `replacing` line the content ends with goes first.
+   */
+  append(segments: ReadonlyArray<Segment>, replacing?: string): void;
 }
 
 interface PromptEditorProps {
@@ -253,10 +263,14 @@ export function PromptEditor({
       placeCaret(end);
       report();
     },
-    append: (added) => {
+    append: (added, replacing) => {
       const element = root.current;
       if (!element) return;
-      render(element, appendSegments(read(element), added));
+      const current = read(element);
+      render(
+        element,
+        appendSegments(replacing === undefined ? current : withoutEnding(current, replacing), added),
+      );
       element.focus();
       placeCaretAtEnd(element);
       element.scrollTop = element.scrollHeight;

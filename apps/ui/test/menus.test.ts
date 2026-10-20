@@ -1,7 +1,13 @@
 import type { Mention } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { appendSegments, draftText, segmentsOf, type Segment } from "../src/features/composer/draft.ts";
+import {
+  appendSegments,
+  draftText,
+  segmentsOf,
+  withoutEnding,
+  type Segment,
+} from "../src/features/composer/draft.ts";
 import { fileTargets, isOpenableLink } from "../src/features/transcript/menus.ts";
 import { relativePath } from "../src/features/transcript/paths.ts";
 
@@ -93,5 +99,21 @@ describe("appendSegments", () => {
     expect(appendSegments([text("First  ")], [text("second")])).toEqual([text("First\nsecond")]);
     expect(appendSegments([text("First\n")], [text("second")])).toEqual([text("First\nsecond")]);
     expect(appendSegments([chip(skill)], [text("second")])).toEqual([chip(skill), text("\nsecond")]);
+  });
+});
+
+describe("withoutEnding", () => {
+  it("takes out an earlier answer the draft still ends with, on its own line", () => {
+    expect(withoutEnding([text("Go with A")], "Go with A")).toEqual([]);
+    expect(withoutEnding([text("Context\nGo with A  ")], "Go with A")).toEqual([text("Context")]);
+    expect(withoutEnding([chip(skill), text("\nGo with A")], "Go with A")).toEqual([chip(skill)]);
+  });
+
+  it("leaves a draft the user changed since", () => {
+    expect(withoutEnding([text("Go with A, but faster")], "Go with A")).toEqual([
+      text("Go with A, but faster"),
+    ]);
+    expect(withoutEnding([text("Don't Go with A")], "Go with A")).toEqual([text("Don't Go with A")]);
+    expect(withoutEnding([chip(skill)], "Go with A")).toEqual([chip(skill)]);
   });
 });

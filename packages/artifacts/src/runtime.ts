@@ -26,8 +26,8 @@ export interface ThemeUpdate {
 
 /**
  * Runs in the frame's `<head>`, before the page: keeps the theme `<style>` current, offers scripts
- * `window.cerium`, reports the page's height, hands links, app shortcuts and errors to the window,
- * and builds legacy tabs.
+ * `window.cerium`, reports the page's height, hands links, app shortcuts, errors and replies to the
+ * window, and builds legacy tabs.
  */
 export function artifactRuntime(options: RuntimeOptions) {
   const framed = window.parent !== window;
@@ -53,6 +53,16 @@ export function artifactRuntime(options: RuntimeOptions) {
     /** Calls `listener` each time the user changes theme or mode, after the variables have changed. */
     onThemeChange(listener: (theme: unknown) => void) {
       listeners.push(listener);
+    },
+    /**
+     * Puts `text` in the user's message box, replacing what this page put there last if it's still
+     * there; the user sends it. Only in answer to a click or a key, never on its own.
+     */
+    reply(text: string): boolean {
+      const activation = (navigator as { userActivation?: { isActive: boolean } }).userActivation;
+      if (typeof text !== "string" || text.trim() === "" || activation?.isActive !== true) return false;
+      post("reply", { text: text.trim().slice(0, 4000) });
+      return true;
     },
   };
   root.dataset["theme"] = options.mode;
@@ -109,6 +119,19 @@ export function artifactRuntime(options: RuntimeOptions) {
     if (href !== undefined) openLink(String(href));
     return null;
   };
+
+  // An element with `data-cerium-reply` answers with its text when clicked, and is marked
+  // `data-chosen` (the others lose it) so the page can show the choice.
+  document.addEventListener("click", (event) => {
+    if (!event.isTrusted || event.defaultPrevented) return;
+    const choice = event.composedPath().find((target): target is HTMLElement => {
+      return target instanceof HTMLElement && target.hasAttribute("data-cerium-reply");
+    });
+    const text = choice?.getAttribute("data-cerium-reply");
+    if (!choice || !text || !api.reply(text)) return;
+    for (const other of document.querySelectorAll("[data-chosen]")) other.removeAttribute("data-chosen");
+    choice.setAttribute("data-chosen", "");
+  });
 
   // A focused frame keeps keys from the window, so app shortcuts the page leaves alone are handed on.
   window.addEventListener("keydown", (event) => {
@@ -239,7 +262,8 @@ export type FrameMessage =
       readonly altKey: boolean;
     }
   | { readonly kind: "error"; readonly message: string }
-  | { readonly kind: "pointer"; readonly inside: boolean };
+  | { readonly kind: "pointer"; readonly inside: boolean }
+  | { readonly kind: "reply"; readonly text: string };
 
 export const readFrameMessage = (data: unknown): FrameMessage | undefined => {
   if (typeof data !== "object" || data === null) return undefined;
@@ -278,6 +302,12 @@ export const readFrameMessage = (data: unknown): FrameMessage | undefined => {
     }
     case "pointer":
       return { kind: "pointer", inside: message["inside"] === true };
+    case "reply": {
+      const text = message["text"];
+      return typeof text === "string" && text.trim() !== ""
+        ? { kind: "reply", text: text.trim().slice(0, 4000) }
+        : undefined;
+    }
     default:
       return undefined;
   }

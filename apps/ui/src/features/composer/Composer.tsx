@@ -448,7 +448,7 @@ export function Composer({
 
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
-    append: ({ segments, attachments = [] }) => {
+    append: ({ segments, attachments = [], replacing }) => {
       const key = draftKey;
       updateDraft(key, (current) => {
         const attached = new Set(
@@ -471,7 +471,7 @@ export function Composer({
           ],
         };
       });
-      editor.current?.append(segments);
+      editor.current?.append(segments, replacing);
     },
   }));
 

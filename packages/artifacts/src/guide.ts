@@ -100,6 +100,21 @@ Interaction earns its place: tabs over long sections, toggles between views, hov
 values, sortable tables, a slider for a what-if. Keep animation brief and honour
 \`prefers-reduced-motion\`.
 
+## Answers
+
+A page can answer you for the user. When you offer options, make each a button with
+\`data-cerium-reply\`: clicking it puts that text in the user's message box, and they send it (or
+edit it first). Clicking another option replaces the first, and the clicked element gets
+\`data-chosen\` so you can style the choice (\`[data-chosen] { border-color: var(--primary); }\`).
+
+\`\`\`html
+<button data-cerium-reply="Go with option B: the queue-based retry">Choose B</button>
+\`\`\`
+
+Write the text as the user's reply to you, complete enough to act on. A script builds a reply from
+the page's state (a slider's value, ticked rows) with \`cerium.reply(text)\`, which works only in
+answer to the user's click or key press.
+
 ## Preview before you reply
 
 Call \`artifact_preview\` (Cerium's MCP server) with the page's HTML. It renders it as the reader will,

@@ -15,11 +15,13 @@ export interface MessageBox {
   mention(mention: Mention): void;
   /**
    * Text, chips and attachments after the draft, on a line of their own when the draft has text.
-   * Attachments the draft already has aren't added twice.
+   * Attachments the draft already has aren't added twice. `replacing`, a line put there before that
+   * the draft still ends with, is taken out first: an artifact's earlier answer, for one.
    */
   append(content: {
     readonly segments: ReadonlyArray<Segment>;
     readonly attachments?: ReadonlyArray<Attachment>;
+    readonly replacing?: string | undefined;
   }): void;
 }
 

@@ -191,6 +191,16 @@ describe("readFrameMessage", () => {
         altKey: false,
       },
     );
+    assert.deepStrictEqual(readFrameMessage({ type: "cerium-artifact:reply", text: "  Go with B " }), {
+      kind: "reply",
+      text: "Go with B",
+    });
+    assert.isUndefined(readFrameMessage({ type: "cerium-artifact:reply", text: "   " }));
+    assert.strictEqual(
+      (readFrameMessage({ type: "cerium-artifact:reply", text: "x".repeat(9000) }) as { text: string }).text
+        .length,
+      4000,
+    );
     assert.isUndefined(readFrameMessage({ type: "other:height", height: 1 }));
     assert.isUndefined(readFrameMessage("cerium-artifact:ready"));
   });
