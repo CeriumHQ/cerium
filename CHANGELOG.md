@@ -236,6 +236,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- CI: the driven-page browser tests time out after the browser's own start-up wait, so a slow first start on the runner reports why the browser failed instead of a bare timeout.
 - Web client: installed on an iPhone's Home Screen under iOS 26 or later, the top bar is no longer blurred and the window reaches the bottom of the screen. iOS blurs the top of a web app drawn under a see-through status bar, and stops it short of the bottom by the status bar's height, so Cerium now starts below an opaque status bar in the chosen theme's colour. Remove Cerium from the Home Screen and add it again to pick this up.
 - Inbox: restarting the app no longer marks every thread you worked in that session as unread, here and on your other devices, or moves those threads to the top. Agents stop as the app quits and when it starts again, and that stop counted as new activity in the thread. Stopping an agent no longer does. Threads a restart already marked unread stay unread until you open them or mark them read.
 - UI: scrolling up through a thread no longer lags, jumps or rubber-bands, in the desktop app and the web client. Every message is laid out for real instead of skipped on a guessed height (`content-visibility`), which shifted the page under the scroll position as unseen messages came into view, and a short scroll up while an answer streams no longer snaps back to the end.

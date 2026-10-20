@@ -32,7 +32,7 @@ const FIXTURE = `<!doctype html><title>Fixture</title>
 describe.skipIf(browser === undefined)("a driven page", () => {
   it(
     "finds controls by text and name, types, presses keys and takes screenshots",
-    { timeout: 60_000 },
+    { timeout: 90_000 },
     async () => {
       const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
       try {
@@ -78,7 +78,7 @@ describe.skipIf(browser === undefined)("a driven page", () => {
 
   it(
     "drags with pointer events and with native drag and drop, and holds a drag midway",
-    { timeout: 60_000 },
+    { timeout: 90_000 },
     async () => {
       const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
       try {
