@@ -146,18 +146,13 @@ export function Transcript({
               paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
             }}
           >
-            {/* Every item stays mounted, but the browser lays out and paints only those in and near
-                view (`content-visibility: auto`), so a long thread opens and streams about as fast
-                as a short one. An item out of view keeps its last laid-out height, and holds a
-                guess at one before it is first seen, so the scrollbar stays sensible. */}
+            {/* Every item is laid out for real. `content-visibility: auto` skipped those out of view
+                on a guessed height, so scrolling up through unseen items swapped each guess for its
+                true height, and the content jumped under the scroll position. */}
             {items.map((item) => (
               <div
                 key={item.id}
-                className={
-                  item.kind === "turnEnd"
-                    ? `[contain-intrinsic-size:auto_1.5rem] [content-visibility:auto] ${quietFooter(item, latestFooter)}`
-                    : "[contain-intrinsic-size:auto_6rem] [content-visibility:auto]"
-                }
+                className={item.kind === "turnEnd" ? quietFooter(item, latestFooter) : undefined}
               >
                 <TranscriptItem
                   item={item}

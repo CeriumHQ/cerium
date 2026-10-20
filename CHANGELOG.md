@@ -225,6 +225,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: scrolling up through a thread no longer lags, jumps or rubber-bands, in the desktop app and the web client. Every message is laid out for real instead of skipped on a guessed height (`content-visibility`), which shifted the page under the scroll position as unseen messages came into view, and a short scroll up while an answer streams no longer snaps back to the end.
 - UI: clicking a file in the explorer opens it in a new tab beside the thread, instead of replacing the thread's tab.
 - UI: a failed agent says why, agents that cost nothing no longer show $0.00, and a request to start an agent names its access the way the rest of the app does.
 - UI: a screenshot whose file is gone no longer leaves an empty box.
@@ -236,7 +237,6 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: a long menu, such as every saved project, scrolls inside the window instead of running off it.
 - `bun run ui open` waits up to a minute, not twenty seconds, for the browser to start its debugging port, which a slow or busy machine needed.
 - `bun run ui` on Windows keeps its browser between calls: the browser had closed as each call ended, so the next one found the page gone, and agents launched Edge by hand to get around it. It now starts outside the call, and holds none of its handles, so a call piped into `tail` still returns at once.
-- UI: a long thread opens and streams faster. The browser lays out and paints only the messages, tool calls and cards in and near view instead of the whole conversation, through CSS `content-visibility`. (An earlier, unreleased version of this used a JavaScript virtual list, which on some threads left the start of the conversation blank with the end pushed to the bottom of the window: when a conversation fitted the window, or grew while it did, the list never learned where the window was scrolled to and only ever drew its last few items.)
 - A thread no longer stays "Working" after its agent has finished, with a stop button that does nothing, and no longer looks finished while its agent still works. The window now takes every live event on one subscription that never holds up its other calls, reads the thread list again each time it reconnects (events from while it was away never arrive), and never cancels a read of the list for a newer one, which on a busy machine could keep the list from updating at all. Stopping or interrupting an agent also reads the list again, so pressing stop on an agent shown working by mistake puts it right.
 - UI: a fast reply in a long thread no longer falls minutes behind and then catches up all at once. A thread's events are taken a batch at a time instead of copying and re-sorting the whole thread for every streamed word, and a reply's streamed words are let go once it completes. Cursor and Muse, which stream a few words at a time, showed it most.
 - A message an agent sends to an agent that isn't running is refused with the reason, instead of being dropped while the sender heard it was delivered.

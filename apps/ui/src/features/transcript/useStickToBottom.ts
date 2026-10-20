@@ -19,11 +19,14 @@ export function useStickToBottom(pinKey: unknown) {
     if (!element || !content) return;
     let lastTop = element.scrollTop;
     const onScroll = () => {
-      const atEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= SLACK;
-      // Only the user scrolling up unpins; reflows (a panel opening, code highlighting) also fire
-      // scroll events and must not.
-      if (atEnd) pinned.current = true;
-      else if (element.scrollTop < lastTop) pinned.current = false;
+      const fromEnd = element.scrollHeight - element.scrollTop - element.clientHeight;
+      const up = element.scrollTop < lastTop;
+      // Only the user scrolling up unpins, even a few pixels: staying pinned would snap a small
+      // scroll straight back to the end while the answer streams. A shrinking page also moves the
+      // scroll position up, but it lands at the end, so it stays pinned. Reflows (a panel opening,
+      // code highlighting) fire scroll events too and must not unpin.
+      if (up && fromEnd > 1) pinned.current = false;
+      else if (!up && fromEnd <= SLACK) pinned.current = true;
       lastTop = element.scrollTop;
       setFollowing(pinned.current);
     };
