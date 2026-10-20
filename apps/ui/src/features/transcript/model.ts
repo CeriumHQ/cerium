@@ -21,6 +21,8 @@ export type TranscriptBlock =
       readonly text: string;
       readonly attachments: ReadonlyArray<Attachment>;
       readonly mentions: ReadonlyArray<Mention>;
+      /** The title of the thread whose lead wrote this for the user when it started this thread. */
+      readonly writtenIn?: string;
     }
   | { readonly kind: "notice"; readonly id: string; readonly item: Exclude<InputItem, { _tag: "FromUser" }> }
   | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
@@ -101,6 +103,7 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
   text: item.text,
   attachments: item.attachments ?? [],
   mentions: item.mentions ?? [],
+  ...(item.writtenBy ? { writtenIn: item.writtenBy.threadTitle } : {}),
 });
 
 /** Whether the agent is mid-turn, waiting for input, or gone for good (stopped or failed). */

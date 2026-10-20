@@ -61,6 +61,21 @@ describe("Orchestrator worktrees", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
   });
 
+  it.live("starts a lead's threads from its project, in worktrees of their own like its thread", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* start;
+      const isolated = yield* orchestrator.startThread(lead.id, { prompt: "Dark mode", title: "Dark mode" });
+      assert.strictEqual(isolated.thread.worktree?.project, "/proj/app");
+      const shared = yield* orchestrator.startThread(lead.id, { prompt: "Docs", worktree: false });
+      assert.strictEqual(shared.thread.cwd, "/proj/app");
+      assert.isUndefined(shared.thread.worktree);
+      assert.deepStrictEqual(worktrees.calls, ["create /proj/app Fix it", "create /proj/app Dark mode"]);
+    }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
+
   it.live("refuses a thread whose worktree can't be made, with git's reason", () => {
     const worktrees = fakeWorktrees();
     worktrees.state.refuse = "/proj/app isn't in a git repository.";

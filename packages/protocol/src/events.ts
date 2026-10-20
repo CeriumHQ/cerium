@@ -227,6 +227,13 @@ export const FromUser = Schema.TaggedStruct("FromUser", {
   text: Schema.String,
   attachments: Schema.optionalKey(Schema.Array(Attachment)),
   mentions: Schema.optionalKey(Schema.Array(Mention)),
+  /**
+   * The lead that wrote this message for the user, which started this thread for them with
+   * `create_thread`; the title is its thread's when it did.
+   */
+  writtenBy: Schema.optionalKey(
+    Schema.Struct({ agentId: AgentId, threadId: ThreadId, threadTitle: Schema.String }),
+  ),
 });
 export type FromUser = typeof FromUser.Type;
 

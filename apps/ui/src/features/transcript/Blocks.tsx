@@ -10,6 +10,7 @@ import {
   Clock,
   CornerDownRight,
   ShieldQuestion,
+  Split,
   Workflow,
   X,
 } from "lucide-react";
@@ -51,6 +52,14 @@ export function UserMessage({ block }: { block: Block<"user"> }) {
       }
       className="flex max-w-[85%] flex-col items-end gap-1.5"
     >
+      {block.writtenIn === undefined ? null : (
+        <p className="flex max-w-full min-w-0 items-center gap-1.5 text-[12px] text-fg-tertiary">
+          <Split size={12} strokeWidth={1.75} className="shrink-0" />
+          <span className="truncate">
+            Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
+          </span>
+        </p>
+      )}
       {block.attachments.length > 0 ? (
         <div className="flex flex-wrap justify-end gap-1.5">
           {images.map((image) => (

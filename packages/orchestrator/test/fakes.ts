@@ -29,6 +29,7 @@ export const testLayer = (
   options: {
     readonly catalog?: ReadonlyArray<CatalogEntry>;
     readonly messageLimit?: number;
+    readonly threadLimit?: number;
     readonly worktrees?: Layer.Layer<Worktrees>;
   } = {},
 ) =>
@@ -49,6 +50,7 @@ export const testLayer = (
         chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),
         batchWindow: Duration.millis(20),
         messageBudget: { limit: options.messageLimit ?? 10, window: Duration.minutes(30) },
+        threadBudget: { limit: options.threadLimit ?? 12, window: Duration.minutes(30) },
       }),
     ),
     Layer.provide(NodeServices.layer),

@@ -21,8 +21,17 @@ const renderItem = (item: InputItem): string => {
     case "FromUser": {
       // Images also reach harnesses that take them as images; the paths let the agent use the files.
       const attached = (item.attachments ?? []).map((attachment) => `- ${attachment.path}`);
-      if (attached.length === 0) return item.text;
-      return [item.text, ["Attached files:", ...attached].join("\n")]
+      // A lead's brief is the user's request, but the new lead should know whom to report back to.
+      const writer = item.writtenBy;
+      return [
+        writer
+          ? `${PREFIX} The user asked lead agent ${writer.agentId} of thread "${writer.threadTitle}" to start this` +
+            " thread for them, and it wrote the message below as their request. You can reach that lead with" +
+            " `send_message`."
+          : "",
+        item.text,
+        attached.length > 0 ? ["Attached files:", ...attached].join("\n") : "",
+      ]
         .filter((part) => part !== "")
         .join("\n\n");
     }
@@ -133,6 +142,10 @@ const together = (agent: AgentInfo) => {
             " `answer_permission`. Allow what serves the task you gave it and stays within what the user asked of" +
             " you; deny the rest with a reason it can act on. The child waits until you answer, so answer before" +
             " starting long work of your own.",
+          "- When the user asks you to start other threads, say one per feature, start each with `create_thread`." +
+            " A thread is the user's to follow and talk to, and works in your folder; its lead sees nothing of your" +
+            " conversation, so give it a prompt that stands alone. Start threads only when the user asks, and" +
+            " spawn a child for work you will see through yourself.",
         ]
       : [
           "- Ask your lead with `send_message` when you are blocked on a question or a decision that is the lead's" +

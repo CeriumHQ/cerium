@@ -116,6 +116,16 @@ describe("queuedMessages", () => {
     expect(buildTranscript(delivered)).toMatchObject([{ kind: "user", id: "msg_1" }]);
   });
 
+  it("names the thread whose lead wrote a message for the user", () => {
+    const brief = {
+      ...first,
+      writtenBy: { agentId: "lead" as AgentId, threadId: "home" as ThreadId, threadTitle: "Plan the week" },
+    } as const;
+    expect(buildTranscript(events({ _tag: "TurnInput", items: [brief] }))).toMatchObject([
+      { kind: "user", id: "msg_1", writtenIn: "Plan the week" },
+    ]);
+  });
+
   it("knows when messages wait behind a running turn", () => {
     const midTurn = events(
       { _tag: "MessageQueued", message: first },

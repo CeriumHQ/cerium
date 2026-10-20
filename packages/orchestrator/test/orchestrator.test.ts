@@ -410,6 +410,53 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
   });
 
+  it.live("starts threads for a lead, whose leads take its brief as the user's request", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* startWorkThread;
+
+      const { thread, lead: started } = yield* orchestrator.startThread(lead.id, {
+        prompt: "Add dark mode",
+        title: "  Dark mode ",
+        access: "fullAccess",
+      });
+      assert.deepInclude(thread, { title: "Dark mode", mode: "work", cwd: "." });
+      assert.deepInclude(started, { provider: "claude", model: "opus", effort: "high", access: "ask" });
+      const [brief] = yield* waitFor((events) => turnInputs(events, started.id)[0]);
+      const { id: _, ...delivered } = brief?._tag === "FromUser" ? brief : { id: undefined };
+      assert.deepStrictEqual(delivered, {
+        _tag: "FromUser",
+        text: "Add dark mode",
+        writtenBy: { agentId: lead.id, threadId: lead.threadId, threadTitle: "Test" },
+      });
+      const sent = fake.sessions.find((session) => session.sent.some((text) => text.includes("dark mode")));
+      assert.include(sent?.sent[0] ?? "", `lead agent ${lead.id} of thread "Test"`);
+
+      const scouting = yield* orchestrator.startThread(lead.id, { prompt: "Scout it", model: "scout" });
+      assert.deepInclude(scouting.lead, { model: "haiku", effort: "low" });
+
+      const outcome = yield* orchestrator.spawn(lead.id, { role: "scout", model: "scout", prompt: "go" });
+      const child = outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId);
+      const refusals = yield* Effect.forEach(
+        [
+          orchestrator.startThread(child, { prompt: "a child can't" }),
+          orchestrator.startThread(lead.id, { prompt: "x", model: "nope" }),
+          orchestrator.startThread(lead.id, { prompt: "x", title: "x".repeat(81) }),
+        ],
+        (attempt) => Effect.flip(attempt).pipe(Effect.map((error) => error.reason)),
+      );
+      assert.deepStrictEqual(refusals, ["notAllowed", "invalid", "invalid"]);
+
+      // Refusals spend nothing; the budget counts the threads agents started.
+      yield* orchestrator.startThread(lead.id, { prompt: "Third" });
+      const spent = yield* Effect.flip(orchestrator.startThread(lead.id, { prompt: "Fourth" }));
+      assert.strictEqual(spent.reason, "budgetExceeded");
+      assert.lengthOf(yield* orchestrator.listThreads, 4);
+    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku], threadLimit: 3 })), Effect.scoped);
+  });
+
   it.live("tells a starting lead which threads already work in its folder", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {

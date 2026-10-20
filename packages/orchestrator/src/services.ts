@@ -102,6 +102,11 @@ export interface OrchestratorSettings {
   readonly globalConcurrency: number;
   /** Messages one agent may send another within `messageBudget.window`. */
   readonly messageBudget: { readonly limit: number; readonly window: Duration.Duration };
+  /**
+   * Threads agents may start with `create_thread` within `threadBudget.window`, all agents together, so
+   * leads starting threads whose leads start more can't run away.
+   */
+  readonly threadBudget: { readonly limit: number; readonly window: Duration.Duration };
   /** Longest message or child result delivered inline; longer text is cut. */
   readonly maxDeliveredChars: number;
   /** Whether stopping a lead also stops its children. */
@@ -117,6 +122,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
       globalConcurrency: 12,
       // Placeholder until tuned from real usage.
       messageBudget: { limit: 10, window: Duration.minutes(30) },
+      threadBudget: { limit: 12, window: Duration.minutes(30) },
       maxDeliveredChars: 8_000,
       stopChildrenWithLead: false,
       ...settings,

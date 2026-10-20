@@ -62,6 +62,35 @@ export const SpawnAgent = Tool.make("spawn_agent", {
   failure: OrchestratorError,
 });
 
+export const CreateThread = Tool.make("create_thread", {
+  description:
+    "Start a new thread for the user, in your folder, whose lead takes `prompt` as the user's request; the" +
+    " user follows it in its own tab. Use it when the user asks you to start threads, e.g. one per feature." +
+    " Returns at once. Leads only.",
+  parameters: Schema.Struct({
+    prompt: Schema.NonEmptyString.annotate({
+      description:
+        "The new lead's first message. It sees nothing of your conversation, so make it stand alone.",
+    }),
+    title: Schema.optionalKey(Schema.String).annotate({
+      description: "A few words naming the thread; leave out to have it named from the prompt.",
+    }),
+    model: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description: "A catalog alias from list_models; leave out to start the thread on your own model.",
+    }),
+    effort: Schema.optionalKey(ReasoningEffort),
+    access: Schema.optionalKey(AccessMode).annotate({
+      description: "The new lead's access: never more than yours, and yours when left out.",
+    }),
+    worktree: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Run it in a git worktree of its own, apart from other threads' changes. Defaults to whether yours does.",
+    }),
+  }),
+  success: Schema.Struct({ threadId: Schema.String, leadAgentId: AgentId, title: Schema.String }),
+  failure: OrchestratorError,
+});
+
 export const ListAgents = Tool.make("list_agents", {
   description: "List the agents in your thread.",
   success: Schema.Struct({ agents: Schema.Array(AgentSummary) }),
@@ -211,6 +240,7 @@ export const ArtifactGuide = Tool.make("artifact_guide", {
 export const BusToolkit = Toolkit.make(
   ListModels,
   SpawnAgent,
+  CreateThread,
   ListAgents,
   ListThreads,
   SendMessage,
@@ -262,6 +292,11 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
               requestId: outcome.requestId,
               note: "The user must approve this model. You will get a message with their decision.",
             };
+      }),
+
+      create_thread: Effect.fn("Bus.create_thread")(function* (request) {
+        const { thread, lead } = yield* orchestrator.startThread(yield* caller, request);
+        return { threadId: thread.id, leadAgentId: lead.id, title: thread.title };
       }),
 
       list_agents: Effect.fn("Bus.list_agents")(function* () {

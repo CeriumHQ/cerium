@@ -15,7 +15,8 @@ const INSTRUCTIONS = [
   "Cerium's own tools.",
   "Agents: spawn and stop agents in your thread (spawn_agent, list_agents, kill_agent), and message them or" +
     " another thread's lead (send_message, list_threads), before changing files they work on or to ask what they know." +
-    " A lead answers its children's permission requests with answer_permission.",
+    " A lead answers its children's permission requests with answer_permission, and starts threads for the" +
+    " user with create_thread when asked.",
   "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",
   "Artifacts: artifact_guide before writing your first visual.",
 ].join("\n");

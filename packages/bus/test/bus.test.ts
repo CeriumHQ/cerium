@@ -119,6 +119,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
         [
           "list_models",
           "spawn_agent",
+          "create_thread",
           "list_agents",
           "list_threads",
           "send_message",

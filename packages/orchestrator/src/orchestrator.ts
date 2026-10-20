@@ -59,6 +59,7 @@ import {
   Worktrees,
   type CatalogEntry,
   type NewWorktree,
+  type OrchestratorSettings,
   type WorktreeError,
 } from "./services.ts";
 import { UserSettings } from "./settings.ts";
@@ -94,6 +95,21 @@ export interface SpawnRequest {
   readonly effort?: ReasoningEffort;
   readonly access?: AccessMode;
   readonly prompt: string;
+}
+
+/** What a lead asks for through `create_thread`: a thread of the user's in its own folder. */
+export interface ThreadRequest {
+  /** The new lead's first message, which it takes as the user's request. */
+  readonly prompt: string;
+  /** Named from the prompt without one, like a thread the user starts. */
+  readonly title?: string;
+  /** A catalog alias or model id; the caller's own model without one. */
+  readonly model?: string;
+  readonly effort?: ReasoningEffort;
+  /** Never more than the caller's own. */
+  readonly access?: AccessMode;
+  /** Whether it runs in a worktree of its own; as the caller's thread does without it. */
+  readonly worktree?: boolean;
 }
 
 export type SpawnOutcome =
@@ -275,6 +291,14 @@ export class Orchestrator extends Context.Service<
     /** Waits for the catalog while the backend is still learning it from the harnesses. */
     readonly catalog: Effect.Effect<ReadonlyArray<CatalogEntry>>;
     spawn(callerId: AgentId, request: SpawnRequest): Effect.Effect<SpawnOutcome, OrchestratorError>;
+    /**
+     * Starts a thread for the user at a lead's request, in the lead's folder and mode, whose own lead
+     * begins on the prompt as the user's message, marked as written by the caller.
+     */
+    startThread(
+      callerId: AgentId,
+      request: ThreadRequest,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     sendMessage(callerId: AgentId, to: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
@@ -1000,24 +1024,37 @@ export class Orchestrator extends Context.Service<
           return rt;
         });
 
-      /** Counts one more message from `key`'s sender against the per-pair budget. */
-      const spendBudget = (key: string, to: string) =>
+      /** Counts one more use of `key` against `budget`, refused with `refusal` of the recent count once spent. */
+      const spend = (
+        key: string,
+        budget: OrchestratorSettings["messageBudget"],
+        refusal: (recent: number) => string,
+      ) =>
         Effect.gen(function* () {
           const sentAt = yield* now;
-          const windowStart = sentAt - Duration.toMillis(config.messageBudget.window);
+          const windowStart = sentAt - Duration.toMillis(budget.window);
           const recent = (sentMessages.get(key) ?? []).filter((time) => time > windowStart);
-          if (recent.length >= config.messageBudget.limit) {
+          if (recent.length >= budget.limit) {
             return yield* new OrchestratorError({
               reason: "budgetExceeded",
-              message: `You have sent ${recent.length} messages to ${to} recently, the most allowed. Finish your task or wait.`,
+              message: refusal(recent.length),
             });
           }
           sentMessages.set(key, [...recent, sentAt]);
         });
 
+      /** Counts one more message from `key`'s sender against the per-pair budget. */
+      const spendBudget = (key: string, to: string) =>
+        spend(
+          key,
+          config.messageBudget,
+          (recent) =>
+            `You have sent ${recent} messages to ${to} recently, the most allowed. Finish your task or wait.`,
+        );
+
       const resolveTarget = (
         entries: ReadonlyArray<CatalogEntry>,
-        request: SpawnRequest,
+        request: Pick<SpawnRequest, "model" | "provider" | "effort">,
       ): SpawnTarget | undefined => {
         const entry =
           entries.find((candidate) => candidate.alias === request.model) ??
@@ -1300,100 +1337,112 @@ export class Orchestrator extends Context.Service<
         Effect.catchCause((cause) => Effect.logWarning("Couldn't close the questions left open", cause)),
       );
 
-      return Orchestrator.of({
-        createThread: Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
-          if (input.mode === "work" && input.cwd === undefined) {
-            return yield* new OrchestratorError({
-              reason: "invalid",
-              message: "A work thread needs a folder.",
-            });
-          }
-          const createdAt = yield* now;
-          const threadId = (yield* makeId("thr")) as ThreadId;
-          const isolated: NewWorktree | undefined =
-            input.mode === "work" && input.cwd !== undefined && input.worktree === true
-              ? yield* worktrees.create(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
-              : undefined;
-          const directory =
-            isolated?.cwd ??
-            (input.cwd !== undefined && input.mode === "work"
-              ? input.cwd
-              : path.join(config.chatDirectory, threadId));
-          const thread: ThreadInfo = {
-            id: threadId,
-            title: input.title,
-            mode: input.mode,
-            ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
-            ...(isolated ? { worktree: isolated.worktree } : {}),
-            createdAt,
-            updatedAt: createdAt,
-          };
-          if (input.mode === "chat") {
-            yield* fs
-              .makeDirectory(directory, { recursive: true })
-              .pipe(
-                Effect.mapError(
-                  (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
-                ),
-              );
-          }
-          const effort = input.lead.effort;
-          const lead: AgentInfo = {
-            id: (yield* makeId("agt")) as AgentId,
-            threadId,
-            role: LEAD_ROLE,
-            provider: input.lead.provider,
-            model: input.lead.model,
-            ...(effort ? { effort } : {}),
-            access: input.mode === "chat" ? "readOnly" : input.lead.access,
-            state: "idle",
-            createdAt,
-            updatedAt: createdAt,
-          };
-          yield* Effect.all([store.createThread(thread), store.createAgent(lead)], { discard: true }).pipe(
-            Effect.mapError(unavailable),
-            // A worktree no thread records would never be removed.
-            Effect.onError(() =>
-              isolated ? worktrees.remove(threadId, isolated.worktree).pipe(Effect.ignore) : Effect.void,
-            ),
-          );
-          threadDirectories.set(threadId, directory);
-          threadModes.set(threadId, input.mode);
-          if (isolated) threadWorktrees.set(threadId, isolated.worktree);
-          untitled.set(threadId, input.title);
-          yield* startRuntime(lead, directory);
-          return { thread, lead };
-        }),
-
-        sendUserMessage: (agentId, text, extras = {}) => {
-          const { attachments = [], mentions = [] } = extras;
-          if (text.trim() === "" && attachments.length === 0) {
-            return Effect.fail(
-              new OrchestratorError({ reason: "invalid", message: "The message is empty." }),
+      const createThread = Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
+        if (input.mode === "work" && input.cwd === undefined) {
+          return yield* new OrchestratorError({
+            reason: "invalid",
+            message: "A work thread needs a folder.",
+          });
+        }
+        const createdAt = yield* now;
+        const threadId = (yield* makeId("thr")) as ThreadId;
+        const isolated: NewWorktree | undefined =
+          input.mode === "work" && input.cwd !== undefined && input.worktree === true
+            ? yield* worktrees.create(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
+            : undefined;
+        const directory =
+          isolated?.cwd ??
+          (input.cwd !== undefined && input.mode === "work"
+            ? input.cwd
+            : path.join(config.chatDirectory, threadId));
+        const thread: ThreadInfo = {
+          id: threadId,
+          title: input.title,
+          mode: input.mode,
+          ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
+          ...(isolated ? { worktree: isolated.worktree } : {}),
+          createdAt,
+          updatedAt: createdAt,
+        };
+        if (input.mode === "chat") {
+          yield* fs
+            .makeDirectory(directory, { recursive: true })
+            .pipe(
+              Effect.mapError(
+                (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+              ),
             );
-          }
-          return acceptPermit.withPermits(1)(
-            Effect.gen(function* () {
-              const { rt, undelivered, notices } = yield* liveLead(agentId);
-              const message: FromUser = {
-                _tag: "FromUser",
-                id: yield* makeId("msg"),
-                text,
-                ...(attachments.length > 0 ? { attachments } : {}),
-                ...(mentions.length > 0 ? { mentions } : {}),
-              };
-              // Recorded before it waits on the session or a running turn, so the user sees it at once.
-              yield* emit(rt, { _tag: "MessageQueued", message });
-              // Offered together, so the user's messages and any notices make one turn.
-              yield* Queue.offerAll(rt.inbox, [...undelivered, message, ...notices]);
-              const startedAs = untitled.get(rt.info.threadId);
-              untitled.delete(rt.info.threadId);
-              if (startedAs !== undefined && text.trim() !== "") {
-                yield* Effect.forkIn(nameThread(rt, startedAs, text, attachments), layerScope);
-              }
-            }),
-          );
-        },
+        }
+        const effort = input.lead.effort;
+        const lead: AgentInfo = {
+          id: (yield* makeId("agt")) as AgentId,
+          threadId,
+          role: LEAD_ROLE,
+          provider: input.lead.provider,
+          model: input.lead.model,
+          ...(effort ? { effort } : {}),
+          access: input.mode === "chat" ? "readOnly" : input.lead.access,
+          state: "idle",
+          createdAt,
+          updatedAt: createdAt,
+        };
+        yield* Effect.all([store.createThread(thread), store.createAgent(lead)], { discard: true }).pipe(
+          Effect.mapError(unavailable),
+          // A worktree no thread records would never be removed.
+          Effect.onError(() =>
+            isolated ? worktrees.remove(threadId, isolated.worktree).pipe(Effect.ignore) : Effect.void,
+          ),
+        );
+        threadDirectories.set(threadId, directory);
+        threadModes.set(threadId, input.mode);
+        if (isolated) threadWorktrees.set(threadId, isolated.worktree);
+        untitled.set(threadId, input.title);
+        yield* startRuntime(lead, directory);
+        return { thread, lead };
+      });
+
+      /** The user's message to a lead; one a lead wrote for them when it started the thread says so. */
+      const acceptUserMessage = (
+        agentId: AgentId,
+        text: string,
+        extras: UserMessageExtras & Pick<FromUser, "writtenBy"> = {},
+      ) => {
+        const { attachments = [], mentions = [], writtenBy } = extras;
+        if (text.trim() === "" && attachments.length === 0) {
+          return Effect.fail(new OrchestratorError({ reason: "invalid", message: "The message is empty." }));
+        }
+        return acceptPermit.withPermits(1)(
+          Effect.gen(function* () {
+            const { rt, undelivered, notices } = yield* liveLead(agentId);
+            const message: FromUser = {
+              _tag: "FromUser",
+              id: yield* makeId("msg"),
+              text,
+              ...(attachments.length > 0 ? { attachments } : {}),
+              ...(mentions.length > 0 ? { mentions } : {}),
+              ...(writtenBy ? { writtenBy } : {}),
+            };
+            // Recorded before it waits on the session or a running turn, so the user sees it at once.
+            yield* emit(rt, { _tag: "MessageQueued", message });
+            // Offered together, so the user's messages and any notices make one turn.
+            yield* Queue.offerAll(rt.inbox, [...undelivered, message, ...notices]);
+            const startedAs = untitled.get(rt.info.threadId);
+            untitled.delete(rt.info.threadId);
+            if (startedAs !== undefined && text.trim() !== "") {
+              yield* Effect.forkIn(nameThread(rt, startedAs, text, attachments), layerScope);
+            }
+          }),
+        );
+      };
+
+      return Orchestrator.of({
+        createThread,
+
+        sendUserMessage: (agentId, text, extras = {}) =>
+          acceptUserMessage(agentId, text, {
+            ...(extras.attachments ? { attachments: extras.attachments } : {}),
+            ...(extras.mentions ? { mentions: extras.mentions } : {}),
+          }),
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.
@@ -1704,6 +1753,73 @@ export class Orchestrator extends Context.Service<
             prompt: request.prompt,
           });
           return { _tag: "PendingApproval", requestId } satisfies SpawnOutcome;
+        }),
+
+        startThread: Effect.fn("Orchestrator.startThread")(function* (
+          callerId: AgentId,
+          request: ThreadRequest,
+        ) {
+          const caller = yield* runtime(callerId);
+          if (caller.info.parentId !== undefined) {
+            return yield* notAllowed("Only a thread's lead can start threads; ask your lead.");
+          }
+          const title = request.title?.trim();
+          if (title !== undefined && (title === "" || title.length > MAX_THREAD_TITLE)) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `A title is 1 to ${MAX_THREAD_TITLE} characters; leave it out to have the thread named from its prompt.`,
+            });
+          }
+          const own: SpawnTarget = {
+            provider: caller.info.provider,
+            model: caller.info.model,
+            ...((request.effort ?? caller.info.effort)
+              ? { effort: request.effort ?? caller.info.effort }
+              : {}),
+          };
+          const target =
+            request.model === undefined || request.model === caller.info.model
+              ? own
+              : resolveTarget(yield* catalog.entries, {
+                  model: request.model,
+                  ...(request.effort ? { effort: request.effort } : {}),
+                });
+          if (target === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `"${request.model}" is not in the catalog. Call list_models, or leave model out to start the thread on yours.`,
+            });
+          }
+          if (!adapters.has(target.provider)) {
+            return yield* new OrchestratorError({
+              reason: "unavailable",
+              message: `No ${target.provider} adapter is installed.`,
+            });
+          }
+          const origin = yield* threadInfo(caller.info.threadId);
+          yield* spend(
+            "threads",
+            config.threadBudget,
+            (recent) =>
+              `Agents have started ${recent} threads recently, the most allowed. Ask the user to start the rest.`,
+          );
+          // A thread in a worktree starts from the project, not from the worktree's folder.
+          const folder = origin.worktree?.project ?? origin.cwd;
+          const started = yield* createThread({
+            title: title ?? (origin.mode === "work" ? "New thread" : "New chat"),
+            mode: origin.mode,
+            ...(folder !== undefined ? { cwd: folder } : {}),
+            worktree: request.worktree ?? origin.worktree !== undefined,
+            lead: {
+              ...target,
+              access: narrowAccess(caller.info.access, request.access ?? caller.info.access),
+            },
+          });
+          if (title !== undefined) untitled.delete(started.thread.id);
+          yield* acceptUserMessage(started.lead.id, request.prompt, {
+            writtenBy: { agentId: callerId, threadId: origin.id, threadTitle: origin.title },
+          });
+          return started;
         }),
 
         sendMessage: Effect.fn("Orchestrator.sendMessage")(function* (
