@@ -26,7 +26,10 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* What the glass sits on where Windows' Acrylic doesn't reach: the browser preview, theme samples. */
+  /*
+   * What the glass sits on where Windows' Acrylic doesn't: the browser preview, theme samples, and
+   * every theme but Cerium in the desktop shell.
+   */
   --backdrop: oklch(calc(0.24 + var(--lift)) var(--tint-c) var(--tint-h));
   /* The window's glass, before it lets the backdrop through. */
   --window: oklch(calc(0.17 + var(--lift)) var(--tint-c) var(--tint-h));
