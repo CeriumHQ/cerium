@@ -131,7 +131,7 @@ const linted = run(actionlint, [
   ...(ci
     ? [
         "-format",
-        '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}},title=actionlint {{$err.Kind}}::{{$err.Message}}{{"\\n"}}{{end}}',
+        "{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}},title=actionlint {{$err.Kind}}::{{$err.Message}}\\n{{end}}",
       ]
     : []),
 ]);
