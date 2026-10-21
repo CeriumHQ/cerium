@@ -10,3 +10,4 @@ export {
   type PageTarget,
 } from "./browser.ts";
 export { Page, parseKeys, type ConsoleEntry, type Found, type KeyPress, type Target } from "./page.ts";
+export { parseStep, runStep, type Step } from "./steps.ts";

@@ -65,6 +65,20 @@
         "wrangler": "4.147.0",
       },
     },
+    "apps/site": {
+      "name": "@cerium/site",
+      "version": "0.0.0",
+      "dependencies": {
+        "@fontsource-variable/red-hat-display": "5.3.0",
+        "@fontsource-variable/red-hat-mono": "5.3.0",
+        "@fontsource-variable/red-hat-text": "5.3.0",
+      },
+      "devDependencies": {
+        "@cerium/browser": "workspace:*",
+        "@tailwindcss/vite": "4.3.3",
+        "tailwindcss": "4.3.3",
+      },
+    },
     "apps/ui": {
       "name": "@cerium/ui",
       "version": "0.0.0",
@@ -383,6 +397,8 @@
 
     "@cerium/rpc": ["@cerium/rpc@workspace:packages/rpc"],
 
+    "@cerium/site": ["@cerium/site@workspace:apps/site"],
+
     "@cerium/store": ["@cerium/store@workspace:packages/store"],
 
     "@cerium/ui": ["@cerium/ui@workspace:apps/ui"],
@@ -534,6 +550,8 @@
     "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.9", "", { "dependencies": { "@floating-ui/dom": "^1.8.0" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-JDjEFGCpImxDCA7JJKviA0M9+RtmJdj0m/NVU5IMgBK+AmZouAQQ7/+2GLH0GXXY0YMw9oXPB8hKdbPYg5QLYg=="],
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
+
+    "@fontsource-variable/red-hat-display": ["@fontsource-variable/red-hat-display@5.3.0", "", {}, "sha512-8u4FI+i3fkB8erlN9lMGa7Hm7aBCRP34y/aPwriBUiDYoxmS/N1QvBrd/hghUBnHJKrVKRg3h4Oubpyl2H8smw=="],
 
     "@fontsource-variable/red-hat-mono": ["@fontsource-variable/red-hat-mono@5.3.0", "", {}, "sha512-/mEvTCcruJY64xRgx1gsmsYuGR7MtOduOsuyeHVJ07p+2gGvCqROauIwaTCcVHL4eBGi+Lns4EUIjrPZLCn5gQ=="],
 
