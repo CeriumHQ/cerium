@@ -1,20 +1,30 @@
-name: Package the installer
+name: Package the app
 description: >-
-  Builds the runner's package into apps/desktop/out: on Windows the unsigned installer, its blockmap and
-  its update file; on Linux the AppImage and its update file. Run after the build.
+  Builds the desktop shell and the UI it loads, and packages them for the runner's platform into
+  apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file; on Linux the
+  AppImage and its update file. Then starts what was packaged with --smoke-test
+  (apps/desktop/src/smokeTest.ts), and uploads the package as the `package-<OS>` artifact.
 
 inputs:
   version:
-    description: The version the installer carries, from scripts/release.ts.
+    description: The version the package carries, from scripts/release.ts.
     required: true
-  publish:
-    description: Whether the installer will be published. One that won't only checks the packaging, so it's compressed lightly.
-    required: false
-    default: "true"
+  compression:
+    description: >-
+      `maximum` packs the installer smallest, for a stable release. `fast` packs it in about half the
+      time and a tenth larger, still with LZMA2, so it installs and updates the same way: for nightlies
+      and for runs that only check the packaging.
+    required: true
 
 runs:
   using: composite
   steps:
+    - name: Build
+      shell: bash
+      run: bun run build:desktop
+      env:
+        CERIUM_VERSION: ${{ inputs.version }}
+
     # electron-builder downloads Electron, NSIS, the AppImage tools and the rest into these folders.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -25,16 +35,59 @@ runs:
           ~/.cache/electron-builder
         key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json') }}
 
-    # electron-builder packs the app with LZMA2 at its highest level, which takes much of the packaging
-    # time. An installer nobody downloads is packed at the lowest level instead: still LZMA2, so it
-    # installs the same way, and about a tenth larger.
-    #
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded.
-    - shell: bash
+    - name: Package
+      shell: bash
       run: |
-        if [ "$PUBLISH" != true ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
+        if [ "$COMPRESSION" = fast ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
         bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
       env:
         CERIUM_VERSION: ${{ inputs.version }}
-        PUBLISH: ${{ inputs.publish }}
+        COMPRESSION: ${{ inputs.compression }}
+
+    # Starts the packaged app as a user would and waits for its backend and UI. The AppImage is unpacked
+    # first, since the runner has no FUSE to mount it with, and runs on a virtual display, with the
+    # unprivileged user namespaces Chromium's sandbox needs, which Ubuntu's AppArmor keeps from it.
+    # Its report is printed again when it fails, in case the Windows app's own output went nowhere.
+    - name: Smoke test
+      shell: bash
+      run: |
+        report="$RUNNER_TEMP/smoke-test"
+        if [ "$RUNNER_OS" = Windows ]; then
+          app=(apps/desktop/out/win-unpacked/Cerium.exe)
+        else
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/apps/desktop/out/Cerium-$VERSION-x86_64.AppImage" --appimage-extract > /dev/null)
+          app=(xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun")
+        fi
+        "${app[@]}" --smoke-test="$report" || {
+          status=$?
+          cat "$report/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
+          exit "$status"
+        }
+      env:
+        VERSION: ${{ inputs.version }}
+
+    - name: Keep the smoke test's logs
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: smoke-test-${{ runner.os }}
+        path: |
+          ${{ runner.temp }}/smoke-test/smoke-test.log
+          ${{ runner.temp }}/smoke-test/logs
+        if-no-files-found: ignore
+        retention-days: 7
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: package-${{ runner.os }}
+        path: |
+          apps/desktop/out/*.exe
+          apps/desktop/out/*.exe.blockmap
+          apps/desktop/out/*.AppImage
+          apps/desktop/out/latest*.yml
+          apps/desktop/out/nightly*.yml
+        if-no-files-found: error
+        retention-days: 3

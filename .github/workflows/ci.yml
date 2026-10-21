@@ -9,10 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its running checks. Every other run gets a group of its own,
-# so each push to main is checked and can publish its nightly.
+# A newer push to a pull request cancels its running checks. A push to main runs once per commit:
+# GitHub now and then delivers a push twice, and the second run replaces the first. Every commit
+# pushed to main is checked and can publish its nightly; the publish job takes them one at a time.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: true
 
 defaults:
@@ -23,30 +24,61 @@ env:
   # Older nightlies are deleted, with their tags, once a newer one is published.
   NIGHTLIES_KEPT: 10
 
+# The jobs run side by side. Linting gates the Windows jobs, so a change that fails it spends no
+# Windows minutes; publishing waits for every check and both packages.
 jobs:
-  commits:
-    name: Commit messages
+  # The commit messages, whether anything but documentation changed, and the nightly's version.
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      package: ${{ steps.changes.outputs.package }}
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The commit check and the release plan read the commits since the base and the release tags.
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - run: node scripts/check-commits.ts "$BASE" "$HEAD"
+      - name: Check the commit messages
+        run: node scripts/check-commits.ts "$BASE" "$HEAD"
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Commits that only change documentation, which no build reads, are checked but not packaged.
+      # CHANGELOG.md belongs to the app: What's new shows it.
+      - id: changes
+        name: Find what changed
+        run: |
+          package=true
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BASE...$HEAD")
+            app=$(grep -vE '\.md$|^LICENSE$|^\.github/(media|ISSUE_TEMPLATE)/' <<<"$changed" || true)
+            changelog=$(grep -xF CHANGELOG.md <<<"$changed" || true)
+            if [ -n "$changed" ] && [ -z "$app$changelog" ]; then
+              package=false
+              echo "Only documentation changed, so nothing is packaged or published."
+            fi
+          fi
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      - id: plan
+        name: Plan the nightly
+        run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER"
 
-  # The platform-independent gates run once, on the fastest and cheapest runner. Each step after
-  # setup runs even when an earlier one fails, so one run reports every problem.
-  check:
-    name: Check (Linux)
+  # The platform-independent gates, once, on the fastest and cheapest runner. Each step after setup
+  # runs even when an earlier one fails, so one run reports every problem.
+  lint:
+    name: Lint and typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,102 +96,185 @@ jobs:
         run: bun run lint:workflows
         env:
           GH_TOKEN: ${{ github.token }}
-      # Ubuntu's AppArmor keeps unprivileged processes out of user namespaces, which Edge's sandbox
-      # needs; the bus's UI tests drive a real Edge.
-      - name: Let Edge sandbox itself
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Test
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run test --run
 
-  # Linux ships an AppImage, packaged here for the Windows job to publish with the installer. The
-  # check job already ran the tests on Linux.
-  linux:
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Ubuntu's AppArmor keeps unprivileged processes out of user namespaces, which Edge's sandbox
+      # needs; the browser tests drive a real Edge.
+      - name: Let Edge sandbox itself
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - id: test
+        name: Test
+        run: bun run test --run
+        env:
+          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
+      # Everything each browser printed, and a screenshot of a failing test's page.
+      - name: Keep the browser's logs
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-logs-Linux
+          path: ${{ runner.temp }}/browser-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Windows is the main platform: its tests cover paths and processes.
+  test-windows:
+    name: Test (Windows)
+    needs: lint
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: test
+        name: Test
+        run: bun run test --run
+        env:
+          # The tests' temporary folders go on D:, the fast drive the checkout is on, under their full
+          # name. C:'s temporary folder is slower, and named through the short RUNNER~1.
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
+      - name: Keep the browser's logs
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-logs-Windows
+          path: ${{ runner.temp }}/browser-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # This version's web UI and website, built once for the publish job to deploy and release.
+  web:
+    name: Build the web app
+    needs: plan
+    if: ${{ needs.plan.outputs.package == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/web
+        with:
+          version: ${{ needs.plan.outputs.version }}
+
+  # Every change that reaches the app is packaged and started on both platforms. Nightlies ship these
+  # packages, packed fast (.github/actions/package).
+  package-linux:
     name: Package (Linux)
-    needs: [commits, check]
+    needs: [plan, lint]
+    if: ${{ needs.plan.outputs.package == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The release plan reads the release tags and the commits since them.
-          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Build
-        run: bun run build
-      - id: plan
-        name: Plan the nightly
-        run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER"
-      - name: Package
-        uses: ./.github/actions/package
+      - uses: ./.github/actions/package
         with:
-          version: ${{ steps.plan.outputs.version }}
-          publish: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: linux
-          path: |
-            apps/desktop/out/*.AppImage
-            apps/desktop/out/*-linux.yml
-          if-no-files-found: error
-          retention-days: 3
+          version: ${{ needs.plan.outputs.version }}
+          compression: fast
 
-  # Windows is the main platform: its tests cover paths and processes, and it builds the installer.
-  # It waits for the Linux gates so a change that fails them spends no Windows minutes. A push to
-  # main that changes the app publishes its installer, with the Linux job's AppImage, as a nightly
-  # (scripts/release.ts).
-  windows:
-    name: Test and package (Windows)
-    needs: [commits, check, linux]
+  package-windows:
+    name: Package (Windows)
+    needs: [plan, lint]
+    if: ${{ needs.plan.outputs.package == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          compression: fast
+
+  # A push to main that changes the app publishes its nightly once everything passed: the relay
+  # first, so it already reads what the new version sends, then the release with both packages and
+  # the web UI, then the update feed. Runs publish one at a time, oldest first, and one waiting
+  # behind another gives way to a newer one, whose nightly carries its commits. The release plan is
+  # made again here, so a run that finishes after a later push's publishes nothing (scripts/release.ts).
+  publish:
+    name: Publish the nightly
+    needs: [plan, lint, test-linux, test-windows, web, package-linux, package-windows]
+    if: ${{ github.event_name == 'push' && needs.plan.outputs.publish == 'true' && needs.plan.outputs.package == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
+    concurrency:
+      group: publish-nightly
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The release plan reads the release tags and the commits since them.
           fetch-depth: 0
           persist-credentials: false
-      - id: setup
-        uses: ./.github/actions/setup
-      - name: Test
-        run: bun run test --run
-      - name: Build
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run build
-      - id: plan
-        name: Plan the nightly
+      - id: replan
+        name: Plan the nightly again
         run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER" --notes="$RUNNER_TEMP/notes.md"
-      - name: Package
-        uses: ./.github/actions/package
-        with:
-          version: ${{ steps.plan.outputs.version }}
-          publish: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
-      - name: Fetch the AppImage
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+      # The packages carry the version planned when the run began; a stable release since then moves
+      # the nightly's.
+      - id: plan
+        name: Check the plan still holds
+        run: |
+          if [ "$PUBLISH" = true ] && [ "$VERSION" != "$PACKAGED" ]; then
+            echo "::warning::A stable release moved this nightly from $PACKAGED to $VERSION since the run began, so the next push publishes instead."
+            PUBLISH=false
+          fi
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+        env:
+          PUBLISH: ${{ steps.replan.outputs.publish }}
+          VERSION: ${{ steps.replan.outputs.version }}
+          PACKAGED: ${{ needs.plan.outputs.version }}
+      - name: Fetch the packages
+        if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux
+          pattern: package-*
           path: apps/desktop/out
+          merge-multiple: true
+      - name: Fetch the web app
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web
+          path: apps
+      # Wrangler deploys the relay.
+      - if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/setup
       - name: Deploy the relay
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: ./.github/actions/deploy-relay
         with:
-          version: ${{ steps.plan.outputs.version }}
+          version: ${{ steps.replan.outputs.version }}
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
       - name: Publish the nightly
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        if: ${{ steps.plan.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          TITLE: ${{ steps.plan.outputs.title }}
-          COMMIT: ${{ steps.plan.outputs.commit }}
+          TAG: ${{ steps.replan.outputs.tag }}
+          TITLE: ${{ steps.replan.outputs.title }}
+          COMMIT: ${{ steps.replan.outputs.commit }}
         run: |
           gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/nightly.yml \
             apps/desktop/out/*.AppImage apps/desktop/out/nightly-linux.yml \
@@ -167,7 +282,7 @@ jobs:
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
       - name: Prune old nightlies
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        if: ${{ steps.plan.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -179,11 +294,11 @@ jobs:
               gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"
             done
       - name: Publish to the update feed
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' }}
+        if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: ./.github/actions/publish-feed
         with:
-          tag: ${{ steps.plan.outputs.tag }}
-          title: ${{ steps.plan.outputs.title }}
+          tag: ${{ steps.replan.outputs.tag }}
+          title: ${{ steps.replan.outputs.title }}
           notes-file: ${{ runner.temp }}/notes.md
           nightly: "true"
           token: ${{ secrets.CERIUM_RELEASES_TOKEN }}

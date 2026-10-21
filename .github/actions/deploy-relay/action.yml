@@ -1,8 +1,9 @@
 name: Deploy the relay
 description: >-
-  Builds this version's web UI into apps/relay/dist/cerium-web-<version>.tar.gz for its release to carry, then deploys
-  the relay with it and earlier releases' builds. Runs before the installer is
-  published, so the relay already reads what the new version sends. Without a Cloudflare token it only builds.
+  Deploys the relay with this version's web UI and website, which the `web` artifact brings
+  (.github/actions/web), and earlier releases' web UI builds. Runs before the installers are
+  published, so the relay already reads what the new version sends. Without a Cloudflare token it
+  warns and deploys nothing.
 
 inputs:
   version:
@@ -23,23 +24,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Build the web UI
-      shell: bash
-      run: bun run --cwd apps/ui build:web
-      env:
-        CERIUM_VERSION: ${{ inputs.version }}
-    # The relay serves it at its root.
-    - name: Build the website
-      shell: bash
-      run: bun run --cwd apps/site build
-    # Written through stdin: Git Bash's tar takes a drive letter in an archive's path for a remote host.
-    - name: Pack the web UI
-      shell: bash
-      run: |
-        mkdir -p apps/relay/dist
-        tar -czf - -C apps/ui/dist-web . > "apps/relay/dist/cerium-web-$VERSION.tar.gz"
-      env:
-        VERSION: ${{ inputs.version }}
     - name: Deploy
       shell: bash
       run: |

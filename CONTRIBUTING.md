@@ -111,9 +111,9 @@ These hold for every change, and pull requests that break them can't be merged:
 - Keep commits focused, one concern each, and leave the repo building after every one.
 - Add a line for every user-visible change under `Unreleased` in [CHANGELOG.md](CHANGELOG.md), in the
   same commit as the change. Release notes quote it as written.
-- Pull requests run CI: commit messages, then format, lint, types and tests on Linux, then an
-  AppImage build on Linux and tests and an installer build on Windows. Make sure `bun run verify`
-  passes before you push.
+- Pull requests run CI: commit messages, format, lint, types and the workflows, the tests on Linux
+  and Windows, and the AppImage and the installer, each started once to check it runs. Make sure
+  `bun run verify` passes before you push, and `bun run lint:workflows` when you change `.github`.
 
 ## License
 

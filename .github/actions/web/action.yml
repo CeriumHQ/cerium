@@ -1,0 +1,45 @@
+name: Build the web app
+description: >-
+  Builds this version's web UI and the website the relay serves, checks the relay would deploy with
+  them, packs the web UI into apps/relay/dist/cerium-web-<version>.tar.gz for its release to carry,
+  and uploads all three as the `web` artifact for the publish job (.github/actions/deploy-relay).
+
+inputs:
+  version:
+    description: The version being released, from scripts/release.ts.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The web UI, the website and the relay's assets (apps/relay/scripts/assets.ts).
+    - name: Build
+      shell: bash
+      run: bun run --cwd apps/relay build
+      env:
+        CERIUM_VERSION: ${{ inputs.version }}
+
+    # Bundles the Worker and lists its assets as a deploy would, without deploying, so a Worker that
+    # doesn't build or an asset larger than Cloudflare serves fails here instead of at publishing.
+    - name: Check the relay deploys
+      shell: bash
+      run: bun run --cwd apps/relay check:bundle
+
+    # Written through stdin: Git Bash's tar takes a drive letter in an archive's path for a remote host.
+    - name: Pack the web UI
+      shell: bash
+      run: |
+        mkdir -p apps/relay/dist
+        tar -czf - -C apps/ui/dist-web . > "apps/relay/dist/cerium-web-$VERSION.tar.gz"
+      env:
+        VERSION: ${{ inputs.version }}
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: web
+        path: |
+          apps/ui/dist-web
+          apps/site/dist
+          apps/relay/dist/cerium-web-*.tar.gz
+        if-no-files-found: error
+        retention-days: 3

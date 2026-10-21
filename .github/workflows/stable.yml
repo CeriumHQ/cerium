@@ -45,8 +45,25 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
-  # The AppImage, packaged for the Windows job to publish with the installer.
-  linux:
+  # The web app and both packages build side by side, the packages packed smallest
+  # (.github/actions/web, .github/actions/package).
+  web:
+    name: Build the web app
+    needs: plan
+    if: ${{ needs.plan.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/web
+        with:
+          version: ${{ needs.plan.outputs.version }}
+
+  package-linux:
     name: Package (Linux)
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
@@ -58,27 +75,36 @@ jobs:
           ref: ${{ needs.plan.outputs.commit }}
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Build
-        run: bun run build
-      - name: Package
-        uses: ./.github/actions/package
+      - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: linux
-          path: |
-            apps/desktop/out/*.AppImage
-            apps/desktop/out/*-linux.yml
-          if-no-files-found: error
-          retention-days: 3
+          compression: maximum
 
-  release:
-    name: Package and publish (Windows)
-    needs: [plan, linux]
+  package-windows:
+    name: Package (Windows)
+    needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          compression: maximum
+
+  # The relay first, so it already reads what the new version sends, then the release with both
+  # packages and the web UI, then the update feed.
+  publish:
+    name: Publish
+    needs: [plan, web, package-linux, package-windows]
+    if: ${{ needs.plan.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -87,27 +113,29 @@ jobs:
           ref: ${{ needs.plan.outputs.commit }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Build
-        run: bun run build
+      # Re-checks the plan, in case a stable was released from this commit meanwhile.
       - id: notes
         name: Write the release notes
         run: node scripts/release.ts stable --commit="$COMMIT" --version="$VERSION" --notes="$RUNNER_TEMP/notes.md"
         env:
           COMMIT: ${{ needs.plan.outputs.commit }}
           VERSION: ${{ needs.plan.outputs.version }}
-      # The notes step re-checks the plan, in case a stable was released from this commit meanwhile.
-      - name: Package
-        if: ${{ steps.notes.outputs.publish == 'true' }}
-        uses: ./.github/actions/package
-        with:
-          version: ${{ needs.plan.outputs.version }}
-      - name: Fetch the AppImage
+      - name: Fetch the packages
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux
+          pattern: package-*
           path: apps/desktop/out
+          merge-multiple: true
+      - name: Fetch the web app
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web
+          path: apps
+      # Wrangler deploys the relay.
+      - if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: ./.github/actions/setup
       - name: Deploy the relay
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: ./.github/actions/deploy-relay
