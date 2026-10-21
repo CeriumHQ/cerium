@@ -10,7 +10,7 @@ import { Orchestrator, type CatalogEntry } from "../src/index.ts";
 import { HarnessFailure, type HarnessAdapter } from "@cerium/harness";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 
-import { recordEvents, testLayer } from "./fakes.ts";
+import { recordEvents, testLayer, testStore } from "./fakes.ts";
 
 const haiku: CatalogEntry = {
   alias: "scout",
@@ -64,6 +64,34 @@ describe("Orchestrator", () => {
       assert.strictEqual(stopped?.state, "stopped");
       assert.strictEqual(stopped?.updatedAt, agents[0]?.updatedAt, "stopping isn't activity");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("stops live agents as the app quits without counting it as activity", () => {
+    const fake = makeFakeAdapter("claude");
+    const database = join(mkdtempSync(join(tmpdir(), "cerium-quit-")), "cerium.db");
+    return Effect.gen(function* () {
+      const before = yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { waitFor } = yield* recordEvents;
+        const { lead } = yield* startWorkThread;
+        yield* orchestrator.sendUserMessage(lead.id, "hello");
+        yield* waitFor((events) =>
+          events.find(
+            (event) => event.payload._tag === "AgentStateChanged" && event.payload.state === "idle",
+          ),
+        );
+        const agents = yield* orchestrator.listAgents(lead.threadId);
+        yield* Effect.sleep("5 millis");
+        return agents;
+      }).pipe(Effect.provide(testLayer([fake.adapter], { database })), Effect.scoped);
+
+      const after = yield* Effect.gen(function* () {
+        const store = yield* Store;
+        return yield* store.listAgents(before[0]!.threadId);
+      }).pipe(Effect.provide(testStore(database)));
+      assert.strictEqual(after[0]?.state, "stopped");
+      assert.strictEqual(after[0]?.updatedAt, before[0]?.updatedAt, "quitting isn't activity");
+    });
   });
 
   it.live("hands the harness the user's attachments, images and skills", () => {

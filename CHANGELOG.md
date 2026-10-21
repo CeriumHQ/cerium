@@ -258,6 +258,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Inbox: quitting the app no longer marks every thread with a live agent as unread, or moves those threads to the top. As the app quit, each agent's session ended before the agent was stopped, which counted as the agent failing: new activity in its thread. Agents are now stopped first. Threads an earlier quit marked unread stay unread until you open them or mark them read.
 - Claude: interrupting a turn while a command runs ended it as an error instead of as interrupted.
 
 - `bun run dev --help` prints its options instead of starting every dev server, and an option it doesn't know stops it with the list.

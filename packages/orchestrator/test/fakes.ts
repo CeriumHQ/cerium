@@ -25,6 +25,9 @@ export const fakeBus = Layer.succeed(BusEndpoint, {
   unregister: () => Effect.void,
 });
 
+export const testStore = (filename = ":memory:") =>
+  Store.layer({ filename, migrationsFolder: join(import.meta.dirname, "../../store/migrations") });
+
 export const testLayer = (
   adapters: ReadonlyArray<HarnessAdapter>,
   options: {
@@ -33,16 +36,13 @@ export const testLayer = (
     readonly threadLimit?: number;
     readonly worktrees?: Layer.Layer<Worktrees>;
     readonly checkpoints?: Layer.Layer<Checkpoints>;
+    /** A database file to keep across layers, as the app keeps it across restarts. */
+    readonly database?: string;
   } = {},
 ) =>
   Orchestrator.layer.pipe(
     Layer.provideMerge(UserSettings.layer),
-    Layer.provideMerge(
-      Store.layer({
-        filename: ":memory:",
-        migrationsFolder: join(import.meta.dirname, "../../store/migrations"),
-      }),
-    ),
+    Layer.provideMerge(testStore(options.database)),
     Layer.provide(Adapters.fromList(adapters)),
     Layer.provide(Catalog.fromEntries(options.catalog ?? [])),
     Layer.provide(fakeBus),

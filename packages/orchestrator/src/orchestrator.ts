@@ -389,6 +389,10 @@ export class Orchestrator extends Context.Service<
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
       const layerScope = yield* Scope.Scope;
+      // Agents' sessions live in their own scope, which closes after the finalizer below that stops
+      // each agent: closed first, a session would end under a live agent and mark it failed, as new
+      // activity in its thread.
+      const agentsScope = yield* Scope.fork(layerScope);
 
       const runtimes = new Map<AgentId, Runtime>();
       const threadDirectories = new Map<ThreadId, string>();
@@ -910,7 +914,7 @@ export class Orchestrator extends Context.Service<
             });
           }
           const last = yield* store.lastSequence(info.id).pipe(Effect.mapError(unavailable));
-          const scope = yield* Scope.fork(layerScope);
+          const scope = yield* Scope.fork(agentsScope);
           const rt: Runtime = {
             info,
             session: undefined,
@@ -1687,6 +1691,7 @@ export class Orchestrator extends Context.Service<
       const childrenOf = (leadId: AgentId) =>
         [...runtimes.values()].filter((candidate) => candidate.info.parentId === leadId);
 
+      // Runs before `agentsScope` closes, so agents are stopped rather than failed as the app quits.
       yield* Effect.addFinalizer(() =>
         Effect.forEach([...runtimes.values()], stopRuntime, { discard: true }),
       );
