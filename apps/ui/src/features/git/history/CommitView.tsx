@@ -4,10 +4,12 @@ import { AsyncResult } from "effect/reactivity";
 import { ArrowLeft } from "lucide-react";
 
 import { commitDetailAtom } from "../../../backend/history.ts";
+import { FileIcon } from "../../../components/FileIcon.tsx";
 import { StateLetter } from "../../files/FileStatus.tsx";
 import { CopyButton } from "../../transcript/CopyButton.tsx";
 import { Note, messageOf } from "../../viewer/previews.tsx";
-import { refLabel, refTone, splitPath } from "./model.ts";
+import { splitPath } from "./model.ts";
+import { RefChip } from "./RefChip.tsx";
 
 // One commit in full: its message, and the files under the folder it changed. Each file opens its diff
 // against the commit's first parent in the viewer.
@@ -44,42 +46,48 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
         ) : detail === undefined ? (
           <p className="px-4 py-3 text-[12px] text-fg-tertiary">Loading commit…</p>
         ) : (
-          <div className="flex flex-col gap-4 px-4 py-4">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-[15px] leading-snug font-semibold text-fg-primary">
+          <div className="flex flex-col gap-4 py-3">
+            <div className="flex flex-col gap-1.5 px-3">
+              <h2 className="text-[14px] leading-snug font-semibold text-pretty text-fg-primary max-md:text-[16px]">
                 {detail.commit.subject}
               </h2>
-              <p className="text-[12px] text-fg-tertiary">
-                {detail.commit.author} · {new Date(detail.commit.at).toLocaleString()}
+              <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[12px] text-fg-tertiary max-md:text-[13px]">
+                <span className="truncate">{detail.commit.author}</span>
+                <span aria-hidden>·</span>
+                <time dateTime={new Date(detail.commit.at).toISOString()}>
+                  {new Date(detail.commit.at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </time>
               </p>
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="min-w-0 font-mono text-[12px] break-all text-fg-secondary">
-                  {detail.commit.sha}
+              <div className="-ml-0.5 flex min-w-0 flex-wrap items-center gap-1">
+                <span className="flex shrink-0 items-center">
+                  <span title={detail.commit.sha} className="pl-0.5 font-mono text-[12px] text-fg-secondary">
+                    {detail.commit.short}
+                  </span>
+                  <CopyButton text={detail.commit.sha} label="Copy the full SHA" />
                 </span>
-                <CopyButton text={detail.commit.sha} label="Copy commit SHA" />
+                {detail.commit.refs.map((ref) => (
+                  <RefChip key={`${ref.kind}:${ref.name}`} marker={ref} />
+                ))}
               </div>
-              {detail.commit.refs.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {detail.commit.refs.map((ref) => (
-                    <span
-                      key={`${ref.kind}:${ref.name}`}
-                      className={`rounded border px-1.5 text-[11px] leading-4 ${refTone(ref)}`}
-                    >
-                      {refLabel(ref)}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
             </div>
             {detail.message !== detail.commit.subject ? (
-              <pre className="text-[13px] leading-relaxed whitespace-pre-wrap text-fg-secondary">
-                {detail.message}
+              <pre className="px-3 font-sans text-[12.5px] leading-relaxed whitespace-pre-wrap text-fg-secondary max-md:text-[14px]">
+                {detail.message.startsWith(detail.commit.subject)
+                  ? detail.message.slice(detail.commit.subject.length).replace(/^\s+/, "")
+                  : detail.message}
               </pre>
             ) : null}
-            <section className="flex flex-col gap-1">
-              <h3 className="text-[11px] font-semibold tracking-wide text-fg-tertiary uppercase">
-                {detail.files.length === 0 ? "No files here" : `${detail.files.length} files changed`}
-                {detail.truncated === true ? " (first ones shown)" : ""}
+            <section aria-label="Files changed" className="flex flex-col px-1.5">
+              <h3 className="flex h-7 items-center px-1.5 text-2xs font-medium text-fg-tertiary max-md:h-9 max-md:text-[12.5px]">
+                {detail.files.length === 0
+                  ? "No files changed here"
+                  : detail.files.length === 1
+                    ? "1 file changed"
+                    : `${detail.files.length} files changed`}
+                {detail.truncated === true ? ", the first ones shown" : ""}
               </h3>
               {detail.files.map((file) => {
                 const { folder, name } = splitPath(file.path);
@@ -88,16 +96,21 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
                     key={`${file.from ?? ""}>${file.path}`}
                     type="button"
                     onClick={() => onOpenFile(file)}
-                    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[12.5px] transition-colors hover:bg-surface-hover"
+                    title={file.from === undefined ? file.path : `${file.path}, from ${file.from}`}
+                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]"
                   >
-                    <StateLetter state={file.state} />
-                    <span className="min-w-0 truncate">
-                      <span className="text-fg-tertiary">{folder}</span>
-                      <span className="text-fg-primary">{name}</span>
+                    <FileIcon path={file.path} className="size-4" />
+                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                      <span
+                        className={`shrink-0 ${file.state === "deleted" ? "text-fg-tertiary line-through" : "text-fg-primary"}`}
+                      >
+                        {name}
+                      </span>
+                      <span className="min-w-0 truncate text-fg-tertiary">{folder.replace(/\/$/, "")}</span>
                     </span>
-                    {file.from === undefined ? null : (
-                      <span className="ml-auto truncate text-[11px] text-fg-tertiary">from {file.from}</span>
-                    )}
+                    <span className="grid w-4 shrink-0 place-items-center">
+                      <StateLetter state={file.state} />
+                    </span>
                   </button>
                 );
               })}

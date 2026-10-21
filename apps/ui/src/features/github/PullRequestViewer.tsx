@@ -5,19 +5,16 @@ import type { GitHubRepository, PullRequestDetail, Reviewer, ReviewThread } from
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
 import {
-  ChevronDown,
   CircleCheck,
   CircleDashed,
   CircleSlash,
   CircleX,
   Columns2,
-  Ellipsis,
   ExternalLink,
   GitBranch,
   GitPullRequestDraft,
   Link,
   MessageSquare,
-  MessageSquarePlus,
   Rows2,
   X,
   type LucideIcon,
@@ -33,14 +30,7 @@ import {
 } from "../../backend/github.ts";
 import { DialogButton, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import {
-  ContextMenuArea,
-  MenuItem,
-  MenuPopup,
-  MenuRoot,
-  MenuSeparator,
-  MenuTrigger,
-} from "../../components/ui/Menu.tsx";
+import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { remember } from "../../lib/storage.ts";
@@ -49,7 +39,20 @@ import { DIFF_LAYOUT_KEY, diffLayoutAtom } from "../viewer/model.ts";
 import { Note } from "../viewer/previews.tsx";
 import { Conversation } from "./Conversation.tsx";
 import { failureMessage, pullRequestBrief, pullStateOf, threadsByReview } from "./model.ts";
-import { Avatar, LabelChip, loginOf, PullStateBadge, PullStateIcon, When } from "./parts.tsx";
+import {
+  CodeName,
+  Fact,
+  Facts,
+  LabelChip,
+  loginOf,
+  MoreMenu,
+  PersonChip,
+  PullStateBadge,
+  PullStateIcon,
+  StartThreadButton,
+  ViewerTitle,
+  When,
+} from "./parts.tsx";
 import { MergeBox, PullComposer } from "./PullActionsBox.tsx";
 import { PullChecks, PullCommits, PullFiles } from "./PullTabs.tsx";
 import { ReviewThreadCard } from "./ReviewThreadCard.tsx";
@@ -252,88 +255,42 @@ function Header({
             </Toggle>
           ))}
         </ToggleGroup>
-        {onStartThread && pull ? (
-          <div className="ml-1 flex items-center">
-            <Tooltip
-              label={
-                worktrees
-                  ? "Start a thread to look into it, in a worktree of its own"
-                  : "Start a thread to look into it"
-              }
-            >
-              <Button
-                onClick={() => start(worktrees)}
-                className={`flex h-7 items-center gap-1.5 border border-line-strong px-2 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 ${worktrees ? "rounded-l-md border-r-0" : "rounded-md"}`}
-              >
-                <MessageSquarePlus size={13} strokeWidth={1.75} />
-                Start thread
-              </Button>
-            </Tooltip>
-            {worktrees ? (
-              <MenuRoot>
-                <MenuTrigger>
-                  <Button
-                    aria-label="Where the thread starts"
-                    className="grid h-7 w-6 place-items-center rounded-r-md border border-line-strong text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover max-md:h-10"
-                  >
-                    <ChevronDown size={13} strokeWidth={2} />
-                  </Button>
-                </MenuTrigger>
-                <MenuPopup>
-                  <MenuItem icon={GitBranch} onClick={() => start(true)}>
-                    In a worktree of its own
-                  </MenuItem>
-                  <MenuItem icon={MessageSquare} onClick={() => start(false)}>
-                    In the project's folder
-                  </MenuItem>
-                </MenuPopup>
-              </MenuRoot>
-            ) : null}
-          </div>
+        {onStartThread ? (
+          <span className="ml-1">
+            <StartThreadButton worktrees={worktrees} disabled={pull === undefined} onStart={start} />
+          </span>
         ) : null}
-        <MenuRoot>
-          <Tooltip label="More">
-            <MenuTrigger>
-              <Button
-                aria-label="More"
-                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10"
+        <MoreMenu>
+          {pull ? (
+            <>
+              <MenuItem
+                icon={ExternalLink}
+                onClick={() => window.open(pull.url, "_blank", "noopener,noreferrer")}
               >
-                <Ellipsis size={15} strokeWidth={1.75} />
-              </Button>
-            </MenuTrigger>
-          </Tooltip>
-          <MenuPopup>
-            {pull ? (
-              <>
-                <MenuItem
-                  icon={ExternalLink}
-                  onClick={() => window.open(pull.url, "_blank", "noopener,noreferrer")}
-                >
-                  Open on GitHub
+                Open on GitHub
+              </MenuItem>
+              <MenuItem icon={Link} onClick={() => void navigator.clipboard.writeText(pull.url)}>
+                Copy link
+              </MenuItem>
+              {pull.state === "open" ? (
+                <MenuItem icon={GitBranch} onClick={() => setCheckingOut(true)}>
+                  Check out here
                 </MenuItem>
-                <MenuItem icon={Link} onClick={() => void navigator.clipboard.writeText(pull.url)}>
-                  Copy link
+              ) : null}
+              {pull.state === "open" && pull.canUpdate ? (
+                <MenuItem icon={GitPullRequestDraft} onClick={() => void actions.setDraft(!pull.draft)}>
+                  {pull.draft ? "Ready for review" : "Convert to draft"}
                 </MenuItem>
-                {pull.state === "open" ? (
-                  <MenuItem icon={GitBranch} onClick={() => setCheckingOut(true)}>
-                    Check out here
-                  </MenuItem>
-                ) : null}
-                {pull.state === "open" && pull.canUpdate ? (
-                  <MenuItem icon={GitPullRequestDraft} onClick={() => void actions.setDraft(!pull.draft)}>
-                    {pull.draft ? "Ready for review" : "Convert to draft"}
-                  </MenuItem>
-                ) : null}
-              </>
-            ) : null}
-            {pane ? (
-              <>
-                {pull ? <MenuSeparator /> : null}
-                {pane.menu}
-              </>
-            ) : null}
-          </MenuPopup>
-        </MenuRoot>
+              ) : null}
+            </>
+          ) : null}
+          {pane ? (
+            <>
+              {pull ? <MenuSeparator /> : null}
+              {pane.menu}
+            </>
+          ) : null}
+        </MoreMenu>
         <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
       </div>
       {pull ? (
@@ -399,12 +356,6 @@ function CheckoutDialog({
   );
 }
 
-const Code = ({ children }: { children: ReactNode }) => (
-  <code className="rounded bg-surface-hover px-1 py-px font-mono text-[12px] text-fg-primary">
-    {children}
-  </code>
-);
-
 /** The pull request's title, state, branches, and who reviews it. */
 function TitleBlock({ pull }: { pull: PullRequestDetail }) {
   const state = pullStateOf(pull);
@@ -412,38 +363,32 @@ function TitleBlock({ pull }: { pull: PullRequestDetail }) {
   const head =
     pull.headRepository === undefined ? pull.head : `${pull.headRepository.split("/")[0]}:${pull.head}`;
   return (
-    <div className="flex flex-col gap-3">
-      <h1 className="text-[20px] leading-snug font-semibold tracking-tight text-pretty text-fg-primary max-md:text-[18px]">
-        {pull.title} <span className="font-normal text-fg-tertiary">#{pull.number}</span>
-      </h1>
-      {/* One run of text after the badge, so a narrow pane wraps it between words. */}
-      <p className="text-[13px] leading-6 text-fg-secondary">
-        <span className="mr-2 inline-flex align-top">
-          <PullStateBadge state={state} />
-        </span>
-        <span>
-          <span className="font-medium text-fg-primary">
+    <div className="flex flex-col gap-4">
+      <ViewerTitle title={pull.title} number={pull.number}>
+        <PullStateBadge state={state} />
+        <span className="min-w-0">
+          <span className="font-medium text-fg-secondary">
             {state === "merged" ? loginOf(pull.mergedBy ?? pull.author) : loginOf(pull.author)}
           </span>{" "}
           {state === "merged" ? `merged ${commits}` : `wants to merge ${commits}`} into{" "}
-          <Code>{pull.base}</Code> from <Code>{head}</Code>{" "}
-          <span className="whitespace-nowrap text-fg-tertiary">
-            {"· "}
-            {state === "merged" && pull.mergedAt !== undefined ? (
-              <When at={pull.mergedAt} />
-            ) : state === "closed" && pull.closedAt !== undefined ? (
-              <When at={pull.closedAt} />
-            ) : (
-              <When at={pull.createdAt} />
-            )}
-          </span>
-          <span className="ml-2 font-mono text-[12px] whitespace-nowrap tabular-nums">
+          <CodeName>{pull.base}</CodeName> from <CodeName>{head}</CodeName>
+        </span>
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          {state === "merged" && pull.mergedAt !== undefined ? (
+            <When at={pull.mergedAt} />
+          ) : state === "closed" && pull.closedAt !== undefined ? (
+            <When at={pull.closedAt} />
+          ) : (
+            <When at={pull.createdAt} />
+          )}
+          <span aria-hidden="true">·</span>
+          <span className="font-mono text-[12px] tabular-nums">
             <span className="text-success">+{pull.additions}</span>{" "}
             <span className="text-error">−{pull.deletions}</span>
           </span>
         </span>
-      </p>
-      <Facts pull={pull} />
+      </ViewerTitle>
+      <PullFacts pull={pull} />
     </div>
   );
 }
@@ -457,70 +402,67 @@ const reviewerLook: Record<Reviewer["state"], { icon: LucideIcon; tone: string; 
 };
 
 /** Who reviews it and who it's assigned to, its labels and milestone: the lines that have something. */
-function Facts({ pull }: { pull: PullRequestDetail }) {
-  const rows: Array<{ label: string; content: ReactNode }> = [];
-  if (pull.reviewers.length > 0) {
-    rows.push({
-      label: "Reviewers",
-      content: pull.reviewers.map((reviewer) => {
-        const { icon: Icon, tone, word } = reviewerLook[reviewer.state];
-        return (
-          <Tooltip key={reviewer.name} label={`${reviewer.name} ${word}`}>
-            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-line-subtle py-0.5 pr-2 pl-0.5">
-              {reviewer.team === true ? (
-                <span className="grid size-5 place-items-center rounded-full bg-surface-hover text-[10px] text-fg-tertiary">
-                  #
-                </span>
-              ) : (
-                <Avatar
-                  user={{
-                    login: reviewer.name,
-                    ...(reviewer.avatarUrl ? { avatarUrl: reviewer.avatarUrl } : {}),
-                  }}
-                  size={20}
-                />
-              )}
-              <span className="text-fg-primary">{reviewer.name}</span>
-              <Icon size={12} strokeWidth={2.25} className={tone} />
-            </span>
-          </Tooltip>
-        );
-      }),
-    });
+function PullFacts({ pull }: { pull: PullRequestDetail }) {
+  if (
+    pull.reviewers.length === 0 &&
+    pull.assignees.length === 0 &&
+    pull.labels.length === 0 &&
+    pull.milestone === undefined
+  ) {
+    return null;
   }
-  if (pull.assignees.length > 0) {
-    rows.push({
-      label: "Assignees",
-      content: pull.assignees.map((user) => (
-        <span
-          key={user.login}
-          className="inline-flex h-6 items-center gap-1.5 rounded-full border border-line-subtle py-0.5 pr-2 pl-0.5"
-        >
-          <Avatar user={user} size={20} />
-          <span className="text-fg-primary">{user.login}</span>
-        </span>
-      )),
-    });
-  }
-  if (pull.labels.length > 0) {
-    rows.push({
-      label: "Labels",
-      content: pull.labels.map((label) => <LabelChip key={label.name} label={label} />),
-    });
-  }
-  if (pull.milestone !== undefined) {
-    rows.push({ label: "Milestone", content: <span className="text-fg-primary">{pull.milestone}</span> });
-  }
-  if (rows.length === 0) return null;
   return (
-    <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-[12.5px]">
-      {rows.map((row) => (
-        <div key={row.label} className="contents">
-          <dt className="text-fg-tertiary">{row.label}</dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-1.5">{row.content}</dd>
-        </div>
-      ))}
-    </dl>
+    <Facts>
+      {pull.reviewers.length === 0 ? null : (
+        <Fact name="Reviewers">
+          {pull.reviewers.map((reviewer) => {
+            const { icon: Icon, tone, word } = reviewerLook[reviewer.state];
+            const user = {
+              login: reviewer.name,
+              ...(reviewer.avatarUrl ? { avatarUrl: reviewer.avatarUrl } : {}),
+            };
+            return (
+              <Tooltip key={reviewer.name} label={`${reviewer.name} ${word}`}>
+                {reviewer.team === true ? (
+                  <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-line-subtle py-0.5 pr-2 pl-0.5">
+                    <span className="grid size-5 place-items-center rounded-full bg-surface-hover text-[10px] text-fg-tertiary">
+                      #
+                    </span>
+                    <span className="text-fg-primary">{reviewer.name}</span>
+                    <Icon size={12} strokeWidth={2.25} className={tone} />
+                  </span>
+                ) : (
+                  <span className="inline-flex">
+                    <PersonChip user={user}>
+                      <Icon size={12} strokeWidth={2.25} className={tone} />
+                    </PersonChip>
+                  </span>
+                )}
+              </Tooltip>
+            );
+          })}
+        </Fact>
+      )}
+      {pull.assignees.length === 0 ? null : (
+        <Fact name="Assignees">
+          {pull.assignees.map((user) => (
+            <PersonChip key={user.login} user={user} />
+          ))}
+        </Fact>
+      )}
+      {pull.labels.length === 0 ? null : (
+        <Fact name="Labels">
+          {pull.labels.map((label) => (
+            <LabelChip key={label.name} label={label} />
+          ))}
+        </Fact>
+      )}
+      {pull.milestone === undefined ? null : (
+        <Fact name="Milestone">
+          <span className="text-fg-primary">{pull.milestone}</span>
+        </Fact>
+      )}
+    </Facts>
   );
 }
 

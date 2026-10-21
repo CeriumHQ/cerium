@@ -25,7 +25,7 @@ const failureOf = (error: unknown): Failure => {
 };
 
 const fieldClass =
-  "w-full rounded-lg border border-line-strong bg-transparent px-2.5 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary focus:border-fg-tertiary max-md:text-[15px]";
+  "w-full bg-transparent px-3 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]";
 
 /**
  * The next commit's message and the button that makes it, above the lists: what's staged goes in, or
@@ -136,62 +136,64 @@ export function CommitBox({
             : `Commit ${staged} files`;
 
   return (
-    <div className="flex flex-col gap-2 border-b border-line-subtle px-3 pt-2.5 pb-3">
-      <input
-        value={draft.subject}
-        onChange={(event) => edit({ subject: event.currentTarget.value })}
-        onKeyDown={onKeyDown}
-        placeholder={draft.amend ? "Message of the last commit" : "Message"}
-        aria-label="Commit message"
-        spellCheck
-        className={`${fieldClass} h-8 max-md:h-10`}
-      />
-      {draft.subject !== "" || draft.body !== "" ? (
-        <textarea
-          value={draft.body}
-          onChange={(event) => edit({ body: event.currentTarget.value })}
+    <div className="flex flex-col gap-2 border-b border-line-subtle p-2">
+      <div className="flex flex-col rounded-xl border border-line-subtle bg-surface-raised transition-colors focus-within:border-line-strong">
+        <input
+          value={draft.subject}
+          onChange={(event) => edit({ subject: event.currentTarget.value })}
           onKeyDown={onKeyDown}
-          placeholder="Description"
-          aria-label="Commit description"
-          rows={3}
+          placeholder={draft.amend ? "Message of the last commit" : "Message"}
+          aria-label="Commit message"
           spellCheck
-          className={`${fieldClass} scroll-thin field-sizing-content max-h-48 min-h-16 resize-none py-1.5 leading-relaxed`}
+          className={`${fieldClass} h-9 max-md:h-11`}
         />
-      ) : null}
-      <div className="flex items-center gap-3">
-        <Checkbox.Root
-          checked={draft.amend}
-          onCheckedChange={(checked) => void toggleAmend(checked)}
-          className="group flex cursor-default items-center gap-2 rounded-md text-left text-[12.5px] text-fg-secondary outline-none select-none max-md:text-[14px]"
-        >
-          <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong transition-colors group-focus-visible:border-fg-secondary group-data-checked:border-accent group-data-checked:bg-accent">
-            <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
-              <Check size={10} strokeWidth={3} />
-            </Checkbox.Indicator>
-          </span>
-          Amend
-        </Checkbox.Root>
-        <Tooltip
-          label={
-            blocked ??
-            (draft.amend
-              ? "Rewrites the last commit with what's staged and this message"
-              : all
-                ? "Stages every change, then commits them"
-                : "Commits what's staged")
-          }
-          {...(blocked === undefined ? { shortcut: "Ctrl Enter" } : {})}
-        >
-          <Button
-            onClick={() => void submit()}
-            disabled={!ready}
-            focusableWhenDisabled
-            className="ml-auto flex h-8 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-[13px] font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:opacity-50 data-disabled:hover:bg-accent max-md:h-10 max-md:text-[15px]"
+        {draft.subject !== "" || draft.body !== "" ? (
+          <textarea
+            value={draft.body}
+            onChange={(event) => edit({ body: event.currentTarget.value })}
+            onKeyDown={onKeyDown}
+            placeholder="Description"
+            aria-label="Commit description"
+            rows={2}
+            spellCheck
+            className={`${fieldClass} scroll-thin field-sizing-content max-h-48 min-h-12 resize-none border-t border-line-subtle py-2 leading-relaxed`}
+          />
+        ) : null}
+        <div className="flex items-center gap-2 py-1.5 pr-1.5 pl-3">
+          <Checkbox.Root
+            checked={draft.amend}
+            onCheckedChange={(checked) => void toggleAmend(checked)}
+            className="group flex cursor-default items-center gap-1.5 rounded-md text-left text-[12px] text-fg-tertiary outline-none select-none hover:text-fg-secondary data-checked:text-fg-secondary max-md:text-[14px]"
           >
-            <GitCommitHorizontal size={15} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">{label}</span>
-          </Button>
-        </Tooltip>
+            <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong transition-colors group-focus-visible:border-fg-secondary group-data-checked:border-accent group-data-checked:bg-accent">
+              <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
+                <Check size={10} strokeWidth={3} />
+              </Checkbox.Indicator>
+            </span>
+            Amend
+          </Checkbox.Root>
+          <Tooltip
+            label={
+              blocked ??
+              (draft.amend
+                ? "Rewrites the last commit with what's staged and this message"
+                : all
+                  ? "Stages every change, then commits them"
+                  : "Commits what's staged")
+            }
+            {...(blocked === undefined ? { shortcut: "Ctrl Enter" } : {})}
+          >
+            <Button
+              onClick={() => void submit()}
+              disabled={!ready}
+              focusableWhenDisabled
+              className="ml-auto flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
+            >
+              <GitCommitHorizontal size={14} strokeWidth={1.75} className="shrink-0" />
+              <span className="truncate">{label}</span>
+            </Button>
+          </Tooltip>
+        </div>
       </div>
       {failure ? (
         <div role="alert" className="flex flex-col gap-1">

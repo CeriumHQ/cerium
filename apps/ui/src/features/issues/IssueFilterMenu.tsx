@@ -11,6 +11,7 @@ import { useState, type ReactNode } from "react";
 
 import { issueChoicesAtom } from "../../backend/issues.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { barButtonClass, SetCount } from "../../components/ui/SearchBar.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LabelChip } from "../github/parts.tsx";
 import { filterCount, isFiltered, toggleLabel, withMilestone } from "./model.ts";
@@ -197,14 +198,10 @@ export function IssueFilterMenu({
       <Tooltip label="Filter issues">
         <Popover.Trigger
           aria-label={count === 0 ? "Filter issues" : `Filter issues, ${count} set`}
-          className="relative grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-10"
+          className={`${barButtonClass} ${count > 0 ? "text-fg-primary" : "text-fg-tertiary"}`}
         >
           <ListFilter size={15} strokeWidth={1.75} />
-          {count === 0 ? null : (
-            <span className="absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-fg-primary px-0.5 text-[9px] font-semibold text-surface-panel tabular-nums">
-              {count}
-            </span>
-          )}
+          <SetCount count={count} />
         </Popover.Trigger>
       </Tooltip>
       <Popover.Portal>

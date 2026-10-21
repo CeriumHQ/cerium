@@ -261,6 +261,8 @@ export function SideDiff({
     );
 
   const hunkActions = (hunk: number) => {
+    // A file of one change acts on it from the bar above the file.
+    if (hunks.length < 2) return null;
     const ids = new Set(hunkLines(hunks, hunk));
     return shown === "staged" ? (
       <ActionButton

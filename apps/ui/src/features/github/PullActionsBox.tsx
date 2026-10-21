@@ -12,13 +12,13 @@ import {
   GitMerge,
   GitPullRequestClosed,
   TriangleAlert,
-  X,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { DialogButton, DialogCheck, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { mergeStateNote } from "./model.ts";
+import { CommentBox } from "./parts.tsx";
 import type { PullActions } from "./usePullRequest.ts";
 
 /** What a comment being written holds, by pull request, while the window is open. */
@@ -305,65 +305,42 @@ export function PullComposer({
   const merged = pull.state === "merged";
 
   return (
-    <div className="flex flex-col gap-2">
-      <textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            void comment();
-          }
-        }}
-        placeholder="Leave a comment"
-        aria-label="Comment"
-        spellCheck
-        disabled={actions.busy === "comment"}
-        className={textareaClass}
-      />
-      {actions.error === undefined || reviewing ? null : (
-        <p role="alert" className="flex items-start gap-2 text-[12.5px] text-error max-md:text-[14px]">
-          <span className="min-w-0 flex-1 text-balance">{actions.error}</span>
-          <button
-            type="button"
-            aria-label="Dismiss"
-            onClick={actions.dismiss}
-            className="grid size-4 shrink-0 place-items-center rounded text-error/70 hover:text-error"
-          >
-            <X size={12} strokeWidth={2} />
-          </button>
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {merged || !pull.canUpdate ? null : pull.state === "closed" ? (
-          <DialogButton onClick={() => void setState("open")} disabled={busy}>
-            <span className="inline-flex items-center gap-1.5">
-              <CircleDot size={13} strokeWidth={1.75} />
-              {text === "" ? "Reopen" : "Reopen with comment"}
-            </span>
-          </DialogButton>
-        ) : (
-          <DialogButton onClick={() => void setState("closed")} disabled={busy}>
-            <span className="inline-flex items-center gap-1.5">
-              <GitPullRequestClosed size={13} strokeWidth={1.75} />
-              {text === "" ? "Close" : "Close with comment"}
-            </span>
-          </DialogButton>
-        )}
-        {merged ? null : (
-          <DialogButton onClick={() => setReviewing(true)} disabled={busy}>
-            Review changes
-          </DialogButton>
-        )}
-        <DialogButton
-          tone="primary"
-          onClick={() => void comment()}
-          disabled={busy || text === ""}
-          title="Comment (Ctrl Enter)"
-        >
-          {actions.busy === "comment" ? "Commenting…" : "Comment"}
+    <CommentBox
+      value={draft}
+      onChange={setDraft}
+      onComment={() => void comment()}
+      disabled={actions.busy === "comment"}
+      error={reviewing ? undefined : actions.error}
+      onDismiss={actions.dismiss}
+    >
+      {merged || !pull.canUpdate ? null : pull.state === "closed" ? (
+        <DialogButton onClick={() => void setState("open")} disabled={busy}>
+          <span className="inline-flex items-center gap-1.5">
+            <CircleDot size={13} strokeWidth={1.75} />
+            {text === "" ? "Reopen" : "Reopen with comment"}
+          </span>
         </DialogButton>
-      </div>
+      ) : (
+        <DialogButton onClick={() => void setState("closed")} disabled={busy}>
+          <span className="inline-flex items-center gap-1.5">
+            <GitPullRequestClosed size={13} strokeWidth={1.75} />
+            {text === "" ? "Close" : "Close with comment"}
+          </span>
+        </DialogButton>
+      )}
+      {merged ? null : (
+        <DialogButton onClick={() => setReviewing(true)} disabled={busy}>
+          Review changes
+        </DialogButton>
+      )}
+      <DialogButton
+        tone="primary"
+        onClick={() => void comment()}
+        disabled={busy || text === ""}
+        title="Comment (Ctrl Enter)"
+      >
+        {actions.busy === "comment" ? "Commenting…" : "Comment"}
+      </DialogButton>
       <ReviewDialog
         open={reviewing}
         onOpenChange={setReviewing}
@@ -371,7 +348,7 @@ export function PullComposer({
         own={pull.mine || repository.viewer === pull.author?.login}
         actions={actions}
       />
-    </div>
+    </CommentBox>
   );
 }
 

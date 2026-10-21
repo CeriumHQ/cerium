@@ -188,7 +188,7 @@ function Group({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-[11.5px] font-semibold tracking-wide text-fg-tertiary uppercase outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
+          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-[12px] font-medium text-fg-tertiary outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
         >
           <ChevronRight
             size={13}
@@ -196,7 +196,7 @@ function Group({
             className={`shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
           />
           <span>{groupTitle[group]}</span>
-          <span className="ml-1 font-medium tabular-nums">{changes.length}</span>
+          <span className="ml-1 font-normal tabular-nums">{changes.length}</span>
         </button>
         <span className={actionsClass}>{rowActions(group, changes, "", actions)}</span>
       </h3>

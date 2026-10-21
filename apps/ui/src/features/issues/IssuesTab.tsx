@@ -2,12 +2,13 @@ import type { GitHubRepository } from "@cerium/rpc";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { LoaderCircle, Plus, Search, X } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { issueFiltersAtom, issuePageAtom, issuePageKey, refreshIssueList } from "../../backend/issues.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import { messageOf } from "../viewer/previews.tsx";
 import { IssueFilterMenu } from "./IssueFilterMenu.tsx";
 import { IssueRow } from "./IssueRow.tsx";
@@ -205,35 +206,7 @@ function IssueList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-1 border-b border-line-subtle px-2 py-1.5 max-md:py-2">
-        <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-surface-sunken px-2 text-fg-tertiary focus-within:ring-1 focus-within:ring-focus-ring max-md:h-10">
-          <Search size={13} strokeWidth={1.75} className="shrink-0" />
-          <input
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && typed !== "") {
-                event.preventDefault();
-                event.stopPropagation();
-                setTyped("");
-              }
-            }}
-            placeholder="Search issues"
-            aria-label="Search issues"
-            spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
-          />
-          {typed === "" ? null : (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => setTyped("")}
-              className="grid size-4 place-items-center rounded text-fg-tertiary hover:text-fg-secondary"
-            >
-              <X size={12} strokeWidth={2} />
-            </button>
-          )}
-        </label>
+      <SearchBar value={typed} onChange={setTyped} placeholder="Search issues">
         <IssueFilterMenu
           cwd={cwd}
           filters={filters}
@@ -245,7 +218,7 @@ function IssueList({
           onClick={() => setCreating(true)}
           className="max-md:size-10"
         />
-      </div>
+      </SearchBar>
       <NewIssueDialog
         cwd={cwd}
         open={creating}
@@ -254,18 +227,20 @@ function IssueList({
         mayLabel={canTriage(repository.permission)}
       />
       <ScrollArea className="min-h-0 flex-1">
-        <Page
-          // The list starts over when the folder or the filters change.
-          key={`${cwd}\n${key}`}
-          cwd={cwd}
-          filters={key}
-          after={undefined}
-          seen={new Set()}
-          now={now}
-          activeNumber={activeNumber}
-          onOpen={onOpen}
-          onClear={clear}
-        />
+        <div className="flex flex-col gap-px px-1.5 py-1.5">
+          <Page
+            // The list starts over when the folder or the filters change.
+            key={`${cwd}\n${key}`}
+            cwd={cwd}
+            filters={key}
+            after={undefined}
+            seen={new Set()}
+            now={now}
+            activeNumber={activeNumber}
+            onOpen={onOpen}
+            onClear={clear}
+          />
+        </div>
       </ScrollArea>
     </div>
   );

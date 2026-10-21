@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ChecksState, GitHubRepository, PullRequestFilters, PullRequestSummary } from "@cerium/rpc";
 import { useAtom, useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { Check, CircleDashed, GitBranch, ListFilter, MessageSquare, Plus, Search, X } from "lucide-react";
+import { Check, CircleDashed, GitBranch, ListFilter, Plus, X } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { branchPullAtom, pullPageAtom, pullPageKey } from "../../backend/github.ts";
@@ -17,6 +17,7 @@ import {
   MenuTrigger,
 } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { barButtonClass, SearchBar, SetCount } from "../../components/ui/SearchBar.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import {
@@ -27,7 +28,7 @@ import {
   pullFiltersKey,
   pullStateOf,
 } from "./model.ts";
-import { LabelChip, loginOf, PullStateIcon } from "./parts.tsx";
+import { CommentCount, ItemRow, loginOf, PullStateIcon } from "./parts.tsx";
 
 /** The list's filters for each folder while the window is open, so closing the panel keeps them. */
 const filtersAtom = Atom.family((_cwd: string) =>
@@ -118,45 +119,16 @@ function FilterBar({
     onChange(on ? { ...rest, [name]: true } : rest);
   };
   return (
-    <div className="flex shrink-0 items-center gap-1.5 border-b border-line-subtle px-2 py-2">
-      <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-window px-2.5 text-fg-tertiary focus-within:border-line-strong max-md:h-10">
-        <Search size={13} strokeWidth={1.75} className="shrink-0" />
-        <input
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && text !== "") {
-              event.preventDefault();
-              setText("");
-            }
-          }}
-          placeholder="Search pull requests"
-          aria-label="Search pull requests"
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
-        />
-        {text === "" ? null : (
-          <Button
-            aria-label="Clear the search"
-            onClick={() => setText("")}
-            className="grid size-5 shrink-0 place-items-center rounded text-fg-tertiary hover:text-fg-primary"
-          >
-            <X size={12} strokeWidth={2} />
-          </Button>
-        )}
-      </label>
+    <SearchBar value={text} onChange={setText} placeholder="Search pull requests">
       <MenuRoot>
-        <Tooltip label="Filter">
+        <Tooltip label="Filter pull requests">
           <MenuTrigger>
             <Button
-              aria-label={count > 0 ? `Filter, ${count} on` : "Filter"}
-              className={`relative grid size-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-surface-hover data-popup-open:bg-surface-hover max-md:size-10 ${count > 0 ? "text-fg-primary" : "text-fg-tertiary hover:text-fg-secondary"}`}
+              aria-label={count > 0 ? `Filter pull requests, ${count} set` : "Filter pull requests"}
+              className={`${barButtonClass} ${count > 0 ? "text-fg-primary" : "text-fg-tertiary"}`}
             >
               <ListFilter size={15} strokeWidth={1.75} />
-              {count > 0 ? (
-                <span className="absolute top-0.5 right-0.5 grid size-3.5 place-items-center rounded-full bg-accent text-[9px] font-semibold text-accent-fg tabular-nums">
-                  {count}
-                </span>
-              ) : null}
+              <SetCount count={count} />
             </Button>
           </MenuTrigger>
         </Tooltip>
@@ -195,7 +167,7 @@ function FilterBar({
           </MenuCheckboxItem>
         </MenuPopup>
       </MenuRoot>
-    </div>
+    </SearchBar>
   );
 }
 
@@ -220,30 +192,30 @@ function BranchRow({
   const branch = AsyncResult.isSuccess(result) ? result.value : undefined;
   if (branch?.branch === undefined) return null;
   const pull = branch.pullRequest;
+  const heading = (
+    <h3 className="flex h-7 items-center gap-1.5 px-2 text-2xs font-medium text-fg-tertiary max-md:h-9 max-md:text-[12.5px]">
+      <GitBranch size={12} strokeWidth={2} className="shrink-0" />
+      <span className="truncate">{branch.branch}</span>
+    </h3>
+  );
   if (pull !== undefined && pull.state === "open") {
     return (
-      <section className="border-b border-line-subtle pb-1">
-        <h3 className="flex items-center gap-1.5 px-3 pt-2.5 text-[11.5px] font-medium text-fg-tertiary">
-          <GitBranch size={12} strokeWidth={2} />
-          <span className="truncate font-mono">{branch.branch}</span>
-        </h3>
+      <section aria-label="This branch" className="border-b border-line-subtle px-1.5 pt-1 pb-1.5">
+        {heading}
         <PullRow pull={pull} selected={openNumber === pull.number} onOpen={onOpen} />
       </section>
     );
   }
   if (branch.branch === repository.defaultBranch) return null;
   return (
-    <section className="flex items-center gap-2 border-b border-line-subtle px-3 py-2.5">
-      <GitBranch size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-secondary" title={branch.branch}>
-        {branch.branch}
-      </span>
+    <section aria-label="This branch" className="border-b border-line-subtle px-1.5 pt-1 pb-2">
+      {heading}
       <Button
         onClick={onCreate}
-        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2 text-[12px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-9"
+        className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-11 max-md:text-[14px]"
       >
-        <Plus size={13} strokeWidth={2} />
-        Open a pull request
+        <Plus size={14} strokeWidth={1.75} className="shrink-0" />
+        Open a pull request from this branch
       </Button>
     </section>
   );
@@ -271,7 +243,7 @@ function Pages({
     setAfter((current) => (current.includes(next) ? current : [...current, next]));
   const pages = [undefined, ...after];
   return (
-    <ul className="flex flex-col py-1" aria-label="Pull requests">
+    <ul className="flex flex-col gap-px px-1.5 py-1.5" aria-label="Pull requests">
       {pages.map((cursor, index) => (
         <Page
           key={cursor ?? ""}
@@ -376,7 +348,7 @@ function Skeleton() {
   return (
     <>
       {[0, 1, 2, 3, 4].map((index) => (
-        <li key={index} className="flex gap-2.5 px-3 py-2.5" aria-hidden="true">
+        <li key={index} className="flex gap-2.5 px-2 py-2.5" aria-hidden="true">
           <span className="mt-0.5 size-4 shrink-0 animate-pulse rounded-full bg-surface-hover" />
           <span className="flex flex-1 flex-col gap-1.5">
             <span className="h-3.5 w-4/5 animate-pulse rounded bg-surface-hover" />
@@ -406,50 +378,32 @@ function PullRow({
 }) {
   const review = pull.reviewDecision === undefined ? undefined : reviewLook[pull.reviewDecision];
   return (
-    <Button
-      onClick={() => onOpen(pull.number, pull.title)}
-      aria-current={selected ? "true" : undefined}
-      className={`flex w-full gap-2.5 px-3 py-2 text-left transition-colors max-md:py-3 ${selected ? "bg-surface-selected" : "hover:bg-surface-hover"}`}
-    >
-      <span className="pt-[3px]">
-        <PullStateIcon state={pullStateOf(pull)} size={14} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="line-clamp-2 text-[13px] leading-[1.35] font-medium text-fg-primary max-md:text-[15px]">
-          {pull.title}
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-fg-tertiary max-md:text-[13px]">
+    <ItemRow
+      icon={<PullStateIcon state={pullStateOf(pull)} size={15} />}
+      title={pull.title}
+      facts={
+        <>
           <span className="shrink-0 tabular-nums">#{pull.number}</span>
           <span aria-hidden="true">·</span>
           <span className="min-w-0 truncate">{loginOf(pull.author)}</span>
           <span aria-hidden="true">·</span>
           <span className="shrink-0 tabular-nums">{shortAgo(pull.updatedAt)}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-2">
-            {pull.mergeable === "conflicting" && pull.state === "open" ? (
-              <span className="text-attention">Conflicts</span>
-            ) : null}
-            {review === undefined ? null : <span className={review.tone}>{review.label}</span>}
-            {pull.comments > 0 ? (
-              <span
-                className="flex items-center gap-0.5 tabular-nums"
-                aria-label={`${pull.comments} comments`}
-              >
-                <MessageSquare size={11} strokeWidth={2} />
-                {pull.comments}
-              </span>
-            ) : null}
-            {pull.checks === undefined ? null : <ChecksMark state={pull.checks} />}
-          </span>
-        </span>
-        {pull.labels.length === 0 ? null : (
-          <span className="flex min-w-0 flex-wrap gap-1 pt-0.5">
-            {pull.labels.slice(0, 4).map((label) => (
-              <LabelChip key={label.name} label={label} />
-            ))}
-          </span>
-        )}
-      </span>
-    </Button>
+        </>
+      }
+      marks={
+        <>
+          {pull.mergeable === "conflicting" && pull.state === "open" ? (
+            <span className="text-attention">Conflicts</span>
+          ) : null}
+          {review === undefined ? null : <span className={review.tone}>{review.label}</span>}
+          <CommentCount count={pull.comments} />
+          {pull.checks === undefined ? null : <ChecksMark state={pull.checks} />}
+        </>
+      }
+      labels={pull.labels}
+      current={selected}
+      onOpen={() => onOpen(pull.number, pull.title)}
+    />
   );
 }
 

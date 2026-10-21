@@ -34,7 +34,7 @@ export interface DiffPicking {
   readonly picked: (hunk: number, line: number) => boolean;
   /** Picks a changed line or unpicks it; `extend` picks every changed line from the last one picked. */
   readonly onPick: (hunk: number, line: number, extend: boolean) => void;
-  /** What acts on a hunk as a whole, on the bar above it. */
+  /** What acts on a hunk as a whole, on the bar above it; nothing leaves the hunk without a bar of its own. */
   readonly hunkActions: (hunk: number) => ReactNode;
 }
 
@@ -52,9 +52,11 @@ function Gap({
   children?: ReactNode;
 }) {
   const label = lines === 1 ? "1 unchanged line" : `${lines.toLocaleString()} unchanged lines`;
+  // A hunk that folds nothing away keeps only its actions, on a bar of its own that draws no band.
+  const band = lines === 0 ? "" : "border-y border-line-subtle bg-surface-hover";
   return (
     <div
-      className={`flex items-center border-y border-line-subtle bg-surface-hover text-[11.5px] text-fg-tertiary select-none ${children === undefined ? "h-7" : "h-8 pr-1.5"}`}
+      className={`flex items-center text-[11.5px] text-fg-tertiary select-none ${band} ${children === undefined ? "h-7" : "h-8 pr-1.5"}`}
     >
       {lines === 0 ? null : onExpand ? (
         <button
@@ -229,11 +231,12 @@ export function DiffView({
         {numbered.hunks.map((hunk, hunkIndex) => {
           const ranges = rangesOf(hunk.lines);
           const indexOf = new Map(hunk.lines.map((line, index) => [line, index]));
+          const actions = picking?.hunkActions(hunkIndex);
           return (
             <Fragment key={hunkIndex}>
-              {picking !== undefined ? (
+              {actions !== undefined && actions !== null ? (
                 <Gap lines={hunk.gapBefore} onExpand={onExpand}>
-                  {picking.hunkActions(hunkIndex)}
+                  {actions}
                 </Gap>
               ) : hunk.gapBefore > 0 ? (
                 <Gap lines={hunk.gapBefore} onExpand={onExpand} />

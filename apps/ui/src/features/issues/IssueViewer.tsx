@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { ExternalLink, LoaderCircle, MessageSquarePlus, RefreshCw, X } from "lucide-react";
+import { ExternalLink, Link, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { useContext, useEffect } from "react";
 
 import { githubRepositoryAtom } from "../../backend/github.ts";
@@ -14,12 +14,19 @@ import {
   refreshIssue,
 } from "../../backend/issues.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { ContextMenuArea } from "../../components/ui/Menu.tsx";
+import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { whenAgo } from "../../lib/time.ts";
 import { Conversation } from "../github/Conversation.tsx";
 import { githubKey } from "../github/model.ts";
-import { GitHubLink, loginOf } from "../github/parts.tsx";
+import {
+  GitHubLink,
+  loginOf,
+  MoreMenu,
+  StartThreadButton,
+  StatePill,
+  ViewerTitle,
+  When,
+} from "../github/parts.tsx";
 import { nameGitHubTab } from "../github/tabs.ts";
 import type { PaneChrome } from "../split/SplitView.tsx";
 import { Note, messageOf } from "../viewer/previews.tsx";
@@ -29,20 +36,6 @@ import { ITEMS_LIMIT, canTriage, issueBrief, stateLabel } from "./model.ts";
 import { StateIcon } from "./parts.tsx";
 import { useIssueActions } from "./useIssueActions.ts";
 import { useIssueFreshness } from "./useIssueFreshness.ts";
-
-/** The state as a pill: open in the colour of what's alive, closed quiet. */
-function StatePill({ issue }: { issue: Parameters<typeof stateLabel>[0] }) {
-  return (
-    <span
-      className={`inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium ${
-        issue.state === "open" ? "bg-success/15 text-success" : "bg-surface-hover text-fg-secondary"
-      }`}
-    >
-      <StateIcon issue={issue} size={13} />
-      {stateLabel(issue)}
-    </span>
-  );
-}
 
 const openOutside = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
 
@@ -96,9 +89,10 @@ export function IssueViewer({
       {...pane?.grip}
       className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
     >
-      {issue === undefined ? null : <StateIcon issue={issue} />}
-      <span className="min-w-0 truncate text-[13px] font-medium text-fg-primary max-md:text-[15px]">
-        Issue <span className="tabular-nums">#{number}</span>
+      {issue === undefined ? null : <StateIcon issue={issue} size={15} />}
+      <span className="flex min-w-0 items-baseline gap-1.5 text-[13px] max-md:text-[15px]">
+        <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
+        <span className="min-w-0 truncate font-medium text-fg-primary">{issue?.title ?? ""}</span>
       </span>
       {result.waiting && issue !== undefined ? (
         <LoaderCircle
@@ -108,30 +102,34 @@ export function IssueViewer({
         />
       ) : null}
       <span className="ml-auto flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          disabled={issue === undefined}
-          onClick={() => issue !== undefined && onStartThread(issueBrief(issue))}
-          aria-label="Start thread"
-          className="inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40 max-md:size-10 max-md:justify-center max-md:px-0"
-        >
-          <MessageSquarePlus size={13} strokeWidth={1.75} className="max-md:size-4" />
-          <span className="max-md:hidden">Start thread</span>
-        </button>
-        <IconButton
-          icon={RefreshCw}
-          label="Refresh"
-          onClick={() => refreshIssue(registry, id)}
-          className="max-md:hidden"
-        />
-        {url === undefined ? null : (
-          <IconButton
-            icon={ExternalLink}
-            label="Open on GitHub"
-            onClick={() => openOutside(url)}
-            className="max-md:size-10"
+        <span className="ml-1">
+          <StartThreadButton
+            worktrees={false}
+            disabled={issue === undefined}
+            onStart={() => issue !== undefined && onStartThread(issueBrief(issue))}
           />
-        )}
+        </span>
+        <MoreMenu>
+          {url === undefined ? null : (
+            <>
+              <MenuItem icon={ExternalLink} onClick={() => openOutside(url)}>
+                Open on GitHub
+              </MenuItem>
+              <MenuItem icon={Link} onClick={() => void navigator.clipboard.writeText(url)}>
+                Copy link
+              </MenuItem>
+            </>
+          )}
+          <MenuItem icon={RefreshCw} onClick={() => refreshIssue(registry, id)}>
+            Refresh
+          </MenuItem>
+          {pane ? (
+            <>
+              <MenuSeparator />
+              {pane.menu}
+            </>
+          ) : null}
+        </MoreMenu>
         <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
       </span>
     </header>
@@ -165,29 +163,30 @@ export function IssueViewer({
     const more = issue.more === true;
     return (
       <ScrollArea className="h-full">
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-5 max-md:px-3">
-          <div className="flex flex-col gap-2.5">
-            <h1 className="text-[19px] leading-snug font-semibold tracking-tight text-balance text-fg-primary max-md:text-[21px]">
-              {issue.title} <span className="font-normal text-fg-tertiary tabular-nums">#{issue.number}</span>
-            </h1>
-            <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px] text-fg-tertiary max-md:text-[14px]">
-              <StatePill issue={issue} />
-              <span>
-                <span className="font-medium text-fg-secondary">{loginOf(issue.author)}</span> opened this{" "}
-                {whenAgo(issue.createdAt)}
-              </span>
-              <span aria-hidden>·</span>
-              <span>
-                {issue.comments} {issue.comments === 1 ? "comment" : "comments"}
-              </span>
-              {issue.closedAt === undefined || issue.state === "open" ? null : (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>closed {whenAgo(issue.closedAt)}</span>
-                </>
-              )}
-            </p>
-          </div>
+        <div className="mx-auto flex max-w-[56rem] flex-col gap-5 px-6 pt-5 pb-12 max-md:px-3">
+          <ViewerTitle title={issue.title} number={issue.number}>
+            <StatePill
+              icon={<StateIcon issue={issue} size={13} />}
+              label={stateLabel(issue)}
+              tone={issue.state === "open" ? "text-success" : "text-fg-secondary"}
+            />
+            <span>
+              <span className="font-medium text-fg-secondary">{loginOf(issue.author)}</span> opened this{" "}
+              <When at={issue.createdAt} />
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              {issue.comments} {issue.comments === 1 ? "comment" : "comments"}
+            </span>
+            {issue.closedAt === undefined || issue.state === "open" ? null : (
+              <>
+                <span aria-hidden>·</span>
+                <span>
+                  closed <When at={issue.closedAt} />
+                </span>
+              </>
+            )}
+          </ViewerTitle>
           <IssueMeta
             cwd={cwd}
             issue={issue}

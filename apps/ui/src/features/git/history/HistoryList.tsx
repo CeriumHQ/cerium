@@ -1,12 +1,14 @@
 import type { Commit, CommitPage } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Search, X } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { commitPageAtom, commitPageKey, historyVersionAtom } from "../../../backend/history.ts";
+import { SearchBar } from "../../../components/ui/SearchBar.tsx";
 import { Note, messageOf } from "../../viewer/previews.tsx";
-import { refLabel, refTone, timeAgo } from "./model.ts";
+import { timeAgo } from "./model.ts";
+import { RefChip } from "./RefChip.tsx";
 
 // The branch's commits, newest first, a page at a time as the list is scrolled, searched by message or
 // author. The list starts over when its folder changes, and follows the folder as its history moves.
@@ -18,47 +20,50 @@ interface HistoryListProps {
   readonly onOpen: (sha: string) => void;
 }
 
-/** One commit: its subject, the refs it carries, then who wrote it, when, and its short SHA. */
+/** Refs a row shows before it counts the rest. */
+const REFS_SHOWN = 1;
+
+/**
+ * One commit: its subject, then its short SHA, who wrote it and when, whether it's pushed yet, and at
+ * the end of that line the refs it carries.
+ */
 function CommitRow({ commit, now, onOpen }: { commit: Commit; now: number; onOpen: (sha: string) => void }) {
-  const hidden = commit.refs.length - 3;
+  const hidden = commit.refs.length - REFS_SHOWN;
   return (
     <button
       type="button"
       onClick={() => onOpen(commit.sha)}
-      className="flex w-full flex-col gap-1 border-b border-line-subtle px-3 py-2 text-left transition-colors hover:bg-surface-hover"
+      className="flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:py-3"
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-[13px] text-fg-primary">{commit.subject}</span>
-        {commit.unpushed === true ? (
-          <span
-            // A dot standing for a word, which `img` can't hold.
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-            role="img"
-            aria-label="Not pushed yet"
-            title="Not pushed yet"
-            className="size-1.5 shrink-0 rounded-full bg-attention"
-          />
-        ) : null}
+      <span className="truncate text-[13px] leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
+        {commit.subject}
       </span>
-      {commit.refs.length > 0 ? (
-        <span className="flex min-w-0 flex-wrap items-center gap-1">
-          {commit.refs.slice(0, 3).map((ref) => (
-            <span
-              key={`${ref.kind}:${ref.name}`}
-              className={`rounded border px-1.5 text-[11px] leading-4 ${refTone(ref)}`}
-            >
-              {refLabel(ref)}
-            </span>
-          ))}
-          {hidden > 0 ? <span className="text-[11px] text-fg-tertiary">+{hidden}</span> : null}
-        </span>
-      ) : null}
-      <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-tertiary">
-        <span className="truncate">{commit.author}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-fg-tertiary max-md:text-[13px]">
+        <span className="shrink-0 font-mono text-[11.5px]">{commit.short}</span>
         <span aria-hidden>·</span>
-        <span className="shrink-0">{timeAgo(commit.at, now)}</span>
+        <span className="min-w-0 truncate">{commit.author}</span>
         <span aria-hidden>·</span>
-        <span className="shrink-0 font-mono">{commit.short}</span>
+        <span className="shrink-0 tabular-nums">{timeAgo(commit.at, now)}</span>
+        {commit.unpushed === true ? (
+          <span title="Not pushed yet" className="flex shrink-0 items-center text-fg-secondary">
+            <ArrowUp size={12} strokeWidth={2} aria-label="Not pushed yet" />
+          </span>
+        ) : null}
+        {commit.refs.length === 0 ? null : (
+          <span className="ml-auto flex max-w-[55%] min-w-0 shrink-0 items-center justify-end gap-1 pl-1">
+            {commit.refs.slice(0, REFS_SHOWN).map((ref) => (
+              <RefChip key={`${ref.kind}:${ref.name}`} marker={ref} />
+            ))}
+            {hidden > 0 ? (
+              <span
+                className="shrink-0 text-[11px] tabular-nums"
+                title={commit.refs.map((ref) => ref.name).join(", ")}
+              >
+                +{hidden}
+              </span>
+            ) : null}
+          </span>
+        )}
       </span>
     </button>
   );
@@ -129,28 +134,13 @@ export function HistoryList({ root, onOpen }: HistoryListProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <label className="flex h-9 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
-        <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-        <input
-          value={typed}
-          onChange={(event) => setTyped(event.currentTarget.value)}
-          placeholder="Search messages and authors"
-          aria-label="Search commits"
-          spellCheck={false}
-          className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary"
-        />
-        {typed === "" ? null : (
-          <button
-            type="button"
-            aria-label="Clear search"
-            onClick={() => setTyped("")}
-            className="grid size-5 shrink-0 place-items-center rounded text-fg-tertiary hover:text-fg-primary"
-          >
-            <X size={12} strokeWidth={1.75} />
-          </button>
-        )}
-      </label>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <SearchBar
+        value={typed}
+        onChange={setTyped}
+        placeholder="Search messages and authors"
+        label="Search commits"
+      />
+      <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 py-1.5">
         {repository === false ? (
           <Note>This folder isn't in a git repository.</Note>
         ) : AsyncResult.isFailure(result) && commits.length === 0 ? (

@@ -1,10 +1,11 @@
 import type { CloseReason, IssueDetail } from "@cerium/rpc";
 import { useAtom } from "@effect/atom-react";
-import { ChevronDown, CircleCheck, CircleDot, CircleSlash, Lock, X } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleDot, CircleSlash, Lock } from "lucide-react";
 
 import { issueDraftAtom } from "../../backend/issues.ts";
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { CommentBox } from "../github/parts.tsx";
 import type { IssueActions } from "./useIssueActions.ts";
 
 /**
@@ -54,72 +55,50 @@ export function IssueComposer({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            void comment();
-          }
-        }}
-        placeholder={issue.locked ? "Leave a comment (the conversation is locked)" : "Leave a comment"}
-        aria-label="Comment"
-        spellCheck
-        disabled={actions.busy === "comment"}
-        className="max-h-72 min-h-20 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:text-[15px]"
-      />
-      {actions.error === undefined ? null : (
-        <p role="alert" className="flex items-start gap-2 text-[12.5px] text-error max-md:text-[14px]">
-          <span className="min-w-0 flex-1 text-balance">{actions.error}</span>
-          <button
-            type="button"
-            aria-label="Dismiss"
-            onClick={actions.dismiss}
-            className="grid size-4 shrink-0 place-items-center rounded text-error/70 hover:text-error"
-          >
-            <X size={12} strokeWidth={2} />
-          </button>
-        </p>
-      )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {!issue.canUpdate ? null : closed ? (
-          <DialogButton onClick={() => void reopen()} disabled={busy}>
-            <span className="inline-flex items-center gap-1.5">
-              <CircleDot size={13} strokeWidth={1.75} />
-              {text === "" ? "Reopen issue" : "Reopen with comment"}
-            </span>
-          </DialogButton>
-        ) : (
-          <MenuRoot>
-            <MenuTrigger>
-              <DialogButton disabled={busy} aria-label="Close issue">
-                <span className="inline-flex items-center gap-1.5">
-                  {text === "" ? "Close issue" : "Close with comment"}
-                  <ChevronDown size={13} strokeWidth={1.75} />
-                </span>
-              </DialogButton>
-            </MenuTrigger>
-            <MenuPopup side="top">
-              <MenuItem icon={CircleCheck} onClick={() => void close("completed")}>
-                Close as completed
-              </MenuItem>
-              <MenuItem icon={CircleSlash} onClick={() => void close("notPlanned")}>
-                Close as not planned
-              </MenuItem>
-            </MenuPopup>
-          </MenuRoot>
-        )}
-        <DialogButton
-          tone="primary"
-          onClick={() => void comment()}
-          disabled={busy || text === ""}
-          title="Comment (Ctrl Enter)"
-        >
-          {actions.busy === "comment" ? "Commenting…" : "Comment"}
+    <CommentBox
+      value={draft}
+      onChange={setDraft}
+      onComment={() => void comment()}
+      placeholder={issue.locked ? "Leave a comment (the conversation is locked)" : "Leave a comment"}
+      disabled={actions.busy === "comment"}
+      error={actions.error}
+      onDismiss={actions.dismiss}
+    >
+      {!issue.canUpdate ? null : closed ? (
+        <DialogButton onClick={() => void reopen()} disabled={busy}>
+          <span className="inline-flex items-center gap-1.5">
+            <CircleDot size={13} strokeWidth={1.75} />
+            {text === "" ? "Reopen issue" : "Reopen with comment"}
+          </span>
         </DialogButton>
-      </div>
-    </div>
+      ) : (
+        <MenuRoot>
+          <MenuTrigger>
+            <DialogButton disabled={busy} aria-label="Close issue">
+              <span className="inline-flex items-center gap-1.5">
+                {text === "" ? "Close issue" : "Close with comment"}
+                <ChevronDown size={13} strokeWidth={1.75} />
+              </span>
+            </DialogButton>
+          </MenuTrigger>
+          <MenuPopup side="top">
+            <MenuItem icon={CircleCheck} onClick={() => void close("completed")}>
+              Close as completed
+            </MenuItem>
+            <MenuItem icon={CircleSlash} onClick={() => void close("notPlanned")}>
+              Close as not planned
+            </MenuItem>
+          </MenuPopup>
+        </MenuRoot>
+      )}
+      <DialogButton
+        tone="primary"
+        onClick={() => void comment()}
+        disabled={busy || text === ""}
+        title="Comment (Ctrl Enter)"
+      >
+        {actions.busy === "comment" ? "Commenting…" : "Comment"}
+      </DialogButton>
+    </CommentBox>
   );
 }

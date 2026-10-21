@@ -4,7 +4,7 @@ import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { GitHubRepository } from "@cerium/rpc";
 import { RegistryContext, useAtom, useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { ExternalLink, Lock, RefreshCw, X } from "lucide-react";
+import { ExternalLink, RefreshCw, X } from "lucide-react";
 import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -26,7 +26,7 @@ type Tab = "pulls" | "issues";
 const tabAtom = Atom.make<Tab>("pulls").pipe(Atom.keepAlive);
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
+  "shrink-0 rounded-md px-2 py-0.5 text-[13px] font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * GitHub, beside the conversation: the pull requests and issues of the repository the open work
@@ -108,21 +108,15 @@ export function GitHubPanel({
             </Toggle>
           </ToggleGroup>
         )}
-        {repository ? (
-          <a
-            href={repository.url}
-            target="_blank"
-            rel="noreferrer"
-            title={`Open ${repository.owner}/${repository.name} on GitHub`}
-            className="ml-1 flex min-w-0 items-center gap-1 truncate rounded-md px-1 text-[12px] text-fg-tertiary transition-colors hover:text-fg-secondary"
-          >
-            {repository.private ? <Lock size={11} strokeWidth={2} className="shrink-0" /> : null}
-            <span className="truncate">
-              {repository.owner}/{repository.name}
-            </span>
-          </a>
-        ) : null}
         <span className="ml-auto" />
+        {repository ? (
+          <IconButton
+            icon={ExternalLink}
+            label={`Open ${repository.owner}/${repository.name} on GitHub`}
+            onClick={() => window.open(repository.url, "_blank", "noopener,noreferrer")}
+            className="max-md:size-10"
+          />
+        ) : null}
         <IconButton icon={RefreshCw} label="Refresh" onClick={refresh} className="max-md:size-10" />
         <IconButton icon={X} label="Close" onClick={onClose} className="max-md:size-10" />
       </header>
