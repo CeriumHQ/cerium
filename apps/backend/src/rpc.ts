@@ -11,7 +11,7 @@ import {
   type ProviderId,
   type SkillInfo,
 } from "@cerium/protocol";
-import { CeriumError, CeriumRpcs, MachineRpcs, type ListedArtifact } from "@cerium/rpc";
+import { CeriumError, CeriumRpcs, MachineRpcs, type GitError, type ListedArtifact } from "@cerium/rpc";
 import { Store, type StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -19,9 +19,14 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { Repositories, type RepositoryError } from "./clone.ts";
 import { Files, type FilesError } from "./files.ts";
+import { GitBranches, gitBranchHandlers } from "./gitBranches.ts";
+import { GitChanges, gitChangesHandlers } from "./gitChanges.ts";
 import { GitHub } from "./github.ts";
+import { issueHandlers } from "./githubIssues.ts";
 import { githubHandlers } from "./githubPulls.ts";
+import { History, type HistoryError } from "./history.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { spendReport } from "./spend.ts";
@@ -31,11 +36,23 @@ import { Workspace, type WorkspaceError } from "./workspace.ts";
 
 export const RPC_PATH = "/rpc";
 
-const refuse = (error: OrchestratorError | WorkspaceError | ProjectError | FilesError | StoreError) =>
-  new CeriumError({ message: error.message });
+const refuse = (
+  error:
+    | OrchestratorError
+    | WorkspaceError
+    | ProjectError
+    | FilesError
+    | HistoryError
+    | RepositoryError
+    | GitError
+    | StoreError,
+) => new CeriumError({ message: error.message });
 
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
+
+/** How many commits one page of the History tab lists. */
+const COMMIT_PAGE = 50;
 
 /** How many threads the thread search lists. */
 const THREAD_SEARCH_LIMIT = 30;
@@ -75,6 +92,10 @@ export const Handlers = MachineRpcs.toLayer(
     const workspace = yield* Workspace;
     const files = yield* Files;
     const github = yield* GitHub;
+    const gitBranches = yield* GitBranches;
+    const gitChanges = yield* GitChanges;
+    const history = yield* History;
+    const repositories = yield* Repositories;
     const projects = yield* Projects;
     const terminals = yield* Terminals;
     const store = yield* Store;
@@ -252,6 +273,19 @@ export const Handlers = MachineRpcs.toLayer(
       ReadFileBytes: ({ root, path }) => files.readBytes(root, path).pipe(Stream.mapError(refuse)),
       DiffFile: ({ root, path, from, context }) =>
         files.diff(root, path, from, context).pipe(Effect.mapError(refuse)),
+      CommitHistory: ({ root, query, offset, limit }) =>
+        history
+          .commits(root, {
+            ...(query === undefined ? {} : { query }),
+            offset: offset ?? 0,
+            limit: limit ?? COMMIT_PAGE,
+          })
+          .pipe(Effect.mapError(refuse)),
+      CommitDetail: ({ root, sha }) => history.detail(root, sha).pipe(Effect.mapError(refuse)),
+      CommitDiffFile: ({ root, sha, path, from, context }) =>
+        history.diff(root, sha, path, from, context).pipe(Effect.mapError(refuse)),
+      CloneRepository: ({ url, folder }) => repositories.clone(url, folder).pipe(Stream.mapError(refuse)),
+      InitRepository: ({ root }) => repositories.init(root).pipe(Effect.mapError(refuse)),
       WatchFiles: ({ root }) => files.watch(root).pipe(Stream.mapError(refuse)),
       ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
@@ -261,7 +295,10 @@ export const Handlers = MachineRpcs.toLayer(
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       ...terminalHandlers(terminals),
+      ...gitBranchHandlers(gitBranches),
+      ...gitChangesHandlers(gitChanges),
       ...githubHandlers(github),
+      ...issueHandlers(github),
     });
   }),
 );

@@ -20,6 +20,7 @@ import { Socket } from "effect/socket";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { Repositories } from "./clone.ts";
 import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
@@ -29,6 +30,10 @@ import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { Files } from "./files.ts";
 import { GitHub } from "./github.ts";
+import { Git } from "./git.ts";
+import { GitBranches } from "./gitBranches.ts";
+import { GitChanges } from "./gitChanges.ts";
+import { History } from "./history.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { CloudCopy } from "./sync.ts";
@@ -176,6 +181,12 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(Files.layer),
     // The user's own `gh`, for GitHub's pull requests and issues.
     Layer.provideMerge(GitHub.layer),
+    Layer.provideMerge(GitBranches.layer),
+    Layer.provideMerge(GitChanges.layer),
+    Layer.provideMerge(History.layer),
+    Layer.provideMerge(Repositories.layer),
+    // Each layer above needs what a layer below it provides, so Git comes after the git services.
+    Layer.provideMerge(Git.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(

@@ -1,7 +1,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import type { ProjectInfo } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Check, FolderOpen, FolderPlus, Search, X } from "lucide-react";
+import { Check, Download, FolderOpen, FolderPlus, Search, X } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useState, type RefObject } from "react";
 
@@ -10,11 +10,15 @@ import { removeProject, savedProjectsAtom, saveProject } from "../../backend/pro
 import { pickFolder } from "../../backend/shell.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { CloneDialog } from "../git/clone/CloneDialog.tsx";
 import { ProjectBadge } from "../threads/ProjectBadge.tsx";
 import { projectName, projectPlace, rankProjects } from "./projectList.ts";
 
 /** The list's last row, which browses for a folder that isn't saved yet. */
 const ADD_FOLDER = "cerium:add-folder";
+
+/** The row under it that clones a repository into a folder and opens the clone. Only on this machine. */
+const CLONE_REPOSITORY = "cerium:clone-repository";
 
 interface ProjectPickerProps {
   /** The folder the next work thread starts in. */
@@ -48,6 +52,8 @@ export function ProjectPicker({
   returnFocus,
 }: ProjectPickerProps) {
   const [query, setQuery] = useState("");
+  /** Whether the clone dialog is open, which the list's clone row opens. */
+  const [cloning, setCloning] = useState(false);
   /** The row the keyboard or pointer is on; none while the list has just opened. */
   const [highlighted, setHighlighted] = useState<string>();
   const projects = AsyncResult.getOrElse(
@@ -78,10 +84,13 @@ export function ProjectPicker({
     void remove({ payload: { path } }).then(refresh, () => undefined);
   };
 
+  /** Cloning makes a folder on this machine, so another machine's list doesn't offer it. */
+  const cloneRows = machine === undefined ? [CLONE_REPOSITORY] : [];
+
   return (
     <Combobox.Root<string>
-      items={[...paths, ADD_FOLDER]}
-      filteredItems={[...matches, ADD_FOLDER]}
+      items={[...paths, ADD_FOLDER, ...cloneRows]}
+      filteredItems={[...matches, ADD_FOLDER, ...cloneRows]}
       inputValue={query}
       onInputValueChange={setQuery}
       value={folder ?? null}
@@ -99,10 +108,12 @@ export function ProjectPicker({
         onOpenChange(false);
         if (value === ADD_FOLDER) {
           if (machine === undefined) browse();
-        } else choose(value);
+        } else if (value === CLONE_REPOSITORY) setCloning(true);
+        else choose(value);
       }}
       autoHighlight
     >
+      <CloneDialog open={cloning} onOpenChange={setCloning} onCloned={choose} />
       <Tooltip label={folder ?? "Choose the folder agents work in"}>
         <Combobox.Trigger
           aria-label="Project"
@@ -148,7 +159,9 @@ export function ProjectPicker({
             <ScrollArea viewportClassName="max-h-[min(22rem,calc(var(--available-height)-2.5rem-2px))] scroll-py-1">
               <Combobox.List className="p-1">
                 {(item: string) =>
-                  item === ADD_FOLDER ? (
+                  item === CLONE_REPOSITORY ? (
+                    <CloneItem key={item} />
+                  ) : item === ADD_FOLDER ? (
                     <AddFolderItem
                       key={item}
                       elsewhere={machine?.name}
@@ -213,6 +226,20 @@ function ProjectItem({ project, onRemove }: { project: ProjectInfo; onRemove: ()
           <X size={12} strokeWidth={2} />
         </button>
       </Tooltip>
+    </Combobox.Item>
+  );
+}
+
+/** Clones a repository into a folder the user picks, and opens the clone as a project. */
+function CloneItem() {
+  return (
+    <Combobox.Item value={CLONE_REPOSITORY} className={itemClass}>
+      <span className="grid size-4.5 shrink-0 place-items-center text-fg-secondary">
+        <Download size={14} strokeWidth={1.75} />
+      </span>
+      <span className="flex-1 text-[13px] text-fg-secondary group-data-highlighted/item:text-fg-primary">
+        Clone a repository…
+      </span>
     </Combobox.Item>
   );
 }

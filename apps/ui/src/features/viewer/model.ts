@@ -35,6 +35,33 @@ export const fileOfKey = (key: string | undefined): FileTab | undefined => {
   return root === "" || path === "" ? undefined : { root, path };
 };
 
+const COMMIT_PREFIX = "commit:";
+
+/** A file as one commit changed it, against the commit's first parent: where it was before a rename, if it was. */
+export interface CommitFileTab {
+  /** The thread's folder. */
+  readonly root: string;
+  /** The commit, in full. */
+  readonly sha: string;
+  /** The file, relative to `root`. */
+  readonly path: string;
+  readonly from?: string;
+}
+
+/** The tab key of a file as a commit changed it; the History tab opens it. */
+export const commitFileKey = (root: string, sha: string, path: string, from: string | undefined) =>
+  `${COMMIT_PREFIX}${root}\n${sha}\n${path}\n${from ?? ""}`;
+
+/** The commit file a tab key names; undefined for any other key. */
+export const commitFileOfKey = (key: string | undefined): CommitFileTab | undefined => {
+  if (key?.startsWith(COMMIT_PREFIX) !== true) return undefined;
+  const [root = "", sha = "", path = "", from = ""] = key.slice(COMMIT_PREFIX.length).split("\n");
+  if (root === "" || sha === "" || path === "") return undefined;
+  return from === "" ? { root, sha, path } : { root, sha, path, from };
+};
+
+export const isCommitFileKey = (key: string | undefined) => commitFileOfKey(key) !== undefined;
+
 export const isFileKey = (key: string | undefined) => fileOfKey(key) !== undefined;
 
 // ---------------------------------------------------------------------------------------------

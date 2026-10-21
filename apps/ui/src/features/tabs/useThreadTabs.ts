@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { AppMode } from "../../app/ModeSwitch.tsx";
 import { isNewDraftKey, newDraftKey, newThreadDraftsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
-import { fileOfKey, isFileKey } from "../viewer/model.ts";
+import { commitFileOfKey, fileOfKey } from "../viewer/model.ts";
+import { isNonThreadKey } from "./tabKinds.ts";
 import {
   closeTabs,
   emptyStrip,
@@ -83,7 +84,11 @@ export function useThreadTabs({
     // A thread not started yet is the user's own writing, never a mere preview. A file is a tab of
     // its own too: the preview slot is the thread's, and a file must not take it.
     const as =
-      opening?.key === active ? opening.as : isNewDraftKey(active) || isFileKey(active) ? "tab" : "preview";
+      opening?.key === active
+        ? opening.as
+        : isNewDraftKey(active) || isNonThreadKey(active)
+          ? "tab"
+          : "preview";
     update((current) => showTab(current, active, as, isEmpty));
     if (opening !== undefined) setOpening(undefined);
   }
@@ -91,13 +96,15 @@ export function useThreadTabs({
   // A tab whose thread has gone (deleted elsewhere, say) no longer shows; a file's tab stays, and
   // says so itself when its file has gone.
   const keys = strip.keys.filter(
-    (key) => key === active || !loaded || isNewDraftKey(key) || isFileKey(key) || threadOf(key) !== undefined,
+    (key) =>
+      key === active || !loaded || isNewDraftKey(key) || isNonThreadKey(key) || threadOf(key) !== undefined,
   );
   const visible = { ...strip, keys };
   const newTitle = mode === "work" ? "New thread" : "New chat";
   const tabs: ReadonlyArray<TabView> = keys.map((key) => {
     const preview = strip.preview === key;
-    const file = fileOfKey(key);
+    const commit = commitFileOfKey(key);
+    const file = fileOfKey(key) ?? commit;
     if (file)
       return {
         key,
@@ -105,7 +112,13 @@ export function useThreadTabs({
         draft: false,
         preview,
         file,
-        project: file.path.includes("/") ? `${baseName(file.root)}/${file.path}` : baseName(file.root),
+        // A file as a commit changed it says which commit, its folder would say nothing.
+        project:
+          commit !== undefined
+            ? commit.sha.slice(0, 7)
+            : file.path.includes("/")
+              ? `${baseName(file.root)}/${file.path}`
+              : baseName(file.root),
       };
     const thread = threadOf(key);
     if (thread)
@@ -158,7 +171,7 @@ export function useThreadTabs({
     else onShow(shown);
   };
   const canReopen = (key: string) =>
-    isFileKey(key) ||
+    isNonThreadKey(key) ||
     (isNewDraftKey(key) ? drafts.some((draft) => draft.key === key) : threadOf(key) !== undefined);
   const reopenable = strip.closed.some((key) => !keys.includes(key) && canReopen(key));
   const reopen = () => {

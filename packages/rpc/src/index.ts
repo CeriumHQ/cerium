@@ -50,11 +50,19 @@ import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
+import { GitRpcs } from "./git.ts";
+import { GitBranchRpcs } from "./gitBranches.ts";
 import { GitHubRpcs } from "./github.ts";
+import { IssueRpcs } from "./githubIssues.ts";
+import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
 import { TerminalRpcs } from "./terminal.ts";
 
 export * from "./files.ts";
+export * from "./git.ts";
+export * from "./gitBranches.ts";
 export * from "./github.ts";
+export * from "./githubIssues.ts";
+export * from "./history.ts";
 export * from "./terminal.ts";
 
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
@@ -66,7 +74,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 16;
+export const RPC_VERSION = 17;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -429,6 +437,53 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
+   * A page of the commits on the branch checked out in `root`, newest first, from `offset`; with a
+   * `query`, only those whose message or author holds it, ignoring case. Since `RPC_VERSION` 17.
+   */
+  Rpc.make("CommitHistory", {
+    payload: {
+      root: Schema.NonEmptyString,
+      query: Schema.optionalKey(Schema.String),
+      offset: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+      limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+    },
+    success: CommitPage,
+    error: CeriumError,
+  }),
+  /** One commit of `root`'s branch in full: its message and the files under `root` it changed. Since `RPC_VERSION` 17. */
+  Rpc.make("CommitDetail", {
+    payload: { root: Schema.NonEmptyString, sha: Schema.NonEmptyString },
+    success: CommitDetail,
+    error: CeriumError,
+  }),
+  /**
+   * A file a commit changed, against its first parent, shaped as `DiffFile` shapes a change against
+   * the last commit. Since `RPC_VERSION` 17.
+   */
+  Rpc.make("CommitDiffFile", {
+    payload: {
+      root: Schema.NonEmptyString,
+      sha: Schema.NonEmptyString,
+      path: Schema.NonEmptyString,
+      from: Schema.optionalKey(Schema.NonEmptyString),
+      context: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    },
+    success: FileDiff,
+    error: CeriumError,
+  }),
+  /**
+   * Clones `url` into a new folder named after it, inside `folder`, streaming git's progress until the
+   * clone finishes with the folder it made. Since `RPC_VERSION` 17.
+   */
+  Rpc.make("CloneRepository", {
+    payload: { url: Schema.NonEmptyString, folder: Schema.NonEmptyString },
+    success: CloneEvent,
+    stream: true,
+    error: CeriumError,
+  }),
+  /** Makes `root` a git repository, as `git init` does. Since `RPC_VERSION` 17. */
+  Rpc.make("InitRepository", { payload: { root: Schema.NonEmptyString }, error: CeriumError }),
+  /**
    * What changes under `root` while it is subscribed to, in batches a moment apart, for keeping the
    * file explorer current. Unsubscribing stops watching.
    */
@@ -446,7 +501,7 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
-).merge(TerminalRpcs, GitHubRpcs);
+).merge(TerminalRpcs, GitBranchRpcs, GitRpcs, GitHubRpcs, IssueRpcs);
 
 /**
  * What a device answers its own UI about itself: its Cerium account, the account's threads,

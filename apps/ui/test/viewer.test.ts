@@ -6,9 +6,12 @@ import { languageOf } from "../src/features/viewer/language.ts";
 import {
   byteSize,
   changedWords,
+  commitFileKey,
+  commitFileOfKey,
   diffStats,
   fileKey,
   fileOfKey,
+  isCommitFileKey,
   isFileKey,
   numberHunks,
   pickView,
@@ -32,6 +35,25 @@ describe("file tabs", () => {
     expect(fileOfKey("new:1234")).toBeUndefined();
     expect(fileOfKey(undefined)).toBeUndefined();
     expect(fileOfKey("file:no-path")).toBeUndefined();
+  });
+
+  it("keys a commit's file by its commit, and reads it back, a rename's origin included", () => {
+    const key = commitFileKey("C:\\Work\\app", "8be9dbc", "src/main.ts", "src/app.ts");
+    expect(isCommitFileKey(key)).toBe(true);
+    expect(isFileKey(key)).toBe(false);
+    expect(commitFileOfKey(key)).toEqual({
+      root: "C:\\Work\\app",
+      sha: "8be9dbc",
+      path: "src/main.ts",
+      from: "src/app.ts",
+    });
+    expect(commitFileOfKey(commitFileKey("C:\\Work\\app", "8be9dbc", "src/app.ts", undefined))).toEqual({
+      root: "C:\\Work\\app",
+      sha: "8be9dbc",
+      path: "src/app.ts",
+    });
+    expect(commitFileOfKey(fileKey("C:\\Work\\app", "src/ui/App.tsx"))).toBeUndefined();
+    expect(commitFileOfKey("commit:no-sha")).toBeUndefined();
   });
 });
 
