@@ -14,7 +14,7 @@
   <a href="https://github.com/nonlooped/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/nonlooped/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
   <a href="https://github.com/nonlooped/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/nonlooped/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-f2f2f2?style=flat-square&labelColor=1c1c1c" /></a>
-  <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square&labelColor=1c1c1c&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg==" />
+  <img alt="Platforms: Windows and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
   <img alt="Price: free forever" src="https://img.shields.io/badge/price-free%20forever-3fb950?style=flat-square&labelColor=1c1c1c" />
 </p>
 
@@ -102,9 +102,9 @@ it, all in one thread you can follow, steer and stop.
       and charts, drawn in a sandboxed frame that loads nothing from the network.
     </td>
     <td valign="top">
-      <h3>🪟 Native on Windows</h3>
-      Translucent Acrylic, Windows' own caption buttons, right-click menus throughout, and keyboard
-      shortcuts for everything you do often.
+      <h3>🖥️ Native on Windows and Linux</h3>
+      Translucent Acrylic and Windows' own caption buttons, a single AppImage that updates itself on
+      Linux, right-click menus throughout, and keyboard shortcuts for everything you do often.
     </td>
   </tr>
 </table>
@@ -182,13 +182,17 @@ flowchart LR
 ## Install
 
 1. Install at least one harness and sign in to it the way you normally would.
-2. Download the latest installer from [Releases](https://github.com/nonlooped/cerium/releases) and
-   run it.
+2. Download the latest build from [Releases](https://github.com/nonlooped/cerium/releases):
+   - **Windows**: run `Cerium-Setup-<version>.exe`.
+   - **Linux**: make `Cerium-<version>-x86_64.AppImage` executable (`chmod +x`) and run it. It needs
+     FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later), and finds your harnesses on the
+     `PATH` your login shell sets up.
 3. Open Cerium. It finds your harnesses on its own; **Settings → Harnesses** shows what it found.
 
 > [!NOTE]
-> Cerium is in early development and currently ships **nightly** builds for **Windows**. macOS and
-> Linux are planned. Nightlies and stable releases are the same app: pick a channel in Settings → Updates.
+> Cerium is in early development and currently ships **nightly** builds for **Windows** and
+> **Linux** (x64 AppImage). macOS is planned. Nightlies and stable releases are the same app: pick a
+> channel in Settings → Updates.
 
 ## Build from source
 
@@ -201,12 +205,12 @@ bun install
 bun run dev          # backend, UI and desktop window in one terminal
 ```
 
-| Command                 | What it does                                                |
-| ----------------------- | ----------------------------------------------------------- |
-| `bun run dev`           | Backend, UI dev server and Electron window together         |
-| `bun run dev --browser` | The same, in your browser (from `localhost:5173`)           |
-| `bun run verify`        | Format, lint, typecheck and test, as CI does                |
-| `bun run package`       | Build an unsigned Windows installer into `apps/desktop/out` |
+| Command                 | What it does                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `bun run dev`           | Backend, UI dev server and Electron window together                                   |
+| `bun run dev --browser` | The same, in your browser (from `localhost:5173`)                                     |
+| `bun run verify`        | Format, lint, typecheck and test, as CI does                                          |
+| `bun run package`       | Build this platform's package (Windows installer or AppImage) into `apps/desktop/out` |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and how changes land.
 

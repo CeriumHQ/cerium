@@ -33,8 +33,9 @@ body:
   - type: input
     id: os
     attributes:
-      label: Windows version
-      placeholder: Windows 11 24H2
+      label: Operating system
+      description: Your Windows version, or your Linux distribution and desktop.
+      placeholder: Windows 11 24H2, or Ubuntu 24.04 with GNOME
   - type: checkboxes
     id: harnesses
     attributes:

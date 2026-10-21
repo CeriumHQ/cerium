@@ -16,7 +16,8 @@ Include what you can of:
 
 - what the problem is and what an attacker could do with it,
 - the steps or a proof of concept to reproduce it,
-- your Cerium version, Windows version, and the harnesses and versions involved.
+- your Cerium version, operating system (Windows version, or Linux distribution and desktop), and
+  the harnesses and versions involved.
 
 You'll get an acknowledgement within a few days. Once the problem is confirmed, a fix is prepared
 privately and released, and the advisory is published with credit to you unless you'd rather stay

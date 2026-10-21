@@ -14,8 +14,8 @@ request that adds an unplanned feature may be held back even when the code is go
 
 ## Setting up
 
-You need **Node.js 24.11+** and **Bun 1.4+**, on Windows (the shipping platform) or any OS for the
-backend and UI. Install at least one harness (Claude Code, Codex, Cursor or OpenCode) and sign in
+You need **Node.js 24.11+** and **Bun 1.4+**, on Windows or Linux (the shipping platforms) or any OS
+for the backend and UI. Install at least one harness (Claude Code, Codex, Cursor or OpenCode) and sign in
 to it if you want to run real agents; OpenCode's free models need no sign-in.
 
 ```sh
@@ -28,16 +28,16 @@ The development backend keeps its data in `.cerium-dev/`, apart from an installe
 served on the first free port from 5173, written to `.cerium-dev/ui-url`; running `bun run dev` again
 reuses the servers already running.
 
-| Command                 | What it does                                                      |
-| ----------------------- | ----------------------------------------------------------------- |
-| `bun run verify`        | Format check, lint, typecheck and tests: run it before you push   |
-| `bun run fix`           | Apply formatting and lint fixes                                   |
-| `bun run test`          | Tests in watch mode (`bun run test --run` for a single pass)      |
-| `bun run typecheck`     | `tsc -b`, the authoritative type gate                             |
-| `bun run package`       | Build an unsigned Windows installer into `apps/desktop/out`       |
-| `bun run vendor:effect` | Fetch the pinned Effect source into `vendor/effect` for reference |
-| `bun run ui`            | Drive a web UI from the shell: open, act, screenshot, inspect     |
-| `bun run live-check`    | Run a short real turn on each installed harness and report it     |
+| Command                 | What it does                                                            |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `bun run verify`        | Format check, lint, typecheck and tests: run it before you push         |
+| `bun run fix`           | Apply formatting and lint fixes                                         |
+| `bun run test`          | Tests in watch mode (`bun run test --run` for a single pass)            |
+| `bun run typecheck`     | `tsc -b`, the authoritative type gate                                   |
+| `bun run package`       | Build this OS's package (installer or AppImage) into `apps/desktop/out` |
+| `bun run vendor:effect` | Fetch the pinned Effect source into `vendor/effect` for reference       |
+| `bun run ui`            | Drive a web UI from the shell: open, act, screenshot, inspect           |
+| `bun run live-check`    | Run a short real turn on each installed harness and report it           |
 
 ## Toolchain
 
@@ -110,8 +110,9 @@ These hold for every change, and pull requests that break them can't be merged:
 - Keep commits focused, one concern each, and leave the repo building after every one.
 - Add a line for every user-visible change under `Unreleased` in [CHANGELOG.md](CHANGELOG.md), in the
   same commit as the change. Release notes quote it as written.
-- Pull requests run CI: commit messages, then format, lint, types and tests on Linux, then tests and
-  an installer build on Windows. Make sure `bun run verify` passes before you push.
+- Pull requests run CI: commit messages, then format, lint, types and tests on Linux, then an
+  AppImage build on Linux and tests and an installer build on Windows. Make sure `bun run verify`
+  passes before you push.
 
 ## License
 
