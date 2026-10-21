@@ -272,11 +272,12 @@ describe("Orchestrator", () => {
         ],
         { concurrency: "unbounded" },
       );
-      const resumed = fake.sessions.filter((session) => session.options.resume === "fake-1");
-      assert.strictEqual(resumed.length, 1, "concurrent messages share one resumed session");
       const items = yield* waitFor((events) =>
         turnInputs(events, lead.id).find((turn) => turn.some((item) => item._tag === "FromUser")),
       );
+      // Counted once a turn has run: sessions start in the background.
+      const resumed = fake.sessions.filter((session) => session.options.resume === "fake-1");
+      assert.strictEqual(resumed.length, 1, "concurrent messages share one resumed session");
       const notice = items.find((item) => item._tag === "SystemNotice");
       assert.include(notice?._tag === "SystemNotice" ? notice.text : "", childId);
       yield* waitFor((events) => {

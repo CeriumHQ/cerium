@@ -12,11 +12,12 @@
   },
   "dependencies": {
     "@cerium/protocol": "workspace:*",
-    "drizzle-orm": "0.45.4",
+    "@effect/sql-sqlite-node": "4.0.5",
+    "drizzle-orm": "1.0.0-rc.5",
     "effect": "4.0.5"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5",
-    "drizzle-kit": "0.31.11"
+    "drizzle-kit": "1.0.0-rc.5"
   }
 }
