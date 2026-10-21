@@ -25,32 +25,10 @@ vendor/effect/
 .DS_Store
 Thumbs.db
 
-# AI tooling, agent instructions and skills: kept locally, never published
-.agents/
-.claude/
-.codex/
-.cursor/
-.gemini/
-.muse/
-.windsurf/
-.continue/
-.roo/
-.aider*
-.clinerules
-.cursorrules
-.windsurfrules
-.mcp.json
-AGENTS.md
-CLAUDE.md
-CLAUDE.local.md
-GEMINI.md
-skills-lock.json
-.github/copilot-instructions.md
-.github/instructions/
-.github/prompts/
-
 # Local notes and throwaway work: not published
 notes/
 *.local.md
 scratch/
+# Personal Claude Code permissions for this machine
+.claude/settings.local.json
 **/scripts/_*

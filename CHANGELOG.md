@@ -215,6 +215,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Repository: the local AI tooling and agent instructions (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `skills-lock.json`) are published with the repository; only `.claude/settings.local.json` stays local.
 - UI: a turn stopped before the model answered no longer shows "0 in · 0 out · $0.00" in its footer.
 - UI: permission requests explain themselves before showing any code. The card leads with what the agent wants to do and the reason it gave, then a risk meter (low, some or high) and the few things the request would change: "Downloads packages from the internet", "Deletes files for good", "Changes api.ts". The exact command or diff folds under it. Cerium grades the risk itself from the command or tool, since harnesses don't. A high-risk request outlines Allow in red and offers no "Allow for this chat", and Alt S does nothing there. The answers are now Allow, Allow for this chat and Don't allow. The yellow border and "needs approval" label are gone from these cards, from agent questions and from requests to start an agent. Questions lead with the question itself and answer with Send answer or Skip.
 - `list_threads` lists only the threads whose lead is working or idle, the ones an agent can message, besides its own. With every finished thread in it, the list ran to some 15,000 characters an agent had to read through each time it looked.
