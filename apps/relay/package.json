@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build": "bun run --cwd ../ui build:web && node scripts/assets.ts",
+    "build": "bun run --cwd ../ui build:web && bun run --cwd ../site build && node scripts/assets.ts",
     "builds": "node scripts/builds.ts",
     "deploy": "bun run builds && bun run build && wrangler deploy",
     "check:bundle": "wrangler deploy --dry-run --outdir dist/bundle"

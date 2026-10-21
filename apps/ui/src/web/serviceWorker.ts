@@ -98,7 +98,7 @@ export function serviceWorker(worker: ServiceWorkerScope) {
         const query = data
           ? `?${OPEN_PARAMS.machine}=${encodeURIComponent(data.machine)}&${OPEN_PARAMS.thread}=${encodeURIComponent(data.threadId)}`
           : "";
-        await worker.clients.openWindow(`/${query}`);
+        await worker.clients.openWindow(`/app/${query}`);
       })(),
     );
   });

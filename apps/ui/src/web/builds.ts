@@ -5,7 +5,7 @@ import { BUILD_VERSION, WEB } from "../backend/target.ts";
 import { OPEN_PARAMS } from "./serviceWorker.ts";
 
 // The web client runs the build of the desktop it drives. The relay
-// serves every version's build under `/v/<version>/`, the newest at its root too, and lists them in
+// serves every version's build under `/v/<version>/`, the newest at `/app/` too, and lists them in
 // `/v/builds.json`; a browser driving a desktop of another version moves to that version's build, so
 // the UI and the backend it talks to always come from the same release. A version the relay doesn't
 // keep stays on this build, which reads what it can.

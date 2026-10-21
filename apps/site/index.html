@@ -6,6 +6,16 @@
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Cerium: one thread, every agent</title>
+    <script>
+      // The web app opened here before it moved to /app/: a Home Screen app installed then, and a
+      // notification tapped open with its thread, still go straight to it.
+      (() => {
+        const query = new URLSearchParams(location.search);
+        const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+        if (installed || query.has("thread") || query.has("machine"))
+          location.replace(`/app/${location.search}${location.hash}`);
+      })();
+    </script>
     <meta
       name="description"
       content="Cerium runs Claude Code, Codex, Cursor and OpenCode side by side, so one lead agent can hand each piece of a job to the one that does it best. Free and open source, for Windows."
@@ -82,9 +92,10 @@
             <svg width="15" height="15" aria-hidden="true"><use href="#mark-github" /></svg>GitHub</a
           >
         </div>
+        <a href="/app/" class="text-[14px] text-fg-secondary hover:text-fg-primary max-md:ml-auto">Sign in</a>
         <a
-          href="https://github.com/nonlooped/cerium/releases/latest"
-          class="flex items-center gap-2 rounded-full bg-accent py-1.5 pr-4 pl-3.5 text-[14px] font-medium text-accent-fg max-md:ml-auto"
+          href="/download"
+          class="flex items-center gap-2 rounded-full bg-accent py-1.5 pr-4 pl-3.5 text-[14px] font-medium text-accent-fg"
         >
           <svg width="13" height="13" class="windows" aria-hidden="true"><use href="#mark-windows" /></svg
           >Download</a
@@ -120,7 +131,7 @@
           </p>
           <div class="mt-9 flex flex-wrap justify-center gap-3">
             <a
-              href="https://github.com/nonlooped/cerium/releases/latest"
+              href="/download"
               class="flex items-center gap-2.5 rounded-full bg-accent py-3 pr-6 pl-5 text-[15px] font-semibold text-accent-fg"
             >
               <svg width="16" height="16" class="windows" aria-hidden="true"><use href="#mark-windows" /></svg
@@ -238,27 +249,21 @@
               <svg width="34" height="34" class="claude" aria-hidden="true"><use href="#mark-claude" /></svg>
               <h3>Claude Code</h3>
               <p>Opus, Sonnet and Haiku, on your Claude plan.</p>
-              <button type="button" class="command" data-copy="claude auth login">claude auth login</button>
             </li>
             <li class="harness" style="--ray: var(--ray-codex); --at: 1">
               <svg width="34" height="34" aria-hidden="true"><use href="#mark-openai" /></svg>
               <h3>Codex</h3>
               <p>OpenAI's models, on your ChatGPT plan.</p>
-              <button type="button" class="command" data-copy="codex login">codex login</button>
             </li>
             <li class="harness" style="--ray: var(--ray-cursor); --at: 2">
               <svg width="34" height="34" aria-hidden="true"><use href="#mark-cursor" /></svg>
               <h3>Cursor</h3>
               <p>Composer and every model Cursor offers.</p>
-              <span class="command">Signs in from Cerium</span>
             </li>
             <li class="harness" style="--ray: var(--ray-opencode); --at: 3">
               <svg width="34" height="34" aria-hidden="true"><use href="#mark-opencode" /></svg>
               <h3>OpenCode</h3>
               <p>Any of the providers OpenCode connects.</p>
-              <button type="button" class="command" data-copy="opencode auth login">
-                opencode auth login
-              </button>
             </li>
           </ul>
         </div>
@@ -307,12 +312,6 @@
               </li>
               <li data-step="3">
                 <div>
-                  <h3>You stay in charge.</h3>
-                  <p>When an agent isn't sure, it asks you. Pick an answer and it carries on.</p>
-                </div>
-              </li>
-              <li data-step="4">
-                <div>
                   <h3>One answer comes back.</h3>
                   <p>The lead runs the tests, checks the work and tells you who did what.</p>
                 </div>
@@ -343,14 +342,6 @@
                     loading="lazy"
                     alt="The lead's three helpers in Codex, OpenCode and Cursor, all four agents working"
                     data-frame="team"
-                  />
-                  <img
-                    src="./src/media/story-question.webp"
-                    width="1280"
-                    height="800"
-                    loading="lazy"
-                    alt="An agent asking how to proceed, with three options to pick from"
-                    data-frame="question"
                   />
                   <img
                     src="./src/media/story-answer.webp"
@@ -658,7 +649,7 @@
             </p>
             <div class="mt-9 flex flex-wrap justify-center gap-3">
               <a
-                href="https://github.com/nonlooped/cerium/releases/latest"
+                href="/download"
                 class="flex items-center gap-2.5 rounded-full bg-accent py-3 pr-6 pl-5 text-[15px] font-semibold text-accent-fg"
               >
                 <svg width="16" height="16" class="windows" aria-hidden="true">
@@ -698,7 +689,9 @@
         </a>
         <nav class="ml-auto flex flex-wrap gap-x-7 gap-y-2 text-[14px] text-fg-secondary" aria-label="Footer">
           <a href="https://github.com/nonlooped/cerium" class="hover:text-fg-primary">GitHub</a>
-          <a href="https://github.com/nonlooped/cerium/releases" class="hover:text-fg-primary">Releases</a>
+          <a href="https://github.com/nonlooped/cerium-releases/releases" class="hover:text-fg-primary"
+            >Releases</a
+          >
           <a href="https://github.com/nonlooped/cerium/blob/main/CHANGELOG.md" class="hover:text-fg-primary"
             >Changelog</a
           >

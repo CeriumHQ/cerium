@@ -21,8 +21,6 @@ const shots: ReadonlyArray<Shot> = [
   { frame: "team", x: 296, y: 236, width: 636 },
   // Pulled back: the agents panel with all four working.
   { frame: "team", x: 282, y: 30, width: 998 },
-  // An agent's question.
-  { frame: "question", x: 296, y: 188, width: 636 },
   // The lead's table of who did what.
   { frame: "answer", x: 296, y: 176, width: 636 },
 ];

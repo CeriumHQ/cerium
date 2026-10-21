@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { layOut, type WebBuild } from "../scripts/layout.ts";
+import { layOut, redirects, type WebBuild } from "../scripts/layout.ts";
 
 const build = (version: string, policy = `script-src 'self' 'sha256-${version}'`): WebBuild => ({
   folder: `/builds/${version}`,
@@ -9,13 +9,15 @@ const build = (version: string, policy = `script-src 'self' 'sha256-${version}'`
 });
 
 describe("the relay's web UI builds", () => {
-  it("serves this checkout's build at the root and every build under its version", () => {
+  it("serves this checkout's build at /app/ and every build under its version", () => {
     const { builds, headers } = layOut(build("0.3.0"), [build("0.2.0"), build("0.3.0-nightly.4")], "");
     expect(builds.map((each) => each.version).toSorted()).toEqual(["0.2.0", "0.3.0", "0.3.0-nightly.4"]);
     const rules = headers.trimEnd().split("\n\n");
     expect(rules).toContain(
-      "/\n  Content-Security-Policy: script-src 'self' 'sha256-0.3.0'\n  X-Content-Type-Options: nosniff",
+      "/app/\n  Content-Security-Policy: script-src 'self' 'sha256-0.3.0'\n  X-Content-Type-Options: nosniff",
     );
+    // The root is the website's, which the app's policy would only get in the way of.
+    expect(rules.some((each) => each.startsWith("/\n"))).toBe(false);
     expect(rules).toContain(
       "/v/0.2.0/index.html\n  Content-Security-Policy: script-src 'self' 'sha256-0.2.0'\n  X-Content-Type-Options: nosniff",
     );
@@ -39,6 +41,13 @@ describe("the relay's web UI builds", () => {
   it("keeps the relay's own rules", () => {
     const { headers } = layOut(build("0.3.0"), [], "/link\n  X-Frame-Options: DENY\n");
     expect(headers.trimEnd().endsWith("/link\n  X-Frame-Options: DENY")).toBe(true);
+  });
+
+  it("downloads the installer of the version deployed", () => {
+    expect(redirects(build("0.4.0-nightly.n000031"))).toBe(
+      "/download https://github.com/nonlooped/cerium-releases/releases/download/v0.4.0-nightly.n000031/Cerium-Setup-0.4.0-nightly.n000031.exe 302\n",
+    );
+    expect(redirects(undefined)).toBe("");
   });
 
   it("refuses more builds than Cloudflare reads rules for", () => {

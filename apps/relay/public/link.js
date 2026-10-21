@@ -197,7 +197,7 @@ const main = async () => {
   }
   const device = link.body.device;
   if (link.body.status === "confirmed") {
-    if (isBrowser(device)) return location.replace("/");
+    if (isBrowser(device)) return location.replace("/app/");
     return showOutcome(
       "success",
       "Already connected",
@@ -304,7 +304,7 @@ const main = async () => {
       }
       // A browser signs in from its own tab: back to the app, which finishes signing in.
       if (isBrowser(device)) {
-        location.replace("/");
+        location.replace("/app/");
         return;
       }
       if (result.body.approved) {

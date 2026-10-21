@@ -45,14 +45,3 @@ const reveal = new IntersectionObserver(
   { rootMargin: "0px 0px -30% 0px" },
 );
 for (const section of document.querySelectorAll("[data-reveal]")) reveal.observe(section);
-
-for (const button of document.querySelectorAll<HTMLElement>("[data-copy]")) {
-  let timer = 0;
-  button.addEventListener("click", () => {
-    void navigator.clipboard.writeText(button.dataset["copy"] ?? "").then(() => {
-      button.toggleAttribute("data-copied", true);
-      clearTimeout(timer);
-      timer = window.setTimeout(() => button.removeAttribute("data-copied"), 1600);
-    });
-  });
-}

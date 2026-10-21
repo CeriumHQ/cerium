@@ -301,40 +301,6 @@ main {
   color: var(--fg-secondary);
 }
 
-/* A harness's own sign-in command, copied with a click. */
-.command {
-  margin-top: 18px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  white-space: nowrap;
-  color: var(--fg-secondary);
-  background: oklch(1 0 0 / 0.04);
-  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.08);
-  transition:
-    color 150ms ease,
-    background-color 150ms ease;
-}
-
-span.command {
-  font-family: var(--font-sans);
-}
-
-button.command {
-  cursor: copy;
-}
-
-button.command:hover {
-  color: var(--fg-primary);
-  background: oklch(1 0 0 / 0.08);
-}
-
-button.command[data-copied]::after {
-  content: " copied";
-  color: var(--ray);
-}
-
 @media (max-width: 767px) {
   .fan {
     display: none;
@@ -342,11 +308,6 @@ button.command[data-copied]::after {
 
   .harness {
     transition-delay: calc(var(--at) * 90ms);
-  }
-
-  .command {
-    padding: 6px 10px;
-    font-size: 12px;
   }
 
   .harness::before,
@@ -512,18 +473,14 @@ button.command[data-copied]::after {
 }
 
 [data-story][data-at="1"] .story-light {
-  rotate: -6deg;
+  rotate: -4deg;
 }
 
 [data-story][data-at="2"] .story-light {
-  rotate: 2deg;
+  rotate: 6deg;
 }
 
 [data-story][data-at="3"] .story-light {
-  rotate: 9deg;
-}
-
-[data-story][data-at="4"] .story-light {
   rotate: 16deg;
 }
 

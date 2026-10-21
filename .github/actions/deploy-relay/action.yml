@@ -28,6 +28,10 @@ runs:
       run: bun run --cwd apps/ui build:web
       env:
         CERIUM_VERSION: ${{ inputs.version }}
+    # The relay serves it at its root.
+    - name: Build the website
+      shell: bash
+      run: bun run --cwd apps/site build
     # Written through stdin: Git Bash's tar takes a drive letter in an archive's path for a remote host.
     - name: Pack the web UI
       shell: bash
