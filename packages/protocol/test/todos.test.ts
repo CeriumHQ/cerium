@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Schema } from "effect";
 
-import { AgentEvent, UiEvents } from "../src/index.ts";
+import { AgentEvent, sameTodos, UiEvents } from "../src/index.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(AgentEvent);
 const encodeEvent = Schema.encodeEffect(AgentEvent);
@@ -87,4 +87,17 @@ describe("TodosUpdated", () => {
       assert.deepStrictEqual(yield* Schema.encodeEffect(UiEvents)(events), written);
     }),
   );
+});
+
+describe("sameTodos", () => {
+  it("reads two lists as the same only when every item's id, text, status and present tense match", () => {
+    const one = { id: "1", text: "One", status: "pending", activeText: "Doing one" } as const;
+    assert.isTrue(sameTodos([one], [{ ...one }]));
+    assert.isTrue(sameTodos([], []));
+    assert.isFalse(sameTodos([one], []));
+    assert.isFalse(sameTodos([one], [{ ...one, id: "2" }]));
+    assert.isFalse(sameTodos([one], [{ ...one, text: "Two" }]));
+    assert.isFalse(sameTodos([one], [{ ...one, status: "completed" }]));
+    assert.isFalse(sameTodos([one], [{ ...one, activeText: "Doing it" }]));
+  });
 });

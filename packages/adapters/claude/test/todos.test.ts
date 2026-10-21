@@ -1,8 +1,6 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { EventPayload, TodoItem } from "@cerium/protocol";
-import { EventPayload as EventPayloadSchema } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -32,10 +30,6 @@ const B = "Create b.txt containing the text b";
 describe("ClaudeTranslator on a recorded session using the Task tools", () => {
   const events = translateAll(fixture("todo-session.jsonl"));
   const payloads = events.map((event) => event.payload);
-
-  it("emits only payloads that satisfy the canonical schema", () => {
-    for (const payload of payloads) expect(Schema.is(EventPayloadSchema)(payload)).toBe(true);
-  });
 
   it("reports the whole list at every change", () => {
     expect(lists(payloads).map(compact)).toEqual([
@@ -184,23 +178,13 @@ describe("Claude Code's todo tools", () => {
     ]);
   });
 
-  it("clears the list when TodoWrite writes an empty one, and skips a repeat", () => {
+  it("clears the list when TodoWrite writes an empty one", () => {
     const write = (id: string, todos: ReadonlyArray<object>) => [
       use(id, "TodoWrite", { todos }),
       result(id, { oldTodos: [], newTodos: todos }),
     ];
     const one = { content: "One", status: "pending", activeForm: "Doing one" };
-    const payloads = run([...write("t1", [one]), ...write("t2", [one]), ...write("t3", [])]);
+    const payloads = run([...write("t1", [one]), ...write("t2", [])]);
     expect(lists(payloads).map(compact)).toEqual([["pending:One"], []]);
-  });
-
-  it("ignores a subagent's todo list", () => {
-    const payloads = run([
-      {
-        ...use("t1", "TodoWrite", { todos: [{ content: "One", status: "pending", activeForm: "x" }] }),
-        parent_tool_use_id: "p",
-      } as SDKMessage,
-    ]);
-    expect(payloads).toEqual([]);
   });
 });

@@ -24,11 +24,14 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
   const events = translateAll(fixture("read-write-session.jsonl"));
   const payloads = events.map((event) => event.payload);
 
-  it("emits only payloads that satisfy the canonical schema", () => {
-    for (const payload of payloads) {
-      expect(Schema.is(EventPayload)(payload)).toBe(true);
-    }
-  });
+  it.each(["read-write-session.jsonl", "todo-session.jsonl", "todo-write-session.jsonl"])(
+    "emits only payloads that satisfy the canonical schema from %s",
+    (name) => {
+      for (const event of translateAll(fixture(name))) {
+        expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+      }
+    },
+  );
 
   it("keeps the raw provider message on every event", () => {
     for (const event of events) expect(event.raw).toBeDefined();

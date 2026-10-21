@@ -82,9 +82,9 @@ describe("Muse's todo list", () => {
     ]);
   });
 
-  it("leaves out a list that changes nothing, and reports an emptied one", () => {
+  it("reports an emptied list", () => {
     const one = changed([{ text: "One", status: "pending" }]);
-    expect(lists(run(one, one, changed([]))).map(compact)).toEqual([["pending:One"], []]);
+    expect(lists(run(one, changed([]))).map(compact)).toEqual([["pending:One"], []]);
   });
 
   it("reports a todo call that failed as the failed tool call it is", () => {
