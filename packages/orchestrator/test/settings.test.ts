@@ -18,6 +18,17 @@ const startWorkThread = Effect.gen(function* () {
   });
 });
 
+/** The adapter's `index`th session, once the thread has started it behind its creation. */
+const started = (fake: ReturnType<typeof makeFakeAdapter>, index: number) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const session = fake.sessions[index];
+      if (session !== undefined) return session;
+      yield* Effect.sleep(Duration.millis(5));
+    }
+    return yield* Effect.die(new Error(`Session ${index} never started`));
+  });
+
 const readSettings = Effect.gen(function* () {
   const settings = yield* UserSettings;
   return yield* settings.get;
@@ -32,16 +43,14 @@ describe("UserSettings", () => {
 
       // Sessions start behind the thread.
       yield* startWorkThread;
-      yield* Effect.sleep(Duration.millis(20));
-      assert.isTrue(fake.sessions[0]?.options.includeUserMcpServers);
+      assert.isTrue((yield* started(fake, 0)).options.includeUserMcpServers);
 
       assert.deepStrictEqual(yield* settings.update({ includeUserMcpServers: false }), {
         ...defaultSettings,
         includeUserMcpServers: false,
       });
       yield* startWorkThread;
-      yield* Effect.sleep(Duration.millis(20));
-      assert.isFalse(fake.sessions[1]?.options.includeUserMcpServers);
+      assert.isFalse((yield* started(fake, 1)).options.includeUserMcpServers);
       assert.deepStrictEqual(yield* store.readSettings, { includeUserMcpServers: false });
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
