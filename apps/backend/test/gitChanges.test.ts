@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
@@ -184,7 +186,7 @@ describe("GitChanges", { timeout: 30_000 }, () => {
   it.effect("lists the whole repository's changes from a folder inside it, relative to its top", () =>
     Effect.gen(function* () {
       const changes = yield* GitChanges;
-      const { root, write, path, fs, git } = yield* repository;
+      const { root, write, path, git } = yield* repository;
       yield* write("src/app.ts", "one\n");
       yield* git("add", "src/app.ts");
       yield* write("src/app.ts", "one\nmore\n");
@@ -192,7 +194,7 @@ describe("GitChanges", { timeout: 30_000 }, () => {
       yield* write("debug.log", "ignored\n");
       const status = yield* changes.status(path.join(root, "src"));
       assert.isTrue(status.repository);
-      assert.strictEqual(path.relative(yield* fs.realPath(root), yield* fs.realPath(status.top!)), "");
+      assert.strictEqual(path.relative(realpathSync.native(root), realpathSync.native(status.top!)), "");
       assert.deepStrictEqual(status.staged, [{ path: "src/app.ts", state: "modified" }]);
       assert.deepStrictEqual(status.unstaged, [
         { path: "docs/new.md", state: "untracked" },

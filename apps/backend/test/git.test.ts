@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, Exit, FileSystem, Layer, Path } from "effect";
@@ -54,7 +56,7 @@ describe("Git", () => {
       const below = yield* git.repository(path.join(root, "apps", "ui"));
       assert.isDefined(below);
       assert.strictEqual(below.prefix, "apps/ui/");
-      assert.strictEqual(path.relative(yield* fs.realPath(root), yield* fs.realPath(below.top)), "");
+      assert.strictEqual(path.relative(realpathSync.native(root), realpathSync.native(below.top)), "");
       assert.strictEqual(path.relative(below.gitDir, below.commonDir), "");
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
