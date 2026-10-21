@@ -22,7 +22,10 @@ import { WEB } from "../backend/target.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
 
-/** Windows draws its minimize / maximize / close buttons here (Electron's titleBarOverlay). */
+/**
+ * The system draws its minimize / maximize / close buttons here (Electron's titleBarOverlay), Windows
+ * its own and Electron Linux's.
+ */
 const CAPTION_BUTTON_WIDTH = 46;
 
 interface TitlebarProps {
@@ -324,7 +327,7 @@ export function AgentsToggle({
 }
 
 /**
- * In Electron, Windows draws the real caption buttons over this space. The browser preview draws
+ * In Electron, the system draws the real caption buttons over this space. The browser preview draws
  * stand-ins so the layout matches.
  */
 function CaptionButtons() {
@@ -332,7 +335,7 @@ function CaptionButtons() {
   // A browser window has its own.
   if (WEB) return <div className="w-1.5 shrink-0" />;
   if (document.documentElement.dataset["shell"] === "electron") {
-    // Window Controls Overlay reports the free titlebar area; everything right of it is Windows'.
+    // Window Controls Overlay reports the free titlebar area; everything right of it is the system's.
     return (
       <div
         className="shrink-0"

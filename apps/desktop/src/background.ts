@@ -1,6 +1,8 @@
-import { app, Menu, powerSaveBlocker, Tray, type BrowserWindow } from "electron";
+import { app, Menu, Notification, powerSaveBlocker, Tray, type BrowserWindow } from "electron";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { appImagePath, autostartEnabled, setAutostart } from "./autostart.ts";
 
 // Staying reachable. While this machine is signed in to a Cerium
 // account, closing the window hides it to the tray, so the user's other devices can still reach it,
@@ -22,14 +24,25 @@ export const isPresence = (value: unknown): value is Presence =>
 /** The flag the login item starts Cerium with: straight to the tray. */
 export const HIDDEN_FLAG = "--hidden";
 
-/** Start at login only makes sense for the installed app; a development Electron isn't Cerium. */
-export const startAtLogin = () => ({
-  available: app.isPackaged,
-  enabled: app.isPackaged && app.getLoginItemSettings({ args: [HIDDEN_FLAG] }).openAtLogin,
-});
+/**
+ * Start at login only makes sense for the installed app; a development Electron isn't Cerium. On
+ * Linux it is an autostart entry for the AppImage (autostart.ts).
+ */
+export const startAtLogin = async () => {
+  if (process.platform === "linux") {
+    const available = app.isPackaged && appImagePath() !== undefined;
+    return { available, enabled: available && (await autostartEnabled()) };
+  }
+  return {
+    available: app.isPackaged,
+    enabled: app.isPackaged && app.getLoginItemSettings({ args: [HIDDEN_FLAG] }).openAtLogin,
+  };
+};
 
-export const setStartAtLogin = (enabled: boolean) => {
-  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: enabled, args: [HIDDEN_FLAG] });
+export const setStartAtLogin = async (enabled: boolean) => {
+  if (!app.isPackaged) return startAtLogin();
+  if (process.platform === "linux") await setAutostart(enabled, [HIDDEN_FLAG]);
+  else app.setLoginItemSettings({ openAtLogin: enabled, args: [HIDDEN_FLAG] });
   return startAtLogin();
 };
 
@@ -83,15 +96,26 @@ export const backgroundMode = (options: {
     }
   };
 
-  /** Says once, the first time ever, where the window went. */
+  /**
+   * Says once, the first time ever, where the window went: in a balloon from the tray on Windows, in
+   * a notification elsewhere, where trays show none.
+   */
   const hintOnce = () => {
     const shown = join(app.getPath("userData"), "tray-hint-shown");
     if (tray === undefined || existsSync(shown)) return;
-    tray.displayBalloon({
-      iconType: "info",
-      title: "Cerium is still running",
-      content: "Your other devices can reach this machine. Open or quit Cerium from here.",
-    });
+    const title = "Cerium is still running";
+    if (process.platform === "win32") {
+      tray.displayBalloon({
+        iconType: "info",
+        title,
+        content: "Your other devices can reach this machine. Open or quit Cerium from here.",
+      });
+    } else if (Notification.isSupported()) {
+      new Notification({
+        title,
+        body: "Your other devices can reach this machine. Open or quit Cerium from its tray icon.",
+      }).show();
+    }
     writeFileSync(shown, "");
   };
 

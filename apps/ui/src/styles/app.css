@@ -32,24 +32,24 @@ body {
 }
 
 /*
- * The browser preview has no OS Acrylic behind the page, so it stands in a flat, neutral desktop.
- * In Electron, Cerium's body stays transparent and Windows provides the real backdrop. Acrylic takes
- * its tint from Windows, not the theme, so every other theme paints its own backdrop and is opaque,
- * drawn as in the browser preview.
+ * The browser preview and Linux have no OS Acrylic behind the page, so they stand in a flat, neutral
+ * desktop. On Windows, Cerium's body stays transparent and Windows provides the real backdrop
+ * (`data-acrylic`). Acrylic takes its tint from Windows, not the theme, so every other theme paints
+ * its own backdrop and is opaque, drawn as in the browser preview.
  */
 /* Real Acrylic already tints and blurs the desktop, so the window tint can be lighter. */
-html[data-shell="electron"][data-palette="cerium"][data-theme="dark"] {
+html[data-acrylic][data-palette="cerium"][data-theme="dark"] {
   --window-alpha: 0.45;
 }
 
-html[data-shell="browser"] body,
-html[data-shell="electron"][data-palette]:not([data-palette="cerium"]) body {
+html:not([data-acrylic]) body,
+html[data-acrylic][data-palette]:not([data-palette="cerium"]) body {
   background: var(--backdrop);
 }
 
 /* Acrylic's grain, which keeps large translucent areas from looking flat. */
-html[data-shell="browser"] #root::before,
-html[data-shell="electron"][data-palette]:not([data-palette="cerium"]) #root::before {
+html:not([data-acrylic]) #root::before,
+html[data-acrylic][data-palette]:not([data-palette="cerium"]) #root::before {
   content: "";
   position: fixed;
   inset: 0;

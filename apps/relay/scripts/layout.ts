@@ -22,11 +22,18 @@ export const APP_PATH = "/app/";
 const RELEASES = "https://github.com/nonlooped/cerium-releases/releases/download";
 
 /**
- * The relay's `_redirects`: `/download` fetches the installer of the version deployed with it, which
- * the release workflows publish alongside.
+ * The relay's `_redirects`: `/download` fetches the Windows installer of the version deployed with
+ * it, and `/download/linux` its AppImage, which the release workflows publish alongside.
  */
-export const redirects = (root: WebBuild | undefined): string =>
-  root === undefined ? "" : `/download ${RELEASES}/v${root.version}/Cerium-Setup-${root.version}.exe 302\n`;
+export const redirects = (root: WebBuild | undefined): string => {
+  if (root === undefined) return "";
+  const release = `${RELEASES}/v${root.version}`;
+  return [
+    `/download ${release}/Cerium-Setup-${root.version}.exe 302`,
+    `/download/linux ${release}/Cerium-${root.version}-x86_64.AppImage 302`,
+    "",
+  ].join("\n");
+};
 
 /**
  * The builds the relay serves and its `_headers`. `root`, this checkout's build, is served at

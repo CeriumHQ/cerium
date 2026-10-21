@@ -36,8 +36,10 @@ const subjectPattern = /^([a-z]+)(?:\([^)]*\))?(!)?: /;
 /** Commit types whose changes reach the installed app; docs, test, ci and chore commits don't. */
 const shippingTypes = new Set(["build", "feat", "fix", "perf", "refactor", "revert", "style"]);
 
-const unsignedNote =
-  "The installer is unsigned for now, so Windows SmartScreen asks before running it (More info → Run anyway).";
+const unsignedNote = [
+  "The Windows installer is unsigned for now, so Windows SmartScreen asks before running it (More info → Run anyway).",
+  "On Linux, download the AppImage, make it executable (`chmod +x Cerium-*.AppImage`) and run it; it needs FUSE 2 (`libfuse2`, `libfuse2t64` on Ubuntu 24.04 and later).",
+].join("\n\n");
 
 export const parseTag = (tag: string): Version | undefined => {
   const match = tagPattern.exec(tag);

@@ -25,7 +25,7 @@ import {
   signIn,
   signOut,
 } from "../../backend/atoms.ts";
-import { shellBridge, type StartAtLogin } from "../../backend/shell.ts";
+import { onWindows, shellBridge, type StartAtLogin } from "../../backend/shell.ts";
 import { openSignIn, signInHref } from "../../backend/signIn.ts";
 import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
@@ -463,9 +463,10 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   );
 }
 
-/** What keeps this computer reachable: the tray, and starting with Windows. */
+/** What keeps this computer reachable: the tray, and starting when the user signs in. */
 function ThisComputerSection() {
   const bridge = shellBridge();
+  const windows = onWindows();
   const [startAtLogin, setStartAtLogin] = useState<StartAtLogin>();
   const [error, setError] = useState<string>();
   const labelId = useId();
@@ -479,7 +480,9 @@ function ThisComputerSection() {
     setStartAtLogin((current) => current && { ...current, enabled });
     void bridge?.setStartAtLogin?.(enabled).then(setStartAtLogin, () => {
       setStartAtLogin((current) => current && { ...current, enabled: !enabled });
-      setError("Windows didn't take that change. Try again.");
+      setError(
+        windows ? "Windows didn't take that change. Try again." : "Cerium couldn't change that. Try again.",
+      );
     });
   };
 
@@ -499,11 +502,13 @@ function ThisComputerSection() {
         <SettingsCard className="flex items-start gap-4 p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span id={labelId} className="text-[13px] font-medium text-fg-primary">
-              Start with Windows
+              {windows ? "Start with Windows" : "Start at login"}
             </span>
             <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
               {startAtLogin?.available === false
-                ? "Only the installed app can start with Windows."
+                ? windows
+                  ? "Only the installed app can start with Windows."
+                  : "Only the AppImage can start at login."
                 : "Opens in the tray when you sign in, so this computer is reachable after a restart."}
             </p>
             {error ? <p className="text-[12.5px] text-error">{error}</p> : null}

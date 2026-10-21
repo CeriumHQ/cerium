@@ -2,8 +2,9 @@ import { app, nativeImage, Notification, type BrowserWindow } from "electron";
 
 // Native notifications. The UI decides when one is worth showing (the user isn't looking at the
 // window) and how many threads wait on the user since they last looked; the shell shows the toast,
-// with Windows' own sound unless the user turned it off, flashes the taskbar button when a thread
-// needs them, and draws the count over the taskbar icon.
+// with the system's own sound unless the user turned it off, flashes the taskbar button when a thread
+// needs them (on Linux, marks the window urgent), and draws the count over the taskbar icon, or on
+// Linux hands it to launchers that show one (KDE's, Ubuntu's dock).
 
 /** What the UI asks to show; a click on it opens `threadId`. */
 export interface NotificationRequest {

@@ -46,7 +46,7 @@ export interface ShellBridge {
   readonly revealPath?: (path: string) => Promise<void>;
   /**
    * Opens a file (absolute path) in the app the system gives its kind. A program or script isn't run:
-   * Windows asks which app to open it with.
+   * its folder opens with it selected.
    */
   readonly openPath?: (path: string) => Promise<void>;
   /**
@@ -57,11 +57,11 @@ export interface ShellBridge {
   /** Opens `html`, a page of its own, in the user's browser, from a file named after `name`. */
   readonly openHtml?: (html: string, name: string) => Promise<void>;
   /**
-   * Windows tints the window's Acrylic and draws its caption buttons in this theme. Resolves whether
-   * that means dark colours, which for "system" is Windows' own choice.
+   * The system draws the window's caption buttons, and on Windows tints its Acrylic, in this theme.
+   * Resolves whether that means dark colours, which for "system" is the system's own choice.
    */
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
-  /** Calls back whenever Windows' colours turn dark or light; returns how to stop. */
+  /** Calls back whenever the system's colours turn dark or light; returns how to stop. */
   readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
   /** Scales the whole window by `factor` (1 is 100%), caption buttons included. */
   readonly setZoom?: (factor: number) => void;
@@ -76,7 +76,10 @@ export interface ShellBridge {
    * closing the window hides it to the tray, and working too, the PC is kept awake.
    */
   readonly setPresence?: (presence: { signedIn: boolean; working: boolean }) => void;
-  /** Whether Cerium starts when the user signs in to Windows; only the installed app can. */
+  /**
+   * Whether Cerium starts when the user signs in to the computer; only the installed app can, and on
+   * Linux only the AppImage.
+   */
   readonly startAtLogin?: () => Promise<StartAtLogin>;
   readonly setStartAtLogin?: (enabled: boolean) => Promise<StartAtLogin>;
   /** The update channel the user follows and what it offers (apps/desktop/src/updater.ts). */
@@ -101,7 +104,10 @@ export interface ShellBridge {
   readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
   /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */
   readonly microphoneAccess?: () => Promise<string>;
-  /** Opens Windows' microphone privacy settings, where dictation's access is turned back on. */
+  /**
+   * Opens Windows' microphone privacy settings, where dictation's access is turned back on; absent
+   * elsewhere, which has no such page.
+   */
   readonly openMicrophoneSettings?: () => Promise<void>;
 }
 
@@ -147,6 +153,9 @@ declare global {
     readonly cerium?: ShellBridge;
   }
 }
+
+/** Whether the desktop app runs on Windows, whose own names its settings use. */
+export const onWindows = (): boolean => window.cerium?.platform === "win32";
 
 /**
  * The shell's bridge. While the window drives another machine, what reaches this computer's

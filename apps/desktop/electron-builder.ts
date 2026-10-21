@@ -1,8 +1,8 @@
 import type { Configuration } from "electron-builder";
 
-// Packages the desktop shell and its backend into an unsigned Windows installer. The release
-// workflows set CERIUM_VERSION from scripts/release.ts; without it this builds an installer at the
-// package's own version. Stable and nightly builds are the same app: a nightly's version
+// Packages the desktop shell and its backend for the platform it runs on: an unsigned installer on
+// Windows, an AppImage on Linux. The release workflows set CERIUM_VERSION from scripts/release.ts;
+// without it this builds at the package's own version. Stable and nightly builds are the same app: a nightly's version
 // (`-nightly.n<run>`) is all that tells them apart, and the updater follows whichever channel the
 // user picks.
 
@@ -17,6 +17,9 @@ export default {
   extraMetadata: {
     name: "cerium",
     productName: "Cerium",
+    // On Linux, Electron names the window (its Wayland app id and X11 class) and the launcher badge's
+    // desktop entry after this; the AppImage's entry takes the same name (`syncDesktopName`).
+    desktopName: "cerium.desktop",
     ...(version === undefined ? {} : { version }),
   },
   // The icon and installer artwork, drawn by scripts/build-icons.mjs.
@@ -27,8 +30,9 @@ export default {
   files: [
     "dist/**",
     "package.json",
-    // The tray's icon (background.ts).
+    // The tray's icon (background.ts), and the window's on Linux (main.ts).
     "build/icon.ico",
+    "build/icon.png",
     { from: "../../packages/store/migrations", to: "migrations" },
     "!node_modules/@cerium/**",
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
@@ -54,9 +58,22 @@ export default {
     uninstallerSidebar: "build/installerSidebar.bmp",
     installerHeader: "build/installerHeader.bmp",
   },
+  // One AppImage runs on every distribution, and updates itself in place (src/updater.ts). Its
+  // desktop entry is what launchers and docks know Cerium by.
+  linux: {
+    target: "AppImage",
+    icon: "build/icon.png",
+    category: "Development",
+    executableName: "cerium",
+    syncDesktopName: true,
+    synopsis: "One thread, every agent",
+    description: "Runs Claude Code, Codex, Cursor and OpenCode side by side.",
+  },
+  appImage: { artifactName: "Cerium-${version}-${arch}.${ext}" },
   // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
-  // channel's update file beside the installer, latest.yml or nightly.yml, and the release workflows
-  // publish it with the installer and its blockmap. The source repository is private, so the app
+  // channel's update file beside the installer, latest.yml or nightly.yml (latest-linux.yml or
+  // nightly-linux.yml beside an AppImage), and the release workflows publish it with the installer
+  // and its blockmap. The source repository is private, so the app
   // reads a public repository that holds only releases (.github/actions/publish-feed).
   publish: {
     provider: "github",

@@ -117,7 +117,7 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
       aria-busy="true"
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-surface-window pb-10"
     >
-      {/* The window can still be moved while it starts; Windows draws its buttons over this. */}
+      {/* The window can still be moved while it starts; the system draws its buttons over this. */}
       <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
       {shown ? (
         <>

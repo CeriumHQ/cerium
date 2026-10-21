@@ -14,7 +14,7 @@ const show = (dark: boolean) => {
 let settle: () => void = () => undefined;
 /**
  * Resolves once the page shows the theme it starts in: at once in a browser, and in the desktop
- * shell once Windows has said what "system" means and tinted the glass to match.
+ * shell once the system has said what "system" means (and on Windows tinted the glass to match).
  */
 export const themeSettled = new Promise<void>((resolve) => {
   settle = resolve;
@@ -23,8 +23,8 @@ export const themeSettled = new Promise<void>((resolve) => {
 /**
  * Keeps the page on the chosen theme, following the operating system while it's "system", and in the
  * chosen palette. Applied before paint, so the window never flashes the other theme. In the desktop
- * shell, Windows also tints the glass and draws the caption buttons to match, and says what "system"
- * currently means.
+ * shell, the system also draws the caption buttons to match (on Windows, tints the glass too), and
+ * says what "system" currently means.
  */
 export const useTheme = (theme: Theme) => {
   const palette = useAtomValue(paletteAtom);

@@ -27,8 +27,8 @@
   color-scheme: dark;
 
   /*
-   * What the glass sits on where Windows' Acrylic doesn't: the browser preview, theme samples, and
-   * every theme but Cerium in the desktop shell.
+   * What the glass sits on where Windows' Acrylic doesn't: the browser preview, theme samples, Linux,
+   * and every theme but Cerium in the Windows shell.
    */
   --backdrop: oklch(calc(0.24 + var(--lift)) var(--tint-c) var(--tint-h));
   /* The window's glass, before it lets the backdrop through. */

@@ -29,7 +29,8 @@ const isConnection = (message: unknown): message is BackendConnection =>
   typeof (message as { url?: unknown }).url === "string" &&
   typeof (message as { token?: unknown }).token === "string";
 
-export const startBackend = () => {
+/** Starts the backend with `env` (shellPath.ts), restarting it whenever it stops. */
+export const startBackend = (env: NodeJS.ProcessEnv) => {
   const logs = app.getPath("logs");
   mkdirSync(logs, { recursive: true });
   const log = createWriteStream(join(logs, "backend.log"), { flags: "a" });
@@ -52,7 +53,7 @@ export const startBackend = () => {
         // Another relay than Cerium's own, such as `wrangler dev` while developing.
         ...(process.env["CERIUM_RELAY_URL"] ? [`--relay-url=${process.env["CERIUM_RELAY_URL"]}`] : []),
       ],
-      { serviceName: "Cerium backend", stdio: "pipe" },
+      { serviceName: "Cerium backend", stdio: "pipe", env },
     );
     backend.stdout?.pipe(log, { end: false });
     backend.stderr?.pipe(log, { end: false });

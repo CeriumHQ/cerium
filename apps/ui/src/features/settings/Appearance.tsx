@@ -5,6 +5,7 @@ import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { onWindows } from "../../backend/shell.ts";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { UserMessage } from "../transcript/Blocks.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
@@ -40,7 +41,7 @@ export function AppearanceSettings() {
     <SettingsPage title="Appearance">
       <SettingsSection
         title="Theme"
-        info="Every theme comes in light and dark. System follows Windows."
+        info={`Every theme comes in light and dark. System follows ${onWindows() ? "Windows" : "your device's light or dark setting"}.`}
         action={<ModePicker />}
       >
         <RadioGroup
@@ -92,7 +93,7 @@ export function AppearanceSettings() {
   );
 }
 
-/** Light, dark, or whichever Windows is in: every theme has both. */
+/** Light, dark, or whichever the system is in: every theme has both. */
 function ModePicker() {
   const [theme, setTheme] = useAtom(themeAtom);
   return (

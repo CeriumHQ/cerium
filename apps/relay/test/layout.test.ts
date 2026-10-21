@@ -43,9 +43,10 @@ describe("the relay's web UI builds", () => {
     expect(headers.trimEnd().endsWith("/link\n  X-Frame-Options: DENY")).toBe(true);
   });
 
-  it("downloads the installer of the version deployed", () => {
+  it("downloads the installer and the AppImage of the version deployed", () => {
     expect(redirects(build("0.4.0-nightly.n000031"))).toBe(
-      "/download https://github.com/nonlooped/cerium-releases/releases/download/v0.4.0-nightly.n000031/Cerium-Setup-0.4.0-nightly.n000031.exe 302\n",
+      "/download https://github.com/nonlooped/cerium-releases/releases/download/v0.4.0-nightly.n000031/Cerium-Setup-0.4.0-nightly.n000031.exe 302\n" +
+        "/download/linux https://github.com/nonlooped/cerium-releases/releases/download/v0.4.0-nightly.n000031/Cerium-0.4.0-nightly.n000031-x86_64.AppImage 302\n",
     );
     expect(redirects(undefined)).toBe("");
   });

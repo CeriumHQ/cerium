@@ -9,6 +9,17 @@ const onScroll = () => nav?.toggleAttribute("data-scrolled", scrollY > 8);
 addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
+// The download buttons fetch Windows' installer; a visitor on Linux gets the AppImage instead.
+if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) {
+  for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-download]")) {
+    link.href = "/download/linux";
+    link.querySelector("svg")?.classList.remove("windows");
+    link.querySelector("use")?.setAttribute("href", "#mark-linux");
+    const system = link.querySelector("[data-download-system]");
+    if (system !== null) system.textContent = "Linux";
+  }
+}
+
 const canvas = document.querySelector<HTMLCanvasElement>("[data-light]");
 const hero = document.querySelector<HTMLElement>("[data-hero]");
 const window_ = document.querySelector<HTMLElement>("[data-window]");

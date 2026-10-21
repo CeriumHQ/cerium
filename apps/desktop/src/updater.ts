@@ -87,7 +87,9 @@ export const startUpdater = () => {
   };
 
   let channel = readChannel();
-  let status: UpdateStatus = app.isPackaged ? { kind: "checking" } : { kind: "unsupported" };
+  // On Linux, only an AppImage updates: electron-updater swaps the file its runtime names in APPIMAGE.
+  const updatable = app.isPackaged && (process.platform !== "linux" || Boolean(process.env["APPIMAGE"]));
+  let status: UpdateStatus = updatable ? { kind: "checking" } : { kind: "unsupported" };
 
   const snapshot = (): Updates => ({
     channel,
@@ -120,7 +122,7 @@ export const startUpdater = () => {
 
   let checking: Promise<void> | undefined;
   const check = (): Promise<void> => {
-    if (!app.isPackaged) return Promise.resolve();
+    if (!updatable) return Promise.resolve();
     // Downloading or downloaded: that build is what there is to offer until it installs.
     if (status.kind === "downloading" || status.kind === "ready") return Promise.resolve();
     if (checking !== undefined) return checking;
@@ -159,7 +161,7 @@ export const startUpdater = () => {
     }
   };
 
-  if (app.isPackaged) {
+  if (updatable) {
     setTimeout(() => void check(), LAUNCH_CHECK_DELAY_MS);
     setInterval(() => void check(), CHECK_INTERVAL_MS);
   }
@@ -181,7 +183,10 @@ export const startUpdater = () => {
       return snapshot();
     },
     download,
-    /** Quits and runs the downloaded installer silently, then starts the new build. */
+    /**
+     * Quits and runs the downloaded installer silently, or on Linux puts the new AppImage in the old
+     * one's place, then starts the new build.
+     */
     install: () => {
       if (status.kind === "ready") autoUpdater.quitAndInstall(true, true);
     },

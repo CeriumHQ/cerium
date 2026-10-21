@@ -23,13 +23,14 @@ import {
 import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
+import { backendEnvironment } from "./shellPath.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
-// The thin shell: a window with Windows Acrylic and native caption buttons
-// around the UI, the backend's launcher, and the tray that keeps a signed-in machine reachable
-// (background.ts), and the updater (updater.ts). Everything else lives in the UI and the backend.
+// The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows,
+// the backend's launcher, and the tray that keeps a signed-in machine reachable (background.ts), and
+// the updater (updater.ts). Everything else lives in the UI and the backend.
 
 // One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -43,6 +44,8 @@ if (!app.requestSingleInstanceLock()) app.quit();
 const devUrl = process.argv.findLast((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 
 let backend: ReturnType<typeof startBackend> | undefined;
+/** Settles once the packaged app's backend has started. */
+let backendStarting: Promise<void> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
 let mainWindow: BrowserWindow | undefined;
 
@@ -51,8 +54,11 @@ const startHidden = process.argv.includes(HIDDEN_FLAG);
 /** How long a hidden start waits to hear whether it's signed in before showing the window anyway. */
 const HIDDEN_START_TIMEOUT_MS = 15_000;
 
+const windows = process.platform === "win32";
+
 const background = backgroundMode({
-  icon: join(import.meta.dirname, "..", "build", "icon.ico"),
+  // Linux trays take a PNG.
+  icon: join(import.meta.dirname, "..", "build", windows ? "icon.ico" : "icon.png"),
   window: () => mainWindow,
 });
 
@@ -69,8 +75,8 @@ const WINDOW_READY_TIMEOUT_MS = 1_500;
 const TITLEBAR_HEIGHT = 40;
 
 /**
- * Windows draws the caption buttons; their symbols follow the theme like the UI's own text, and they
- * grow with the window's zoom as the titlebar does.
+ * The system draws the caption buttons (Electron itself on Linux); their symbols follow the theme
+ * like the UI's own text, and they grow with the window's zoom as the titlebar does.
  */
 const titleBarOverlay = (zoom = 1) => ({
   color: "#00000000",
@@ -122,17 +128,20 @@ const createWindow = () => {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    // The page paints nothing behind its surfaces, so Windows' Acrylic shows through. Acrylic only
+    // On Windows the page paints nothing behind its surfaces, so Acrylic shows through. Acrylic only
     // reaches the page area of a transparent window (electron/electron#47510); restoreNativeFrame puts
-    // back the resize frame and rounded corners Electron removes from those.
-    transparent: true,
-    backgroundMaterial: "acrylic",
-    backgroundColor: "#00000000",
+    // back the resize frame and rounded corners Electron removes from those. Linux has no Acrylic, so
+    // the page paints its own backdrop and the window stays opaque, keeping its frame and shadow.
+    ...(windows
+      ? { transparent: true, backgroundMaterial: "acrylic" as const, backgroundColor: "#00000000" }
+      : { backgroundColor: "#181818" }),
     titleBarStyle: "hidden",
     titleBarOverlay: titleBarOverlay(),
-    // The installed app takes its icon from its executable; this is for `bun run dev`, which runs
-    // Electron's own.
-    ...(devUrl === undefined ? {} : { icon: join(import.meta.dirname, "..", "build", "icon.png") }),
+    // The installed Windows app takes its icon from its executable; this is for `bun run dev`, which
+    // runs Electron's own, and for Linux, whose window managers ask the window.
+    ...(devUrl === undefined && windows
+      ? {}
+      : { icon: join(import.meta.dirname, "..", "build", "icon.png") }),
     webPreferences: {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,
@@ -143,10 +152,10 @@ const createWindow = () => {
     },
   });
 
-  if (process.platform === "win32") {
-    restoreNativeFrame(window);
+  if (windows) {
+    void restoreNativeFrame(window);
     // Electron re-applies its own frame style on some state changes.
-    const reapply = () => restoreNativeFrame(window);
+    const reapply = () => void restoreNativeFrame(window);
     window.on("maximize", reapply);
     window.on("unmaximize", reapply);
     window.on("restore", reapply);
@@ -195,7 +204,7 @@ ipcMain.on("cerium:presence", (_event, presence: unknown) => {
   heardPresence = true;
 });
 
-/** Whether Cerium starts when the user signs in to Windows; only the installed app can. */
+/** Whether Cerium starts when the user signs in to the computer; only the installed app can. */
 ipcMain.handle("cerium:start-at-login", () => startAtLogin());
 ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
   typeof enabled === "boolean" ? setStartAtLogin(enabled) : startAtLogin(),
@@ -221,7 +230,10 @@ ipcMain.handle("cerium:download-update", () => updater?.download());
 ipcMain.handle("cerium:install-update", () => updater?.install());
 
 /** Where the UI connects to the backend this shell runs; nothing in development. */
-ipcMain.handle("cerium:backend-connection", () => backend?.connection());
+ipcMain.handle("cerium:backend-connection", async () => {
+  await backendStarting;
+  return backend?.connection();
+});
 
 /** The folder a work thread runs in, chosen with the native dialog. */
 ipcMain.handle("cerium:pick-folder", async (event) => {
@@ -231,14 +243,15 @@ ipcMain.handle("cerium:pick-folder", async (event) => {
   return result.canceled ? undefined : result.filePaths[0];
 });
 
-/** Shows a file the transcript names in File Explorer; only absolute paths, and nothing is opened. */
+/** Shows a file the transcript names in the file manager; only absolute paths, and nothing is opened. */
 ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
   if (typeof target === "string" && isAbsolute(target)) shell.showItemInFolder(normalize(target));
 });
 
 /**
  * Whether Windows' privacy settings let Cerium use the microphone: Chromium reports a block as a
- * device that failed to start, or as silence, so dictation asks here what it meant.
+ * device that failed to start, or as silence, so dictation asks here what it meant. Linux has no
+ * such setting.
  */
 ipcMain.handle("cerium:microphone-access", () =>
   process.platform === "win32" || process.platform === "darwin"
@@ -266,9 +279,10 @@ ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>
 ipcMain.handle("cerium:text-command", (event, command: unknown) => runTextCommand(event.sender, command));
 
 /**
- * The UI's theme choice. Windows tints Acrylic from the native theme, so it follows the UI. Answers
- * whether that means dark colours: after a forced theme, the page's `prefers-color-scheme` doesn't
- * return to Windows' own when the choice goes back to "system", so the UI asks here instead.
+ * The UI's theme choice. Windows tints Acrylic from the native theme, and the caption buttons follow
+ * it everywhere, so it follows the UI. Answers whether that means dark colours: after a forced theme,
+ * the page's `prefers-color-scheme` doesn't return to the system's own when the choice goes back to
+ * "system", so the UI asks here instead.
  */
 ipcMain.handle("cerium:set-theme", (_event, theme: unknown) => {
   if (theme === "system" || theme === "dark" || theme === "light") nativeTheme.themeSource = theme;
@@ -283,7 +297,7 @@ ipcMain.on("cerium:set-zoom", (event, factor: unknown) => {
   window.setTitleBarOverlay(titleBarOverlay(factor));
 });
 
-// Windows switching between light and dark, or the UI changing the theme.
+// The system switching between light and dark, or the UI changing the theme.
 nativeTheme.on("updated", () => {
   for (const window of BrowserWindow.getAllWindows()) {
     window.setTitleBarOverlay(titleBarOverlay(window.webContents.getZoomFactor()));
@@ -294,7 +308,12 @@ nativeTheme.on("updated", () => {
 nameAppForNotifications();
 
 void app.whenReady().then(() => {
-  if (devUrl === undefined) backend = startBackend();
+  // The backend looks for the harnesses on the PATH a terminal would have (shellPath.ts).
+  if (devUrl === undefined) {
+    backendStarting = backendEnvironment().then((env) => {
+      backend = startBackend(env);
+    });
+  }
   updater = startUpdater();
   // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
   // gets its groups from what a right-click was on now.
