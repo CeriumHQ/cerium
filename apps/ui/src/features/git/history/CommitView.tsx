@@ -52,8 +52,10 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
               <p className="text-[12px] text-fg-tertiary">
                 {detail.commit.author} · {new Date(detail.commit.at).toLocaleString()}
               </p>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[12px] text-fg-secondary">{detail.commit.sha}</span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 font-mono text-[12px] break-all text-fg-secondary">
+                  {detail.commit.sha}
+                </span>
                 <CopyButton text={detail.commit.sha} label="Copy commit SHA" />
               </div>
               {detail.commit.refs.length > 0 ? (
