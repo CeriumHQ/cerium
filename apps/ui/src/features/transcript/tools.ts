@@ -13,6 +13,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { toolImageRef, toolOutputImages, type ToolImageRef } from "@cerium/protocol";
 
 import { fileEdits, type FileEdit } from "./diff.ts";
 import type { TranscriptBlock } from "./model.ts";
@@ -519,36 +520,11 @@ export interface ToolImage {
   readonly name: string;
   /** A data URL, when the output carried the image itself. */
   readonly url?: string;
+  /** Where to read it, when the thread's history left the image out. */
+  readonly ref?: ToolImageRef;
   /** An absolute path the backend can read, otherwise. */
   readonly path?: string;
 }
-
-/** Base64 images in a tool's output, as Anthropic content blocks or MCP content items carry them. */
-const outputImages = (
-  output: unknown,
-): ReadonlyArray<{ readonly mediaType: string; readonly data: string }> => {
-  const found: Array<{ mediaType: string; data: string }> = [];
-  const visit = (value: unknown, depth: number) => {
-    if (depth > 4) return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, depth + 1);
-      return;
-    }
-    if (!isRecord(value)) return;
-    if (value["type"] === "image") {
-      const source = isRecord(value["source"]) ? value["source"] : value;
-      const data = source["data"];
-      const mediaType = source["media_type"] ?? source["mediaType"] ?? source["mimeType"];
-      if (typeof data === "string" && typeof mediaType === "string" && mediaType.startsWith("image/")) {
-        found.push({ mediaType, data });
-        return;
-      }
-    }
-    for (const key of ["content", "output", "result"]) visit(value[key], depth + 1);
-  };
-  visit(output, 0);
-  return found;
-};
 
 const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i;
 const ABSOLUTE = /^(?:[a-z]:[\\/]|[\\/])/i;
@@ -557,13 +533,16 @@ const ABSOLUTE = /^(?:[a-z]:[\\/]|[\\/])/i;
 export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
   const path = field(tool.input, "file_path") ?? field(tool.input, "path");
   const name = path ? baseName(path) : "Image";
-  const inline = outputImages(tool.output);
+  const inline = toolOutputImages(tool.output);
   if (inline.length > 0) {
-    return inline.map((image, index) => ({
-      key: `${tool.id}:${index}`,
-      name: inline.length === 1 ? name : `${name} (${index + 1})`,
-      url: `data:${image.mediaType};base64,${image.data}`,
-    }));
+    return inline.map((image, index) => {
+      const ref = toolImageRef(image.data);
+      return {
+        key: `${tool.id}:${index}`,
+        name: inline.length === 1 ? name : `${name} (${index + 1})`,
+        ...(ref === undefined ? { url: `data:${image.mediaType};base64,${image.data}` } : { ref }),
+      };
+    });
   }
   // Harnesses that only report the path: the file is read again to show it.
   const saved = field(tool.output, "savedPath");

@@ -2,7 +2,15 @@ import { deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
 import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
-import { isStreamDelta, LEAD_ROLE, type AgentEvent, type ProviderId, type SkillInfo } from "@cerium/protocol";
+import {
+  isStreamDelta,
+  LEAD_ROLE,
+  toolOutputImages,
+  withoutImages,
+  type AgentEvent,
+  type ProviderId,
+  type SkillInfo,
+} from "@cerium/protocol";
 import { CeriumError, CeriumRpcs, MachineRpcs, type ListedArtifact } from "@cerium/rpc";
 import { Store, type StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
@@ -89,7 +97,23 @@ export const Handlers = MachineRpcs.toLayer(
 
     return MachineRpcs.of({
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
-      ThreadEvents: ({ threadId }) => orchestrator.threadEvents(threadId).pipe(Effect.mapError(refuse)),
+      ThreadEvents: ({ threadId, withoutImages: lean }) =>
+        orchestrator.threadEvents(threadId).pipe(
+          Effect.map((events) => (lean === true ? events.map(withoutImages) : events)),
+          Effect.mapError(refuse),
+        ),
+      ToolImage: ({ threadId, callId, index }) =>
+        store.findToolCompletion(threadId, callId).pipe(
+          Effect.mapError(refuse),
+          Effect.flatMap((found) => {
+            const payload = Option.getOrUndefined(found)?.payload;
+            const image =
+              payload?._tag === "ToolCallCompleted" ? toolOutputImages(payload.output)[index] : undefined;
+            return image === undefined
+              ? Effect.fail(new CeriumError({ message: "That image isn't in the thread anymore." }))
+              : Effect.succeed(image);
+          }),
+        ),
       WatchEvents: () => orchestrator.events,
       // A work thread's folder joins the projects the composer offers, as the one used last: the
       // project's own, for a thread in a worktree.

@@ -147,6 +147,11 @@ export class Store extends Context.Service<
     lastSequence(agentId: AgentId): Effect.Effect<Option.Option<number>, StoreError>;
     /** Every agent's events in a thread, in the order they happened. */
     listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /** How a tool call in a thread ended, for reading an image of its output on its own. */
+    findToolCompletion(
+      threadId: ThreadId,
+      callId: string,
+    ): Effect.Effect<Option.Option<AgentEvent>, StoreError>;
     /** Every thread's events of one kind, in the order they happened. */
     listEventsByTag(tag: EventPayload["_tag"]): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /**
@@ -356,6 +361,26 @@ export class Store extends Context.Service<
                 .where(eq(events.threadId, threadId))
                 .orderBy(asc(events.at), asc(events.sequence)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+          findToolCompletion: (threadId, callId) =>
+            query("Could not read the tool call", () =>
+              db
+                .select(eventColumns)
+                .from(events)
+                .where(
+                  and(
+                    eq(events.threadId, threadId),
+                    eq(events.tag, "ToolCallCompleted"),
+                    // Finding the id in the text first spares parsing every screenshot's payload.
+                    sql`instr(${events.payload}, ${JSON.stringify(callId)}) > 0`,
+                    sql`json_extract(${events.payload}, '$.callId') = ${callId}`,
+                  ),
+                )
+                .limit(1),
+            ).pipe(
+              Effect.flatMap((rows) =>
+                rows[0] === undefined ? Effect.succeedNone : Effect.asSome(decodeEvent(rows[0])),
+              ),
+            ),
           listEventsByTag: (tag) =>
             query("Could not list events", () =>
               db

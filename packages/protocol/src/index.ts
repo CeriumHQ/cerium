@@ -4,6 +4,7 @@ export * from "./compat.ts";
 export * from "./events.ts";
 export * from "./harness.ts";
 export * from "./ids.ts";
+export * from "./images.ts";
 export * from "./models.ts";
 export * from "./orchestration.ts";
 export * from "./push.ts";

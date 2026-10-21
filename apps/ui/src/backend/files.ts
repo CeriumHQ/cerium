@@ -1,5 +1,5 @@
 import { dataFileUrl } from "@cerium/artifacts";
-import type { ProviderId } from "@cerium/protocol";
+import type { ProviderId, ToolImageRef } from "@cerium/protocol";
 import { Effect, Schedule } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -17,6 +17,21 @@ export const imageAtom = Atom.family((path: string) =>
     )
     .pipe(Atom.setIdleTTL("5 minutes")),
 );
+
+/**
+ * An image a thread's history left out of a tool's output, read on its own; keyed by its
+ * `ToolImageRef` as JSON. Kept a while after it scrolls away.
+ */
+export const toolImageAtom = Atom.family((key: string) => {
+  const { threadId, callId, index } = JSON.parse(key) as ToolImageRef;
+  return Backend.runtime
+    .atom(
+      Backend.use((client) => client("ToolImage", { threadId, callId, index })).pipe(
+        Effect.map(({ mediaType, data }) => `data:${mediaType};base64,${data}`),
+      ),
+    )
+    .pipe(Atom.setIdleTTL("5 minutes"));
+});
 
 /**
  * A local file an artifact names, and how it is read: an image from anywhere, or a data file under

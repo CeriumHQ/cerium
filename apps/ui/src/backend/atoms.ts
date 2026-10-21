@@ -295,7 +295,8 @@ const CLOSED_THREAD_TTL = "5 minutes";
 export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
   Backend.runtime
     .atom((get) => {
-      const history = Backend.use((client) => client("ThreadEvents", { threadId })).pipe(
+      // Screenshots are most of a long thread's bytes: each is read when the transcript shows it.
+      const history = Backend.use((client) => client("ThreadEvents", { threadId, withoutImages: true })).pipe(
         Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
         // What the window holds stays; the next subscription reads again.
         Effect.option,

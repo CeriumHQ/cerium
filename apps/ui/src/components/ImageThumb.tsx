@@ -2,9 +2,10 @@ import { Dialog } from "@base-ui/react/dialog";
 import { useAtomValue } from "@effect/atom-react";
 import { Copy, Download, FolderOpen, ImageOff, X } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
+import type { ToolImageRef } from "@cerium/protocol";
 import type { ReactElement } from "react";
 
-import { imageAtom } from "../backend/files.ts";
+import { imageAtom, toolImageAtom } from "../backend/files.ts";
 import { drivenMachine } from "../backend/machine.ts";
 import { shellBridge } from "../backend/shell.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "./ui/Menu.tsx";
@@ -154,12 +155,40 @@ export function ImageThumb({
  */
 export function FileImageThumb({
   path,
+  quiet = false,
+  ...thumb
+}: ThumbProps & { path: string; quiet?: boolean }) {
+  return <LoadedImageThumb {...thumb} result={useAtomValue(imageAtom(path))} path={path} quiet={quiet} />;
+}
+
+/**
+ * An image of a tool's output that the thread's history left out, read through the backend, as a
+ * thumbnail; one that can't be read, such as one kept on a computer that isn't driven, shows as a
+ * labelled placeholder, or, when `quiet`, as nothing at all.
+ */
+export function ToolOutputImageThumb({
+  imageRef,
+  quiet = false,
+  ...thumb
+}: ThumbProps & { imageRef: ToolImageRef; quiet?: boolean }) {
+  return (
+    <LoadedImageThumb
+      {...thumb}
+      result={useAtomValue(toolImageAtom(JSON.stringify(imageRef)))}
+      quiet={quiet}
+    />
+  );
+}
+
+/** An image the backend reads, as a thumbnail once read. */
+function LoadedImageThumb({
+  result,
+  path,
   name,
   className,
   fit,
-  quiet = false,
-}: ThumbProps & { path: string; quiet?: boolean }) {
-  const result = useAtomValue(imageAtom(path));
+  quiet,
+}: ThumbProps & { result: AsyncResult.AsyncResult<string, unknown>; path?: string; quiet: boolean }) {
   if (AsyncResult.isSuccess(result)) {
     return (
       <ImageThumb
@@ -167,7 +196,7 @@ export function FileImageThumb({
         name={name}
         className={className}
         {...(fit ? { fit } : {})}
-        path={path}
+        {...(path === undefined ? {} : { path })}
         menu
       />
     );
@@ -176,7 +205,7 @@ export function FileImageThumb({
     if (quiet) return null;
     return (
       <span
-        title={path}
+        title={path ?? name}
         className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-xs text-fg-tertiary"
       >
         <ImageOff size={13} strokeWidth={1.75} className="shrink-0" />

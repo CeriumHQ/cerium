@@ -13,7 +13,7 @@ import {
 import { useContext, useState, type ReactNode } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
-import { FileImageThumb, ImageThumb } from "../../components/ImageThumb.tsx";
+import { FileImageThumb, ImageThumb, ToolOutputImageThumb } from "../../components/ImageThumb.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { EditDiff } from "./EditDiff.tsx";
@@ -50,6 +50,17 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
         className={className}
         fit={full ? "natural" : "crop"}
         menu
+      />
+    );
+  }
+  if (image.ref) {
+    return (
+      <ToolOutputImageThumb
+        imageRef={image.ref}
+        name={image.name}
+        className={className}
+        fit={full ? "natural" : "crop"}
+        quiet={!full}
       />
     );
   }

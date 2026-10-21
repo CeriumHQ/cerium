@@ -64,7 +64,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 11;
+export const RPC_VERSION = 12;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -121,8 +121,21 @@ export type ThreadMatch = typeof ThreadMatch.Type;
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
   Rpc.make("ThreadEvents", {
-    payload: { threadId: ThreadId },
+    payload: {
+      threadId: ThreadId,
+      /**
+       * Leaves out the images of tool outputs, each as a reference `ToolImage` reads (see
+       * `withoutImages` in @cerium/protocol). Since `RPC_VERSION` 12; an older machine sends them.
+       */
+      withoutImages: Schema.optionalKey(Schema.Boolean),
+    },
     success: UiEvents,
+    error: CeriumError,
+  }),
+  /** An image `ThreadEvents` left out: the `index`th of a tool call's output. Since `RPC_VERSION` 12. */
+  Rpc.make("ToolImage", {
+    payload: { threadId: ThreadId, callId: Schema.NonEmptyString, index: Schema.Int },
+    success: ImageData,
     error: CeriumError,
   }),
   /**

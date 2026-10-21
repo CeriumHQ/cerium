@@ -4,6 +4,7 @@ import {
   isStreamDelta,
   MAX_SYNC_BATCH_BYTES,
   UiEvent,
+  withoutImages,
   type AgentEvent,
   type ThreadId,
 } from "@cerium/protocol";
@@ -28,9 +29,12 @@ const LONG_STRING = 50_000;
 
 const encodeEvent = Schema.encodeSync(UiEvent);
 
-/** An event's cloud copy: as the UI sees it, with very long strings cut when it's too big to store. */
+/**
+ * An event's cloud copy: as the UI sees it without the images of tool outputs, which stay on this
+ * machine, and with very long strings cut when it's too big to store.
+ */
 export const cloudEvent = (event: AgentEvent): UiEvent => {
-  const ui = encodeEvent(event) as UiEvent;
+  const ui = encodeEvent(withoutImages(event)) as UiEvent;
   if (JSON.stringify(ui).length <= MAX_SYNC_BATCH_BYTES) return ui;
   const cut = (value: unknown): unknown =>
     typeof value === "string" && value.length > LONG_STRING
