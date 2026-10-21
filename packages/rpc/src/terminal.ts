@@ -41,6 +41,17 @@ export const TerminalInfo = Schema.Struct({
 });
 export type TerminalInfo = typeof TerminalInfo.Type;
 
+/**
+ * A terminal running one command of a harness's own, such as its sign-in (`RunHarnessCommand`). It
+ * belongs to no thread and isn't listed; its viewer attaches, writes, resizes and closes it by its id.
+ */
+export const CommandTerminal = Schema.Struct({
+  id: TerminalId,
+  /** As `TerminalInfo.windowsBuild`. */
+  windowsBuild: Schema.optionalKey(Schema.Int),
+});
+export type CommandTerminal = typeof CommandTerminal.Type;
+
 /** What an attached viewer receives, in order. */
 export const TerminalOutput = Schema.Union([
   /**

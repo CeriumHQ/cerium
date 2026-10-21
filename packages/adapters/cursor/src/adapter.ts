@@ -33,13 +33,6 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
       const ready = Effect.gen(function* () {
         // The SDK ships with Cerium, so it is never missing; only its login can be.
         const status = yield* probe;
-        if (status.versionStatus === "tooOld") {
-          return yield* new HarnessUnavailable({
-            provider: "cursor",
-            reason: "versionTooOld",
-            message: `@cursor/sdk ${status.version} is older than ${cursorManifest.harnessVersion?.minimum ?? "unknown"}.`,
-          });
-        }
         if (status.auth._tag === "LoggedOut") {
           return yield* new HarnessUnavailable({
             provider: "cursor",

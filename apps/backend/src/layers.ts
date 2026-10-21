@@ -20,6 +20,7 @@ import { Socket } from "effect/socket";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { Releases } from "./releases.ts";
 import { Repositories } from "./clone.ts";
 import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
@@ -190,7 +191,10 @@ export const backendLayer = (options: BackendOptions) =>
     // Each layer above needs what a layer below it provides, so Git comes after the git services.
     Layer.provideMerge(Git.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
-    Layer.provideMerge(Projects.layer),
+    // Projects, and the newest release of each harness and of `gh`, for Settings to offer the update.
+    Layer.provideMerge(
+      Layer.mergeAll(Projects.layer, Releases.layer.pipe(Layer.provide(FetchHttpClient.layer))),
+    ),
     Layer.provideMerge(
       Terminals.layer({ version: options.account?.device.version ?? "dev" }).pipe(Layer.provide(Ptys.layer)),
     ),

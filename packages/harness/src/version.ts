@@ -1,5 +1,3 @@
-import type { CapabilityManifest, VersionStatus } from "@cerium/protocol";
-
 /** Extracts the first `major.minor.patch` from free-form CLI output such as "2.1.301 (Claude Code)". */
 export const parseVersion = (text: string): string | undefined => /\d+\.\d+\.\d+/.exec(text)?.[0];
 
@@ -15,13 +13,4 @@ export const compareVersions = (a: string, b: string): number => {
     if (difference !== 0) return Math.sign(difference);
   }
   return 0;
-};
-
-export const classifyVersion = (
-  installed: string,
-  range: CapabilityManifest["harnessVersion"] | undefined,
-): VersionStatus => {
-  if (range === undefined) return "supported";
-  if (compareVersions(installed, range.minimum) < 0) return "tooOld";
-  return "supported";
 };

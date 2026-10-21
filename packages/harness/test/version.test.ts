@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { classifyVersion, compareVersions, parseVersion } from "../src/index.ts";
+import { compareVersions, parseVersion } from "../src/index.ts";
 
 describe("parseVersion", () => {
   it("extracts the version from CLI banners", () => {
@@ -16,16 +16,5 @@ describe("compareVersions", () => {
     expect(compareVersions("2.1.9", "2.1.10")).toBe(-1);
     expect(compareVersions("1.4.10", "1.4.10")).toBe(0);
     expect(compareVersions("1.4.10-beta.1", "1.4.10")).toBe(0);
-  });
-});
-
-describe("classifyVersion", () => {
-  const range = { minimum: "2.1.300", testedMaximum: "2.1.302" };
-
-  it("classifies against the accepted range", () => {
-    expect(classifyVersion("2.1.299", range)).toBe("tooOld");
-    expect(classifyVersion("2.1.300", range)).toBe("supported");
-    expect(classifyVersion("2.1.302", range)).toBe("supported");
-    expect(classifyVersion("2.2.0", range)).toBe("supported");
   });
 });

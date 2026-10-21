@@ -3,8 +3,11 @@ import { Schema } from "effect";
 import { ProviderId } from "./ids.ts";
 import { AccessMode } from "./orchestration.ts";
 
-/** How the installed harness version relates to the adapter's accepted range. */
-export const VersionStatus = Schema.Literals(["supported", "tooOld"]);
+/**
+ * What backends before `RPC_VERSION` 20 said of a harness's version, and what viewers before it still
+ * read. Cerium no longer judges versions: a backend sends "supported", for those viewers only.
+ */
+export const VersionStatus = Schema.Literals(["supported", "untested", "tooOld"]);
 export type VersionStatus = typeof VersionStatus.Type;
 
 export const LoggedIn = Schema.TaggedStruct("LoggedIn", {

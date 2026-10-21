@@ -27,6 +27,8 @@ export const terminalsAtom = Backend.runtime
 export const openTerminal = Backend.mutation("OpenTerminal");
 export const restartTerminal = Backend.mutation("RestartTerminal");
 export const closeTerminal = Backend.mutation("CloseTerminal");
+/** Runs a harness's own sign-in or update in a terminal of no thread, for Settings. */
+export const runHarnessCommand = Backend.mutation("RunHarnessCommand");
 
 /** How long an emulator is kept after nothing shows it, so going back to its thread finds it as it was. */
 const KEPT = "3 minutes";
@@ -45,91 +47,107 @@ const INPUT_PIECE = 32 * 1024;
  */
 export const terminalSessionAtom = Atom.family((key: string) =>
   Backend.runtime
-    .atom((get) =>
-      Effect.gen(function* () {
-        const client = yield* Backend;
-        const id = key.slice(0, key.lastIndexOf(":")) as TerminalId;
-        const known = Option.getOrUndefined(AsyncResult.value(get.once(terminalsAtom)))?.find(
-          (terminal) => terminal.id === id,
-        );
-
-        const typed = yield* Queue.unbounded<string>();
-        const sizes = yield* Queue.sliding<{ readonly cols: number; readonly rows: number }>(1);
-        const session = new TerminalSession({
-          windowsBuild: known?.windowsBuild,
-          onInput: (data) => void Queue.offerUnsafe(typed, data),
-          onSize: (size) => void Queue.offerUnsafe(sizes, size),
-        });
-        yield* Effect.addFinalizer(() => Effect.sync(() => session.dispose()));
-
-        // What's typed goes in order, a call at a time, and whatever piled up meanwhile goes together.
-        yield* Queue.takeAll(typed).pipe(
-          Effect.flatMap((pieces) =>
-            Effect.forEach(
-              inputPieces(pieces.join(""), INPUT_PIECE),
-              (data) => client("WriteTerminal", { id, data }),
-              { discard: true },
-            ),
-          ),
-          Effect.ignore,
-          Effect.forever,
-          Effect.forkScoped,
-        );
-
-        // Dragging the drawer fits the emulator at every pixel; the shell hears of the size it settles on.
-        yield* Stream.fromQueue(sizes).pipe(
-          Stream.debounce("120 millis"),
-          Stream.runForEach((size) => client("ResizeTerminal", { id, size }).pipe(Effect.ignore)),
-          Effect.forkScoped,
-        );
-
-        let finished = false;
-        const follow = Effect.gen(function* () {
-          yield* Effect.promise(() => session.sized).pipe(Effect.timeoutOption(SIZE_WAIT));
-          const output = yield* client(
-            "AttachTerminal",
-            { id, size: session.size() },
-            { asQueue: true, streamBufferSize: 1024 },
-          );
-          yield* Stream.fromQueue(output).pipe(
-            Stream.runForEachArray((batch) =>
-              Effect.sync(() => {
-                for (const each of batch) {
-                  if (each === undefined) continue;
-                  switch (each._tag) {
-                    case "Screen":
-                      session.reset();
-                      session.write(each.data);
-                      break;
-                    case "Data":
-                      session.write(each.data);
-                      break;
-                    case "Exit":
-                      finished = true;
-                      session.end();
-                      break;
-                  }
-                }
-              }),
-            ),
-          );
-        }).pipe(
-          Effect.scoped,
-          // A terminal the backend no longer has is not coming back.
-          Effect.catchIf(
-            (error): error is CeriumError => error instanceof CeriumError,
-            () => Effect.sync(() => void (finished = true)),
-          ),
-          Effect.ignore,
-        );
-        // A stream that ends without the shell's end was cut off; so is one that failed.
-        yield* follow.pipe(
-          Effect.repeat({ schedule: Schedule.spaced("1 second"), until: () => finished }),
-          Effect.forkScoped,
-        );
-
-        return session;
-      }),
-    )
+    .atom((get) => {
+      const id = key.slice(0, key.lastIndexOf(":")) as TerminalId;
+      const known = Option.getOrUndefined(AsyncResult.value(get.once(terminalsAtom)))?.find(
+        (terminal) => terminal.id === id,
+      );
+      return follow(id, known?.windowsBuild);
+    })
     .pipe(Atom.setIdleTTL(KEPT)),
 );
+
+/**
+ * The emulator of a terminal that runs one command (`RunHarnessCommand`), keyed `id:windowsBuild`
+ * (empty off Windows). It's let go of as soon as nothing shows it: the dialog showing it closes it.
+ */
+export const commandSessionAtom = Atom.family((key: string) =>
+  Backend.runtime.atom(() => {
+    const split = key.lastIndexOf(":");
+    const build = Number.parseInt(key.slice(split + 1), 10);
+    return follow(key.slice(0, split) as TerminalId, Number.isNaN(build) ? undefined : build);
+  }),
+);
+
+/** An emulator for terminal `id`, fed by the backend, and the pumps of what's typed and its size. */
+const follow = (id: TerminalId, windowsBuild: number | undefined) =>
+  Effect.gen(function* () {
+    const client = yield* Backend;
+
+    const typed = yield* Queue.unbounded<string>();
+    const sizes = yield* Queue.sliding<{ readonly cols: number; readonly rows: number }>(1);
+    const session = new TerminalSession({
+      windowsBuild,
+      onInput: (data) => void Queue.offerUnsafe(typed, data),
+      onSize: (size) => void Queue.offerUnsafe(sizes, size),
+    });
+    yield* Effect.addFinalizer(() => Effect.sync(() => session.dispose()));
+
+    // What's typed goes in order, a call at a time, and whatever piled up meanwhile goes together.
+    yield* Queue.takeAll(typed).pipe(
+      Effect.flatMap((pieces) =>
+        Effect.forEach(
+          inputPieces(pieces.join(""), INPUT_PIECE),
+          (data) => client("WriteTerminal", { id, data }),
+          { discard: true },
+        ),
+      ),
+      Effect.ignore,
+      Effect.forever,
+      Effect.forkScoped,
+    );
+
+    // Dragging the drawer fits the emulator at every pixel; the shell hears of the size it settles on.
+    yield* Stream.fromQueue(sizes).pipe(
+      Stream.debounce("120 millis"),
+      Stream.runForEach((size) => client("ResizeTerminal", { id, size }).pipe(Effect.ignore)),
+      Effect.forkScoped,
+    );
+
+    let finished = false;
+    const attach = Effect.gen(function* () {
+      yield* Effect.promise(() => session.sized).pipe(Effect.timeoutOption(SIZE_WAIT));
+      const output = yield* client(
+        "AttachTerminal",
+        { id, size: session.size() },
+        { asQueue: true, streamBufferSize: 1024 },
+      );
+      yield* Stream.fromQueue(output).pipe(
+        Stream.runForEachArray((batch) =>
+          Effect.sync(() => {
+            for (const each of batch) {
+              if (each === undefined) continue;
+              switch (each._tag) {
+                case "Screen":
+                  session.reset();
+                  session.write(each.data);
+                  break;
+                case "Data":
+                  session.write(each.data);
+                  break;
+                case "Exit":
+                  finished = true;
+                  session.end();
+                  break;
+              }
+            }
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.scoped,
+      // A terminal the backend no longer has is not coming back.
+      Effect.catchIf(
+        (error): error is CeriumError => error instanceof CeriumError,
+        () => Effect.sync(() => void (finished = true)),
+      ),
+      Effect.ignore,
+    );
+    // A stream that ends without the shell's end was cut off; so is one that failed.
+    yield* attach.pipe(
+      Effect.repeat({ schedule: Schedule.spaced("1 second"), until: () => finished }),
+      Effect.forkScoped,
+    );
+
+    return session;
+  });

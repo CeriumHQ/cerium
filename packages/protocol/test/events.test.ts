@@ -172,7 +172,6 @@ describe("AgentEvent", () => {
 describe("CapabilityManifest", () => {
   const manifest = {
     provider: "claude",
-    harnessVersion: { minimum: "2.1.63", testedMaximum: "2.2.0" },
     session: { resume: true, fork: true },
     switching: { model: true, effort: false, cacheSafeEffort: false },
     input: { images: true },

@@ -13,11 +13,27 @@ const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
  */
 export const CapabilityManifest = Schema.Struct({
   provider: ProviderId,
-  /** Installed harness versions Cerium accepts; above `testedMaximum` is allowed but flagged. */
-  harnessVersion: Schema.Struct({
-    minimum: Schema.NonEmptyString,
-    testedMaximum: Schema.NonEmptyString,
-  }),
+  /**
+   * What viewers before `RPC_VERSION` 20 read as the harness versions Cerium tested. Cerium no longer
+   * judges versions, so a backend sends it for those viewers only.
+   */
+  harnessVersion: Schema.optionalKey(
+    Schema.Struct({
+      minimum: Schema.NonEmptyString,
+      testedMaximum: Schema.NonEmptyString,
+    }),
+  ),
+  /**
+   * Where the harness's releases are published, so Cerium can tell when a newer one is out, and the
+   * harness's own command that updates it. Absent for a harness that ships inside Cerium.
+   */
+  releases: Schema.optionalKey(
+    Schema.Struct({
+      /** The npm package whose `latest` tag is the newest release. */
+      npmPackage: Schema.NonEmptyString,
+      updateCommand: Schema.optionalKey(Schema.NonEmptyString),
+    }),
+  ),
   session: Schema.Struct({
     resume: Schema.Boolean,
     fork: Schema.Boolean,

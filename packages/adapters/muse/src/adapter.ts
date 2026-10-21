@@ -36,13 +36,6 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
             message: INSTALL_HINT,
           });
         }
-        if (status.versionStatus === "tooOld") {
-          return yield* new HarnessUnavailable({
-            provider: "muse",
-            reason: "versionTooOld",
-            message: `Muse Code ${status.version} is older than ${museManifest.harnessVersion?.minimum ?? "unknown"}. Run \`muse\` to update it.`,
-          });
-        }
         if (status.auth._tag === "LoggedOut") {
           return yield* new HarnessUnavailable({
             provider: "muse",

@@ -1,9 +1,9 @@
-import { classifyVersion, HarnessFailure, parseVersion } from "@cerium/harness";
+import { HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
+import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { connect } from "./rpc.ts";
 
 const failure = (message: string) => (cause: unknown) =>
@@ -106,7 +106,6 @@ export const probeCodex = Effect.gen(function* () {
     provider: "codex",
     executablePath: executable.value,
     version,
-    versionStatus: classifyVersion(version, codexManifest.harnessVersion),
     auth: yield* readAuth(executable.value),
   } satisfies HarnessStatus;
 });

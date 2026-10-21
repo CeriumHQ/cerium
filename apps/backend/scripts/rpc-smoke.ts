@@ -20,7 +20,7 @@ const program = Effect.gen(function* () {
   for (const status of yield* client.HarnessStatuses()) {
     yield* Console.log(
       status._tag === "HarnessInstalled"
-        ? `${status.provider}: ${status.version} (${status.versionStatus}), ${status.auth._tag}`
+        ? `${status.provider}: ${status.version} ${status.latestVersion === undefined ? "" : ` (${status.latestVersion} available)`}, ${status.auth._tag}`
         : `${status.provider}: not installed`,
     );
   }

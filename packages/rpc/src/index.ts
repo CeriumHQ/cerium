@@ -56,7 +56,7 @@ import { GitBranchRpcs } from "./gitBranches.ts";
 import { GitHubRpcs } from "./github.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
-import { TerminalRpcs } from "./terminal.ts";
+import { CommandTerminal, TerminalRpcs, TerminalSize } from "./terminal.ts";
 
 export * from "./files.ts";
 export * from "./git.ts";
@@ -75,7 +75,11 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 19;
+export const RPC_VERSION = 20;
+
+/** Which of a harness's own commands `RunHarnessCommand` runs. */
+export const HarnessCommand = Schema.Literals(["login", "update"]);
+export type HarnessCommand = typeof HarnessCommand.Type;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -340,6 +344,16 @@ export const MachineRpcs = RpcGroup.make(
     payload: { provider: ProviderId },
     success: LoginProgress,
     stream: true,
+    error: CeriumError,
+  }),
+  /**
+   * Runs a harness's own command in a terminal of no thread (`CommandTerminal`): `login`, its sign-in
+   * command while it's signed out, or `update`, its `updateCommand`. The harness keeps whatever the
+   * command creates. Since `RPC_VERSION` 20.
+   */
+  Rpc.make("RunHarnessCommand", {
+    payload: { provider: ProviderId, action: HarnessCommand, size: TerminalSize },
+    success: CommandTerminal,
     error: CeriumError,
   }),
   /** The models one provider's harness offers; refused while that harness isn't usable. */

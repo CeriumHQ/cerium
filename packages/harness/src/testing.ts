@@ -66,7 +66,6 @@ export const makeFakeAdapter = (
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
     provider,
-    harnessVersion: { minimum: "1.0.0", testedMaximum: "1.0.0" },
     session: { resume: true, fork: options.fork !== undefined && options.fork !== false },
     switching: { model: true, effort: true, ...options.switching, cacheSafeEffort: true },
     input: { images: options.images ?? false },

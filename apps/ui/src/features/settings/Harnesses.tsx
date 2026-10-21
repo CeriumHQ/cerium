@@ -1,18 +1,21 @@
 import { Button } from "@base-ui/react/button";
 import { OFFERED_PROVIDERS, type HarnessSetup, type HarnessStatus, type ProviderId } from "@cerium/protocol";
+import type { CommandTerminal, HarnessCommand } from "@cerium/rpc";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
-import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { accessOptions } from "../composer/models.ts";
 import { GitHubSection } from "../github/GitHubSettings.tsx";
+import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
+import { accountLabel } from "./harnessModel.ts";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
+import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
 /** Each provider's harness by the name its makers give it. */
 export const harnessName: Record<ProviderId, string> = {
@@ -23,20 +26,6 @@ export const harnessName: Record<ProviderId, string> = {
   opencode: "OpenCode",
 };
 
-/**
- * How each harness reports its sign-in, as people say it. OpenCode names its connected providers
- * themselves ("Anthropic, OpenAI"), which read as they are.
- */
-const authMethod: Record<string, string> = {
-  "claude.ai": "Claude account",
-  chatgpt: "ChatGPT account",
-  "meta.ai": "Meta account",
-  cursorLogin: "Cursor account",
-  apiKey: "API key",
-  opencodeFree: "Free models",
-};
-const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 
 export function HarnessSettings() {
@@ -44,7 +33,7 @@ export function HarnessSettings() {
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
   const refreshModels = useAtomRefresh(modelsAtom);
   const driven = useAtomValue(machineAtom);
-  // A harness just logged in or updated may offer different models too.
+  // A harness just signed in or updated may offer different models too.
   const refresh = () => {
     refreshHarnesses();
     refreshModels();
@@ -58,8 +47,8 @@ export function HarnessSettings() {
 }
 
 /**
- * Each harness on a machine, with its state and the fix for it. Checking belongs to the page; this
- * shows what the check found, and says when it last ran.
+ * Each harness on a machine, with the account it runs on and the one thing to do about it. Checking
+ * belongs to the page; this shows what the check found, and says when it last ran.
  */
 export function HarnessesOnMachine({
   result,
@@ -87,8 +76,9 @@ export function HarnessesOnMachine({
         <span className="inline-flex flex-wrap items-center gap-x-1.5">
           Each harness keeps its own login; Cerium never sees your keys.
           <InfoTip label="About the harnesses">
-            Cerium drives the harnesses installed on this computer and never bundles their CLIs. Cursor runs
-            inside Cerium, through its own SDK.
+            Cerium drives the harnesses installed on this computer and never bundles their CLIs. Signing in
+            and updating run each harness's own command. Cursor runs inside Cerium, through its own SDK, and
+            updates with it.
           </InfoTip>
         </span>
       }
@@ -116,7 +106,8 @@ export function HarnessesOnMachine({
               <HarnessRow
                 provider={provider}
                 status={statuses?.find((status) => status.provider === provider)}
-                onSignedIn={check}
+                local={machine === undefined}
+                onChanged={check}
                 unknown={statuses === undefined}
               />
             </li>
@@ -133,288 +124,208 @@ export function HarnessesOnMachine({
   );
 }
 
+/** What the row's dialog shows, if anything: a browser sign-in, the setup step, or a running command. */
+type Flow =
+  | "browserSignIn"
+  | "setup"
+  | { readonly action: HarnessCommand; readonly started: Promise<CommandTerminal> }
+  | undefined;
+
 function HarnessRow({
   provider,
   status,
-  onSignedIn,
+  local,
+  onChanged,
   unknown = false,
 }: {
   provider: ProviderId;
   /** Absent when Cerium has no adapter for the provider yet, or the machine hasn't answered. */
   status: HarnessStatus | undefined;
-  onSignedIn: () => void;
+  /** The harness is on this computer, not one the window drives. */
+  local: boolean;
+  /** A sign-in or update ended: the harnesses are checked again. */
+  onChanged: () => void;
   /** The machine hasn't answered yet, so nothing is known. */
   unknown?: boolean;
 }) {
-  const ready = status?._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn";
-  return (
-    <div className="flex gap-3.5 px-4 py-3.5">
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-primary">
-        <ProviderLogo
-          provider={provider}
-          size={16}
-          {...(ready ? {} : { className: "opacity-35 grayscale" })}
-        />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex min-h-8 items-center gap-3">
-          <span className={`text-[13.5px] font-medium ${status ? "text-fg-primary" : "text-fg-tertiary"}`}>
-            {harnessName[provider]}
-          </span>
-          <span className="ml-auto">
-            {unknown ? (
-              <State tone="quiet">Checking…</State>
-            ) : status === undefined ? (
-              <State tone="quiet">Not supported yet</State>
-            ) : status._tag === "HarnessMissing" ? (
-              <State tone="quiet" dot>
-                Not installed
-              </State>
-            ) : status.auth._tag === "LoggedOut" ? (
-              <State tone="attention" dot>
-                Not logged in
-              </State>
-            ) : status.setup ? (
-              <State tone="attention" dot>
-                Needs setup
-                <InfoTip label="Why setup is needed">
-                  {harnessName[provider]} reports: {status.setup.reason}.
-                </InfoTip>
-              </State>
-            ) : (
-              <State tone="success" dot>
-                Ready
-              </State>
-            )}
-          </span>
-        </div>
-        {status?._tag === "HarnessInstalled" ? (
-          <InstalledDetails status={status} onSignedIn={onSignedIn} />
-        ) : null}
-        {status?._tag === "HarnessMissing" ? (
-          <InstallSteps provider={provider} hint={status.installHint} />
-        ) : null}
-      </div>
-    </div>
-  );
-}
+  const [flow, setFlow] = useState<Flow>();
+  const startCommand = useStartCommand(provider);
+  const run = (action: HarnessCommand) => setFlow({ action, started: startCommand(action) });
+  const running = (action: HarnessCommand) =>
+    typeof flow === "object" && flow.action === action ? flow.started : undefined;
+  const name = harnessName[provider];
+  const mark = <ProviderLogo provider={provider} size={16} />;
 
-function InstalledDetails({ status, onSignedIn }: { status: Installed; onSignedIn: () => void }) {
-  const { auth } = status;
-  // The account in words, as the harness reports it, and the plan when there is one.
-  const account =
-    auth._tag === "LoggedIn"
-      ? [
-          auth.method ? (authMethod[auth.method] ?? auth.method) : undefined,
-          auth.plan ? `${capitalized(auth.plan)} plan` : undefined,
-        ]
-          .filter((part) => part !== undefined)
-          .join(" · ")
-      : "";
-  return (
-    <div className="flex flex-col gap-1.5 text-[12.5px]">
-      {/* Each detail carries its own dot, so a line that wraps never ends on one. */}
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-secondary">
-        <span className="font-mono text-xs text-fg-primary tabular-nums">{status.version}</span>
-        {status.versionStatus === "tooOld" ? (
-          <span className="flex items-center gap-2 text-error">
-            <Dot />
-            Too old for Cerium: update it to use it here
-          </span>
-        ) : null}
-        {account ? (
-          <span className="flex items-center gap-2 text-fg-tertiary">
-            <Dot />
-            {account}
-          </span>
-        ) : null}
-      </p>
-      <PathLine path={status.executablePath} />
-      {auth._tag === "LoggedOut" && auth.loginCommand ? (
-        <div className="mt-1 flex flex-col gap-1.5">
-          <p className="text-fg-secondary">Run this in a terminal, then check again:</p>
-          <Command text={auth.loginCommand} />
-        </div>
-      ) : null}
-      {auth._tag === "LoggedOut" && auth.browserLogin ? (
-        <BrowserSignIn provider={status.provider} onSignedIn={onSignedIn} />
-      ) : null}
-      {auth._tag === "LoggedIn" && status.setup ? (
-        <SetupNeeded provider={status.provider} setup={status.setup} />
-      ) : null}
-    </div>
-  );
-}
-
-function Dot() {
-  return (
-    <span aria-hidden="true" className="text-fg-disabled">
-      ·
-    </span>
-  );
-}
-
-/**
- * The install path, cut short in the row. Its full text shows on hover, and a button copies it.
- */
-function PathLine({ path }: { path: string }) {
-  // The folders give way to the ellipsis first, so the program's own name stays in view.
-  const folder = /^.*[\\/]/.exec(path)?.[0] ?? "";
-  const file = path.slice(folder.length);
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      <Tooltip
-        label={<span className="max-w-[min(32rem,80vw)] font-mono text-[11.5px] break-all">{path}</span>}
-        side="bottom"
-      >
-        <code className="flex min-w-0 font-mono text-[11.5px] text-fg-tertiary select-text">
-          <span className="min-w-0 truncate">{folder}</span>
-          <span className="shrink-0">{file}</span>
-        </code>
-      </Tooltip>
-      <CopyButton text={path} label="Copy path" />
-    </div>
-  );
-}
-
-/**
- * A missing harness's install hint, split into the download and the sign-in command so each is one
- * click away. A hint that doesn't have that shape is shown as written.
- */
-function InstallSteps({ provider, hint }: { provider: ProviderId; hint: string }) {
-  // The hint ends its sentence after the address, not as part of it.
-  const url = /https:\/\/[^\s,]+/.exec(hint)?.[0].replace(/[.;:)]+$/u, "");
-  const command = /`([^`]+)`/.exec(hint)?.[1];
-  if (url === undefined || command === undefined) {
+  if (unknown || status === undefined) {
+    return <ToolRow mark={mark} name={name} dim detail={unknown ? "Checking…" : "Not supported yet"} />;
+  }
+  if (status._tag === "HarnessMissing") {
+    const url = /https:\/\/[^\s,]+/.exec(status.installHint)?.[0].replace(/[.;:)]+$/u, "");
     return (
-      <p className="text-[12.5px] leading-relaxed text-fg-secondary">
-        <RichHint text={hint} />
-      </p>
+      <ToolRow
+        mark={mark}
+        name={name}
+        dim
+        detail="Not installed"
+        action={
+          url === undefined ? undefined : (
+            <RowLink href={url}>
+              Install
+              <ExternalLink size={12} strokeWidth={1.75} className="ml-1.5 text-fg-tertiary" />
+            </RowLink>
+          )
+        }
+      />
     );
   }
+
+  const { auth, setup } = status;
+  const newer = status.latestVersion;
+  const signedOut = auth._tag === "LoggedOut";
+  const update =
+    newer !== undefined && status.updateCommand !== undefined ? (
+      <RowButton onClick={() => run("update")}>Update</RowButton>
+    ) : null;
+  const close = (open: boolean) => {
+    if (!open) setFlow(undefined);
+  };
   return (
-    <div className="mt-1 flex flex-col items-start gap-2 text-[12.5px]">
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
-        className="flex h-8 items-center gap-1.5 rounded-lg border border-line-subtle px-3 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-      >
-        <ExternalLink size={13} strokeWidth={1.75} />
-        Get {harnessName[provider]}
-      </a>
-      <p className="text-fg-secondary">
-        {/\b(?:login|auth)\b/u.test(command) ? "Then sign in from a terminal:" : "Then run in a terminal:"}
-      </p>
-      <div className="w-full">
-        <Command text={command} />
-      </div>
-    </div>
+    <>
+      <ToolRow
+        mark={mark}
+        name={name}
+        dim={signedOut}
+        newer={newer}
+        tone={signedOut || setup ? "attention" : "quiet"}
+        detail={signedOut ? "Not signed in" : setup ? "Needs setup" : accountLabel(auth)}
+        action={
+          <>
+            {update}
+            {signedOut ? (
+              <RowButton
+                tone="primary"
+                onClick={() => (auth.browserLogin === true ? setFlow("browserSignIn") : run("login"))}
+              >
+                Sign in
+              </RowButton>
+            ) : setup ? (
+              <RowButton tone="primary" onClick={() => setFlow("setup")}>
+                Set up
+              </RowButton>
+            ) : null}
+          </>
+        }
+        menu={
+          <InstalledMenu version={status.version} newer={newer} path={status.executablePath} local={local} />
+        }
+      />
+      {auth._tag === "LoggedOut" && auth.browserLogin ? (
+        <BrowserSignInDialog
+          open={flow === "browserSignIn"}
+          onOpenChange={close}
+          provider={provider}
+          onSignedIn={() => {
+            setFlow(undefined);
+            onChanged();
+          }}
+        />
+      ) : (
+        <CommandDialog
+          started={running("login")}
+          onClose={() => setFlow(undefined)}
+          title={`Sign in to ${name}`}
+          description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never sees it.`}
+          command={auth._tag === "LoggedOut" ? auth.loginCommand : undefined}
+          onFinished={onChanged}
+        />
+      )}
+      {status.updateCommand === undefined ? null : (
+        <CommandDialog
+          started={running("update")}
+          onClose={() => setFlow(undefined)}
+          title={`Update ${name}`}
+          description={
+            newer === undefined
+              ? `${name} updates itself below.`
+              : `${name} updates itself to ${newer} below.`
+          }
+          command={status.updateCommand}
+          onFinished={onChanged}
+        />
+      )}
+      {setup === undefined ? null : (
+        <SetupDialog open={flow === "setup"} onOpenChange={close} status={status} setup={setup} />
+      )}
+    </>
   );
 }
 
 /** A one-time step the harness needs before some access modes can run commands, with its own command. */
-function SetupNeeded({ provider, setup }: { provider: ProviderId; setup: HarnessSetup }) {
+function SetupDialog({
+  open,
+  onOpenChange,
+  status,
+  setup,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  status: Installed;
+  setup: HarnessSetup;
+}) {
+  const name = harnessName[status.provider];
   const modes = accessOptions
     .filter((option) => setup.blocks.includes(option.value))
     .map((option) => option.label);
   const listed = modes.length > 1 ? `${modes.slice(0, -1).join(", ")} and ${modes.at(-1)}` : (modes[0] ?? "");
   const fullAccessWorks = !setup.blocks.includes("fullAccess");
   return (
-    <div className="mt-1 flex flex-col gap-1.5">
-      <p className="leading-relaxed text-fg-secondary">
-        Agents in {listed} can't run commands until {harnessName[provider]}'s {setup.name} is set up.
-        {fullAccessWorks ? " Full access works without it." : ""}
-      </p>
-      <Command text={setup.command} />
-      <p className="text-fg-tertiary">
-        Run it once{setup.elevated ? " in a terminal opened as administrator" : " in a terminal"}, then check
-        again.
-      </p>
-    </div>
-  );
-}
-
-function State({
-  tone,
-  dot = false,
-  children,
-}: {
-  tone: "success" | "attention" | "quiet";
-  dot?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className={`flex items-center gap-1.5 text-xs ${
-        tone === "attention"
-          ? "text-attention"
-          : tone === "success"
-            ? "text-fg-secondary"
-            : "text-fg-tertiary"
-      }`}
+    <ActionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Set up ${name}'s ${setup.name}`}
+      description={`Agents in ${listed} can't run commands until it's set up.${fullAccessWorks ? " Full access works without it." : ""} ${name} reports: ${setup.reason}.`}
     >
-      {dot ? (
-        <span
-          className={`size-1.5 rounded-full ${
-            tone === "success"
-              ? "bg-success"
-              : tone === "attention"
-                ? "bg-attention"
-                : "border border-fg-tertiary"
-          }`}
-        />
-      ) : null}
-      {children}
-    </span>
+      <div className="flex flex-col gap-2 text-[12.5px]">
+        <p className="text-fg-secondary">
+          Run this once{setup.elevated ? " in a terminal opened as administrator" : " in a terminal"}, then
+          check again:
+        </p>
+        <CopyableCommand text={setup.command} />
+      </div>
+    </ActionDialog>
   );
 }
 
 /**
- * Starts the harness SDK's own sign-in page in the browser. The SDK keeps the key the sign-in creates,
- * so all Cerium learns is that the sign-in finished.
+ * The harness SDK's own sign-in page, in the browser. The SDK keeps the key the sign-in creates, so
+ * all Cerium learns is that the sign-in finished.
  */
-function BrowserSignIn({ provider, onSignedIn }: { provider: ProviderId; onSignedIn: () => void }) {
-  const [signingIn, setSigningIn] = useState(false);
-  if (signingIn) {
-    return (
-      <SignInProgress
-        provider={provider}
-        onCancel={() => setSigningIn(false)}
-        onSignedIn={() => {
-          setSigningIn(false);
-          onSignedIn();
-        }}
-      />
-    );
-  }
+function BrowserSignInDialog({
+  open,
+  onOpenChange,
+  provider,
+  onSignedIn,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  provider: ProviderId;
+  onSignedIn: () => void;
+}) {
+  const name = harnessName[provider];
   return (
-    <div className="mt-1 flex items-center gap-2">
-      <Button
-        onClick={() => setSigningIn(true)}
-        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
-      >
-        <LogIn size={13} strokeWidth={2} />
-        Sign in with {harnessName[provider]}
-      </Button>
-      <InfoTip label="About this sign-in">
-        {harnessName[provider]} signs in on its own page. The key it creates stays on this computer, where
-        Cerium never reads it. You can revoke it from your {harnessName[provider]} dashboard.
-      </InfoTip>
-    </div>
+    <ActionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Sign in to ${name}`}
+      description={`${name} signs in on its own page in your browser. The key it creates stays on this computer, where Cerium never reads it.`}
+    >
+      {open ? <SignInProgress provider={provider} onSignedIn={onSignedIn} /> : null}
+    </ActionDialog>
   );
 }
 
-/** A running sign-in. Unmounting it lets go of the sign-in, which cancels it. */
-function SignInProgress({
-  provider,
-  onCancel,
-  onSignedIn,
-}: {
-  provider: ProviderId;
-  onCancel: () => void;
-  onSignedIn: () => void;
-}) {
+/** A running browser sign-in. Unmounting it lets go of the sign-in, which cancels it. */
+function SignInProgress({ provider, onSignedIn }: { provider: ProviderId; onSignedIn: () => void }) {
   const result = useAtomValue(loginAtom(provider));
   const retry = useAtomRefresh(loginAtom(provider));
   const step = AsyncResult.isSuccess(result) ? result.value : undefined;
@@ -431,15 +342,14 @@ function SignInProgress({
 
   if (AsyncResult.isFailure(result)) {
     return (
-      <div className="mt-1 flex items-center gap-3">
-        <p className="min-w-0 flex-1 text-error">Sign-in didn't finish.</p>
-        <QuietButton onClick={retry}>Try again</QuietButton>
-        <QuietButton onClick={onCancel}>Cancel</QuietButton>
+      <div className="flex items-center gap-3 text-[12.5px]">
+        <p className="min-w-0 flex-1 text-error">The sign-in didn't finish.</p>
+        <RowButton onClick={retry}>Try again</RowButton>
       </div>
     );
   }
   return (
-    <div className="mt-1 flex items-center gap-3 rounded-lg border border-line-subtle bg-surface-window py-1.5 pr-1.5 pl-3">
+    <div className="flex items-center gap-3 rounded-xl border border-line-subtle bg-surface-window py-2 pr-2 pl-3 text-[12.5px]">
       <RefreshCw size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-fg-secondary">
         {url === undefined
@@ -448,81 +358,7 @@ function SignInProgress({
             ? "Signed in. Checking again…"
             : "Waiting for the sign-in in your browser."}
       </p>
-      {url !== undefined ? (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-        >
-          <ExternalLink size={12} strokeWidth={1.75} />
-          Open it again
-        </a>
-      ) : null}
-      <QuietButton onClick={onCancel}>Cancel</QuietButton>
+      {url === undefined ? null : <RowLink href={url}>Open it again</RowLink>}
     </div>
-  );
-}
-
-function QuietButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <Button
-      onClick={onClick}
-      className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
-      {children}
-    </Button>
-  );
-}
-
-/** A command to run in a terminal, with a button that copies it. */
-function Command({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-line-subtle bg-surface-window py-1 pr-1 pl-3">
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-primary select-text">{text}</code>
-      <CopyButton text={text} label="Copy command" />
-    </div>
-  );
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <Button
-      onClick={copy}
-      aria-label={copied ? "Copied" : label}
-      className="grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
-      {copied ? <Check size={13} strokeWidth={2.25} /> : <Copy size={13} strokeWidth={1.75} />}
-    </Button>
-  );
-}
-
-/** A harness's plain-text hint, with its `code` and links made usable. */
-function RichHint({ text }: { text: string }) {
-  return text.split(/(`[^`]+`|https:\/\/[^\s,]+)/).map((part, index) =>
-    part.startsWith("`") ? (
-      <code key={index} className="rounded bg-surface-hover px-1 font-mono text-[11.5px] text-fg-primary">
-        {part.slice(1, -1)}
-      </code>
-    ) : part.startsWith("https://") ? (
-      <a
-        key={index}
-        href={part}
-        target="_blank"
-        rel="noreferrer"
-        className="text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary"
-      >
-        {part.replace(/^https:\/\//, "")}
-      </a>
-    ) : (
-      part
-    ),
   );
 }

@@ -1,9 +1,8 @@
 import { AuthenticationError, Cursor, CursorSdkError, type ModelListItem } from "@cursor/sdk";
-import { classifyVersion, HarnessFailure } from "@cerium/harness";
+import { HarnessFailure } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Path, Schema } from "effect";
 
-import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog } from "./models.ts";
 
 const failure = (message: string) => (cause: unknown) =>
@@ -59,7 +58,6 @@ export const makeCursorProbe = (catalog: Effect.Effect<ReadonlyArray<ModelListIt
       provider: "cursor",
       executablePath: sdk.directory,
       version: sdk.version,
-      versionStatus: classifyVersion(sdk.version, cursorManifest.harnessVersion),
       auth: yield* cursorAuth(catalog),
     } satisfies HarnessStatus;
   });

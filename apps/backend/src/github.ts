@@ -1,4 +1,4 @@
-import { classifyVersion, parseVersion } from "@cerium/harness";
+import { parseVersion } from "@cerium/harness";
 import {
   GitHubError,
   type GitHubAccount,
@@ -18,9 +18,6 @@ import { json, text } from "./githubConversation.ts";
 // a folder's remotes name, and `gh api` for everything else. `gh` keeps its credential and Cerium never
 // reads it: what `gh auth status` says is the account's name and nothing more. Fetches and pushes go
 // through git, whose own credential helper answers them.
-
-/** The `gh` versions Cerium is tested with. Older ones lack none of what it uses, but aren't tried. */
-export const GH_VERSION = { minimum: "2.40.0", testedMaximum: "2.102.0" } as const;
 
 export const GH_INSTALL_URL = "https://cli.github.com";
 
@@ -442,7 +439,6 @@ export class GitHub extends Context.Service<
           _tag: "GhInstalled",
           executablePath: found.value,
           version,
-          versionStatus: version === "unknown" ? "supported" : classifyVersion(version, GH_VERSION),
           accounts,
         } satisfies GitHubStatus;
       }).pipe(Effect.orElseSucceed((): GitHubStatus => ({ _tag: "GhMissing", installUrl: GH_INSTALL_URL })));

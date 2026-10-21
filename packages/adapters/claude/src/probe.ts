@@ -1,9 +1,9 @@
-import { classifyVersion, HarnessFailure, parseVersion } from "@cerium/harness";
+import { HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
+import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
@@ -85,7 +85,6 @@ export const probeClaude = Effect.gen(function* () {
     provider: "claude",
     executablePath: executable.value,
     version,
-    versionStatus: classifyVersion(version, claudeManifest.harnessVersion),
     auth,
   } satisfies HarnessStatus;
 });

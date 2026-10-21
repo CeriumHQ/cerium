@@ -83,6 +83,22 @@ export const chooseShell = (host: ShellHost): ShellChoice => {
 /** Variables the shell must not inherit: they would make programs it starts act as part of Cerium. */
 const WITHHELD = new Set(["ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_CONSOLE", "ELECTRON_ENABLE_LOGGING"]);
 
+/**
+ * A harness's own command, such as `claude auth login`, run as the installed `executable` with the
+ * words after the program's name. A Windows script shim runs through `cmd`, which is what starts one.
+ */
+export const commandChoice = (
+  platform: NodeJS.Platform,
+  executable: string,
+  command: string,
+): ShellChoice => {
+  const [name = executable, ...args] = command.trim().split(/\s+/);
+  if (platform === "win32" && /\.(?:cmd|bat)$/i.test(executable)) {
+    return { file: "cmd.exe", args: ["/d", "/c", executable, ...args], name };
+  }
+  return { file: executable, args, name };
+};
+
 /** What a terminal's shell runs with: the backend's environment, set up for a terminal emulator. */
 export const terminalEnv = (
   base: Readonly<Record<string, string | undefined>>,

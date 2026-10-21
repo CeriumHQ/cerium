@@ -8,10 +8,11 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Removed
 
-- Harness settings: the "tested with Cerium" version classification. Cerium no longer judges a harness version as untested; it only blocks versions older than the minimum. Newer versions are left to the user.
+- Harness versions are no longer judged: the "tested with Cerium" label, the "too old for Cerium" block that refused older harnesses, and each adapter's tested range are gone. Whatever version is installed, Cerium drives it. The backend still tells viewers before `RPC_VERSION` 20 every version is "supported".
 
 ### Added
 
+- Settings → Harnesses tells when a harness has an update: the backend looks up each harness's newest release (npm's `latest` for Claude Code, Codex, OpenCode and Muse, GitHub's latest release for `gh`), kept for six hours, and Update runs the harness's own updater (`claude update`, `codex update`, `opencode upgrade`) in the dialog's terminal; `gh`'s opens its release page. Cursor updates with Cerium. `@cerium/rpc` (version 20) adds `RunHarnessCommand`, a terminal of no thread that runs a harness's own sign-in or update, and `latestVersion` and `updateCommand` to harness statuses.
 - Bun workspace with Vite+ for build, lint, format and test, TypeScript 7, and Effect language service diagnostics.
 - LF line endings enforced for every checkout via `.gitattributes`.
 - Apache-2.0 license.
@@ -221,6 +222,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- UI: Settings → Harnesses is redesigned. Each harness and the GitHub CLI is one quiet row: its mark, its name, the account it runs on as people name it ("Claude Max", "ChatGPT Free", "API key") or what it needs ("Not signed in"), and the one action for it. A dot on the mark says a newer release is out, and Update sits beside it. The version, "Copy install path" and "Show in folder" moved into the row's ⋯ menu, and the install path no longer shows on the row.
+- UI: every harness signs in the same way: Sign in opens a dialog over the harness's own flow. A CLI's sign-in (`claude auth login`, `codex login`, `opencode auth login`) runs in a terminal inside the dialog, Cursor's browser sign-in and the GitHub CLI's code show their progress there, and the dialog turns Cancel into Done when the command ends and checks the harnesses again. A machine too old to run it there offers the command to copy.
 - Repository: the local AI tooling and agent instructions (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `skills-lock.json`) are published with the repository; only `.claude/settings.local.json` stays local.
 - UI: a turn stopped before the model answered no longer shows "0 in · 0 out · $0.00" in its footer.
 - UI: permission requests explain themselves before showing any code. The card leads with what the agent wants to do and the reason it gave, then a risk meter (low, some or high) and the few things the request would change: "Downloads packages from the internet", "Deletes files for good", "Changes api.ts". The exact command or diff folds under it. Cerium grades the risk itself from the command or tool, since harnesses don't. A high-risk request outlines Allow in red and offers no "Allow for this chat", and Alt S does nothing there. The answers are now Allow, Allow for this chat and Don't allow. The yellow border and "needs approval" label are gone from these cards, from agent questions and from requests to start an agent. Questions lead with the question itself and answer with Send answer or Skip.

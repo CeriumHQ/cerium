@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   chooseShell,
+  commandChoice,
   exitCodeOf,
   shellName,
   taskkillArgs,
@@ -110,5 +111,23 @@ describe("windowsBuild", () => {
     expect(windowsBuild("win32", "10.0.26300")).toBe(26300);
     expect(windowsBuild("linux", "6.8.0")).toBeUndefined();
     expect(windowsBuild("win32", "weird")).toBeUndefined();
+  });
+});
+
+describe("commandChoice", () => {
+  it("runs the installed program with the command's words", () => {
+    expect(commandChoice("linux", "/home/me/.local/bin/claude", "claude auth login")).toEqual({
+      file: "/home/me/.local/bin/claude",
+      args: ["auth", "login"],
+      name: "claude",
+    });
+  });
+
+  it("starts a Windows script shim through cmd", () => {
+    expect(commandChoice("win32", "C:\\npm\\codex.cmd", "codex update")).toEqual({
+      file: "cmd.exe",
+      args: ["/d", "/c", "C:\\npm\\codex.cmd", "update"],
+      name: "codex",
+    });
   });
 });

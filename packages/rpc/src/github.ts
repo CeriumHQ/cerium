@@ -53,7 +53,10 @@ export const GitHubStatus = Schema.Union([
   Schema.TaggedStruct("GhInstalled", {
     executablePath: Schema.String,
     version: Schema.String,
-    versionStatus: VersionStatus,
+    /** Sent for viewers before `RPC_VERSION` 20 only (`VersionStatus`). */
+    versionStatus: Schema.optionalKey(VersionStatus),
+    /** `gh`'s newest release, when it is newer than `version`. Since `RPC_VERSION` 20. */
+    latestVersion: Schema.optionalKey(Schema.NonEmptyString),
     /** None while it isn't signed in anywhere. */
     accounts: LenientArray(GitHubAccount),
   }),

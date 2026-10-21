@@ -33,13 +33,6 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
             message: INSTALL_HINT,
           });
         }
-        if (status.versionStatus === "tooOld") {
-          return yield* new HarnessUnavailable({
-            provider: "claude",
-            reason: "versionTooOld",
-            message: `Claude Code ${status.version} is older than ${claudeManifest.harnessVersion?.minimum ?? "unknown"}. Run \`claude update\`.`,
-          });
-        }
         if (status.auth._tag === "LoggedOut") {
           return yield* new HarnessUnavailable({
             provider: "claude",

@@ -12,9 +12,8 @@ export const SDK_RELEASE = "1.4.8";
 
 export const museManifest: CapabilityManifest = {
   provider: "muse",
-  // 1.4.8 is the SDK's own release. 1.4.10 is what the live checks ran against: its stable schema differs
-  // from the pin only additively (an optional `Item.displayLabel` and the `approval/reviewing` notification).
-  harnessVersion: { minimum: "1.4.8", testedMaximum: "1.4.10" },
+  // The SDK versions in lockstep with the CLI, which updates itself when it starts.
+  releases: { npmPackage: "@muse-code/sdk" },
   // `session/resume` takes the id `SessionStarted` reports. MSP's `session/fork` is not wired: sessions
   // have no fork option yet.
   session: { resume: true, fork: false },

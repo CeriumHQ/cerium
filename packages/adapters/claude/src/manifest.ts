@@ -20,8 +20,7 @@ export const TODO_TOOLS_ENV = { CLAUDE_CODE_ENABLE_TODO_TOOLS: "1" } as const;
 
 export const claudeManifest: CapabilityManifest = {
   provider: "claude",
-  // Raise `testedMaximum` after re-recording fixtures and re-running the live smoke test.
-  harnessVersion: { minimum: "2.1.301", testedMaximum: "2.1.302" },
+  releases: { npmPackage: "@anthropic-ai/claude-code", updateCommand: "claude update" },
   session: { resume: true, fork: true },
   // Effort switches mid-session through `applyFlagSettings({ effortLevel })`. The smoke test shows the
   // prompt cache surviving the switch (turn 2 after medium → low: 53 new vs 33.6k cached input tokens).

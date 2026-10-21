@@ -1,23 +1,91 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ExternalLink } from "lucide-react";
+import { useState } from "react";
 
 import { githubStatusAtom } from "../../backend/github.ts";
-
+import { machineAtom } from "../../backend/machine.ts";
+import { ActionDialog } from "../settings/ActionDialog.tsx";
 import { SettingsSection } from "../settings/parts.tsx";
-import { GitHubSignIn } from "./GitHubSignIn.tsx";
+import { InstalledMenu, RowButton, RowLink, ToolRow } from "../settings/ToolRow.tsx";
+import { GitHubSignInSteps, nextAttempt } from "./GitHubSignIn.tsx";
 import { GitHubMark } from "./parts.tsx";
 
+/** Where `gh`'s releases are; it updates through whatever installed it, so the page says how. */
+const GH_RELEASES_URL = "https://github.com/cli/cli/releases/latest";
+
 /**
- * The machine's GitHub CLI, which the GitHub panel goes through: whether it's installed, its
- * version, who it's signed in as, and the way to sign in. `gh` keeps the credential.
+ * The machine's GitHub CLI, which the GitHub panel goes through, in the harnesses' row: who it's
+ * signed in as, and the way to sign in. `gh` keeps the credential.
  */
 export function GitHubSection() {
   const result = useAtomValue(githubStatusAtom);
   const refresh = useAtomRefresh(githubStatusAtom);
+  const local = useAtomValue(machineAtom) === undefined;
+  const [attempt, setAttempt] = useState<number>();
   const status = AsyncResult.getOrElse(result, () => undefined);
   const accounts = status?._tag === "GhInstalled" ? status.accounts : [];
   const active = accounts.find((account) => account.active) ?? accounts[0];
+  const mark = <GitHubMark size={16} />;
+
+  const row =
+    status === undefined ? (
+      <ToolRow
+        mark={mark}
+        name="GitHub CLI"
+        dim
+        detail={AsyncResult.isFailure(result) ? "Couldn't check" : "Checking…"}
+      />
+    ) : status._tag === "GhMissing" ? (
+      <ToolRow
+        mark={mark}
+        name="GitHub CLI"
+        dim
+        detail="Not installed"
+        action={
+          <RowLink href={status.installUrl}>
+            Install
+            <ExternalLink size={12} strokeWidth={1.75} className="ml-1.5 text-fg-tertiary" />
+          </RowLink>
+        }
+      />
+    ) : (
+      <ToolRow
+        mark={mark}
+        name="GitHub CLI"
+        dim={active === undefined}
+        newer={status.latestVersion}
+        tone={active === undefined || active.failing === true ? "attention" : "quiet"}
+        detail={
+          active === undefined
+            ? "Not signed in"
+            : active.failing === true
+              ? `${active.login}'s sign-in stopped working`
+              : active.host === "github.com"
+                ? active.login
+                : `${active.login} on ${active.host}`
+        }
+        action={
+          <>
+            {status.latestVersion === undefined ? null : <RowLink href={GH_RELEASES_URL}>Update</RowLink>}
+            {active === undefined || active.failing === true ? (
+              <RowButton tone="primary" onClick={() => setAttempt(nextAttempt())}>
+                Sign in
+              </RowButton>
+            ) : null}
+          </>
+        }
+        menu={
+          <InstalledMenu
+            version={status.version}
+            newer={status.latestVersion}
+            path={status.executablePath}
+            local={local}
+          />
+        }
+      />
+    );
+
   return (
     <SettingsSection
       title="GitHub"
@@ -28,71 +96,26 @@ export function GitHubSection() {
         </>
       }
     >
-      <div className="flex gap-3.5 rounded-xl border border-line-subtle px-4 py-3.5">
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-primary">
-          <GitHubMark size={16} {...(active === undefined ? { className: "opacity-35" } : {})} />
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <div className="flex min-h-8 items-center gap-3">
-            <span className="text-[13.5px] font-medium text-fg-primary">GitHub CLI</span>
-            <span className="ml-auto text-xs">
-              {status === undefined ? (
-                <span className={AsyncResult.isFailure(result) ? "text-error" : "text-fg-tertiary"}>
-                  {AsyncResult.isFailure(result) ? "Couldn't check" : "Checking…"}
-                </span>
-              ) : status._tag === "GhMissing" ? (
-                <Dot tone="quiet">Not installed</Dot>
-              ) : active === undefined ? (
-                <Dot tone="attention">Not signed in</Dot>
-              ) : active.failing === true ? (
-                <Dot tone="attention">Sign-in stopped working</Dot>
-              ) : (
-                <Dot tone="success">Ready</Dot>
-              )}
-            </span>
-          </div>
-          {status?._tag === "GhMissing" ? (
-            <a
-              href={status.installUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-8 w-fit items-center gap-1.5 rounded-lg border border-line-subtle px-3 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-            >
-              <ExternalLink size={13} strokeWidth={1.75} />
-              Get GitHub CLI
-            </a>
-          ) : status?._tag === "GhInstalled" ? (
-            <>
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-fg-secondary">
-                <span className="font-mono text-xs text-fg-primary tabular-nums">{status.version}</span>
-                {status.versionStatus === "tooOld" ? (
-                  <span className="text-error">· Too old for Cerium: update it to use GitHub here</span>
-                ) : null}
-                {accounts.map((account) => (
-                  <span key={`${account.host}/${account.login}`} className="text-fg-tertiary">
-                    · {account.login}
-                    {account.host === "github.com" ? "" : ` on ${account.host}`}
-                  </span>
-                ))}
-              </p>
-              {active === undefined || active.failing === true ? <GitHubSignIn onSignedIn={refresh} /> : null}
-            </>
-          ) : null}
-        </div>
-      </div>
+      <div className="rounded-xl border border-line-subtle">{row}</div>
+      <ActionDialog
+        open={attempt !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setAttempt(undefined);
+        }}
+        title="Sign in to GitHub"
+        description="The GitHub CLI signs in on GitHub's own page and keeps its credential on this computer, where Cerium never reads it."
+      >
+        {attempt === undefined ? null : (
+          <GitHubSignInSteps
+            attempt={attempt}
+            onRetry={() => setAttempt(nextAttempt())}
+            onSignedIn={() => {
+              setAttempt(undefined);
+              refresh();
+            }}
+          />
+        )}
+      </ActionDialog>
     </SettingsSection>
-  );
-}
-
-function Dot({ tone, children }: { tone: "success" | "attention" | "quiet"; children: string }) {
-  return (
-    <span
-      className={`flex items-center gap-1.5 ${tone === "attention" ? "text-attention" : tone === "success" ? "text-fg-secondary" : "text-fg-tertiary"}`}
-    >
-      <span
-        className={`size-1.5 rounded-full ${tone === "success" ? "bg-success" : tone === "attention" ? "bg-attention" : "border border-fg-tertiary"}`}
-      />
-      {children}
-    </span>
   );
 }

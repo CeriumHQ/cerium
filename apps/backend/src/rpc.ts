@@ -1,6 +1,7 @@
 import { deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
+import type { HarnessAdapter } from "@cerium/harness";
 import {
   Adapters,
   Checkpoints,
@@ -14,10 +15,18 @@ import {
   toolOutputImages,
   withoutImages,
   type AgentEvent,
+  type HarnessStatus,
   type ProviderId,
   type SkillInfo,
 } from "@cerium/protocol";
-import { CeriumError, CeriumRpcs, MachineRpcs, type GitError, type ListedArtifact } from "@cerium/rpc";
+import {
+  CeriumError,
+  CeriumRpcs,
+  MachineRpcs,
+  type GitError,
+  type GitHubStatus,
+  type ListedArtifact,
+} from "@cerium/rpc";
 import { Store, type StoreError } from "@cerium/store";
 import { Cache, Effect, Layer, Option, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -36,8 +45,10 @@ import { githubHandlers } from "./githubPulls.ts";
 import { History, type HistoryError } from "./history.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
+import { newerRelease, Releases } from "./releases.ts";
 import { spendReport } from "./spend.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
+import { commandChoice } from "./terminalShell.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
 
@@ -63,6 +74,9 @@ const SEARCH_LIMIT = 50;
 
 /** How many commits one page of the History tab lists. */
 const COMMIT_PAGE = 50;
+
+/** The tested range viewers before `RPC_VERSION` 20 read in a manifest: one every version is inside. */
+const ANY_VERSION = { minimum: "0.0.0", testedMaximum: "99999.0.0" };
 
 /** How many threads the thread search lists. */
 const THREAD_SEARCH_LIMIT = 30;
@@ -112,6 +126,33 @@ export const Handlers = MachineRpcs.toLayer(
     const terminals = yield* Terminals;
     const store = yield* Store;
     const usage = yield* SubscriptionUsage;
+    const releases = yield* Releases;
+
+    /**
+     * A harness's status as Settings shows it: with its newest release when that's newer, the command
+     * that updates it, and the version verdict viewers before `RPC_VERSION` 20 expect.
+     */
+    const described = (adapter: HarnessAdapter) => {
+      const source = adapter.manifest.releases;
+      return Effect.all(
+        [
+          adapter.probe,
+          source === undefined ? Effect.succeedNone : releases.latest({ npm: source.npmPackage }),
+        ],
+        { concurrency: 2 },
+      ).pipe(
+        Effect.map(([status, latest]): HarnessStatus => {
+          if (status._tag === "HarnessMissing") return status;
+          const newer = newerRelease(status.version, Option.getOrUndefined(latest));
+          return {
+            ...status,
+            versionStatus: "supported",
+            ...(newer === undefined ? {} : { latestVersion: newer }),
+            ...(source?.updateCommand === undefined ? {} : { updateCommand: source.updateCommand }),
+          };
+        }),
+      );
+    };
 
     // Claude only lists its skills from inside a session, which takes a few seconds to start; the
     // list barely changes, so each folder's is kept for a minute. Keyed `provider:cwd`.
@@ -220,10 +261,14 @@ export const Handlers = MachineRpcs.toLayer(
       SearchThreads: ({ query, mode }) =>
         store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
       HarnessStatuses: () =>
-        Effect.forEach([...adapters.values()], (adapter) => Effect.option(adapter.probe), {
+        Effect.forEach([...adapters.values()], (adapter) => Effect.option(described(adapter)), {
           concurrency: "unbounded",
         }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
-      HarnessManifests: () => Effect.succeed([...adapters.values()].map((adapter) => adapter.manifest)),
+      // Viewers before `RPC_VERSION` 20 read a tested range, which no version falls outside.
+      HarnessManifests: () =>
+        Effect.succeed(
+          [...adapters.values()].map((adapter) => ({ ...adapter.manifest, harnessVersion: ANY_VERSION })),
+        ),
       WatchSubscriptionUsage: () => usage.watch,
       SpendReport: ({ edges }) =>
         Effect.gen(function* () {
@@ -245,6 +290,40 @@ export const Handlers = MachineRpcs.toLayer(
             ),
           ),
         ).pipe(Stream.mapError((error) => new CeriumError({ message: error.message }))),
+      RunHarnessCommand: ({ provider, action, size }) =>
+        Effect.gen(function* () {
+          const adapter = adapters.get(provider);
+          if (adapter === undefined) {
+            return yield* new CeriumError({ message: `No ${provider} adapter is installed.` });
+          }
+          const status = yield* adapter.probe.pipe(
+            Effect.mapError((error) => new CeriumError({ message: error.message })),
+          );
+          if (status._tag === "HarnessMissing") {
+            return yield* new CeriumError({ message: status.installHint });
+          }
+          const command =
+            action === "login"
+              ? status.auth._tag === "LoggedOut"
+                ? status.auth.loginCommand
+                : undefined
+              : adapter.manifest.releases?.updateCommand;
+          if (command === undefined) {
+            return yield* new CeriumError({
+              message:
+                action === "login"
+                  ? "That harness is signed in, or signs in another way."
+                  : "That harness has no update command Cerium can run.",
+            });
+          }
+          return yield* terminals
+            .run(
+              `${provider}:${action}`,
+              commandChoice(process.platform, status.executablePath, command),
+              size,
+            )
+            .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
+        }),
       ListModels: ({ provider }) =>
         Effect.fromNullishOr(adapters.get(provider)).pipe(
           Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),
@@ -320,6 +399,23 @@ export const Handlers = MachineRpcs.toLayer(
       ...gitBranchHandlers(gitBranches),
       ...gitChangesHandlers(gitChanges, drafts),
       ...githubHandlers(github, drafts),
+      GitHubStatus: () =>
+        github.status.pipe(
+          Effect.flatMap((status): Effect.Effect<GitHubStatus> =>
+            status._tag === "GhMissing"
+              ? Effect.succeed(status)
+              : releases.latest({ github: "cli/cli" }).pipe(
+                  Effect.map((latest) => {
+                    const newer = newerRelease(status.version, Option.getOrUndefined(latest));
+                    return {
+                      ...status,
+                      versionStatus: "supported" as const,
+                      ...(newer === undefined ? {} : { latestVersion: newer }),
+                    };
+                  }),
+                ),
+          ),
+        ),
       ...issueHandlers(github, drafts),
     });
   }),

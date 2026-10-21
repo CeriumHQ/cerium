@@ -28,9 +28,7 @@ export const NATIVE_QUESTION_TOOLS = ["askQuestion"] as const;
 
 export const cursorManifest: CapabilityManifest = {
   provider: "cursor",
-  // The harness is the pinned `@cursor/sdk`, not the user's CLI. Raise `testedMaximum` after
-  // re-recording fixtures and re-running the live smoke test.
-  harnessVersion: { minimum: "1.0.38", testedMaximum: "1.0.38" },
+  // The harness is the pinned `@cursor/sdk`, not the user's CLI, so it updates with Cerium.
   // Local agents resume from the SDK's own store; the SDK has no fork.
   session: { resume: true, fork: false },
   // Model and effort ride on each `send()`, so they switch from the next turn. Whether an effort

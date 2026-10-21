@@ -9,6 +9,9 @@ import { InfoTip } from "../../components/ui/InfoTip.tsx";
 
 let attempts = 0;
 
+/** A new sign-in's number: each attempt is a sign-in of its own. */
+export const nextAttempt = () => ++attempts;
+
 /**
  * Signs the machine's GitHub CLI in, through GitHub's own device page: `gh` shows a one-time code,
  * the page asks for it, and `gh` keeps the credential it gets. Cerium only learns that it worked.
@@ -17,7 +20,7 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [attempt, setAttempt] = useState<number>();
   if (attempt !== undefined) {
     return (
-      <SignInProgress
+      <GitHubSignInSteps
         attempt={attempt}
         onRetry={() => setAttempt(++attempts)}
         onCancel={() => setAttempt(undefined)}
@@ -45,8 +48,11 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
-/** A running sign-in: the code to enter, and the page to enter it on. Unmounting it cancels it. */
-function SignInProgress({
+/**
+ * A running sign-in: the code to enter, and the page to enter it on. Unmounting it cancels it; so does
+ * its Cancel, when it has one (a dialog has its own).
+ */
+export function GitHubSignInSteps({
   attempt,
   onRetry,
   onCancel,
@@ -54,7 +60,7 @@ function SignInProgress({
 }: {
   attempt: number;
   onRetry: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
   onSignedIn: () => void;
 }) {
   const result = useAtomValue(githubLoginAtom(attempt));
@@ -72,7 +78,7 @@ function SignInProgress({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
         <p className="min-w-0 flex-1 text-error">Sign-in didn't finish.</p>
         <QuietButton onClick={onRetry}>Try again</QuietButton>
-        <QuietButton onClick={onCancel}>Cancel</QuietButton>
+        {onCancel === undefined ? null : <QuietButton onClick={onCancel}>Cancel</QuietButton>}
       </div>
     );
   }
@@ -116,7 +122,7 @@ function SignInProgress({
           <ExternalLink size={13} strokeWidth={2} />
           Copy and open GitHub
         </a>
-        <QuietButton onClick={onCancel}>Cancel</QuietButton>
+        {onCancel === undefined ? null : <QuietButton onClick={onCancel}>Cancel</QuietButton>}
       </div>
       <p className="flex items-center gap-2 text-fg-tertiary">
         <RefreshCw size={12} strokeWidth={1.75} className="animate-spin" />

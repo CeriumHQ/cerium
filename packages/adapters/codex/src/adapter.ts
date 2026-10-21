@@ -36,13 +36,6 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
             message: INSTALL_HINT,
           });
         }
-        if (status.versionStatus === "tooOld") {
-          return yield* new HarnessUnavailable({
-            provider: "codex",
-            reason: "versionTooOld",
-            message: `Codex ${status.version} is older than ${codexManifest.harnessVersion?.minimum ?? "unknown"}. Update the Codex CLI.`,
-          });
-        }
         if (status.auth._tag === "LoggedOut") {
           return yield* new HarnessUnavailable({
             provider: "codex",

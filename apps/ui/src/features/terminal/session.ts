@@ -76,6 +76,9 @@ export class TerminalSession {
   #onFirstFit: (() => void) | undefined;
   /** Settles when the emulator first has a size from a container, so output can be drawn at it. */
   readonly sized: Promise<void>;
+  /** Settles when the shell ends, or the terminal closes. */
+  readonly ended: Promise<void>;
+  #onEnded: (() => void) | undefined;
   /** The font is loaded: the emulator measures its cells with it, so it opens only then. */
   #fontLoaded = false;
   readonly #font: Promise<unknown>;
@@ -119,6 +122,9 @@ export class TerminalSession {
     });
     this.sized = new Promise((resolve) => {
       this.#onFirstFit = resolve;
+    });
+    this.ended = new Promise((resolve) => {
+      this.#onEnded = resolve;
     });
     this.#font = document.fonts.load(`${FONT_SIZE}px "Red Hat Mono Variable"`).then(
       () => {
@@ -213,6 +219,7 @@ export class TerminalSession {
     if (this.#ended || this.#disposed) return;
     this.#ended = true;
     this.terminal.write("\x1b[?25l");
+    this.#onEnded?.();
   }
 
   setTheme(theme: ITheme = readTheme()) {

@@ -1,11 +1,11 @@
-import { classifyVersion, HarnessFailure, parseVersion } from "@cerium/harness";
+import { HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { MspError } from "@muse-code/sdk";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { openHost, query } from "./host.ts";
-import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
+import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { sandboxProblem, sandboxSetup } from "./policy.ts";
 
 const failure = (message: string) => (cause: unknown) =>
@@ -118,7 +118,6 @@ export const probeMuse = Effect.gen(function* () {
     provider: "muse",
     executablePath: executable.value,
     version,
-    versionStatus: classifyVersion(version, museManifest.harnessVersion),
     auth: yield* readMuseAuth(executable.value),
     ...(setup === undefined ? {} : { setup }),
   } satisfies HarnessStatus;

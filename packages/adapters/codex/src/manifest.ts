@@ -6,9 +6,7 @@ export const INSTALL_HINT =
 
 export const codexManifest: CapabilityManifest = {
   provider: "codex",
-  // Raise `testedMaximum` after regenerating src/protocol, re-recording fixtures and re-running the
-  // live smoke test against the newer version.
-  harnessVersion: { minimum: "0.162.1", testedMaximum: "0.162.1" },
+  releases: { npmPackage: "@openai/codex", updateCommand: "codex update" },
   // `thread/resume` reopens a thread by id; `thread/fork` copies one through a turn.
   session: { resume: true, fork: true },
   // `turn/start` takes `model` and `effort` overrides that apply from that turn on.

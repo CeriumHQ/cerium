@@ -3,6 +3,7 @@ import {
   CeriumError,
   TerminalRpcs,
   type TerminalId,
+  type CommandTerminal,
   type TerminalInfo,
   type TerminalOutput,
   type TerminalSize,
@@ -11,7 +12,7 @@ import { Store, type StoreError } from "@cerium/store";
 import { Clock, Context, Effect, FileSystem, Layer, Option, Path, PubSub, Stream } from "effect";
 import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
-import { release } from "node:os";
+import { homedir, release } from "node:os";
 
 import { openScreen, type Screen } from "./terminalScreen.ts";
 import { Ptys, TerminalError, type Pty } from "./terminalPty.ts";
@@ -30,6 +31,9 @@ export { TerminalError };
 // folder, and a screen that remembers what the shell printed (terminalScreen.ts): a viewer attaches to
 // a terminal rather than owning it, so reloading the window, or opening the thread on a phone, finds
 // the shell as it was. Every terminal ends when the backend stops.
+//
+// A terminal can also run one command of a harness's own, such as its sign-in, for Settings: it
+// belongs to no thread, starts in the home folder, and isn't listed with the threads' terminals.
 
 /** How many terminals one thread may have, and the backend in all. */
 export const MAX_PER_THREAD = 8;
@@ -51,7 +55,10 @@ type Piece =
 /** A terminal that is open. Mutated only by the callbacks and methods below, never from outside. */
 interface Entry {
   readonly id: TerminalId;
-  readonly threadId: ThreadId;
+  /** The work thread it belongs to; none for a command's terminal. */
+  readonly threadId: ThreadId | undefined;
+  /** What a command's terminal runs, such as "claude:login": running it again replaces this one. */
+  readonly command: string | undefined;
   readonly shell: ShellChoice;
   readonly cwd: string;
   readonly openedAt: number;
@@ -79,9 +86,9 @@ interface Entry {
 
 const refuse = (error: TerminalError | StoreError) => new CeriumError({ message: error.message });
 
-const infoOf = (entry: Entry): TerminalInfo => ({
+const infoOf = (entry: Entry, threadId: ThreadId): TerminalInfo => ({
   id: entry.id,
-  threadId: entry.threadId,
+  threadId,
   shell: entry.shell.name,
   cwd: entry.cwd,
   openedAt: entry.openedAt,
@@ -107,6 +114,15 @@ export class Terminals extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<TerminalInfo>>;
     /** Opens a shell in a work thread's folder. */
     open(threadId: ThreadId, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError | StoreError>;
+    /**
+     * Runs one program in the home folder, in a terminal of no thread, replacing the one that ran the
+     * same `command` before. Its viewer attaches, writes and closes it by its id, like any terminal.
+     */
+    run(
+      command: string,
+      program: ShellChoice,
+      size: TerminalSize,
+    ): Effect.Effect<CommandTerminal, TerminalError>;
     /** The terminal's screen as it is now, then its output as it comes, until the shell ends. */
     attach(id: TerminalId, size: TerminalSize): Stream.Stream<TerminalOutput, TerminalError>;
     write(id: TerminalId, data: string): Effect.Effect<void, TerminalError>;
@@ -145,7 +161,10 @@ export class Terminals extends Context.Service<
         const host: ShellHost = { platform: process.platform, env: process.env, exists };
         const build = windowsBuild(process.platform, release());
 
-        const currentList = () => [...entries.values()].map(infoOf);
+        const currentList = () =>
+          [...entries.values()].flatMap((entry) =>
+            entry.threadId === undefined ? [] : [infoOf(entry, entry.threadId)],
+          );
         const publishList = () => {
           PubSub.publishUnsafe(listed, currentList());
         };
@@ -295,20 +314,20 @@ export class Terminals extends Context.Service<
           return cwd;
         });
 
-        const open = Effect.fn("Terminals.open")(function* (threadId: ThreadId, size: TerminalSize) {
-          const cwd = yield* folderOf(threadId);
-          const all = [...entries.values()];
-          if (all.filter((entry) => entry.threadId === threadId).length >= MAX_PER_THREAD) {
-            return yield* new TerminalError({
-              message: `A thread can have ${MAX_PER_THREAD} terminals. Close one to open another.`,
-            });
-          }
-          if (all.length >= MAX_TERMINALS) {
+        /** Starts `shell` in a new terminal, once there's room for one. */
+        const create = Effect.fn("Terminals.create")(function* (fields: {
+          readonly threadId: ThreadId | undefined;
+          readonly command: string | undefined;
+          readonly shell: ShellChoice;
+          readonly cwd: string;
+          readonly size: TerminalSize;
+        }) {
+          const { threadId, command, shell, cwd, size } = fields;
+          if (entries.size >= MAX_TERMINALS) {
             return yield* new TerminalError({
               message: `Cerium runs ${MAX_TERMINALS} terminals at most. Close one to open another.`,
             });
           }
-          const shell = options.shell ?? chooseShell(host);
           const screen = yield* Effect.tryPromise({
             try: () => openScreen({ ...size, windowsBuild: build }),
             catch: (cause) =>
@@ -320,6 +339,7 @@ export class Terminals extends Context.Service<
           const entry: Entry = {
             id: `term_${randomUUID().replaceAll("-", "").slice(0, 12)}` as TerminalId,
             threadId,
+            command,
             shell,
             cwd,
             openedAt: yield* Clock.currentTimeMillis,
@@ -342,7 +362,33 @@ export class Terminals extends Context.Service<
           yield* start(entry).pipe(Effect.tapError(() => Effect.sync(() => screen.dispose())));
           entries.set(entry.id, entry);
           publishList();
-          return infoOf(entry);
+          return entry;
+        });
+
+        const open = Effect.fn("Terminals.open")(function* (threadId: ThreadId, size: TerminalSize) {
+          const cwd = yield* folderOf(threadId);
+          if ([...entries.values()].filter((entry) => entry.threadId === threadId).length >= MAX_PER_THREAD) {
+            return yield* new TerminalError({
+              message: `A thread can have ${MAX_PER_THREAD} terminals. Close one to open another.`,
+            });
+          }
+          const shell = options.shell ?? chooseShell(host);
+          const entry = yield* create({ threadId, command: undefined, shell, cwd, size });
+          return infoOf(entry, threadId);
+        });
+
+        const runCommand = Effect.fn("Terminals.run")(function* (
+          command: string,
+          program: ShellChoice,
+          size: TerminalSize,
+        ) {
+          const earlier = [...entries.values()].filter((entry) => entry.command === command);
+          yield* Effect.forEach(earlier, dispose, { discard: true });
+          const entry = yield* create({ threadId: undefined, command, shell: program, cwd: homedir(), size });
+          return {
+            id: entry.id,
+            ...(entry.windowsBuild === undefined ? {} : { windowsBuild: entry.windowsBuild }),
+          } satisfies CommandTerminal;
         });
 
         /** What a viewer follows the output with: pieces in order, or the screen again once it missed any. */
@@ -394,6 +440,7 @@ export class Terminals extends Context.Service<
           changes: Stream.fromPubSub(listed),
           list: Effect.sync(currentList),
           open,
+          run: runCommand,
           attach,
           write: (id, data) =>
             find(id).pipe(
@@ -406,10 +453,14 @@ export class Terminals extends Context.Service<
           restart: (id, size) =>
             Effect.gen(function* () {
               const entry = yield* find(id);
+              const { threadId } = entry;
+              if (threadId === undefined) {
+                return yield* new TerminalError({ message: "That command has ended. Run it again instead." });
+              }
               if (entry.pty !== undefined) {
                 return yield* new TerminalError({ message: "That terminal is still running." });
               }
-              yield* folderOf(entry.threadId).pipe(
+              yield* folderOf(threadId).pipe(
                 Effect.mapError((error) =>
                   error._tag === "TerminalError" ? error : new TerminalError({ message: error.message }),
                 ),
@@ -432,7 +483,7 @@ export class Terminals extends Context.Service<
                 ),
               );
               publishList();
-              return infoOf(entry);
+              return infoOf(entry, threadId);
             }),
           close: (id) => find(id).pipe(Effect.flatMap(dispose)),
           closeThread: (threadId) =>

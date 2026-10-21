@@ -4,6 +4,7 @@ import { Store } from "@cerium/store";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
+import { homedir } from "node:os";
 
 import { MAX_PER_THREAD, Terminals } from "../src/terminal.ts";
 import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
@@ -457,6 +458,36 @@ describe("Terminals input and lifecycle", () => {
         yield* settle;
         yield* Fiber.interrupt(watcher);
         assert.deepStrictEqual(counts, ["", "running", "4", ""]);
+      }),
+    );
+  });
+});
+
+describe("Terminals.run", () => {
+  it.live("runs the program in the home folder, unlisted, and replaces the earlier run of it", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const program = { file: "/bin/claude", args: ["auth", "login"], name: "claude" };
+        const first = yield* terminals.run("claude:login", program, size);
+        const [puppet] = spawned;
+        assert.strictEqual(puppet?.options.file, "/bin/claude");
+        assert.deepStrictEqual(puppet?.options.args, ["auth", "login"]);
+        assert.strictEqual(puppet?.options.cwd, homedir());
+        assert.deepStrictEqual(yield* terminals.list, []);
+
+        const { seen } = yield* watch(terminals, first.id);
+        yield* settle;
+        puppet?.print("Opening the browser");
+        yield* settle;
+        assert.include(text(seen), "Opening the browser");
+
+        const second = yield* terminals.run("claude:login", program, size);
+        assert.notStrictEqual(second.id, first.id);
+        assert.isTrue(puppet?.killed);
+        const restarted = yield* terminals.restart(second.id, size).pipe(Effect.flip);
+        assert.strictEqual(restarted.message, "That command has ended. Run it again instead.");
       }),
     );
   });

@@ -1,10 +1,10 @@
-import { classifyVersion, HarnessFailure, parseVersion } from "@cerium/harness";
+import { compareVersions, HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { call, type OpenCodeClient } from "./host.ts";
-import { INSTALL_HINT, LOGIN_COMMAND, opencodeManifest } from "./manifest.ts";
+import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { ModelList } from "./models.ts";
 
 const failure = (message: string) => (cause: unknown) =>
@@ -129,16 +129,14 @@ export const probeOpenCode = (auth: (executablePath: string) => Effect.Effect<Au
         cause: output,
       });
     }
-    const versionStatus = classifyVersion(version, opencodeManifest.harnessVersion);
     return {
       _tag: "HarnessInstalled",
       provider: "opencode",
       executablePath: executable.value,
       version,
-      versionStatus,
-      // OpenCode 1 serves another API, so its sign-in can't be read; updating comes first anyway.
+      // OpenCode 1 serves another API, so its sign-in can't be read.
       auth:
-        versionStatus === "tooOld"
+        compareVersions(version, "2.0.0") < 0
           ? { _tag: "LoggedOut", loginCommand: LOGIN_COMMAND }
           : yield* auth(executable.value),
     } satisfies HarnessStatus;
