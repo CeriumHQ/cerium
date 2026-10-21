@@ -252,12 +252,13 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: Work and Chat switch with Ctrl Shift 1 and Ctrl Shift 2, leaving Ctrl and a digit to open the sidebar's threads.
 - Adapters: the harnesses' own question tools are off (Claude's `AskUserQuestion`, Codex's and Muse's `request_user_input`, Cursor's `askQuestion`), so every agent asks through the bus's `ask_user` and every question looks the same.
 - `@cerium/bus` keeps to orchestration: its `ui_*` and `live_check` tools became `bun run ui` and `bun run live-check`, which reach agents in every harness and app working in this repo, not only those Cerium runs. Agents' instructions no longer name them.
-- Desktop: the browser's own keys and habits are out of the shell. Ctrl+W closes the window's active thread tab and never the app now that the Window menu's Close row is gone; Ctrl+R and Ctrl+Shift+R no longer reload the whole window; DevTools can't open in an installed build; the wheel with Ctrl no longer zooms the page Chromium's own way, which could drift it from the scale the titlebar's caption buttons follow; and Chromium's spellchecker is off, so the composer shows no website squiggles and the text menu drops its spelling fixes.
+- Desktop: the browser's own keys and habits are out of the shell. Ctrl+W closes the window's active thread tab and never the app now that the Window menu's Close row is gone; Ctrl+R and Ctrl+Shift+R no longer reload the whole window; DevTools can't open in an installed build; and Chromium's spellchecker is off, so the composer shows no website squiggles and the text menu drops its spelling fixes.
 - Desktop: nothing moves the app window off its own page. The guard that denies navigation (a file dropped anywhere, a link) and hands links to the user's browser instead now covers every app window, not only the one the shell makes first.
 - UI: middle click no longer latches the website's autoscroll over scrolling panes; it stays the "open in a thread tab" gesture on a file.
 
 ### Fixed
 
+- Desktop: Settings → Appearance → Scale, Ctrl + and Ctrl − size the window again. The window's zoom had been put in Chromium's manual mode, which leaves the page unzoomed whatever scale the shell sets.
 - Inbox: quitting the app no longer marks every thread with a live agent as unread, or moves those threads to the top. As the app quit, each agent's session ended before the agent was stopped, which counted as the agent failing: new activity in its thread. Agents are now stopped first. Threads an earlier quit marked unread stay unread until you open them or mark them read.
 - Claude: interrupting a turn while a command runs ended it as an error instead of as interrupted.
 

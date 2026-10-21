@@ -151,9 +151,6 @@ const createWindow = () => {
     window.on("unmaximize", reapply);
     window.on("restore", reapply);
   }
-  // The page scales itself only through `cerium:set-zoom`: Chromium's automatic handling (the
-  // wheel with Ctrl) is off, so it can't drift from the scale the titlebar caption buttons follow.
-  window.webContents.setZoomMode("manual");
   // The window shows once the page has painted its launch screen in the user's theme, so it never
   // opens empty or in the other theme; a page that doesn't say so in time shows anyway.
   let shown = false;
