@@ -10,10 +10,10 @@ const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
   platform: "win32",
   channel: "stable",
   version: "0.4.0",
-  rpc_version: 1,
-  secret_hash: "0".repeat(64),
-  created_at: 1_000,
-  last_seen_at: null,
+  rpcVersion: 1,
+  secretHash: "0".repeat(64),
+  createdAt: 1_000,
+  lastSeenAt: null,
   installation: null,
   ...extra,
 });
@@ -21,7 +21,7 @@ const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
 const account: AccountProfile = { id: "user_1" as AccountId, email: "me@example.com" };
 
 describe("state sent to a device", () => {
-  const rows = [row("a", { last_seen_at: 5_000 }), row("b")];
+  const rows = [row("a", { lastSeenAt: 5_000 }), row("b")];
 
   it("lists every device, with who is online", () => {
     const state = stateFor(rows[1]!, rows, new Set(["a"]), account);
@@ -48,9 +48,9 @@ describe("devices earlier sign-ins left behind", () => {
       kind: "browser",
       name: "iPhone",
       platform: "ios",
-      rpc_version: null,
-      created_at: created,
-      last_seen_at: seen,
+      rpcVersion: null,
+      createdAt: created,
+      lastSeenAt: seen,
       ...extra,
     });
 

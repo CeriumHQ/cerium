@@ -26,8 +26,12 @@ import {
   type AccountThread,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
+import { and, asc, eq, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Option, Schema } from "effect";
 
+import migrations from "../migrations/migrations.js";
 import { leftBehind, stateFor, type DeviceRow } from "./devices.ts";
 import { vapidKeys, type Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
@@ -40,6 +44,7 @@ import {
   type Presence,
   type PushRow,
 } from "./notify.ts";
+import * as tables from "./schema.ts";
 import { appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
@@ -78,84 +83,48 @@ const send = (socket: WebSocket, message: RelayMessage) => {
 };
 
 export class Account extends DurableObject<Env> {
-  private readonly sql: SqlStorage;
+  private readonly db: DrizzleSqliteDODatabase;
   /** The devices table while the object is awake; every write drops it. */
   private cached: Array<DeviceRow> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS devices (
-      id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      name TEXT NOT NULL,
-      platform TEXT NOT NULL,
-      channel TEXT NOT NULL,
-      version TEXT NOT NULL,
-      rpc_version INTEGER,
-      secret_hash TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      approved_at INTEGER,
-      last_seen_at INTEGER
-    )`);
-    // Tables made before devices reported the RPC version they speak.
-    const columns = this.sql.exec<{ name: string }>("PRAGMA table_info(devices)").toArray();
-    if (!columns.some((column) => column.name === "rpc_version")) {
-      this.sql.exec("ALTER TABLE devices ADD COLUMN rpc_version INTEGER");
-    }
-    // Devices used to wait for one already in the account to let them in; signing in is enough now.
-    this.sql.exec("UPDATE devices SET approved_at = created_at WHERE approved_at IS NULL");
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS profile (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      account_id TEXT NOT NULL,
-      name TEXT,
-      email TEXT,
-      image_url TEXT
-    )`);
-    // The cloud copy: each machine's threads, their events in stored batches, and what was seen.
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS threads (
-      machine TEXT NOT NULL,
-      thread TEXT NOT NULL,
-      overview TEXT NOT NULL,
-      events INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (machine, thread)
-    )`);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS event_batches (
-      machine TEXT NOT NULL,
-      thread TEXT NOT NULL,
-      start INTEGER NOT NULL,
-      events TEXT NOT NULL,
-      PRIMARY KEY (machine, thread, start)
-    )`);
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS read_state (
-      thread TEXT PRIMARY KEY,
-      seen_at INTEGER NOT NULL
-    )`);
-    // Drafts being written, by thread or new thread; a gone one keeps its row (draft NULL) a while,
-    // so a device that was offline doesn't bring it back.
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS drafts (
-      key TEXT PRIMARY KEY,
-      draft TEXT,
-      updated_at INTEGER NOT NULL
-    )`);
-    // Browsers' push subscriptions, one per browser, with the kinds of notification each wants.
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS push (
-      device TEXT PRIMARY KEY,
-      endpoint TEXT NOT NULL,
-      p256dh TEXT NOT NULL,
-      auth TEXT NOT NULL,
-      kinds TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
-    )`);
+    this.db = drizzle(ctx.storage);
+    const toldApart = this.upgradeLegacy();
+    migrate(this.db, migrations);
     // Tables made before installs were told apart: each sign-in added the device again, so the
     // copies earlier sign-ins left behind go, once.
-    if (!columns.some((column) => column.name === "installation")) {
-      this.sql.exec("ALTER TABLE devices ADD COLUMN installation TEXT");
+    if (toldApart) {
       const online = new Set(this.live().map(({ attachment }) => attachment.deviceId));
       for (const row of leftBehind(this.rows(), online)) this.drop(row);
     }
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
+  /**
+   * Brings an account made before its tables had Drizzle's migrations, which changed them in place,
+   * up to the first migration. Says whether its devices only now record their install.
+   */
+  private upgradeLegacy(): boolean {
+    const exists = (table: string) =>
+      this.db.get(sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ${table}`) !== undefined;
+    if (exists("__drizzle_migrations") || !exists("devices")) return false;
+    const columns = new Set(
+      this.db
+        .all<{ name: string }>(sql`SELECT name FROM pragma_table_info('devices')`)
+        .map(({ name }) => name),
+    );
+    // Tables made before devices reported the RPC version they speak.
+    if (!columns.has("rpc_version")) this.db.run(sql`ALTER TABLE devices ADD COLUMN rpc_version INTEGER`);
+    // Devices used to wait for one already in the account to let them in; signing in is enough now.
+    this.db
+      .update(tables.devices)
+      .set({ approvedAt: sql`${tables.devices.createdAt}` })
+      .where(isNull(tables.devices.approvedAt))
+      .run();
+    if (columns.has("installation")) return false;
+    this.db.run(sql`ALTER TABLE devices ADD COLUMN installation TEXT`);
+    return true;
   }
 
   /**
@@ -173,62 +142,53 @@ export class Account extends DurableObject<Env> {
     const again =
       installation === undefined ? undefined : this.rows().find((row) => row.installation === installation);
     const deviceId = (again?.id ?? randomToken(16)) as DeviceId;
+    const build = {
+      kind: device.kind,
+      platform: device.platform,
+      channel: device.channel,
+      version: device.version,
+      rpcVersion: device.rpcVersion ?? null,
+      secretHash,
+    };
     if (again === undefined) {
       this.write(
-        `INSERT INTO devices (id, kind, name, platform, channel, version, rpc_version, secret_hash, created_at, approved_at, installation)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        deviceId,
-        device.kind,
-        device.name,
-        device.platform,
-        device.channel,
-        device.version,
-        device.rpcVersion ?? null,
-        secretHash,
-        now,
-        now,
-        installation ?? null,
+        this.db.insert(tables.devices).values({
+          ...build,
+          id: deviceId,
+          name: device.name,
+          createdAt: now,
+          approvedAt: now,
+          installation: installation ?? null,
+        }),
       );
     } else {
-      this.write(
-        `UPDATE devices SET kind = ?, platform = ?, channel = ?, version = ?, rpc_version = ?, secret_hash = ?
-         WHERE id = ?`,
-        device.kind,
-        device.platform,
-        device.channel,
-        device.version,
-        device.rpcVersion ?? null,
-        secretHash,
-        deviceId,
-      );
+      this.write(this.db.update(tables.devices).set(build).where(eq(tables.devices.id, deviceId)));
       // A connection still on the old secret isn't valid anymore.
       for (const socket of this.ctx.getWebSockets(deviceId)) signOut(socket, "invalid");
     }
-    this.sql.exec(
-      `INSERT INTO profile (id, account_id, name, email, image_url) VALUES (1, ?, ?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name, email = excluded.email, image_url = excluded.image_url`,
-      accountId,
-      profile.name ?? null,
-      profile.email ?? null,
-      profile.imageUrl ?? null,
-    );
+    const who = {
+      name: profile.name ?? null,
+      email: profile.email ?? null,
+      imageUrl: profile.imageUrl ?? null,
+    };
+    this.db
+      .insert(tables.profile)
+      .values({ id: 1, accountId, ...who })
+      .onConflictDoUpdate({ target: tables.profile.id, set: who })
+      .run();
     this.broadcast();
     return deviceId;
   }
 
   /** Who the account belongs to, as the sign-in page last reported it. */
   profile(): AccountProfile | undefined {
-    const row = this.sql
-      .exec<{ account_id: string; name: string | null; email: string | null; image_url: string | null }>(
-        "SELECT account_id, name, email, image_url FROM profile WHERE id = 1",
-      )
-      .toArray()[0];
+    const row = this.db.select().from(tables.profile).where(eq(tables.profile.id, 1)).get();
     if (row === undefined) return undefined;
     return {
-      id: row.account_id as AccountId,
+      id: row.accountId as AccountId,
       ...(row.name === null ? {} : { name: row.name }),
       ...(row.email === null ? {} : { email: row.email }),
-      ...(row.image_url === null ? {} : { imageUrl: row.image_url }),
+      ...(row.imageUrl === null ? {} : { imageUrl: row.imageUrl }),
     };
   }
 
@@ -258,10 +218,10 @@ export class Account extends DurableObject<Env> {
     const build = buildFromQuery(new URL(request.url).searchParams);
     if (build !== undefined) {
       this.write(
-        "UPDATE devices SET version = ?, rpc_version = ? WHERE id = ?",
-        build.version,
-        build.rpcVersion ?? null,
-        row.id,
+        this.db
+          .update(tables.devices)
+          .set({ version: build.version, rpcVersion: build.rpcVersion ?? null })
+          .where(eq(tables.devices.id, row.id)),
       );
     }
     this.broadcast();
@@ -336,7 +296,7 @@ export class Account extends DurableObject<Env> {
 
   async rename(credential: Credential, targetId: DeviceId, name: string): Promise<Outcome> {
     return this.manage(credential, targetId, (target) => {
-      this.write("UPDATE devices SET name = ? WHERE id = ?", name, target.id);
+      this.write(this.db.update(tables.devices).set({ name }).where(eq(tables.devices.id, target.id)));
     });
   }
 
@@ -347,19 +307,18 @@ export class Account extends DurableObject<Env> {
 
   /** Takes a device out of the account, and a machine's threads out of the cloud; they stay on it. */
   private drop(target: DeviceRow) {
-    this.write("DELETE FROM devices WHERE id = ?", target.id);
-    this.sql.exec("DELETE FROM push WHERE device = ?", target.id);
+    this.write(this.db.delete(tables.devices).where(eq(tables.devices.id, target.id)));
+    this.db.delete(tables.push).where(eq(tables.push.device, target.id)).run();
     for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
-    const threads = this.sql
-      .exec<{ thread: string }>("SELECT thread FROM threads WHERE machine = ?", target.id)
-      .toArray();
-    this.sql.exec("DELETE FROM event_batches WHERE machine = ?", target.id);
-    this.sql.exec("DELETE FROM threads WHERE machine = ?", target.id);
-    if (threads.length > 0) {
+    const machine = eq(tables.threads.machine, target.id);
+    const gone = this.db.select({ thread: tables.threads.thread }).from(tables.threads).where(machine).all();
+    this.db.delete(tables.eventBatches).where(eq(tables.eventBatches.machine, target.id)).run();
+    this.db.delete(tables.threads).where(machine).run();
+    if (gone.length > 0) {
       this.toDevices({
         _tag: "ThreadsChanged",
         threads: [],
-        removed: threads.map(({ thread }) => ({
+        removed: gone.map(({ thread }) => ({
           machine: target.id as DeviceId,
           threadId: thread as ThreadId,
         })),
@@ -394,13 +353,12 @@ export class Account extends DurableObject<Env> {
     if (reader === undefined || !(await this.verify(reader, credential))) {
       return refused(401, "This device isn't signed in to the account.");
     }
-    const batches = this.sql
-      .exec<{ events: string }>(
-        "SELECT events FROM event_batches WHERE machine = ? AND thread = ? ORDER BY start",
-        machine,
-        threadId,
-      )
-      .toArray();
+    const batches = this.db
+      .select({ events: tables.eventBatches.events })
+      .from(tables.eventBatches)
+      .where(this.batchesOf(machine, threadId))
+      .orderBy(asc(tables.eventBatches.start))
+      .all();
     // The batches are JSON arrays already; joining them avoids parsing every event here.
     return `[${batches
       .map(({ events }) => events.slice(1, -1))
@@ -418,14 +376,12 @@ export class Account extends DurableObject<Env> {
       case "SyncThreads": {
         if (sender.kind !== "desktop" || message.threads.length === 0) return;
         for (const overview of message.threads) {
-          this.sql.exec(
-            `INSERT INTO threads (machine, thread, overview, updated_at) VALUES (?, ?, ?, ?)
-             ON CONFLICT (machine, thread) DO UPDATE SET overview = excluded.overview, updated_at = excluded.updated_at`,
-            machine,
-            overview.thread.id,
-            JSON.stringify(overview),
-            now,
-          );
+          const latest = { overview: JSON.stringify(overview), updatedAt: now };
+          this.db
+            .insert(tables.threads)
+            .values({ machine, thread: overview.thread.id, ...latest })
+            .onConflictDoUpdate({ target: [tables.threads.machine, tables.threads.thread], set: latest })
+            .run();
         }
         return this.toDevices(
           {
@@ -439,8 +395,8 @@ export class Account extends DurableObject<Env> {
       case "SyncRemoved": {
         if (sender.kind !== "desktop" || message.threadIds.length === 0) return;
         for (const threadId of message.threadIds) {
-          this.sql.exec("DELETE FROM event_batches WHERE machine = ? AND thread = ?", machine, threadId);
-          this.sql.exec("DELETE FROM threads WHERE machine = ? AND thread = ?", machine, threadId);
+          this.db.delete(tables.eventBatches).where(this.batchesOf(machine, threadId)).run();
+          this.db.delete(tables.threads).where(this.threadOf(machine, threadId)).run();
         }
         return this.toDevices(
           {
@@ -453,69 +409,75 @@ export class Account extends DurableObject<Env> {
       }
       case "SyncEvents": {
         if (sender.kind !== "desktop") return;
-        const stored = this.sql
-          .exec<{ events: number }>(
-            "SELECT events FROM threads WHERE machine = ? AND thread = ?",
-            machine,
-            message.threadId,
-          )
-          .toArray()[0];
+        const thread = this.threadOf(machine, message.threadId);
+        const stored = this.db
+          .select({ events: tables.threads.events })
+          .from(tables.threads)
+          .where(thread)
+          .get();
         // Events wait for their thread's overview, which the machine sends first.
         if (stored === undefined)
           return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count: 0 });
         const { keep, count } = appendBatch(stored.events, message.start, message.events);
         if (keep.length > 0) {
-          this.sql.exec(
-            "INSERT OR REPLACE INTO event_batches (machine, thread, start, events) VALUES (?, ?, ?, ?)",
-            machine,
-            message.threadId,
-            stored.events,
-            JSON.stringify(keep),
-          );
-          this.sql.exec(
-            "UPDATE threads SET events = ? WHERE machine = ? AND thread = ?",
-            count,
-            machine,
-            message.threadId,
-          );
+          const events = JSON.stringify(keep);
+          const { eventBatches } = tables;
+          this.db
+            .insert(eventBatches)
+            .values({ machine, thread: message.threadId, start: stored.events, events })
+            .onConflictDoUpdate({
+              target: [eventBatches.machine, eventBatches.thread, eventBatches.start],
+              set: { events },
+            })
+            .run();
+          this.db.update(tables.threads).set({ events: count }).where(thread).run();
         }
         return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count });
       }
       case "MarkRead": {
         if (message.entries.length === 0) return;
+        const { readState } = tables;
         for (const { threadId, seenAt } of message.entries) {
-          this.sql.exec(
-            `INSERT INTO read_state (thread, seen_at) VALUES (?, ?)
-             ON CONFLICT (thread) DO UPDATE SET seen_at = MAX(seen_at, excluded.seen_at)`,
-            threadId,
-            seenAt,
-          );
+          this.db
+            .insert(readState)
+            .values({ thread: threadId, seenAt })
+            .onConflictDoUpdate({
+              target: readState.thread,
+              set: { seenAt: sql`max(${readState.seenAt}, excluded.seen_at)` },
+            })
+            .run();
         }
         // Every device hears it, the sender too: its other windows and its own list keep up.
         return this.toDevices({ _tag: "ReadChanged", entries: message.entries });
       }
       case "SaveDrafts": {
+        const { drafts } = tables;
         const accepted: Array<DraftEntry> = [];
         const lost: Array<DraftEntry> = [];
         for (const entry of message.drafts) {
-          const content = entry.draft === undefined ? null : JSON.stringify(entry.draft);
-          if (content !== null && content.length > MAX_DRAFT_BYTES) continue;
-          const written = this.sql.exec(
-            `INSERT INTO drafts (key, draft, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT (key) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at
-             WHERE excluded.updated_at > drafts.updated_at`,
-            entry.key,
-            content,
-            entry.updatedAt,
-          ).rowsWritten;
+          const draft = entry.draft === undefined ? null : JSON.stringify(entry.draft);
+          if (draft !== null && draft.length > MAX_DRAFT_BYTES) continue;
+          const saved = { draft, updatedAt: entry.updatedAt };
+          const written = this.db
+            .insert(drafts)
+            .values({ key: entry.key, ...saved })
+            .onConflictDoUpdate({
+              target: drafts.key,
+              set: saved,
+              setWhere: sql`excluded.updated_at > ${drafts.updatedAt}`,
+            })
+            .run().rowsWritten;
           if (written > 0) {
             accepted.push(entry);
             continue;
           }
-          const newer = this.draftRows("WHERE key = ?", entry.key)[0];
+          const newer = this.draftRows(eq(drafts.key, entry.key))[0];
           if (newer !== undefined && newer.updatedAt > entry.updatedAt) lost.push(newer);
         }
-        this.sql.exec("DELETE FROM drafts WHERE draft IS NULL AND updated_at < ?", now - GONE_DRAFTS_KEPT_MS);
+        this.db
+          .delete(drafts)
+          .where(and(isNull(drafts.draft), lt(drafts.updatedAt, now - GONE_DRAFTS_KEPT_MS)))
+          .run();
         // The sender has its own edits already; it hears only of the ones they lost to.
         if (lost.length > 0) send(socket, { _tag: "DraftsChanged", drafts: lost });
         if (accepted.length > 0) this.toDevices({ _tag: "DraftsChanged", drafts: accepted }, self.connection);
@@ -525,16 +487,15 @@ export class Account extends DurableObject<Env> {
   }
 
   /** Drafts as devices see them, those `where` picks. */
-  private draftRows(where = "", ...bindings: Array<SqlStorageValue>): Array<DraftEntry> {
-    return this.sql
-      .exec<{ key: string; draft: string | null; updated_at: number }>(
-        `SELECT key, draft, updated_at FROM drafts ${where}`,
-        ...bindings,
-      )
-      .toArray()
+  private draftRows(where?: SQL): Array<DraftEntry> {
+    return this.db
+      .select()
+      .from(tables.drafts)
+      .where(where)
+      .all()
       .map((row) => ({
         key: row.key,
-        updatedAt: row.updated_at,
+        updatedAt: row.updatedAt,
         ...(row.draft === null
           ? {}
           : { draft: JSON.parse(row.draft) as Exclude<DraftEntry["draft"], undefined> }),
@@ -563,23 +524,25 @@ export class Account extends DurableObject<Env> {
         if (sender.kind !== "browser") return;
         const before = this.pushRows().find((row) => row.device === sender.id);
         const kinds = JSON.stringify(message.kinds);
-        this.sql.exec(
-          `INSERT INTO push (device, endpoint, p256dh, auth, kinds, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT (device) DO UPDATE SET endpoint = excluded.endpoint, p256dh = excluded.p256dh,
-             auth = excluded.auth, kinds = excluded.kinds, updated_at = excluded.updated_at`,
-          sender.id,
-          message.subscription.endpoint,
-          message.subscription.keys.p256dh,
-          message.subscription.keys.auth,
+        const subscription = {
+          endpoint: message.subscription.endpoint,
+          p256dh: message.subscription.keys.p256dh,
+          auth: message.subscription.keys.auth,
           kinds,
-          Date.now(),
-        );
+          updatedAt: Date.now(),
+        };
+        this.db
+          .insert(tables.push)
+          .values({ device: sender.id, ...subscription })
+          .onConflictDoUpdate({ target: tables.push.device, set: subscription })
+          .run();
         // A browser renews its subscription each time it opens; only a change of kinds is news.
         if (before?.kinds !== kinds) this.broadcast();
         return;
       }
       case "PushUnsubscribe": {
-        if (this.sql.exec("DELETE FROM push WHERE device = ?", sender.id).rowsWritten > 0) this.broadcast();
+        const removed = this.db.delete(tables.push).where(eq(tables.push.device, sender.id)).run();
+        if (removed.rowsWritten > 0) this.broadcast();
         return;
       }
       case "Notify": {
@@ -633,24 +596,19 @@ export class Account extends DurableObject<Env> {
     );
     // A subscription its push service no longer knows is gone for good: the browser turned it off.
     const gone = targets.filter((_, index) => results[index] === "gone");
-    for (const row of gone) this.sql.exec("DELETE FROM push WHERE device = ?", row.device);
+    for (const row of gone) this.db.delete(tables.push).where(eq(tables.push.device, row.device)).run();
     if (gone.length > 0) this.broadcast();
   }
 
   private pushRows(): Array<PushRow> {
-    return this.sql.exec<PushRow>("SELECT * FROM push").toArray();
+    return this.db.select().from(tables.push).all();
   }
 
   /** What a device gets on connecting: the account's threads, and for a desktop, its cursors. */
   private welcome(socket: WebSocket, device: DeviceRow) {
-    const threads = this.sql
-      .exec<{ machine: string; thread: string; overview: string; events: number }>(
-        "SELECT machine, thread, overview, events FROM threads",
-      )
-      .toArray();
-    const read = this.sql
-      .exec<{ thread: string; seen_at: number }>("SELECT thread, seen_at FROM read_state")
-      .toArray();
+    const { machine, thread, overview, events } = tables.threads;
+    const threads = this.db.select({ machine, thread, overview, events }).from(tables.threads).all();
+    const read = this.db.select().from(tables.readState).all();
     if (device.kind === "desktop") {
       send(socket, {
         _tag: "SyncCursors",
@@ -665,7 +623,7 @@ export class Account extends DurableObject<Env> {
         machine: row.machine as DeviceId,
         overview: JSON.parse(row.overview) as ThreadOverview,
       })),
-      read: read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seen_at })),
+      read: read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seenAt })),
     });
     send(socket, { _tag: "AccountDrafts", drafts: this.draftRows() });
   }
@@ -678,16 +636,17 @@ export class Account extends DurableObject<Env> {
   }
 
   private async verify(row: DeviceRow, credential: Credential): Promise<boolean> {
-    return (await hashSecret(credential.secret)) === row.secret_hash;
+    return (await hashSecret(credential.secret)) === row.secretHash;
   }
 
-  private write(query: string, ...bindings: Array<SqlStorageValue>) {
-    this.sql.exec(query, ...bindings);
+  /** Runs a write to the devices table. */
+  private write(query: { run(): unknown }) {
+    query.run();
     this.cached = undefined;
   }
 
   private rows(): Array<DeviceRow> {
-    this.cached ??= this.sql.exec<DeviceRow>("SELECT * FROM devices ORDER BY created_at").toArray();
+    this.cached ??= this.db.select().from(tables.devices).orderBy(asc(tables.devices.createdAt)).all();
     return this.cached;
   }
 
@@ -696,7 +655,17 @@ export class Account extends DurableObject<Env> {
   }
 
   private touch(deviceId: string) {
-    this.write("UPDATE devices SET last_seen_at = ? WHERE id = ?", Date.now(), deviceId);
+    this.write(
+      this.db.update(tables.devices).set({ lastSeenAt: Date.now() }).where(eq(tables.devices.id, deviceId)),
+    );
+  }
+
+  private threadOf(machine: string, threadId: string) {
+    return and(eq(tables.threads.machine, machine), eq(tables.threads.thread, threadId));
+  }
+
+  private batchesOf(machine: string, threadId: string) {
+    return and(eq(tables.eventBatches.machine, machine), eq(tables.eventBatches.thread, threadId));
   }
 
   private attachment(socket: WebSocket): Attachment | undefined {

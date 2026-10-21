@@ -23,6 +23,8 @@
     ],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Account", "Link"] }],
+  // The Account object's SQL migrations (migrations/migrations.js) are bundled as text.
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": { "enabled": true },
   "send_metrics": false,
   "vars": {

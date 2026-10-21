@@ -1,32 +1,19 @@
 import type {
   AccountProfile,
-  Channel,
   ConnectionId,
   DeviceId,
   DeviceInfo,
-  DeviceKind,
   NotificationKind,
   RelayMessage,
 } from "@cerium/protocol";
+
+import type { devices } from "./schema.ts";
 
 // The account's devices as each of them sees them. Plain functions over the Account object's rows,
 // so they're tested without the Workers runtime.
 
 /** A row of the Account object's `devices` table. */
-export type DeviceRow = {
-  readonly id: string;
-  readonly kind: DeviceKind;
-  readonly name: string;
-  readonly platform: string;
-  readonly channel: Channel;
-  readonly version: string;
-  readonly rpc_version: number | null;
-  readonly secret_hash: string;
-  readonly created_at: number;
-  readonly last_seen_at: number | null;
-  /** The install it is (`Installation`); null for devices that joined before installs were told apart. */
-  readonly installation: string | null;
-};
+export type DeviceRow = Readonly<Omit<typeof devices.$inferSelect, "approvedAt">>;
 
 export const toDeviceInfo = (
   row: DeviceRow,
@@ -39,11 +26,11 @@ export const toDeviceInfo = (
   platform: row.platform,
   channel: row.channel,
   version: row.version,
-  ...(row.rpc_version === null ? {} : { rpcVersion: row.rpc_version }),
+  ...(row.rpcVersion === null ? {} : { rpcVersion: row.rpcVersion }),
   approved: true,
   online,
-  createdAt: row.created_at,
-  ...(row.last_seen_at === null ? {} : { lastSeenAt: row.last_seen_at }),
+  createdAt: row.createdAt,
+  ...(row.lastSeenAt === null ? {} : { lastSeenAt: row.lastSeenAt }),
   ...(notifications === undefined ? {} : { notifications }),
 });
 
@@ -56,7 +43,7 @@ export const leftBehind = (
   rows: ReadonlyArray<DeviceRow>,
   online: ReadonlySet<string>,
 ): ReadonlyArray<DeviceRow> => {
-  const seen = (row: DeviceRow) => Math.max(row.last_seen_at ?? 0, row.created_at);
+  const seen = (row: DeviceRow) => Math.max(row.lastSeenAt ?? 0, row.createdAt);
   const alike = Map.groupBy(
     rows.filter((row) => row.installation === null),
     (row) => JSON.stringify([row.kind, row.platform, row.channel, row.name]),

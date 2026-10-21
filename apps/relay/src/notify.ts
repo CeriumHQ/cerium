@@ -1,20 +1,13 @@
 import { NOTIFICATION_KINDS, type NotificationKind } from "@cerium/protocol";
 
 import type { DeviceRow } from "./devices.ts";
+import type { push } from "./schema.ts";
 
 // Who a notification goes to. Plain functions over the Account
 // object's rows and connections, so they're tested without the Workers runtime.
 
 /** A row of the Account object's `push` table: a browser's subscription and the kinds it wants. */
-export type PushRow = {
-  readonly device: string;
-  readonly endpoint: string;
-  readonly p256dh: string;
-  readonly auth: string;
-  /** JSON array of `NotificationKind`. */
-  readonly kinds: string;
-  readonly updated_at: number;
-};
+export type PushRow = Readonly<typeof push.$inferSelect>;
 
 /** What a connection last said about its window (`Presence`), and when. */
 export interface Presence {

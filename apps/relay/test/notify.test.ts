@@ -18,10 +18,10 @@ const device = (id: string, kind: DeviceRow["kind"]): DeviceRow => ({
   platform: kind === "browser" ? "ios" : "win32",
   channel: "stable",
   version: "1.0.0",
-  rpc_version: kind === "desktop" ? 1 : null,
-  secret_hash: "0".repeat(64),
-  created_at: 1,
-  last_seen_at: null,
+  rpcVersion: kind === "desktop" ? 1 : null,
+  secretHash: "0".repeat(64),
+  createdAt: 1,
+  lastSeenAt: null,
   installation: null,
 });
 
@@ -31,7 +31,7 @@ const subscription = (device: string, kinds: ReadonlyArray<string>): PushRow => 
   p256dh: "key",
   auth: "auth",
   kinds: JSON.stringify(kinds),
-  updated_at: 1,
+  updatedAt: 1,
 });
 
 // "gone" subscribed, then left the account.

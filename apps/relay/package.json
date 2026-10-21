@@ -9,16 +9,19 @@
     "build": "bun run --cwd ../ui build:web && bun run --cwd ../site build && node scripts/assets.ts",
     "builds": "node scripts/builds.ts",
     "deploy": "bun run builds && bun run build && wrangler deploy",
-    "check:bundle": "wrangler deploy --dry-run --outdir dist/bundle"
+    "check:bundle": "wrangler deploy --dry-run --outdir dist/bundle",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@cerium/protocol": "workspace:*",
     "@clerk/backend": "3.22.0",
+    "drizzle-orm": "1.0.0-rc.5",
     "effect": "4.0.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261003.1",
     "@effect/vitest": "4.0.5",
+    "drizzle-kit": "1.0.0-rc.5",
     "wrangler": "4.147.0"
   }
 }
