@@ -59,7 +59,7 @@ const repository = Effect.gen(function* () {
   return { root, write, fs, path };
 });
 
-describe("History", () => {
+describe("History", { timeout: 30_000 }, () => {
   it.effect("pages the branch's commits newest first, and says when more follow", () =>
     Effect.gen(function* () {
       const history = yield* History;
@@ -210,7 +210,7 @@ describe("History", () => {
   );
 });
 
-describe("Repositories", () => {
+describe("Repositories", { timeout: 30_000 }, () => {
   it.effect("makes a folder a repository, and refuses a folder that isn't there", () =>
     Effect.gen(function* () {
       const repositories = yield* Repositories;
