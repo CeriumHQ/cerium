@@ -3,9 +3,11 @@ import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { useContext, useEffect, useEffectEvent, type ReactNode } from "react";
 
+import { refreshBranches } from "../../backend/branches.ts";
 import { watchAtom } from "../../backend/explorer.ts";
 import { gitStatusAtom, refreshGitStatus } from "../../backend/git.ts";
 import type { OpenFile } from "../files/model.ts";
+import { useBranchPanel } from "./branches/useBranchPanel.tsx";
 import { ChangesView } from "./ChangesView.tsx";
 import { SourceControlPanel } from "./SourceControlPanel.tsx";
 
@@ -66,7 +68,10 @@ function SourceControl({
 
   // The machine says what changed in the repository, in batches: the whole of it, from its top.
   const onBatch = useEffectEvent((changed: boolean) => {
-    if (changed) refreshGitStatus(registry, root);
+    if (changed) {
+      refreshGitStatus(registry, root);
+      refreshBranches(registry, root);
+    }
   });
   useEffect(() => {
     if (top === undefined) return;
@@ -84,23 +89,34 @@ function SourceControl({
   const count =
     status === undefined ? 0 : status.staged.length + status.unstaged.length + status.conflicted.length;
 
+  const branches = useBranchPanel({ root, onOpen: open === undefined ? undefined : (path) => open(path) });
+
   return (
-    <SourceControlPanel
-      // Branch and sync controls go here.
-      header={undefined}
-      changes={
-        <ChangesView
-          status={status}
-          error={error}
-          activePath={activeFile !== undefined && activeFile.root === top ? activeFile.path : undefined}
-          onOpen={open === undefined ? undefined : (change) => open(change.path, { changes: true })}
-        />
-      }
-      changeCount={count}
-      // The History tab goes here.
-      history={undefined}
-      onRefresh={() => refreshGitStatus(registry, root)}
-      onClose={onClose}
-    />
+    <>
+      <SourceControlPanel
+        header={branches.header}
+        notice={branches.notice}
+        changes={
+          <>
+            {branches.banner}
+            <ChangesView
+              status={status}
+              error={error}
+              activePath={activeFile !== undefined && activeFile.root === top ? activeFile.path : undefined}
+              onOpen={open === undefined ? undefined : (change) => open(change.path, { changes: true })}
+            />
+          </>
+        }
+        changeCount={count}
+        // The History tab goes here.
+        history={undefined}
+        onRefresh={() => {
+          refreshGitStatus(registry, root);
+          refreshBranches(registry, root);
+        }}
+        onClose={onClose}
+      />
+      {branches.dialogs}
+    </>
   );
 }
