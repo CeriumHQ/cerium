@@ -38,6 +38,7 @@ import {
   ThreadOverview,
   ThreadOverviews,
   ThreadRef,
+  TurnFilesReverted,
   UiEvent,
   UiEvents,
   UsageSnapshot,
@@ -74,7 +75,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 18;
+export const RPC_VERSION = 19;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -203,6 +204,19 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
+   * Puts the files one of an agent's turns changed (its `TurnFilesChanged`) back as they were before
+   * it, or as it left them again; files changed since stay as they are. Since `RPC_VERSION` 19.
+   */
+  Rpc.make("RevertTurnFiles", {
+    payload: {
+      agentId: AgentId,
+      turnId: Schema.NonEmptyString,
+      direction: Schema.Literals(["undone", "redone"]),
+    },
+    success: TurnFilesReverted,
+    error: CeriumError,
+  }),
+  /**
    * Switches a thread's lead to another model of its harness, or another effort, from its next turn.
    * Refused where `HarnessManifests` says the harness can't switch.
    */
@@ -245,6 +259,11 @@ export const MachineRpcs = RpcGroup.make(
     payload: { agentId: AgentId, includeChildren: Schema.optionalKey(Schema.Boolean) },
     error: CeriumError,
   }),
+  /**
+   * Hands a lead the user's messages waiting behind its turn now, interrupting the turn instead of
+   * waiting for its next step. Since `RPC_VERSION` 19.
+   */
+  Rpc.make("SteerAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   /**
    * Stops all of a thread's work: interrupts every agent's turn and denies what waits on the user.
@@ -454,6 +473,22 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("CommitDetail", {
     payload: { root: Schema.NonEmptyString, sha: Schema.NonEmptyString },
     success: CommitDetail,
+    error: CeriumError,
+  }),
+  /**
+   * A file one of an agent's turns changed in the work folder `root`, between the snapshots from
+   * before and after it (its `TurnFilesChanged`), shaped as `DiffFile` shapes a change against the
+   * last commit. Since `RPC_VERSION` 19.
+   */
+  Rpc.make("TurnDiffFile", {
+    payload: {
+      root: Schema.NonEmptyString,
+      before: Schema.NonEmptyString,
+      after: Schema.NonEmptyString,
+      path: Schema.NonEmptyString,
+      context: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    },
+    success: FileDiff,
     error: CeriumError,
   }),
   /**

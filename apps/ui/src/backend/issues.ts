@@ -96,3 +96,5 @@ export const closeIssue = Backend.mutation("CloseIssue");
 export const reopenIssue = Backend.mutation("ReopenIssue");
 export const updateIssue = Backend.mutation("UpdateIssue");
 export const createIssue = Backend.mutation("CreateIssue");
+/** An issue a quick model wrote up from the user's notes. */
+export const draftIssue = Backend.mutation("DraftIssue");

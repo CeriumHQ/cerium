@@ -28,6 +28,7 @@ import { limitWarnings } from "./limits.ts";
 import { Notifications } from "./notify.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
+import { Drafts, QuickWriter } from "./drafts.ts";
 import { Files } from "./files.ts";
 import { GitHub } from "./github.ts";
 import { Git } from "./git.ts";
@@ -179,8 +180,9 @@ export const backendLayer = (options: BackendOptions) =>
     // Snapshots of work threads' folders, so the user can put them back as they were before a message.
     Layer.provideMerge(checkpointsLayer({ directory: join(options.dataDirectory, "checkpoints") })),
     Layer.provideMerge(Files.layer),
-    // The user's own `gh`, for GitHub's pull requests and issues.
-    Layer.provideMerge(GitHub.layer),
+    // The user's own `gh`, for GitHub's pull requests and issues, and the commit messages, pull
+    // requests and issues a quick model writes for the user to edit.
+    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Drafts.layer.pipe(Layer.provide(QuickWriter.layer)))),
     Layer.provideMerge(GitBranches.layer),
     Layer.provideMerge(GitChanges.layer),
     Layer.provideMerge(History.layer),

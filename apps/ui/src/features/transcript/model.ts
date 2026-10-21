@@ -9,10 +9,14 @@ import type {
   Question,
   QuestionAnswer,
   ReasoningEffort,
+  TurnFile,
 } from "@cerium/protocol";
 
 /** The `RPC_VERSION` that brought `EditMessage`; an older machine's messages can't be edited. */
 export const EDIT_VERSION = 11;
+
+/** The `RPC_VERSION` that brought `SteerAgent`; an older machine's queued messages wait for the turn's end. */
+export const STEER_VERSION = 19;
 
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
@@ -64,6 +68,8 @@ export type TranscriptBlock =
       readonly id: string;
       readonly requestId: string;
       readonly questions: ReadonlyArray<Question>;
+      /** When the agent asked. */
+      readonly at: number;
       readonly resolution?: QuestionResolution;
     }
   | {
@@ -75,6 +81,8 @@ export type TranscriptBlock =
         readonly outputTokens: number;
         readonly costUsd?: number;
       };
+      /** The files the turn changed, once its snapshot after it is in. */
+      readonly changes?: TurnChanges;
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string }
   /**
@@ -102,6 +110,19 @@ export type TranscriptBlock =
     };
 
 export type UserBlock = Extract<TranscriptBlock, { kind: "user" }>;
+
+/** The files one turn changed, which its response lists, and whether the user undid them. */
+export interface TurnChanges {
+  readonly turnId: string;
+  /** The folder's snapshots from before and after the turn, which a file's diff compares. */
+  readonly before: string;
+  readonly after: string;
+  readonly files: ReadonlyArray<TurnFile>;
+  /** Files it changed past those listed. */
+  readonly more: number;
+  /** The user put them back as they were before the turn; `kept` had changed since, and stayed. */
+  readonly undone?: { readonly kept: ReadonlyArray<string> };
+}
 
 /** How a question closed; `answers` holds one per question when the user answered. */
 export interface QuestionResolution {
@@ -137,6 +158,8 @@ export const buildTranscript = (
   const indexOf = new Map<string, number>();
   let lastUsage: Extract<TranscriptBlock, { kind: "turnEnd" }>["usage"];
   let running: { model: string; effort: ReasoningEffort | undefined } | undefined;
+  /** The turn in progress, by the id its files are recorded under. */
+  let turnId: string | undefined;
 
   const upsert = (key: string, block: TranscriptBlock) => {
     const index = indexOf.get(key);
@@ -156,7 +179,7 @@ export const buildTranscript = (
   /** Where each event's blocks begin, for a rewind to find what it replaced. */
   const startOf: Array<{ readonly sequence: number; readonly index: number }> = [];
 
-  for (const { payload, id, sequence } of events) {
+  for (const { payload, id, sequence, at } of events) {
     startOf.push({ sequence, index: blocks.length });
     switch (payload._tag) {
       case "ConversationRewound": {
@@ -200,6 +223,7 @@ export const buildTranscript = (
         break;
       }
       case "TurnInput":
+        turnId = payload.turnId;
         payload.items.forEach((item, index) => {
           const key = `${id}:${index}`;
           // A message keeps the key it had while queued.
@@ -297,6 +321,7 @@ export const buildTranscript = (
           id: `question:${payload.requestId}`,
           requestId: payload.requestId,
           questions: payload.questions,
+          at,
         });
         break;
       case "QuestionResolved": {
@@ -321,6 +346,8 @@ export const buildTranscript = (
         };
         break;
       case "TurnCompleted":
+        // Its files arrive after it, named by the turn's id.
+        if (turnId !== undefined) indexOf.set(`turn:${turnId}`, blocks.length);
         blocks.push({
           kind: "turnEnd",
           id: `turnEnd:${id}`,
@@ -329,6 +356,31 @@ export const buildTranscript = (
         });
         lastUsage = undefined;
         break;
+      case "TurnFilesChanged": {
+        const key = `turn:${payload.turnId}`;
+        const end = existing(key, "turnEnd");
+        if (end !== undefined) {
+          const { turnId: changedIn, before, after, files } = payload;
+          upsert(key, {
+            ...end,
+            changes: { turnId: changedIn, before, after, files, more: payload.more ?? 0 },
+          });
+        }
+        break;
+      }
+      case "TurnFilesReverted": {
+        const key = `turn:${payload.turnId}`;
+        const end = existing(key, "turnEnd");
+        if (end?.changes !== undefined) {
+          const { undone: _was, ...changes } = end.changes;
+          upsert(key, {
+            ...end,
+            changes:
+              payload.direction === "undone" ? { ...changes, undone: { kept: payload.kept } } : changes,
+          });
+        }
+        break;
+      }
       case "AgentError":
         blocks.push({ kind: "error", id: `error:${id}`, message: payload.message });
         break;

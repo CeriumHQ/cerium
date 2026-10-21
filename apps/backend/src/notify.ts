@@ -31,7 +31,7 @@ export interface Happened {
 
 /** What an agent's last turn left, as its events said. */
 export interface TurnEnd {
-  readonly stopReason?: "completed" | "interrupted" | "maxTurns" | "error";
+  readonly stopReason?: "completed" | "interrupted" | "steered" | "maxTurns" | "error";
   readonly message?: string;
   readonly error?: string;
 }
@@ -61,7 +61,8 @@ export const decide = (
   const lead = agents.find((agent) => agent.parentId === undefined);
   if (!happened.wentIdle || lead?.state !== "idle") return undefined;
   const end = turnEnd(lead.id);
-  if (end.stopReason === "interrupted") return undefined;
+  // A steered turn goes straight on with the user's messages.
+  if (end.stopReason === "interrupted" || end.stopReason === "steered") return undefined;
   if (end.stopReason === "error") return { kind: "failed", ...detail(end.error) };
   return { kind: "finished", ...detail(end.message) };
 };

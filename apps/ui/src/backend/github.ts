@@ -189,3 +189,5 @@ export const setPullState = Backend.mutation("SetPullRequestState");
 export const setPullDraft = Backend.mutation("SetPullRequestDraft");
 export const checkoutPull = Backend.mutation("CheckoutPullRequest");
 export const createPull = Backend.mutation("CreatePullRequest");
+/** A pull request's title and description a quick model wrote from the branch. */
+export const draftPull = Backend.mutation("DraftPullRequest");

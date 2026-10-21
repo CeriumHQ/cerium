@@ -4,7 +4,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { checkpointsLayer, parseNameStatus } from "../src/checkpoints.ts";
+import { checkpointsLayer, parseNameStatus, parseNumstat } from "../src/checkpoints.ts";
 
 describe("parseNameStatus", () => {
   it("reads each file's change from git's NUL-separated list", () => {
@@ -13,6 +13,19 @@ describe("parseNameStatus", () => {
       { path: "a.ts", change: "modified" },
       { path: "dir/new file.ts", change: "added" },
       { path: "gone.txt", change: "deleted" },
+    ]);
+  });
+});
+
+describe("parseNumstat", () => {
+  it("reads each file's lines from git's NUL-separated list, none for one that isn't text", () => {
+    expect(parseNumstat("")).toEqual([]);
+    expect(parseNumstat("3\t0\ta.ts\0-\t-\timage.png\0")).toEqual([
+      { path: "a.ts", added: 3, removed: 0 },
+      { path: "image.png" },
+    ]);
+    expect(parseNumstat("0\t12\tdir/with\ttab.ts\0")).toEqual([
+      { path: "dir/with\ttab.ts", added: 0, removed: 12 },
     ]);
   });
 });
@@ -57,6 +70,19 @@ describe("Checkpoints", { timeout: 30_000 }, () => {
       yield* write("secret.txt", "changed too\n");
       yield* write("node_modules/dep/index.js", "upgraded\n");
       const after = yield* checkpoints.save(folder);
+
+      assert.deepStrictEqual(
+        (yield* checkpoints.lines(folder, before, after)).toSorted((a, b) => a.path.localeCompare(b.path)),
+        [
+          { path: "other.ts", added: 1, removed: 0 },
+          { path: "src/a.ts", added: 1, removed: 1 },
+          { path: "src/b.ts", added: 0, removed: 1 },
+          { path: "src/c.ts", added: 1, removed: 0 },
+        ],
+      );
+      const diff = yield* checkpoints.diff(folder, before, after, "src/a.ts", 3);
+      assert.include(diff, "-one\r\n+changed");
+      assert.notInclude(diff, "src/c.ts");
 
       const changes = yield* checkpoints.changes(folder, before, after);
       // Ignored files and dependencies are never saved, so they never differ.

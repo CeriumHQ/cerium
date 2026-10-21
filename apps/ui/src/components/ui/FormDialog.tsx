@@ -86,6 +86,7 @@ export function FormDialog({
   description,
   children,
   actions,
+  aside,
   onSubmit,
   wide = false,
 }: {
@@ -98,6 +99,8 @@ export function FormDialog({
   readonly wide?: boolean;
   /** The buttons after Cancel; a `type="submit"` one answers Enter. */
   readonly actions: ReactNode;
+  /** A button for the form itself rather than its outcome, at the footer's start: "Generate". */
+  readonly aside?: ReactNode;
   readonly onSubmit?: () => void;
 }) {
   return (
@@ -125,7 +128,8 @@ export function FormDialog({
               )}
             </div>
             {children}
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {aside === undefined ? null : <div className="mr-auto flex items-center">{aside}</div>}
               <Dialog.Close render={<DialogButton />}>Cancel</Dialog.Close>
               {actions}
             </div>

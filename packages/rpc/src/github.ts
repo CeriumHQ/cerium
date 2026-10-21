@@ -615,4 +615,15 @@ export const GitHubRpcs = RpcGroup.make(
     success: PullRequestSummary,
     error: GitHubError,
   }),
+  /**
+   * A title and description for a pull request from the branch checked out in `cwd` into `base`,
+   * written by the quick model that titles threads from the branch's commits and diff, in the
+   * repository's template and style; `title` and `body` are what the user wrote so far. Since
+   * `RPC_VERSION` 19.
+   */
+  Rpc.make("DraftPullRequest", {
+    payload: { cwd, base: Schema.NonEmptyString, title: Schema.String, body: Schema.String },
+    success: Schema.Struct({ title: Schema.String, body: Schema.String }),
+    error: GitHubError,
+  }),
 );

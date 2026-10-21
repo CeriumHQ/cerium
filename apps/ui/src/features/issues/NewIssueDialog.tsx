@@ -2,8 +2,9 @@ import { MAX_ISSUE_BODY, MAX_ISSUE_TITLE } from "@cerium/rpc";
 import { RegistryContext, useAtomSet } from "@effect/atom-react";
 import { useContext, useRef, useState } from "react";
 
-import { createIssue, refreshIssueList } from "../../backend/issues.ts";
+import { createIssue, draftIssue, refreshIssueList } from "../../backend/issues.ts";
 import { DialogButton, DialogField, DialogInput, FormDialog } from "../../components/ui/FormDialog.tsx";
+import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { LabelList } from "./LabelPicker.tsx";
 import { SEARCH_LAG } from "./model.ts";
 
@@ -37,7 +38,26 @@ export function NewIssueDialog({
   const [labels, setLabels] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const draftWith = useAtomSet(draftIssue, { mode: "promise" });
+  /** A quick model is writing the issue up from the notes; the fields wait for it. */
+  const [writing, setWriting] = useState(false);
   const running = useRef(false);
+  const noted = title.trim() !== "" || body.trim() !== "";
+
+  const write = async () => {
+    if (!noted) return;
+    setWriting(true);
+    setError(undefined);
+    try {
+      const written = await draftWith({ payload: { cwd, title, body } });
+      setTitle(written.title);
+      setBody(written.body);
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setWriting(false);
+    }
+  };
 
   const reset = () => {
     setTitle("");
@@ -47,7 +67,7 @@ export function NewIssueDialog({
   };
 
   const submit = async () => {
-    if (running.current || title.trim() === "") return;
+    if (running.current || writing || title.trim() === "") return;
     running.current = true;
     setBusy(true);
     setError(undefined);
@@ -78,8 +98,19 @@ export function NewIssueDialog({
       }}
       title="New issue"
       onSubmit={() => void submit()}
+      aside={
+        <GenerateButton
+          label={noted ? "Write the issue up from your notes" : "Jot down a few notes first"}
+          busy={writing}
+          disabled={busy || !noted}
+          onClick={() => void write()}
+          className="-ml-2.5"
+        >
+          Generate
+        </GenerateButton>
+      }
       actions={
-        <DialogButton type="submit" tone="primary" disabled={busy || title.trim() === ""}>
+        <DialogButton type="submit" tone="primary" disabled={busy || writing || title.trim() === ""}>
           {busy ? "Creating…" : "Create issue"}
         </DialogButton>
       }
@@ -92,6 +123,7 @@ export function NewIssueDialog({
             value={title}
             maxLength={MAX_ISSUE_TITLE}
             onChange={(event) => setTitle(event.target.value)}
+            readOnly={writing}
             placeholder="What needs attention?"
           />
         </DialogField>
@@ -100,7 +132,8 @@ export function NewIssueDialog({
             value={body}
             maxLength={MAX_ISSUE_BODY}
             onChange={(event) => setBody(event.target.value)}
-            placeholder="Add the details. Markdown works."
+            readOnly={writing}
+            placeholder="Add the details, or rough notes to generate from. Markdown works."
             spellCheck
             className="max-h-64 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
           />

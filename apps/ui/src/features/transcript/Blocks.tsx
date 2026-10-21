@@ -135,7 +135,18 @@ export function UserMessage({
 }
 
 /** The user's messages waiting to reach the agent, with why they wait. */
-export function QueuedInput({ messages, note }: { messages: ReadonlyArray<UserBlock>; note: string }) {
+export function QueuedInput({
+  messages,
+  note,
+  onSteer,
+}: {
+  messages: ReadonlyArray<UserBlock>;
+  note: string;
+  /** Interrupts the agent to send the messages now. Absent where they can only wait. */
+  onSteer?: (() => void) | undefined;
+}) {
+  // Pressed once per wait: the turn's end brings the messages in, and this button goes with them.
+  const [steered, setSteered] = useState(false);
   return (
     <div className="flex flex-col items-end gap-2 py-3">
       <div className="flex w-full flex-col items-end gap-2 opacity-70">
@@ -143,10 +154,26 @@ export function QueuedInput({ messages, note }: { messages: ReadonlyArray<UserBl
           <UserMessage key={block.id} block={block} />
         ))}
       </div>
-      <p className="flex items-center gap-1.5 text-[12px] text-fg-tertiary">
-        <Clock size={12} strokeWidth={1.75} />
-        {note}
-      </p>
+      <div className="flex items-center gap-2 text-[12px] text-fg-tertiary">
+        <p className="flex items-center gap-1.5">
+          <Clock size={12} strokeWidth={1.75} />
+          {steered ? "Steering…" : note}
+        </p>
+        {onSteer && !steered ? (
+          <Tooltip label="Interrupt the agent and send now">
+            <Button
+              onClick={() => {
+                setSteered(true);
+                onSteer();
+              }}
+              className="flex h-6 items-center gap-1 rounded-md border border-line-subtle px-2 font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary"
+            >
+              <CornerDownRight size={12} strokeWidth={1.75} />
+              Steer
+            </Button>
+          </Tooltip>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -399,7 +426,11 @@ export function PermissionCard({
 }
 
 /** Why a turn ended early, which the conversation otherwise leaves unsaid. */
-const stoppedNote = { interrupted: "Stopped", maxTurns: "Stopped at the turn limit" } as const;
+const stoppedNote = {
+  interrupted: { text: "Stopped", Icon: Ban },
+  steered: { text: "Steered by your message", Icon: CornerDownRight },
+  maxTurns: { text: "Stopped at the turn limit", Icon: Ban },
+} as const;
 
 /**
  * The end of a response: a button that copies it, and what the turn cost. The transcript shows it
@@ -408,21 +439,26 @@ const stoppedNote = { interrupted: "Stopped", maxTurns: "Stopped at the turn lim
 export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: string }) {
   const stopped =
     block.stopReason in stoppedNote ? stoppedNote[block.stopReason as keyof typeof stoppedNote] : undefined;
-  if (block.usage === undefined && text === "" && stopped === undefined) return null;
+  // A turn stopped before the model answered reports nothing used, which isn't worth a line.
+  const usage =
+    block.usage !== undefined && block.usage.inputTokens + block.usage.outputTokens > 0
+      ? block.usage
+      : undefined;
+  if (usage === undefined && text === "" && stopped === undefined) return null;
   return (
     <div className="flex min-h-6 items-center gap-2.5 text-2xs text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">
-          <Ban size={11} strokeWidth={2} />
-          {stopped}
+          <stopped.Icon size={11} strokeWidth={2} />
+          {stopped.text}
         </span>
       )}
-      {block.usage === undefined ? null : (
+      {usage === undefined ? null : (
         <span className="flex items-center gap-2" title="Input counts cached tokens too">
-          <span>{compactTokens(block.usage.inputTokens)} in</span>
-          <span>{compactTokens(block.usage.outputTokens)} out</span>
-          {block.usage.costUsd === undefined ? null : <span>{usd(block.usage.costUsd)}</span>}
+          <span>{compactTokens(usage.inputTokens)} in</span>
+          <span>{compactTokens(usage.outputTokens)} out</span>
+          {usage.costUsd === undefined ? null : <span>{usd(usage.costUsd)}</span>}
         </span>
       )}
     </div>

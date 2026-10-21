@@ -26,6 +26,7 @@ import {
   type ThreadMode,
   type ThreadOverview,
   type ThreadWorktree,
+  type TurnFilesReverted,
   type WorktreeChanges,
 } from "@cerium/protocol";
 import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
@@ -53,6 +54,7 @@ import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
+import { commandOf, FolderActivity, turnFiles, type TurnWork } from "./turnFiles.ts";
 import { liveEvents, replayNotice, rewindPoint, startsAnew } from "./rewind.ts";
 import {
   Adapters,
@@ -158,6 +160,12 @@ interface Runtime {
   ended: boolean;
   /** The user stopped the turn in progress with "stop everything": its end wakes nobody. */
   halted: boolean;
+  /** The user's messages wait in the inbox for the agent's next turn. */
+  userWaiting: boolean;
+  /** The tool calls of the turn in progress that haven't finished. */
+  readonly openCalls: Set<string>;
+  /** Cerium interrupted the turn in progress to hand the agent the user's waiting messages. */
+  steering: boolean;
   /** The model and effort its harness session runs with; its next turn brings them in line with `info`. */
   applied: ModelChoice;
 }
@@ -258,6 +266,16 @@ export class Orchestrator extends Context.Service<
      */
     restoreBefore(agentId: AgentId, messageId: string): Effect.Effect<FromUser, OrchestratorError>;
     /**
+     * Puts the files one of an agent's turns changed back as they were before it (`undone`), or as the
+     * turn left them (`redone`); a file changed since is left as it is. Records and resolves with what
+     * it did.
+     */
+    revertTurn(
+      agentId: AgentId,
+      turnId: string,
+      direction: "undone" | "redone",
+    ): Effect.Effect<TurnFilesReverted, OrchestratorError>;
+    /**
      * Switches a thread's lead to another model of its harness, or another effort, from its next
      * turn. A lead that stopped or failed starts on them when the user picks the thread back up.
      */
@@ -292,6 +310,11 @@ export class Orchestrator extends Context.Service<
       agentId: AgentId,
       options?: { readonly includeChildren?: boolean },
     ): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Hands a lead the user's messages waiting behind its turn now, interrupting the turn rather than
+     * waiting for its tool calls to finish. Does nothing when no message waits or no turn is running.
+     */
+    steerAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     /** Ends the agent's session. */
     stopAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
@@ -408,6 +431,11 @@ export class Orchestrator extends Context.Service<
       const leadRequests = new Map<AgentId, Set<string>>();
       /** The questions each agent has put to the user and not had answered, by request id. */
       const openQuestions = new Map<AgentId, Map<string, OpenQuestion>>();
+      /**
+       * Notices each agent hears with its next turn, whatever starts it, rather than starting one: a
+       * dismissed question isn't worth waking an agent whose cache may long have gone cold.
+       */
+      const heldNotices = new Map<AgentId, Array<InputItem>>();
       /** Each thread's live advisor. */
       const advisors = new Map<ThreadId, Runtime>();
       /** The agents waiting on each advisor's answers, in the order they asked. */
@@ -443,6 +471,41 @@ export class Orchestrator extends Context.Service<
           Effect.mapError(() => notFound(`Agent ${agentId} is not running.`)),
         );
 
+      /** Who works in each work folder when, by its resolved path, for each turn's summary of its files. */
+      const activities = new Map<string, FolderActivity>();
+      /** Each agent's turn in progress in a work folder: when it began, and the commands it has run. */
+      const turnsInProgress = new Map<
+        AgentId,
+        { readonly folder: string; readonly start: number; readonly commands: Array<string> }
+      >();
+
+      const activityIn = (folder: string) => {
+        const resolved = path.resolve(folder);
+        const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+        let activity = activities.get(key);
+        if (activity === undefined) {
+          activity = new FolderActivity();
+          activities.set(key, activity);
+        }
+        return activity;
+      };
+
+      /** Notes what an agent's event says it did in its turn: a file its edit tools named, a command it ran. */
+      const noteWork = (agentId: AgentId, at: number, payload: EventPayload) => {
+        const turn = turnsInProgress.get(agentId);
+        if (turn === undefined) return;
+        if (payload._tag === "FileChanged") {
+          const relative = path.relative(turn.folder, path.resolve(turn.folder, payload.path));
+          if (relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+            activityIn(turn.folder).name(agentId, at, relative.replaceAll("\\", "/"));
+          }
+        }
+        if (payload._tag === "ToolCallStarted") {
+          const command = commandOf(payload.toolName, payload.input);
+          if (command !== undefined) turn.commands.push(command);
+        }
+      };
+
       /** Stores (unless it's ephemeral) and publishes one of an agent's events, at `sequence`. */
       const record = (info: AgentInfo, sequence: number, payload: EventPayload, raw?: unknown) =>
         Effect.gen(function* () {
@@ -455,6 +518,7 @@ export class Orchestrator extends Context.Service<
             payload,
             ...(raw === undefined ? {} : { raw }),
           };
+          noteWork(info.id, event.at, payload);
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
           yield* PubSub.publish(feed, event);
         });
@@ -503,6 +567,16 @@ export class Orchestrator extends Context.Service<
           yield* Queue.offer(target.inbox, item);
         });
 
+      /** A turn's items, after the notices held for the agent's next turn, which it takes. */
+      const withHeld = (
+        agentId: AgentId,
+        items: readonly [InputItem, ...Array<InputItem>],
+      ): readonly [InputItem, ...Array<InputItem>] => {
+        const [head, ...tail] = heldNotices.get(agentId) ?? [];
+        heldNotices.delete(agentId);
+        return head === undefined ? items : [head, ...tail, ...items];
+      };
+
       /** An advisor that ended answers nobody: the agents still waiting on it hear so, and ask anew. */
       const releaseAdvisor = (rt: Runtime) =>
         Effect.gen(function* () {
@@ -534,6 +608,28 @@ export class Orchestrator extends Context.Service<
 
       const finishTurn = (rt: Runtime) =>
         rt.turn === undefined ? Effect.void : Deferred.succeed(rt.turn, undefined);
+
+      /**
+       * Hands the agent the user's messages waiting behind its turn: the turn is interrupted, and they
+       * start the next one, the same way on every harness. So a message reaches the agent at its next
+       * step rather than once it is done: Cerium steers when the turn's tool calls have all finished,
+       * or at once when the user asks.
+       */
+      const steer = (rt: Runtime) =>
+        Effect.gen(function* () {
+          const session = rt.session;
+          if (rt.turn === undefined || !rt.userWaiting || rt.steering || session === undefined) return;
+          rt.steering = true;
+          yield* session.interrupt.pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                // The messages wait for the turn's end instead.
+                rt.steering = false;
+                yield* Effect.logWarning(`Couldn't steer agent ${rt.info.id}: ${error.message}`);
+              }),
+            ),
+          );
+        });
 
       /** Takes a question out of those waiting; what it was, or nothing when it was not waiting. */
       const closeQuestion = (agentId: AgentId, requestId: string): OpenQuestion | undefined => {
@@ -613,7 +709,12 @@ export class Orchestrator extends Context.Service<
         return session.events.pipe(
           Stream.runForEach((event) =>
             Effect.gen(function* () {
-              const { payload } = event;
+              const payload: EventPayload =
+                event.payload._tag === "TurnCompleted" &&
+                event.payload.stopReason === "interrupted" &&
+                rt.steering
+                  ? { _tag: "TurnCompleted", stopReason: "steered" }
+                  : event.payload;
               if (payload._tag === "PermissionRequested") {
                 if (approvesItself(rt.info.access, payload.toolName)) {
                   unseen.add(payload.requestId);
@@ -652,7 +753,16 @@ export class Orchestrator extends Context.Service<
                 case "PermissionResolved":
                   pendingPermissions.get(rt.info.id)?.delete(payload.requestId);
                   return;
+                case "ToolCallStarted":
+                  rt.openCalls.add(payload.callId);
+                  return;
+                case "ToolCallCompleted":
+                  rt.openCalls.delete(payload.callId);
+                  // Between steps: the user's waiting messages go now, before the agent's next one.
+                  if (rt.openCalls.size === 0) yield* steer(rt);
+                  return;
                 case "TurnCompleted":
+                  rt.openCalls.clear();
                   return yield* finishTurn(rt);
                 default:
                   return;
@@ -724,6 +834,62 @@ export class Orchestrator extends Context.Service<
         return Effect.map(saved, Option.getOrUndefined);
       };
 
+      /** Starts noting what the agent's turn does in its thread's folder, from now. */
+      const beginWork = (info: AgentInfo) =>
+        Effect.map(Clock.currentTimeMillis, (start) => {
+          const folder = threadDirectories.get(info.threadId);
+          if (folder === undefined) return;
+          activityIn(folder).begin(info.id, start);
+          turnsInProgress.set(info.id, { folder, start, commands: [] });
+        });
+
+      /** Stops noting what the agent's turn does, and says what it did; nothing when it wasn't noted. */
+      const endWork = (agentId: AgentId) =>
+        Effect.map(Clock.currentTimeMillis, (end): (TurnWork & { readonly folder: string }) | undefined => {
+          const turn = turnsInProgress.get(agentId);
+          if (turn === undefined) return undefined;
+          turnsInProgress.delete(agentId);
+          const activity = activityIn(turn.folder);
+          activity.end(agentId, turn.start, end);
+          return {
+            folder: turn.folder,
+            named: activity.namedBy(agentId, turn.start, end, false),
+            namedByOthers: activity.namedBy(agentId, turn.start, end, true),
+            shared: activity.shared(agentId, turn.start, end),
+            commands: turn.commands,
+          };
+        });
+
+      /** Records the files a turn changed, from its snapshots before and after, for its summary. */
+      const reportTurnFiles = (
+        rt: Runtime,
+        turnId: string,
+        before: string,
+        after: string,
+        work: TurnWork & { readonly folder: string },
+      ) =>
+        Effect.gen(function* () {
+          if (before === after) return;
+          const differing = yield* checkpoints.changes(work.folder, before, after);
+          if (differing.length === 0) return;
+          const lines = yield* checkpoints.lines(work.folder, before, after);
+          const { files, more } = turnFiles(differing, lines, work);
+          const [first, ...rest] = files;
+          if (first === undefined) return;
+          yield* emit(rt, {
+            _tag: "TurnFilesChanged",
+            turnId,
+            before,
+            after,
+            files: [first, ...rest],
+            ...(more > 0 ? { more } : {}),
+          });
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning(`Couldn't list the files turn ${turnId} changed: ${error.message}`),
+          ),
+        );
+
       const runTurn = (
         rt: Runtime,
         session: AgentSession,
@@ -733,10 +899,13 @@ export class Orchestrator extends Context.Service<
           yield* setState(rt, "running");
           rt.lastMessage = undefined;
           rt.halted = false;
+          rt.steering = false;
+          rt.openCalls.clear();
           rt.turn = yield* Deferred.make<void>();
           const turnId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
           // The folder as it was before the turn, which restoring to before its messages goes back to.
           const files = yield* snapshotFor(rt.info);
+          if (files !== undefined) yield* beginWork(rt.info);
           yield* emit(rt, { _tag: "TurnInput", items, turnId, ...(files === undefined ? {} : { files }) });
           const extras = yield* turnExtras(rt, items);
           yield* session.send(renderTurn(items), { ...extras, turnId }).pipe(
@@ -755,17 +924,23 @@ export class Orchestrator extends Context.Service<
               }),
             ),
           );
-          yield* Deferred.await(rt.turn);
+          // A stopped agent's turn ends here too, so it isn't counted as working in the folder for good.
+          yield* Deferred.await(rt.turn).pipe(Effect.onInterrupt(() => Effect.asVoid(endWork(rt.info.id))));
           rt.turn = undefined;
-          // And as it was after, so a restore can tell the files this turn changed from another thread's:
-          // saved behind the turn, so the agent is free at once.
+          const work = yield* endWork(rt.info.id);
+          // And as it was after, so a restore can tell the files this turn changed from another thread's,
+          // and the turn's summary which files it changed: saved behind the turn, so the agent is free at once.
           if (files !== undefined) {
             yield* Effect.forkIn(
               snapshotFor(rt.info).pipe(
                 Effect.flatMap((after) =>
                   after === undefined
                     ? Effect.void
-                    : emit(rt, { _tag: "FilesSaved", snapshot: after, turnId }),
+                    : emit(rt, { _tag: "FilesSaved", snapshot: after, turnId }).pipe(
+                        Effect.andThen(
+                          work === undefined ? Effect.void : reportTurnFiles(rt, turnId, files, after, work),
+                        ),
+                      ),
                 ),
                 Effect.ignore,
               ),
@@ -827,7 +1002,10 @@ export class Orchestrator extends Context.Service<
           const advisor = isAdvisor(rt.info);
           // Notices wait briefly so several arriving together become one turn; the user never waits.
           if (first._tag !== "FromUser" && !advisor) yield* Effect.sleep(config.batchWindow);
-          const items = advisor ? ([first] as const) : ([first, ...(yield* Queue.clear(rt.inbox))] as const);
+          const items = advisor
+            ? ([first] as const)
+            : withHeld(rt.info.id, [first, ...(yield* Queue.clear(rt.inbox))]);
+          if (!advisor) rt.userWaiting = false;
           if (rt.ended) return yield* Effect.interrupt;
 
           yield* setState(rt, "queued");
@@ -926,6 +1104,9 @@ export class Orchestrator extends Context.Service<
             lastMessage: undefined,
             ended: false,
             halted: false,
+            userWaiting: false,
+            openCalls: new Set(),
+            steering: false,
             applied: choiceOf(info),
           };
           runtimes.set(info.id, rt);
@@ -1166,6 +1347,8 @@ export class Orchestrator extends Context.Service<
           runtimes.delete(rt.info.id);
           pendingPermissions.delete(rt.info.id);
           leadRequests.delete(rt.info.id);
+          // A resumed session finds what it hadn't heard in the thread's history.
+          heldNotices.delete(rt.info.id);
           yield* setState(rt, "stopped").pipe(Effect.ignore);
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
@@ -1262,6 +1445,8 @@ export class Orchestrator extends Context.Service<
         }
         pendingPermissions.delete(agentId);
         openQuestions.delete(agentId);
+        // A failed session's held notices come back from its history below.
+        heldNotices.delete(agentId);
         // What rewinds replaced is no longer the conversation the session goes on from.
         const history = liveEvents(yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable)));
         // Approvals and questions the old session was waiting on died with it, and so did its requests to
@@ -1272,20 +1457,23 @@ export class Orchestrator extends Context.Service<
         const undelivered = new Map<string, InputItem>();
         // Questions still open are closed now; those closed as expired since the agent's last turn are
         // ones it never heard the end of.
-        const askedQuestions = new Map<string, string>();
+        // Dismissals since then are notices it was still to hear with its next turn.
+        const askedQuestions = new Map<string, OpenQuestion>();
         const unansweredQuestions = new Set<string>();
         const expiredAt = new Map<string, number>();
+        const dismissedAt = new Map<string, number>();
         let lastTurnAt = -1;
         for (const [index, { payload }] of history.entries()) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
           if (payload._tag === "PermissionResolved") unanswered.delete(payload.requestId);
           if (payload._tag === "QuestionAsked") {
-            askedQuestions.set(payload.requestId, payload.questions[0].question);
+            askedQuestions.set(payload.requestId, payload.questions);
             unansweredQuestions.add(payload.requestId);
           }
           if (payload._tag === "QuestionResolved") {
             unansweredQuestions.delete(payload.requestId);
             if (payload.outcome === "expired") expiredAt.set(payload.requestId, index);
+            if (payload.outcome === "dismissed") dismissedAt.set(payload.requestId, index);
           }
           if (payload._tag === "TurnInput") lastTurnAt = index;
           if (payload._tag === "SpawnApprovalRequested") {
@@ -1360,8 +1548,19 @@ export class Orchestrator extends Context.Service<
           notices.push({
             _tag: "SystemNotice",
             text: `Your session ended before the user answered ${unheard
-              .map(([, question]) => `"${question.length > 120 ? `${question.slice(0, 119)}…` : question}"`)
+              .map(
+                ([, [{ question }]]) =>
+                  `"${question.length > 120 ? `${question.slice(0, 119)}…` : question}"`,
+              )
               .join(", ")}. Ask again if you still need the answer.`,
+          });
+        }
+        for (const [requestId, questions] of askedQuestions) {
+          if ((dismissedAt.get(requestId) ?? -1) <= lastTurnAt) continue;
+          notices.push({
+            _tag: "SystemNotice",
+            text: answerNotice(questions, { outcome: "dismissed" }),
+            questionId: requestId,
           });
         }
         if (unansweredSpawns.size > 0) {
@@ -1682,6 +1881,66 @@ export class Orchestrator extends Context.Service<
         return message;
       });
 
+      const revertTurn = Effect.fn("Orchestrator.revertTurn")(function* (
+        agentId: AgentId,
+        turnId: string,
+        direction: "undone" | "redone",
+      ) {
+        const rt = runtimes.get(agentId);
+        const info =
+          rt?.info ??
+          Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+        if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+        const thread = yield* threadInfo(info.threadId);
+        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        let changed: Extract<EventPayload, { _tag: "TurnFilesChanged" }> | undefined;
+        let state: "undone" | "redone" = "redone";
+        for (const { payload } of events) {
+          if (payload._tag === "TurnFilesChanged" && payload.turnId === turnId) changed = payload;
+          if (payload._tag === "TurnFilesReverted" && payload.turnId === turnId) state = payload.direction;
+        }
+        if (changed === undefined || thread.mode !== "work") {
+          return yield* notFound("That turn changed no files Cerium knows of.");
+        }
+        if (state === direction) {
+          return yield* new OrchestratorError({
+            reason: "invalid",
+            message:
+              direction === "undone"
+                ? "That turn's files are already undone."
+                : "That turn's files are already back.",
+          });
+        }
+        const folder = threadDirectory(thread);
+        // A file that changed since it was last put back stays as it is: going back would lose that change.
+        const [expected, target] =
+          direction === "undone" ? [changed.after, changed.before] : [changed.before, changed.after];
+        const failed = (error: { readonly message: string }) =>
+          new OrchestratorError({
+            reason: "unavailable",
+            message: `The files couldn't be put back: ${error.message}`,
+          });
+        const now = yield* checkpoints.save(folder).pipe(Effect.mapError(failed));
+        const since = new Set(
+          (yield* checkpoints.changes(folder, expected, now).pipe(Effect.mapError(failed))).map(
+            (file) => file.path,
+          ),
+        );
+        const paths = changed.files.map((file) => file.path);
+        const back = paths.filter((file) => !since.has(file));
+        const kept = paths.filter((file) => since.has(file));
+        yield* checkpoints.restore(folder, target, back).pipe(Effect.mapError(failed));
+        const payload: TurnFilesReverted = {
+          _tag: "TurnFilesReverted",
+          turnId,
+          direction,
+          paths: back,
+          kept,
+        };
+        yield* rt === undefined ? emitStored(info, payload) : emit(rt, payload);
+        return payload;
+      });
+
       /** The agent's harness session, which a live agent only lacks while it starts. */
       const sessionOf = (rt: Runtime) =>
         Effect.fromNullishOr(rt.session).pipe(
@@ -1837,6 +2096,9 @@ export class Orchestrator extends Context.Service<
             // Recorded before it waits on the session or a running turn, so the user sees it at once.
             yield* emit(rt, { _tag: "MessageQueued", message });
             // Offered together, so the user's messages and any notices make one turn.
+            // A turn in progress takes it at its next step, between tool calls. Marked first: the turn
+            // loop clears the mark when it takes the inbox.
+            rt.userWaiting = true;
             yield* Queue.offerAll(rt.inbox, [...undelivered, message, ...notices]);
             const startedAs = untitled.get(rt.info.threadId);
             untitled.delete(rt.info.threadId);
@@ -1872,6 +2134,9 @@ export class Orchestrator extends Context.Service<
         previewRestore,
 
         restoreBefore: (agentId, messageId) => acceptPermit.withPermits(1)(restoreBefore(agentId, messageId)),
+        // One at a time, and never beside a restore: each reads the files the other puts back.
+        revertTurn: (agentId, turnId, direction) =>
+          acceptPermit.withPermits(1)(revertTurn(agentId, turnId, direction)),
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.
@@ -1936,11 +2201,15 @@ export class Orchestrator extends Context.Service<
               ? { _tag: "QuestionResolved", requestId, outcome: "dismissed" }
               : { _tag: "QuestionResolved", requestId, outcome: "answered", answers: given.answers },
           );
-          yield* deliver(agentId, {
+          const notice: InputItem = {
             _tag: "SystemNotice",
             text: answerNotice(open, given),
             questionId: requestId,
-          });
+          };
+          // An answer wakes the agent; a dismissal waits for its next turn.
+          if (given.outcome === "dismissed") {
+            heldNotices.set(agentId, [...(heldNotices.get(agentId) ?? []), notice]);
+          } else yield* deliver(agentId, notice);
         }),
 
         askUser: Effect.fn("Orchestrator.askUser")(function* (
@@ -2043,6 +2312,10 @@ export class Orchestrator extends Context.Service<
               },
             );
           }
+        }),
+
+        steerAgent: Effect.fn("Orchestrator.steerAgent")(function* (agentId: AgentId) {
+          yield* steer(yield* runtime(agentId));
         }),
 
         stopAgent: Effect.fn("Orchestrator.stopAgent")(function* (agentId: AgentId) {

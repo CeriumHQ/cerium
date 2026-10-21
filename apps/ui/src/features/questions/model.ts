@@ -44,6 +44,20 @@ export const toResponse = (drafts: ReadonlyArray<Draft>): QuestionResponse => ({
   }),
 });
 
+/** An hour: longer than most harnesses keep a prompt cache between an agent's requests. */
+const CACHE_LIFETIME_MS = 60 * 60_000;
+
+/**
+ * How long ago the agent asked, as "3h" or "2d", once its prompt cache has likely gone cold, so that
+ * an answer, which wakes it, re-reads the whole conversation uncached; nothing before then.
+ */
+export const coldFor = (askedAt: number, now: number): string | undefined => {
+  const idle = now - askedAt;
+  if (idle < CACHE_LIFETIME_MS) return undefined;
+  const hours = Math.floor(idle / (60 * 60_000));
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+};
+
 const RECOMMENDED = /\s*\(recommended\)\s*$/i;
 
 /** An option's label without the "(Recommended)" agents mark their pick with, and whether it had one. */

@@ -2,7 +2,16 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId, QuestionResponse, RestorePreview } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown, History } from "lucide-react";
-import { createContext, memo, use, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  memo,
+  use,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
@@ -33,10 +42,16 @@ import { WorkspaceFolder } from "./FileChip.tsx";
 import { currentModel, layout, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type { AgentActivity, QueuedMessages, TranscriptBlock } from "./model.ts";
+import type {
+  AgentActivity,
+  QueuedMessages,
+  TranscriptBlock,
+  TurnChanges as TurnChangesModel,
+} from "./model.ts";
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
+import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 
 interface TranscriptProps {
@@ -79,6 +94,13 @@ interface TranscriptProps {
    * (or the preview), messages offer no restore.
    */
   readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
+  /**
+   * Interrupts the lead to send the messages waiting behind its turn now, rather than at its next
+   * step. Without it, they only wait.
+   */
+  readonly onSteer?: () => void;
+  /** Opens the files a turn changed and undoes them; without it, a turn's files are only listed. */
+  readonly turnFiles?: TurnFileActions | undefined;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -87,12 +109,13 @@ type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind:
  * What an earlier response's footer wears so it stays out of sight until its response is under the
  * pointer or has focus (touch screens, which can't hover, always show it). The latest response's
  * footer, and any that says the turn was cut short, stay in view. `:hover+&` is the item just
- * before the footer, which is the response's last part.
+ * before the footer, which is the response's last part; `:hover+*+&` that part when the files the
+ * turn changed sit between them.
  */
 const quietFooter = (item: Extract<Item, { kind: "turnEnd" }>, latest: string | undefined) =>
   item.id === latest || item.block.stopReason !== "completed"
     ? ""
-    : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 [:focus-within+&]:opacity-100 [:hover+&]:opacity-100";
+    : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 [:focus-within+&]:opacity-100 [:hover+&]:opacity-100 [:hover+*+&]:opacity-100";
 
 export function Transcript({
   blocks,
@@ -111,6 +134,8 @@ export function Transcript({
   onEditMessage,
   onPreviewRestore,
   onRestoreMessage,
+  onSteer,
+  turnFiles,
 }: TranscriptProps) {
   const roles = new Map(
     blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
@@ -146,6 +171,7 @@ export function Transcript({
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
     ...(onEditMessage ? { onEditMessage } : {}),
+    ...(turnFiles ? { turnFiles } : {}),
     ...(onPreviewRestore && onRestoreMessage
       ? {
           restore: {
@@ -164,21 +190,26 @@ export function Transcript({
         {item.items.map((each) => renderItem(each, true))}
       </EarlierVersion>
     ) : (
-      <div
-        key={item.id}
-        className={
-          item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : undefined
-        }
-      >
-        <TranscriptItem
-          item={item}
-          last={!replaced && item === last}
-          activity={replaced ? "ended" : activity}
-          provider={agent.provider}
-          model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
-          replaced={replaced}
-        />
-      </div>
+      <Fragment key={item.id}>
+        {/* The files the turn changed stay in view, above the footer that hides until hovered. */}
+        {item.kind === "turnEnd" && item.block.changes !== undefined ? (
+          <TurnChangesItem changes={item.block.changes} replaced={replaced} />
+        ) : null}
+        <div
+          className={
+            item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : undefined
+          }
+        >
+          <TranscriptItem
+            item={item}
+            last={!replaced && item === last}
+            activity={replaced ? "ended" : activity}
+            provider={agent.provider}
+            model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
+            replaced={replaced}
+          />
+        </div>
+      </Fragment>
     );
 
   return (
@@ -211,12 +242,15 @@ export function Transcript({
             {working ? <Working /> : null}
             {held ? (
               <QueuedInput
+                // A new wait offers steering again.
+                key={queued.messages[0]?.id}
                 messages={queued.messages}
                 note={
                   activity === "ended"
                     ? "Not sent yet · goes with your next message"
-                    : "Queued · sends when this turn ends"
+                    : "Queued · sends at the agent's next step"
                 }
+                onSteer={activity === "ended" ? undefined : onSteer}
               />
             ) : null}
           </div>
@@ -259,6 +293,7 @@ interface TranscriptActions {
     /** The lead's harness by name, which the restore's preview says what becomes of. */
     readonly harness: string;
   };
+  readonly turnFiles?: TurnFileActions | undefined;
 }
 
 const Actions = createContext<TranscriptActions>({
@@ -383,6 +418,16 @@ const TranscriptItem = memo(
     before.model === after.model &&
     before.replaced === after.replaced &&
     same(before.item, after.item),
+);
+
+/** The files a turn changed; renders again when they or what became of them changes. */
+const TurnChangesItem = memo(
+  function TurnChangesItem({ changes, replaced }: { changes: TurnChangesModel; replaced: boolean }) {
+    const { turnFiles } = use(Actions);
+    // A version the conversation replaced only lists its files: its turn's undo belongs to the past.
+    return <TurnChanges changes={changes} actions={replaced ? undefined : turnFiles} />;
+  },
+  (before, after) => before.replaced === after.replaced && same(before.changes, after.changes),
 );
 
 function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
@@ -555,6 +600,7 @@ function QuestionBlock({ block, expired }: { block: Block<"question">; expired: 
     <QuestionCard
       key={block.requestId}
       questions={block.questions}
+      askedAt={block.at}
       onAnswer={onAnswerQuestion && ((response) => onAnswerQuestion(block.requestId, response))}
     />
   );

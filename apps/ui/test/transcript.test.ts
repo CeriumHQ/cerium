@@ -34,6 +34,44 @@ describe("buildTranscript", () => {
     expect(done).toEqual([{ kind: "message", id: "message:m", text: "Hello!", streaming: false }]);
   });
 
+  it("puts the files a turn changed on its footer, arriving after the next turn began, and their undo", () => {
+    const changed: EventPayload = {
+      _tag: "TurnFilesChanged",
+      turnId: "t1",
+      before: "s0",
+      after: "s1",
+      files: [{ path: "a.ts", change: "modified", added: 2, removed: 1, via: "edit" }],
+    };
+    const turn = (turnId: string): ReadonlyArray<EventPayload> => [
+      { _tag: "TurnInput", items: [{ _tag: "FromUser", text: turnId }], turnId },
+      { _tag: "TurnCompleted", stopReason: "completed" },
+    ];
+    const ends = (payloads: ReadonlyArray<EventPayload>) =>
+      buildTranscript(events(...payloads)).flatMap((block) => (block.kind === "turnEnd" ? [block] : []));
+
+    const [first, second] = ends([...turn("t1"), ...turn("t2"), changed]);
+    expect(first?.changes).toEqual({
+      turnId: "t1",
+      before: "s0",
+      after: "s1",
+      files: [{ path: "a.ts", change: "modified", added: 2, removed: 1, via: "edit" }],
+      more: 0,
+    });
+    expect(second?.changes).toBeUndefined();
+
+    const undo = (direction: "undone" | "redone"): EventPayload => ({
+      _tag: "TurnFilesReverted",
+      turnId: "t1",
+      direction,
+      paths: [],
+      kept: ["a.ts"],
+    });
+    expect(ends([...turn("t1"), changed, undo("undone")])[0]?.changes?.undone).toEqual({ kept: ["a.ts"] });
+    expect(
+      ends([...turn("t1"), changed, undo("undone"), undo("redone")])[0]?.changes?.undone,
+    ).toBeUndefined();
+  });
+
   it("completes tool calls and attributes file changes to them", () => {
     const [tool] = buildTranscript(
       events(
@@ -66,7 +104,8 @@ describe("buildTranscript", () => {
     ] as const;
     const asked = { _tag: "QuestionAsked", requestId: "q", questions } as const;
     expect(buildTranscript(events(asked))).toEqual([
-      { kind: "question", id: "question:q", requestId: "q", questions },
+      // Asked at the first event's time.
+      { kind: "question", id: "question:q", requestId: "q", questions, at: 0 },
     ]);
     const [answered] = buildTranscript(
       events(asked, {

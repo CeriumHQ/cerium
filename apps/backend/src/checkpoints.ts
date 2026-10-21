@@ -1,4 +1,4 @@
-import { CheckpointError, Checkpoints, type SnapshotChange } from "@cerium/orchestrator";
+import { CheckpointError, Checkpoints, type SnapshotChange, type SnapshotLines } from "@cerium/orchestrator";
 import { Deferred, Effect, FileSystem, Layer, Path, Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { createHash, randomUUID } from "node:crypto";
@@ -65,6 +65,25 @@ export const parseNameStatus = (output: string): ReadonlyArray<SnapshotChange> =
     });
   }
   return changes;
+};
+
+/**
+ * The files `git diff-tree -z --numstat` lists, with the lines each gained and lost: `-` for both
+ * when it isn't text.
+ */
+export const parseNumstat = (output: string): ReadonlyArray<SnapshotLines> => {
+  const files: Array<SnapshotLines> = [];
+  for (const entry of output.split("\0")) {
+    const match = /^(\d+|-)\t(\d+|-)\t(.+)$/s.exec(entry);
+    if (match === null) continue;
+    const [, added, removed, path] = match;
+    files.push(
+      added === "-" || removed === "-"
+        ? { path: path! }
+        : { path: path!, added: Number(added), removed: Number(removed) },
+    );
+  }
+  return files;
 };
 
 interface GitResult {
@@ -315,6 +334,44 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         return parseNameStatus(output);
       });
 
+      const lines = Effect.fn("Checkpoints.lines")(function* (folder: string, from: string, to: string) {
+        if (from === to) return [];
+        const output = yield* gitOk(
+          storeOf(folder),
+          folder,
+          ["diff-tree", "-r", "-z", "--no-renames", "--numstat", from, to],
+          "Couldn't compare the folder's snapshots.",
+        );
+        return parseNumstat(output);
+      });
+
+      const diff = Effect.fn("Checkpoints.diff")(function* (
+        folder: string,
+        from: string,
+        to: string,
+        file: string,
+        context: number,
+      ) {
+        return yield* gitOk(
+          storeOf(folder),
+          folder,
+          [
+            "diff-tree",
+            "-p",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            `-U${Math.max(0, Math.floor(context))}`,
+            from,
+            to,
+            "--",
+            file,
+          ],
+          "Couldn't compare the file's snapshots.",
+        );
+      });
+
       const restore = Effect.fn("Checkpoints.restore")(function* (
         folder: string,
         snapshot: string,
@@ -370,6 +427,6 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         );
       });
 
-      return Checkpoints.of({ save, changes, restore });
+      return Checkpoints.of({ save, changes, lines, diff, restore });
     }),
   );

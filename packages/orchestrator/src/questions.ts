@@ -60,10 +60,15 @@ export const tidyResponse = (response: QuestionResponse): QuestionResponse =>
         }),
       };
 
-/** The user's response, as the notice an agent that asked through `ask_user` gets. */
+/**
+ * The user's response, as the notice an agent that asked through `ask_user` gets. A dismissal reaches
+ * it with its next turn, perhaps much later, so it names the question.
+ */
 export const answerNotice = (questions: ReadonlyArray<Question>, response: QuestionResponse): string => {
   if (response.outcome === "dismissed") {
-    return "The user dismissed your question without answering it. Carry on with your best judgment, or put it in your reply if you can't.";
+    const question = questions[0]?.question ?? "";
+    const named = question.length > 120 ? `${question.slice(0, 119)}…` : question;
+    return `The user dismissed your question "${named}" without answering it. Go on without the answer, using your best judgment.`;
   }
   const lines = questions.map((question, index) => {
     const answer = response.answers[index];

@@ -145,4 +145,18 @@ export const GitRpcs = RpcGroup.make(
     success: Schema.Struct({ message: Schema.String }),
     error: GitError,
   }),
+  /**
+   * A message for the next commit, written by the quick model that titles threads in the repository's
+   * own style: of what's staged, or everything changed when nothing is, or with `amend` of the last
+   * commit and what's staged. `draft` is what the user wrote so far. Since `RPC_VERSION` 19.
+   */
+  Rpc.make("DraftCommitMessage", {
+    payload: {
+      root: Schema.NonEmptyString,
+      amend: Schema.optionalKey(Schema.Boolean),
+      draft: Schema.optionalKey(Schema.String),
+    },
+    success: Schema.Struct({ message: Schema.String }),
+    error: GitError,
+  }),
 );

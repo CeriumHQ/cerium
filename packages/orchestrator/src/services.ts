@@ -103,6 +103,14 @@ export interface SnapshotChange {
   readonly change: "added" | "modified" | "deleted";
 }
 
+/** The lines a file gained and lost between two snapshots; neither for a file that isn't text. */
+export interface SnapshotLines {
+  /** Relative to the folder, with forward slashes. */
+  readonly path: string;
+  readonly added?: number;
+  readonly removed?: number;
+}
+
 /**
  * Snapshots of a work thread's folder, taken as its agents' turns start and end, so the user can put
  * the files back as they were before one of their messages. Kept apart from the folder's own
@@ -119,6 +127,20 @@ export class Checkpoints extends Context.Service<
       from: string,
       to: string,
     ): Effect.Effect<ReadonlyArray<SnapshotChange>, CheckpointError>;
+    /** The lines each file that differs between two snapshots of `folder` gained and lost. */
+    lines(
+      folder: string,
+      from: string,
+      to: string,
+    ): Effect.Effect<ReadonlyArray<SnapshotLines>, CheckpointError>;
+    /** One file's changes between two snapshots of `folder`, as git's unified diff with `context` lines. */
+    diff(
+      folder: string,
+      from: string,
+      to: string,
+      path: string,
+      context: number,
+    ): Effect.Effect<string, CheckpointError>;
     /** Puts `paths` back as `snapshot` holds them, removing those it doesn't hold. */
     restore(
       folder: string,
@@ -131,6 +153,8 @@ export class Checkpoints extends Context.Service<
   static readonly unavailable = Layer.succeed(Checkpoints, {
     save: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
     changes: () => Effect.succeed([]),
+    lines: () => Effect.succeed([]),
+    diff: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
     restore: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
   });
 }

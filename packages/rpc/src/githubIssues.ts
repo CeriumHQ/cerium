@@ -224,4 +224,17 @@ export const IssueRpcs = RpcGroup.make(
     success: CreatedIssue,
     error: GitHubError,
   }),
+  /**
+   * An issue written up from the user's notes, its `title` and `body` so far, by the quick model that
+   * titles threads, in the repository's issue template. Since `RPC_VERSION` 19.
+   */
+  Rpc.make("DraftIssue", {
+    payload: {
+      cwd,
+      title: Schema.String.check(Schema.isMaxLength(MAX_ISSUE_TITLE)),
+      body: Schema.String.check(Schema.isMaxLength(MAX_ISSUE_BODY)),
+    },
+    success: Schema.Struct({ title: Schema.String, body: Schema.String }),
+    error: GitHubError,
+  }),
 );

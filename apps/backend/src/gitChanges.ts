@@ -11,6 +11,7 @@ import {
 } from "@cerium/rpc";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
+import type { Drafts } from "./drafts.ts";
 import { DIFF_BYTES, DIFF_CONTEXT, fileDiffOf, parseDiff, pathSegments } from "./files.ts";
 import { explainGit, Git, gitComplaint, GitError, gitFailure } from "./git.ts";
 
@@ -602,8 +603,8 @@ export class GitChanges extends Context.Service<
   );
 }
 
-/** The Source control panel's calls, served by `GitChanges`. */
-export const gitChangesHandlers = (changes: GitChanges["Service"]) =>
+/** The Source control panel's calls, served by `GitChanges`, and its commit messages by `Drafts`. */
+export const gitChangesHandlers = (changes: GitChanges["Service"], drafts: Drafts["Service"]) =>
   GitRpcs.of({
     GitStatus: ({ root }) => changes.status(root),
     GitDiff: ({ root, path, side, from, context }) => changes.diff(root, path, side, from, context),
@@ -614,4 +615,6 @@ export const gitChangesHandlers = (changes: GitChanges["Service"]) =>
       changes.applyLines(root, path, action, hunks, context),
     Commit: ({ root, message, amend, all }) => changes.commit(root, message, { amend, all }),
     LastCommitMessage: ({ root }) => Effect.map(changes.lastMessage(root), (message) => ({ message })),
+    DraftCommitMessage: ({ root, amend, draft }) =>
+      Effect.map(drafts.commitMessage(root, { amend, draft }), (message) => ({ message })),
   });

@@ -31,6 +31,10 @@ export const makeFakeAdapter = (
     readonly concurrency?: number;
     readonly turnDuration?: Duration.Input;
     readonly reply?: (text: string, session: SessionOptions) => string;
+    /** What each turn reports doing (tool calls, files changed) before it replies; done as it reports. */
+    readonly work?: (text: string) => ReadonlyArray<AdapterEvent["payload"]>;
+    /** How long the turn takes after reporting each of those, as a tool call that runs a while. */
+    readonly workPause?: Duration.Input;
     /** Each turn asks to run a command and waits for the decision before replying. */
     readonly askPermission?: boolean;
     /** The tool those requests are for (default `Bash`). */
@@ -152,6 +156,10 @@ export const makeFakeAdapter = (
             }
             for (const items of options.todos ?? []) {
               yield* Queue.offer(events, { payload: { _tag: "TodosUpdated", items } });
+            }
+            for (const payload of options.work?.(text) ?? []) {
+              yield* Queue.offer(events, { payload });
+              yield* Effect.sleep(options.workPause ?? 0);
             }
             const messageId = `m${session.sent.length}`;
             const reply = options.reply?.(text, sessionOptions) ?? `reply to: ${text.slice(0, 40)}`;

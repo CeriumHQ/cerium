@@ -62,6 +62,30 @@ export const commitFileOfKey = (key: string | undefined): CommitFileTab | undefi
 
 export const isCommitFileKey = (key: string | undefined) => commitFileOfKey(key) !== undefined;
 
+const TURN_PREFIX = "turn:";
+
+/** A file as one of an agent's turns changed it, between the folder's snapshots from before and after it. */
+export interface TurnFileTab {
+  /** The thread's folder. */
+  readonly root: string;
+  readonly before: string;
+  readonly after: string;
+  /** The file, relative to `root`. */
+  readonly path: string;
+}
+
+/** The tab key of a file as a turn changed it; the summary under the turn's response opens it. */
+export const turnFileKey = (tab: TurnFileTab) =>
+  `${TURN_PREFIX}${tab.root}\n${tab.before}\n${tab.after}\n${tab.path}`;
+
+/** The turn's file a tab key names; undefined for any other key. */
+export const turnFileOfKey = (key: string | undefined): TurnFileTab | undefined => {
+  if (key?.startsWith(TURN_PREFIX) !== true) return undefined;
+  const [root = "", before = "", after = "", path = ""] = key.slice(TURN_PREFIX.length).split("\n");
+  if (root === "" || before === "" || after === "" || path === "") return undefined;
+  return { root, before, after, path };
+};
+
 export const isFileKey = (key: string | undefined) => fileOfKey(key) !== undefined;
 
 // ---------------------------------------------------------------------------------------------

@@ -71,3 +71,5 @@ export const unstageFiles = Backend.mutation("UnstageFiles");
 export const discardFiles = Backend.mutation("DiscardFiles");
 export const applyLines = Backend.mutation("ApplyLines");
 export const commitChanges = Backend.mutation("Commit");
+/** A commit message a quick model wrote for what the next commit takes. */
+export const draftCommitMessage = Backend.mutation("DraftCommitMessage");

@@ -15,6 +15,7 @@ import {
 } from "@cerium/rpc";
 import { Effect } from "effect";
 
+import type { Drafts } from "./drafts.ts";
 import type { GitHub } from "./github.ts";
 import {
   ACTOR,
@@ -505,7 +506,7 @@ export const issues = (github: IssueGitHub) => {
 const DEFAULT_ITEMS = 100;
 
 /** What the machine serves about issues. */
-export const issueHandlers = (github: GitHub["Service"]) => {
+export const issueHandlers = (github: GitHub["Service"], drafts: Drafts["Service"]) => {
   const service = issues(github);
   return IssueRpcs.of({
     IssueChoices: ({ cwd }) => service.choices(cwd),
@@ -516,5 +517,6 @@ export const issueHandlers = (github: GitHub["Service"]) => {
     ReopenIssue: ({ cwd, number }) => service.reopen(cwd, number),
     UpdateIssue: ({ cwd, number, ...changes }) => service.update(cwd, number, changes),
     CreateIssue: ({ cwd, title, body, labels }) => service.create(cwd, title, body, labels),
+    DraftIssue: ({ cwd, title, body }) => drafts.issue(cwd, { title, body }),
   });
 };

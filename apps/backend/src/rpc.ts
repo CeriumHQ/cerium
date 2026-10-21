@@ -1,7 +1,13 @@
 import { deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
-import { Adapters, Orchestrator, UserSettings, type OrchestratorError } from "@cerium/orchestrator";
+import {
+  Adapters,
+  Checkpoints,
+  Orchestrator,
+  UserSettings,
+  type OrchestratorError,
+} from "@cerium/orchestrator";
 import {
   isStreamDelta,
   LEAD_ROLE,
@@ -20,7 +26,8 @@ import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
 import { Repositories, type RepositoryError } from "./clone.ts";
-import { Files, type FilesError } from "./files.ts";
+import { Drafts } from "./drafts.ts";
+import { fileDiffOf, Files, resolveInside, type FilesError } from "./files.ts";
 import { GitBranches, gitBranchHandlers } from "./gitBranches.ts";
 import { GitChanges, gitChangesHandlers } from "./gitChanges.ts";
 import { GitHub } from "./github.ts";
@@ -47,6 +54,9 @@ const refuse = (
     | GitError
     | StoreError,
 ) => new CeriumError({ message: error.message });
+
+/** A snapshot of a folder, as `TurnFilesChanged` names one: a git tree's id. */
+const isSnapshot = (id: string) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id);
 
 /** How many matches the `@` list shows. */
 const SEARCH_LIMIT = 50;
@@ -94,7 +104,9 @@ export const Handlers = MachineRpcs.toLayer(
     const github = yield* GitHub;
     const gitBranches = yield* GitBranches;
     const gitChanges = yield* GitChanges;
+    const drafts = yield* Drafts;
     const history = yield* History;
+    const checkpoints = yield* Checkpoints;
     const repositories = yield* Repositories;
     const projects = yield* Projects;
     const terminals = yield* Terminals;
@@ -167,6 +179,8 @@ export const Handlers = MachineRpcs.toLayer(
           .pipe(Effect.mapError(refuse)),
       PreviewRestore: ({ agentId, messageId }) =>
         orchestrator.previewRestore(agentId, messageId).pipe(Effect.mapError(refuse)),
+      RevertTurnFiles: ({ agentId, turnId, direction }) =>
+        orchestrator.revertTurn(agentId, turnId, direction).pipe(Effect.mapError(refuse)),
       RestoreBefore: ({ agentId, messageId }) =>
         orchestrator.restoreBefore(agentId, messageId).pipe(Effect.mapError(refuse)),
       SwitchModel: ({ agentId, model, effort }) =>
@@ -187,6 +201,7 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator
           .interruptAgent(agentId, includeChildren === undefined ? {} : { includeChildren })
           .pipe(Effect.mapError(refuse)),
+      SteerAgent: ({ agentId }) => orchestrator.steerAgent(agentId).pipe(Effect.mapError(refuse)),
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
       StopThread: ({ threadId }) => orchestrator.stopThread(threadId).pipe(Effect.mapError(refuse)),
       RenameThread: ({ threadId, title }) =>
@@ -282,6 +297,13 @@ export const Handlers = MachineRpcs.toLayer(
           })
           .pipe(Effect.mapError(refuse)),
       CommitDetail: ({ root, sha }) => history.detail(root, sha).pipe(Effect.mapError(refuse)),
+      TurnDiffFile: ({ root, before, after, path, context }) =>
+        !isSnapshot(before) || !isSnapshot(after) || resolveInside(root, path) === undefined
+          ? Effect.fail(new CeriumError({ message: "That isn't a file a turn changed." }))
+          : checkpoints.diff(root, before, after, path, context ?? 3).pipe(
+              Effect.map((stdout) => fileDiffOf(stdout, false)),
+              Effect.mapError((error) => new CeriumError({ message: error.message })),
+            ),
       CommitDiffFile: ({ root, sha, path, from, context }) =>
         history.diff(root, sha, path, from, context).pipe(Effect.mapError(refuse)),
       CloneRepository: ({ url, folder }) => repositories.clone(url, folder).pipe(Stream.mapError(refuse)),
@@ -296,9 +318,9 @@ export const Handlers = MachineRpcs.toLayer(
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       ...terminalHandlers(terminals),
       ...gitBranchHandlers(gitBranches),
-      ...gitChangesHandlers(gitChanges),
-      ...githubHandlers(github),
-      ...issueHandlers(github),
+      ...gitChangesHandlers(gitChanges, drafts),
+      ...githubHandlers(github, drafts),
+      ...issueHandlers(github, drafts),
     });
   }),
 );

@@ -2,7 +2,7 @@ import type { BranchPullRequest, GitHubRepository } from "@cerium/rpc";
 import { RegistryContext, useAtomSet } from "@effect/atom-react";
 import { useContext, useRef, useState } from "react";
 
-import { createPull, refreshPullList } from "../../backend/github.ts";
+import { createPull, draftPull, refreshPullList } from "../../backend/github.ts";
 import {
   DialogButton,
   DialogCheck,
@@ -10,6 +10,7 @@ import {
   DialogInput,
   FormDialog,
 } from "../../components/ui/FormDialog.tsx";
+import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { titleOfBranch } from "./model.ts";
 
 /** GitHub's search takes a few seconds to list a new pull request; the list is read once more after it. */
@@ -48,10 +49,29 @@ export function CreatePullDialog({
   const [draft, setDraft] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const draftWith = useAtomSet(draftPull, { mode: "promise" });
+  /** A quick model is writing the title and description; the fields wait for it. */
+  const [writing, setWriting] = useState(false);
   const running = useRef(false);
 
+  // The model reads the title and description so far, the template included, and fills them in.
+  const write = async () => {
+    if (base.trim() === "") return;
+    setWriting(true);
+    setError(undefined);
+    try {
+      const written = await draftWith({ payload: { cwd, base: base.trim(), title, body } });
+      setTitle(written.title);
+      setBody(written.body);
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setWriting(false);
+    }
+  };
+
   const submit = async () => {
-    if (running.current || title.trim() === "" || base.trim() === "") return;
+    if (running.current || writing || title.trim() === "" || base.trim() === "") return;
     running.current = true;
     setBusy(true);
     setError(undefined);
@@ -84,11 +104,22 @@ export function CreatePullDialog({
         </>
       }
       onSubmit={() => void submit()}
+      aside={
+        <GenerateButton
+          label="Write the title and description from the branch's commits"
+          busy={writing}
+          disabled={busy || base.trim() === ""}
+          onClick={() => void write()}
+          className="-ml-2.5"
+        >
+          Generate
+        </GenerateButton>
+      }
       actions={
         <DialogButton
           type="submit"
           tone="primary"
-          disabled={busy || title.trim() === "" || base.trim() === ""}
+          disabled={busy || writing || title.trim() === "" || base.trim() === ""}
         >
           {busy ? (branch.pushed ? "Opening…" : "Pushing…") : draft ? "Open as draft" : "Open pull request"}
         </DialogButton>
@@ -101,6 +132,7 @@ export function CreatePullDialog({
             autoFocus
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            readOnly={writing}
             spellCheck
           />
         </DialogField>
@@ -108,8 +140,9 @@ export function CreatePullDialog({
           <textarea
             value={body}
             onChange={(event) => setBody(event.target.value)}
+            readOnly={writing}
             spellCheck
-            placeholder="What it changes, and why"
+            placeholder={writing ? "Writing from the branch's commits…" : "What it changes, and why"}
             className="max-h-72 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
           />
         </DialogField>

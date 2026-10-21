@@ -25,6 +25,7 @@ import {
 } from "@cerium/rpc";
 import { Effect } from "effect";
 
+import type { Drafts } from "./drafts.ts";
 import { parseDiff } from "./files.ts";
 import { parseRemotes, type GitHub } from "./github.ts";
 import {
@@ -1007,7 +1008,7 @@ export const pullRequests = (github: GitHub["Service"]) => {
 };
 
 /** What the machine serves about GitHub and pull requests. */
-export const githubHandlers = (github: GitHub["Service"]) => {
+export const githubHandlers = (github: GitHub["Service"], drafts: Drafts["Service"]) => {
   const pulls = pullRequests(github);
   return GitHubRpcs.of({
     GitHubStatus: () => github.status,
@@ -1031,5 +1032,6 @@ export const githubHandlers = (github: GitHub["Service"]) => {
     CheckoutPullRequest: ({ cwd, number }) => pulls.checkout(cwd, number),
     BranchPullRequest: ({ cwd }) => pulls.forBranch(cwd),
     CreatePullRequest: ({ cwd, title, body, base, draft }) => pulls.create(cwd, title, body, base, draft),
+    DraftPullRequest: ({ cwd, base, title, body }) => drafts.pullRequest(cwd, base, { title, body }),
   });
 };

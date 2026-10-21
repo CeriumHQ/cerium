@@ -62,6 +62,7 @@ import {
   resolveSpawnApproval,
   restoreBefore,
   respondToPermission,
+  steerAgent,
   answerQuestion,
   sendMessage,
   setThreadArchived,
@@ -156,8 +157,9 @@ import type { ThreadSummary } from "../features/threads/model.ts";
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
-import { EDIT_VERSION } from "../features/transcript/model.ts";
+import { EDIT_VERSION, STEER_VERSION } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
+import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
@@ -195,8 +197,12 @@ import {
   fileKey,
   fileOfKey,
   fileViewAtom,
+  turnFileKey,
+  turnFileOfKey,
   VIEWER_VERSION,
+  type TurnFileTab,
 } from "../features/viewer/model.ts";
+import { TurnFileView } from "../features/viewer/TurnFileView.tsx";
 import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
 import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
@@ -635,11 +641,13 @@ function Workspace() {
   const edit = useAtomSet(editMessage, { mode: "promise" });
   const checkRestore = useAtomSet(previewRestore, { mode: "promise" });
   const restore = useAtomSet(restoreBefore, { mode: "promise" });
+  const revertTurn = useAtomSet(revertTurnFiles, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
   const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
+  const steer = useAtomSet(steerAgent, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
   const stopEverything = useAtomSet(stopThread, { mode: "promise" });
   /** Waiting on the user to confirm stopping every agent in the open thread. */
@@ -746,6 +754,16 @@ function Workspace() {
       setPane("main");
       if (compact) setSidePanel(undefined);
     };
+  /** Opens a file as one of an agent's turns changed it, in a tab of its own, as a commit's files open. */
+  const openTurnFile = (tab: TurnFileTab) => {
+    const key = turnFileKey(tab);
+    tabs.openAs(key, "tab");
+    tabs.keep(key);
+    setSettingsOpen(false);
+    setOpenThread((open) => ({ ...open, [mode]: key }));
+    setPane("main");
+    if (compact) setSidePanel(undefined);
+  };
   /** The open work thread's repository, which Source control shows where its machine can. */
   const gitRoot =
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GIT_VERSION ? undefined : filesRoot;
@@ -1370,8 +1388,19 @@ function Workspace() {
             restore: (agentId, messageId) => restore({ payload: { agentId, messageId } }),
           }
         : undefined,
+    turnFiles:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TURN_FILES_VERSION
+        ? {
+            open: openTurnFile,
+            revert: (agentId, turnId, direction) => revertTurn({ payload: { agentId, turnId, direction } }),
+          }
+        : undefined,
     start: startThread,
     interrupt: (agentId) => interrupt({ payload: { agentId } }),
+    steer:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STEER_VERSION
+        ? (agentId) => steer({ payload: { agentId } })
+        : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
     respond: (agentId, requestId, decision, scope) =>
       respond({ payload: { agentId, requestId, decision, scope } }),
@@ -1519,6 +1548,10 @@ function Workspace() {
         />
       );
     }
+    const turn = turnFileOfKey(key);
+    if (turn !== undefined) {
+      return <TurnFileView key={key} tab={turn} onClose={() => tabs.actions.onClose([key])} pane={chrome} />;
+    }
     const file = fileOfKey(key);
     if (file === undefined) return threadPane(key, focused);
     return (
@@ -1537,7 +1570,7 @@ function Workspace() {
   /** What a pane's header calls what it shows. */
   const paneLabel = (leaf: PaneLeaf): PaneLabel => {
     const tab = tabs.tabs.find((each) => each.key === leaf.key);
-    const file = fileOfKey(leaf.key) ?? commitFileOfKey(leaf.key);
+    const file = fileOfKey(leaf.key) ?? commitFileOfKey(leaf.key) ?? turnFileOfKey(leaf.key);
     if (file !== undefined) {
       // The viewer's own header names the file, and is the pane's.
       return { title: baseName(file.path), detail: tab?.project ?? file.path, ownHeader: true };

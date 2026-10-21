@@ -18,6 +18,8 @@ import { draftStartAtom } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
 import type { ModelSwitch } from "../features/composer/models.ts";
 import { useModels } from "../features/composer/models.ts";
+import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
+import type { TurnFileTab } from "../features/viewer/model.ts";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -49,6 +51,20 @@ export interface ThreadPaneActions {
       }
     | undefined;
   /**
+   * Opens a file as one of an agent's turns changed it, and puts a turn's files back or forward again;
+   * absent when the machine's backend can't.
+   */
+  readonly turnFiles?:
+    | {
+        readonly open: (tab: TurnFileTab) => void;
+        readonly revert: (
+          agentId: AgentId,
+          turnId: string,
+          direction: "undone" | "redone",
+        ) => Promise<unknown>;
+      }
+    | undefined;
+  /**
    * Starts a thread from the draft `draft`, in `folder`, with `message`: one with each setup, laid
    * side by side, the first in the draft's place.
    */
@@ -59,6 +75,11 @@ export interface ThreadPaneActions {
     folder: string | undefined,
   ) => Promise<unknown>;
   readonly interrupt: (agentId: AgentId) => Promise<unknown>;
+  /**
+   * Hands a lead the user's messages waiting behind its turn now; absent when the machine's backend
+   * can't.
+   */
+  readonly steer?: ((agentId: AgentId) => Promise<unknown>) | undefined;
   readonly switchLead: (agentId: AgentId, choice: ModelSwitch) => Promise<unknown>;
   readonly respond: (
     agentId: AgentId,
@@ -168,7 +189,7 @@ export function ThreadPane({
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
-  const { attempt, restore } = actions;
+  const { attempt, restore, turnFiles } = actions;
 
   return (
     // The terminal drawer docks under the conversation, which keeps its message box floating above it.
@@ -210,6 +231,9 @@ export function ThreadPane({
               onAnswerQuestion={(requestId, response) =>
                 cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
               }
+              {...(cloud || !actions.steer
+                ? {}
+                : { onSteer: () => void attempt(actions.steer?.(lead.id) ?? Promise.resolve()) })}
               // A thread read from the cloud copy can't go back: that takes its machine.
               {...(cloud || !actions.edit
                 ? {}
@@ -226,6 +250,16 @@ export function ThreadPane({
                     onRestoreMessage: (messageId: string) => {
                       actions.keep(viewed.thread.id);
                       return attempt(restore.restore(lead.id, messageId));
+                    },
+                  })}
+              {...(cloud || !turnFiles || viewed.thread.cwd === undefined
+                ? {}
+                : {
+                    turnFiles: {
+                      open: (file: TurnFileOpen) =>
+                        turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
+                      revert: (turnId: string, direction: "undone" | "redone") =>
+                        attempt(turnFiles.revert(lead.id, turnId, direction)),
                     },
                   })}
             />

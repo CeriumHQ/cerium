@@ -349,6 +349,7 @@ export const interruptAgent = Backend.runtime.fn<{ readonly payload: { readonly 
       Effect.ensuring(Effect.sync(() => get.refresh(threadsAtom))),
     ),
 );
+export const steerAgent = Backend.mutation("SteerAgent");
 export const stopAgent = Backend.runtime.fn<{ readonly payload: { readonly agentId: AgentId } }>()(
   ({ payload }, get) =>
     Backend.use((client) => client("StopAgent", payload)).pipe(

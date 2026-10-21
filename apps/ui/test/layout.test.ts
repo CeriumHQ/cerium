@@ -115,6 +115,7 @@ describe("layout", () => {
       id: "question:q",
       requestId: "q",
       questions: [{ question: "Which?", options: [], multiSelect: false, allowOther: true }],
+      at: 0,
       resolution: { outcome: "answered", answers: [{ choices: [], text: "That one" }] },
     } satisfies TranscriptBlock;
     const answer = {
@@ -160,6 +161,7 @@ describe("showsProgress", () => {
       id: "question:q",
       requestId: "q",
       questions: [{ question: "Which?", options: [], multiSelect: false, allowOther: true }],
+      at: 0,
     } satisfies TranscriptBlock;
     const [, , open] = layout([user("u"), question]);
     expect(showsProgress(open)).toBe(true);

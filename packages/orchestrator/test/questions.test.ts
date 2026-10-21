@@ -2,7 +2,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { AgentEvent, AgentId, InputItem, Question } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Duration, Effect } from "effect";
 
 import { Orchestrator, type CatalogEntry } from "../src/index.ts";
 import { systemPrompt } from "../src/prompts.ts";
@@ -93,7 +93,10 @@ describe("answerNotice", () => {
     assert.include(notice, "answered your questions");
     assert.include(notice, "- Which colour do you prefer?\n  Answer: Blue, navy");
     assert.include(notice, "- Which finishes?\n  Answer: Matte, Gloss");
-    assert.include(answerNotice([colour], { outcome: "dismissed" }), "dismissed your question");
+    assert.include(
+      answerNotice([colour], { outcome: "dismissed" }),
+      `dismissed your question "${colour.question}"`,
+    );
   });
 
   it("keeps the user's words trimmed, and none where they wrote none", () => {
@@ -180,39 +183,93 @@ describe("Questions through ask_user", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
-  it.live("says so when the user dismisses it, and refuses an answer that doesn't fit", () => {
-    const fake = makeFakeAdapter("claude");
-    return Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator;
-      const { waitFor } = yield* recordEvents;
-      const { lead } = yield* startWorkThread;
-      const { requestId } = yield* orchestrator.askUser(lead.id, [colour]);
-      const wrong = yield* Effect.flip(
-        orchestrator.answerQuestion(lead.id, requestId, {
-          outcome: "answered",
-          answers: [{ choices: ["Green"] }],
-        }),
-      );
-      assert.strictEqual(wrong.reason, "invalid");
-      const unknown = yield* Effect.flip(
-        orchestrator.answerQuestion(lead.id, "q_none", { outcome: "dismissed" }),
-      );
-      assert.strictEqual(unknown.reason, "notFound");
+  it.live(
+    "tells a dismissal with the agent's next turn without starting one, and refuses an answer that doesn't fit",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { waitFor, seen } = yield* recordEvents;
+        const { thread, lead } = yield* startWorkThread;
+        const { requestId } = yield* orchestrator.askUser(lead.id, [colour]);
+        const wrong = yield* Effect.flip(
+          orchestrator.answerQuestion(lead.id, requestId, {
+            outcome: "answered",
+            answers: [{ choices: ["Green"] }],
+          }),
+        );
+        assert.strictEqual(wrong.reason, "invalid");
+        const unknown = yield* Effect.flip(
+          orchestrator.answerQuestion(lead.id, "q_none", { outcome: "dismissed" }),
+        );
+        assert.strictEqual(unknown.reason, "notFound");
 
-      yield* orchestrator.answerQuestion(lead.id, requestId, { outcome: "dismissed" });
-      const resolved = yield* waitFor(resolvedOf);
-      assert.deepStrictEqual(resolved.payload, { _tag: "QuestionResolved", requestId, outcome: "dismissed" });
-      yield* waitFor((events) =>
-        inputsOf(events, lead.id).find(
-          (item) => item._tag === "SystemNotice" && item.text.includes("dismissed"),
-        ),
-      );
-      const again = yield* Effect.flip(
-        orchestrator.answerQuestion(lead.id, requestId, { outcome: "dismissed" }),
-      );
-      assert.strictEqual(again.reason, "notFound");
-    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
-  });
+        yield* orchestrator.answerQuestion(lead.id, requestId, { outcome: "dismissed" });
+        const resolved = yield* waitFor(resolvedOf);
+        assert.deepStrictEqual(resolved.payload, {
+          _tag: "QuestionResolved",
+          requestId,
+          outcome: "dismissed",
+        });
+        assert.isFalse(orchestrator.awaitingApproval(thread.id));
+        const again = yield* Effect.flip(
+          orchestrator.answerQuestion(lead.id, requestId, { outcome: "dismissed" }),
+        );
+        assert.strictEqual(again.reason, "notFound");
+
+        // Well past the window notices wait in, no turn has started.
+        yield* Effect.sleep(Duration.millis(100));
+        assert.deepStrictEqual(inputsOf(seen, lead.id), []);
+
+        // The user's next message carries it, ahead of their words.
+        yield* orchestrator.sendUserMessage(lead.id, "carry on");
+        const items = yield* waitFor((events) => {
+          const inputs = inputsOf(events, lead.id);
+          return inputs.length > 0 ? inputs : undefined;
+        });
+        assert.deepStrictEqual(
+          items.map((item) => item._tag),
+          ["SystemNotice", "FromUser"],
+        );
+        const [notice] = items;
+        assert.strictEqual(notice?._tag === "SystemNotice" && notice.questionId, requestId);
+        assert.include(
+          notice?._tag === "SystemNotice" ? notice.text : "",
+          `dismissed your question "${colour.question}"`,
+        );
+      }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+    },
+  );
+
+  it.live(
+    "keeps a dismissal the agent hadn't heard when its session ends, for the session that resumes",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { waitFor, seen } = yield* recordEvents;
+        const { lead } = yield* startWorkThread;
+        const { requestId } = yield* orchestrator.askUser(lead.id, [colour]);
+        yield* orchestrator.answerQuestion(lead.id, requestId, { outcome: "dismissed" });
+        yield* orchestrator.stopAgent(lead.id);
+
+        yield* orchestrator.sendUserMessage(lead.id, "carry on");
+        const notice = yield* waitFor((events) =>
+          inputsOf(events, lead.id).find(
+            (item) => item._tag === "SystemNotice" && item.text.includes("dismissed your question"),
+          ),
+        );
+        assert.strictEqual(notice._tag === "SystemNotice" && notice.questionId, requestId);
+        // Heard once: neither the held copy nor a second turn repeats it.
+        yield* Effect.sleep(Duration.millis(100));
+        const told = inputsOf(seen, lead.id).filter(
+          (item) => item._tag === "SystemNotice" && item.text.includes("dismissed your question"),
+        );
+        assert.strictEqual(told.length, 1);
+        void fake;
+      }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+    },
+  );
 
   it.live("closes the question as expired when the agent is interrupted", () => {
     const fake = makeFakeAdapter("claude");

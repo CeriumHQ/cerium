@@ -167,7 +167,14 @@ export const UsageReported = Schema.TaggedStruct("UsageReported", {
 });
 
 export const TurnCompleted = Schema.TaggedStruct("TurnCompleted", {
-  stopReason: withFallback(Schema.Literals(["completed", "interrupted", "maxTurns", "error"]), "completed"),
+  /**
+   * `steered`: Cerium interrupted the turn to hand the agent the user's messages that waited behind
+   * it, which start the next turn.
+   */
+  stopReason: withFallback(
+    Schema.Literals(["completed", "interrupted", "steered", "maxTurns", "error"]),
+    "completed",
+  ),
 });
 
 export const AuthRequired = Schema.TaggedStruct("AuthRequired", {
@@ -275,6 +282,51 @@ export const FilesSaved = Schema.TaggedStruct("FilesSaved", {
   turnId: Schema.optionalKey(Schema.NonEmptyString),
 });
 
+/** A file one of an agent's turns changed. */
+export const TurnFile = Schema.Struct({
+  /** Relative to the thread's folder, with forward slashes. */
+  path: Schema.NonEmptyString,
+  change: withFallback(Schema.Literals(["added", "modified", "deleted"]), "modified"),
+  /** Lines added and removed; absent for a file that isn't text. */
+  added: Schema.optionalKey(NonNegativeInt),
+  removed: Schema.optionalKey(NonNegativeInt),
+  /**
+   * `edit`: one of the agent's edit tools named it. `command`: none did, but a command the agent ran
+   * changed it (a heredoc, `sed`, a script).
+   */
+  via: withFallback(Schema.Literals(["edit", "command"]), "edit"),
+});
+export type TurnFile = typeof TurnFile.Type;
+
+/**
+ * The files one of an agent's turns changed, found by comparing the folder's snapshots from before
+ * and after it. Files another agent working in the same folder at the time may have changed are left
+ * out. Recorded behind the turn, beside its `FilesSaved`.
+ */
+export const TurnFilesChanged = Schema.TaggedStruct("TurnFilesChanged", {
+  turnId: Schema.NonEmptyString,
+  /** The snapshots from before and after the turn, which a file's diff compares. */
+  before: Schema.NonEmptyString,
+  after: Schema.NonEmptyString,
+  files: Schema.NonEmptyArray(TurnFile),
+  /** Files it changed past the ones listed. */
+  more: Schema.optionalKey(NonNegativeInt),
+});
+
+/**
+ * The user put a turn's files back as they were before it (`undone`), or as the turn left them again
+ * (`redone`). Files changed since are left as they are.
+ */
+export const TurnFilesReverted = Schema.TaggedStruct("TurnFilesReverted", {
+  turnId: Schema.NonEmptyString,
+  direction: withFallback(Schema.Literals(["undone", "redone"]), "undone"),
+  /** Relative to the thread's folder, with forward slashes. */
+  paths: Schema.Array(Schema.NonEmptyString),
+  /** Those left as they are, as they had changed since. */
+  kept: Schema.Array(Schema.NonEmptyString),
+});
+export type TurnFilesReverted = typeof TurnFilesReverted.Type;
+
 /**
  * The files the thread's agents changed since one of the user's messages went back to how they were
  * before it. Recorded on the lead, beside the `ConversationRewound` that took the conversation back.
@@ -379,6 +431,8 @@ export const EventPayload = Schema.Union([
   TurnInput,
   ConversationRewound,
   FilesSaved,
+  TurnFilesChanged,
+  TurnFilesReverted,
   FilesRestored,
   MessageQueued,
   AgentSpawned,

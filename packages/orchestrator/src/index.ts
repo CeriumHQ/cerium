@@ -22,6 +22,7 @@ export {
   type NewWorktree,
   type OrchestratorSettings,
   type SnapshotChange,
+  type SnapshotLines,
 } from "./services.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

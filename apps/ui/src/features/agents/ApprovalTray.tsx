@@ -192,6 +192,7 @@ function QuestionRequest({
       key={request.requestId}
       questions={request.questions}
       from={<Asking agent={named ? agent : undefined} position={position} />}
+      askedAt={request.at}
       onAnswer={(response) => onAnswer(agent.id, request.requestId, response)}
     />
   );

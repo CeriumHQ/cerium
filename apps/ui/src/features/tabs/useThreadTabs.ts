@@ -6,7 +6,7 @@ import { isNewDraftKey, newDraftKey, newThreadDraftsAtom } from "../composer/dra
 import type { ThreadSummary } from "../threads/model.ts";
 import { githubOfKey } from "../github/model.ts";
 import { githubTitlesAtom } from "../github/tabs.ts";
-import { commitFileOfKey, fileOfKey } from "../viewer/model.ts";
+import { commitFileOfKey, fileOfKey, turnFileOfKey } from "../viewer/model.ts";
 import { isNonThreadKey } from "./tabKinds.ts";
 import {
   closeTabs,
@@ -118,7 +118,8 @@ export function useThreadTabs({
         project: `${github.kind === "pr" ? "Pull request" : "Issue"} #${github.number} · ${baseName(github.root)}`,
       };
     const commit = commitFileOfKey(key);
-    const file = fileOfKey(key) ?? commit;
+    const turn = turnFileOfKey(key);
+    const file = fileOfKey(key) ?? commit ?? turn;
     if (file)
       return {
         key,
@@ -126,13 +127,15 @@ export function useThreadTabs({
         draft: false,
         preview,
         file,
-        // A file as a commit changed it says which commit, its folder would say nothing.
+        // A file as a commit or a turn changed it says so, its folder would say nothing.
         project:
           commit !== undefined
             ? commit.sha.slice(0, 7)
-            : file.path.includes("/")
-              ? `${baseName(file.root)}/${file.path}`
-              : baseName(file.root),
+            : turn !== undefined
+              ? "Agent's change"
+              : file.path.includes("/")
+                ? `${baseName(file.root)}/${file.path}`
+                : baseName(file.root),
       };
     const thread = threadOf(key);
     if (thread)

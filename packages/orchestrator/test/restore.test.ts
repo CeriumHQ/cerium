@@ -99,6 +99,20 @@ const fakeFolder = () => {
         }
         return changes;
       }),
+    // Each file counts as one line.
+    lines: (_folder, from, to) =>
+      Effect.sync(() => {
+        const before = snapshots.get(from) ?? new Map<string, string>();
+        const after = snapshots.get(to) ?? new Map<string, string>();
+        return [...new Set([...before.keys(), ...after.keys()])]
+          .filter((path) => before.get(path) !== after.get(path))
+          .map((path) => ({
+            path,
+            added: after.has(path) ? 1 : 0,
+            removed: before.has(path) ? 1 : 0,
+          }));
+      }),
+    diff: () => Effect.succeed(""),
     restore: (_folder, snapshot, paths) =>
       Effect.sync(() => {
         restores.push({ snapshot, paths });
@@ -195,6 +209,84 @@ describe("Orchestrator restore", () => {
       }).pipe(Effect.provide(testLayer([fake.adapter], { checkpoints: folder.layer })), Effect.scoped);
     },
   );
+
+  it.live("lists the files each turn changed, by edit tool or command, and undoes and redoes them", () => {
+    const folder = fakeFolder();
+    const fake = makeFakeAdapter("claude", {
+      work: (text) => {
+        if (text === "edit") {
+          folder.files.set("a.ts", "edited");
+          return [{ _tag: "FileChanged", path: "a.ts", change: "created" }];
+        }
+        if (text === "run") {
+          folder.files.set("gen.ts", "generated");
+          folder.files.set("a.ts", "rewritten");
+          return [
+            { _tag: "ToolCallStarted", callId: "c1", toolName: "Bash", input: { command: "node gen.js" } },
+          ];
+        }
+        // The user's edit while the agent only talks is no turn's.
+        folder.files.set("notes.md", "mine");
+        return [];
+      },
+    });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Work",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "acceptEdits" },
+      });
+      const saved = (count: number) =>
+        waitFor((events) =>
+          events.filter((e) => e.payload._tag === "FilesSaved").length >= count ? true : undefined,
+        );
+      const changed = () =>
+        orchestrator
+          .threadEvents(lead.threadId)
+          .pipe(
+            Effect.map((events) =>
+              events.flatMap((e) => (e.payload._tag === "TurnFilesChanged" ? [e.payload] : [])),
+            ),
+          );
+      for (const [index, text] of ["edit", "run", "talk"].entries()) {
+        yield* orchestrator.sendUserMessage(lead.id, text);
+        yield* saved(index + 1);
+        // The summary is recorded just behind the snapshot.
+        yield* Effect.sleep("20 millis");
+      }
+      const [edit, run, ...rest] = yield* changed();
+      assert.deepStrictEqual(rest, []);
+      assert.deepStrictEqual(edit?.files, [
+        { path: "a.ts", change: "added", added: 1, removed: 0, via: "edit" },
+      ]);
+      assert.deepStrictEqual(run?.files, [
+        { path: "a.ts", change: "modified", added: 1, removed: 1, via: "command" },
+        { path: "gen.ts", change: "added", added: 1, removed: 0, via: "command" },
+      ]);
+
+      // Undoing the command's turn puts both back, except a file changed since.
+      folder.files.set("gen.ts", "changed by hand");
+      const undone = yield* orchestrator.revertTurn(lead.id, run?.turnId ?? "", "undone");
+      assert.deepStrictEqual(undone, {
+        _tag: "TurnFilesReverted",
+        turnId: run?.turnId ?? "",
+        direction: "undone",
+        paths: ["a.ts"],
+        kept: ["gen.ts"],
+      });
+      assert.strictEqual(folder.files.get("a.ts"), "edited");
+      assert.strictEqual(folder.files.get("gen.ts"), "changed by hand");
+      const again = yield* Effect.flip(orchestrator.revertTurn(lead.id, run?.turnId ?? "", "undone"));
+      assert.match(again.message, /already undone/);
+
+      const redone = yield* orchestrator.revertTurn(lead.id, run?.turnId ?? "", "redone");
+      assert.deepStrictEqual(redone.paths, ["a.ts"]);
+      assert.strictEqual(folder.files.get("a.ts"), "rewritten");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { checkpoints: folder.layer })), Effect.scoped);
+  });
 
   it.live("goes back in a chat without touching files, and says so in the preview", () => {
     const folder = fakeFolder();

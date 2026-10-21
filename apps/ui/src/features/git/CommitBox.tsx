@@ -5,8 +5,9 @@ import { useAtom, useAtomSet } from "@effect/atom-react";
 import { Check, GitCommitHorizontal } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 
-import { commitChanges, lastCommitMessage } from "../../backend/git.ts";
+import { commitChanges, draftCommitMessage, lastCommitMessage } from "../../backend/git.ts";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
+import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { commitDraftAtom, commitMessage, splitMessage } from "./model.ts";
 
@@ -51,7 +52,10 @@ export function CommitBox({
   const [draft, setDraft] = useAtom(commitDraftAtom(top));
   const commit = useAtomSet(commitChanges, { mode: "promise" });
   const readLast = useAtomSet(lastCommitMessage, { mode: "promise" });
+  const draftMessage = useAtomSet(draftCommitMessage, { mode: "promise" });
   const [busy, setBusy] = useState(false);
+  /** A quick model is writing the message; the fields wait for it. */
+  const [writing, setWriting] = useState(false);
   const [failure, setFailure] = useState<Failure>();
   const [made, setMade] = useState<MadeCommit>();
   /** The message amending filled in, taken out again if the user turns amending off untouched. */
@@ -65,7 +69,7 @@ export function CommitBox({
       : !draft.amend && staged + changed === 0
         ? "Nothing to commit."
         : undefined;
-  const ready = !busy && blocked === undefined && (draft.amend || draft.subject.trim() !== "");
+  const ready = !busy && !writing && blocked === undefined && (draft.amend || draft.subject.trim() !== "");
 
   const edit = (next: Partial<typeof draft>) => {
     setDraft({ ...draft, ...next });
@@ -87,6 +91,28 @@ export function CommitBox({
       setFilled(commitMessage(splitMessage(last.message).subject, splitMessage(last.message).body));
     } catch {
       // Without the old message the user writes a new one.
+    }
+  };
+
+  // The model reads what the user wrote so far, to keep its meaning, and the message it writes
+  // takes the fields' place.
+  const write = async () => {
+    setWriting(true);
+    setFailure(undefined);
+    setMade(undefined);
+    try {
+      const written = await draftMessage({
+        payload: {
+          root: top,
+          ...(draft.amend ? { amend: true } : {}),
+          ...(message === "" ? {} : { draft: message }),
+        },
+      });
+      setDraft({ ...splitMessage(written.message), amend: draft.amend });
+    } catch (error) {
+      setFailure(failureOf(error));
+    } finally {
+      setWriting(false);
     }
   };
 
@@ -142,8 +168,11 @@ export function CommitBox({
           value={draft.subject}
           onChange={(event) => edit({ subject: event.currentTarget.value })}
           onKeyDown={onKeyDown}
-          placeholder={draft.amend ? "Message of the last commit" : "Message"}
+          placeholder={
+            writing ? "Writing the message…" : draft.amend ? "Message of the last commit" : "Message"
+          }
           aria-label="Commit message"
+          readOnly={writing}
           spellCheck
           className={`${fieldClass} h-9 max-md:h-11`}
         />
@@ -154,6 +183,7 @@ export function CommitBox({
             onKeyDown={onKeyDown}
             placeholder="Description"
             aria-label="Commit description"
+            readOnly={writing}
             rows={2}
             spellCheck
             className={`${fieldClass} scroll-thin field-sizing-content max-h-48 min-h-12 resize-none border-t border-line-subtle py-2 leading-relaxed`}
@@ -172,6 +202,17 @@ export function CommitBox({
             </span>
             Amend
           </Checkbox.Root>
+          <GenerateButton
+            label={
+              draft.amend
+                ? "Write the message from the last commit and what's staged"
+                : "Write the message from the changes"
+            }
+            busy={writing}
+            disabled={busy || blocked !== undefined}
+            onClick={() => void write()}
+            className="ml-auto"
+          />
           <Tooltip
             label={
               blocked ??
@@ -187,7 +228,7 @@ export function CommitBox({
               onClick={() => void submit()}
               disabled={!ready}
               focusableWhenDisabled
-              className="ml-auto flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
+              className="flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
             >
               <GitCommitHorizontal size={14} strokeWidth={1.75} className="shrink-0" />
               <span className="truncate">{label}</span>

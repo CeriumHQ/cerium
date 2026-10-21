@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   answerLine,
+  coldFor,
   isAnswered,
   optionName,
   pick,
@@ -69,5 +70,18 @@ describe("answerLine", () => {
     expect(answerLine({ choices: ["SQLite (Recommended)", "Redis"], text: "both" })).toBe(
       "SQLite, Redis, both",
     );
+  });
+});
+
+describe("coldFor", () => {
+  const hour = 60 * 60_000;
+  it("says nothing while the agent's cache is likely still warm", () => {
+    expect(coldFor(0, 59 * 60_000)).toBeUndefined();
+  });
+
+  it("says how long the agent has waited once it has likely gone cold", () => {
+    expect(coldFor(0, hour)).toBe("1h");
+    expect(coldFor(0, 8.5 * hour)).toBe("8h");
+    expect(coldFor(0, 50 * hour)).toBe("2d");
   });
 });

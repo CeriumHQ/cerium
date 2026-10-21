@@ -6,12 +6,14 @@ import { RadioGroup } from "@base-ui/react/radio-group";
 import { Tabs } from "@base-ui/react/tabs";
 import type { Question, QuestionResponse } from "@cerium/protocol";
 import { Ban, Check, MessageCircleQuestionMark, X } from "lucide-react";
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { approvalShell, primary, quiet } from "../agents/ApprovalParts.tsx";
 import type { QuestionResolution } from "../transcript/model.ts";
 import {
   answerLine,
+  coldFor,
   emptyDrafts,
   isAnswered,
   optionName,
@@ -191,17 +193,46 @@ function QuestionBody({
 const tab =
   "flex h-6 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-fg-tertiary transition-colors outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-line-strong data-active:bg-surface-selected data-active:text-fg-primary max-md:h-8 max-md:px-2.5 max-md:text-[13px]";
 
+/** Ticks once a minute, so a card left open notices when its agent goes cold. */
+function useMinute() {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** How long the agent has waited, once answering it costs a cold start; nothing before then. */
+function ColdNote({ askedAt }: { askedAt: number }) {
+  const idle = coldFor(askedAt, useMinute());
+  if (idle === undefined) return null;
+  return (
+    <span className="flex items-center gap-1 text-xs text-fg-tertiary">
+      Asked {idle} ago · cache likely cold
+      <InfoTip label="About answering late">
+        Answering wakes the agent, and after this long its next turn re-reads the whole conversation without
+        the prompt cache, which costs more. Skip closes the question without waking it: the agent hears with
+        your next message.
+      </InfoTip>
+    </span>
+  );
+}
+
 /**
  * An agent's open questions. Several are tabs, each ticked once answered; picking the one choice of a
  * question moves on to the next unanswered. `from` names who is asking where that isn't plain.
+ * `askedAt` notes when an answer would wake an agent long gone cold.
  */
 export function QuestionCard({
   questions,
   from,
+  askedAt,
   onAnswer,
 }: {
   questions: ReadonlyArray<Question>;
   from?: ReactNode;
+  askedAt?: number;
   onAnswer?: AnswerQuestions | undefined;
 }) {
   const [drafts, setDrafts] = useState(() => emptyDrafts(questions));
@@ -288,9 +319,13 @@ export function QuestionCard({
             {answered.filter(Boolean).length} of {questions.length} answered
           </span>
         ) : null}
-        <Button onClick={() => void send({ outcome: "dismissed" })} disabled={sending} className={quiet}>
-          Skip
-        </Button>
+        {/* The note sits beside Skip, the cheaper way out it explains. */}
+        <div className="ml-auto flex items-center gap-1.5">
+          {askedAt === undefined ? null : <ColdNote askedAt={askedAt} />}
+          <Button onClick={() => void send({ outcome: "dismissed" })} disabled={sending} className={quiet}>
+            Skip
+          </Button>
+        </div>
       </div>
     </div>
   );
