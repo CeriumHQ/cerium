@@ -261,10 +261,6 @@ body {
   color: var(--status-success);
 }
 
-.outcome-icon.attention {
-  color: var(--status-attention);
-}
-
 .outcome-icon.muted {
   color: var(--fg-tertiary);
 }

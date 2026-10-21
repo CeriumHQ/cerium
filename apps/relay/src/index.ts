@@ -52,7 +52,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
     const body = await readBody(request, CreateLinkRequest);
     if (body === undefined) return refuse(400, "That sign-in request isn't one the relay understands.");
     const linkId = randomToken(32) as LinkId;
-    const expiresAt = await linkStub(env, linkId).create(body.device, body.secretHash);
+    const expiresAt = await linkStub(env, linkId).create(body.device, body.secretHash, body.installation);
     return json(
       { id: linkId, url: `${env.PUBLIC_ORIGIN}/link#${linkId}`, expiresAt } satisfies CreateLinkResponse,
       201,
@@ -76,7 +76,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       const body = await readBody(request, ConfirmLinkRequest);
       if (body === undefined) return refuse(400, "That confirmation isn't one the relay understands.");
       const outcome = await link.confirm(accountId, body.profile);
-      return outcome.ok ? json({ approved: outcome.approved }) : refuse(outcome.status, outcome.message);
+      return outcome.ok ? new Response(null, { status: 204 }) : refuse(outcome.status, outcome.message);
     }
     if (action === "claim" && method === "POST") {
       const secret = bearer(request);
@@ -112,14 +112,13 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       : refuse(events.ok ? 500 : events.status, events.ok ? "Couldn't read that thread." : events.message);
   }
 
-  // Approving, renaming and removing devices.
+  // Renaming and removing devices.
   if (resource === "devices" && id !== undefined) {
     const credential = parseCredential(bearer(request) ?? "");
     if (credential === undefined) return refuse(401, "This device isn't signed in.");
     const targetId = param(id, DeviceId);
     if (targetId === undefined) return refuse(404, "That device isn't part of your account.");
     const account = accountStub(env, credential);
-    if (action === "approve" && method === "POST") return answer(await account.approve(credential, targetId));
     if (action === undefined && method === "PATCH") {
       const body = await readBody(request, RenameDeviceRequest);
       if (body === undefined) return refuse(400, "A device's name is 1 to 64 characters.");

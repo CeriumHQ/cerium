@@ -14,17 +14,13 @@ const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
   rpc_version: 1,
   secret_hash: "0".repeat(64),
   created_at: 0,
-  approved_at: 1,
   last_seen_at: null,
+  installation: null,
   ...extra,
 });
 
-const rows = [
-  row("laptop"),
-  row("desk"),
-  row("phone", { kind: "browser" }),
-  row("stranger", { approved_at: null }),
-];
+// "stranger" is connected but no longer a device of the account.
+const rows = [row("laptop"), row("desk"), row("phone", { kind: "browser" })];
 const live: ReadonlyArray<Live> = [
   { deviceId: "laptop", connection: "conn-laptop", connectedAt: 1 },
   { deviceId: "desk", connection: "conn-desk-old", connectedAt: 1 },
@@ -58,7 +54,7 @@ describe("routing a frame", () => {
     });
   });
 
-  it("refuses senders and targets that aren't approved, unknown devices and browsers as hosts", () => {
+  it("refuses senders and targets that aren't devices of the account, and browsers as hosts", () => {
     expect(routeFrame(sender("stranger"), device("desk"), rows, live)).toEqual({
       undeliverable: "forbidden",
     });

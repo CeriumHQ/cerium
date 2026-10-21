@@ -18,6 +18,7 @@ import {
   type Credential,
   type DeviceDraft,
   type DeviceMessage,
+  type Installation,
   type PushMessage,
   type SyncNotice,
   type ThreadId,
@@ -69,6 +70,8 @@ export interface AccountOptions {
   readonly relayUrl: string;
   /** How this device describes itself when it signs in; its build, again each time it connects. */
   readonly device: DeviceDraft;
+  /** This install, so signing in again takes back its place in the account instead of adding it twice. */
+  readonly installation?: Installation | undefined;
   /**
    * Calls `check` whenever the relay connection may have died unnoticed, such as a page shown again
    * or a network back, and returns how to stop. Sleep is noticed anyway, from timers running late.
@@ -144,7 +147,6 @@ export class Account extends Context.Service<
     readonly cancelSignIn: Effect.Effect<void>;
     /** Removes this device from the account and forgets its sign-in. */
     readonly signOut: Effect.Effect<void, AccountError>;
-    approve(deviceId: DeviceId): Effect.Effect<void, AccountError>;
     rename(deviceId: DeviceId, name: string): Effect.Effect<void, AccountError>;
     /** Removes a device from the account; removing this one signs it out. */
     remove(deviceId: DeviceId): Effect.Effect<void, AccountError>;
@@ -480,7 +482,11 @@ export class Account extends Context.Service<
             return { url: current.url };
           const secret = randomToken(32);
           const secretHash = yield* Effect.promise(() => hashSecret(secret));
-          const link = yield* createLink({ device: options.device, secretHash });
+          const link = yield* createLink({
+            device: options.device,
+            secretHash,
+            ...(options.installation === undefined ? {} : { installation: options.installation }),
+          });
           const pending: Pending = { _tag: "Pending", relayUrl: relay, link, secret };
           // Best effort: without it, the sign-in still finishes unless this device restarts first.
           yield* save(pending).pipe(Effect.ignore);
@@ -599,7 +605,6 @@ export class Account extends Context.Service<
           signIn,
           cancelSignIn,
           signOut,
-          approve: (deviceId) => deviceRequest((url) => HttpClientRequest.post(`${url}/approve`), deviceId),
           rename: (deviceId, name) => deviceRequest(HttpClientRequest.patch, deviceId, { name }),
           remove: (deviceId) =>
             Effect.gen(function* () {

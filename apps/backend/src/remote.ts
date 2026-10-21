@@ -168,9 +168,7 @@ const pipe = Effect.gen(function* () {
   const reachable =
     state?._tag === "SignedIn" &&
     state.connection === "online" &&
-    state.devices.some(
-      (device) => device.id === machine && device.approved && device.online && device.kind === "desktop",
-    );
+    state.devices.some((device) => device.id === machine && device.online && device.kind === "desktop");
   if (!reachable) return HttpServerResponse.text(unreachableReason.offline, { status: 503 });
   const opened = yield* openTunnel(account, machine, { hello: TUNNEL_HELLO }).pipe(Effect.result);
   if (opened._tag === "Failure") return HttpServerResponse.text(unreachableReason.silent, { status: 503 });

@@ -30,7 +30,6 @@ export const deviceHandlers = <W, N>(own: {
         SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
         CancelSignIn: () => account.cancelSignIn,
         SignOut: () => account.signOut.pipe(Effect.mapError(refuse)),
-        ApproveDevice: ({ deviceId }) => account.approve(deviceId).pipe(Effect.mapError(refuse)),
         RenameDevice: ({ deviceId, name }) => account.rename(deviceId, name).pipe(Effect.mapError(refuse)),
         RemoveDevice: ({ deviceId }) => account.remove(deviceId).pipe(Effect.mapError(refuse)),
         WatchAccountThreads: () => cloud.accountThreads,

@@ -80,7 +80,6 @@ import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
 import {
-  DeviceRequestNotice,
   UnreachableNotice,
   useAccountPresence,
   useShellPresence,
@@ -511,7 +510,7 @@ function Workspace() {
   // The web client always drives one of the account's desktops: the one it drove last,
   // else the first that can be reached, once one can.
   const reachable = devices.filter(
-    (device) => device.kind === "desktop" && device.approved && reachOf(device).kind === "reachable",
+    (device) => device.kind === "desktop" && reachOf(device).kind === "reachable",
   );
   const toDrive = WEB && driven === undefined ? machineToDrive(reachable) : undefined;
   const driveChosen = useEffectEvent(() => {
@@ -1460,7 +1459,6 @@ function Workspace() {
           {messageOf(Cause.squash(threadsResult.cause))}
         </Notice>
       ) : null}
-      <DeviceRequestNotice account={account} onReview={() => openSettings("account")} />
       {WEB ? null : <UpdateNotice />}
       <WhatsNewHost />
       {actionError ? (

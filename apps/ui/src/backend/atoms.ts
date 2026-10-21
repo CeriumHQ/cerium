@@ -370,7 +370,6 @@ export const updateSettings = Backend.mutation("UpdateSettings");
 export const signIn = LocalBackend.mutation("SignIn");
 export const cancelSignIn = LocalBackend.mutation("CancelSignIn");
 export const signOut = LocalBackend.mutation("SignOut");
-export const approveDevice = LocalBackend.mutation("ApproveDevice");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");

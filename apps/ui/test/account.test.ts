@@ -7,7 +7,6 @@ import {
   orderedDevices,
   presenceLabel,
   reachOf,
-  waitingDevices,
   whyUnreachable,
 } from "../src/features/account/model.ts";
 
@@ -18,7 +17,6 @@ const device = (id: string, extra: Partial<DeviceInfo> = {}): DeviceInfo => ({
   platform: "win32",
   channel: "stable",
   version: "0.4.0",
-  approved: true,
   online: false,
   createdAt: 0,
   ...extra,
@@ -44,37 +42,16 @@ describe("device details", () => {
   });
 });
 
-describe("waiting devices", () => {
-  it("are the other devices not yet approved, shown to an approved one", () => {
-    const state = signedIn("a", [device("a"), device("b", { approved: false }), device("c")]);
-    expect(waitingDevices(state).map((each) => each.id)).toEqual(["b"]);
-  });
-
-  it("are hidden from a device that is itself waiting", () => {
-    expect(waitingDevices(signedIn("b", [device("b", { approved: false })]))).toEqual([]);
-  });
-
-  it("don't exist while signed out", () => {
-    expect(waitingDevices({ _tag: "SignedOut" })).toEqual([]);
-  });
-
-  it("wait for the connection, since allowing one takes the relay", () => {
-    const state = signedIn("a", [device("a"), device("b", { approved: false })]);
-    if (state._tag !== "SignedIn") throw new Error("signed in");
-    expect(waitingDevices({ ...state, connection: "offline" })).toEqual([]);
-  });
-});
-
 describe("device order", () => {
-  it("puts this machine first, then the rest in the order they joined, waiting or not", () => {
+  it("puts this machine first, then the rest in the order they joined", () => {
     const state = signedIn("m", [
       device("z", { name: "Zeta", createdAt: 3 }),
-      device("w", { name: "Waiting", approved: false, createdAt: 4 }),
+      device("w", { name: "Omega", createdAt: 4 }),
       device("m", { name: "Mine", createdAt: 2 }),
       device("a", { name: "Alpha", createdAt: 1 }),
     ]);
     if (state._tag !== "SignedIn") throw new Error("signed in");
-    expect(orderedDevices(state).map((each) => each.name)).toEqual(["Mine", "Alpha", "Zeta", "Waiting"]);
+    expect(orderedDevices(state).map((each) => each.name)).toEqual(["Mine", "Alpha", "Zeta", "Omega"]);
   });
 });
 

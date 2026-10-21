@@ -9,8 +9,8 @@ import type {
   RelayMessage,
 } from "@cerium/protocol";
 
-// The account's devices and the rules for what each may do. Plain
-// functions over the Account object's rows, so they're tested without the Workers runtime.
+// The account's devices as each of them sees them. Plain functions over the Account object's rows,
+// so they're tested without the Workers runtime.
 
 /** A row of the Account object's `devices` table. */
 export type DeviceRow = {
@@ -23,8 +23,9 @@ export type DeviceRow = {
   readonly rpc_version: number | null;
   readonly secret_hash: string;
   readonly created_at: number;
-  readonly approved_at: number | null;
   readonly last_seen_at: number | null;
+  /** The install it is (`Installation`); null for devices that joined before installs were told apart. */
+  readonly installation: string | null;
 };
 
 export const toDeviceInfo = (
@@ -39,29 +40,38 @@ export const toDeviceInfo = (
   channel: row.channel,
   version: row.version,
   ...(row.rpc_version === null ? {} : { rpcVersion: row.rpc_version }),
-  approved: row.approved_at !== null,
+  approved: true,
   online,
   createdAt: row.created_at,
   ...(row.last_seen_at === null ? {} : { lastSeenAt: row.last_seen_at }),
   ...(notifications === undefined ? {} : { notifications }),
 });
 
-/** A newly linked device is approved at once only while the account has no approved device. */
-export const approvedOnLink = (rows: ReadonlyArray<DeviceRow>): boolean =>
-  !rows.some((row) => row.approved_at !== null);
-
-export type DeviceAction = "approve" | "rename" | "remove";
-
 /**
- * Whether `actor` may do `action` to `target`. Approved devices manage every device; one waiting
- * for approval may only remove itself, which is how it signs out.
+ * Devices an earlier sign-in of the same install left behind, from before installs were told apart:
+ * of the devices alike in kind, system, channel and name, every one but the one seen last, unless it
+ * is connected now.
  */
-export const mayManage = (actor: DeviceRow, target: DeviceRow, action: DeviceAction): boolean =>
-  actor.approved_at !== null || (action === "remove" && actor.id === target.id);
+export const leftBehind = (
+  rows: ReadonlyArray<DeviceRow>,
+  online: ReadonlySet<string>,
+): ReadonlyArray<DeviceRow> => {
+  const seen = (row: DeviceRow) => Math.max(row.last_seen_at ?? 0, row.created_at);
+  const alike = Map.groupBy(
+    rows.filter((row) => row.installation === null),
+    (row) => JSON.stringify([row.kind, row.platform, row.channel, row.name]),
+  );
+  return [...alike.values()].flatMap((group) =>
+    group
+      .toSorted((a, b) => seen(b) - seen(a))
+      .slice(1)
+      .filter((row) => !online.has(row.id)),
+  );
+};
 
 /**
- * The state a device's socket is sent: every device once it's approved, only itself until then.
- * `notifications` holds the kinds each browser with push on gets.
+ * The state a device's socket is sent: every device of the account. `notifications` holds the kinds
+ * each browser with push on gets.
  */
 export const stateFor = (
   self: DeviceRow,
@@ -75,7 +85,5 @@ export const stateFor = (
   account,
   self: self.id as DeviceId,
   ...(connection === undefined ? {} : { connection: connection as ConnectionId }),
-  devices: (self.approved_at === null ? [self] : rows).map((row) =>
-    toDeviceInfo(row, online.has(row.id), notifications?.get(row.id)),
-  ),
+  devices: rows.map((row) => toDeviceInfo(row, online.has(row.id), notifications?.get(row.id))),
 });

@@ -14,6 +14,7 @@ import {
   type DeviceDraft,
   type DeviceId,
   type DraftEntry,
+  type Installation,
   type NotificationKind,
   type PushMessage,
   type PushPayload,
@@ -27,7 +28,7 @@ import {
 import { DurableObject } from "cloudflare:workers";
 import { Option, Schema } from "effect";
 
-import { approvedOnLink, mayManage, stateFor, type DeviceAction, type DeviceRow } from "./devices.ts";
+import { leftBehind, stateFor, type DeviceRow } from "./devices.ts";
 import { vapidKeys, type Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
 import {
@@ -102,6 +103,8 @@ export class Account extends DurableObject<Env> {
     if (!columns.some((column) => column.name === "rpc_version")) {
       this.sql.exec("ALTER TABLE devices ADD COLUMN rpc_version INTEGER");
     }
+    // Devices used to wait for one already in the account to let them in; signing in is enough now.
+    this.sql.exec("UPDATE devices SET approved_at = created_at WHERE approved_at IS NULL");
     this.sql.exec(`CREATE TABLE IF NOT EXISTS profile (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       account_id TEXT NOT NULL,
@@ -145,33 +148,62 @@ export class Account extends DurableObject<Env> {
       kinds TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     )`);
+    // Tables made before installs were told apart: each sign-in added the device again, so the
+    // copies earlier sign-ins left behind go, once.
+    if (!columns.some((column) => column.name === "installation")) {
+      this.sql.exec("ALTER TABLE devices ADD COLUMN installation TEXT");
+      const online = new Set(this.live().map(({ attachment }) => attachment.deviceId));
+      for (const row of leftBehind(this.rows(), online)) this.drop(row);
+    }
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
 
-  /** Adds a device that just signed in; it's approved at once only if no device of the account is. */
+  /**
+   * Adds a device that just signed in, able to see and drive the account at once. An install signing
+   * in again takes back its own place: its name, its threads and its id stay, with the new secret.
+   */
   async link(
     accountId: AccountId,
     device: DeviceDraft,
     secretHash: string,
+    installation: Installation | undefined,
     profile: ConfirmLinkRequest["profile"],
-  ): Promise<{ readonly deviceId: DeviceId; readonly approved: boolean }> {
+  ): Promise<DeviceId> {
     const now = Date.now();
-    const approved = approvedOnLink(this.rows());
-    const deviceId = randomToken(16) as DeviceId;
-    this.write(
-      `INSERT INTO devices (id, kind, name, platform, channel, version, rpc_version, secret_hash, created_at, approved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      deviceId,
-      device.kind,
-      device.name,
-      device.platform,
-      device.channel,
-      device.version,
-      device.rpcVersion ?? null,
-      secretHash,
-      now,
-      approved ? now : null,
-    );
+    const again =
+      installation === undefined ? undefined : this.rows().find((row) => row.installation === installation);
+    const deviceId = (again?.id ?? randomToken(16)) as DeviceId;
+    if (again === undefined) {
+      this.write(
+        `INSERT INTO devices (id, kind, name, platform, channel, version, rpc_version, secret_hash, created_at, approved_at, installation)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        deviceId,
+        device.kind,
+        device.name,
+        device.platform,
+        device.channel,
+        device.version,
+        device.rpcVersion ?? null,
+        secretHash,
+        now,
+        now,
+        installation ?? null,
+      );
+    } else {
+      this.write(
+        `UPDATE devices SET kind = ?, platform = ?, channel = ?, version = ?, rpc_version = ?, secret_hash = ?
+         WHERE id = ?`,
+        device.kind,
+        device.platform,
+        device.channel,
+        device.version,
+        device.rpcVersion ?? null,
+        secretHash,
+        deviceId,
+      );
+      // A connection still on the old secret isn't valid anymore.
+      for (const socket of this.ctx.getWebSockets(deviceId)) signOut(socket, "invalid");
+    }
     this.sql.exec(
       `INSERT INTO profile (id, account_id, name, email, image_url) VALUES (1, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, email = excluded.email, image_url = excluded.image_url`,
@@ -181,7 +213,7 @@ export class Account extends DurableObject<Env> {
       profile.imageUrl ?? null,
     );
     this.broadcast();
-    return { deviceId, approved };
+    return deviceId;
   }
 
   /** Who the account belongs to, as the sign-in page last reported it. */
@@ -233,7 +265,7 @@ export class Account extends DurableObject<Env> {
       );
     }
     this.broadcast();
-    if (row.approved_at !== null) this.welcome(server, row);
+    this.welcome(server, row);
     return new Response(null, {
       status: 101,
       webSocket: client,
@@ -302,55 +334,43 @@ export class Account extends DurableObject<Env> {
     this.closed(socket);
   }
 
-  async approve(credential: Credential, targetId: DeviceId): Promise<Outcome> {
-    const outcome = await this.manage(credential, targetId, "approve", (target) => {
-      if (target.approved_at === null) {
-        this.write("UPDATE devices SET approved_at = ? WHERE id = ?", Date.now(), target.id);
-      }
-    });
-    // Approved, it sees the account's threads from now on.
-    const target = this.row(targetId);
-    if (outcome.ok && target !== undefined) {
-      for (const socket of this.ctx.getWebSockets(target.id)) this.welcome(socket, target);
-    }
-    return outcome;
-  }
-
   async rename(credential: Credential, targetId: DeviceId, name: string): Promise<Outcome> {
-    return this.manage(credential, targetId, "rename", (target) => {
+    return this.manage(credential, targetId, (target) => {
       this.write("UPDATE devices SET name = ? WHERE id = ?", name, target.id);
     });
   }
 
-  /** Removes a device: denying one that waits for approval, or signing one out. Its sockets close. */
+  /** Removes a device, signing it out. Its sockets close. */
   async remove(credential: Credential, targetId: DeviceId): Promise<Outcome> {
-    return this.manage(credential, targetId, "remove", (target) => {
-      this.write("DELETE FROM devices WHERE id = ?", target.id);
-      this.sql.exec("DELETE FROM push WHERE device = ?", target.id);
-      for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
-      // A machine leaving takes its threads out of the cloud; they stay on the machine.
-      const threads = this.sql
-        .exec<{ thread: string }>("SELECT thread FROM threads WHERE machine = ?", target.id)
-        .toArray();
-      this.sql.exec("DELETE FROM event_batches WHERE machine = ?", target.id);
-      this.sql.exec("DELETE FROM threads WHERE machine = ?", target.id);
-      if (threads.length > 0) {
-        this.toApproved({
-          _tag: "ThreadsChanged",
-          threads: [],
-          removed: threads.map(({ thread }) => ({
-            machine: target.id as DeviceId,
-            threadId: thread as ThreadId,
-          })),
-        });
-      }
-    });
+    return this.manage(credential, targetId, (target) => this.drop(target));
   }
 
+  /** Takes a device out of the account, and a machine's threads out of the cloud; they stay on it. */
+  private drop(target: DeviceRow) {
+    this.write("DELETE FROM devices WHERE id = ?", target.id);
+    this.sql.exec("DELETE FROM push WHERE device = ?", target.id);
+    for (const socket of this.ctx.getWebSockets(target.id)) signOut(socket, "removed");
+    const threads = this.sql
+      .exec<{ thread: string }>("SELECT thread FROM threads WHERE machine = ?", target.id)
+      .toArray();
+    this.sql.exec("DELETE FROM event_batches WHERE machine = ?", target.id);
+    this.sql.exec("DELETE FROM threads WHERE machine = ?", target.id);
+    if (threads.length > 0) {
+      this.toDevices({
+        _tag: "ThreadsChanged",
+        threads: [],
+        removed: threads.map(({ thread }) => ({
+          machine: target.id as DeviceId,
+          threadId: thread as ThreadId,
+        })),
+      });
+    }
+  }
+
+  /** Any device of the account may rename or remove any other. */
   private async manage(
     credential: Credential,
     targetId: DeviceId,
-    action: DeviceAction,
     apply: (target: DeviceRow) => void,
   ): Promise<Outcome> {
     const actor = this.row(credential.deviceId);
@@ -359,15 +379,12 @@ export class Account extends DurableObject<Env> {
     }
     const target = this.row(targetId);
     if (target === undefined) return refused(404, "That device isn't part of your account anymore.");
-    if (!mayManage(actor, target, action)) {
-      return refused(403, "Approve this device from one that's already connected first.");
-    }
     apply(target);
     this.broadcast();
     return done;
   }
 
-  /** A thread's events from the cloud copy, for an approved device of the account. */
+  /** A thread's events from the cloud copy, for a device of the account. */
   async threadEvents(
     credential: Credential,
     machine: DeviceId,
@@ -377,8 +394,6 @@ export class Account extends DurableObject<Env> {
     if (reader === undefined || !(await this.verify(reader, credential))) {
       return refused(401, "This device isn't signed in to the account.");
     }
-    if (reader.approved_at === null)
-      return refused(403, "Approve this device from one that's already connected first.");
     const batches = this.sql
       .exec<{ events: string }>(
         "SELECT events FROM event_batches WHERE machine = ? AND thread = ? ORDER BY start",
@@ -396,7 +411,7 @@ export class Account extends DurableObject<Env> {
   /** A desktop keeping its threads' copy current, or a device saying what was seen. */
   private sync(socket: WebSocket, self: Attachment, message: SyncMessage) {
     const sender = this.row(self.deviceId);
-    if (sender === undefined || sender.approved_at === null) return;
+    if (sender === undefined) return;
     const machine = sender.id as DeviceId;
     const now = Date.now();
     switch (message._tag) {
@@ -412,7 +427,7 @@ export class Account extends DurableObject<Env> {
             now,
           );
         }
-        return this.toApproved(
+        return this.toDevices(
           {
             _tag: "ThreadsChanged",
             threads: message.threads.map((overview) => ({ machine, overview })),
@@ -427,7 +442,7 @@ export class Account extends DurableObject<Env> {
           this.sql.exec("DELETE FROM event_batches WHERE machine = ? AND thread = ?", machine, threadId);
           this.sql.exec("DELETE FROM threads WHERE machine = ? AND thread = ?", machine, threadId);
         }
-        return this.toApproved(
+        return this.toDevices(
           {
             _tag: "ThreadsChanged",
             threads: [],
@@ -477,7 +492,7 @@ export class Account extends DurableObject<Env> {
           );
         }
         // Every device hears it, the sender too: its other windows and its own list keep up.
-        return this.toApproved({ _tag: "ReadChanged", entries: message.entries });
+        return this.toDevices({ _tag: "ReadChanged", entries: message.entries });
       }
       case "SaveDrafts": {
         const accepted: Array<DraftEntry> = [];
@@ -503,8 +518,7 @@ export class Account extends DurableObject<Env> {
         this.sql.exec("DELETE FROM drafts WHERE draft IS NULL AND updated_at < ?", now - GONE_DRAFTS_KEPT_MS);
         // The sender has its own edits already; it hears only of the ones they lost to.
         if (lost.length > 0) send(socket, { _tag: "DraftsChanged", drafts: lost });
-        if (accepted.length > 0)
-          this.toApproved({ _tag: "DraftsChanged", drafts: accepted }, self.connection);
+        if (accepted.length > 0) this.toDevices({ _tag: "DraftsChanged", drafts: accepted }, self.connection);
         return;
       }
     }
@@ -530,7 +544,7 @@ export class Account extends DurableObject<Env> {
   /** A window saying what it shows, a machine saying a thread needs the user, a browser's push settings. */
   private async push(socket: WebSocket, self: Attachment, message: PushMessage) {
     const sender = this.row(self.deviceId);
-    if (sender === undefined || sender.approved_at === null) return;
+    if (sender === undefined) return;
     switch (message._tag) {
       case "Presence": {
         socket.serializeAttachment({
@@ -590,7 +604,7 @@ export class Account extends DurableObject<Env> {
     const targets = recipients(message.kind, key, this.pushRows(), rows, showing);
     if (targets.length === 0) return;
     // The computer is named once the account has more than one.
-    const desktops = rows.filter((row) => row.kind === "desktop" && row.approved_at !== null);
+    const desktops = rows.filter((row) => row.kind === "desktop");
     const payload = JSON.stringify({
       kind: message.kind,
       machine: machine.id as DeviceId,
@@ -627,7 +641,7 @@ export class Account extends DurableObject<Env> {
     return this.sql.exec<PushRow>("SELECT * FROM push").toArray();
   }
 
-  /** What an approved device gets on connecting: the account's threads, and for a desktop, its cursors. */
+  /** What a device gets on connecting: the account's threads, and for a desktop, its cursors. */
   private welcome(socket: WebSocket, device: DeviceRow) {
     const threads = this.sql
       .exec<{ machine: string; thread: string; overview: string; events: number }>(
@@ -656,11 +670,10 @@ export class Account extends DurableObject<Env> {
     send(socket, { _tag: "AccountDrafts", drafts: this.draftRows() });
   }
 
-  /** Sends every approved device's sockets a message, but for the connection it came from. */
-  private toApproved(message: RelayMessage, except?: string) {
-    const approved = new Set(this.rows().flatMap((row) => (row.approved_at === null ? [] : [row.id])));
+  /** Sends every device's sockets a message, but for the connection it came from. */
+  private toDevices(message: RelayMessage, except?: string) {
     for (const { socket, attachment } of this.live()) {
-      if (attachment.connection !== except && approved.has(attachment.deviceId)) send(socket, message);
+      if (attachment.connection !== except) send(socket, message);
     }
   }
 

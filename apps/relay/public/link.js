@@ -14,7 +14,7 @@ const panel = document.getElementById("panel");
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
-// Lucide's monitor, smartphone, globe, check, clock and link-2-off.
+// Lucide's monitor, smartphone, globe, check and link-2-off.
 const icons = {
   desktop: svg('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
   phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
@@ -22,7 +22,6 @@ const icons = {
     '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
   ),
   success: svg('<path d="M20 6 9 17l-5-5"/>'),
-  attention: svg('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
   muted: svg(
     '<path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><path d="M8 12h4"/><path d="m2 2 20 20"/>',
   ),
@@ -307,19 +306,11 @@ const main = async () => {
         location.replace("/app/");
         return;
       }
-      if (result.body.approved) {
-        showOutcome(
-          "success",
-          "Connected",
-          `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
-        );
-      } else {
-        showOutcome(
-          "attention",
-          "Waiting for approval",
-          `${device.name} joined your account. Approve it in Cerium on a device that's already connected; until then it sees nothing.`,
-        );
-      }
+      showOutcome(
+        "success",
+        "Connected",
+        `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
+      );
     } catch {
       error = "Couldn't reach Cerium's relay. Check your connection and try again.";
     } finally {

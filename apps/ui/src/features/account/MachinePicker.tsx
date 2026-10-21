@@ -7,21 +7,21 @@ import { useContext } from "react";
 
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
 import { WEB } from "../../backend/target.ts";
-import { isApproved, platformLabel, thisDevice, whyUnreachable } from "./model.ts";
+import { platformLabel, thisDevice, whyUnreachable } from "./model.ts";
 
 /**
  * Chooses which of the account's computers the window drives: this one, or
  * another that's online, whose threads, projects and harnesses then fill the window. Shown once the
- * account has more than one approved computer. The web client, which has no computer of its own,
+ * account has more than one computer. The web client, which has no computer of its own,
  * always drives one of them.
  */
 export function MachinePicker({ account }: { account: AccountState }) {
   const registry = useContext(RegistryContext);
   const driven = useAtomValue(machineAtom);
-  if (account._tag !== "SignedIn" || !isApproved(account)) return null;
+  if (account._tag !== "SignedIn") return null;
   const self = thisDevice(account);
   const others = account.devices.filter(
-    (device) => device.kind === "desktop" && device.approved && device.id !== account.deviceId,
+    (device) => device.kind === "desktop" && device.id !== account.deviceId,
   );
   if (others.length === 0 && (driven === undefined || WEB)) return null;
   const label = driven?.name ?? (WEB ? "Choose a computer" : (self?.name ?? "This computer"));

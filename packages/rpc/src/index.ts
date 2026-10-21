@@ -565,10 +565,8 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("CancelSignIn", {}),
   /** Removes this device from the account and forgets its sign-in. */
   Rpc.make("SignOut", { error: CeriumError }),
-  /** Lets a device that's waiting for approval see and control the account's machines. */
-  Rpc.make("ApproveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
   Rpc.make("RenameDevice", { payload: { deviceId: DeviceId, name: DeviceName }, error: CeriumError }),
-  /** Removes a device from the account: denies one waiting for approval, or signs one out. */
+  /** Removes a device from the account, signing it out. */
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
   /**
    * Every thread of the account and what has been seen of them, now and after every change.

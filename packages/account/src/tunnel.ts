@@ -21,7 +21,7 @@ export const CLOSE_ENDED = 4101;
 /** Why a tunnel couldn't reach its machine, written for the user. */
 export const unreachableReason: Record<"offline" | "forbidden" | "lost" | "silent", string> = {
   offline: "That computer isn't connected to Cerium's cloud right now.",
-  forbidden: "That computer isn't an approved computer of your account.",
+  forbidden: "That computer isn't part of your account.",
   lost: "Lost the connection to Cerium's cloud.",
   silent: "That computer didn't answer.",
 };

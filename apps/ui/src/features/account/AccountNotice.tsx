@@ -5,7 +5,6 @@ import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 import { reportPresence } from "../../backend/atoms.ts";
 import { shellBridge } from "../../backend/shell.ts";
 import { Notice } from "../../app/Notice.tsx";
-import { waitingDevices } from "./model.ts";
 
 /**
  * Tells the shell whether this machine is signed in and agents are working, which keep it in the
@@ -44,22 +43,6 @@ export function useAccountPresence(account: AccountState, viewing: ThreadRef | u
 
 const linkClass =
   "font-medium text-fg-primary underline decoration-fg-tertiary underline-offset-2 hover:decoration-fg-primary";
-
-/** Devices waiting to join the account, wherever the user is, with the way to them. */
-export function DeviceRequestNotice({ account, onReview }: { account: AccountState; onReview: () => void }) {
-  const waiting = waitingDevices(account);
-  if (waiting.length === 0) return null;
-  return (
-    <Notice tone="attention">
-      {waiting.length === 1
-        ? `${waiting[0]!.name} wants to join.`
-        : `${waiting.length} devices want to join.`}{" "}
-      <button type="button" onClick={onReview} className={linkClass}>
-        Review
-      </button>
-    </Notice>
-  );
-}
 
 /**
  * The machine the window drives has stopped answering: the window keeps trying, and says so once

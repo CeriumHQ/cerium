@@ -2,30 +2,30 @@ import { Button } from "@base-ui/react/button";
 import type { AccountState } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Clock, LogIn, RefreshCw, Smartphone } from "lucide-react";
+import { LogIn, RefreshCw } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useLaunched } from "../app/launch.ts";
-import { accountAtom, cancelSignIn, signIn, signOut } from "../backend/atoms.ts";
+import { accountAtom, cancelSignIn, signIn } from "../backend/atoms.ts";
 import { openSignIn } from "../backend/signIn.ts";
 import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { InfoTip } from "../components/ui/InfoTip.tsx";
-import { deviceDetails, isApproved, thisDevice } from "../features/account/model.ts";
+import { thisDevice } from "../features/account/model.ts";
 
-// What the web client shows before it may drive anything: signing in,
-// and waiting for one of the account's devices to allow this one. Signed out it has nothing to show.
+// What the web client shows before it may drive anything: signing in, and connecting to the account
+// for the first time. Signed out it has nothing to show.
 
 const messageOf = (error: unknown) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
     ? error.message
     : "Something went wrong. Try again.";
 
-/** The web client's window once this device may see the account; until then, the way there. */
+/** The web client's window once the relay has answered for this device; until then, the way there. */
 export function WebGate({ children }: { children: ReactNode }) {
   const result = useAtomValue(accountAtom);
   const account = AsyncResult.isSuccess(result) ? result.value : undefined;
-  const admitted = account?._tag === "SignedIn" && isApproved(account);
+  const admitted = account?._tag === "SignedIn" && thisDevice(account) !== undefined;
   // Signing in shows once the account is known; past it, the window says when it's ready.
   useLaunched(WEB && account !== undefined && !admitted);
   if (!WEB || admitted) return children;
@@ -37,7 +37,7 @@ export function WebGate({ children }: { children: ReactNode }) {
           <span className="text-[17px] font-semibold tracking-tight">Cerium</span>
         </div>
         {account === undefined ? null : account._tag === "SignedIn" ? (
-          <Joining account={account} />
+          <Connecting connection={account.connection} />
         ) : (
           <SigningIn account={account} />
         )}
@@ -127,43 +127,18 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
   );
 }
 
-/** Signed in, but not allowed in yet, or not connected yet. */
-function Joining({ account }: { account: Extract<AccountState, { _tag: "SignedIn" }> }) {
-  const leave = useAtomSet(signOut, { mode: "promise" });
-  const self = thisDevice(account);
-
-  // Nothing heard from the relay yet: who this device is and whether it may see anything is unknown.
-  if (self === undefined) {
-    return (
-      <div className="flex items-center gap-2.5 text-[14px] text-fg-secondary">
-        <RefreshCw size={15} strokeWidth={1.75} className="animate-spin text-fg-tertiary" />
-        {account.connection === "offline"
-          ? "Can't reach Cerium's cloud. Cerium keeps trying."
-          : "Connecting to your account…"}
-      </div>
-    );
-  }
-
+/** Signed in, before the relay has said anything about this device. */
+function Connecting({
+  connection,
+}: {
+  connection: Extract<AccountState, { _tag: "SignedIn" }>["connection"];
+}) {
   return (
-    <>
-      <Heading title="Waiting for approval">
-        Allow it in Settings → Account on one of your computers. Until then it sees nothing.
-      </Heading>
-      <div className="flex items-center gap-3.5 rounded-xl border border-line-subtle bg-surface-raised px-4 py-3.5">
-        <span className="relative grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-panel text-fg-secondary">
-          <Smartphone size={16} strokeWidth={1.75} />
-          <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full border-2 border-surface-raised bg-attention text-surface-panel">
-            <Clock size={9} strokeWidth={2.5} />
-          </span>
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-[14px] font-medium text-fg-primary">{self.name}</span>
-          <span className="truncate text-[12.5px] text-fg-tertiary">{deviceDetails(self)}</span>
-        </span>
-      </div>
-      <Button onClick={() => void leave({ payload: undefined }).catch(() => undefined)} className={quiet}>
-        Sign out
-      </Button>
-    </>
+    <div className="flex items-center gap-2.5 text-[14px] text-fg-secondary">
+      <RefreshCw size={15} strokeWidth={1.75} className="animate-spin text-fg-tertiary" />
+      {connection === "offline"
+        ? "Can't reach Cerium's cloud. Cerium keeps trying."
+        : "Connecting to your account…"}
+    </div>
   );
 }

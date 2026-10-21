@@ -38,21 +38,9 @@ export const selfNoun = WEB ? "device" : "computer";
 export const thisDevice = (account: SignedIn): DeviceInfo | undefined =>
   account.devices.find((device) => device.id === account.deviceId);
 
-/** Whether this machine may see and control the account yet. */
-export const isApproved = (account: SignedIn) => thisDevice(account)?.approved === true;
-
 /**
- * Other devices waiting for this one to let them in: only an approved device sees them, and only
- * while it's connected, since allowing one takes the relay.
- */
-export const waitingDevices = (account: AccountState): ReadonlyArray<DeviceInfo> =>
-  account._tag === "SignedIn" && account.connection === "online" && isApproved(account)
-    ? account.devices.filter((device) => !device.approved && device.id !== account.deviceId)
-    : [];
-
-/**
- * The account's devices: this one first, then the rest in the order they joined. Allowing or
- * renaming one never moves it, so rows don't shift under the pointer.
+ * The account's devices: this one first, then the rest in the order they joined. Renaming one
+ * never moves it, so rows don't shift under the pointer.
  */
 export const orderedDevices = (account: SignedIn): ReadonlyArray<DeviceInfo> =>
   account.devices.toSorted(

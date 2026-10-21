@@ -46,7 +46,7 @@ export const kindsOf = (row: PushRow): ReadonlyArray<NotificationKind> => {
 };
 
 /**
- * The subscriptions a notification about thread `key` goes to: approved browsers that want its
+ * The subscriptions a notification about thread `key` goes to: browsers that want its
  * kind and aren't showing Cerium now. None while any window shows that thread: whoever looks at it
  * sees what happened there. A notification about no thread (`key` absent) has no such window.
  */
@@ -59,9 +59,7 @@ export const recipients = (
 ): ReadonlyArray<PushRow> => {
   if (key !== undefined && showing.some((window) => window.viewing === key)) return [];
   const shown = new Set(showing.map((window) => window.deviceId));
-  const browsers = new Set(
-    devices.filter((row) => row.kind === "browser" && row.approved_at !== null).map((row) => row.id),
-  );
+  const browsers = new Set(devices.filter((row) => row.kind === "browser").map((row) => row.id));
   return subscriptions.filter(
     (row) => browsers.has(row.device) && !shown.has(row.device) && kindsOf(row).includes(kind),
   );

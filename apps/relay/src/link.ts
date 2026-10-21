@@ -7,6 +7,7 @@ import {
   type ConfirmLinkRequest,
   type DeviceDraft,
   type DeviceId,
+  type Installation,
   type LinkView,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
@@ -20,16 +21,16 @@ import type { Env } from "./env.ts";
 interface Pending {
   readonly device: DeviceDraft;
   readonly secretHash: string;
+  readonly installation?: Installation;
   readonly expiresAt: number;
   readonly linked?: {
     readonly account: AccountProfile;
     readonly deviceId: DeviceId;
-    readonly approved: boolean;
   };
 }
 
 export type ConfirmOutcome =
-  | { readonly ok: true; readonly approved: boolean }
+  | { readonly ok: true }
   | { readonly ok: false; readonly status: number; readonly message: string };
 
 export type ClaimOutcome = ClaimLinkResponse | "expired" | "forbidden";
@@ -37,9 +38,14 @@ export type ClaimOutcome = ClaimLinkResponse | "expired" | "forbidden";
 export class Link extends DurableObject<Env> {
   private confirming: Promise<ConfirmOutcome> | undefined;
 
-  async create(device: DeviceDraft, secretHash: string): Promise<number> {
+  async create(device: DeviceDraft, secretHash: string, installation?: Installation): Promise<number> {
     const expiresAt = Date.now() + LINK_LIFETIME_MS;
-    await this.ctx.storage.put<Pending>("link", { device, secretHash, expiresAt });
+    await this.ctx.storage.put<Pending>("link", {
+      device,
+      secretHash,
+      ...(installation === undefined ? {} : { installation }),
+      expiresAt,
+    });
     await this.ctx.storage.setAlarm(expiresAt);
     return expiresAt;
   }
@@ -83,14 +89,14 @@ export class Link extends DurableObject<Env> {
     }
     if (link.linked !== undefined) {
       return link.linked.account.id === accountId
-        ? { ok: true, approved: link.linked.approved }
+        ? { ok: true }
         : { ok: false, status: 409, message: "This machine was already connected to another account." };
     }
     const account = this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName(accountId));
-    const { deviceId, approved } = await account.link(accountId, link.device, link.secretHash, profile);
-    const linked = { account: { id: accountId, ...profile }, deviceId, approved };
+    const deviceId = await account.link(accountId, link.device, link.secretHash, link.installation, profile);
+    const linked = { account: { id: accountId, ...profile }, deviceId };
     await this.ctx.storage.put<Pending>("link", { ...link, linked });
-    return { ok: true, approved };
+    return { ok: true };
   }
 
   private async read(): Promise<Pending | undefined> {

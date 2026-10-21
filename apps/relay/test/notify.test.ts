@@ -11,7 +11,7 @@ import {
   type PushRow,
 } from "../src/notify.ts";
 
-const device = (id: string, kind: DeviceRow["kind"], approved = true): DeviceRow => ({
+const device = (id: string, kind: DeviceRow["kind"]): DeviceRow => ({
   id,
   kind,
   name: id,
@@ -21,8 +21,8 @@ const device = (id: string, kind: DeviceRow["kind"], approved = true): DeviceRow
   rpc_version: kind === "desktop" ? 1 : null,
   secret_hash: "0".repeat(64),
   created_at: 1,
-  approved_at: approved ? 1 : null,
   last_seen_at: null,
+  installation: null,
 });
 
 const subscription = (device: string, kinds: ReadonlyArray<string>): PushRow => ({
@@ -34,21 +34,17 @@ const subscription = (device: string, kinds: ReadonlyArray<string>): PushRow => 
   updated_at: 1,
 });
 
-const devices = [
-  device("pc", "desktop"),
-  device("phone", "browser"),
-  device("tablet", "browser"),
-  device("new", "browser", false),
-];
+// "gone" subscribed, then left the account.
+const devices = [device("pc", "desktop"), device("phone", "browser"), device("tablet", "browser")];
 const everything = ["needsYou", "finished", "failed", "limit"];
 const thread = threadKey("pc", "thread_1");
 
 describe("who a notification goes to", () => {
-  it("goes to every approved browser that wants its kind", () => {
+  it("goes to every browser of the account that wants its kind", () => {
     const rows = [
       subscription("phone", everything),
       subscription("tablet", ["needsYou"]),
-      subscription("new", everything),
+      subscription("gone", everything),
     ];
     expect(recipients("needsYou", thread, rows, devices, []).map((row) => row.device)).toEqual([
       "phone",

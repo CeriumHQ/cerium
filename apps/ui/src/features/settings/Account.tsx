@@ -18,7 +18,6 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 
 import {
   accountAtom,
-  approveDevice,
   cancelSignIn,
   removeDevice,
   renameDevice,
@@ -34,11 +33,11 @@ import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../..
 import {
   deviceDetails,
   initials,
-  isApproved,
   orderedDevices,
   presenceLabel,
   reachOf,
   selfNoun,
+  thisDevice,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
 import { DiscordSection } from "./Discord.tsx";
@@ -75,7 +74,9 @@ export function AccountSettings() {
           <SignInCard account={account} />
         )}
       </SettingsSection>
-      {account?._tag === "SignedIn" && isApproved(account) ? <DevicesSection account={account} /> : null}
+      {account?._tag === "SignedIn" && thisDevice(account) !== undefined ? (
+        <DevicesSection account={account} />
+      ) : null}
       {account?._tag === "SignedIn" && !WEB ? <ThisComputerSection /> : null}
       <DiscordSection />
     </SettingsPage>
@@ -181,7 +182,6 @@ function AccountCard({ account }: { account: SignedIn }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
   const { name, email, imageUrl } = account.account;
-  const approved = isApproved(account);
 
   return (
     <SettingsCard className="flex flex-col">
@@ -201,11 +201,6 @@ function AccountCard({ account }: { account: SignedIn }) {
           <QuietButton onClick={() => setConfirming(true)}>Sign out</QuietButton>
         </div>
       </div>
-      {account.connection === "online" && !approved ? (
-        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] text-attention">
-          Waiting for approval from a device already on your account.
-        </p>
-      ) : null}
       {error ? (
         <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] text-error">{error}</p>
       ) : null}
@@ -290,7 +285,7 @@ function QuietButton({
   );
 }
 
-/** Every device of the account, with what an approved device may do to each. */
+/** Every device of the account, with what this one may do to each. */
 function DevicesSection({ account }: { account: SignedIn }) {
   // Offline, the list is the last one the relay sent: who's online is unknown, and nothing can change.
   const live = account.connection === "online";
@@ -299,7 +294,7 @@ function DevicesSection({ account }: { account: SignedIn }) {
       title="Devices"
       description={
         live
-          ? "New devices wait until you allow them, here or on another connected device."
+          ? "A device joins when you sign in to your account on it."
           : "As this computer last saw them. They update when it's back online."
       }
     >
@@ -315,12 +310,10 @@ function DevicesSection({ account }: { account: SignedIn }) {
 }
 
 function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; live: boolean }) {
-  const approve = useAtomSet(approveDevice, { mode: "promise" });
   const rename = useAtomSet(renameDevice, { mode: "promise" });
   const remove = useAtomSet(removeDevice, { mode: "promise" });
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const deviceId = device.id as DeviceId;
   const Icon =
@@ -335,24 +328,15 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   const note =
     self || !live
       ? undefined
-      : !device.approved
-        ? "Wants to join"
-        : outdated
-          ? "Update Cerium there first"
-          : device.online
-            ? undefined
-            : presenceLabel(device);
+      : outdated
+        ? "Update Cerium there first"
+        : device.online
+          ? undefined
+          : presenceLabel(device);
 
   const run = (action: Promise<unknown>) => {
-    setBusy(true);
     setError(undefined);
-    void action.then(
-      () => setBusy(false),
-      (failure: unknown) => {
-        setBusy(false);
-        setError(messageOf(failure));
-      },
-    );
+    void action.catch((failure: unknown) => setError(messageOf(failure)));
   };
 
   const saveName = (typed: string) => {
@@ -400,51 +384,31 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
             {note === undefined ? null : (
               <>
                 {" · "}
-                <span className={!device.approved || outdated ? "text-attention" : undefined}>{note}</span>
+                <span className={outdated ? "text-attention" : undefined}>{note}</span>
               </>
             )}
           </span>
         </div>
-        {!device.approved ? (
-          <div className="flex shrink-0 items-center gap-1.5">
-            <QuietButton onClick={() => run(remove({ payload: { deviceId } }))} disabled={busy || !live}>
-              Deny
-            </QuietButton>
+        <MenuRoot>
+          <MenuTrigger>
             <Button
-              onClick={() => run(approve({ payload: { deviceId } }))}
-              disabled={busy || !live}
-              className="flex h-7 items-center rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60"
+              aria-label={`More for ${device.name}`}
+              className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary"
             >
-              Allow
+              <Ellipsis size={15} strokeWidth={1.75} />
             </Button>
-          </div>
-        ) : (
-          <MenuRoot>
-            <MenuTrigger>
-              <Button
-                aria-label={`More for ${device.name}`}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary"
-              >
-                <Ellipsis size={15} strokeWidth={1.75} />
-              </Button>
-            </MenuTrigger>
-            <MenuPopup>
-              <MenuItem icon={Pencil} onClick={() => setEditing(true)} disabled={!live}>
-                Rename…
-              </MenuItem>
-              <MenuSeparator />
-              {/* Signing out works offline too: this computer forgets its sign-in either way. */}
-              <MenuItem
-                icon={Trash2}
-                tone="danger"
-                onClick={() => setRemoving(true)}
-                disabled={!live && !self}
-              >
-                {self ? "Sign out…" : "Remove…"}
-              </MenuItem>
-            </MenuPopup>
-          </MenuRoot>
-        )}
+          </MenuTrigger>
+          <MenuPopup>
+            <MenuItem icon={Pencil} onClick={() => setEditing(true)} disabled={!live}>
+              Rename…
+            </MenuItem>
+            <MenuSeparator />
+            {/* Signing out works offline too: this computer forgets its sign-in either way. */}
+            <MenuItem icon={Trash2} tone="danger" onClick={() => setRemoving(true)} disabled={!live && !self}>
+              {self ? "Sign out…" : "Remove…"}
+            </MenuItem>
+          </MenuPopup>
+        </MenuRoot>
       </div>
       {error ? <p className="pl-11.5 text-[12.5px] text-error">{error}</p> : null}
       <ConfirmDialog
@@ -454,7 +418,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
         description={
           self
             ? signOutDescription
-            : `${device.name} signs out and leaves your account. It can come back, once you allow it again.`
+            : `${device.name} signs out and leaves your account. Signing in there again brings it back.`
         }
         confirmLabel={self ? "Sign out" : "Remove"}
         onConfirm={() => run(remove({ payload: { deviceId } }))}

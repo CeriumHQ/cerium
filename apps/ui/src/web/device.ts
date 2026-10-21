@@ -1,6 +1,6 @@
 import { Account, CloudThreads, Vault, VaultError } from "@cerium/account";
-import type { DeviceDraft } from "@cerium/protocol";
-import { Effect, Layer } from "effect";
+import { Installation, randomToken, type DeviceDraft } from "@cerium/protocol";
+import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { Socket } from "effect/socket";
 
@@ -11,6 +11,7 @@ import { BUILD_VERSION } from "../backend/target.ts";
 // which the atom runtimes' shared memo map builds once.
 
 const SIGN_IN_KEY = "cerium:device";
+const INSTALLATION_KEY = "cerium:installation";
 
 const blocked = new VaultError({
   message: "This browser keeps no data for Cerium's site, so it can't stay signed in. Allow site data.",
@@ -77,6 +78,24 @@ export const thisBrowser = (): DeviceDraft => {
   };
 };
 
+const isInstallation = Schema.is(Installation);
+
+/**
+ * This browser as an install, kept apart from the sign-in, which signing out forgets: signing in
+ * again is still this browser, not another device. None when the browser keeps no site data.
+ */
+const thisInstallation = (): Installation | undefined => {
+  try {
+    const saved = localStorage.getItem(INSTALLATION_KEY);
+    if (saved !== null && isInstallation(saved)) return saved;
+    const fresh = randomToken(16);
+    localStorage.setItem(INSTALLATION_KEY, fresh);
+    return fresh;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * When the relay connection may have died unnoticed: iOS suspends a Home Screen app that leaves the
  * screen, and its socket often comes back open but dead; a network can also come back.
@@ -102,7 +121,12 @@ const browserWakes = (check: () => void) => {
 export const WebDevice = Layer.suspend(() =>
   CloudThreads.layer.pipe(
     Layer.provideMerge(
-      Account.layer({ relayUrl: location.origin, device: thisBrowser(), wakes: browserWakes }),
+      Account.layer({
+        relayUrl: location.origin,
+        device: thisBrowser(),
+        installation: thisInstallation(),
+        wakes: browserWakes,
+      }),
     ),
     Layer.provide(browserVault),
     Layer.provide(FetchHttpClient.layer),

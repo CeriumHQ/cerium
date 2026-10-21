@@ -48,12 +48,23 @@ export const DeviceDraft = Schema.Struct({
 });
 export type DeviceDraft = typeof DeviceDraft.Type;
 
-/** A device as the account's approved devices see it. */
+/**
+ * One install of Cerium: a desktop's data folder, or a browser's storage for the relay. It outlives
+ * signing out, so the same install signing in again takes back its place in the account instead of
+ * adding the device twice. Not a secret: joining still takes the user's sign-in.
+ */
+export const Installation = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{16,64}$/));
+export type Installation = typeof Installation.Type;
+
+/** A device as the account's devices see it. */
 export const DeviceInfo = Schema.Struct({
   ...DeviceDraft.fields,
   id: DeviceId,
-  /** Until an approved device allows it, a device sees and controls nothing. */
-  approved: Schema.Boolean,
+  /**
+   * Always true: every device signed in with the account is let in. Desktops from before then
+   * decode it, so the relay still sends it.
+   */
+  approved: Schema.optionalKey(Schema.Boolean),
   /** It holds a connection to the relay right now. */
   online: Schema.Boolean,
   createdAt: EpochMillis,
@@ -86,7 +97,7 @@ export const AccountState = Schema.Union([
     deviceId: DeviceId,
     /** `offline` when the relay can't be reached; the devices are then the last ones it sent. */
     connection: Schema.Literals(["connecting", "online", "offline"]),
-    /** Every device of the account, this one included; only this one until it is approved. */
+    /** Every device of the account, this one included. */
     devices: Schema.Array(DeviceInfo),
   }),
 ]);
@@ -100,6 +111,8 @@ export const CreateLinkRequest = Schema.Struct({
   device: DeviceDraft,
   /** SHA-256 of the device secret, hex; the relay never sees the secret until the device uses it. */
   secretHash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+  /** Absent from desktops older than installations, which join as a new device each time. */
+  installation: Schema.optionalKey(Installation),
 });
 export type CreateLinkRequest = typeof CreateLinkRequest.Type;
 
@@ -114,7 +127,10 @@ export const LinkView = Schema.Struct({
 });
 export type LinkView = typeof LinkView.Type;
 
-/** `POST /api/links/<id>/confirm`, sent with the user's Clerk session token. */
+/**
+ * `POST /api/links/<id>/confirm`, sent with the user's Clerk session token: the device joins the
+ * account, able to see and drive it at once.
+ */
 export const ConfirmLinkRequest = Schema.Struct({
   profile: Schema.Struct({
     name: Schema.optionalKey(Schema.String),
@@ -123,9 +139,6 @@ export const ConfirmLinkRequest = Schema.Struct({
   }),
 });
 export type ConfirmLinkRequest = typeof ConfirmLinkRequest.Type;
-
-export const ConfirmLinkResponse = Schema.Struct({ approved: Schema.Boolean });
-export type ConfirmLinkResponse = typeof ConfirmLinkResponse.Type;
 
 /** `POST /api/links/<id>/claim`, with the device secret: the account it joined, once confirmed. */
 export const ClaimLinkResponse = Schema.Union([
@@ -197,7 +210,7 @@ export const RelayMessage = Schema.Union([
     self: DeviceId,
     /** This socket's own connection, which tunnelled replies come back to. */
     connection: Schema.optionalKey(ConnectionId),
-    /** Every device when this one is approved; only itself until then. */
+    /** Every device of the account, this one included. */
     devices: Schema.Array(DeviceInfo),
   }),
   Schema.TaggedStruct("SignedOut", { reason: Schema.Literals(["removed", "invalid"]) }),

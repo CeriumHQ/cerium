@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { DEFAULT_RELAY_URL } from "@cerium/account";
-import { thisMachine } from "./device.ts";
+import { thisInstallation, thisMachine } from "./device.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
 import { parentPort as shell } from "./shell.ts";
@@ -78,7 +78,11 @@ const options = {
   catalog,
   token,
   ...(migrationsFolder === undefined ? {} : { migrationsFolder }),
-  account: { relayUrl, device: thisMachine(channel, appVersion) },
+  account: {
+    relayUrl,
+    device: thisMachine(channel, appVersion),
+    installation: thisInstallation(dataDirectory),
+  },
   vault: shell === undefined ? fileVault(join(dataDirectory, "account.json")) : shellVault(shell),
 };
 
