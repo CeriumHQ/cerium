@@ -11,6 +11,7 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { accessOptions } from "../composer/models.ts";
+import { GitHubSection } from "../github/GitHubSettings.tsx";
 import { SettingsPage, SettingsSection } from "./parts.tsx";
 
 /** Each provider's harness by the name its makers give it. */
@@ -51,6 +52,7 @@ export function HarnessSettings() {
   return (
     <SettingsPage perMachine title="Harnesses">
       <HarnessesOnMachine result={result} machine={driven?.name} onCheck={refresh} />
+      <GitHubSection />
     </SettingsPage>
   );
 }

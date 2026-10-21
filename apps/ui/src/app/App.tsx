@@ -24,6 +24,7 @@ import {
   Columns2,
   FolderTree,
   GitBranch,
+  GitPullRequestArrow,
   MessagesSquare,
   OctagonX,
   PanelLeft,
@@ -106,6 +107,8 @@ import {
   draftsAtom,
   isNewDraftKey,
   newDraftKey,
+  startedNow,
+  withDraft,
   withoutDraft,
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
@@ -118,6 +121,10 @@ import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
+import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
+import { GitHubTabView } from "../features/github/GitHubTab.tsx";
+import { GITHUB_VERSION, githubKey, githubOfKey, type GitHubKind } from "../features/github/model.ts";
+import { nameGitHubTab } from "../features/github/tabs.ts";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
@@ -276,14 +283,15 @@ function Workspace() {
   /** How each mode's main area is split into panes, once the user split it; the open thread is the focused pane's. */
   const [panesByMode, setPanesByMode] = useState<Partial<Record<AppMode, Panes>>>(() => resumed?.panes ?? {});
   /**
-   * The panel beside the conversation: the agents (the inspector), the files, the artifacts or Source
-   * control, which take that place one at a time.
+   * The panel beside the conversation: the agents (the inspector), the files, the artifacts, Source
+   * control or GitHub, which take that place one at a time.
    */
   const [sidePanel, setSidePanel] = useState<SidePanelId>();
   const inspectorOpen = sidePanel === "agents";
   const filesOpen = sidePanel === "files";
   const artifactsOpen = sidePanel === "artifacts";
   const gitOpen = sidePanel === "git";
+  const githubOpen = sidePanel === "github";
   /** Opens `panel` in that place, or closes it when it's the one open. */
   const togglePanel = (panel: SidePanelId) => setSidePanel((open) => (open === panel ? undefined : panel));
   /** Closes `panel`, when it's the one open. */
@@ -756,6 +764,76 @@ function Workspace() {
     activeFile: openFile,
     onClose: () => closePanel("git"),
   });
+  /** The pull request or issue the open tab shows, when it shows one. */
+  const openGitHub = githubOfKey(current);
+  /**
+   * The open work thread's folder, or the open pull request's or issue's, whose GitHub repository the
+   * GitHub panel shows where its machine can.
+   */
+  const githubRoot =
+    drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GITHUB_VERSION
+      ? undefined
+      : (filesRoot ?? openGitHub?.root);
+  const toggleGitHub = () => togglePanel("github");
+  /** Opens a pull request or an issue of `root`'s repository in a tab of its own, as files open. */
+  const openGitHubIn = (root: string, kind: GitHubKind, number: number, title?: string) => {
+    const key = githubKey(root, kind, number);
+    if (title !== undefined) nameGitHubTab(registry, key, title);
+    tabs.openAs(key, "tab");
+    tabs.keep(key);
+    setSettingsOpen(false);
+    setOpenThread((open) => ({ ...open, [mode]: key }));
+    setPane("main");
+    if (compact) setSidePanel(undefined);
+  };
+  /** The project a folder is, or is a worktree of: where a thread about its repository starts. */
+  const projectOf = (folder: string) =>
+    overviews.find((overview) => overview.thread.cwd === folder)?.thread.worktree?.project ?? folder;
+  /**
+   * Starts a work thread that looks into a pull request or an issue: a new thread in the folder's
+   * project with the brief in its message box, for the user to pick the model and send.
+   */
+  const startThreadFrom = ({
+    folder,
+    text,
+    worktree,
+  }: {
+    folder: string;
+    text: string;
+    /** Runs in a worktree of its own; left to the message box's own choice when absent. */
+    worktree?: boolean;
+  }) => {
+    const key = newDraftKey();
+    registry.set(
+      draftsAtom,
+      withDraft(registry.get(draftsAtom), key, () => ({
+        segments: [{ kind: "text", text }],
+        attachments: [],
+        start: startedNow({
+          mode: "work",
+          folder: projectOf(folder),
+          ...(driven ? { machine: driven.id } : {}),
+          ...(worktree === undefined || !worktreesOk ? {} : { worktree }),
+        }),
+      })),
+    );
+    setSettingsOpen(false);
+    setMode("work");
+    tabs.openAs(key, "tab");
+    setOpenThread((open) => ({ ...open, work: key }));
+    setPane("main");
+    if (compact) setSidePanel(undefined);
+    focusComposer();
+  };
+  const githubPanel =
+    githubRoot === undefined || !githubOpen || settingsOpen ? undefined : (
+      <GitHubPanel
+        cwd={githubRoot}
+        openPull={openGitHub?.kind === "pr" && openGitHub.root === githubRoot ? openGitHub.number : undefined}
+        onOpenPull={(number, title) => openGitHubIn(githubRoot, "pr", number, title)}
+        onClose={() => closePanel("github")}
+      />
+    );
   // The artifacts the open thread's lead drew, and its project's, which its machine lists when it can.
   const viewedLead = viewed ? leadOf(viewed.agents) : undefined;
   const viewedArtifacts = viewedLead ? threadArtifacts(events, viewedLead.id) : [];
@@ -982,6 +1060,16 @@ function Workspace() {
       run: toggleGit,
     },
     {
+      id: "github",
+      group: "Actions",
+      label: githubOpen ? "Hide GitHub" : "Show GitHub",
+      icon: GitPullRequestArrow,
+      keys: "Ctrl Shift H",
+      keywords: "pull requests prs issues reviews",
+      when: githubRoot !== undefined,
+      run: toggleGitHub,
+    },
+    {
       id: "terminal",
       group: "Actions",
       label: terminal.open ? "Hide terminal" : "Show terminal",
@@ -1124,6 +1212,8 @@ function Workspace() {
         toggleFiles();
       } else if (event.key.toLowerCase() === "g" && !settingsOpen && gitRoot !== undefined) {
         toggleGit();
+      } else if (event.key.toLowerCase() === "h" && !settingsOpen && githubRoot !== undefined) {
+        toggleGitHub();
       } else if ((event.code === "Period" || event.key === ">") && !settingsOpen) {
         askStopAll();
       } else return;
@@ -1354,6 +1444,19 @@ function Workspace() {
 
   /** A pane showing the tab `key`: a file, read-only, or a thread. */
   const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+    const github = githubOfKey(key);
+    if (github !== undefined) {
+      return (
+        <GitHubTabView
+          key={key}
+          tab={github}
+          worktrees={worktreesOk}
+          onStartThread={({ text, worktree }) => startThreadFrom({ folder: github.root, text, worktree })}
+          onClose={() => tabs.actions.onClose([key])}
+          pane={chrome}
+        />
+      );
+    }
     const commit = commitFileOfKey(key);
     if (commit !== undefined) {
       return (
@@ -1390,6 +1493,15 @@ function Workspace() {
     if (file !== undefined) {
       // The viewer's own header names the file, and is the pane's.
       return { title: baseName(file.path), detail: tab?.project ?? file.path, ownHeader: true };
+    }
+    const github = githubOfKey(leaf.key);
+    if (github !== undefined) {
+      // The viewer's own header names the pull request or issue, and is the pane's.
+      return {
+        title: tab?.title ?? `#${github.number}`,
+        ...(tab?.project ? { detail: tab.project } : {}),
+        ownHeader: true,
+      };
     }
     const newTitle = mode === "work" ? "New thread" : "New chat";
     if (tab === undefined) return { title: newTitle };
@@ -1584,32 +1696,35 @@ function Workspace() {
             ? { panel: "files", content: filesPanel }
             : gitOpen && sourceControl !== undefined
               ? { panel: "git", content: sourceControl }
-              : artifactsOpen && artifactsAvailable && viewed
-                ? {
-                    panel: "artifacts",
-                    content: (
-                      <ArtifactsPanel
-                        threadId={viewed.thread.id}
-                        artifacts={viewedArtifacts}
-                        project={artifactsProject}
-                        threadTitle={(threadId) => threadOf(threadId)?.title}
-                        folderOf={(threadId) => threadOf(threadId)?.cwd}
-                        onShow={showArtifact}
-                        onReply={
-                          cloudSelected
-                            ? undefined
-                            : (text) => messageBox.append({ segments: [{ kind: "text", text }] })
-                        }
-                        onClose={() => closePanel("artifacts")}
-                      />
-                    ),
-                  }
-                : undefined
+              : githubPanel !== undefined
+                ? { panel: "github", content: githubPanel }
+                : artifactsOpen && artifactsAvailable && viewed
+                  ? {
+                      panel: "artifacts",
+                      content: (
+                        <ArtifactsPanel
+                          threadId={viewed.thread.id}
+                          artifacts={viewedArtifacts}
+                          project={artifactsProject}
+                          threadTitle={(threadId) => threadOf(threadId)?.title}
+                          folderOf={(threadId) => threadOf(threadId)?.cwd}
+                          onShow={showArtifact}
+                          onReply={
+                            cloudSelected
+                              ? undefined
+                              : (text) => messageBox.append({ segments: [{ kind: "text", text }] })
+                          }
+                          onClose={() => closePanel("artifacts")}
+                        />
+                      ),
+                    }
+                  : undefined
       }
       panels={{
         ...(selected ? { agents: inspectorOpen } : {}),
         ...(filesRoot === undefined ? {} : { files: filesOpen }),
         ...(gitRoot === undefined ? {} : { git: gitOpen }),
+        ...(githubRoot === undefined ? {} : { github: githubOpen }),
         ...(artifactsAvailable ? { artifacts: artifactsOpen } : {}),
       }}
       onTogglePanel={togglePanel}

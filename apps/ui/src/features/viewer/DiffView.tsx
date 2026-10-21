@@ -1,6 +1,6 @@
 import type { DiffHunk } from "@cerium/rpc";
 import { ChevronsUpDown } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { Run } from "./CodeView.tsx";
 import { useHighlight } from "./highlight.ts";
@@ -102,12 +102,21 @@ export function DiffView({
   path,
   layout,
   onExpand,
+  scroll = true,
+  after,
 }: {
   hunks: ReadonlyArray<DiffHunk>;
   path: string;
   layout: DiffLayout;
   /** Shows every unchanged line; absent once they all show. */
   onExpand: (() => void) | undefined;
+  /**
+   * The diff scrolls itself, filling its parent. Without, its lines wrap and the page it's on
+   * scrolls, as a pull request's files do one after another.
+   */
+  scroll?: boolean;
+  /** What shows across the diff under a line: the review threads on it. */
+  after?: ((line: NumberedLine) => ReactNode) | undefined;
 }) {
   const numbered = numberHunks(hunks);
   const oldTokens = useHighlight(numbered.oldText, path);
@@ -142,8 +151,10 @@ export function DiffView({
   };
 
   return (
-    <div className="scroll-thin h-full overflow-auto pb-3 font-mono text-[12.5px] leading-[1.6] select-text">
-      <div className={layout === "split" ? "min-w-full" : "w-max min-w-full"}>
+    <div
+      className={`font-mono text-[12.5px] leading-[1.6] select-text ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
+    >
+      <div className={layout === "split" || !scroll ? "min-w-full" : "w-max min-w-full"}>
         {numbered.hunks.map((hunk, hunkIndex) => {
           const ranges = rangesOf(hunk.lines);
           const indexOf = new Map(hunk.lines.map((line, index) => [line, index]));
@@ -151,51 +162,59 @@ export function DiffView({
             <Fragment key={hunkIndex}>
               {hunk.gapBefore > 0 ? (
                 <Gap lines={hunk.gapBefore} onExpand={onExpand} />
-              ) : hunkIndex === 0 ? (
+              ) : hunkIndex === 0 && scroll ? (
                 <div className="h-3" />
               ) : null}
               {layout === "unified"
                 ? hunk.lines.map((line, index) => (
-                    <div key={index} className={`flex ${tint[line.kind]}`}>
-                      <span style={{ width: gutter }} className={number} aria-hidden="true">
-                        {line.old}
-                      </span>
-                      <Cell
-                        line={line}
-                        number={line.new}
-                        ranges={ranges.get(index) ?? []}
-                        tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
-                        gutter={gutter}
-                      />
-                    </div>
+                    <Fragment key={index}>
+                      <div className={`flex ${tint[line.kind]}`}>
+                        <span style={{ width: gutter }} className={number} aria-hidden="true">
+                          {line.old}
+                        </span>
+                        <Cell
+                          line={line}
+                          number={line.new}
+                          ranges={ranges.get(index) ?? []}
+                          tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
+                          gutter={gutter}
+                          wrap={!scroll}
+                        />
+                      </div>
+                      {after?.(line)}
+                    </Fragment>
                   ))
                 : splitRows(hunk.lines).map((row, index) => (
-                    <div key={index} className="grid grid-cols-2 divide-x divide-line-subtle">
-                      <div className="flex min-w-0">
-                        <Cell
-                          line={row.left}
-                          number={row.left?.old}
-                          ranges={row.left ? (ranges.get(indexOf.get(row.left)!) ?? []) : []}
-                          tokens={tokensOf(row.left, "old")}
-                          gutter={gutter}
-                          wrap
-                        />
+                    <Fragment key={index}>
+                      <div className="grid grid-cols-2 divide-x divide-line-subtle">
+                        <div className="flex min-w-0">
+                          <Cell
+                            line={row.left}
+                            number={row.left?.old}
+                            ranges={row.left ? (ranges.get(indexOf.get(row.left)!) ?? []) : []}
+                            tokens={tokensOf(row.left, "old")}
+                            gutter={gutter}
+                            wrap
+                          />
+                        </div>
+                        <div className="flex min-w-0">
+                          <Cell
+                            wrap
+                            line={row.right}
+                            number={row.right?.new}
+                            ranges={
+                              row.right && row.right.kind !== "context"
+                                ? (ranges.get(indexOf.get(row.right)!) ?? [])
+                                : []
+                            }
+                            tokens={tokensOf(row.right, "new")}
+                            gutter={gutter}
+                          />
+                        </div>
                       </div>
-                      <div className="flex min-w-0">
-                        <Cell
-                          wrap
-                          line={row.right}
-                          number={row.right?.new}
-                          ranges={
-                            row.right && row.right.kind !== "context"
-                              ? (ranges.get(indexOf.get(row.right)!) ?? [])
-                              : []
-                          }
-                          tokens={tokensOf(row.right, "new")}
-                          gutter={gutter}
-                        />
-                      </div>
-                    </div>
+                      {row.left ? after?.(row.left) : null}
+                      {row.right && row.right !== row.left ? after?.(row.right) : null}
+                    </Fragment>
                   ))}
             </Fragment>
           );

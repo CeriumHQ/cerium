@@ -12,6 +12,8 @@ export const SOURCE_CONTROL = {
   min: 280,
   max: 560,
 } as const;
+/** GitHub takes it too, a little wider for pull request and issue titles. */
+export const GITHUB = { key: "cerium:githubWidth", fallback: 360, min: 280, max: 600 } as const;
 
 /** What a panel beside the transcript is allowed in width. */
 export interface SidePanelSpec {
@@ -21,7 +23,7 @@ export interface SidePanelSpec {
 }
 
 /** The panels that take the place beside the transcript, one at a time. */
-export type SidePanelId = "agents" | "files" | "artifacts" | "git";
+export type SidePanelId = "agents" | "files" | "artifacts" | "git" | "github";
 
 /** Each side panel's width, saved under `key`, and what its resize handle is called. */
 export const SIDE_PANELS: Readonly<
@@ -31,6 +33,7 @@ export const SIDE_PANELS: Readonly<
   files: { ...FILES, resizeLabel: "Resize files panel" },
   artifacts: { ...ARTIFACTS, resizeLabel: "Resize artifacts panel" },
   git: { ...SOURCE_CONTROL, resizeLabel: "Resize source control panel" },
+  github: { ...GITHUB, resizeLabel: "Resize GitHub panel" },
 };
 /** The gap between panels, and around the window's edge. */
 export const GUTTER = 6;

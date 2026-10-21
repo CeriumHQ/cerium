@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { AppMode } from "../../app/ModeSwitch.tsx";
 import { isNewDraftKey, newDraftKey, newThreadDraftsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
+import { githubOfKey } from "../github/model.ts";
+import { githubTitlesAtom } from "../github/tabs.ts";
 import { commitFileOfKey, fileOfKey } from "../viewer/model.ts";
 import { isNonThreadKey } from "./tabKinds.ts";
 import {
@@ -68,6 +70,7 @@ export function useThreadTabs({
   /** How the next thread shown opens, when it isn't the preview. */
   const [opening, setOpening] = useState<{ readonly key: string; readonly as: OpenAs }>();
   const drafts = useAtomValue(newThreadDraftsAtom);
+  const githubTitles = useAtomValue(githubTitlesAtom);
   const strip = strips[machine]?.[mode] ?? emptyStrip;
   const update = (change: (strip: TabStrip) => TabStrip) =>
     setStrips((all) => ({
@@ -103,6 +106,17 @@ export function useThreadTabs({
   const newTitle = mode === "work" ? "New thread" : "New chat";
   const tabs: ReadonlyArray<TabView> = keys.map((key) => {
     const preview = strip.preview === key;
+    const github = githubOfKey(key);
+    if (github)
+      return {
+        key,
+        // The tab says what it is called once it has been read; until then, its number.
+        title: githubTitles.get(key) ?? `#${github.number}`,
+        draft: false,
+        preview,
+        github,
+        project: `${github.kind === "pr" ? "Pull request" : "Issue"} #${github.number} · ${baseName(github.root)}`,
+      };
     const commit = commitFileOfKey(key);
     const file = fileOfKey(key) ?? commit;
     if (file)

@@ -74,7 +74,8 @@ const contentPolicy = () =>
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    // GitHub's avatars, and the images in pull requests and issues, come from GitHub's own hosts.
+    "img-src 'self' data: blob: https://avatars.githubusercontent.com https://*.githubusercontent.com https://github.com",
     // The file viewer plays a thread's sounds and videos from the bytes it read.
     "media-src 'self' blob:",
     "font-src 'self' data:",

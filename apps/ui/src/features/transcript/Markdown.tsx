@@ -18,6 +18,7 @@ import { pathReference } from "./paths.ts";
 const controls = {
   code: { copy: true, download: false },
   table: { copy: true, download: false, fullscreen: true },
+  image: { download: false },
 } as const;
 
 /** Agents' HTML visuals arrive as code fences in this language. */
@@ -26,10 +27,17 @@ const plugins = { renderers: [{ language: ARTIFACT_LANGUAGE, component: Artifact
 /** The mentions of the message being rendered, by the token its text carries. */
 const Mentions = createContext<ReadonlyMap<string, Mention>>(new Map());
 
-/** Inline code that names a mention, a file or a folder shows as its chip; anything else as code. */
+/** Inside a link, which renders as a button: a chip there would be a button in a button. */
+const InLink = createContext(false);
+
+/**
+ * Inline code that names a mention, a file or a folder shows as its chip; anything else, and code a
+ * link wraps, as code.
+ */
 function InlineCode({ children, node: _node, ...props }: ComponentProps<"code"> & { node?: unknown }) {
   const mentions = useContext(Mentions);
-  const text = typeof children === "string" ? children : undefined;
+  const inLink = useContext(InLink);
+  const text = typeof children === "string" && !inLink ? children : undefined;
   const mention = text === undefined ? undefined : mentions.get(text);
   if (mention?._tag === "SkillMention") return <SkillChip name={mention.name} />;
   if (mention?._tag === "FileMention") return <FileChip path={mention.path} folder={mention.folder} />;
@@ -55,7 +63,9 @@ function Link(props: ComponentProps<typeof StreamdownLink>) {
       className="contents"
       {...(href && !href.startsWith("streamdown:") ? { [LINK_ATTRIBUTE]: href } : {})}
     >
-      <StreamdownLink {...props} />
+      <InLink.Provider value>
+        <StreamdownLink {...props} />
+      </InLink.Provider>
     </span>
   );
 }

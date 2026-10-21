@@ -1,7 +1,19 @@
 import { Button } from "@base-ui/react/button";
 import { Tabs } from "@base-ui/react/tabs";
 import type { ProviderId } from "@cerium/protocol";
-import { ArrowRightToLine, Columns2, History, PenLine, Pin, Plus, Rows2, X, XSquare } from "lucide-react";
+import {
+  ArrowRightToLine,
+  CircleDot,
+  Columns2,
+  GitPullRequestArrow,
+  History,
+  PenLine,
+  Pin,
+  Plus,
+  Rows2,
+  X,
+  XSquare,
+} from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
@@ -11,6 +23,7 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import type { ThreadSummary } from "../threads/model.ts";
 import { paneDrag } from "../split/drag.ts";
 import { StatusIndicator } from "../threads/StatusIndicator.tsx";
+import type { GitHubTab } from "../github/model.ts";
 import type { FileTab } from "../viewer/model.ts";
 
 /** What a tab shows of the thread, or the thread not started yet, it holds. */
@@ -30,6 +43,8 @@ export interface TabView {
   readonly beside?: boolean;
   /** A work thread's file the viewer shows, rather than a thread. */
   readonly file?: FileTab;
+  /** A pull request or an issue, rather than a thread. */
+  readonly github?: GitHubTab;
 }
 
 export interface TabActions {
@@ -344,6 +359,12 @@ function ThreadTab({
           <span className="grid size-3.5 shrink-0 place-items-center">
             {tab.file ? (
               <FileIcon path={tab.file.path} className={`size-3.5 ${active ? "" : "opacity-80"}`} />
+            ) : tab.github ? (
+              tab.github.kind === "pr" ? (
+                <GitPullRequestArrow size={13} strokeWidth={2} aria-hidden />
+              ) : (
+                <CircleDot size={13} strokeWidth={2} aria-hidden />
+              )
             ) : tab.draft ? (
               <span
                 aria-hidden

@@ -103,6 +103,30 @@ export function MenuRadioItem({ value, children }: { value: string; children: Re
 
 export const MenuRadioGroup = BaseMenu.RadioGroup;
 
+/** A choice that's on or off, ticked while it's on; the menu stays open for the next. */
+export function MenuCheckboxItem({
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <BaseMenu.CheckboxItem
+      checked={checked}
+      onCheckedChange={(next) => onCheckedChange(next)}
+      className={`${itemClass} relative pr-7 text-fg-secondary data-checked:text-fg-primary data-highlighted:text-fg-primary`}
+    >
+      {children}
+      <BaseMenu.CheckboxItemIndicator className="absolute right-2 text-fg-secondary">
+        <Check size={14} strokeWidth={2} />
+      </BaseMenu.CheckboxItemIndicator>
+    </BaseMenu.CheckboxItem>
+  );
+}
+
 /**
  * Where an item of the open context menu sent focus, such as the message box. The menu takes focus
  * back while it closes, then hands it there rather than to its trigger.

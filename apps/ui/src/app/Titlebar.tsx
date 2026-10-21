@@ -4,6 +4,7 @@ import {
   FolderTree,
   GalleryVerticalEnd,
   GitBranch,
+  GitPullRequestArrow,
   Minus,
   PanelLeft,
   Square,
@@ -166,6 +167,9 @@ export function PanelToggles({
       {panels.artifacts === undefined ? null : (
         <ArtifactsToggle open={panels.artifacts} onToggle={() => onTogglePanel("artifacts")} />
       )}
+      {panels.github === undefined ? null : (
+        <GitHubToggle open={panels.github} onToggle={() => onTogglePanel("github")} />
+      )}
       {panels.git === undefined ? null : (
         <SourceControlToggle open={panels.git} onToggle={() => onTogglePanel("git")} />
       )}
@@ -194,6 +198,26 @@ export function SourceControlToggle({ open, onToggle }: { open: boolean; onToggl
         }`}
       >
         <GitBranch size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
+  );
+}
+
+/** Opens GitHub's pull requests and issues, which share the agents panel's place. */
+export function GitHubToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={open ? "Hide GitHub" : "Show GitHub"} shortcut="Ctrl Shift H">
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="GitHub"
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <GitPullRequestArrow size={15} strokeWidth={1.75} />
       </Button>
     </Tooltip>
   );

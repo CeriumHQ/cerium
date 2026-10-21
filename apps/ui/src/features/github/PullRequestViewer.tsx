@@ -1,0 +1,643 @@
+import { Button } from "@base-ui/react/button";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
+import type { GitHubRepository, PullRequestDetail, Reviewer, ReviewThread } from "@cerium/rpc";
+import { useAtom, useAtomValue } from "@effect/atom-react";
+import { Atom, AsyncResult } from "effect/reactivity";
+import {
+  ChevronDown,
+  CircleCheck,
+  CircleDashed,
+  CircleSlash,
+  CircleX,
+  Columns2,
+  Ellipsis,
+  ExternalLink,
+  GitBranch,
+  GitPullRequestDraft,
+  Link,
+  MessageSquare,
+  MessageSquarePlus,
+  Rows2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
+
+import {
+  githubRepositoryAtom,
+  pullAtom,
+  pullKey,
+  pullTimelineAtom,
+  pullTimelineKey,
+} from "../../backend/github.ts";
+import { DialogButton, FormDialog } from "../../components/ui/FormDialog.tsx";
+import { IconButton } from "../../components/ui/IconButton.tsx";
+import {
+  ContextMenuArea,
+  MenuItem,
+  MenuPopup,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger,
+} from "../../components/ui/Menu.tsx";
+import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { remember } from "../../lib/storage.ts";
+import type { PaneChrome } from "../split/SplitView.tsx";
+import { DIFF_LAYOUT_KEY, diffLayoutAtom } from "../viewer/model.ts";
+import { Note } from "../viewer/previews.tsx";
+import { Conversation } from "./Conversation.tsx";
+import { failureMessage, pullRequestBrief, pullStateOf, threadsByReview } from "./model.ts";
+import { Avatar, LabelChip, loginOf, PullStateBadge, PullStateIcon, When } from "./parts.tsx";
+import { MergeBox, PullComposer } from "./PullActionsBox.tsx";
+import { PullChecks, PullCommits, PullFiles } from "./PullTabs.tsx";
+import { ReviewThreadCard } from "./ReviewThreadCard.tsx";
+import { usePullActions, usePullFreshness, type PullActions } from "./usePullRequest.ts";
+
+type PullTab = "conversation" | "commits" | "checks" | "files";
+
+/** The tab each pull request shows, by its key, while the window is open. */
+const pullTabAtom = Atom.family((_id: string) => Atom.make<PullTab>("conversation").pipe(Atom.keepAlive));
+
+const toggleClass =
+  "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+
+const iconToggleClass =
+  "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
+
+/** How a thread that looks into a pull request starts. */
+export interface PullThreadStart {
+  readonly text: string;
+  /** In a worktree of its own, where it checks the pull request out. */
+  readonly worktree: boolean;
+}
+
+/**
+ * A pull request in a tab of its own, kept current while it shows: its conversation with reviews and
+ * their threads, its commits, its checks and the files it changes, with what the user may do to it.
+ */
+export function PullRequestViewer({
+  cwd,
+  number,
+  worktrees,
+  onStartThread,
+  onClose,
+  pane,
+}: {
+  /** The work thread's folder the panel acted on. */
+  cwd: string;
+  number: number;
+  /** A thread can start in a worktree of its own. */
+  worktrees: boolean;
+  onStartThread: ((start: PullThreadStart) => void) | undefined;
+  onClose: () => void;
+  /** While it shares the main area with other panes, its header is the pane's. */
+  pane?: PaneChrome | undefined;
+}) {
+  const id = pullKey(cwd, number);
+  const result = useAtomValue(pullAtom(id));
+  const pull = AsyncResult.getOrElse(result, () => undefined);
+  const repository = AsyncResult.getOrElse(useAtomValue(githubRepositoryAtom(cwd)), () => undefined);
+  const [tab, setTab] = useAtom(pullTabAtom(id));
+  const [layout, setLayout] = useAtom(diffLayoutAtom);
+  const actions = usePullActions(cwd, number);
+  usePullFreshness(cwd, number, pull?.revision, pull?.checks === "pending");
+
+  const header = (
+    <Header
+      number={number}
+      pull={pull}
+      tab={tab}
+      onTab={setTab}
+      layout={layout}
+      onLayout={(next) => {
+        setLayout(next);
+        remember(DIFF_LAYOUT_KEY, next);
+      }}
+      worktrees={worktrees}
+      onStartThread={onStartThread}
+      actions={actions}
+      onClose={onClose}
+      pane={pane}
+    />
+  );
+
+  return (
+    <section aria-label={pull ? `#${number} ${pull.title}` : `#${number}`} className="flex h-full flex-col">
+      {pane ? <ContextMenuArea menu={pane.menu}>{header}</ContextMenuArea> : header}
+      <div className="min-h-0 flex-1">
+        {pull === undefined ? (
+          AsyncResult.isFailure(result) ? (
+            <Note>{failureMessage(result.cause, "The pull request couldn't be read.")}</Note>
+          ) : (
+            <Note>Reading the pull request…</Note>
+          )
+        ) : (
+          <ScrollArea className="h-full">
+            <div
+              className={`mx-auto flex flex-col gap-5 px-6 pt-5 pb-12 max-md:px-3 ${tab === "files" ? "max-w-[90rem]" : "max-w-[56rem]"}`}
+            >
+              <TitleBlock pull={pull} />
+              {tab === "conversation" ? (
+                <PullConversation
+                  cwd={cwd}
+                  id={id}
+                  pull={pull}
+                  repository={repository}
+                  actions={actions}
+                  onShowChecks={() => setTab("checks")}
+                />
+              ) : tab === "commits" ? (
+                <PullCommits cwd={cwd} pull={pull} />
+              ) : tab === "checks" ? (
+                <PullChecks cwd={cwd} pull={pull} />
+              ) : (
+                <PullFiles cwd={cwd} pull={pull} layout={layout} actions={actions} />
+              )}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Header({
+  number,
+  pull,
+  tab,
+  onTab,
+  layout,
+  onLayout,
+  worktrees,
+  onStartThread,
+  actions,
+  onClose,
+  pane,
+}: {
+  number: number;
+  pull: PullRequestDetail | undefined;
+  tab: PullTab;
+  onTab: (tab: PullTab) => void;
+  layout: "unified" | "split";
+  onLayout: (layout: "unified" | "split") => void;
+  worktrees: boolean;
+  onStartThread: ((start: PullThreadStart) => void) | undefined;
+  actions: PullActions;
+  onClose: () => void;
+  pane: PaneChrome | undefined;
+}) {
+  const [checkingOut, setCheckingOut] = useState(false);
+  const start = (worktree: boolean) => {
+    if (pull && onStartThread) onStartThread({ text: pullRequestBrief(pull, { worktree }), worktree });
+  };
+  const tabs: ReadonlyArray<{ value: PullTab; label: string; count?: number | undefined }> = [
+    { value: "conversation", label: "Conversation" },
+    { value: "commits", label: "Commits", count: pull?.commitCount },
+    { value: "checks", label: "Checks" },
+    { value: "files", label: "Files", count: pull?.changedFiles },
+  ];
+  return (
+    <header
+      {...pane?.grip}
+      className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
+    >
+      {pull ? <PullStateIcon state={pullStateOf(pull)} size={15} /> : null}
+      <span className="flex min-w-0 items-baseline gap-1.5 text-[13px] max-md:text-[15px]">
+        <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
+        <span className="min-w-0 truncate font-medium text-fg-primary">{pull?.title ?? ""}</span>
+      </span>
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {tab === "files" ? (
+          <ToggleGroup
+            value={[layout]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "unified" || next === "split") onLayout(next);
+            }}
+            aria-label="Diff layout"
+            className="mr-1 flex items-center max-md:hidden"
+          >
+            <Tooltip label="One column">
+              <Toggle value="unified" aria-label="One column" className={iconToggleClass}>
+                <Rows2 size={15} strokeWidth={1.75} />
+              </Toggle>
+            </Tooltip>
+            <Tooltip label="Side by side">
+              <Toggle value="split" aria-label="Side by side" className={iconToggleClass}>
+                <Columns2 size={15} strokeWidth={1.75} />
+              </Toggle>
+            </Tooltip>
+          </ToggleGroup>
+        ) : null}
+        <ToggleGroup
+          value={[tab]}
+          onValueChange={(value) => {
+            const next = tabs.find((each) => each.value === value[0]);
+            if (next) onTab(next.value);
+          }}
+          aria-label="Show"
+          className="flex items-center"
+        >
+          {tabs.map((each) => (
+            <Toggle key={each.value} value={each.value} className={toggleClass}>
+              {each.label}
+              {each.count === undefined || each.count === 0 ? null : (
+                <span className="ml-1 text-fg-tertiary tabular-nums">
+                  <span className="sr-only"> </span>
+                  {each.count}
+                </span>
+              )}
+            </Toggle>
+          ))}
+        </ToggleGroup>
+        {onStartThread && pull ? (
+          <div className="ml-1 flex items-center">
+            <Tooltip
+              label={
+                worktrees
+                  ? "Start a thread to look into it, in a worktree of its own"
+                  : "Start a thread to look into it"
+              }
+            >
+              <Button
+                onClick={() => start(worktrees)}
+                className={`flex h-7 items-center gap-1.5 border border-line-strong px-2 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 ${worktrees ? "rounded-l-md border-r-0" : "rounded-md"}`}
+              >
+                <MessageSquarePlus size={13} strokeWidth={1.75} />
+                Start thread
+              </Button>
+            </Tooltip>
+            {worktrees ? (
+              <MenuRoot>
+                <MenuTrigger>
+                  <Button
+                    aria-label="Where the thread starts"
+                    className="grid h-7 w-6 place-items-center rounded-r-md border border-line-strong text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover max-md:h-10"
+                  >
+                    <ChevronDown size={13} strokeWidth={2} />
+                  </Button>
+                </MenuTrigger>
+                <MenuPopup>
+                  <MenuItem icon={GitBranch} onClick={() => start(true)}>
+                    In a worktree of its own
+                  </MenuItem>
+                  <MenuItem icon={MessageSquare} onClick={() => start(false)}>
+                    In the project's folder
+                  </MenuItem>
+                </MenuPopup>
+              </MenuRoot>
+            ) : null}
+          </div>
+        ) : null}
+        <MenuRoot>
+          <Tooltip label="More">
+            <MenuTrigger>
+              <Button
+                aria-label="More"
+                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10"
+              >
+                <Ellipsis size={15} strokeWidth={1.75} />
+              </Button>
+            </MenuTrigger>
+          </Tooltip>
+          <MenuPopup>
+            {pull ? (
+              <>
+                <MenuItem
+                  icon={ExternalLink}
+                  onClick={() => window.open(pull.url, "_blank", "noopener,noreferrer")}
+                >
+                  Open on GitHub
+                </MenuItem>
+                <MenuItem icon={Link} onClick={() => void navigator.clipboard.writeText(pull.url)}>
+                  Copy link
+                </MenuItem>
+                {pull.state === "open" ? (
+                  <MenuItem icon={GitBranch} onClick={() => setCheckingOut(true)}>
+                    Check out here
+                  </MenuItem>
+                ) : null}
+                {pull.state === "open" && pull.canUpdate ? (
+                  <MenuItem icon={GitPullRequestDraft} onClick={() => void actions.setDraft(!pull.draft)}>
+                    {pull.draft ? "Ready for review" : "Convert to draft"}
+                  </MenuItem>
+                ) : null}
+              </>
+            ) : null}
+            {pane ? (
+              <>
+                {pull ? <MenuSeparator /> : null}
+                {pane.menu}
+              </>
+            ) : null}
+          </MenuPopup>
+        </MenuRoot>
+        <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+      </div>
+      {pull ? (
+        <CheckoutDialog open={checkingOut} onOpenChange={setCheckingOut} pull={pull} actions={actions} />
+      ) : null}
+    </header>
+  );
+}
+
+/** Asks before checking a pull request out in the folder, which switches the folder's branch. */
+function CheckoutDialog({
+  open,
+  onOpenChange,
+  pull,
+  actions,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  pull: PullRequestDetail;
+  actions: PullActions;
+}) {
+  const [done, setDone] = useState<string>();
+  const checkout = async () => {
+    const branch = await actions.checkout();
+    if (branch !== undefined) setDone(branch);
+  };
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (actions.busy === "checkout") return;
+        onOpenChange(next);
+        if (!next) setDone(undefined);
+      }}
+      title={done === undefined ? `Check out #${pull.number} here?` : "Checked out"}
+      description={
+        done === undefined ? (
+          <>
+            This folder switches to the pull request's branch,{" "}
+            <code className="font-mono text-[12px]">{pull.head}</code>, as{" "}
+            <code className="font-mono text-[12px]">gh pr checkout</code> does. Changes you haven't committed
+            stay with you, unless they clash with the branch.
+          </>
+        ) : (
+          <>
+            This folder is on <code className="font-mono text-[12px]">{done}</code> now.
+          </>
+        )
+      }
+      onSubmit={() => (done === undefined ? void checkout() : onOpenChange(false))}
+      actions={
+        <DialogButton type="submit" tone="primary" disabled={actions.busy !== undefined}>
+          {done !== undefined ? "Done" : actions.busy === "checkout" ? "Checking out…" : "Check out"}
+        </DialogButton>
+      }
+    >
+      {actions.error === undefined || done !== undefined ? null : (
+        <p role="alert" className="text-[12.5px] text-error">
+          {actions.error}
+        </p>
+      )}
+    </FormDialog>
+  );
+}
+
+const Code = ({ children }: { children: ReactNode }) => (
+  <code className="rounded bg-surface-hover px-1 py-px font-mono text-[12px] text-fg-primary">
+    {children}
+  </code>
+);
+
+/** The pull request's title, state, branches, and who reviews it. */
+function TitleBlock({ pull }: { pull: PullRequestDetail }) {
+  const state = pullStateOf(pull);
+  const commits = pull.commitCount === 1 ? "1 commit" : `${pull.commitCount} commits`;
+  const head =
+    pull.headRepository === undefined ? pull.head : `${pull.headRepository.split("/")[0]}:${pull.head}`;
+  return (
+    <div className="flex flex-col gap-3">
+      <h1 className="text-[20px] leading-snug font-semibold tracking-tight text-pretty text-fg-primary max-md:text-[18px]">
+        {pull.title} <span className="font-normal text-fg-tertiary">#{pull.number}</span>
+      </h1>
+      {/* One run of text after the badge, so a narrow pane wraps it between words. */}
+      <p className="text-[13px] leading-6 text-fg-secondary">
+        <span className="mr-2 inline-flex align-top">
+          <PullStateBadge state={state} />
+        </span>
+        <span>
+          <span className="font-medium text-fg-primary">
+            {state === "merged" ? loginOf(pull.mergedBy ?? pull.author) : loginOf(pull.author)}
+          </span>{" "}
+          {state === "merged" ? `merged ${commits}` : `wants to merge ${commits}`} into{" "}
+          <Code>{pull.base}</Code> from <Code>{head}</Code>{" "}
+          <span className="whitespace-nowrap text-fg-tertiary">
+            {"· "}
+            {state === "merged" && pull.mergedAt !== undefined ? (
+              <When at={pull.mergedAt} />
+            ) : state === "closed" && pull.closedAt !== undefined ? (
+              <When at={pull.closedAt} />
+            ) : (
+              <When at={pull.createdAt} />
+            )}
+          </span>
+          <span className="ml-2 font-mono text-[12px] whitespace-nowrap tabular-nums">
+            <span className="text-success">+{pull.additions}</span>{" "}
+            <span className="text-error">−{pull.deletions}</span>
+          </span>
+        </span>
+      </p>
+      <Facts pull={pull} />
+    </div>
+  );
+}
+
+const reviewerLook: Record<Reviewer["state"], { icon: LucideIcon; tone: string; word: string }> = {
+  approved: { icon: CircleCheck, tone: "text-success", word: "approved" },
+  changesRequested: { icon: CircleX, tone: "text-error", word: "requested changes" },
+  commented: { icon: MessageSquare, tone: "text-fg-tertiary", word: "commented" },
+  dismissed: { icon: CircleSlash, tone: "text-fg-tertiary", word: "review dismissed" },
+  requested: { icon: CircleDashed, tone: "text-attention", word: "review requested" },
+};
+
+/** Who reviews it and who it's assigned to, its labels and milestone: the lines that have something. */
+function Facts({ pull }: { pull: PullRequestDetail }) {
+  const rows: Array<{ label: string; content: ReactNode }> = [];
+  if (pull.reviewers.length > 0) {
+    rows.push({
+      label: "Reviewers",
+      content: pull.reviewers.map((reviewer) => {
+        const { icon: Icon, tone, word } = reviewerLook[reviewer.state];
+        return (
+          <Tooltip key={reviewer.name} label={`${reviewer.name} ${word}`}>
+            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-line-subtle py-0.5 pr-2 pl-0.5">
+              {reviewer.team === true ? (
+                <span className="grid size-5 place-items-center rounded-full bg-surface-hover text-[10px] text-fg-tertiary">
+                  #
+                </span>
+              ) : (
+                <Avatar
+                  user={{
+                    login: reviewer.name,
+                    ...(reviewer.avatarUrl ? { avatarUrl: reviewer.avatarUrl } : {}),
+                  }}
+                  size={20}
+                />
+              )}
+              <span className="text-fg-primary">{reviewer.name}</span>
+              <Icon size={12} strokeWidth={2.25} className={tone} />
+            </span>
+          </Tooltip>
+        );
+      }),
+    });
+  }
+  if (pull.assignees.length > 0) {
+    rows.push({
+      label: "Assignees",
+      content: pull.assignees.map((user) => (
+        <span
+          key={user.login}
+          className="inline-flex h-6 items-center gap-1.5 rounded-full border border-line-subtle py-0.5 pr-2 pl-0.5"
+        >
+          <Avatar user={user} size={20} />
+          <span className="text-fg-primary">{user.login}</span>
+        </span>
+      )),
+    });
+  }
+  if (pull.labels.length > 0) {
+    rows.push({
+      label: "Labels",
+      content: pull.labels.map((label) => <LabelChip key={label.name} label={label} />),
+    });
+  }
+  if (pull.milestone !== undefined) {
+    rows.push({ label: "Milestone", content: <span className="text-fg-primary">{pull.milestone}</span> });
+  }
+  if (rows.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-[12.5px]">
+      {rows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="text-fg-tertiary">{row.label}</dt>
+          <dd className="flex min-w-0 flex-wrap items-center gap-1.5">{row.content}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** The conversation, then where the pull request stands, then the box to comment in. */
+function PullConversation({
+  cwd,
+  id,
+  pull,
+  repository,
+  actions,
+  onShowChecks,
+}: {
+  cwd: string;
+  id: string;
+  pull: PullRequestDetail;
+  repository: GitHubRepository | undefined;
+  actions: PullActions;
+  onShowChecks: () => void;
+}) {
+  const byReview = threadsByReview(pull.threads);
+  const renderAfter = (item: PullRequestDetail["timeline"][number]) => {
+    if (item._tag !== "Review") return null;
+    const threads = byReview.get(item.id);
+    return threads === undefined ? null : <Threads threads={threads} actions={actions} />;
+  };
+  return (
+    <div className="flex flex-col gap-5">
+      <Conversation
+        description={{
+          author: pull.author,
+          body: pull.body,
+          at: pull.createdAt,
+          edited: pull.edited,
+          association: pull.association,
+          reactions: pull.reactions,
+          url: pull.url,
+        }}
+        items={pull.timeline}
+        renderAfter={renderAfter}
+      />
+      {pull.timelineNext === undefined ? null : (
+        <MoreTimeline cwd={cwd} number={pull.number} after={pull.timelineNext} renderAfter={renderAfter} />
+      )}
+      {pull.state === "open" && repository ? (
+        <MergeBox pull={pull} repository={repository} actions={actions} onShowChecks={onShowChecks} />
+      ) : null}
+      {repository ? <PullComposer id={id} pull={pull} repository={repository} actions={actions} /> : null}
+    </div>
+  );
+}
+
+function Threads({ threads, actions }: { threads: ReadonlyArray<ReviewThread>; actions: PullActions }) {
+  return (
+    <div className="flex flex-col gap-2 pl-10">
+      {threads.map((thread) => (
+        <ReviewThreadCard key={thread.id} thread={thread} actions={actions} />
+      ))}
+    </div>
+  );
+}
+
+/** The conversation past its first page, a page at a time as the user asks for it. */
+function MoreTimeline({
+  cwd,
+  number,
+  after,
+  renderAfter,
+}: {
+  cwd: string;
+  number: number;
+  after: string;
+  renderAfter: (item: PullRequestDetail["timeline"][number]) => ReactNode;
+}) {
+  const [shown, setShown] = useState(false);
+  if (!shown) {
+    return (
+      <Button
+        onClick={() => setShown(true)}
+        className="self-center rounded-lg border border-line-subtle px-3 py-1.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+      >
+        Show more of the conversation
+      </Button>
+    );
+  }
+  return <TimelinePage cwd={cwd} number={number} after={after} renderAfter={renderAfter} />;
+}
+
+function TimelinePage({
+  cwd,
+  number,
+  after,
+  renderAfter,
+}: {
+  cwd: string;
+  number: number;
+  after: string;
+  renderAfter: (item: PullRequestDetail["timeline"][number]) => ReactNode;
+}) {
+  const result = useAtomValue(pullTimelineAtom(pullTimelineKey(pullKey(cwd, number), after)));
+  const page = AsyncResult.getOrElse(result, () => undefined);
+  if (page === undefined) {
+    return (
+      <p
+        className={`text-center text-[12.5px] ${AsyncResult.isFailure(result) ? "text-error" : "text-fg-tertiary"}`}
+      >
+        {AsyncResult.isFailure(result)
+          ? failureMessage(result.cause, "More of the conversation couldn't be read.")
+          : "Reading on…"}
+      </p>
+    );
+  }
+  return (
+    <>
+      <Conversation items={page.items} renderAfter={renderAfter} />
+      {page.next === undefined ? null : (
+        <MoreTimeline cwd={cwd} number={number} after={page.next} renderAfter={renderAfter} />
+      )}
+    </>
+  );
+}
