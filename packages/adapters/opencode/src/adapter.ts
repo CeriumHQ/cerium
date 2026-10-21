@@ -74,7 +74,7 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
           return yield* new HarnessUnavailable({
             provider: "opencode",
             reason: "versionTooOld",
-            message: `OpenCode ${status.version} is older than ${opencodeManifest.harnessVersion.minimum}. Update OpenCode (\`opencode upgrade\`).`,
+            message: `OpenCode ${status.version} is older than ${opencodeManifest.harnessVersion?.minimum ?? "unknown"}. Update OpenCode (\`opencode upgrade\`).`,
           });
         }
         if (status.auth._tag === "LoggedOut") {

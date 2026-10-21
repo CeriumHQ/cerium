@@ -37,7 +37,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
           return yield* new HarnessUnavailable({
             provider: "cursor",
             reason: "versionTooOld",
-            message: `@cursor/sdk ${status.version} is older than ${cursorManifest.harnessVersion.minimum}.`,
+            message: `@cursor/sdk ${status.version} is older than ${cursorManifest.harnessVersion?.minimum ?? "unknown"}.`,
           });
         }
         if (status.auth._tag === "LoggedOut") {

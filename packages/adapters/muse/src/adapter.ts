@@ -40,7 +40,7 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
           return yield* new HarnessUnavailable({
             provider: "muse",
             reason: "versionTooOld",
-            message: `Muse Code ${status.version} is older than ${museManifest.harnessVersion.minimum}. Run \`muse\` to update it.`,
+            message: `Muse Code ${status.version} is older than ${museManifest.harnessVersion?.minimum ?? "unknown"}. Run \`muse\` to update it.`,
           });
         }
         if (status.auth._tag === "LoggedOut") {

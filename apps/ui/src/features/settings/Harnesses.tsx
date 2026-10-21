@@ -216,13 +216,7 @@ function InstalledDetails({ status, onSignedIn }: { status: Installed; onSignedI
       {/* Each detail carries its own dot, so a line that wraps never ends on one. */}
       <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-secondary">
         <span className="font-mono text-xs text-fg-primary tabular-nums">{status.version}</span>
-        {status.versionStatus === "untested" ? (
-          <span className="flex items-center gap-2 text-fg-tertiary">
-            <Dot />
-            Not tested with Cerium
-            <InfoTip label="About this version">Newer than Cerium has tested. It should still work.</InfoTip>
-          </span>
-        ) : status.versionStatus === "tooOld" ? (
+        {status.versionStatus === "tooOld" ? (
           <span className="flex items-center gap-2 text-error">
             <Dot />
             Too old for Cerium: update it to use it here

@@ -442,7 +442,7 @@ export class GitHub extends Context.Service<
           _tag: "GhInstalled",
           executablePath: found.value,
           version,
-          versionStatus: version === "unknown" ? "untested" : classifyVersion(version, GH_VERSION),
+          versionStatus: version === "unknown" ? "supported" : classifyVersion(version, GH_VERSION),
           accounts,
         } satisfies GitHubStatus;
       }).pipe(Effect.orElseSucceed((): GitHubStatus => ({ _tag: "GhMissing", installUrl: GH_INSTALL_URL })));

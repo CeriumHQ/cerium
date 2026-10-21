@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Removed
+
+- Harness settings: the "tested with Cerium" version classification. Cerium no longer judges a harness version as untested; it only blocks versions older than the minimum. Newer versions are left to the user.
+
 ### Added
 
 - Bun workspace with Vite+ for build, lint, format and test, TypeScript 7, and Effect language service diagnostics.

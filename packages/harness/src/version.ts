@@ -19,9 +19,9 @@ export const compareVersions = (a: string, b: string): number => {
 
 export const classifyVersion = (
   installed: string,
-  range: CapabilityManifest["harnessVersion"],
+  range: CapabilityManifest["harnessVersion"] | undefined,
 ): VersionStatus => {
+  if (range === undefined) return "supported";
   if (compareVersions(installed, range.minimum) < 0) return "tooOld";
-  if (compareVersions(installed, range.testedMaximum) > 0) return "untested";
   return "supported";
 };

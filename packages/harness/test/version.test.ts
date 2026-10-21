@@ -22,10 +22,10 @@ describe("compareVersions", () => {
 describe("classifyVersion", () => {
   const range = { minimum: "2.1.300", testedMaximum: "2.1.302" };
 
-  it("classifies against the tested range", () => {
+  it("classifies against the accepted range", () => {
     expect(classifyVersion("2.1.299", range)).toBe("tooOld");
     expect(classifyVersion("2.1.300", range)).toBe("supported");
     expect(classifyVersion("2.1.302", range)).toBe("supported");
-    expect(classifyVersion("2.2.0", range)).toBe("untested");
+    expect(classifyVersion("2.2.0", range)).toBe("supported");
   });
 });

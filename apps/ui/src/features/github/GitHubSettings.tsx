@@ -3,7 +3,7 @@ import { AsyncResult } from "effect/reactivity";
 import { ExternalLink } from "lucide-react";
 
 import { githubStatusAtom } from "../../backend/github.ts";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
+
 import { SettingsSection } from "../settings/parts.tsx";
 import { GitHubSignIn } from "./GitHubSignIn.tsx";
 import { GitHubMark } from "./parts.tsx";
@@ -65,14 +65,7 @@ export function GitHubSection() {
             <>
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-fg-secondary">
                 <span className="font-mono text-xs text-fg-primary tabular-nums">{status.version}</span>
-                {status.versionStatus === "untested" ? (
-                  <span className="flex items-center gap-1.5 text-fg-tertiary">
-                    · Not tested with Cerium
-                    <InfoTip label="About this version">
-                      Newer than Cerium has tested. It should still work.
-                    </InfoTip>
-                  </span>
-                ) : status.versionStatus === "tooOld" ? (
+                {status.versionStatus === "tooOld" ? (
                   <span className="text-error">· Too old for Cerium: update it to use GitHub here</span>
                 ) : null}
                 {accounts.map((account) => (

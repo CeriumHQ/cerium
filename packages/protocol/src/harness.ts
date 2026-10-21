@@ -3,8 +3,8 @@ import { Schema } from "effect";
 import { ProviderId } from "./ids.ts";
 import { AccessMode } from "./orchestration.ts";
 
-/** How the installed harness version relates to the adapter's tested range. */
-export const VersionStatus = Schema.Literals(["supported", "untested", "tooOld"]);
+/** How the installed harness version relates to the adapter's accepted range. */
+export const VersionStatus = Schema.Literals(["supported", "tooOld"]);
 export type VersionStatus = typeof VersionStatus.Type;
 
 export const LoggedIn = Schema.TaggedStruct("LoggedIn", {
@@ -54,7 +54,15 @@ export const HarnessInstalled = Schema.TaggedStruct("HarnessInstalled", {
   provider: ProviderId,
   executablePath: Schema.NonEmptyString,
   version: Schema.NonEmptyString,
-  versionStatus: VersionStatus,
+  /** Sent for viewers before `RPC_VERSION` 20 only (`VersionStatus`). */
+  versionStatus: Schema.optionalKey(VersionStatus),
+  /** The harness's newest release, when it is newer than `version`. Since `RPC_VERSION` 20. */
+  latestVersion: Schema.optionalKey(Schema.NonEmptyString),
+  /**
+   * The harness's own command that updates it, for Cerium to run in a terminal (`RunHarnessCommand`).
+   * Absent when the harness updates with Cerium or its package manager. Since `RPC_VERSION` 20.
+   */
+  updateCommand: Schema.optionalKey(Schema.NonEmptyString),
   auth: AuthStatus,
   setup: Schema.optionalKey(HarnessSetup),
 });
