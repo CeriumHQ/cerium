@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -126,5 +130,55 @@ describe("release notes", () => {
     expect(newEntries("", before)).toBe(
       "### Added\n\n- Settings.\n- Harness logins.\n\n### Fixed\n\n- A crash.",
     );
+  });
+});
+
+describe("planning a nightly", () => {
+  const script = join(import.meta.dirname, "..", "release.ts");
+  // The step's own outputs stay out of it when CI runs the tests.
+  const { GITHUB_OUTPUT: _output, ...env } = process.env;
+
+  it("publishes nothing for a commit that a release from it or a later one covers", () => {
+    const repo = mkdtempSync(join(tmpdir(), "cerium-release-"));
+    try {
+      const git = (...args: string[]) =>
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            ...args,
+          ],
+          { cwd: repo, encoding: "utf8" },
+        ).trim();
+      const plan = (commit: string) => {
+        git("checkout", "-q", commit);
+        return execFileSync(process.execPath, [script, "nightly", "--build=3"], {
+          cwd: repo,
+          encoding: "utf8",
+          env,
+        });
+      };
+      git("init", "-q", "-b", "main");
+      git("commit", "-q", "--allow-empty", "-m", "feat: one");
+      const earlier = git("rev-parse", "HEAD");
+      git("commit", "-q", "--allow-empty", "-m", "fix: two");
+      const later = git("rev-parse", "HEAD");
+
+      expect(plan(earlier)).toContain("Publishing Cerium Nightly 0.1.0-nightly.n000003");
+      git("tag", "v0.1.0-nightly.n000002", later);
+      expect(plan(earlier)).toContain(
+        `Not publishing: v0.1.0-nightly.n000002, released from a later commit, already covers ${earlier.slice(0, 7)}.`,
+      );
+      expect(plan(later)).toContain(
+        `Not publishing: v0.1.0-nightly.n000002 was already released from ${later.slice(0, 7)}.`,
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

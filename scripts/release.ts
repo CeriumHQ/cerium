@@ -139,6 +139,13 @@ const tagsMergedInto = (commit: string): Tag[] =>
     return version === undefined ? [] : [{ name, version }];
   });
 
+/** Release tags on `commit` or on commits after it. */
+const tagsContaining = (commit: string): Tag[] =>
+  lines(git("tag", "--list", "v*", "--contains", commit)).flatMap((name) => {
+    const version = parseTag(name);
+    return version === undefined ? [] : [{ name, version }];
+  });
+
 const newest = (tags: readonly Tag[]): Tag | undefined =>
   tags.reduce<Tag | undefined>(
     (best, tag) => (best === undefined || compareVersions(tag.version, best.version) > 0 ? tag : best),
@@ -194,6 +201,15 @@ const planNightly = (build: number): Plan => {
   };
   if (previous !== undefined && commitOf(previous) === commit) {
     return { release, skip: `${previous} was already released from ${commit.slice(0, 7)}` };
+  }
+  // A run that finishes after a later push's mustn't publish over it: that push's nightly already
+  // carries these commits, and its relay is newer.
+  const later = newest(tagsContaining(commit));
+  if (later !== undefined) {
+    return {
+      release,
+      skip: `${later.name}, released from a later commit, already covers ${commit.slice(0, 7)}`,
+    };
   }
   if (bumpFor(subjects(previous, commit)) === undefined) {
     return { release, skip: `nothing that ships changed since ${previous ?? "the first commit"}` };

@@ -290,6 +290,7 @@ All notable changes to Cerium are recorded here. The format follows
 - UI: a question asked an hour or more ago says so beside Skip ("Asked 9h ago · cache likely cold"). Its tip explains that answering wakes the agent, which then re-reads the whole conversation without its prompt cache and costs more, while Skip doesn't wake it.
 - Tests: in CI, four test files run at a time on the two-core runners instead of one, and the log keeps only what failing tests printed. The tests that drive a real browser run after the rest, one file at a time, and a failure gets one retry, which the job summary lists among its flaky tests. With `CERIUM_BROWSER_LOGS` naming a folder, each browser started for a test logs everything it prints there, and a failing driven-page test adds a screenshot of its page. The git tests that make a repository in each test (branches, changes, drafts) copy one made once per file, which saves a third of their git processes.
 - CI lints its workflows and actions: `bun run lint:workflows` runs actionlint (with shellcheck over every `run:` script) and zizmor's security audits, each pinned by version and checksum and downloaded once, on Linux or Windows. Fixing what zizmor found, the setup action no longer writes to `GITHUB_ENV`, and Dependabot proposes an action release only once it is a week old.
+- Nightlies: a CI run publishes nothing once a release of its commit, or of a later one, exists, so a run that finishes after a later push's no longer publishes an older nightly or deploys an older relay over it.
 
 ### Fixed
 
