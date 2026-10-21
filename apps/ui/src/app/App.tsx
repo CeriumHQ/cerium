@@ -72,6 +72,7 @@ import {
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
+import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
 import { WEB } from "../backend/target.ts";
@@ -123,8 +124,17 @@ import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
 import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
-import { GITHUB_VERSION, githubKey, githubOfKey, type GitHubKind } from "../features/github/model.ts";
+import {
+  GITHUB_VERSION,
+  githubKey,
+  githubOfKey,
+  type GitHubKind,
+  type GitHubTab,
+} from "../features/github/model.ts";
 import { nameGitHubTab } from "../features/github/tabs.ts";
+import { IssueViewer } from "../features/issues/IssueViewer.tsx";
+import { IssuesTab } from "../features/issues/IssuesTab.tsx";
+import { ISSUES_VERSION } from "../features/issues/model.ts";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
@@ -774,6 +784,8 @@ function Workspace() {
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GITHUB_VERSION
       ? undefined
       : (filesRoot ?? openGitHub?.root);
+  /** The machine has the issue calls; an older one has the pull requests alone. */
+  const issuesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ISSUES_VERSION;
   const toggleGitHub = () => togglePanel("github");
   /** Opens a pull request or an issue of `root`'s repository in a tab of its own, as files open. */
   const openGitHubIn = (root: string, kind: GitHubKind, number: number, title?: string) => {
@@ -831,6 +843,25 @@ function Workspace() {
         cwd={githubRoot}
         openPull={openGitHub?.kind === "pr" && openGitHub.root === githubRoot ? openGitHub.number : undefined}
         onOpenPull={(number, title) => openGitHubIn(githubRoot, "pr", number, title)}
+        {...(issuesOk
+          ? {
+              issues: (repository) => ({
+                content: (
+                  <IssuesTab
+                    cwd={githubRoot}
+                    repository={repository}
+                    activeNumber={
+                      openGitHub?.kind === "issue" && openGitHub.root === githubRoot
+                        ? openGitHub.number
+                        : undefined
+                    }
+                    onOpen={(number, title) => openGitHubIn(githubRoot, "issue", number, title)}
+                  />
+                ),
+                refresh: () => refreshIssueList(registry, githubRoot),
+              }),
+            }
+          : {})}
         onClose={() => closePanel("github")}
       />
     );
@@ -1452,6 +1483,20 @@ function Workspace() {
           tab={github}
           worktrees={worktreesOk}
           onStartThread={({ text, worktree }) => startThreadFrom({ folder: github.root, text, worktree })}
+          {...(issuesOk
+            ? {
+                issue: (tab: GitHubTab, pane: PaneChrome | undefined) => (
+                  <IssueViewer
+                    cwd={tab.root}
+                    number={tab.number}
+                    onClose={() => tabs.actions.onClose([key])}
+                    onStartThread={(text) => startThreadFrom({ folder: tab.root, text })}
+                    onOpenPull={(number) => openGitHubIn(tab.root, "pr", number)}
+                    pane={pane}
+                  />
+                ),
+              }
+            : {})}
           onClose={() => tabs.actions.onClose([key])}
           pane={chrome}
         />
