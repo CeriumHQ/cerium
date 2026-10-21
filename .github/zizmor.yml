@@ -1,0 +1,6 @@
+# zizmor's settings for the workflows and actions here (scripts/lint-workflows.ts).
+rules:
+  # The workflows name this repository's actions with `./.github/actions/…`, not GitHub's newer
+  # `$/…`, which actionlint doesn't read yet.
+  self-repository:
+    disable: true

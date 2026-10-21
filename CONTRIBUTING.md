@@ -28,16 +28,17 @@ The development backend keeps its data in `.cerium-dev/`, apart from an installe
 served on the first free port from 5173, written to `.cerium-dev/ui-url`; running `bun run dev` again
 reuses the servers already running.
 
-| Command                 | What it does                                                            |
-| ----------------------- | ----------------------------------------------------------------------- |
-| `bun run verify`        | Format check, lint, typecheck and tests: run it before you push         |
-| `bun run fix`           | Apply formatting and lint fixes                                         |
-| `bun run test`          | Tests in watch mode (`bun run test --run` for a single pass)            |
-| `bun run typecheck`     | `tsc -b`, the authoritative type gate                                   |
-| `bun run package`       | Build this OS's package (installer or AppImage) into `apps/desktop/out` |
-| `bun run vendor:effect` | Fetch the pinned Effect source into `vendor/effect` for reference       |
-| `bun run ui`            | Drive a web UI from the shell: open, act, screenshot, inspect           |
-| `bun run live-check`    | Run a short real turn on each installed harness and report it           |
+| Command                  | What it does                                                            |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `bun run verify`         | Format check, lint, typecheck and tests: run it before you push         |
+| `bun run fix`            | Apply formatting and lint fixes                                         |
+| `bun run test`           | Tests in watch mode (`bun run test --run` for a single pass)            |
+| `bun run typecheck`      | `tsc -b`, the authoritative type gate                                   |
+| `bun run lint:workflows` | Lint `.github` with actionlint and zizmor, as CI does                   |
+| `bun run package`        | Build this OS's package (installer or AppImage) into `apps/desktop/out` |
+| `bun run vendor:effect`  | Fetch the pinned Effect source into `vendor/effect` for reference       |
+| `bun run ui`             | Drive a web UI from the shell: open, act, screenshot, inspect           |
+| `bun run live-check`     | Run a short real turn on each installed harness and report it           |
 
 ## Toolchain
 

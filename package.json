@@ -17,6 +17,7 @@
     "build": "vp run -r build",
     "package": "vp run -r build && bun run --cwd apps/desktop package",
     "verify": "vp check && tsc -b && vp test --run",
+    "lint:workflows": "node scripts/lint-workflows.ts",
     "vendor:effect": "node scripts/vendor-effect.ts",
     "prepare": "effect-tsgo patch --typescript --oxlint",
     "dev": "node scripts/dev.ts",

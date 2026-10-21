@@ -58,6 +58,12 @@ jobs:
       - name: Typecheck
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run typecheck
+      # actionlint and zizmor; zizmor's online audits read the pinned actions with the job's token.
+      - name: Lint the workflows
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run lint:workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
       # Ubuntu's AppArmor keeps unprivileged processes out of user namespaces, which Edge's sandbox
       # needs; the bus's UI tests drive a real Edge.
       - name: Let Edge sandbox itself

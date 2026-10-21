@@ -6,6 +6,10 @@ updates:
     directories: ["/", "/.github/actions/*"]
     schedule:
       interval: monthly
+    # A release is a week old before it's proposed, so a compromised or broken one is usually pulled
+    # by then.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
