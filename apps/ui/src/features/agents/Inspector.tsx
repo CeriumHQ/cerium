@@ -287,6 +287,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
 
 const actionButton =
   "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] transition-colors max-md:h-10 max-md:px-3.5 max-md:text-[14px]";
+const quietAction = "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary";
 
 function AgentDetails({
   ref,
@@ -325,49 +326,41 @@ function AgentDetails({
       className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3 max-md:px-4"
       aria-label="Agent details"
     >
-      <dl className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px] max-md:text-[14px]">
-        {bare ? (
-          <>
-            <dt className="text-fg-tertiary">Status</dt>
-            <dd className="flex min-w-0 items-center">
-              <StateBadge agent={agent} plain />
-            </dd>
-          </>
-        ) : null}
-        <dt className="text-fg-tertiary">Model</dt>
-        <dd className="truncate text-fg-primary" title={agent.model}>
-          {agent.model}
-          {agent.effort ? <span className="text-fg-tertiary"> · {effortLabel[agent.effort]}</span> : null}
-        </dd>
-        <dt className="text-fg-tertiary">Access</dt>
-        <dd className="flex min-w-0 items-center gap-1.5 text-fg-primary">
-          <AccessIcon size={12} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-          {accessLabel[agent.access]}
-        </dd>
-        <dt className="text-fg-tertiary">Usage</dt>
-        {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
-        <dd className="truncate text-fg-primary tabular-nums">
+      <div className="flex items-start gap-2.5">
+        <ProviderLogo provider={agent.provider} size={14} className="mt-[3px] max-md:mt-1" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p
+            className="truncate text-[12.5px] font-medium text-fg-primary max-md:text-[14px]"
+            title={agent.model}
+          >
+            {agent.model}
+            {agent.effort ? (
+              <span className="font-normal text-fg-tertiary"> · {effortLabel[agent.effort]}</span>
+            ) : null}
+          </p>
+          <p className="flex min-w-0 items-center gap-1 text-xs text-fg-tertiary max-md:text-[13px]">
+            <AccessIcon size={11} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">
+              {accessLabel[agent.access]} ·{" "}
+              <span title={new Date(agent.startedAt).toLocaleString()}>
+                started {whenAgo(agent.startedAt)}
+              </span>
+            </span>
+          </p>
+          {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
           {reported ? (
-            <>
+            <p className="truncate text-xs text-fg-tertiary tabular-nums max-md:text-[13px]">
               {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
               {costUsd !== undefined ? ` · ${usd(costUsd)}` : ""}
-            </>
-          ) : (
-            <span className="text-fg-tertiary">None yet</span>
-          )}
-        </dd>
-        <dt className="text-fg-tertiary">Started</dt>
-        <dd className="text-fg-primary" title={new Date(agent.startedAt).toLocaleString()}>
-          {whenAgo(agent.startedAt)}
-        </dd>
-      </dl>
-
-      <Plan
-        key={agent.id}
-        items={agent.todos}
-        working={agent.state === "running"}
-        explanation={agent.todosNote}
-      />
+            </p>
+          ) : null}
+        </div>
+        {bare ? (
+          <span className="shrink-0 rounded-full bg-surface-hover px-2.5 py-0.5">
+            <StateBadge agent={agent} plain />
+          </span>
+        ) : null}
+      </div>
 
       {onAnswerApproval && agent.approvals.length > 0 ? (
         <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />
@@ -390,7 +383,20 @@ function AgentDetails({
           {agent.error}
         </Quote>
       ) : null}
-      {agent.lastMessage ? (
+      {agent.todos.length > 0 ? (
+        <Plan
+          key={agent.id}
+          items={agent.todos}
+          working={agent.state === "running"}
+          explanation={agent.todosNote}
+        >
+          {agent.lastMessage ? (
+            <Quote markdown={agent.lastMessage} accent>
+              {plainExcerpt(agent.lastMessage)}
+            </Quote>
+          ) : null}
+        </Plan>
+      ) : agent.lastMessage ? (
         <Quote label="Latest message" markdown={agent.lastMessage}>
           {plainExcerpt(agent.lastMessage)}
         </Quote>
@@ -398,12 +404,9 @@ function AgentDetails({
 
       {/* An ended lead resumes from the message box; an ended child can't restart. Nothing to do here. */}
       {ended ? null : (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="-mx-3 flex flex-wrap items-center gap-1 border-t border-line-subtle px-1.5 pt-2 max-md:-mx-4 max-md:px-2">
           {plan.message ? (
-            <Button
-              onClick={() => actions.onMessageLead?.()}
-              className={`${actionButton} border border-line-strong text-fg-primary hover:bg-surface-hover`}
-            >
+            <Button onClick={() => actions.onMessageLead?.()} className={`${actionButton} ${quietAction}`}>
               <MessageSquareText size={13} strokeWidth={1.75} />
               Message
             </Button>
@@ -411,7 +414,7 @@ function AgentDetails({
           {plan.interrupt === "enabled" ? (
             <Button
               onClick={() => actions.onInterrupt?.(agent.id)}
-              className={`${actionButton} border border-line-strong text-fg-primary hover:bg-surface-hover`}
+              className={`${actionButton} ${quietAction}`}
             >
               <Pause size={13} strokeWidth={1.75} />
               Interrupt
@@ -445,11 +448,15 @@ function AgentDetails({
 function Quote({
   label,
   tone = "default",
+  accent = false,
   markdown,
   children,
 }: {
-  label: string;
+  /** Absent where the quote's place already says whose words they are, as under a plan step. */
+  label?: string;
   tone?: "default" | "error";
+  /** Marks the words as the step in progress's, in the running colour. */
+  accent?: boolean;
   /** The message as written, shown in full once expanded. */
   markdown?: string;
   children: string;
@@ -457,12 +464,16 @@ function Quote({
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
   const color = tone === "error" ? "text-error" : "text-fg-secondary";
+  const rule =
+    tone === "error"
+      ? "border-l border-error/40"
+      : accent
+        ? "border-l-2 border-running/55"
+        : "border-l border-line-strong";
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-2xs text-fg-tertiary max-md:text-xs">{label}</span>
-      <div
-        className={`border-l pl-2.5 ${tone === "error" ? "border-error/40" : "border-line-strong"} ${color}`}
-      >
+      {label === undefined ? null : <span className="text-2xs text-fg-tertiary max-md:text-xs">{label}</span>}
+      <div className={`pl-2.5 ${rule} ${color}`}>
         {open ? (
           markdown !== undefined ? (
             <Markdown text={markdown} streaming={false} compact />

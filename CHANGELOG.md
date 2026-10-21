@@ -255,6 +255,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Desktop: the browser's own keys and habits are out of the shell. Ctrl+W closes the window's active thread tab and never the app now that the Window menu's Close row is gone; Ctrl+R and Ctrl+Shift+R no longer reload the whole window; DevTools can't open in an installed build; and Chromium's spellchecker is off, so the composer shows no website squiggles and the text menu drops its spelling fixes.
 - Desktop: nothing moves the app window off its own page. The guard that denies navigation (a file dropped anywhere, a link) and hands links to the user's browser instead now covers every app window, not only the one the shell makes first.
 - UI: middle click no longer latches the website's autoscroll over scrolling panes; it stays the "open in a thread tab" gesture on a file.
+- UI: the agents panel's details read as a timeline. The model and effort head it with the access and start time beneath, usage only once a turn has reported some, and a lone agent's state as a pill beside them. The plan unfolds as steps on a rail, with the agent's latest message under the step it is on (or the last, once the plan is done), and Message, Interrupt and Stop sit quietly below a rule.
 
 ### Fixed
 
