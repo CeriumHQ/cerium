@@ -24,6 +24,7 @@ import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
 import { backendEnvironment } from "./shellPath.ts";
+import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
@@ -31,6 +32,9 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 // The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows,
 // the backend's launcher, and the tray that keeps a signed-in machine reachable (background.ts), and
 // the updater (updater.ts). Everything else lives in the UI and the backend.
+
+/** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
+const smokeTest = prepareSmokeTest();
 
 // One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -322,6 +326,18 @@ void app.whenReady().then(() => {
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
   createWindow();
+  if (smokeTest !== undefined && mainWindow !== undefined) {
+    runSmokeTest({
+      folder: smokeTest,
+      window: mainWindow,
+      connection: async () => {
+        await backendStarting;
+        if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
+        return backend.connection();
+      },
+      stop: async () => backend?.stop(),
+    });
+  }
   if (startHidden) {
     setTimeout(() => {
       if (!heardPresence) background.show();
