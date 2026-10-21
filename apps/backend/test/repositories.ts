@@ -1,6 +1,6 @@
 import { afterAll } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
-import { rmSync } from "node:fs";
+import { rmSync, statSync } from "node:fs";
 
 // The repositories git tests start from. Git takes a tenth of a second or more to start on Windows,
 // and a repository made with `init`, its settings and a first commit cost every test half a dozen
@@ -27,4 +27,14 @@ export const madeOnce = <E, R>(make: (folder: string) => Effect.Effect<void, E, 
     }
     yield* fs.copy(made, to);
   });
+};
+
+/**
+ * Whether two paths name the same folder. Compares the file system's identity for each rather than
+ * the text, which on Windows can name one folder by its short (`RUNNER~1`) or long name.
+ */
+export const sameFolder = (one: string, other: string) => {
+  const a = statSync(one, { bigint: true });
+  const b = statSync(other, { bigint: true });
+  return a.dev === b.dev && a.ino === b.ino;
 };

@@ -1,5 +1,3 @@
-import { realpathSync } from "node:fs";
-
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
@@ -9,7 +7,7 @@ import type { PickedHunk } from "@cerium/rpc";
 
 import { Git } from "../src/git.ts";
 import { GitChanges, linePatch, parentFolders, parseStatusV2, rawHunks } from "../src/gitChanges.ts";
-import { madeOnce } from "./repositories.ts";
+import { madeOnce, sameFolder } from "./repositories.ts";
 
 describe("git status", () => {
   it("splits each file into what's staged, what isn't and what's conflicted", () => {
@@ -208,7 +206,7 @@ describe("GitChanges", { timeout: 30_000 }, () => {
       yield* write("debug.log", "ignored\n");
       const status = yield* changes.status(path.join(root, "src"));
       assert.isTrue(status.repository);
-      assert.strictEqual(path.relative(realpathSync.native(root), realpathSync.native(status.top!)), "");
+      assert.isTrue(sameFolder(root, status.top!));
       assert.deepStrictEqual(status.staged, [{ path: "src/app.ts", state: "modified" }]);
       assert.deepStrictEqual(status.unstaged, [
         { path: "docs/new.md", state: "untracked" },

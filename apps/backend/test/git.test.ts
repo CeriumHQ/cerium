@@ -1,10 +1,9 @@
-import { realpathSync } from "node:fs";
-
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, Exit, FileSystem, Layer, Path } from "effect";
 
 import { explainGit, Git, gitComplaint, shownOutput } from "../src/git.ts";
+import { sameFolder } from "./repositories.ts";
 
 describe("git's words", () => {
   it("says another git holds the index, whatever else it printed", () => {
@@ -56,7 +55,7 @@ describe("Git", () => {
       const below = yield* git.repository(path.join(root, "apps", "ui"));
       assert.isDefined(below);
       assert.strictEqual(below.prefix, "apps/ui/");
-      assert.strictEqual(path.relative(realpathSync.native(root), realpathSync.native(below.top)), "");
+      assert.isTrue(sameFolder(root, below.top));
       assert.strictEqual(path.relative(below.gitDir, below.commonDir), "");
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
