@@ -23,7 +23,7 @@ defaults:
     shell: bash
 
 jobs:
-  # Deciding runs on Linux, so a day with nothing to release never starts a Windows runner.
+  # Deciding runs on its own, so a day with nothing to release never starts a packaging runner.
   plan:
     name: Plan
     runs-on: ubuntu-latest
@@ -45,9 +45,37 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
+  # The AppImage, packaged for the Windows job to publish with the installer.
+  linux:
+    name: Package (Linux)
+    needs: plan
+    if: ${{ needs.plan.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build
+        run: bun run build
+      - name: Package
+        uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          path: |
+            apps/desktop/out/*.AppImage
+            apps/desktop/out/*-linux.yml
+          if-no-files-found: error
+          retention-days: 3
+
   release:
     name: Package and publish (Windows)
-    needs: plan
+    needs: [plan, linux]
     if: ${{ needs.plan.outputs.publish == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 30
@@ -74,6 +102,12 @@ jobs:
         uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+      - name: Fetch the AppImage
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux
+          path: apps/desktop/out
       - name: Deploy the relay
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: ./.github/actions/deploy-relay
@@ -92,6 +126,7 @@ jobs:
           COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/latest.yml \
+            apps/desktop/out/*.AppImage apps/desktop/out/latest-linux.yml \
             apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest

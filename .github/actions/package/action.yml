@@ -1,5 +1,7 @@
 name: Package the installer
-description: Builds the unsigned Windows installer, its blockmap and its update file into apps/desktop/out. Run after the build.
+description: >-
+  Builds the runner's package into apps/desktop/out: on Windows the unsigned installer, its blockmap and
+  its update file; on Linux the AppImage and its update file. Run after the build.
 
 inputs:
   version:
@@ -13,12 +15,14 @@ inputs:
 runs:
   using: composite
   steps:
-    # electron-builder downloads Electron, NSIS and its other tools into these folders.
+    # electron-builder downloads Electron, NSIS, the AppImage tools and the rest into these folders.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/AppData/Local/electron/Cache
           ~/AppData/Local/electron-builder/Cache
+          ~/.cache/electron
+          ~/.cache/electron-builder
         key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json') }}
 
     # electron-builder packs the app with LZMA2 at its highest level, which takes much of the packaging

@@ -1,6 +1,6 @@
 name: Publish the update feed
 description: >-
-  Publishes a release's installer, blockmap and update file to the public releases repository, the feed
+  Publishes a release's installer, blockmap and update files, with the AppImage, to the public releases repository, the feed
   the installed app updates from (apps/desktop/src/updater.ts) while the source repository stays private.
   A nightly also prunes the feed's older nightlies. Without a token it warns and publishes nothing.
 
@@ -15,7 +15,7 @@ inputs:
     description: The release notes scripts/release.ts wrote.
     required: true
   nightly:
-    description: Whether this is a nightly, published as a prerelease with nightly.yml.
+    description: Whether this is a nightly, published as a prerelease with nightly.yml and nightly-linux.yml.
     required: true
   token:
     description: A token that may write the releases repository's contents.
@@ -36,13 +36,14 @@ runs:
           exit 0
         fi
         if [ "$NIGHTLY" = true ]; then
-          feed=nightly.yml
+          feed=nightly
           flags=(--prerelease --latest=false)
         else
-          feed=latest.yml
+          feed=latest
           flags=(--latest)
         fi
-        files=(apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap "apps/desktop/out/$feed")
+        files=(apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap "apps/desktop/out/$feed.yml"
+          apps/desktop/out/*.AppImage "apps/desktop/out/$feed-linux.yml")
         # A rerun finds the release already there and replaces its files.
         if gh release view "$TAG" >/dev/null 2>&1; then
           gh release upload "$TAG" "${files[@]}" --clobber
