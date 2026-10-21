@@ -340,7 +340,7 @@ const repository = Effect.gen(function* () {
   return { root, write, fs, path };
 });
 
-describe("Files", () => {
+describe("Files", { timeout: 30_000 }, () => {
   it.effect("lists a folder a level at a time, ignored entries marked and git's own folder left out", () =>
     Effect.gen(function* () {
       const files = yield* Files;

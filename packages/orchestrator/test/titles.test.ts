@@ -154,11 +154,12 @@ describe("thread titles", () => {
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const settings = yield* UserSettings;
+      const { waitFor } = yield* recordEvents;
 
       yield* settings.update({ titles: { enabled: true, model: { provider: "claude", model: "sonnet" } } });
       const first = yield* startThread("one");
       yield* orchestrator.sendUserMessage(first.lead.id, "one");
-      yield* Effect.sleep(Duration.millis(50));
+      yield* waitFor((events) => events.find((event) => event.payload._tag === "ThreadRenamed"));
       assert.deepStrictEqual(
         fake.completions.map((request) => request.model),
         ["sonnet"],
@@ -178,9 +179,10 @@ describe("thread titles", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
       const { thread, lead } = yield* startThread("hello there");
       yield* orchestrator.sendUserMessage(lead.id, "hello there");
-      yield* Effect.sleep(Duration.millis(50));
+      yield* waitFor(() => (fake.completions.length >= 2 ? true : undefined));
       // Haiku, then the lead's own model.
       assert.deepStrictEqual(
         fake.completions.map((request) => request.model),
