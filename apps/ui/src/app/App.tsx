@@ -446,6 +446,8 @@ function Workspace() {
   }, [current]);
   /** The file the open tab shows, when it shows one. */
   const openFile = fileOfKey(current);
+  /** The folder of the file a commit's tab shows, which is the repository Source control and the files panel show. */
+  const openCommitRoot = commitFileOfKey(current)?.root;
   const share = useAtomSet(markThreadsRead, { mode: "promise" });
   const readState = useReadState(
     new Map(accountThreads.read.map((entry) => [entry.threadId as string, entry.seenAt])),
@@ -710,7 +712,7 @@ function Workspace() {
       ? undefined
       : selected?.thread.mode === "work" && selected.thread.cwd !== undefined
         ? selected.thread.cwd
-        : openFile?.root;
+        : (openFile?.root ?? openCommitRoot);
   /** Its files open in Cerium's viewer, when the machine can serve them. */
   const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
   /** New threads there can have worktrees of their own. */
@@ -771,6 +773,7 @@ function Workspace() {
     root: gitRoot,
     open: gitOpen && !settingsOpen,
     openIn: viewerOk ? openerIn : undefined,
+    openCommitFile: openCommitFileIn,
     activeFile: openFile,
     onClose: () => closePanel("git"),
   });

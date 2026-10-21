@@ -32,6 +32,8 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { remember } from "../../lib/storage.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FileMenuItems } from "../files/FileMenu.tsx";
+import { diffSideAtom } from "../git/model.ts";
+import { SideDiff } from "../git/SideDiff.tsx";
 import { StateLetter, TouchedMark } from "../files/FileStatus.tsx";
 import type { PaneChrome } from "../split/SplitView.tsx";
 import { dirOf, nameOf, stateAt, stateWord, touchWord, type OpenFile } from "../files/model.ts";
@@ -242,6 +244,8 @@ export function FileViewer({
   const view = pickView(views, chosen);
 
   const [whole, setWhole] = useAtom(wholeDiffAtom(key));
+  /** Opened from Source control, it shows what's staged or what isn't, rather than both against the last commit. */
+  const [side, setSide] = useAtom(diffSideAtom(key));
   const diffResult = useAtomValue(diffAtom(diffKey(root, path, from, whole ? WHOLE_FILE : CONTEXT)));
   const diff = view === "diff" ? Option.getOrUndefined(AsyncResult.value(diffResult)) : undefined;
 
@@ -322,7 +326,7 @@ export function FileViewer({
           </span>
         </Tooltip>
       ) : null}
-      {stats && view === "diff" ? (
+      {stats && view === "diff" && side === undefined ? (
         <span className="shrink-0 font-mono text-[11.5px] tabular-nums">
           <span className="text-success">+{stats.added}</span>{" "}
           <span className="text-error">−{stats.removed}</span>
@@ -417,7 +421,18 @@ export function FileViewer({
 
       <div className="min-h-0 flex-1">
         <WorkspaceFolder value={root}>
-          {view === "diff" ? (
+          {view === "diff" && side !== undefined ? (
+            <SideDiff
+              root={root}
+              path={path}
+              side={side}
+              onSide={setSide}
+              layout={layout}
+              context={whole ? WHOLE_FILE : CONTEXT}
+              whole={whole}
+              onWhole={() => setWhole(true)}
+            />
+          ) : view === "diff" ? (
             <DiffBody
               path={path}
               diff={diff}

@@ -1,15 +1,35 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import type { GitFileChange } from "@cerium/rpc";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, type ReactNode } from "react";
+import { X } from "lucide-react";
+import { useContext, useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
 import { refreshBranches } from "../../backend/branches.ts";
 import { watchAtom } from "../../backend/explorer.ts";
-import { gitStatusAtom, refreshGitStatus } from "../../backend/git.ts";
+import {
+  discardFiles,
+  gitStatusAtom,
+  refreshGitStatus,
+  stageFiles,
+  unstageFiles,
+} from "../../backend/git.ts";
+import { initRepository } from "../../backend/repositories.ts";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
+import { IconButton } from "../../components/ui/IconButton.tsx";
 import type { OpenFile } from "../files/model.ts";
+import { fileKey } from "../viewer/model.ts";
 import { useBranchPanel } from "./branches/useBranchPanel.tsx";
-import { ChangesView } from "./ChangesView.tsx";
+import { ChangesView, type ChangeActions } from "./ChangesView.tsx";
+import { CommitBox } from "./CommitBox.tsx";
+import { HistoryPanel } from "./history/HistoryPanel.tsx";
+import { diffSideAtom, discardWords, unstagePaths, type DiscardWords } from "./model.ts";
 import { SourceControlPanel } from "./SourceControlPanel.tsx";
+
+const reasonOf = (error: unknown, fallback: string) =>
+  typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+    ? error.message
+    : fallback;
 
 const messageOf = (cause: Cause.Cause<unknown>): string => {
   const error = Cause.squash(cause);
@@ -21,6 +41,11 @@ const messageOf = (cause: Cause.Cause<unknown>): string => {
     : "Git couldn't say what changed.";
 };
 
+/** Opens a file of the folder `root` as one commit changed it, in the viewer, from the History tab. */
+type OpenCommitFile = (
+  root: string,
+) => (sha: string, file: { readonly path: string; readonly from?: string }) => void;
+
 /**
  * Source control for the repository a thread's folder `root` is in, while it is open, kept current:
  * the machine says what changes in the repository, git's own folder included, so what's on screen
@@ -30,6 +55,7 @@ export function useSourceControl({
   root,
   open,
   openIn,
+  openCommitFile,
   activeFile,
   onClose,
 }: {
@@ -39,24 +65,34 @@ export function useSourceControl({
   open: boolean;
   /** Opens a file of the folder `top` in the viewer; absent where the machine can't serve one. */
   openIn: ((top: string) => OpenFile) | undefined;
+  /** Opens the files of commits in the viewer, the History tab's, for the folder it's given. */
+  openCommitFile: OpenCommitFile;
   /** The file the viewer shows, by the folder it's in. */
   activeFile: { readonly root: string; readonly path: string } | undefined;
   onClose: () => void;
 }): ReactNode | undefined {
   const active = root !== undefined && open;
   return active ? (
-    <SourceControl root={root} openIn={openIn} activeFile={activeFile} onClose={onClose} />
+    <SourceControl
+      root={root}
+      openIn={openIn}
+      openCommitFile={openCommitFile}
+      activeFile={activeFile}
+      onClose={onClose}
+    />
   ) : undefined;
 }
 
 function SourceControl({
   root,
   openIn,
+  openCommitFile,
   activeFile,
   onClose,
 }: {
   root: string;
   openIn: ((top: string) => OpenFile) | undefined;
+  openCommitFile: OpenCommitFile;
   activeFile: { readonly root: string; readonly path: string } | undefined;
   onClose: () => void;
 }) {
@@ -88,8 +124,71 @@ function SourceControl({
   const open = top === undefined ? undefined : openIn?.(top);
   const count =
     status === undefined ? 0 : status.staged.length + status.unstaged.length + status.conflicted.length;
-
   const branches = useBranchPanel({ root, onOpen: open === undefined ? undefined : (path) => open(path) });
+
+  const stage = useAtomSet(stageFiles, { mode: "promise" });
+  const unstage = useAtomSet(unstageFiles, { mode: "promise" });
+  const discard = useAtomSet(discardFiles, { mode: "promise" });
+  const init = useAtomSet(initRepository, { mode: "promise" });
+  /** What the last change from the lists couldn't do, in words for the user. */
+  const [failure, setFailure] = useState<string>();
+  /** The discard waiting on the user's go-ahead, with the words it asks with. */
+  const [asking, setAsking] = useState<{
+    readonly paths: ReadonlyArray<string>;
+    readonly words: DiscardWords;
+    readonly open: boolean;
+  }>();
+
+  const change = async (work: () => Promise<unknown>, fallback: string) => {
+    setFailure(undefined);
+    try {
+      await work();
+    } catch (error) {
+      setFailure(reasonOf(error, fallback));
+    } finally {
+      refreshGitStatus(registry, root);
+    }
+  };
+  /** Makes the thread's folder a repository, then reads it and its branches as the new repository. */
+  const initialize = () =>
+    void change(async () => {
+      await init({ payload: { root } });
+      refreshBranches(registry, root);
+    }, "Git couldn't make this folder a repository.");
+  const paths = (changes: ReadonlyArray<GitFileChange>) => changes.map((each) => each.path);
+  const actions: ChangeActions | undefined =
+    top === undefined
+      ? undefined
+      : {
+          stage: (changes) =>
+            void change(
+              () => stage({ payload: { root: top, paths: paths(changes) } }),
+              "Git couldn't stage that.",
+            ),
+          unstage: (changes) =>
+            void change(
+              () => unstage({ payload: { root: top, paths: unstagePaths(changes) } }),
+              "Git couldn't unstage that.",
+            ),
+          discard: (changes, where) =>
+            setAsking({
+              paths: where === undefined ? paths(changes) : [where],
+              words: discardWords(changes, where),
+              open: true,
+            }),
+        };
+
+  const activePath = activeFile !== undefined && activeFile.root === top ? activeFile.path : undefined;
+  /** The side of it the viewer shows, so only that list marks it. */
+  const activeSide = useAtomValue(diffSideAtom(fileKey(top ?? "", activePath ?? "")));
+
+  /** Opens a file from the lists: on what's staged, on what isn't, or a conflicted one as it is, markers and all. */
+  const openChange = (change: GitFileChange, group: "conflicted" | "staged" | "unstaged") => {
+    if (open === undefined || top === undefined) return;
+    registry.set(diffSideAtom(fileKey(top, change.path)), group === "conflicted" ? undefined : group);
+    if (group === "conflicted") open(change.path);
+    else open(change.path, { changes: true });
+  };
 
   return (
     <>
@@ -102,14 +201,45 @@ function SourceControl({
             <ChangesView
               status={status}
               error={error}
-              activePath={activeFile !== undefined && activeFile.root === top ? activeFile.path : undefined}
-              onOpen={open === undefined ? undefined : (change) => open(change.path, { changes: true })}
-            />
+              activePath={activePath}
+              activeGroup={activeSide}
+              onOpen={open === undefined ? undefined : openChange}
+              actions={actions}
+              onInit={initialize}
+            >
+              {top === undefined || status === undefined ? null : (
+                <CommitBox
+                  top={top}
+                  staged={status.staged.length}
+                  changed={status.unstaged.length}
+                  conflicted={status.conflicted.length}
+                  onCommitted={() => {
+                    refreshGitStatus(registry, root);
+                    refreshBranches(registry, root);
+                  }}
+                />
+              )}
+              {failure === undefined ? null : (
+                <div
+                  role="alert"
+                  className="mx-3 mt-2 flex items-start gap-1 rounded-lg bg-error/10 py-1 pr-1 pl-2.5"
+                >
+                  <p className="min-w-0 flex-1 py-0.5 text-[12.5px] text-error max-md:text-[14px]">
+                    {failure}
+                  </p>
+                  <IconButton
+                    icon={X}
+                    label="Dismiss"
+                    onClick={() => setFailure(undefined)}
+                    className="size-6"
+                  />
+                </div>
+              )}
+            </ChangesView>
           </>
         }
         changeCount={count}
-        // The History tab goes here.
-        history={undefined}
+        history={<HistoryPanel key={root} root={root} onOpenFile={openCommitFile(root)} />}
         onRefresh={() => {
           refreshGitStatus(registry, root);
           refreshBranches(registry, root);
@@ -117,6 +247,24 @@ function SourceControl({
         onClose={onClose}
       />
       {branches.dialogs}
+      <ConfirmDialog
+        open={asking?.open === true}
+        onOpenChange={(next) => {
+          // The words stay while the dialog fades out.
+          if (!next && asking !== undefined) setAsking({ ...asking, open: false });
+        }}
+        title={asking?.words.title ?? ""}
+        description={asking?.words.description ?? ""}
+        confirmLabel={asking?.words.confirm ?? "Discard"}
+        onConfirm={() => {
+          if (asking?.open !== true || top === undefined) return;
+          const { paths: chosen } = asking;
+          void change(
+            () => discard({ payload: { root: top, paths: chosen } }),
+            "Git couldn't discard those changes.",
+          );
+        }}
+      />
     </>
   );
 }
