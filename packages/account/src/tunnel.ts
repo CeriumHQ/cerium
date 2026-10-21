@@ -1,4 +1,10 @@
-import type { ConnectionId, DeviceId, TunnelAddress } from "@cerium/protocol";
+import {
+  FrameJoiner,
+  framePieces,
+  type ConnectionId,
+  type DeviceId,
+  type TunnelAddress,
+} from "@cerium/protocol";
 import { Deferred, Effect, Exit, PubSub, Queue, Stream, type Scope } from "effect";
 import { Socket } from "effect/socket";
 
@@ -104,7 +110,8 @@ class TunnelChannel implements Socket.WebSocketLike {
  * when it closes. Frames go to the machine's newest connection until it answers, then to that
  * connection only; the channel closes with `CLOSE_UNREACHABLE` when the machine can't be reached and
  * `CLOSE_ENDED` when it ends the channel. Opening waits for this device's relay connection, and with
- * a `hello` for the machine's answer, and fails when either doesn't come.
+ * a `hello` for the machine's answer, and fails when either doesn't come. Long frames go in pieces
+ * once the machine has sent some of its own (`framePieces`), and its pieces arrive joined.
  */
 export const openTunnel = (
   account: Account["Service"],
@@ -126,6 +133,9 @@ export const openTunnel = (
     const events = yield* account.relayEvents;
     const outgoing = yield* Queue.unbounded<string>();
     let host: ConnectionId | undefined;
+    /** Whether the machine takes frames in pieces, which it says by sending its own with `more`. */
+    let piecewise = false;
+    const joiner = new FrameJoiner();
     const target = (): TunnelAddress => (host === undefined ? { device: machine } : { connection: host });
     const sendClose = Effect.suspend(() => account.send({ _tag: "Close", to: target(), channel })).pipe(
       Effect.ignore,
@@ -146,9 +156,13 @@ export const openTunnel = (
     // Frames go out in order; one the relay won't take means this device lost it.
     yield* Effect.gen(function* () {
       while (true) {
-        const data = yield* Queue.take(outgoing);
-        const sent = yield* account.send({ _tag: "Send", to: target(), channel, data }).pipe(Effect.result);
-        if (sent._tag === "Failure") return tunnel.ended(CLOSE_UNREACHABLE, unreachableReason.lost);
+        const frame = yield* Queue.take(outgoing);
+        for (const { data, more } of framePieces(frame, piecewise)) {
+          const sent = yield* account
+            .send({ _tag: "Send", to: target(), channel, data, more })
+            .pipe(Effect.result);
+          if (sent._tag === "Failure") return tunnel.ended(CLOSE_UNREACHABLE, unreachableReason.lost);
+        }
       }
     }).pipe(Effect.forkScoped);
 
@@ -169,15 +183,19 @@ export const openTunnel = (
             if (event.channel === channel)
               return tunnel.ended(CLOSE_ENDED, "That computer ended the connection.");
             break;
-          case "Receive":
+          case "Receive": {
             if (event.channel !== channel) break;
             host ??= event.from.connection;
-            if (greeted) tunnel.received(event.data);
+            if (event.more !== undefined) piecewise = true;
+            const frame = joiner.add(event.data, event.more);
+            if (frame === undefined) break;
+            if (greeted) tunnel.received(frame);
             else {
               greeted = true;
               Deferred.doneUnsafe(answered, Exit.void);
             }
             break;
+          }
           default:
             break;
         }

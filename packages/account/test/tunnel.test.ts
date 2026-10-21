@@ -1,10 +1,13 @@
-import type {
-  AccountState,
-  ChannelId,
-  ConnectionId,
-  DeviceId,
-  DeviceMessage,
-  TunnelMessage,
+import {
+  FrameJoiner,
+  framePieces,
+  TUNNEL_PIECE,
+  type AccountState,
+  type ChannelId,
+  type ConnectionId,
+  type DeviceId,
+  type DeviceMessage,
+  type TunnelMessage,
 } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Fiber, PubSub, SubscriptionRef } from "effect";
@@ -52,7 +55,9 @@ describe("a tunnel with a hello", () => {
         const { account, sent, relay } = yield* fakeAccount("online");
         const opening = yield* openTunnel(account, desk, { hello: "hello" }).pipe(Effect.forkScoped);
         yield* until(() => sent.length > 0);
-        assert.deepStrictEqual(sent, [{ _tag: "Send", to: { device: desk }, channel, data: "hello" }]);
+        assert.deepStrictEqual(sent, [
+          { _tag: "Send", to: { device: desk }, channel, data: "hello", more: false },
+        ]);
         assert.isUndefined(opening.pollUnsafe());
 
         yield* relay(answer("pong"));
@@ -66,7 +71,13 @@ describe("a tunnel with a hello", () => {
         // Once it answered, frames go to that connection only.
         tunnel.send("next");
         yield* until(() => sent.length > 1);
-        assert.deepStrictEqual(sent[1], { _tag: "Send", to: { connection: host }, channel, data: "next" });
+        assert.deepStrictEqual(sent[1], {
+          _tag: "Send",
+          to: { connection: host },
+          channel,
+          data: "next",
+          more: false,
+        });
       }),
     ),
   );
@@ -96,6 +107,69 @@ describe("a tunnel with a hello", () => {
       }),
     ),
   );
+});
+
+describe("a tunnel's frames in pieces", () => {
+  const big = "x".repeat(TUNNEL_PIECE * 2 + 10);
+
+  it.effect("joins the machine's pieces, and sends pieces once the machine has", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { account, sent, relay } = yield* fakeAccount("online");
+        const opening = yield* openTunnel(account, desk, { hello: "hello" }).pipe(Effect.forkScoped);
+        yield* until(() => sent.length > 0);
+        yield* relay({ ...answer("pong"), more: false });
+        const tunnel = yield* Fiber.join(opening);
+        const received: Array<unknown> = [];
+        tunnel.addEventListener("message", (event) => received.push(event.data));
+        for (const piece of framePieces(big, true)) yield* relay({ ...answer(piece.data), more: piece.more });
+        yield* until(() => received.length > 0);
+        assert.deepStrictEqual(received, [big]);
+
+        tunnel.send(big);
+        yield* until(() => sent.length > 3);
+        const pieces = sent.slice(1) as Array<Extract<DeviceMessage, { _tag: "Send" }>>;
+        assert.deepStrictEqual(
+          pieces.map((piece) => piece.more),
+          [true, true, false],
+        );
+        assert.strictEqual(pieces.map((piece) => piece.data).join(""), big);
+      }),
+    ),
+  );
+
+  it.effect("sends whole frames to a machine that never sent pieces", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { account, sent, relay } = yield* fakeAccount("online");
+        const opening = yield* openTunnel(account, desk, { hello: "hello" }).pipe(Effect.forkScoped);
+        yield* until(() => sent.length > 0);
+        yield* relay(answer("pong"));
+        const tunnel = yield* Fiber.join(opening);
+        tunnel.send(big);
+        yield* until(() => sent.length > 1);
+        assert.lengthOf(sent, 2);
+        assert.deepStrictEqual(sent[1], {
+          _tag: "Send",
+          to: { connection: host },
+          channel,
+          data: big,
+          more: false,
+        });
+      }),
+    ),
+  );
+});
+
+describe("framePieces", () => {
+  it("never cuts a surrogate pair in two", () => {
+    const text = `${"a".repeat(TUNNEL_PIECE - 1)}😀${"b".repeat(5)}`;
+    const pieces = framePieces(text, true);
+    assert.strictEqual(pieces[0]?.data.length, TUNNEL_PIECE - 1);
+    const joiner = new FrameJoiner();
+    const joined = pieces.map((piece) => joiner.add(piece.data, piece.more));
+    assert.deepStrictEqual(joined, [undefined, text]);
+  });
 });
 
 describe("opening a tunnel", () => {

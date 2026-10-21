@@ -165,12 +165,20 @@ export type TunnelAddress = typeof TunnelAddress.Type;
 export const TunnelPeer = Schema.Struct({ device: DeviceId, connection: ConnectionId });
 export type TunnelPeer = typeof TunnelPeer.Type;
 
+/**
+ * Whether the next frame on the channel carries more of this one. A frame longer than `TUNNEL_PIECE`
+ * goes in pieces, so no message the relay passes on is too big for it to hold, and a connection
+ * check isn't stuck behind one. An end that sends pieces sets this on every frame, which tells the
+ * other end it may send pieces back; an end that never does gets whole frames.
+ */
+const More = Schema.optionalKey(Schema.Boolean);
+
 /** What a device sends its relay socket, besides `ping`: tunnel frames, sync and push. */
 export const DeviceMessage = Schema.Union([
   ...SyncMessage.members,
   ...PushMessage.members,
-  /** One RPC frame for the other end, as text. */
-  Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String }),
+  /** One RPC frame for the other end, as text, or a piece of one. */
+  Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String, more: More }),
   /** This end of the channel is done. */
   Schema.TaggedStruct("Close", { to: TunnelAddress, channel: ChannelId }),
 ]);
@@ -193,7 +201,7 @@ export const RelayMessage = Schema.Union([
     devices: Schema.Array(DeviceInfo),
   }),
   Schema.TaggedStruct("SignedOut", { reason: Schema.Literals(["removed", "invalid"]) }),
-  Schema.TaggedStruct("Receive", { from: TunnelPeer, channel: ChannelId, data: Schema.String }),
+  Schema.TaggedStruct("Receive", { from: TunnelPeer, channel: ChannelId, data: Schema.String, more: More }),
   Schema.TaggedStruct("Closed", { from: TunnelPeer, channel: ChannelId }),
   Schema.TaggedStruct("Undeliverable", {
     channel: ChannelId,
@@ -208,6 +216,48 @@ export type TunnelMessage = Extract<
   { readonly _tag: "Receive" | "Closed" | "Undeliverable" | "Gone" }
 >;
 export type RelayMessage = typeof RelayMessage.Type;
+
+/** The longest piece of a frame a tunnel sends, in UTF-16 code units. */
+export const TUNNEL_PIECE = 256 * 1024;
+
+/**
+ * A frame as the pieces it's sent in, each with whether more follows: whole when the other end
+ * doesn't take pieces. A cut never falls between the two halves of a surrogate pair.
+ */
+export const framePieces = (
+  data: string,
+  piecewise: boolean,
+): ReadonlyArray<{ readonly data: string; readonly more: boolean }> => {
+  if (!piecewise || data.length <= TUNNEL_PIECE) return [{ data, more: false }];
+  const pieces: Array<{ data: string; more: boolean }> = [];
+  let start = 0;
+  while (start < data.length) {
+    let end = Math.min(start + TUNNEL_PIECE, data.length);
+    const last = data.charCodeAt(end - 1);
+    if (end < data.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+    pieces.push({ data: data.slice(start, end), more: end < data.length });
+    start = end;
+  }
+  return pieces;
+};
+
+/** Joins the pieces of one channel's frames: each whole frame once its last piece arrives. */
+export class FrameJoiner {
+  private parts: Array<string> = [];
+
+  /** The whole frame `data` ends, or undefined while more of it is to come. */
+  add(data: string, more: boolean | undefined): string | undefined {
+    if (more === true) {
+      this.parts.push(data);
+      return undefined;
+    }
+    if (this.parts.length === 0) return data;
+    this.parts.push(data);
+    const whole = this.parts.join("");
+    this.parts = [];
+    return whole;
+  }
+}
 
 /** The WebSocket subprotocol the relay speaks; the credential travels as a second one. */
 export const RELAY_PROTOCOL = "cerium.v1";

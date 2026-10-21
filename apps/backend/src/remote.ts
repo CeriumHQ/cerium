@@ -1,7 +1,7 @@
 import { Account, CLOSE_UNREACHABLE, openTunnel, unreachableReason, type RelayEvent } from "@cerium/account";
-import { DeviceId, type ChannelId, type TunnelAddress } from "@cerium/protocol";
+import { DeviceId, FrameJoiner, framePieces, type ChannelId, type TunnelAddress } from "@cerium/protocol";
 import { TUNNEL_HELLO } from "@cerium/rpc";
-import { Effect, Layer, Option, PubSub, Queue, Schema, Stream } from "effect";
+import { Effect, Layer, Option, PubSub, Queue, Schema, Semaphore, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { NetAddress } from "effect/net";
 import { Socket, SocketServer } from "effect/socket";
@@ -21,20 +21,28 @@ const asText = (chunk: Uint8Array | string) => (typeof chunk === "string" ? chun
 
 /**
  * A channel as a `Socket`: frames the relay delivers are read from `incoming`, and what's written
- * goes back through the relay to `to`.
+ * goes back through the relay to `to`, in pieces once `piecewise` says the other end takes them.
  */
 const tunnelSocket = (
   account: Account["Service"],
   incoming: Queue.Queue<string, Socket.SocketError>,
   to: TunnelAddress,
   channel: ChannelId,
+  piecewise: () => boolean,
 ): Socket.Socket => {
+  // Answers to calls made at once are written at once: one frame's pieces go out before the next's.
+  const oneFrameAtATime = Semaphore.makeUnsafe(1);
   const write = (chunk: Uint8Array | string | Socket.CloseEvent) =>
     Socket.isCloseEvent(chunk)
       ? account.send({ _tag: "Close", to, channel }).pipe(Effect.ignore)
-      : account
-          .send({ _tag: "Send", to, channel, data: asText(chunk) })
-          .pipe(Effect.mapError((error) => closed(CLOSE_UNREACHABLE, error.message)));
+      : Effect.forEach(
+          framePieces(asText(chunk), piecewise()),
+          ({ data, more }) => account.send({ _tag: "Send", to, channel, data, more }),
+          { discard: true },
+        ).pipe(
+          oneFrameAtATime.withPermits(1),
+          Effect.mapError((error) => closed(CLOSE_UNREACHABLE, error.message)),
+        );
   return Socket.make({
     reader: Effect.succeed({
       pull: Queue.takeAll(incoming),
@@ -65,7 +73,13 @@ export const TunnelSocketServer = Layer.effect(
           const events = yield* account.relayEvents;
           const sessions = new Map<
             string,
-            { readonly connection: string; readonly incoming: Queue.Queue<string, Socket.SocketError> }
+            {
+              readonly connection: string;
+              readonly incoming: Queue.Queue<string, Socket.SocketError>;
+              readonly joiner: FrameJoiner;
+              /** Whether the other end takes frames in pieces, which it says by sending its own with `more`. */
+              piecewise: boolean;
+            }
           >();
           const end = (key: string) =>
             Effect.gen(function* () {
@@ -85,13 +99,20 @@ export const TunnelSocketServer = Layer.effect(
                   let session = sessions.get(key);
                   if (session === undefined) {
                     const incoming = yield* Queue.unbounded<string, Socket.SocketError>();
-                    session = { connection: event.from.connection, incoming };
+                    const opened = {
+                      connection: event.from.connection,
+                      incoming,
+                      joiner: new FrameJoiner(),
+                      piecewise: false,
+                    };
+                    session = opened;
                     sessions.set(key, session);
                     const socket = tunnelSocket(
                       account,
                       incoming,
                       { connection: event.from.connection },
                       event.channel,
+                      () => opened.piecewise,
                     );
                     yield* handler(socket).pipe(
                       Effect.ignore,
@@ -99,7 +120,9 @@ export const TunnelSocketServer = Layer.effect(
                       Effect.forkScoped,
                     );
                   }
-                  yield* Queue.offer(session.incoming, event.data);
+                  if (event.more !== undefined) session.piecewise = true;
+                  const frame = session.joiner.add(event.data, event.more);
+                  if (frame !== undefined) yield* Queue.offer(session.incoming, frame);
                   return;
                 }
                 case "Closed":

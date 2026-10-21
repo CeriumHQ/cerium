@@ -278,7 +278,13 @@ export class Account extends DurableObject<Env> {
     send(
       target,
       frame._tag === "Send"
-        ? { _tag: "Receive", from, channel: frame.channel, data: frame.data }
+        ? {
+            _tag: "Receive",
+            from,
+            channel: frame.channel,
+            data: frame.data,
+            ...(frame.more === undefined ? {} : { more: frame.more }),
+          }
         : { _tag: "Closed", from, channel: frame.channel },
     );
   }
