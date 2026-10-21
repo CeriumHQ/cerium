@@ -133,7 +133,7 @@ function QuestionBody({
   ) : null;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[13.5px] leading-[1.45] font-medium break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
+      <p className="text-[14px] leading-[1.4] font-semibold break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
         {question.question}
         {question.multiSelect && question.options.length > 1 ? (
           <span className="font-normal text-fg-tertiary"> · pick any</span>
@@ -250,7 +250,7 @@ export function QuestionCard({
     >
       {from}
       <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-secondary max-md:text-[13px]">
-        <MessageCircleQuestionMark size={13} strokeWidth={1.75} className="shrink-0 text-attention" />
+        <MessageCircleQuestionMark size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         {several ? (
           <Tabs.Root value={index} onValueChange={(value) => setIndex(Number(value))} className="min-w-0">
             <Tabs.List className="flex flex-wrap items-center gap-0.5">
@@ -281,7 +281,7 @@ export function QuestionCard({
           aria-keyshortcuts="Control+Enter"
           className={primary}
         >
-          {complete || !several ? "Send" : "Next"}
+          {complete || !several ? "Send answer" : "Next"}
         </Button>
         {several ? (
           <span className="px-1 text-xs text-fg-tertiary tabular-nums">
@@ -289,7 +289,7 @@ export function QuestionCard({
           </span>
         ) : null}
         <Button onClick={() => void send({ outcome: "dismissed" })} disabled={sending} className={quiet}>
-          Dismiss
+          Skip
         </Button>
       </div>
     </div>
@@ -316,7 +316,7 @@ export function ClosedQuestions({
           <Ban size={12} strokeWidth={2} className="shrink-0" />
         )}
         <span className="shrink-0">
-          {outcome === "dismissed" ? "Question dismissed" : "Not answered before the agent stopped"}
+          {outcome === "dismissed" ? "Question skipped" : "Not answered before the agent stopped"}
         </span>
         <span className="text-fg-disabled">·</span>
         <span className="truncate">{first?.header ?? first?.question}</span>

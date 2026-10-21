@@ -11,7 +11,6 @@ import {
   CornerDownRight,
   Pencil,
   RotateCcw,
-  ShieldQuestion,
   Split,
   Workflow,
   X,
@@ -23,7 +22,7 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
 import { AgentMenuArea, type AgentActions } from "../agents/AgentMenu.tsx";
-import { approvalShell, ApprovalActions, ApprovalDetail } from "../agents/ApprovalParts.tsx";
+import { PermissionPrompt } from "../agents/ApprovalParts.tsx";
 import { accessLabel, type AgentSummary } from "../agents/model.ts";
 import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
@@ -387,7 +386,7 @@ export function PermissionCard({
           ? "Not answered before the agent stopped"
           : decision === "allow"
             ? scope === "session"
-              ? "Allowed for this session"
+              ? "Allowed for this chat"
               : "Allowed once"
             : "Denied"}
         <span className="text-fg-disabled">·</span>
@@ -396,19 +395,7 @@ export function PermissionCard({
     );
   }
 
-  return (
-    <div className={approvalShell}>
-      {from}
-      <div className="flex items-center gap-1.5 text-[12.5px] text-fg-secondary">
-        <ShieldQuestion size={13} strokeWidth={1.75} className="text-attention" />
-        <span className="font-medium text-fg-primary">{block.summary}</span>
-        <span className="text-attention">needs approval</span>
-      </div>
-      {/* What the agent wants to do, so the answer is an informed one. */}
-      <ApprovalDetail input={block.input} />
-      <ApprovalActions onAnswer={onAnswer} keys={keys === true} />
-    </div>
-  );
+  return <PermissionPrompt request={block} from={from} keys={keys === true} onAnswer={onAnswer} />;
 }
 
 /** Why a turn ended early, which the conversation otherwise leaves unsaid. */

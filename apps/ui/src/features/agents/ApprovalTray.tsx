@@ -1,6 +1,5 @@
 import { Button } from "@base-ui/react/button";
 import type { QuestionResponse } from "@cerium/protocol";
-import { ShieldQuestion } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -8,7 +7,8 @@ import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { QuestionCard } from "../questions/QuestionCard.tsx";
 import { PermissionCard } from "../transcript/Blocks.tsx";
 import { effortLabel } from "../composer/models.ts";
-import { ApprovalActions, ApprovalText, approvalShell } from "./ApprovalParts.tsx";
+import { ApprovalActions, ApprovalText, approvalShell, RequestHeadline } from "./ApprovalParts.tsx";
+import { allowsSession, explainRequest } from "./explain.ts";
 import {
   accessLabel,
   requestQueue,
@@ -122,15 +122,11 @@ export function SpawnRequestCard({
   return (
     <div className={approvalShell}>
       <Asking agent={named ? lead : undefined} position={position} />
-      <div className="flex items-center gap-1.5 text-[12.5px] text-fg-secondary max-md:text-[13px]">
-        <ShieldQuestion size={13} strokeWidth={1.75} className="text-attention" />
-        <span className="min-w-0 truncate font-medium text-fg-primary">Start {role}</span>
-        <span className="shrink-0 text-attention">needs approval</span>
-      </div>
-      <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-secondary max-md:text-[13px]">
+      <RequestHeadline headline={`Start a new agent: ${role}`} />
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-fg-tertiary max-md:text-[13px]">
         <ProviderLogo provider={provider} size={13} className="shrink-0 text-fg-primary" />
         <span className="truncate">
-          <span className="text-fg-primary">{model}</span>
+          <span className="font-medium text-fg-primary">{model}</span>
           {effort ? ` · ${effortLabel[effort]}` : ""}
           {access ? ` · ${accessLabel[access]}` : ""}
         </span>
@@ -303,7 +299,13 @@ export function ApprovalTray({
     if (front === undefined || front.kind === "question" || event.repeat) return;
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const chord = chordOf(event);
-    if (chord === undefined || (front.kind === "spawn" && chord[1] === "session")) return;
+    if (chord === undefined) return;
+    // Only where the card offers it: never to start an agent, nor for what can't be undone.
+    if (
+      chord[1] === "session" &&
+      (front.kind === "spawn" || !allowsSession(explainRequest(front.request).risk))
+    )
+      return;
     // Only a request in view is answered: settings or another pane may cover the tray.
     if (tray.current === null || tray.current.closest("[inert]") !== null) return;
     // A dialog over the window has the keys.

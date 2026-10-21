@@ -1,17 +1,41 @@
 import { Button } from "@base-ui/react/button";
+import {
+  Download,
+  FilePen,
+  FilePlus,
+  FileSearch,
+  GitCommitHorizontal,
+  Globe,
+  Plug,
+  ShieldAlert,
+  SquareTerminal,
+  Trash2,
+  Upload,
+  type LucideIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import type { PermissionAnswer } from "../transcript/Blocks.tsx";
 import { fileEdits } from "../transcript/diff.ts";
 import { EditDiff } from "../transcript/EditDiff.tsx";
+import {
+  allowsSession,
+  commandOf,
+  explainRequest,
+  type Effect,
+  type EffectKind,
+  type RequestLike,
+  type Risk,
+} from "./explain.ts";
 
 // The pieces every approval card is made of, so the transcript's card for the lead's own requests
 // and the tray's cards for the others' say the same things the same way.
 
-/** The card a request waits in. */
+/** The card a request waits in. Colour is kept for what is risky, not for asking. */
 export const approvalShell =
-  "flex flex-col gap-2.5 rounded-lg border border-attention/35 bg-surface-raised p-3 shadow-raised";
+  "flex flex-col gap-2.5 rounded-lg border border-line-subtle bg-surface-raised p-3 shadow-raised";
 
 /** The chords that answer the request at the front of the tray. */
 export const answerKeys = { allow: "Alt Y", session: "Alt S", deny: "Alt N" } as const;
@@ -22,10 +46,6 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     : undefined;
 
 const textOf = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-
-/** A command as one string; harnesses send it as text or as the words of it. */
-const commandOf = (value: unknown): string | undefined =>
-  Array.isArray(value) && value.every((word) => typeof word === "string") ? value.join(" ") : textOf(value);
 
 /** A path that breaks after its separators, so a long one wraps between folders, not mid-name. */
 function PathText({ path }: { path: string }) {
@@ -40,9 +60,6 @@ function PathText({ path }: { path: string }) {
     </span>
   );
 }
-
-/** What fits on a line or two reads inline; anything longer folds. */
-const INLINE_LIMIT = 240;
 
 const detailBox =
   "rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-[12px] leading-[1.55] text-fg-primary select-text";
@@ -95,15 +112,20 @@ const patchesOf = (input: unknown) => {
   });
 };
 
+const isEmpty = (input: unknown) =>
+  input === undefined ||
+  input === null ||
+  (record(input) !== undefined && Object.keys(record(input)!).length === 0);
+
 /**
  * What the agent is asking to do, as exactly as the harness said it: the command, the edit's diff
- * with the file it changes, or else its raw input, folded when it's long.
+ * with the file it changes, or else its raw input.
  */
 export function ApprovalDetail({ input }: { input: unknown }) {
-  const fields = record(input);
-  const command = commandOf(fields?.["command"]);
+  const command = commandOf(input);
   if (command !== undefined) return <Wrapped>{command}</Wrapped>;
 
+  const fields = record(input);
   const edits = fileEdits(input);
   if (edits.length > 0) {
     const path = textOf(fields?.["file_path"]) ?? textOf(fields?.["path"]);
@@ -126,19 +148,38 @@ export function ApprovalDetail({ input }: { input: unknown }) {
     );
   }
 
-  if (input === undefined || input === null || (fields !== undefined && Object.keys(fields).length === 0)) {
-    return null;
+  if (isEmpty(input)) return null;
+  return <Wrapped>{JSON.stringify(input, null, 2) ?? ""}</Wrapped>;
+}
+
+/** How the folded detail is named, with what it holds at a glance. */
+const detailLabel = (input: unknown): { summary: string; hint: string | undefined } | undefined => {
+  const command = commandOf(input);
+  if (command !== undefined) return { summary: "Command", hint: command.replace(/\s+/g, " ") };
+  const fields = record(input);
+  if (fileEdits(input).length > 0) {
+    return { summary: "Change", hint: textOf(fields?.["file_path"]) ?? textOf(fields?.["path"]) };
   }
-  const raw = JSON.stringify(input, null, 2) ?? "";
-  if (raw.length <= INLINE_LIMIT) return <Wrapped>{raw}</Wrapped>;
+  const patches = patchesOf(input);
+  if (patches.length > 0) return { summary: "Changes", hint: patches.map((patch) => patch.path).join(", ") };
+  if (isEmpty(input)) return undefined;
+  return {
+    summary: "Details",
+    hint: fields
+      ? Object.keys(fields).join(", ")
+      : Array.isArray(input)
+        ? `${input.length} items`
+        : undefined,
+  };
+};
+
+/** The exact command or change, folded under the plain words until asked for. */
+function ExactDetail({ input }: { input: unknown }) {
+  const label = detailLabel(input);
+  if (label === undefined) return null;
   return (
-    <Disclosure
-      summary="Details"
-      hint={
-        fields ? Object.keys(fields).join(", ") : Array.isArray(input) ? `${input.length} items` : undefined
-      }
-    >
-      <Wrapped>{raw}</Wrapped>
+    <Disclosure summary={label.summary} hint={label.hint}>
+      <ApprovalDetail input={input} />
     </Disclosure>
   );
 }
@@ -148,11 +189,111 @@ export function ApprovalText({ children }: { children: string }) {
   return <Wrapped>{children}</Wrapped>;
 }
 
+/** What a request asks for, in a line, and why the agent asks when it said. */
+export function RequestHeadline({ headline, why }: { headline: ReactNode; why?: string | undefined }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <p className="line-clamp-3 text-[14px] leading-[1.4] font-semibold break-words text-fg-primary select-text max-md:text-[15px]">
+        {headline}
+      </p>
+      {why ? (
+        <p className="line-clamp-3 text-[13px] leading-[1.5] break-words text-fg-secondary select-text max-md:text-[14px]">
+          {why}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const riskName: Record<Risk, string> = { low: "Low risk", some: "Some risk", high: "High risk" };
+const riskBars: Record<Risk, number> = { low: 1, some: 2, high: 3 };
+
+const effectIcon: Record<EffectKind, LucideIcon> = {
+  read: FileSearch,
+  edit: FilePen,
+  create: FilePlus,
+  delete: Trash2,
+  run: SquareTerminal,
+  download: Download,
+  network: Globe,
+  upload: Upload,
+  history: GitCommitHorizontal,
+  admin: ShieldAlert,
+  tool: Plug,
+};
+
+/** How risky a request is, as a meter of three bars and its name, then what it would change. */
+function RiskFacts({ risk, effects }: { risk: Risk; effects: ReadonlyArray<Effect> }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-fg-tertiary max-md:text-[13px]">
+      <li
+        className={`flex items-center gap-1.5 font-medium ${risk === "high" ? "text-error" : "text-fg-primary"}`}
+      >
+        <span aria-hidden className="flex items-end gap-[2px]">
+          {[6, 9, 12].map((height, index) => (
+            <span
+              key={height}
+              style={{ height }}
+              className={`w-[3px] rounded-[1px] ${index < riskBars[risk] ? "bg-current" : "bg-line-strong"}`}
+            />
+          ))}
+        </span>
+        {riskName[risk]}
+      </li>
+      {effects.map((effect) => {
+        const Icon = effectIcon[effect.kind];
+        return (
+          <li key={effect.text} className="flex min-w-0 items-center gap-1.5">
+            <Icon size={13} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">{effect.text}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * A permission request explained: what the agent wants and why, how risky it is and what it would
+ * change, the exact command or change folded underneath, and the answers. A high-risk request is
+ * answered once at a time, never for the rest of the chat.
+ */
+export function PermissionPrompt({
+  request,
+  from,
+  keys,
+  onAnswer,
+}: {
+  request: RequestLike;
+  /** Who is asking, when it isn't the agent whose transcript this is. */
+  from?: ReactNode;
+  keys: boolean;
+  onAnswer?: PermissionAnswer | undefined;
+}) {
+  const { headline, why, risk, effects } = explainRequest(request);
+  return (
+    <div className={approvalShell}>
+      {from}
+      <RequestHeadline headline={headline} why={why} />
+      <RiskFacts risk={risk} effects={effects} />
+      <ExactDetail input={request.input} />
+      <ApprovalActions
+        onAnswer={onAnswer}
+        session={allowsSession(risk)}
+        risky={risk === "high"}
+        keys={keys}
+      />
+    </div>
+  );
+}
+
 const base =
-  "h-7 rounded-md px-2 text-[12.5px] transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
+  "h-7 rounded-md px-2.5 text-[12.5px] transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
 /** The answer buttons' looks: the answer most give, another one, and the one that turns it away. */
 export const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-40`;
 const outlined = `${base} border border-line-strong font-medium text-fg-primary hover:bg-surface-hover`;
+/** Allowing what can't be undone: outlined in the error colour rather than filled, so it reads as a choice. */
+const riskyAnswer = `${base} border border-error/55 font-medium text-error hover:bg-error/10`;
 export const quiet = `${base} ml-auto text-fg-secondary hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40`;
 
 /** An answer button, naming the chord that gives the same answer where there is one. */
@@ -186,36 +327,40 @@ function Answer({
 }
 
 /**
- * Allow once, allow for the rest of the session, or deny; a request that has no session to carry the
- * answer over (starting an agent) offers allow and deny. `keys` names the chords that answer it.
+ * Allow once, allow for the rest of the chat, or don't; a request with no chat to carry the answer
+ * over (starting an agent) or too risky to (deleting files) offers allow and don't. `keys` names the
+ * chords that answer it.
  */
 export function ApprovalActions({
   onAnswer,
   session = true,
+  risky = false,
   keys = false,
 }: {
   onAnswer?: PermissionAnswer | undefined;
   session?: boolean;
+  /** What's allowed can't be undone, so allowing it doesn't look like the usual answer. */
+  risky?: boolean;
   keys?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <Answer
-        label={session ? "Allow once" : "Allow"}
+        label="Allow"
         chord={keys ? answerKeys.allow : undefined}
-        className={primary}
+        className={risky ? riskyAnswer : primary}
         onClick={() => onAnswer?.("allow", "once")}
       />
       {session ? (
         <Answer
-          label="Allow for session"
+          label="Allow for this chat"
           chord={keys ? answerKeys.session : undefined}
           className={outlined}
           onClick={() => onAnswer?.("allow", "session")}
         />
       ) : null}
       <Answer
-        label="Deny"
+        label="Don't allow"
         chord={keys ? answerKeys.deny : undefined}
         className={quiet}
         onClick={() => onAnswer?.("deny", "once")}
