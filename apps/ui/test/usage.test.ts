@@ -1,9 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  evenLeft,
   leftLabel,
   leftPercent,
+  litSegments,
   meterLevel,
+  paceLabel,
   paceOf,
   planName,
   resetLabel,
@@ -66,6 +69,22 @@ describe("usage meters", () => {
     expect(paceOf(window(100), now)).toBeUndefined();
     expect(runsOutLabel(now + 0.75 * hour, now)).toBe("Runs out in ~45 min");
     expect(runsOutLabel(now + 50 * hour, now)).toBe("Runs out in ~2 days");
+  });
+
+  it("measures a meter against an even pace through its window", () => {
+    const pace = (elapsed: number) => ({ elapsed, fast: false });
+    // 67% of the window gone: an even pace leaves 33%.
+    expect(evenLeft(pace(67.4))).toBe(33);
+    expect(paceLabel(meter(44), pace(67))).toBe("23% to spare");
+    expect(paceLabel(meter(25), pace(14))).toBe("11% over pace");
+    expect(paceLabel(meter(40), pace(40.2))).toBe("On pace");
+  });
+
+  it("keeps a segment lit while anything is left", () => {
+    expect(litSegments(meter(44), 20)).toBe(11);
+    expect(litSegments(meter(99.6), 20)).toBe(1);
+    expect(litSegments(meter(100), 20)).toBe(0);
+    expect(litSegments(meter(0), 40)).toBe(40);
   });
 
   it("names plans", () => {

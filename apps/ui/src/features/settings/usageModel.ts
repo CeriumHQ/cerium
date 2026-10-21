@@ -11,6 +11,25 @@ export {
   type Pace,
 } from "@cerium/protocol";
 
+import { leftPercent, type Pace, type UsageMeter } from "@cerium/protocol";
+
+/** What would be left now at an even pace through the window, from 0 to 100. */
+export const evenLeft = (pace: Pace): number => Math.round(100 - pace.elapsed);
+
+/** How a meter stands against an even pace: "23% to spare", "11% over pace", "On pace". */
+export const paceLabel = (meter: UsageMeter, pace: Pace): string => {
+  const spare = Math.round(leftPercent(meter) - (100 - pace.elapsed));
+  if (spare > 0) return `${spare}% to spare`;
+  if (spare < 0) return `${-spare}% over pace`;
+  return "On pace";
+};
+
+/** How many of a bar's segments stay lit: a meter with anything left keeps at least one. */
+export const litSegments = (meter: UsageMeter, segments: number): number => {
+  const left = leftPercent(meter);
+  return left > 0 ? Math.max(1, Math.round((left / 100) * segments)) : 0;
+};
+
 /** The reset's full date and time, for its tooltip. */
 export const resetMoment = (resetsAt: number): string =>
   new Date(resetsAt).toLocaleString([], {
