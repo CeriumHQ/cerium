@@ -60,8 +60,6 @@ export const commitFileOfKey = (key: string | undefined): CommitFileTab | undefi
   return from === "" ? { root, sha, path } : { root, sha, path, from };
 };
 
-export const isCommitFileKey = (key: string | undefined) => commitFileOfKey(key) !== undefined;
-
 const TURN_PREFIX = "turn:";
 
 /** A file as one of an agent's turns changed it, between the folder's snapshots from before and after it. */
@@ -85,8 +83,6 @@ export const turnFileOfKey = (key: string | undefined): TurnFileTab | undefined 
   if (root === "" || before === "" || after === "" || path === "") return undefined;
   return { root, before, after, path };
 };
-
-export const isFileKey = (key: string | undefined) => fileOfKey(key) !== undefined;
 
 // ---------------------------------------------------------------------------------------------
 // Views

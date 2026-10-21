@@ -9,7 +9,7 @@ export const channelLabel: Record<UpdateChannel, string> = { stable: "Stable", n
 export const versionLabel = (version: string) => `Cerium ${version}`;
 
 /** A nightly newer than stable's latest that now follows stable: it waits for stable to pass it. */
-export const waitsForStable = (updates: Updates) =>
+const waitsForStable = (updates: Updates) =>
   updates.channel === "stable" && updates.buildChannel === "nightly" && updates.status.kind === "current";
 
 /** One line on where the updater stands. */

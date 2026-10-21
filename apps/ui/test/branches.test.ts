@@ -16,7 +16,6 @@ import {
   syncHint,
   syncLabel,
   syncPlan,
-  trackNote,
 } from "../src/features/git/branches/model.ts";
 
 const state = (overrides: Partial<GitBranchState> = {}): GitBranchState => ({
@@ -123,16 +122,6 @@ describe("branch search", () => {
 });
 
 describe("branch rows", () => {
-  it("says how far a branch is from its remote", () => {
-    const upstream = (ahead: number, behind: number, gone = false) =>
-      local("x", { upstream: { name: "origin/x", ahead, behind, gone } });
-    expect(trackNote(local("x"))).toBe("");
-    expect(trackNote(upstream(0, 0))).toBe("");
-    expect(trackNote(upstream(2, 0))).toBe("2 ahead");
-    expect(trackNote(upstream(2, 1))).toBe("2 ahead, 1 behind");
-    expect(trackNote(upstream(0, 0, true))).toBe("Remote branch is gone");
-  });
-
   it("explains a branch that another worktree holds", () => {
     expect(switchBlocked(local("x"))).toBeUndefined();
     expect(switchBlocked(local("x", { checkedOutAt: "C:/work/x" }))).toContain("another worktree");

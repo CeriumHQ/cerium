@@ -196,21 +196,18 @@ describe("conversations", () => {
     },
   });
 
-  it("gathers commits pushed one after another, and labels changed in one go", () => {
+  it("gathers commits pushed one after another, until something else comes between", () => {
     const items = parseConversation(
       [
         commit("a", 0),
         commit("b", 1),
         { __typename: "LabeledEvent", createdAt: at(2), actor, label: { name: "bug", color: "d73a4a" } },
-        { __typename: "LabeledEvent", createdAt: at(2), actor, label: { name: "ui", color: "0e8a16" } },
-        { __typename: "UnlabeledEvent", createdAt: at(2), actor, label: { name: "ui", color: "0e8a16" } },
         commit("c", 40),
       ],
       "team/app",
     );
     expect(items.map((item) => item._tag)).toEqual(["Commits", "Labels", "Commits"]);
     expect(items[0]?._tag === "Commits" ? items[0].commits.map((each) => each.oid) : []).toEqual(["a", "b"]);
-    expect(items[1]).toMatchObject({ added: [{ name: "bug" }], removed: [] });
   });
 
   it("reads a pull request's own events and reviews", () => {

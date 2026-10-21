@@ -2,7 +2,6 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { Draft } from "../src/features/composer/draft.ts";
 import {
-  draftTitle,
   mergeDrafts,
   newThreadDrafts,
   parseDrafts,
@@ -98,7 +97,6 @@ describe("newThreadDrafts", () => {
 
   it("names a draft with only files after its first one", () => {
     const files: Draft = { ...work, segments: [] };
-    expect(draftTitle(files)).toBe("shot.png");
     expect(newThreadDrafts({ "new:1": files })[0]).toMatchObject({ title: "shot.png", untitled: true });
   });
 });

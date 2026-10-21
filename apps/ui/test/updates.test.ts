@@ -7,7 +7,6 @@ import {
   noticeVersion,
   releaseNotesUrl,
   statusText,
-  waitsForStable,
 } from "../src/features/updates/model.ts";
 
 const updates = (status: UpdateStatus, extra: Partial<Updates> = {}): Updates => ({
@@ -34,7 +33,6 @@ describe("statusText", () => {
       { kind: "current", checkedAt: 0 },
       { version: "0.5.0-nightly.3", buildChannel: "nightly" },
     );
-    expect(waitsForStable(waiting)).toBe(true);
     expect(statusText(waiting)).toContain("once one passes 0.5.0-nightly.3");
   });
 

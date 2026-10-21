@@ -78,18 +78,6 @@ export const matchBranches = (
 export const hasLocalBranch = (list: GitBranchList, name: string): boolean =>
   list.local.some((branch) => branch.name === name);
 
-/** How a branch row says its sync, such as "2 ahead, 1 behind"; empty for a branch that follows nothing or is level. */
-export const trackNote = (branch: LocalBranch): string => {
-  const upstream = branch.upstream;
-  if (upstream === undefined) return "";
-  if (upstream.gone) return "Remote branch is gone";
-  const parts = [
-    ...(upstream.ahead > 0 ? [`${upstream.ahead} ahead`] : []),
-    ...(upstream.behind > 0 ? [`${upstream.behind} behind`] : []),
-  ];
-  return parts.join(", ");
-};
-
 /** Why a branch can't be switched to from this folder, in words; undefined when it can. */
 export const switchBlocked = (branch: LocalBranch): string | undefined =>
   branch.checkedOutAt === undefined

@@ -9,7 +9,6 @@ import {
   parsePullRequestPage,
   pullRequestSearch,
   reviewersOf,
-  revisionOf,
   threadOf,
 } from "../src/githubPulls.ts";
 
@@ -228,12 +227,6 @@ describe("a pull request", () => {
     });
     expect(detail?.timeline.map((item) => (item._tag === "Review" ? item.id : item._tag))).toEqual(["R1"]);
     expect(parsePullRequestDetail({ repository: { pullRequest: null } }, "team/app")).toBeUndefined();
-  });
-
-  it("tells a change by what a poll reads", () => {
-    expect(
-      revisionOf({ updatedAt: "t", headRefOid: "h", mergeable: "MERGEABLE", commits: { nodes: [] } }),
-    ).toBe("t|h|MERGEABLE|");
   });
 });
 

@@ -237,7 +237,7 @@ export interface NewThreadDraft {
 }
 
 /** What a new thread is called: the first line of its message, or its first file's name. */
-export const draftTitle = (draft: Draft): string =>
+const draftTitle = (draft: Draft): string =>
   (draftText(draft.segments).trim().split("\n")[0]?.trim() || draft.attachments[0]?.name || "").slice(
     0,
     MAX_THREAD_TITLE,

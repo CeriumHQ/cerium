@@ -380,7 +380,7 @@ export const threadOf = (node: Json): ReviewThread | undefined => {
 };
 
 /** The revision `PullRequestChanged` compares, from its own answer or the detail's. */
-export const revisionOf = (pullRequest: Json): string =>
+const revisionOf = (pullRequest: Json): string =>
   [
     text(pullRequest["updatedAt"]) ?? "",
     text(pullRequest["headRefOid"]) ?? "",

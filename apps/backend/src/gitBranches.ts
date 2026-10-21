@@ -280,7 +280,7 @@ export const conflictSides = (xy: string): { readonly ours: ConflictKind; readon
  * A path from the repository's top as the folder `prefix` (with its trailing slash) names it; undefined
  * for a path outside that folder.
  */
-export const insideFolder = (prefix: string, file: string): string | undefined => {
+const insideFolder = (prefix: string, file: string): string | undefined => {
   if (prefix === "") return file;
   return file.startsWith(prefix) && file.length > prefix.length ? file.slice(prefix.length) : undefined;
 };
@@ -300,7 +300,7 @@ export const parseTrack = (
 };
 
 /** The `for-each-ref` format `parseBranches` reads. */
-export const BRANCH_FORMAT = [
+const BRANCH_FORMAT = [
   "%(refname)",
   "%(HEAD)",
   "%(upstream:short)",

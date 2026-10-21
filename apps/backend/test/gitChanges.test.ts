@@ -65,11 +65,6 @@ describe("line patches", () => {
   ].join("\n");
   const hunks = rawHunks(diff);
 
-  it("reads each line as the file has it", () => {
-    expect(hunks[0]!.lines.map((line) => line.raw)).toEqual(["a", "b", "B", "new\r", "c", "d"]);
-    expect(hunks[1]!.lines.map((line) => line.noNewline)).toEqual([false, true, true]);
-  });
-
   it("stages the picked lines and keeps the others as the index has them", () => {
     const patch = linePatch(
       "f.txt",

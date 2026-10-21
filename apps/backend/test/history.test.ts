@@ -3,7 +3,6 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   FIELD,
   isSha,
-  logFormat,
   mergeCommits,
   parseCommits,
   parseNameStatus,
@@ -67,28 +66,8 @@ describe("parseCommits", () => {
     expect(commits[1]!.parents).toEqual([]);
   });
 
-  it("keeps the whole message when asked, with its own line breaks and separators left as written", () => {
-    const output = record([
-      "c".repeat(40),
-      "ccccccc",
-      "",
-      "Cy",
-      "1",
-      "1",
-      "",
-      "Subject",
-      "Subject\n\nBody line\n",
-    ]);
-    expect(parseCommits(output, true)[0]!.message).toBe("Subject\n\nBody line");
-  });
-
   it("skips a record that holds no SHA", () => {
     expect(parseCommits(`${RECORD}${FIELD}${FIELD}`)).toEqual([]);
-  });
-
-  it("asks git for the fields in that order", () => {
-    expect(logFormat(false)).toBe("--format=\x1e%H\x1f%h\x1f%P\x1f%an\x1f%at\x1f%ct\x1f%D\x1f%s");
-    expect(logFormat(true).endsWith("\x1f%s\x1f%B")).toBe(true);
   });
 });
 

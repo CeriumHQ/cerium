@@ -329,7 +329,7 @@ export const typeAhead = (rows: ReadonlyArray<Row>, from: number, typed: string)
 };
 
 /** The row of the folder `index` is in, if any. */
-export const parentIndex = (rows: ReadonlyArray<Row>, index: number): number | undefined => {
+const parentIndex = (rows: ReadonlyArray<Row>, index: number): number | undefined => {
   const depth = rows[index]?.depth ?? 0;
   for (let at = index - 1; at >= 0; at--) if (rows[at]!.depth < depth) return at;
   return undefined;

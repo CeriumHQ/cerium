@@ -9,7 +9,6 @@ import {
   parseIssueChoices,
   parseIssueDetail,
   parseIssuePage,
-  parseTimelinePage,
   revisionOf,
   type IssueGitHub,
 } from "../src/githubIssues.ts";
@@ -513,18 +512,6 @@ describe("parseIssueDetail", () => {
   it("reads an issue the repository doesn't have as none", () => {
     expect(parseIssueDetail({ repository: { issue: null } })).toBeUndefined();
     expect(parseIssueDetail({ repository: null })).toBeUndefined();
-  });
-
-  it("reads a page of conversation on its own", () => {
-    const page = parseTimelinePage(
-      answer({
-        totalCount: 2,
-        pageInfo: { hasNextPage: false, endCursor: "x" },
-        nodes: [{ __typename: "UnlockedEvent", createdAt: "2026-10-19T18:30:00Z", actor: null }],
-      }),
-    );
-    expect(page.items).toMatchObject([{ _tag: "Locked", locked: false }]);
-    expect(page.next).toBeUndefined();
   });
 });
 

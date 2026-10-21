@@ -1,10 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  BRANCH_FORMAT,
   conflictSides,
   explainFailure,
-  insideFolder,
   parseBranches,
   parseGitStatus,
   parseStashes,
@@ -201,13 +199,6 @@ describe("git status", () => {
     expect(conflictSides("AU")).toEqual({ ours: "added", theirs: "deleted" });
     expect(conflictSides("UA")).toEqual({ ours: "deleted", theirs: "added" });
   });
-
-  it("names a path as the folder it is asked about does", () => {
-    expect(insideFolder("", "src/a.ts")).toBe("src/a.ts");
-    expect(insideFolder("apps/ui/", "apps/ui/src/a.ts")).toBe("src/a.ts");
-    expect(insideFolder("apps/ui/", "apps/api/a.ts")).toBeUndefined();
-    expect(insideFolder("apps/ui/", "apps/ui/")).toBeUndefined();
-  });
 });
 
 describe("branch lists", () => {
@@ -249,10 +240,6 @@ describe("branch lists", () => {
       { name: "origin/main", remote: "origin", local: "main", committedAt: 300, subject: "tip" },
       { name: "team/fix/a", remote: "team", committedAt: 50, subject: "fix" },
     ]);
-  });
-
-  it("uses a format whose fields the parser expects", () => {
-    expect(BRANCH_FORMAT.split("%00")).toHaveLength(7);
   });
 
   it("reads stashes, the user's words and git's own", () => {

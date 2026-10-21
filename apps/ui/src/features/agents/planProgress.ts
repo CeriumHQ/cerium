@@ -28,11 +28,3 @@ export const planProgress = (items: ReadonlyArray<TodoItem>): PlanProgress => {
     active: working !== undefined,
   };
 };
-
-/** What the current item reads as: an in-progress one in its present-tense form when the harness gave it. */
-export const currentText = (progress: PlanProgress): string | undefined =>
-  progress.current === undefined
-    ? undefined
-    : progress.active
-      ? (progress.current.activeText ?? progress.current.text)
-      : progress.current.text;

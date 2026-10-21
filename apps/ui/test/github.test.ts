@@ -6,7 +6,6 @@ import {
   githubKey,
   githubOfKey,
   labelColor,
-  looseThreads,
   mergeStateNote,
   pullFilterCount,
   pullFiltersKey,
@@ -189,11 +188,6 @@ describe("the conversation", () => {
     expect(byReview.get("R_1")?.map((each) => each.id)).toEqual(["T_1", "T_2"]);
     expect(byReview.get("R_2")?.map((each) => each.id)).toEqual(["T_3"]);
     expect(byReview.size).toBe(2);
-
-    const timeline: ReadonlyArray<ConversationItem> = [
-      { _tag: "Review", id: "R_1", body: "", at: 1, reactions: [], state: "commented" },
-    ];
-    expect(looseThreads(threads, timeline).map((each) => each.id)).toEqual(["T_3", "T_4"]);
   });
 });
 

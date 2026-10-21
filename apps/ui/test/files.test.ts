@@ -9,7 +9,6 @@ import {
   indexChanges,
   keyAction,
   noChanges,
-  parentIndex,
   stateAt,
   touchedFiles,
   typeAhead,
@@ -250,12 +249,6 @@ describe("keyboard", () => {
     expect(keyAction(rows, 4, "Enter")).toEqual({ kind: "open", path: "README.md" });
     expect(keyAction(rows, 3, "Enter")).toEqual({ kind: "toggle", path: "docs" });
     expect(keyAction(rows, 3, "x")).toBeUndefined();
-  });
-
-  it("finds the folder a row is in", () => {
-    expect(parentIndex(rows, 2)).toBe(0);
-    expect(parentIndex(rows, 0)).toBeUndefined();
-    expect(parentIndex(rows, 4)).toBeUndefined();
   });
 
   it("jumps to the next name that begins with what was typed", () => {

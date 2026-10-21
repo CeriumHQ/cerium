@@ -29,7 +29,7 @@ export const FIELD = "\x1f";
 export const COMMIT_FIELDS = ["%H", "%h", "%P", "%an", "%at", "%ct", "%D", "%s"] as const;
 
 /** The format `git log` prints each commit in. Decorations are full ref names, to tell kinds apart. */
-export const logFormat = (withMessage: boolean) =>
+const logFormat = (withMessage: boolean) =>
   `--format=${RECORD}${[...COMMIT_FIELDS, ...(withMessage ? ["%B"] : [])].join(FIELD)}`;
 
 /** A commit read from git's output, with what its order and its detail need besides the `Commit`. */

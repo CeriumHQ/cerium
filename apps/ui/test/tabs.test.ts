@@ -6,10 +6,8 @@ import {
   keepTab,
   moveTab,
   openBeside,
-  othersOf,
   renameTab,
   reopenTab,
-  rightOf,
   showTab,
   tabAtDigit,
   tabBeside,
@@ -87,8 +85,8 @@ describe("closeTabs", () => {
 
   it("closes the others or those to the right in one go", () => {
     const keys = ["a", "b", "c", "d"];
-    expect(closeTabs(strip(keys, { active: "a" }), othersOf(keys, "c")).strip.keys).toEqual(["c"]);
-    expect(closeTabs(strip(keys, { active: "d" }), rightOf(keys, "b"))).toMatchObject({
+    expect(closeTabs(strip(keys, { active: "a" }), ["a", "b", "d"]).strip.keys).toEqual(["c"]);
+    expect(closeTabs(strip(keys, { active: "d" }), ["c", "d"])).toMatchObject({
       strip: { keys: ["a", "b"], closed: ["c", "d"] },
       next: "b",
     });

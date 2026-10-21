@@ -1,7 +1,7 @@
 import type { TodoItem } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { currentText, planProgress } from "../src/features/agents/planProgress.ts";
+import { planProgress } from "../src/features/agents/planProgress.ts";
 
 const list = (...statuses: ReadonlyArray<TodoItem["status"]>): ReadonlyArray<TodoItem> =>
   statuses.map((status, index) => ({ text: `Step ${index + 1}`, status }));
@@ -14,25 +14,19 @@ describe("planProgress", () => {
       { text: "Ship", status: "pending" },
     ]);
     expect(progress).toMatchObject({ total: 3, completed: 1, cancelled: 0, finished: false, active: true });
-    expect(currentText(progress)).toBe("Running the tests");
-  });
-
-  it("falls back to the item's own text when the harness gave no present-tense form", () => {
-    expect(currentText(planProgress(list("inProgress", "pending")))).toBe("Step 1");
+    expect(progress.current?.text).toBe("Test");
   });
 
   it("names the next item when nothing is in progress yet", () => {
     const progress = planProgress(list("completed", "pending", "pending"));
     expect(progress.active).toBe(false);
     expect(progress.current?.text).toBe("Step 2");
-    expect(currentText(progress)).toBe("Step 2");
   });
 
   it("is finished once every item is completed or dropped", () => {
     const progress = planProgress(list("completed", "cancelled"));
     expect(progress).toMatchObject({ finished: true, completed: 1, cancelled: 1 });
     expect(progress.current).toBeUndefined();
-    expect(currentText(progress)).toBeUndefined();
   });
 
   it("is never finished for an empty list", () => {

@@ -231,7 +231,7 @@ export const parseIssuePage = (data: unknown, own?: string): IssuePage => {
 const issueOf = (data: unknown): Json | undefined => json(json(json(data)?.["repository"])?.["issue"]);
 
 /** One page of the conversation of the issue in `TIMELINE_QUERY`'s `data`. */
-export const parseTimelinePage = (data: unknown, own?: string): ConversationPage => {
+const parseTimelinePage = (data: unknown, own?: string): ConversationPage => {
   const connection = json(issueOf(data)?.["timelineItems"]);
   const cursor = nextCursor(connection);
   return {

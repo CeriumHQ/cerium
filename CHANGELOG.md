@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Removed
 
 - Harness versions are no longer judged: the "tested with Cerium" label, the "too old for Cerium" block that refused older harnesses, and each adapter's tested range are gone. Whatever version is installed, Cerium drives it. The backend still tells viewers before `RPC_VERSION` 20 every version is "supported".
+- Internal: helpers that nothing outside their module reads are no longer exported, and the ones nothing uses (tab, branch, GitHub and file-tree helpers) are gone with their tests.
 
 ### Added
 

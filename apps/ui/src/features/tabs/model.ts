@@ -130,13 +130,6 @@ export const closeTabs = (
   };
 };
 
-/** The tabs a tab's menu closes besides it: every other one, or the ones to its right. */
-export const othersOf = (keys: ReadonlyArray<string>, key: string) => keys.filter((each) => each !== key);
-export const rightOf = (keys: ReadonlyArray<string>, key: string) => {
-  const at = keys.indexOf(key);
-  return at === -1 ? [] : keys.slice(at + 1);
-};
-
 /** The latest closed tab `canOpen` still allows, and the strip without it in the closed list. */
 export const reopenTab = (
   strip: TabStrip,

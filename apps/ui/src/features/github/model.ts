@@ -191,15 +191,6 @@ export const threadsByReview = (
   return byReview;
 };
 
-/** The review threads with no review entry in the conversation to show them under. */
-export const looseThreads = (
-  threads: ReadonlyArray<ReviewThread>,
-  timeline: ReadonlyArray<ConversationItem>,
-): ReadonlyArray<ReviewThread> => {
-  const reviews = new Set(timeline.flatMap((item) => (item._tag === "Review" ? [item.id] : [])));
-  return threads.filter((thread) => thread.review === undefined || !reviews.has(thread.review));
-};
-
 // ---------------------------------------------------------------------------------------------
 // Starting a thread
 

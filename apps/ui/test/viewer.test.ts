@@ -11,8 +11,6 @@ import {
   diffStats,
   fileKey,
   fileOfKey,
-  isCommitFileKey,
-  isFileKey,
   numberHunks,
   pickView,
   pieces,
@@ -26,7 +24,6 @@ import { htmlDocument, relativeTarget, sizedSvg } from "../src/features/viewer/p
 describe("file tabs", () => {
   it("keys a file by its folder and path, and reads both back", () => {
     const key = fileKey("C:\\Work\\app", "src/ui/App.tsx");
-    expect(isFileKey(key)).toBe(true);
     expect(fileOfKey(key)).toEqual({ root: "C:\\Work\\app", path: "src/ui/App.tsx" });
   });
 
@@ -39,8 +36,7 @@ describe("file tabs", () => {
 
   it("keys a commit's file by its commit, and reads it back, a rename's origin included", () => {
     const key = commitFileKey("C:\\Work\\app", "8be9dbc", "src/main.ts", "src/app.ts");
-    expect(isCommitFileKey(key)).toBe(true);
-    expect(isFileKey(key)).toBe(false);
+    expect(fileOfKey(key)).toBeUndefined();
     expect(commitFileOfKey(key)).toEqual({
       root: "C:\\Work\\app",
       sha: "8be9dbc",
