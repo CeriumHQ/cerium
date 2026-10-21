@@ -1,3 +1,4 @@
+import { Button } from "@base-ui/react/button";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
@@ -30,6 +31,7 @@ export function FilesPanel({
   onOpenFile,
   activePath,
   onClose,
+  onShowChanges,
 }: {
   /** The thread's folder. */
   root: string;
@@ -41,10 +43,13 @@ export function FilesPanel({
   /** The file the viewer shows, marked in the tree and the list. */
   activePath: string | undefined;
   onClose: () => void;
+  /** Opens Source control, which lists what changed in this panel's Changes tab's place. */
+  onShowChanges?: () => void;
 }) {
   const registry = useContext(RegistryContext);
   const tree = useAtomValue(treeAtom(root));
-  const [view, setView] = useState<View>("files");
+  const [chosenView, setView] = useState<View>("files");
+  const view = onShowChanges === undefined ? chosenView : "files";
   const [filtering, setFiltering] = useState(false);
   /** A path the tree should bring into view once its folders have loaded. */
   const [revealed, setRevealed] = useState<string>();
@@ -151,25 +156,39 @@ export function FilesPanel({
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <div ref={element} onKeyDown={onKeyDown} className="flex h-full flex-col">
       <header className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle pr-1.5 pl-2 max-md:h-12 max-md:pl-3">
-        <ToggleGroup
-          value={[view]}
-          onValueChange={(value) => {
-            const next = value[0];
-            if (next === "files" || next === "changes") setView(next);
-          }}
-          aria-label="Show"
-          className="flex items-center"
-        >
-          <Toggle value="files" className={toggleClass}>
-            Files
-          </Toggle>
-          <Toggle value="changes" className={toggleClass}>
-            Changes
+        {onShowChanges !== undefined ? (
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="px-1 text-[13px] font-medium text-fg-primary max-md:text-[15px]">Files</h2>
             {changed.length > 0 ? (
-              <span className="ml-1.5 text-fg-tertiary tabular-nums">{changed.length}</span>
+              <Button
+                onClick={onShowChanges}
+                className="rounded-md px-1.5 py-0.5 text-[12.5px] text-fg-tertiary tabular-nums transition-colors hover:bg-surface-hover hover:text-fg-secondary max-md:text-[14px]"
+              >
+                {changed.length === 1 ? "1 change" : `${changed.length} changes`}
+              </Button>
             ) : null}
-          </Toggle>
-        </ToggleGroup>
+          </div>
+        ) : (
+          <ToggleGroup
+            value={[view]}
+            onValueChange={(value) => {
+              const next = value[0];
+              if (next === "files" || next === "changes") setView(next);
+            }}
+            aria-label="Show"
+            className="flex items-center"
+          >
+            <Toggle value="files" className={toggleClass}>
+              Files
+            </Toggle>
+            <Toggle value="changes" className={toggleClass}>
+              Changes
+              {changed.length > 0 ? (
+                <span className="ml-1.5 text-fg-tertiary tabular-nums">{changed.length}</span>
+              ) : null}
+            </Toggle>
+          </ToggleGroup>
+        )}
         <div className="ml-auto flex items-center">
           {view === "files" ? (
             <>

@@ -3,16 +3,35 @@ import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import { remember, stored } from "../lib/storage.ts";
 import { clampWidth } from "./panelLayout.ts";
 
+const storedWidth = (key: string, fallback: number) => {
+  const saved = Number(stored(key));
+  return Number.isFinite(saved) && saved > 0 ? saved : fallback;
+};
+
 /** A panel's width as the user last left it, remembered between launches; `fallback` until they have. */
 export function usePanelWidth(key: string, fallback: number) {
-  const [width, setWidth] = useState(() => {
-    const saved = Number(stored(key));
-    return Number.isFinite(saved) && saved > 0 ? saved : fallback;
-  });
+  const [width, setWidth] = useState(() => storedWidth(key, fallback));
   return [
     width,
     setWidth,
     // Saved once the drag lets go, not on every pixel of it.
+    (next: number) => remember(key, String(Math.round(next))),
+  ] as const;
+}
+
+/**
+ * The widths of panels that take turns in one place, each as the user last left it: `usePanelWidth`
+ * for whichever of `panels` shows.
+ */
+export function usePanelWidths<Id extends string>(
+  panels: Readonly<Record<Id, { readonly key: string; readonly fallback: number }>>,
+  shown: Id,
+) {
+  const [widths, setWidths] = useState<Partial<Record<Id, number>>>({});
+  const { key, fallback } = panels[shown];
+  return [
+    widths[shown] ?? storedWidth(key, fallback),
+    (next: number) => setWidths((current) => ({ ...current, [shown]: next })),
     (next: number) => remember(key, String(Math.round(next))),
   ] as const;
 }

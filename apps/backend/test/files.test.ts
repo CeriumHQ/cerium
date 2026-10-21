@@ -9,6 +9,7 @@ import {
   compareEntries,
   decodeText,
   Files,
+  gitFolderChange,
   limitHunks,
   mediaOf,
   parseDiff,
@@ -20,6 +21,7 @@ import {
   watchedChange,
   withoutPartialCharacter,
 } from "../src/files.ts";
+import { Git } from "../src/git.ts";
 
 describe("paths", () => {
   it("keeps a path under the folder it is asked about", () => {
@@ -160,12 +162,28 @@ describe("watching", () => {
   });
 
   it("takes git's own state for a change of status", () => {
-    expect(watchedChange(".git/index")).toEqual({ git: true });
-    expect(watchedChange(".git\\HEAD")).toEqual({ git: true });
-    expect(watchedChange(".git/refs/heads/main")).toEqual({ git: true });
+    expect(watchedChange(".git/index")).toEqual({ git: true, refs: false });
+    expect(watchedChange(".git\\HEAD")).toEqual({ git: true, refs: true });
+    expect(watchedChange(".git/refs/heads/main")).toEqual({ git: true, refs: true });
+    expect(watchedChange(".git/packed-refs")).toEqual({ git: true, refs: true });
+    expect(watchedChange(".git/MERGE_HEAD")).toEqual({ git: true, refs: true });
     expect(watchedChange(".git/objects/ab/cdef")).toBeUndefined();
     expect(watchedChange(".git/index.lock")).toBeUndefined();
     expect(watchedChange(".hg/store")).toBeUndefined();
+  });
+
+  it("reads a worktree's own git folder apart from the one its worktrees share", () => {
+    const own = { own: true, common: false };
+    const common = { own: false, common: true };
+    expect(gitFolderChange("index", own)).toEqual({ git: true, refs: false });
+    expect(gitFolderChange("HEAD", own)).toEqual({ git: true, refs: true });
+    expect(gitFolderChange("rebase-merge\\done", own)).toEqual({ git: true, refs: true });
+    expect(gitFolderChange("refs/heads/main", own)).toBeUndefined();
+    expect(gitFolderChange("refs/heads/main", common)).toEqual({ git: true, refs: true });
+    // The main work tree's index and HEAD, and other worktrees', are none of this one's business.
+    expect(gitFolderChange("index", common)).toBeUndefined();
+    expect(gitFolderChange("worktrees/other/index", common)).toBeUndefined();
+    expect(gitFolderChange("objects/ab/cdef", common)).toBeUndefined();
   });
 });
 
@@ -289,7 +307,7 @@ describe("media", () => {
 });
 
 // A real repository, as the service sees one.
-const TestLayer = Files.layer.pipe(Layer.provideMerge(NodeServices.layer));
+const TestLayer = Files.layer.pipe(Layer.provide(Git.layer), Layer.provideMerge(NodeServices.layer));
 
 /** Runs git in `cwd` as the test's own user, away from the machine's git configuration. */
 const git = Effect.fn("git")(function* (cwd: string, ...args: Array<string>) {
@@ -567,6 +585,28 @@ describe("Files", () => {
       assert.isTrue(batch!.paths.includes("debug.log"));
       assert.isFalse(batch!.paths.some((path) => path.startsWith("node_modules/")));
       // The one change git sees makes the batch a change of status.
+      assert.isTrue(batch!.status);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.live("tells what a worktree's git does, though its git folder is elsewhere", () =>
+    Effect.gen(function* () {
+      const files = yield* Files;
+      const { root, fs, path } = yield* repository;
+      const worktree = path.join(yield* fs.makeTempDirectoryScoped(), "wt");
+      yield* git(root, "worktree", "add", "-q", "-b", "side", worktree);
+      yield* fs.writeFileString(path.join(worktree, "README.md"), "# Changed\n");
+      yield* Effect.sleep("300 millis");
+      const watching = yield* files.watch(worktree).pipe(
+        Stream.filter((batch) => batch.refs === true),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Effect.sleep("300 millis");
+      yield* git(worktree, "commit", "-q", "-am", "second");
+      const [batch] = yield* Fiber.join(watching).pipe(Effect.timeout("10 seconds"));
+      assert.isDefined(batch);
       assert.isTrue(batch!.status);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );

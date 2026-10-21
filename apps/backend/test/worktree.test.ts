@@ -6,6 +6,7 @@ import { Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { Terminals } from "../src/terminal.ts";
+import { Git } from "../src/git.ts";
 import { countStatus, worktreeSlug, worktreesLayer } from "../src/worktree.ts";
 
 describe("worktreeSlug", () => {
@@ -84,7 +85,7 @@ const setup = Effect.gen(function* () {
   return { fs, path, repo, home, write, worktrees };
 });
 
-const TestLayer = Layer.mergeAll(NodeServices.layer, fakeTerminals);
+const TestLayer = Layer.mergeAll(Git.layer, fakeTerminals).pipe(Layer.provideMerge(NodeServices.layer));
 
 // Each test runs git a few dozen times, which takes seconds on Windows.
 describe("Worktrees", { timeout: 30_000 }, () => {

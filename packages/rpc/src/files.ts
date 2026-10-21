@@ -113,6 +113,11 @@ export const FilesChanged = Schema.Struct({
   paths: Schema.Array(Schema.String),
   /** Git's view of the working tree may differ now. */
   status: Schema.Boolean,
+  /**
+   * HEAD, a branch or a tag moved: a commit, a checkout, a fetch. Reported in a worktree and below a
+   * repository's top too since `RPC_VERSION` 17.
+   */
+  refs: Schema.optionalKey(Schema.Boolean),
   /** There were more changes than are listed: read everything again. */
   overflow: Schema.optionalKey(Schema.Boolean),
 });

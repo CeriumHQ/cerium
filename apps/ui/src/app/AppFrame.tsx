@@ -16,10 +16,10 @@ import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
-import { ARTIFACTS, FILES, GUTTER, INSPECTOR, panelLayout, SIDEBAR } from "./panelLayout.ts";
-import { ResizeHandle, usePanelWidth } from "./ResizeHandle.tsx";
+import { GUTTER, panelLayout, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
+import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
-import { AgentsToggle, ArtifactsToggle, FilesToggle, TerminalToggle, Titlebar } from "./Titlebar.tsx";
+import { PanelToggles, TerminalToggle, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -31,31 +31,20 @@ interface AppFrameProps {
   readonly sidebar: ReactNode;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
-  /** The agent inspector, shown beside the transcript only while open. */
-  readonly inspector: ReactNode | undefined;
-  readonly onToggleInspector: () => void;
-  /** Closes the inspector, whether or not it's open. */
-  readonly onCloseInspector: () => void;
   /**
-   * The files panel, in the inspector's place: one of the two shows at a time, so this is only
-   * given while the inspector isn't. Absent when there is no folder to browse.
+   * The panel beside the transcript while one shows: which it is, and what it shows. The agents, the
+   * files, the artifacts and Source control take that place one at a time.
    */
-  readonly files: ReactNode | undefined;
-  /** There is a folder to browse, so the window offers the panel. */
-  readonly filesAvailable: boolean;
-  /** Whether the files panel is open (it can be open without `files`, when settings cover it). */
-  readonly filesOpen: boolean;
-  readonly onToggleFiles: () => void;
-  readonly onCloseFiles: () => void;
+  readonly side: { readonly panel: SidePanelId; readonly content: ReactNode } | undefined;
   /**
-   * The artifacts panel, in the same place, given only while neither of the others is. Offered while
-   * `artifactsAvailable`: the open thread can have artifacts.
+   * The panels the window offers now, each by whether it's open (one can be open while settings
+   * cover it); one left out has no button.
    */
-  readonly artifacts: ReactNode | undefined;
-  readonly artifactsAvailable: boolean;
-  readonly artifactsOpen: boolean;
-  readonly onToggleArtifacts: () => void;
-  readonly onCloseArtifacts: () => void;
+  readonly panels: Partial<Record<SidePanelId, boolean>>;
+  /** Opens a panel in that place, or closes it when it's the one open. */
+  readonly onTogglePanel: (panel: SidePanelId) => void;
+  /** Closes the panel that shows. */
+  readonly onCloseSide: () => void;
   /**
    * The open thread's terminal drawer, offered while it can have one. The drawer itself is part of
    * `children`; in the narrow window it covers the thread, and the phone's Back hides it.
@@ -129,19 +118,10 @@ function DesktopFrame({
   onNewThread,
   sidebar,
   agents,
-  inspector,
-  onToggleInspector,
-  onCloseInspector,
-  files,
-  filesAvailable,
-  filesOpen,
-  onToggleFiles,
-  onCloseFiles,
-  artifacts,
-  artifactsAvailable,
-  artifactsOpen,
-  onToggleArtifacts,
-  onCloseArtifacts,
+  side,
+  panels,
+  onTogglePanel,
+  onCloseSide,
   terminal,
   settings,
   machinePicker,
@@ -150,63 +130,35 @@ function DesktopFrame({
 }: AppFrameProps) {
   const view = settings.open ? "settings" : "threads";
   const showSidebar = sidebarOpen || settings.open;
-  // The agents, the files and the artifacts take the same place beside the transcript, one at a time.
-  const side = inspector ?? files ?? artifacts;
-  const shownSide = inspector !== undefined ? "inspector" : files !== undefined ? "files" : "artifacts";
   const showInspector = side !== undefined && !settings.open;
-  const sideSpec = shownSide === "files" ? FILES : shownSide === "artifacts" ? ARTIFACTS : INSPECTOR;
-  const onCloseSide =
-    shownSide === "files" ? onCloseFiles : shownSide === "artifacts" ? onCloseArtifacts : onCloseInspector;
+  const sideSpec = SIDE_PANELS[side?.panel ?? "agents"];
 
   const body = useRef<HTMLDivElement>(null);
   const floatingInspector = useRef<HTMLElement>(null);
   const bodyWidth = useWidthOf(body);
   const [savedSidebar, setSavedSidebar, rememberSidebar] = usePanelWidth(SIDEBAR.key, SIDEBAR.fallback);
-  const [savedInspector, setSavedInspector, rememberInspector] = usePanelWidth(
-    INSPECTOR.key,
-    INSPECTOR.fallback,
-  );
-  const [savedFiles, setSavedFiles, rememberFiles] = usePanelWidth(FILES.key, FILES.fallback);
-  const [savedArtifacts, setSavedArtifacts, rememberArtifacts] = usePanelWidth(
-    ARTIFACTS.key,
-    ARTIFACTS.fallback,
-  );
+  /** The panel beside the transcript's own width, as the user left it. */
+  const [savedSide, setSavedSide, rememberSide] = usePanelWidths(SIDE_PANELS, side?.panel ?? "agents");
   /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
-  /** The panel beside the transcript's own width, as the user left it. */
-  const sideWidth = {
-    inspector: {
-      label: "Resize agents panel",
-      saved: savedInspector,
-      set: setSavedInspector,
-      remember: rememberInspector,
-    },
-    files: { label: "Resize files panel", saved: savedFiles, set: setSavedFiles, remember: rememberFiles },
-    artifacts: {
-      label: "Resize artifacts panel",
-      saved: savedArtifacts,
-      set: setSavedArtifacts,
-      remember: rememberArtifacts,
-    },
-  }[shownSide];
 
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
     bodyWidth,
-    { sidebar: savedSidebar, inspector: sideWidth.saved },
+    { sidebar: savedSidebar, inspector: savedSide },
     showSidebar,
     sideSpec,
   );
 
   const inspectorHandle = (
     <ResizeHandle
-      label={sideWidth.label}
+      label={sideSpec.resizeLabel}
       edge="start"
       width={inspectorWidth}
       min={sideSpec.min}
       max={inspectorMax}
       fallback={sideSpec.fallback}
-      onResize={sideWidth.set}
-      onCommit={sideWidth.remember}
+      onResize={setSavedSide}
+      onCommit={rememberSide}
       onDragChange={(active) => setDragging(active ? "inspector" : undefined)}
     />
   );
@@ -224,10 +176,8 @@ function DesktopFrame({
         onToggleSidebar={onToggleSidebar}
         onNewThread={onNewThread}
         agents={agents}
-        inspectorOpen={inspector !== undefined}
-        onToggleInspector={onToggleInspector}
-        {...(filesAvailable ? { files: { open: filesOpen, onToggle: onToggleFiles } } : {})}
-        {...(artifactsAvailable ? { artifacts: { open: artifactsOpen, onToggle: onToggleArtifacts } } : {})}
+        panels={panels}
+        onTogglePanel={onTogglePanel}
         {...(terminal ? { terminal } : {})}
         machinePicker={machinePicker}
         tabs={tabs}
@@ -313,7 +263,9 @@ function DesktopFrame({
                 style={{ width: inspectorWidth }}
                 className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
               >
-                <SidePanelContext value={{ floating: true, close: onCloseSide }}>{side}</SidePanelContext>
+                <SidePanelContext value={{ floating: true, close: onCloseSide }}>
+                  {side?.content}
+                </SidePanelContext>
               </aside>
             </>
           ) : (
@@ -323,7 +275,9 @@ function DesktopFrame({
                 style={{ width: inspectorWidth }}
                 className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
               >
-                <SidePanelContext value={{ floating: false, close: onCloseSide }}>{side}</SidePanelContext>
+                <SidePanelContext value={{ floating: false, close: onCloseSide }}>
+                  {side?.content}
+                </SidePanelContext>
               </aside>
             </>
           )
@@ -344,16 +298,10 @@ function CompactFrame({
   onModeChange,
   sidebar,
   agents,
-  inspector,
-  onToggleInspector,
-  files,
-  filesAvailable,
-  filesOpen,
-  onToggleFiles,
-  artifacts,
-  artifactsAvailable,
-  artifactsOpen,
-  onToggleArtifacts,
+  side,
+  panels,
+  onTogglePanel,
+  onCloseSide,
   terminal,
   settings,
   machinePicker,
@@ -365,7 +313,6 @@ function CompactFrame({
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
   const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
-  const side = inspector ?? files ?? artifacts;
   const inspecting = side !== undefined && !settings.open && pane === "main";
   // The terminal is a pane over the thread, and the agents or files a pane over that.
   const terminalOpen = terminal?.open === true && !settings.open && pane === "main";
@@ -389,12 +336,7 @@ function CompactFrame({
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
-      } else if (inspecting)
-        (inspector !== undefined
-          ? onToggleInspector
-          : files !== undefined
-            ? onToggleFiles
-            : onToggleArtifacts)();
+      } else if (inspecting) onCloseSide();
       else if (terminalOpen) terminal.onToggle();
       else onBack();
     },
@@ -427,24 +369,14 @@ function CompactFrame({
                 folded={keyboardOpen}
                 title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
                 {...(thread?.project ? { subtitle: thread.project } : {})}
-                {...(agents.length > 0 || filesAvailable || artifactsAvailable || terminal
+                {...(Object.keys(panels).length > 0 || terminal
                   ? {
                       trailing: (
                         <>
                           {terminal ? (
                             <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
                           ) : null}
-                          {artifactsAvailable ? (
-                            <ArtifactsToggle open={artifactsOpen} onToggle={onToggleArtifacts} />
-                          ) : null}
-                          {filesAvailable ? <FilesToggle open={filesOpen} onToggle={onToggleFiles} /> : null}
-                          {agents.length > 0 ? (
-                            <AgentsToggle
-                              agents={agents}
-                              open={inspector !== undefined}
-                              onToggle={onToggleInspector}
-                            />
-                          ) : null}
+                          <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />
                         </>
                       ),
                     }
@@ -471,7 +403,7 @@ function CompactFrame({
       />
       {inspecting ? (
         <div className="absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl">
-          {side}
+          {side?.content}
         </div>
       ) : null}
     </div>

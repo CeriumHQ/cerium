@@ -11,12 +11,12 @@ import type {
   FileStatuses,
   FilesChanged,
 } from "@cerium/rpc";
-import { Cache, Cause, Context, Effect, FileSystem, Layer, Path, Queue, Schema, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Cause, Context, Effect, FileSystem, Layer, Path, Queue, Schema, Stream } from "effect";
 import { watch as watchFolder } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { posix, win32 } from "node:path";
 
+import { Git } from "./git.ts";
 import { imageType, SKIPPED } from "./workspace.ts";
 
 // What the file explorer and viewer need from a work thread's folder: its entries a level at a time,
@@ -303,8 +303,39 @@ export const mediaOf = (
 // ---------------------------------------------------------------------------------------------
 // Watching
 
-/** What a change the OS reported amounts to: a path under the folder, or git's own state. */
-export type Change = { readonly path: string } | { readonly git: true };
+/**
+ * What a change the OS reported amounts to: a path under the folder, or git's own state, with `refs`
+ * when HEAD, a branch or a tag moved.
+ */
+export type Change = { readonly path: string } | { readonly git: true; readonly refs: boolean };
+
+const segmentsOf = (relative: string) =>
+  relative
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((part) => part !== "");
+
+/** What HEAD and the operations that move it (merges, rebases, cherry-picks) keep in git's folder. */
+const HEAD_FILES =
+  /^(?:HEAD|ORIG_HEAD|MERGE_HEAD|CHERRY_PICK_HEAD|REVERT_HEAD|REBASE_HEAD|rebase-merge|rebase-apply)$/;
+
+/**
+ * What a change at `relative`, inside one of git's own folders, means to what's shown: the index
+ * (staging), HEAD (what's checked out) or a ref (a branch or a tag) moving. `own` is the work tree's
+ * own git folder, which holds its index and HEAD; `common` the one its worktrees share, which holds
+ * the refs. Git's other bookkeeping (objects, logs, locks) says nothing on its own.
+ */
+export const gitFolderChange = (
+  relative: string,
+  folder: { readonly own: boolean; readonly common: boolean },
+): Change | undefined => {
+  const [first] = segmentsOf(relative);
+  if (first === undefined) return undefined;
+  if (folder.own && first === "index") return { git: true, refs: false };
+  if (folder.own && HEAD_FILES.test(first)) return { git: true, refs: true };
+  if (folder.common && (first === "refs" || first === "packed-refs")) return { git: true, refs: true };
+  return undefined;
+};
 
 /**
  * What a change at `relative` (a path under the watched folder, as the OS reports it) means to the
@@ -312,16 +343,12 @@ export type Change = { readonly path: string } | { readonly git: true };
  * the explorer never shows: the insides of dependency and cache folders, and git's bookkeeping.
  */
 export const watchedChange = (relative: string): Change | undefined => {
-  const segments = relative
-    .replaceAll("\\", "/")
-    .split("/")
-    .filter((part) => part !== "");
+  const segments = segmentsOf(relative);
   if (segments.length === 0) return undefined;
   if (VCS_FOLDERS.has(segments[0]!)) {
     if (segments[0] !== ".git") return undefined;
     // The index and HEAD move with every add, commit and checkout.
-    const second = segments[1];
-    return second === "index" || second === "HEAD" || second === "refs" ? { git: true } : undefined;
+    return gitFolderChange(segments.slice(1).join("/"), { own: true, common: true });
   }
   // The folder itself changes its parent's listing; what happens inside doesn't matter.
   if (segments.slice(0, -1).some((part) => SKIPPED.has(part))) return undefined;
@@ -333,6 +360,9 @@ export const watchedChange = (relative: string): Change | undefined => {
 /** Where a folder sits in a git repository: `prefix` is its path from the repository's top, with a trailing slash. */
 interface Repository {
   readonly prefix: string;
+  /** The work tree's own git folder, and the one its worktrees share (the same outside a worktree). */
+  readonly gitDir: string;
+  readonly commonDir: string;
 }
 
 export class Files extends Context.Service<
@@ -355,74 +385,37 @@ export class Files extends Context.Service<
     watch(root: string): Stream.Stream<FilesChanged, FilesError>;
   }
 >()("cerium/backend/Files") {
-  /** Requires `FileSystem`, `Path` and `ChildProcessSpawner`. */
+  /** Requires `FileSystem`, `Path` and `Git`. */
   static readonly layer = Layer.effect(
     Files,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const gitService = yield* Git;
 
       const refuse = (message: string) => () => new FilesError({ message });
 
       /**
-       * Runs git in `cwd`, and returns what it printed to stdout, as text. Looking takes none of the
-       * locks git would take to tidy its index, so it doesn't set off the watcher, and every path is
-       * taken as written, never as pathspec magic (unless `magic`). At most `limit` bytes are read
-       * (`MAX_GIT_OUTPUT` unless given); past it the output is cut and `truncated` says so.
+       * Runs git in `cwd` only to look, so it doesn't set off the watcher, with every path taken as
+       * written, never as pathspec magic (unless `magic`). At most `limit` bytes are read; past it the
+       * output is cut and `truncated` says so.
        */
-      const git = Effect.fn("Files.git")(function* (
+      const git = (
         cwd: string,
         args: ReadonlyArray<string>,
         options: { readonly stdin?: string; readonly magic?: boolean; readonly limit?: number } = {},
-      ) {
-        const limit = options.limit ?? MAX_GIT_OUTPUT;
-        return yield* Effect.scoped(
-          Effect.gen(function* () {
-            const handle = yield* spawner.spawn(
-              ChildProcess.make("git", ["--no-optional-locks", ...args], {
-                cwd,
-                env: {
-                  GIT_OPTIONAL_LOCKS: "0",
-                  GIT_TERMINAL_PROMPT: "0",
-                  // `check-ignore` takes names, not pathspecs, and refuses the setting.
-                  ...(options.magic === true ? {} : { GIT_LITERAL_PATHSPECS: "1" }),
-                },
-                extendEnv: true,
-                stdin:
-                  options.stdin === undefined
-                    ? "ignore"
-                    : Stream.succeed(new TextEncoder().encode(options.stdin)),
-                stderr: "ignore",
-              }),
-            );
-            let size = 0;
-            const chunks = yield* handle.stdout.pipe(
-              Stream.takeUntil((chunk) => (size += chunk.length) >= limit),
-              Stream.runCollect,
-            );
-            // A cut-off git is still writing: leaving the scope stops it, and its exit tells nothing.
-            const truncated = size >= limit;
-            const code = truncated ? -1 : Number(yield* handle.exitCode);
-            return { stdout: Buffer.concat(chunks).toString("utf8"), code, truncated };
-          }),
-        );
-      });
+      ) =>
+        gitService.run(cwd, args, {
+          look: true,
+          // `check-ignore` takes names, not pathspecs, and refuses the literal setting.
+          ...(options.magic === true ? { pathspecs: true } : {}),
+          ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+          limit: options.limit ?? MAX_GIT_OUTPUT,
+        });
 
       /** Where `root` sits in a git repository, or undefined when it isn't in one (or git isn't there). */
-      const repositories = yield* Cache.make({
-        capacity: 16,
-        timeToLive: "30 seconds",
-        lookup: (root: string) =>
-          git(root, ["rev-parse", "--is-inside-work-tree", "--show-prefix"]).pipe(
-            Effect.map(({ stdout, code }): Repository | undefined => {
-              if (code !== 0) return undefined;
-              const [inside, prefix = ""] = stdout.split("\n");
-              return inside?.trim() === "true" ? { prefix: prefix.trim() } : undefined;
-            }),
-            Effect.orElseSucceed(() => undefined),
-          ),
-      });
+      const repositoryOf = (root: string): Effect.Effect<Repository | undefined> =>
+        gitService.repository(root);
 
       /** `root`'s real location, when it is a folder. */
       const folderOf = Effect.fn("Files.folderOf")(function* (root: string) {
@@ -495,7 +488,7 @@ export class Files extends Context.Service<
         );
         const sorted = entries.toSorted(compareEntries);
         const shown = sorted.slice(0, MAX_ENTRIES);
-        const repository = yield* Cache.get(repositories, base);
+        const repository = yield* repositoryOf(base);
         const below = path.relative(base, target).replaceAll("\\", "/");
         const ignored =
           repository === undefined
@@ -514,7 +507,7 @@ export class Files extends Context.Service<
 
       const statuses = Effect.fn("Files.statuses")(function* (root: string) {
         const base = yield* folderOf(root);
-        const repository = yield* Cache.get(repositories, base);
+        const repository = yield* repositoryOf(base);
         if (repository === undefined) return { repository: false, changes: [] } satisfies FileStatuses;
         const { stdout } = yield* git(base, [
           "status",
@@ -587,7 +580,7 @@ export class Files extends Context.Service<
         const origin = from === undefined ? undefined : resolveInside(base, from);
         if (from !== undefined && origin === undefined)
           return yield* new FilesError({ message: "That path isn't inside the thread's folder." });
-        const repository = yield* Cache.get(repositories, base);
+        const repository = yield* repositoryOf(base);
         if (repository === undefined)
           return yield* new FilesError({ message: "Git isn't tracking this folder." });
         const paths = [relative, ...(from === undefined ? [] : [from])];
@@ -643,37 +636,57 @@ export class Files extends Context.Service<
         return parse(added.stdout, added.truncated);
       });
 
+      /** What changes under `folder`, as `classify` reads each path the OS reports there. */
+      const watching = (folder: string, classify: (relative: string) => Change | undefined) =>
+        Stream.callback<Change, FilesError>(
+          (queue) =>
+            Effect.acquireRelease(
+              Effect.try({
+                try: () => {
+                  const watcher = watchFolder(folder, { recursive: true }, (_event, name) => {
+                    if (name === null) return;
+                    // Floods inside dependency folders are dropped before they queue.
+                    const change = classify(name.toString());
+                    if (change !== undefined) Queue.offerUnsafe(queue, change);
+                  });
+                  watcher.on("error", () =>
+                    Queue.failCauseUnsafe(
+                      queue,
+                      Cause.fail(new FilesError({ message: "That folder can't be watched any more." })),
+                    ),
+                  );
+                  return watcher;
+                },
+                catch: () => new FilesError({ message: "That folder can't be watched." }),
+              }),
+              (watcher) => Effect.sync(() => watcher.close()),
+            ),
+          { bufferSize: 4_096, strategy: "sliding" },
+        );
+
       const watch = (root: string) =>
         Stream.unwrap(
           Effect.gen(function* () {
             const base = yield* folderOf(root);
-            const repository = yield* Cache.get(repositories, base);
-            const changes = Stream.callback<Change, FilesError>(
-              (queue) =>
-                Effect.acquireRelease(
-                  Effect.try({
-                    try: () => {
-                      const watcher = watchFolder(base, { recursive: true }, (_event, name) => {
-                        if (name === null) return;
-                        // Floods inside dependency folders are dropped before they queue.
-                        const change = watchedChange(name.toString());
-                        if (change !== undefined) Queue.offerUnsafe(queue, change);
-                      });
-                      watcher.on("error", () =>
-                        Queue.failCauseUnsafe(
-                          queue,
-                          Cause.fail(new FilesError({ message: "That folder can't be watched any more." })),
-                        ),
-                      );
-                      return watcher;
-                    },
-                    catch: () => new FilesError({ message: "That folder can't be watched." }),
-                  }),
-                  (watcher) => Effect.sync(() => watcher.close()),
-                ),
-              { bufferSize: 4_096, strategy: "sliding" },
-            );
-            return changes.pipe(
+            const repository = yield* repositoryOf(base);
+            // Git's own folders when they aren't under `root`: a worktree's lives in its repository's,
+            // and a folder below the top has its repository's above it.
+            const gitFolders =
+              repository === undefined
+                ? []
+                : [...new Set([repository.gitDir, repository.commonDir])]
+                    .filter((folder) => !isInside(base, folder))
+                    .map((folder) =>
+                      watching(folder, (relative) =>
+                        gitFolderChange(relative, {
+                          own: folder === repository.gitDir,
+                          common: folder === repository.commonDir,
+                        }),
+                      ),
+                    );
+            return Stream.mergeAll([watching(base, watchedChange), ...gitFolders], {
+              concurrency: "unbounded",
+            }).pipe(
               Stream.groupedWithin(2_000, BATCH_WINDOW),
               Stream.mapEffect((batch) =>
                 Effect.gen(function* () {
@@ -681,8 +694,9 @@ export class Files extends Context.Service<
                     ...new Set(batch.flatMap((change) => ("path" in change ? [change.path] : []))),
                   ];
                   const touchedGit = batch.some((change) => "git" in change);
+                  const refs = batch.some((change) => "git" in change && change.refs);
                   if (paths.length > MAX_BATCH)
-                    return { paths: [], status: true, overflow: true } satisfies FilesChanged;
+                    return { paths: [], status: true, overflow: true, refs: true } satisfies FilesChanged;
                   // What git ignores never changes what it says; the explorer still lists it.
                   const ignored =
                     repository === undefined || paths.length === 0
@@ -690,7 +704,7 @@ export class Files extends Context.Service<
                       : yield* ignoredAmong(base, paths);
                   const status =
                     repository !== undefined && (touchedGit || paths.some((path) => !ignored.has(path)));
-                  return { paths, status } satisfies FilesChanged;
+                  return { paths, status, ...(refs ? { refs: true as const } : {}) } satisfies FilesChanged;
                 }),
               ),
               Stream.filter((batch) => batch.paths.length > 0 || batch.status || batch.overflow === true),

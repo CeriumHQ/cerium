@@ -3,6 +3,7 @@ import type { ProviderId } from "@cerium/protocol";
 import {
   FolderTree,
   GalleryVerticalEnd,
+  GitBranch,
   Minus,
   PanelLeft,
   Square,
@@ -18,6 +19,7 @@ import { IconButton } from "../components/ui/IconButton.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { WEB } from "../backend/target.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
+import type { SidePanelId } from "./panelLayout.ts";
 
 /** Windows draws its minimize / maximize / close buttons here (Electron's titleBarOverlay). */
 const CAPTION_BUTTON_WIDTH = 46;
@@ -39,12 +41,9 @@ interface TitlebarProps {
   readonly onNewThread: () => void;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
-  readonly inspectorOpen: boolean;
-  readonly onToggleInspector: () => void;
-  /** The files panel's button, offered while there is a folder to browse. */
-  readonly files?: { readonly open: boolean; readonly onToggle: () => void };
-  /** The artifacts panel's button, offered while the open thread has artifacts to list. */
-  readonly artifacts?: { readonly open: boolean; readonly onToggle: () => void };
+  /** The side panels offered now, each by whether it's open: each has a button. */
+  readonly panels: Partial<Record<SidePanelId, boolean>>;
+  readonly onTogglePanel: (panel: SidePanelId) => void;
   /** The terminal drawer's button, offered while the thread can have a terminal. */
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** Which of the account's computers the window drives, once there's a choice. */
@@ -64,10 +63,8 @@ export function Titlebar({
   onToggleSidebar,
   onNewThread,
   agents,
-  inspectorOpen,
-  onToggleInspector,
-  files,
-  artifacts,
+  panels,
+  onTogglePanel,
   terminal,
   machinePicker,
   tabs,
@@ -143,18 +140,62 @@ export function Titlebar({
           {terminal && !settingsOpen ? (
             <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
           ) : null}
-          {artifacts && !settingsOpen ? (
-            <ArtifactsToggle open={artifacts.open} onToggle={artifacts.onToggle} />
-          ) : null}
-          {files && !settingsOpen ? <FilesToggle open={files.open} onToggle={files.onToggle} /> : null}
-          {agents.length > 0 && !settingsOpen ? (
-            <AgentsToggle agents={agents} open={inspectorOpen} onToggle={onToggleInspector} />
-          ) : null}
+          {settingsOpen ? null : (
+            <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />
+          )}
           {machinePicker}
           <CaptionButtons />
         </div>
       </div>
     </header>
+  );
+}
+
+/** The buttons of the side panels on offer, in the order they sit in the bar. */
+export function PanelToggles({
+  agents,
+  panels,
+  onTogglePanel,
+}: {
+  agents: ReadonlyArray<ProviderId>;
+  panels: Partial<Record<SidePanelId, boolean>>;
+  onTogglePanel: (panel: SidePanelId) => void;
+}) {
+  return (
+    <>
+      {panels.artifacts === undefined ? null : (
+        <ArtifactsToggle open={panels.artifacts} onToggle={() => onTogglePanel("artifacts")} />
+      )}
+      {panels.git === undefined ? null : (
+        <SourceControlToggle open={panels.git} onToggle={() => onTogglePanel("git")} />
+      )}
+      {panels.files === undefined ? null : (
+        <FilesToggle open={panels.files} onToggle={() => onTogglePanel("files")} />
+      )}
+      {panels.agents === undefined || agents.length === 0 ? null : (
+        <AgentsToggle agents={agents} open={panels.agents} onToggle={() => onTogglePanel("agents")} />
+      )}
+    </>
+  );
+}
+
+/** Opens Source control, which shares the agents panel's place. */
+export function SourceControlToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={open ? "Hide source control" : "Show source control"} shortcut="Ctrl Shift G">
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="Source control"
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <GitBranch size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
   );
 }
 

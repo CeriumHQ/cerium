@@ -5,6 +5,13 @@ export const INSPECTOR = { key: "cerium:inspectorWidth", fallback: 320, min: 280
 export const FILES = { key: "cerium:filesWidth", fallback: 340, min: 280, max: 560 } as const;
 /** The artifacts panel takes it too, wider for the pages it shows. */
 export const ARTIFACTS = { key: "cerium:artifactsWidth", fallback: 360, min: 280, max: 640 } as const;
+/** Source control takes it too, as wide as the files panel for paths and their status. */
+export const SOURCE_CONTROL = {
+  key: "cerium:sourceControlWidth",
+  fallback: 340,
+  min: 280,
+  max: 560,
+} as const;
 
 /** What a panel beside the transcript is allowed in width. */
 export interface SidePanelSpec {
@@ -12,6 +19,19 @@ export interface SidePanelSpec {
   readonly min: number;
   readonly max: number;
 }
+
+/** The panels that take the place beside the transcript, one at a time. */
+export type SidePanelId = "agents" | "files" | "artifacts" | "git";
+
+/** Each side panel's width, saved under `key`, and what its resize handle is called. */
+export const SIDE_PANELS: Readonly<
+  Record<SidePanelId, SidePanelSpec & { readonly key: string; readonly resizeLabel: string }>
+> = {
+  agents: { ...INSPECTOR, resizeLabel: "Resize agents panel" },
+  files: { ...FILES, resizeLabel: "Resize files panel" },
+  artifacts: { ...ARTIFACTS, resizeLabel: "Resize artifacts panel" },
+  git: { ...SOURCE_CONTROL, resizeLabel: "Resize source control panel" },
+};
 /** The gap between panels, and around the window's edge. */
 export const GUTTER = 6;
 /** Below this the transcript is too narrow for its message box, so the inspector floats over it instead. */

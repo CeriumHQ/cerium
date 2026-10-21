@@ -1,8 +1,8 @@
 import { Worktrees, WorktreeError } from "@cerium/orchestrator";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
-import { Effect, FileSystem, Layer, Path, Schedule, Semaphore, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Effect, FileSystem, Layer, Path, Schedule, Semaphore } from "effect";
 
+import { Git, type GitResult } from "./git.ts";
 import { Terminals } from "./terminal.ts";
 
 // Each thread that asks for one gets a git worktree of its project's repository, on a branch of its
@@ -55,13 +55,6 @@ export const countStatus = (output: string): number => {
   return count;
 };
 
-/** What git printed, and how it exited. */
-interface GitResult {
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly code: number;
-}
-
 /** Git's own complaint, without its `fatal:` prefix, or `fallback` when it said nothing. */
 const complaint = ({ stderr }: GitResult, fallback: string) => {
   const line = stderr
@@ -73,7 +66,7 @@ const complaint = ({ stderr }: GitResult, fallback: string) => {
 
 /**
  * Worktrees under `directory`, one folder per repository; Windows' path limit is why it isn't the
- * app's own data folder. Requires `FileSystem`, `Path`, `ChildProcessSpawner` and `Terminals`.
+ * app's own data folder. Requires `FileSystem`, `Path`, `Git` and `Terminals`.
  */
 export const worktreesLayer = (options: { readonly directory: string }) =>
   Layer.effect(
@@ -81,36 +74,16 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const gitService = yield* Git;
       const terminals = yield* Terminals;
       /** One worktree is made at a time: threads started together with one title pick their names in turn. */
       const making = yield* Semaphore.make(1);
 
+      // Names are git's own here (`check-ignore` refuses literal pathspecs), never the user's.
       const git = (cwd: string, args: ReadonlyArray<string>, stdin?: string) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const handle = yield* spawner.spawn(
-              ChildProcess.make("git", [...args], {
-                cwd,
-                env: { GIT_TERMINAL_PROMPT: "0" },
-                extendEnv: true,
-                stdin: stdin === undefined ? "ignore" : Stream.succeed(new TextEncoder().encode(stdin)),
-              }),
-            );
-            const [stdout, stderr] = yield* Effect.all(
-              [
-                Stream.mkString(Stream.decodeText(handle.stdout)),
-                Stream.mkString(Stream.decodeText(handle.stderr)),
-              ],
-              { concurrency: 2 },
-            );
-            return { stdout, stderr, code: Number(yield* handle.exitCode) } satisfies GitResult;
-          }),
-        ).pipe(
-          Effect.mapError(
-            () => new WorktreeError({ message: "Cerium couldn't run git. Is it installed and on the PATH?" }),
-          ),
-        );
+        gitService
+          .run(cwd, args, { pathspecs: true, ...(stdin === undefined ? {} : { stdin }) })
+          .pipe(Effect.mapError((error) => new WorktreeError({ message: error.message })));
 
       /** Runs git and fails with its complaint when it exits with an error. */
       const gitOk = (cwd: string, args: ReadonlyArray<string>, fallback: string) =>

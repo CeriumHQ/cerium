@@ -23,6 +23,7 @@ import {
   Bot,
   Columns2,
   FolderTree,
+  GitBranch,
   MessagesSquare,
   OctagonX,
   PanelLeft,
@@ -115,6 +116,8 @@ import { useDraftSync } from "../features/composer/useDraftSync.ts";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
+import { GIT_VERSION } from "../features/git/model.ts";
+import { useSourceControl } from "../features/git/useSourceControl.tsx";
 import { TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
@@ -169,7 +172,16 @@ import {
 } from "../features/split/model.ts";
 import { MIN_PANE, SplitView, type PaneChrome, type PaneLabel } from "../features/split/SplitView.tsx";
 import { FileViewer } from "../features/viewer/FileViewer.tsx";
-import { fileKey, fileOfKey, fileViewAtom, isFileKey, VIEWER_VERSION } from "../features/viewer/model.ts";
+import {
+  commitFileKey,
+  commitFileOfKey,
+  fileKey,
+  fileOfKey,
+  fileViewAtom,
+  VIEWER_VERSION,
+} from "../features/viewer/model.ts";
+import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
+import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
@@ -182,6 +194,7 @@ import { Launch } from "./LaunchScreen.tsx";
 import { useCompact } from "./compact.ts";
 import type { AppMode } from "./ModeSwitch.tsx";
 import { Notice } from "./Notice.tsx";
+import type { SidePanelId } from "./panelLayout.ts";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 import { ThreadPane, type PaneHandles, type ThreadPaneActions } from "./ThreadPane.tsx";
@@ -262,11 +275,19 @@ function Workspace() {
   const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
   /** How each mode's main area is split into panes, once the user split it; the open thread is the focused pane's. */
   const [panesByMode, setPanesByMode] = useState<Partial<Record<AppMode, Panes>>>(() => resumed?.panes ?? {});
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  /** The files panel, which takes the inspector's place: one of the two is open at a time. */
-  const [filesOpen, setFilesOpen] = useState(false);
-  /** The artifacts panel, which takes the same place. */
-  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  /**
+   * The panel beside the conversation: the agents (the inspector), the files, the artifacts or Source
+   * control, which take that place one at a time.
+   */
+  const [sidePanel, setSidePanel] = useState<SidePanelId>();
+  const inspectorOpen = sidePanel === "agents";
+  const filesOpen = sidePanel === "files";
+  const artifactsOpen = sidePanel === "artifacts";
+  const gitOpen = sidePanel === "git";
+  /** Opens `panel` in that place, or closes it when it's the one open. */
+  const togglePanel = (panel: SidePanelId) => setSidePanel((open) => (open === panel ? undefined : panel));
+  /** Closes `panel`, when it's the one open. */
+  const closePanel = (panel: SidePanelId) => setSidePanel((open) => (open === panel ? undefined : open));
   /** The agent the inspector shows; the lead until another is picked. */
   const [inspectedAgent, setInspectedAgent] = useState<string>();
   /** The narrow window's pane: the threads, or the open (or new) thread. */
@@ -403,7 +424,7 @@ function Workspace() {
   const split = !compact && isSplit(panes);
   useLayoutEffect(() => {
     openKey.current = current;
-    if (!isFileKey(current)) lastThread.current = current;
+    if (!isNonThreadKey(current)) lastThread.current = current;
   }, [current]);
   /** The file the open tab shows, when it shows one. */
   const openFile = fileOfKey(current);
@@ -459,7 +480,7 @@ function Workspace() {
   // The web client runs the build of the desktop it drives, and takes the open thread there.
   useMatchingBuild(
     drivenDevice,
-    isNewDraftKey(openThread[mode]) || isFileKey(openThread[mode]) ? undefined : openThread[mode],
+    isNewDraftKey(openThread[mode]) || isNonThreadKey(openThread[mode]) ? undefined : openThread[mode],
   );
   // The web client always drives one of the account's desktops: the one it drove last,
   // else the first that can be reached, once one can.
@@ -517,7 +538,7 @@ function Workspace() {
     loaded: live,
     initial: session?.tabs,
     onShow: (key) => {
-      if (!isNewDraftKey(key) && !isFileKey(key)) {
+      if (!isNewDraftKey(key) && !isNonThreadKey(key)) {
         const summary = summaries.find((candidate) => candidate.id === key);
         if (summary) openSummary(summary);
         return;
@@ -659,21 +680,9 @@ function Workspace() {
   const askStopAll = () => {
     if (canStopAll) setStopAllOpen(true);
   };
-  const toggleInspector = () => {
-    setInspectorOpen(!inspectorOpen);
-    setFilesOpen(false);
-    setArtifactsOpen(false);
-  };
-  const toggleFiles = () => {
-    setFilesOpen(!filesOpen);
-    setInspectorOpen(false);
-    setArtifactsOpen(false);
-  };
-  const toggleArtifacts = () => {
-    setArtifactsOpen(!artifactsOpen);
-    setInspectorOpen(false);
-    setFilesOpen(false);
-  };
+  const toggleInspector = () => togglePanel("agents");
+  const toggleFiles = () => togglePanel("files");
+  const toggleGit = () => togglePanel("git");
   /**
    * The open work thread's folder, or the open file's, can be browsed here: it's on the machine the
    * window drives, which knows how.
@@ -703,9 +712,23 @@ function Workspace() {
       setOpenThread((open) => ({ ...open, [mode]: key }));
       setPane("main");
       // The narrow window shows one pane: the file takes the panel's place.
-      if (compact) setFilesOpen(false);
+      if (compact) setSidePanel(undefined);
     };
   const openInViewer = filesRoot === undefined || !viewerOk ? undefined : openerIn(filesRoot);
+  /** Opens the folder `root`'s file as one commit changed it, in a tab of its own, as the viewer's files open. */
+  const openCommitFileIn =
+    (root: string) => (sha: string, file: { readonly path: string; readonly from?: string }) => {
+      const key = commitFileKey(root, sha, file.path, file.from);
+      tabs.openAs(key, "tab");
+      tabs.keep(key);
+      setSettingsOpen(false);
+      setOpenThread((open) => ({ ...open, [mode]: key }));
+      setPane("main");
+      if (compact) setSidePanel(undefined);
+    };
+  /** The open work thread's repository, which Source control shows where its machine can. */
+  const gitRoot =
+    drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GIT_VERSION ? undefined : filesRoot;
   // Its shells run on the same machine, in the same folder.
   const terminal = useTerminalDrawer({
     thread:
@@ -723,7 +746,15 @@ function Workspace() {
     open: filesOpen && !settingsOpen,
     onOpenFile: openInViewer,
     activePath: openFile?.root === filesRoot ? openFile?.path : undefined,
-    onClose: () => setFilesOpen(false),
+    onClose: () => closePanel("files"),
+    ...(gitRoot === undefined ? {} : { onShowChanges: () => setSidePanel("git") }),
+  });
+  const sourceControl = useSourceControl({
+    root: gitRoot,
+    open: gitOpen && !settingsOpen,
+    openIn: viewerOk ? openerIn : undefined,
+    activeFile: openFile,
+    onClose: () => closePanel("git"),
   });
   // The artifacts the open thread's lead drew, and its project's, which its machine lists when it can.
   const viewedLead = viewed ? leadOf(viewed.agents) : undefined;
@@ -744,15 +775,13 @@ function Workspace() {
       openSummary(summary);
     }
     // The narrow window shows one pane: the conversation takes the panel's place.
-    if (compact) setArtifactsOpen(false);
+    if (compact) closePanel("artifacts");
     void revealArtifact(artifact.id);
   };
   const agentActions: AgentActions = {
     onShow: (agentId) => {
       setInspectedAgent(agentId);
-      setInspectorOpen(true);
-      setFilesOpen(false);
-      setArtifactsOpen(false);
+      setSidePanel("agents");
     },
     onMessageLead: () => focusComposer(),
     onInterrupt: (agentId) => void attempt(interrupt({ payload: { agentId: agentId as AgentId } })),
@@ -943,6 +972,16 @@ function Workspace() {
       run: toggleFiles,
     },
     {
+      id: "source-control",
+      group: "Actions",
+      label: gitOpen ? "Hide source control" : "Show source control",
+      icon: GitBranch,
+      keys: "Ctrl Shift G",
+      keywords: "git changes stage commit",
+      when: gitRoot !== undefined,
+      run: toggleGit,
+    },
+    {
       id: "terminal",
       group: "Actions",
       label: terminal.open ? "Hide terminal" : "Show terminal",
@@ -1083,6 +1122,8 @@ function Workspace() {
         setMode(event.code === "Digit1" ? "work" : "chat");
       } else if (event.key.toLowerCase() === "e" && !settingsOpen && filesRoot !== undefined) {
         toggleFiles();
+      } else if (event.key.toLowerCase() === "g" && !settingsOpen && gitRoot !== undefined) {
+        toggleGit();
       } else if ((event.code === "Period" || event.key === ">") && !settingsOpen) {
         askStopAll();
       } else return;
@@ -1313,6 +1354,20 @@ function Workspace() {
 
   /** A pane showing the tab `key`: a file, read-only, or a thread. */
   const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+    const commit = commitFileOfKey(key);
+    if (commit !== undefined) {
+      return (
+        <CommitFileView
+          key={key}
+          root={commit.root}
+          sha={commit.sha}
+          path={commit.path}
+          from={commit.from}
+          onClose={() => tabs.actions.onClose([key])}
+          pane={chrome}
+        />
+      );
+    }
     const file = fileOfKey(key);
     if (file === undefined) return threadPane(key, focused);
     return (
@@ -1331,7 +1386,7 @@ function Workspace() {
   /** What a pane's header calls what it shows. */
   const paneLabel = (leaf: PaneLeaf): PaneLabel => {
     const tab = tabs.tabs.find((each) => each.key === leaf.key);
-    const file = fileOfKey(leaf.key);
+    const file = fileOfKey(leaf.key) ?? commitFileOfKey(leaf.key);
     if (file !== undefined) {
       // The viewer's own header names the file, and is the pane's.
       return { title: baseName(file.path), detail: tab?.project ?? file.path, ownHeader: true };
@@ -1505,50 +1560,60 @@ function Workspace() {
         onClose: () => setSettingsOpen(false),
       }}
       agents={selected ? selected.agents.map((agent) => agent.provider) : []}
-      inspector={
-        inspectorOpen && selected ? (
-          <Inspector
-            agents={agents}
-            selectedId={inspectedAgent}
-            onSelect={setInspectedAgent}
-            onClose={() => setInspectorOpen(false)}
-            onMessageLead={() => focusComposer()}
-            onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
-            onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
-            {...(canStopAll ? { onStopAll: askStopAll } : {})}
-            onAnswerApproval={answerApproval}
-            onAnswerSpawn={answerSpawn}
-            onAnswerQuestion={answerQuestionOf}
-          />
-        ) : undefined
-      }
-      onToggleInspector={toggleInspector}
-      onCloseInspector={() => setInspectorOpen(false)}
-      files={inspectorOpen && selected ? undefined : filesPanel}
-      filesAvailable={filesRoot !== undefined}
-      filesOpen={filesOpen}
-      onToggleFiles={toggleFiles}
-      onCloseFiles={() => setFilesOpen(false)}
-      artifacts={
-        artifactsOpen && artifactsAvailable && viewed && !inspectorOpen && !filesOpen ? (
-          <ArtifactsPanel
-            threadId={viewed.thread.id}
-            artifacts={viewedArtifacts}
-            project={artifactsProject}
-            threadTitle={(threadId) => threadOf(threadId)?.title}
-            folderOf={(threadId) => threadOf(threadId)?.cwd}
-            onShow={showArtifact}
-            onReply={
-              cloudSelected ? undefined : (text) => messageBox.append({ segments: [{ kind: "text", text }] })
+      side={
+        inspectorOpen && selected
+          ? {
+              panel: "agents",
+              content: (
+                <Inspector
+                  agents={agents}
+                  selectedId={inspectedAgent}
+                  onSelect={setInspectedAgent}
+                  onClose={() => closePanel("agents")}
+                  onMessageLead={() => focusComposer()}
+                  onInterrupt={(agentId) => attempt(interrupt({ payload: { agentId: agentId as AgentId } }))}
+                  onStop={(agentId) => attempt(stop({ payload: { agentId: agentId as AgentId } }))}
+                  {...(canStopAll ? { onStopAll: askStopAll } : {})}
+                  onAnswerApproval={answerApproval}
+                  onAnswerSpawn={answerSpawn}
+                  onAnswerQuestion={answerQuestionOf}
+                />
+              ),
             }
-            onClose={() => setArtifactsOpen(false)}
-          />
-        ) : undefined
+          : filesOpen && filesPanel !== undefined
+            ? { panel: "files", content: filesPanel }
+            : gitOpen && sourceControl !== undefined
+              ? { panel: "git", content: sourceControl }
+              : artifactsOpen && artifactsAvailable && viewed
+                ? {
+                    panel: "artifacts",
+                    content: (
+                      <ArtifactsPanel
+                        threadId={viewed.thread.id}
+                        artifacts={viewedArtifacts}
+                        project={artifactsProject}
+                        threadTitle={(threadId) => threadOf(threadId)?.title}
+                        folderOf={(threadId) => threadOf(threadId)?.cwd}
+                        onShow={showArtifact}
+                        onReply={
+                          cloudSelected
+                            ? undefined
+                            : (text) => messageBox.append({ segments: [{ kind: "text", text }] })
+                        }
+                        onClose={() => closePanel("artifacts")}
+                      />
+                    ),
+                  }
+                : undefined
       }
-      artifactsAvailable={artifactsAvailable}
-      artifactsOpen={artifactsOpen}
-      onToggleArtifacts={toggleArtifacts}
-      onCloseArtifacts={() => setArtifactsOpen(false)}
+      panels={{
+        ...(selected ? { agents: inspectorOpen } : {}),
+        ...(filesRoot === undefined ? {} : { files: filesOpen }),
+        ...(gitRoot === undefined ? {} : { git: gitOpen }),
+        ...(artifactsAvailable ? { artifacts: artifactsOpen } : {}),
+      }}
+      onTogglePanel={togglePanel}
+      onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
     >
       {compact ? (

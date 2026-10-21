@@ -21,6 +21,7 @@ export function useFilesExplorer({
   onOpenFile,
   activePath,
   onClose,
+  onShowChanges,
 }: {
   /** The thread's folder; none where there is nothing to browse. */
   root: string | undefined;
@@ -34,6 +35,8 @@ export function useFilesExplorer({
   /** The file of `root` the viewer shows. */
   activePath?: string | undefined;
   onClose: () => void;
+  /** Opens Source control, which lists what changed where the machine has it, in the Changes tab's place. */
+  onShowChanges?: () => void;
 }): ReactNode | undefined {
   const registry = useContext(RegistryContext);
   const active = root !== undefined && open;
@@ -80,6 +83,7 @@ export function useFilesExplorer({
       onOpenFile={onOpenFile}
       activePath={activePath}
       onClose={onClose}
+      {...(onShowChanges === undefined ? {} : { onShowChanges })}
     />
   ) : undefined;
 }
