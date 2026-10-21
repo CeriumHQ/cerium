@@ -1,6 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-import { findBrowser, launchBrowser, pickPage } from "../src/browser.ts";
+import { findBrowser, launchBrowser, pickPage, type LaunchedBrowser } from "../src/browser.ts";
 import { Page, parseKeys } from "../src/page.ts";
 
 describe("key presses", () => {
@@ -19,6 +21,32 @@ describe("key presses", () => {
 
 const browser = findBrowser();
 
+/**
+ * Runs `test` on a browser of its own and closes it after. When the test fails and
+ * CERIUM_BROWSER_LOGS names a folder (CI), a screenshot of the page it was on, `<name>.png`, joins
+ * the browser's log there.
+ */
+const driving = async (name: string, test: (launched: LaunchedBrowser) => Promise<void>) => {
+  const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
+  try {
+    await test(launched);
+  } catch (error) {
+    const logs = process.env["CERIUM_BROWSER_LOGS"];
+    if (logs) {
+      await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl)
+        .then(async (page) => {
+          const png = await page.screenshot({ fullPage: false }).finally(() => page.close());
+          mkdirSync(logs, { recursive: true });
+          writeFileSync(join(logs, `${name}.png`), png);
+        })
+        .catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    launched.close();
+  }
+};
+
 const FIXTURE = `<!doctype html><title>Fixture</title>
 <button aria-label="Close dialog">x</button>
 <div><button id="go"><span>Send</span></button><button>Send later</button></div>
@@ -30,58 +58,50 @@ const FIXTURE = `<!doctype html><title>Fixture</title>
 </script>`;
 
 describe.skipIf(browser === undefined)("a driven page", () => {
-  it(
-    "finds controls by text and name, types, presses keys and takes screenshots",
-    { timeout: 90_000 },
-    async () => {
-      const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
-      try {
-        const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
-        await page.navigate(`data:text/html,${encodeURIComponent(FIXTURE)}`);
+  it("finds controls by text and name, types, presses keys and takes screenshots", { timeout: 90_000 }, () =>
+    driving("finds-controls", async (launched) => {
+      const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
+      await page.navigate(`data:text/html,${encodeURIComponent(FIXTURE)}`);
 
-        // The exact match beats "Send later", and the button wins over the text inside it.
-        assert.strictEqual((await page.find({ text: "send" })).label, 'button "Send"');
-        assert.strictEqual((await page.find({ text: "Close dialog" })).label, 'button "Close dialog"');
-        assert.strictEqual((await page.find({ text: "Send", nth: 0 })).matches, 1);
+      // The exact match beats "Send later", and the button wins over the text inside it.
+      assert.strictEqual((await page.find({ text: "send" })).label, 'button "Send"');
+      assert.strictEqual((await page.find({ text: "Close dialog" })).label, 'button "Close dialog"');
+      assert.strictEqual((await page.find({ text: "Send", nth: 0 })).matches, 1);
 
-        await page.type("hello", { text: "Message" });
-        await page.click({ text: "Send" }, { button: "left", count: 1 });
-        assert.strictEqual(await page.evaluate("document.getElementById('out').textContent"), "sent hello");
+      await page.type("hello", { text: "Message" });
+      await page.click({ text: "Send" }, { button: "left", count: 1 });
+      assert.strictEqual(await page.evaluate("document.getElementById('out').textContent"), "sent hello");
 
-        await page.click({ selector: "#box" }, { button: "left", count: 1 });
-        await page.press(parseKeys("Enter"));
-        await page.waitFor({ text: "entered" }, { gone: false, timeoutMs: 2_000 });
+      await page.click({ selector: "#box" }, { button: "left", count: 1 });
+      await page.press(parseKeys("Enter"));
+      await page.waitFor({ text: "entered" }, { gone: false, timeoutMs: 2_000 });
 
-        const inspected = (await page.inspect(true)) as { title: string; elements: Array<{ name: string }> };
-        assert.strictEqual(inspected.title, "Fixture");
-        assert.include(
-          inspected.elements.map((element) => element.name),
-          "Send later",
-        );
+      const inspected = (await page.inspect(true)) as { title: string; elements: Array<{ name: string }> };
+      assert.strictEqual(inspected.title, "Fixture");
+      assert.include(
+        inspected.elements.map((element) => element.name),
+        "Send later",
+      );
 
-        const png = await page.screenshot({ fullPage: false });
-        assert.deepStrictEqual([...png.subarray(1, 4)], [0x50, 0x4e, 0x47]);
-        const cropped = await page.screenshot({ fullPage: false, of: { text: "Send later" } });
-        assert.isBelow(cropped.length, png.length);
+      const png = await page.screenshot({ fullPage: false });
+      assert.deepStrictEqual([...png.subarray(1, 4)], [0x50, 0x4e, 0x47]);
+      const cropped = await page.screenshot({ fullPage: false, of: { text: "Send later" } });
+      assert.isBelow(cropped.length, png.length);
 
-        const missing = await page.find({ text: "Nowhere" }).then(
-          () => "found",
-          (error: Error) => error.message,
-        );
-        assert.strictEqual(missing, 'Nothing visible matches "Nowhere".');
-        page.close();
-      } finally {
-        launched.close();
-      }
-    },
+      const missing = await page.find({ text: "Nowhere" }).then(
+        () => "found",
+        (error: Error) => error.message,
+      );
+      assert.strictEqual(missing, 'Nothing visible matches "Nowhere".');
+      page.close();
+    }),
   );
 
   it(
     "waits for late targets and finished transitions, and copes with a page a popup hid",
     { timeout: 90_000 },
-    async () => {
-      const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
-      try {
+    () =>
+      driving("waits-for-late-targets", async (launched) => {
         const target = await pickPage(launched.origin);
         const page = await Page.open(target.webSocketDebuggerUrl);
         await page.navigate(`data:text/html,${encodeURIComponent(LATE)}`);
@@ -111,18 +131,14 @@ describe.skipIf(browser === undefined)("a driven page", () => {
         await front.hover({ text: "Fades in" });
         assert.isBelow(Date.now() - hovering, 1_000);
         front.close();
-      } finally {
-        launched.close();
-      }
-    },
+      }),
   );
 
   it(
     "drags with pointer events and with native drag and drop, and holds a drag midway",
     { timeout: 90_000 },
-    async () => {
-      const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
-      try {
+    () =>
+      driving("drags", async (launched) => {
         const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
         await page.navigate(`data:text/html,${encodeURIComponent(DRAGS)}`);
         const log = () => page.evaluate<string>("document.getElementById('log').textContent");
@@ -138,10 +154,7 @@ describe.skipIf(browser === undefined)("a driven page", () => {
         assert.isFalse(page.holding);
         assert.strictEqual(await log(), "released over Drop here");
         page.close();
-      } finally {
-        launched.close();
-      }
-    },
+      }),
   );
 });
 

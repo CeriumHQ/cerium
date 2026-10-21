@@ -4,6 +4,7 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { GitBranches } from "../src/gitBranches.ts";
+import { madeOnce } from "./repositories.ts";
 
 // Real repositories, as the service sees them.
 const TestLayer = GitBranches.layer.pipe(Layer.provideMerge(NodeServices.layer));
@@ -20,6 +21,31 @@ const git = Effect.fn("git")(function* (cwd: string, ...args: Array<string>) {
   );
 });
 
+/** Gives the repository at `root` its own identity, and keeps the machine's line endings and signing out. */
+const configure = Effect.fn("configure")(function* (root: string, name: string) {
+  for (const [key, value] of [
+    ["user.name", name],
+    ["user.email", `${name.toLowerCase()}@example.com`],
+    ["core.autocrlf", "false"],
+    ["commit.gpgsign", "false"],
+  ] as const) {
+    yield* git(root, "config", key, value);
+  }
+});
+
+/** A repository on `main` with one commit that holds `a.txt`, as Test. */
+const based = madeOnce(
+  Effect.fn("based")(function* (root: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* git(root, "init", "-q", "-b", "main");
+    yield* configure(root, "Test");
+    yield* fs.writeFileString(path.join(root, "a.txt"), "base\n");
+    yield* git(root, "add", "-A");
+    yield* git(root, "commit", "-q", "-m", "base");
+  }),
+);
+
 /** A folder of temporary repositories: `init` makes one with its own identity, `remote` a bare one. */
 const sandbox = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -31,25 +57,10 @@ const sandbox = Effect.gen(function* () {
       .pipe(Effect.andThen(fs.writeFileString(path.join(root, name), text)));
   const read = (root: string, name: string) => fs.readFileString(path.join(root, name));
   const exists = (root: string, name: string) => fs.exists(path.join(root, name));
-  const configure = Effect.fn("configure")(function* (root: string, name: string) {
-    for (const [key, value] of [
-      ["user.name", name],
-      ["user.email", `${name.toLowerCase()}@example.com`],
-      ["core.autocrlf", "false"],
-      ["commit.gpgsign", "false"],
-    ] as const) {
-      yield* git(root, "config", key, value);
-    }
-  });
   /** Makes a repository with one commit that holds `a.txt`. */
   const init = Effect.fn("init")(function* (name: string) {
     const root = path.join(base, name);
-    yield* fs.makeDirectory(root, { recursive: true });
-    yield* git(root, "init", "-q", "-b", "main");
-    yield* configure(root, "Test");
-    yield* write(root, "a.txt", "base\n");
-    yield* git(root, "add", "-A");
-    yield* git(root, "commit", "-q", "-m", "base");
+    yield* based(root);
     return root;
   });
   /** Commits `text` to `file` on whatever is checked out in `root`. */

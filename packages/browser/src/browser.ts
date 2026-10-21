@@ -1,7 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { Cdp } from "./cdp.ts";
 
@@ -189,6 +189,9 @@ export const launchBrowser = async (options: {
   readonly outlive?: boolean | undefined;
 }): Promise<LaunchedBrowser> => {
   const profile = mkdtempSync(join(tmpdir(), "cerium-ui-profile-"));
+  // With CERIUM_BROWSER_LOGS naming a folder (CI sets it for the tests), the browser logs to stderr,
+  // and everything it prints goes to a file there named after its profile.
+  const logs = process.env["CERIUM_BROWSER_LOGS"] || undefined;
   const flags = [
     ...(options.visible ? [] : ["--headless=new"]),
     "--remote-debugging-port=0",
@@ -201,6 +204,7 @@ export const launchBrowser = async (options: {
     "--disable-features=Translate,msEdgeSidebarV2,msUndersideButton",
     "--hide-scrollbars",
     "--mute-audio",
+    ...(logs === undefined ? [] : ["--enable-logging=stderr"]),
     "about:blank",
   ];
   const child =
@@ -213,6 +217,10 @@ export const launchBrowser = async (options: {
   child.stderr?.setEncoding("utf8").on("data", (chunk: string) => {
     output = (output + chunk).slice(-2_000);
   });
+  if (logs !== undefined) {
+    mkdirSync(logs, { recursive: true });
+    child.stderr?.pipe(createWriteStream(join(logs, `${basename(profile)}.log`)));
+  }
   // The process started may only hand off to the real browser and exit (Edge on Windows does), so
   // closing goes through the browser's own debugging endpoint, then whatever still runs on the profile.
   let browserSocket: string | undefined;

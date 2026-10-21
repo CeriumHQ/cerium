@@ -17,6 +17,7 @@ import {
   QuickWriter,
 } from "../src/drafts.ts";
 import { Git } from "../src/git.ts";
+import { madeOnce } from "./repositories.ts";
 
 const entry = (provider: CatalogEntry["provider"], model: string): CatalogEntry => ({
   alias: model,
@@ -37,6 +38,31 @@ const run = Effect.fn("git")(function* (cwd: string, ...args: Array<string>) {
   );
 });
 
+/** The repository each test copies: one commit, "first", on `main`. */
+const first = madeOnce(
+  Effect.fn("first")(function* (root: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* run(root, "init", "-q", "-b", "main");
+    for (const [key, value] of [
+      ["core.autocrlf", "false"],
+      ["user.name", "Test"],
+      ["user.email", "test@example.com"],
+      ["commit.gpgsign", "false"],
+      ["core.hooksPath", ".git/hooks"],
+    ] as const)
+      yield* run(root, "config", key, value);
+    yield* fs.makeDirectory(path.join(root, "src"));
+    yield* fs.writeFileString(
+      path.join(root, "src", "app.ts"),
+      "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+    );
+    yield* fs.writeFileString(path.join(root, "README.md"), "# Title\n");
+    yield* run(root, "add", "-A");
+    yield* run(root, "commit", "-q", "-m", "first");
+  }),
+);
+
 /** A repository with one commit, "first", on `main`. */
 const repository = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -47,19 +73,7 @@ const repository = Effect.gen(function* () {
       .makeDirectory(path.dirname(path.join(root, name)), { recursive: true })
       .pipe(Effect.andThen(fs.writeFileString(path.join(root, name), text)));
   const git = (...args: Array<string>) => run(root, ...args);
-  yield* git("init", "-q", "-b", "main");
-  for (const [key, value] of [
-    ["core.autocrlf", "false"],
-    ["user.name", "Test"],
-    ["user.email", "test@example.com"],
-    ["commit.gpgsign", "false"],
-    ["core.hooksPath", ".git/hooks"],
-  ] as const)
-    yield* git("config", key, value);
-  yield* write("src/app.ts", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n");
-  yield* write("README.md", "# Title\n");
-  yield* git("add", "-A");
-  yield* git("commit", "-q", "-m", "first");
+  yield* first(root);
   return { root, write, git };
 });
 

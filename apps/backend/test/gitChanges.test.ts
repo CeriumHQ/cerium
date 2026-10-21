@@ -9,6 +9,7 @@ import type { PickedHunk } from "@cerium/rpc";
 
 import { Git } from "../src/git.ts";
 import { GitChanges, linePatch, parentFolders, parseStatusV2, rawHunks } from "../src/gitChanges.ts";
+import { madeOnce } from "./repositories.ts";
 
 describe("git status", () => {
   it("splits each file into what's staged, what isn't and what's conflicted", () => {
@@ -158,6 +159,30 @@ const git = Effect.fn("git")(function* (cwd: string, ...args: Array<string>) {
   );
 });
 
+/** A repository on `main` whose first commit holds `.gitignore`, `src/app.ts` and `README.md`. */
+const first = madeOnce(
+  Effect.fn("first")(function* (root: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    yield* git(root, "init", "-q", "-b", "main");
+    yield* git(root, "config", "core.autocrlf", "false");
+    yield* git(root, "config", "user.name", "Test");
+    yield* git(root, "config", "user.email", "test@example.com");
+    // The machine's own settings stay out of it: no signing, and only the repository's own hooks.
+    yield* git(root, "config", "commit.gpgsign", "false");
+    yield* git(root, "config", "core.hooksPath", ".git/hooks");
+    yield* fs.makeDirectory(path.join(root, "src"));
+    yield* fs.writeFileString(path.join(root, ".gitignore"), "*.log\n");
+    yield* fs.writeFileString(
+      path.join(root, "src", "app.ts"),
+      "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+    );
+    yield* fs.writeFileString(path.join(root, "README.md"), "# Title\n");
+    yield* git(root, "add", "-A");
+    yield* git(root, "commit", "-q", "-m", "first");
+  }),
+);
+
 export const repository = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -167,18 +192,7 @@ export const repository = Effect.gen(function* () {
       .makeDirectory(path.dirname(path.join(root, name)), { recursive: true })
       .pipe(Effect.andThen(fs.writeFileString(path.join(root, name), text)));
   const read = (name: string) => fs.readFileString(path.join(root, name));
-  yield* git(root, "init", "-q", "-b", "main");
-  yield* git(root, "config", "core.autocrlf", "false");
-  yield* git(root, "config", "user.name", "Test");
-  yield* git(root, "config", "user.email", "test@example.com");
-  // The machine's own settings stay out of it: no signing, and only the repository's own hooks.
-  yield* git(root, "config", "commit.gpgsign", "false");
-  yield* git(root, "config", "core.hooksPath", ".git/hooks");
-  yield* write(".gitignore", "*.log\n");
-  yield* write("src/app.ts", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n");
-  yield* write("README.md", "# Title\n");
-  yield* git(root, "add", "-A");
-  yield* git(root, "commit", "-q", "-m", "first");
+  yield* first(root);
   return { root, write, read, fs, path, git: (...args: Array<string>) => git(root, ...args) };
 });
 
