@@ -35,8 +35,8 @@ export const UsageMeter = Schema.Struct({
 export type UsageMeter = typeof UsageMeter.Type;
 
 /**
- * A harness's subscription usage, or why it couldn't be read. Harnesses signed in without a
- * subscription (an API key, a free plan) report nothing, so they have no entry at all.
+ * A harness's subscription usage, or why it couldn't be read. Harnesses signed in without a plan
+ * that has limits (an API key) report nothing, so they have no entry at all.
  */
 export const ProviderUsage = Schema.Union([
   Schema.TaggedStruct("Subscribed", {

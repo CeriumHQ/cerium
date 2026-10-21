@@ -36,8 +36,8 @@ const decodeRateLimits = Schema.decodeUnknownEffect(CodexRateLimits);
 
 /** The bucket every Codex model draws from; others are named for the models they meter. */
 const MAIN_BUCKET = "codex";
-/** Plans without a subscription behind them. */
-const UNSUBSCRIBED = new Set(["free", "unknown"]);
+/** A plan Codex can't name, which has no limits to show. The free plan has its own, so it shows. */
+const UNKNOWN_PLAN = "unknown";
 
 const DAY = 24 * 60;
 
@@ -74,10 +74,10 @@ const toMeters = (snapshot: typeof Snapshot.Type): ReadonlyArray<UsageMeter> => 
   });
 };
 
-/** The plan's meters, main bucket first; `None` for a free plan or an API key. */
+/** The plan's meters, main bucket first; `None` for an API key or a plan Codex can't name. */
 export const toCodexReport = (limits: CodexRateLimits): Option.Option<SubscriptionReport> => {
   const plan = limits.rateLimits.planType;
-  if (plan === null || UNSUBSCRIBED.has(plan)) return Option.none();
+  if (plan === null || plan === UNKNOWN_PLAN) return Option.none();
   const buckets = Object.values(limits.rateLimitsByLimitId ?? {}).filter((each) => each !== undefined);
   const ordered = buckets.length === 0 ? [limits.rateLimits] : buckets;
   const main = ordered.filter((each) => each.limitId === null || each.limitId === MAIN_BUCKET);

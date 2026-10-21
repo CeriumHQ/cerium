@@ -63,7 +63,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
           What's left of each subscription's limits.
           <InfoTip label="About usage">
             Each harness reports its own limits, and Cerium shows them as they are. Harnesses signed in with
-            an API key or a free plan have none to show, and Cursor and OpenCode don't report theirs yet.
+            an API key have none to show, and Cursor and OpenCode don't report theirs yet.
           </InfoTip>
         </span>
       }

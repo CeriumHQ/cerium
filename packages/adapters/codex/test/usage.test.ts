@@ -54,19 +54,36 @@ describe("toCodexReport", () => {
     );
   });
 
-  it("reports nothing for a free plan or an API key", () => {
+  it("reports the free plan's own monthly limit", () => {
     // The free plan's answer, as a live account gave it.
     const free = snapshot({
-      primary: { usedPercent: 7, windowDurationMins: 43200, resetsAt: 1794865638 },
+      primary: { usedPercent: 10, windowDurationMins: 43200, resetsAt: 1794865638 },
       secondary: null,
       planType: "free",
     });
-    expect(toCodexReport(decode({ rateLimits: free, rateLimitsByLimitId: { codex: free } }))).toEqual(
-      Option.none(),
-    );
     expect(
-      toCodexReport(decode({ rateLimits: snapshot({ planType: null }), rateLimitsByLimitId: null })),
-    ).toEqual(Option.none());
+      toCodexReport(
+        decode({
+          rateLimits: free,
+          rateLimitsByLimitId: { codex: free },
+          rateLimitResetCredits: { availableCount: 3, credits: null },
+        }),
+      ),
+    ).toEqual(
+      Option.some({
+        plan: "free",
+        meters: [{ label: "Monthly limit", usedPercent: 10, resetsAt: 1794865638000, windowMinutes: 43200 }],
+        resetCredits: 3,
+      }),
+    );
+  });
+
+  it("reports nothing for an API key or a plan Codex can't name", () => {
+    for (const planType of [null, "unknown"]) {
+      expect(
+        toCodexReport(decode({ rateLimits: snapshot({ planType }), rateLimitsByLimitId: null })),
+      ).toEqual(Option.none());
+    }
   });
 });
 
