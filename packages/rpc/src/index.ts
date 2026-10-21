@@ -50,9 +50,11 @@ import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
+import { GitHubRpcs } from "./github.ts";
 import { TerminalRpcs } from "./terminal.ts";
 
 export * from "./files.ts";
+export * from "./github.ts";
 export * from "./terminal.ts";
 
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
@@ -64,7 +66,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 12;
+export const RPC_VERSION = 16;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
@@ -444,7 +446,7 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
-).merge(TerminalRpcs);
+).merge(TerminalRpcs, GitHubRpcs);
 
 /**
  * What a device answers its own UI about itself: its Cerium account, the account's threads,

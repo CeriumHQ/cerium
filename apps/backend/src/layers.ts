@@ -28,6 +28,7 @@ import { Notifications } from "./notify.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
 import { Files } from "./files.ts";
+import { GitHub } from "./github.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { CloudCopy } from "./sync.ts";
@@ -173,6 +174,8 @@ export const backendLayer = (options: BackendOptions) =>
     // Snapshots of work threads' folders, so the user can put them back as they were before a message.
     Layer.provideMerge(checkpointsLayer({ directory: join(options.dataDirectory, "checkpoints") })),
     Layer.provideMerge(Files.layer),
+    // The user's own `gh`, for GitHub's pull requests and issues.
+    Layer.provideMerge(GitHub.layer),
     Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
     Layer.provideMerge(Projects.layer),
     Layer.provideMerge(

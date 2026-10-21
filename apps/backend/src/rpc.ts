@@ -20,6 +20,8 @@ import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
 import { Files, type FilesError } from "./files.ts";
+import { GitHub } from "./github.ts";
+import { githubHandlers } from "./githubPulls.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { spendReport } from "./spend.ts";
@@ -72,6 +74,7 @@ export const Handlers = MachineRpcs.toLayer(
     const settings = yield* UserSettings;
     const workspace = yield* Workspace;
     const files = yield* Files;
+    const github = yield* GitHub;
     const projects = yield* Projects;
     const terminals = yield* Terminals;
     const store = yield* Store;
@@ -258,6 +261,7 @@ export const Handlers = MachineRpcs.toLayer(
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       ...terminalHandlers(terminals),
+      ...githubHandlers(github),
     });
   }),
 );
