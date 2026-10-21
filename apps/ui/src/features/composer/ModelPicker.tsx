@@ -3,7 +3,7 @@ import { Switch } from "@base-ui/react/switch";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ModelInfo, ProviderId } from "@cerium/protocol";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -131,7 +131,6 @@ export function ModelPicker({
         ) : (
           <span className="text-fg-tertiary">Finding models…</span>
         )}
-        <ChevronDown size={12} strokeWidth={2} className="text-fg-tertiary" />
       </Combobox.Trigger>
       <MenuPopup
         {...menu}
@@ -201,7 +200,6 @@ export function ModelsPicker({
           </span>
         ) : null}
         <span className="font-medium text-fg-primary">{label}</span>
-        <ChevronDown size={12} strokeWidth={2} className="text-fg-tertiary" />
       </Combobox.Trigger>
       <MenuPopup
         {...menu}

@@ -1,7 +1,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import type { ProjectInfo } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Check, ChevronDown, FolderOpen, FolderPlus, Search, X } from "lucide-react";
+import { Check, FolderOpen, FolderPlus, Search, X } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useState, type RefObject } from "react";
 
@@ -116,7 +116,6 @@ export function ProjectPicker({
             <FolderOpen size={13} strokeWidth={1.75} className="shrink-0" />
           )}
           <span className="truncate font-medium">{folder ? projectName(folder) : "Choose project"}</span>
-          <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-fg-tertiary" />
         </Combobox.Trigger>
       </Tooltip>
       <Combobox.Portal>

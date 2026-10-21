@@ -1,6 +1,7 @@
+import { Select as BaseSelect } from "@base-ui/react/select";
 import { FolderGit2, GitBranch, GitBranchPlus } from "lucide-react";
 
-import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import { SelectItem, SelectPopup, SelectRoot, triggerClass } from "../../components/ui/Select.tsx";
 import { FixedChip } from "./Pickers.tsx";
 
 /**
@@ -25,10 +26,11 @@ export function WorktreePicker({
         if (picked !== null) onPick(picked === "worktree");
       }}
     >
-      <SelectTrigger label="Where agents work">
+      {/* The second step of the box's path (project / here), so it goes without a chevron like the first. */}
+      <BaseSelect.Trigger aria-label="Where agents work" className={triggerClass}>
         <Icon size={13} strokeWidth={1.75} />
         {value ? "Worktree" : "Local"}
-      </SelectTrigger>
+      </BaseSelect.Trigger>
       <SelectPopup>
         <SelectItem value="local" icon={FolderGit2} description={`In the project's folder, on ${branch}`}>
           Local

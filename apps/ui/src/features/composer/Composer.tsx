@@ -10,7 +10,7 @@ import {
 } from "@cerium/protocol";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ArrowUp, Gauge, Paperclip, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Square } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -72,7 +72,7 @@ import {
   type ModelSwitch,
 } from "./models.ts";
 import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
-import { AccessPicker, EffortPicker, FixedChip } from "./Pickers.tsx";
+import { AccessPicker, EffortMeter, EffortPicker, FixedChip, ModelWell } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
@@ -648,90 +648,110 @@ export function Composer({
   const threadSetup =
     thread && threadShown ? (
       <>
-        {switching?.model ? (
-          <ModelPicker
-            models={models}
-            shown={threadShown}
-            providers={[thread.provider]}
-            available={new Set([thread.provider])}
-            onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort))}
-            {...(running ? { note: "Applies from the next turn" } : {})}
-          />
-        ) : (
-          <FixedChip
-            tip={
-              AsyncResult.isFailure(manifests)
-                ? "Update Cerium on that computer to switch models"
-                : switching
-                  ? `${providerName[thread.provider]} can't switch models mid-thread`
-                  : "The model this thread started with"
-            }
-          >
-            <ProviderLogo provider={thread.provider} size={13} />
-            <span className="font-medium text-fg-primary">{threadShown.label}</span>
-          </FixedChip>
-        )}
-        {threadModel && threadEffort ? (
-          switching?.effort ? (
-            <EffortPicker
-              efforts={threadModel.efforts}
-              value={threadEffort}
-              onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
-            />
-          ) : (
-            <FixedChip tip="The effort this thread started with">
-              <Gauge size={13} strokeWidth={1.75} />
-              {effortLabel[threadEffort]}
-            </FixedChip>
-          )
-        ) : null}
+        <ModelWell
+          model={
+            switching?.model ? (
+              <ModelPicker
+                models={models}
+                shown={threadShown}
+                providers={[thread.provider]}
+                available={new Set([thread.provider])}
+                onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort))}
+                {...(running ? { note: "Applies from the next turn" } : {})}
+              />
+            ) : (
+              <FixedChip
+                tip={
+                  AsyncResult.isFailure(manifests)
+                    ? "Update Cerium on that computer to switch models"
+                    : switching
+                      ? `${providerName[thread.provider]} can't switch models mid-thread`
+                      : "The model this thread started with"
+                }
+              >
+                <ProviderLogo provider={thread.provider} size={13} />
+                <span className="font-medium text-fg-primary">{threadShown.label}</span>
+              </FixedChip>
+            )
+          }
+          effort={
+            threadModel && threadEffort ? (
+              switching?.effort ? (
+                <EffortPicker
+                  efforts={threadModel.efforts}
+                  value={threadEffort}
+                  onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
+                />
+              ) : (
+                <FixedChip tip="The effort this thread started with">
+                  {threadModel.efforts.length > 1 ? (
+                    <EffortMeter
+                      efforts={threadModel.efforts}
+                      level={threadModel.efforts.indexOf(threadEffort)}
+                    />
+                  ) : null}
+                  <span className="text-[12px]">{effortLabel[threadEffort]}</span>
+                </FixedChip>
+              )
+            ) : undefined
+          }
+        />
         {thread.worktree ? <WorktreeChip {...thread.worktree} /> : null}
       </>
     ) : null;
 
-  // A new thread's setup splits in two: what runs sits in the box, beside the message; where it
-  // runs and what it may do sit just under the box, so the box's own row stays uncrowded.
+  // A new thread's setup splits in two: what runs sits in the box's toolbar, beside the message;
+  // where it runs and what it may do head the box, so the toolbar stays uncrowded.
   const newSetup =
     target.kind === "new" ? (
-      <>
-        {multi ? (
-          <ModelsPicker
-            models={models}
-            chosen={starting}
-            providers={providers}
-            available={target.available}
-            max={MAX_AGENTS}
-            open={modelsOpen}
-            onOpenChange={setModelsOpen}
-            onPick={(keys) => pickForDraft({ models: keys })}
-            onSingle={() => setMulti(false)}
-            // Agents that may edit share the one folder, where they can undo each other's work.
-            {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
-              ? { note: "They share the folder, so their edits can collide" }
-              : {})}
-          />
-        ) : (
-          <ModelPicker
-            models={models}
-            shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
-            providers={providers}
-            available={target.available}
-            // Shared with multi agent's menu, so switching between them keeps the menu open.
-            open={modelsOpen}
-            onOpenChange={setModelsOpen}
-            onPick={(picked) => setModelId(modelKey(picked))}
-            {...(models.filter((each) => target.available.has(each.provider)).length > 1
-              ? { onMulti: () => setMulti(true) }
-              : {})}
-          />
-        )}
-        {activeEffort ? <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} /> : null}
-      </>
+      <ModelWell
+        model={
+          multi ? (
+            <ModelsPicker
+              models={models}
+              chosen={starting}
+              providers={providers}
+              available={target.available}
+              max={MAX_AGENTS}
+              open={modelsOpen}
+              onOpenChange={setModelsOpen}
+              onPick={(keys) => pickForDraft({ models: keys })}
+              onSingle={() => setMulti(false)}
+              // Agents that may edit share the one folder, where they can undo each other's work.
+              {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
+                ? { note: "They share the folder, so their edits can collide" }
+                : {})}
+            />
+          ) : (
+            <ModelPicker
+              models={models}
+              shown={
+                model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined
+              }
+              providers={providers}
+              available={target.available}
+              // Shared with multi agent's menu, so switching between them keeps the menu open.
+              open={modelsOpen}
+              onOpenChange={setModelsOpen}
+              onPick={(picked) => setModelId(modelKey(picked))}
+              {...(models.filter((each) => target.available.has(each.provider)).length > 1
+                ? { onMulti: () => setMulti(true) }
+                : {})}
+            />
+          )
+        }
+        effort={
+          activeEffort ? (
+            <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} />
+          ) : undefined
+        }
+      />
     ) : null;
 
+  // Where a new work thread runs, as a path (project / folder or worktree), and what its agents may do.
   const newPlace =
     target.kind === "new" && target.mode === "work" ? (
-      <div className="pointer-events-auto flex min-w-0 flex-wrap items-center gap-0.5 px-2 pt-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-0.5 px-2 pt-2">
         <ProjectPicker
           folder={target.folder}
           open={projectsOpen}
@@ -744,16 +764,21 @@ export function Composer({
           }}
         />
         {gitFolder !== undefined && branch !== undefined ? (
-          <WorktreePicker
-            branch={branch}
-            value={worktree}
-            onPick={(picked) => {
-              setWorkplace(picked ? "worktree" : "local");
-              pickForDraft({ worktree: picked });
-            }}
-          />
+          <>
+            <span aria-hidden className="text-[12px] text-fg-disabled">
+              /
+            </span>
+            <WorktreePicker
+              branch={branch}
+              value={worktree}
+              onPick={(picked) => {
+                setWorkplace(picked ? "worktree" : "local");
+                pickForDraft({ worktree: picked });
+              }}
+            />
+          </>
         ) : null}
-        <div className="ml-auto">
+        <div className="ml-auto pl-2">
           <AccessPicker value={access} onPick={setAccess} />
         </div>
       </div>
@@ -795,6 +820,7 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
+          {oneLine ? null : newPlace}
           {draft.attachments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
@@ -850,7 +876,6 @@ export function Composer({
             </div>
           )}
         </div>
-        {oneLine ? null : newPlace}
       </div>
     </div>
   );

@@ -41,6 +41,8 @@
   --surface-hover: oklch(1 0 0 / 0.05);
   --surface-active: oklch(1 0 0 / 0.085);
   --surface-selected: oklch(1 0 0 / 0.09);
+  /* Set into a surface rather than raised from it: the message box's model and effort. */
+  --surface-sunken: oklch(0 0 0 / 0.22);
 
   --line-subtle: oklch(1 0 0 / 0.07);
   --line-strong: oklch(1 0 0 / 0.14);
@@ -105,6 +107,7 @@
   --surface-hover: oklch(0 0 0 / 0.04);
   --surface-active: oklch(0 0 0 / 0.07);
   --surface-selected: oklch(0 0 0 / 0.07);
+  --surface-sunken: oklch(0 0 0 / 0.045);
 
   --line-subtle: oklch(0 0 0 / 0.07);
   --line-strong: oklch(0 0 0 / 0.14);
@@ -174,6 +177,7 @@
   --color-surface-hover: var(--surface-hover);
   --color-surface-active: var(--surface-active);
   --color-surface-selected: var(--surface-selected);
+  --color-surface-sunken: var(--surface-sunken);
 
   --color-line-subtle: var(--line-subtle);
   --color-line-strong: var(--line-strong);
