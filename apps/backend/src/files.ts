@@ -42,11 +42,11 @@ const BATCH_WINDOW = "300 millis";
 /** The part of a file the viewer reads as text; a longer one is shown up to here. */
 export const PREVIEW_BYTES = 2 * 1024 * 1024;
 /** What a diff may take of git's output. */
-const DIFF_BYTES = 4 * 1024 * 1024;
+export const DIFF_BYTES = 4 * 1024 * 1024;
 /** Lines of a diff that are sent. */
 const MAX_DIFF_LINES = 20_000;
 /** Unchanged lines around each change, unless the viewer asks for more. */
-const DIFF_CONTEXT = 3;
+export const DIFF_CONTEXT = 3;
 /** The largest media file the viewer takes in: it holds the whole of it to play. */
 export const MAX_MEDIA_BYTES = 512 * 1024 * 1024;
 /** How much of a media file one piece of `readBytes` carries, before base64. */
@@ -210,6 +210,17 @@ export const limitHunks = (
     }
   }
   return { hunks: kept, truncated: false };
+};
+
+/** A file's diff as the viewer takes it from git's output, cut to what's sent. */
+export const fileDiffOf = (stdout: string, truncated: boolean): FileDiff => {
+  const { hunks, binary } = parseDiff(stdout);
+  const limited = limitHunks(hunks, MAX_DIFF_LINES);
+  return {
+    hunks: limited.hunks,
+    ...(binary ? { binary: true as const } : {}),
+    ...(truncated || limited.truncated ? { truncated: true as const } : {}),
+  };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -585,22 +596,13 @@ export class Files extends Context.Service<
           return yield* new FilesError({ message: "Git isn't tracking this folder." });
         const paths = [relative, ...(from === undefined ? [] : [from])];
         const unified = `-U${Math.max(0, Math.floor(context))}`;
-        const parse = (stdout: string, truncated: boolean): FileDiff => {
-          const { hunks, binary } = parseDiff(stdout);
-          const limited = limitHunks(hunks, MAX_DIFF_LINES);
-          return {
-            hunks: limited.hunks,
-            ...(binary ? { binary: true as const } : {}),
-            ...(truncated || limited.truncated ? { truncated: true as const } : {}),
-          };
-        };
         const failed = refuse("Git couldn't compare that file.");
         const tracked = yield* git(
           base,
           ["diff", "HEAD", "--no-color", "--no-ext-diff", "--no-textconv", "-M", unified, "--", ...paths],
           { limit: DIFF_BYTES },
         ).pipe(Effect.mapError(failed));
-        const result = parse(tracked.stdout, tracked.truncated);
+        const result = fileDiffOf(tracked.stdout, tracked.truncated);
         const compared = tracked.code === 0 || tracked.truncated;
         if (compared && (result.hunks.length > 0 || result.binary === true)) return result;
         // Nothing to show: the file is unchanged, or git has nothing to compare it with, because it
@@ -633,7 +635,7 @@ export class Files extends Context.Service<
           ],
           { limit: DIFF_BYTES },
         ).pipe(Effect.mapError(failed));
-        return parse(added.stdout, added.truncated);
+        return fileDiffOf(added.stdout, added.truncated);
       });
 
       /** What changes under `folder`, as `classify` reads each path the OS reports there. */

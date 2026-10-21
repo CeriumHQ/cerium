@@ -3,8 +3,10 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import type { PickedHunk } from "@cerium/rpc";
+
 import { Git } from "../src/git.ts";
-import { GitChanges, parseStatusV2 } from "../src/gitChanges.ts";
+import { GitChanges, linePatch, parentFolders, parseStatusV2, rawHunks } from "../src/gitChanges.ts";
 
 describe("git status", () => {
   it("splits each file into what's staged, what isn't and what's conflicted", () => {
@@ -32,6 +34,111 @@ describe("git status", () => {
       { path: "src/both changed.ts", state: "modified" },
     ]);
     expect(conflicted).toEqual([{ path: "fight.ts", state: "conflicted" }]);
+  });
+
+  it("names the folders a path is in, nearest first", () => {
+    expect(parentFolders("a/b/c.ts")).toEqual(["a/b", "a"]);
+    expect(parentFolders("top.ts")).toEqual([]);
+  });
+});
+
+describe("line patches", () => {
+  const diff = [
+    "diff --git a/f.txt b/f.txt",
+    "--- a/f.txt",
+    "+++ b/f.txt",
+    "@@ -1,4 +1,4 @@",
+    " a",
+    "-b",
+    "+B",
+    "+new\r",
+    " c",
+    " d",
+    "@@ -10,2 +10,2 @@",
+    " j",
+    "-k",
+    "\\ No newline at end of file",
+    "+K",
+    "\\ No newline at end of file",
+    "",
+  ].join("\n");
+  const hunks = rawHunks(diff);
+
+  it("reads each line as the file has it", () => {
+    expect(hunks[0]!.lines.map((line) => line.raw)).toEqual(["a", "b", "B", "new\r", "c", "d"]);
+    expect(hunks[1]!.lines.map((line) => line.noNewline)).toEqual([false, true, true]);
+  });
+
+  it("stages the picked lines and keeps the others as the index has them", () => {
+    const patch = linePatch(
+      "f.txt",
+      hunks,
+      [
+        [false, true, false, true],
+        [false, true, true],
+      ],
+      false,
+    );
+    expect(patch).toBe(
+      [
+        "diff --git a/f.txt b/f.txt",
+        "--- a/f.txt",
+        "+++ b/f.txt",
+        "@@ -1,4 +1,4 @@",
+        " a",
+        "-b",
+        "+new\r",
+        " c",
+        " d",
+        "@@ -10,2 +10,2 @@",
+        " j",
+        "-k",
+        "\\ No newline at end of file",
+        "+K",
+        "\\ No newline at end of file",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("takes the picked lines out of the side they're on, moving the hunks after them", () => {
+    // Unpicking `-b` drops it; unpicking `+B` keeps it as a line the index has.
+    const patch = linePatch(
+      "f.txt",
+      hunks,
+      [
+        [false, false, false, true],
+        [false, true, true],
+      ],
+      true,
+    );
+    expect(patch?.split("\n").slice(3)).toEqual([
+      "@@ -1,4 +1,5 @@",
+      " a",
+      " B",
+      "+new\r",
+      " c",
+      " d",
+      "@@ -9,2 +10,2 @@",
+      " j",
+      "-k",
+      "\\ No newline at end of file",
+      "+K",
+      "\\ No newline at end of file",
+      "",
+    ]);
+  });
+
+  it("leaves out hunks with nothing picked, and makes nothing of no picks", () => {
+    expect(linePatch("f.txt", hunks, [[], [false, true, true]], false)?.split("\n")[3]).toBe(
+      "@@ -10,2 +10,2 @@",
+    );
+    expect(linePatch("f.txt", hunks, [[true, false, false, false, true]], false)).toBeUndefined();
+  });
+
+  it("quotes a path the way git does when it holds a quote or a tab", () => {
+    const patch = linePatch('a "b"\tc.txt', hunks, [[false, true]], false);
+    expect(patch?.split("\n")[0]).toBe('diff --git "a/a \\"b\\"\\tc.txt" "b/a \\"b\\"\\tc.txt"');
   });
 });
 
@@ -62,6 +169,9 @@ export const repository = Effect.gen(function* () {
   yield* git(root, "config", "core.autocrlf", "false");
   yield* git(root, "config", "user.name", "Test");
   yield* git(root, "config", "user.email", "test@example.com");
+  // The machine's own settings stay out of it: no signing, and only the repository's own hooks.
+  yield* git(root, "config", "commit.gpgsign", "false");
+  yield* git(root, "config", "core.hooksPath", ".git/hooks");
   yield* write(".gitignore", "*.log\n");
   yield* write("src/app.ts", "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n");
   yield* write("README.md", "# Title\n");
@@ -70,7 +180,7 @@ export const repository = Effect.gen(function* () {
   return { root, write, read, fs, path, git: (...args: Array<string>) => git(root, ...args) };
 });
 
-describe("GitChanges", () => {
+describe("GitChanges", { timeout: 30_000 }, () => {
   it.effect("lists the whole repository's changes from a folder inside it, relative to its top", () =>
     Effect.gen(function* () {
       const changes = yield* GitChanges;
@@ -89,6 +199,254 @@ describe("GitChanges", () => {
         { path: "src/app.ts", state: "modified" },
       ]);
       assert.deepStrictEqual(status.conflicted, []);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("stages, unstages and discards a file, a folder or everything", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, read, fs, path } = yield* repository;
+      yield* write("src/app.ts", "changed\n");
+      yield* write("src/new/fresh.ts", "fresh\n");
+      yield* write("README.md", "# Changed\n");
+      yield* write("src/debug.log", "ignored\n");
+      const paths = (list: ReadonlyArray<{ readonly path: string }>) => list.map((change) => change.path);
+
+      yield* changes.stage(root, ["src/"]);
+      let status = yield* changes.status(root);
+      assert.deepStrictEqual(paths(status.staged), ["src/app.ts", "src/new/fresh.ts"]);
+      assert.deepStrictEqual(paths(status.unstaged), ["README.md"]);
+
+      yield* changes.unstage(root, ["src/new/fresh.ts"]);
+      status = yield* changes.status(root);
+      assert.deepStrictEqual(paths(status.staged), ["src/app.ts"]);
+
+      yield* changes.stage(root, [""]);
+      assert.deepStrictEqual(paths((yield* changes.status(root)).staged), [
+        "README.md",
+        "src/app.ts",
+        "src/new/fresh.ts",
+      ]);
+      yield* changes.unstage(root, [""]);
+      assert.deepStrictEqual((yield* changes.status(root)).staged, []);
+
+      // What's staged stays when what isn't goes.
+      yield* changes.stage(root, ["README.md"]);
+      yield* write("README.md", "# Changed again\n");
+      yield* changes.discard(root, [""]);
+      status = yield* changes.status(root);
+      assert.deepStrictEqual(paths(status.staged), ["README.md"]);
+      assert.deepStrictEqual(status.unstaged, []);
+      assert.strictEqual(yield* read("README.md"), "# Changed\n");
+      assert.strictEqual(
+        yield* read("src/app.ts"),
+        "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
+      );
+      assert.isFalse(yield* fs.exists(path.join(root, "src/new")));
+      assert.isTrue(yield* fs.exists(path.join(root, "src/debug.log")));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("discards a new folder without touching the files git knows", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, read, fs, path } = yield* repository;
+      yield* write("src/app.ts", "changed\n");
+      yield* write("docs/a.md", "a\n");
+      yield* write("docs/deep/b.md", "b\n");
+      yield* changes.discard(root, ["docs"]);
+      assert.isFalse(yield* fs.exists(path.join(root, "docs")));
+      assert.strictEqual(yield* read("src/app.ts"), "changed\n");
+      // One new file whose folders held nothing else takes them along, up to a folder git knows.
+      yield* write("src/new/deep/only.ts", "only\n");
+      yield* changes.discard(root, ["src/new/deep/only.ts"]);
+      assert.isFalse(yield* fs.exists(path.join(root, "src/new")));
+      assert.isTrue(yield* fs.exists(path.join(root, "src")));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("unstages before the first commit", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped();
+      yield* git(root, "init", "-q");
+      yield* fs.writeFileString(path.join(root, "a.txt"), "a\n");
+      yield* changes.stage(root, ["a.txt"]);
+      assert.strictEqual((yield* changes.status(root)).staged.length, 1);
+      yield* changes.unstage(root, ["a.txt"]);
+      const status = yield* changes.status(root);
+      assert.deepStrictEqual(status.staged, []);
+      assert.deepStrictEqual(status.unstaged, [{ path: "a.txt", state: "untracked" }]);
+      assert.strictEqual(yield* changes.lastMessage(root), "");
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("diffs each side of a file, and a new file whole", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, git } = yield* repository;
+      yield* write("README.md", "# Staged\n");
+      yield* git("add", "README.md");
+      yield* write("README.md", "# Unstaged\n");
+      yield* write("new.txt", "new\n");
+      const lines = (diff: { readonly hunks: ReadonlyArray<{ readonly lines: ReadonlyArray<unknown> }> }) =>
+        diff.hunks.flatMap((hunk) => hunk.lines);
+      assert.deepStrictEqual(lines(yield* changes.diff(root, "README.md", "staged")), [
+        { kind: "removed", text: "# Title" },
+        { kind: "added", text: "# Staged" },
+      ]);
+      assert.deepStrictEqual(lines(yield* changes.diff(root, "README.md", "unstaged")), [
+        { kind: "removed", text: "# Staged" },
+        { kind: "added", text: "# Unstaged" },
+      ]);
+      assert.deepStrictEqual(lines(yield* changes.diff(root, "new.txt", "unstaged")), [
+        { kind: "added", text: "new" },
+      ]);
+      assert.deepStrictEqual(yield* changes.diff(root, "src/app.ts", "unstaged"), { hunks: [] });
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  /** `diff`'s hunks with the lines `pick` chooses picked. */
+  const picking = (
+    hunks: ReadonlyArray<{
+      readonly oldStart: number;
+      readonly newStart: number;
+      readonly lines: ReadonlyArray<{
+        readonly kind: "context" | "removed" | "added";
+        readonly text: string;
+      }>;
+    }>,
+    pick: (line: { readonly kind: string; readonly text: string }) => boolean,
+  ): ReadonlyArray<PickedHunk> =>
+    hunks.map((hunk) => ({ ...hunk, lines: hunk.lines.map((line) => ({ ...line, picked: pick(line) })) }));
+
+  it.effect("stages, unstages and discards picked lines", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, read, git } = yield* repository;
+      const original = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n";
+      yield* write("src/app.ts", "one\nTWO\nthree\nfour\nfive\nextra\nsix\nseven\neight\nnine\nten\n");
+      const staged = () => git("show", ":src/app.ts");
+
+      const unstaged = yield* changes.diff(root, "src/app.ts", "unstaged");
+      yield* changes.applyLines(
+        root,
+        "src/app.ts",
+        "stage",
+        picking(unstaged.hunks, (line) => line.text.toLowerCase() === "two"),
+      );
+      assert.strictEqual(yield* staged(), original.replace("two", "TWO"));
+
+      const stagedDiff = yield* changes.diff(root, "src/app.ts", "staged");
+      yield* changes.applyLines(
+        root,
+        "src/app.ts",
+        "unstage",
+        picking(stagedDiff.hunks, (line) => line.kind === "added"),
+      );
+      // Unstaging only the new line leaves the old one's removal staged.
+      assert.strictEqual(yield* staged(), original.replace("two\n", ""));
+      yield* changes.unstage(root, ["src/app.ts"]);
+
+      const again = yield* changes.diff(root, "src/app.ts", "unstaged");
+      yield* changes.applyLines(
+        root,
+        "src/app.ts",
+        "discard",
+        picking(again.hunks, (line) => line.text === "extra"),
+      );
+      assert.strictEqual(yield* read("src/app.ts"), original.replace("two", "TWO"));
+      assert.strictEqual(yield* staged(), original);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("keeps a file's line endings and its missing last newline", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, git } = yield* repository;
+      yield* write("crlf.txt", "a\r\nb\r\nc\r\n");
+      yield* write("open.txt", "x\ny");
+      yield* git("add", "-A");
+      yield* git("commit", "-q", "-m", "files");
+      yield* write("crlf.txt", "a\r\nB\r\nc\r\n");
+      yield* write("open.txt", "x\nY");
+      for (const file of ["crlf.txt", "open.txt"]) {
+        const diff = yield* changes.diff(root, file, "unstaged");
+        yield* changes.applyLines(
+          root,
+          file,
+          "stage",
+          picking(diff.hunks, (line) => line.kind !== "context"),
+        );
+      }
+      assert.strictEqual(yield* git("show", ":crlf.txt"), "a\r\nB\r\nc\r\n");
+      assert.strictEqual(yield* git("show", ":open.txt"), "x\nY");
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("refuses lines picked in a diff that has changed since", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write } = yield* repository;
+      yield* write("README.md", "# One\n");
+      const diff = yield* changes.diff(root, "README.md", "unstaged");
+      yield* write("README.md", "# Two\n");
+      const error = yield* Effect.flip(
+        changes.applyLines(
+          root,
+          "README.md",
+          "stage",
+          picking(diff.hunks, () => true),
+        ),
+      );
+      assert.match(error.message, /changed since/);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("commits what's staged, everything, or amends the last commit", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, git } = yield* repository;
+      assert.match((yield* Effect.flip(changes.commit(root, "Nothing"))).message, /Nothing is staged/);
+      yield* write("README.md", "# Changed\n");
+      yield* write("new.txt", "new\n");
+      yield* changes.stage(root, ["README.md"]);
+      assert.match((yield* Effect.flip(changes.commit(root, "  "))).message, /Write a message/);
+
+      const made = yield* changes.commit(root, "Change the title\n\nWith a body.");
+      assert.strictEqual(made.subject, "Change the title");
+      assert.strictEqual(yield* changes.lastMessage(root), "Change the title\n\nWith a body.");
+      assert.deepStrictEqual((yield* changes.status(root)).staged, []);
+
+      yield* changes.commit(root, "Add everything", { all: true });
+      const status = yield* changes.status(root);
+      assert.deepStrictEqual([status.staged, status.unstaged], [[], []]);
+
+      yield* write("README.md", "# Amended\n");
+      yield* changes.stage(root, ["README.md"]);
+      const amended = yield* changes.commit(root, "", { amend: true });
+      assert.strictEqual(amended.subject, "Add everything");
+      assert.strictEqual((yield* git("rev-list", "--count", "HEAD")).trim(), "3");
+      assert.strictEqual(yield* git("show", "HEAD:README.md"), "# Amended\n");
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("says which hook stopped a commit, with what it printed", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, fs, path } = yield* repository;
+      const hook = path.join(root, ".git", "hooks", "pre-commit");
+      yield* fs.makeDirectory(path.dirname(hook), { recursive: true });
+      yield* fs.writeFileString(hook, "#!/bin/sh\necho 'lint: 2 problems' >&2\nexit 1\n");
+      yield* fs.chmod(hook, 0o755);
+      yield* write("README.md", "# Changed\n");
+      yield* changes.stage(root, ["README.md"]);
+      const error = yield* Effect.flip(changes.commit(root, "Blocked"));
+      assert.strictEqual(error.message, "The pre-commit hook stopped the commit.");
+      assert.include(error.output, "lint: 2 problems");
+      assert.strictEqual((yield* changes.status(root)).staged.length, 1);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 

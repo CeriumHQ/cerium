@@ -74,7 +74,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 17;
+export const RPC_VERSION = 18;
 
 /** The oldest backend this UI can drive on another machine. */
 export const MIN_RPC_VERSION = 1;
