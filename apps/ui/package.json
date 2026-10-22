@@ -18,6 +18,7 @@
     "@cerium/protocol": "workspace:*",
     "@cerium/rpc": "workspace:*",
     "@effect/atom-react": "4.0.5",
+    "@fontsource-variable/anybody": "5.3.0",
     "@fontsource-variable/red-hat-mono": "5.3.0",
     "@fontsource-variable/red-hat-text": "5.3.0",
     "@huggingface/transformers": "4.3.1",

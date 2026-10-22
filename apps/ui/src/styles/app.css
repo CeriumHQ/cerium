@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "@fontsource-variable/red-hat-text";
 @import "@fontsource-variable/red-hat-mono";
+/* With its width axis: a new thread's question is set expanded. */
+@import "@fontsource-variable/anybody/wdth.css";
 @import "./tokens.css";
 @import "./themes.css";
 @import "streamdown/styles.css";

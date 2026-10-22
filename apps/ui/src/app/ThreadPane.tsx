@@ -264,7 +264,11 @@ export function ThreadPane({
                   })}
             />
           ) : loading ? null : (
-            <EmptyThread mode={mode} {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})} />
+            <EmptyThread
+              mode={mode}
+              draftKey={draftKey}
+              {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
+            />
           )}
         </div>
 
