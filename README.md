@@ -15,7 +15,6 @@
   <a href="https://github.com/CeriumHQ/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/CeriumHQ/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-f2f2f2?style=flat-square&labelColor=1c1c1c" /></a>
   <img alt="Platforms: Windows and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
-  <img alt="Price: free forever" src="https://img.shields.io/badge/price-free%20forever-3fb950?style=flat-square&labelColor=1c1c1c" />
 </p>
 
 <p>
@@ -25,86 +24,57 @@
   <img alt="Works with OpenCode" src="https://img.shields.io/badge/OpenCode-211e1e?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2IDZIOHYxMmg4VjZ6bTQgMTZINFYyaDE2djIweiIvPjwvc3ZnPg==" />
 </p>
 
-**A desktop harness of harnesses.** Cerium drives Claude Code, Codex, Cursor and OpenCode through
-their own official SDKs, and lets one conversation coordinate agents from all of them at once.
+Claude Code, Codex, Cursor and OpenCode side by side. Ask once, and your lead agent hands each
+piece of the job to the one that does it best.
 
 [**Download**](https://github.com/CeriumHQ/cerium/releases) ·
-[Features](#features) ·
-[How it works](#how-it-works) ·
-[Build from source](#build-from-source) ·
-[Contributing](#contributing)
+[Website](https://cerium.nonlooped.xyz) ·
+[Build from source](#build-from-source)
 
 </div>
 
 <br />
 
 <p align="center">
-  <img src=".github/media/hero.png" alt="A Claude lead hardening a repo while a Codex agent writes its tests and a Cursor agent reviews it, with an approval waiting and the agents panel open" width="100%" />
+  <img src=".github/media/hero.webp" alt="A Claude lead adding rate limiting to a job queue while a Codex agent writes the tests, an OpenCode agent the docs and a Cursor agent reviews the timing, with the agents panel open" width="100%" />
 </p>
 
-## Why Cerium
-
-Every lab now ships a great coding agent, and each one is best at something different. Cerium lets
-you stop choosing. Ask one lead agent for something, and it can hand pieces of the job to agents
-from other providers: Codex writes the tests while Cursor reviews the change and Claude implements
-it, all in one thread you can follow, steer and stop.
-
-- **The real harnesses, not imitations.** Cerium runs no agent loop of its own. Each agent is the
-  harness you already use, with its own tools, models, prompts and behaviour.
-- **Your logins stay yours.** Cerium never reads, stores or forwards tokens or keys. It only checks
-  whether each harness is signed in, and starts that harness's own login when it isn't.
-- **Nothing to configure.** Install the harnesses you want, sign in to them as usual, and Cerium
-  finds them.
-
-## Features
+## What it does
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <h3>🧵 One thread, many providers</h3>
-      A lead agent spawns children from any signed-in harness through Cerium's built-in MCP bus. They
-      work in parallel, message each other within limits, and report back inline.
+      <b>Every harness in one thread</b><br />
+      A lead agent hands work to agents from any harness you're signed in to. They run in parallel,
+      warn each other before touching the same files, and report back to the lead.
     </td>
     <td width="50%" valign="top">
-      <h3>📥 An inbox for your threads</h3>
-      Every project's threads in one list: what needs your approval first, then what's working, then
-      what finished since you looked. Each row shows its project, git branch and the harnesses at work.
+      <b>The real harnesses, on your plans</b><br />
+      Each agent is the harness itself, driven through its official SDK on your own subscription.
+      Cerium never sees a token or key.
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <h3>🛡️ Access you control</h3>
-      Read only, ask first, accept edits or full access, per agent. A child's access can only narrow
-      its lead's. Your leads' approvals arrive as cards with diffs; each lead answers its children's.
+      <b>Answers you can see</b><br />
+      Agents answer with charts, tables and timelines drawn right in the conversation.
     </td>
     <td valign="top">
-      <h3>🔍 Agents panel</h3>
-      Every agent in the thread as a tree: its model, effort, access, tokens, cost and latest message,
-      with usage per provider straight from each harness's own reporting.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h3>📎 Files, skills and images</h3>
-      Type <code>@</code> to tag a file or folder and <code>$</code> to call one of the harness's skills.
-      Paste or drop screenshots and files. Files agents mention show as chips with their icons.
-    </td>
-    <td valign="top">
-      <h3>💬 Work and Chat</h3>
-      Work threads run in a project picked from your saved folders. Chat threads have no folder and
-      keep agents to read-only tools like web search. Rename, archive or delete any of them.
+      <b>Undo any turn</b><br />
+      Take a thread back to before any message, its files included. Give each thread its own git
+      worktree so parallel work never collides.
     </td>
   </tr>
   <tr>
     <td valign="top">
-      <h3>📊 Inline artifacts</h3>
-      Leads answer with visuals when structure matters: boards of results, comparisons, timelines
-      and charts, drawn in a sandboxed frame that loads nothing from the network.
+      <b>Git and GitHub beside the thread</b><br />
+      Review diffs, stage lines and commit, then work through pull requests and issues without
+      leaving the app.
     </td>
     <td valign="top">
-      <h3>🖥️ Native on Windows and Linux</h3>
-      Translucent Acrylic and Windows' own caption buttons, a single AppImage that updates itself on
-      Linux, right-click menus throughout, and keyboard shortcuts for everything you do often.
+      <b>Answer from anywhere</b><br />
+      Sign in on your phone and your computer's threads come along, with a notification when an
+      agent needs you.
     </td>
   </tr>
 </table>
@@ -112,51 +82,26 @@ it, all in one thread you can follow, steer and stop.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src=".github/media/approval.png" alt="An approval card showing the diff of a file edit, with Allow once, Allow for session and Deny" />
-      <p align="center"><sub>Approve edits and commands as they come up</sub></p>
+      <img src=".github/media/artifact.webp" alt="An agent's answer drawn as a view of the test results: 29 of 29 passed, each test file with its tests and how long each took" />
     </td>
     <td width="50%" valign="top">
-      <img src=".github/media/result.png" alt="The lead's summary table of what changed and which agent did it" />
-      <p align="center"><sub>The lead pulls everyone's work together</sub></p>
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <img src=".github/media/tags.png" alt="The message box suggesting files to tag after typing @" />
-      <p align="center"><sub>Tag files with @ and skills with $</sub></p>
-    </td>
-    <td valign="top">
-      <img src=".github/media/menu.png" alt="A thread's right-click menu in the inbox, with rename, archive and delete" />
-      <p align="center"><sub>Right-click menus wherever they help</sub></p>
+      <img src=".github/media/source-control.webp" alt="A file's diff open beside Source control, which lists the project's changed files with Stage and Commit" />
     </td>
   </tr>
 </table>
 
 ## Supported harnesses
 
-| Harness         | Provider  | How Cerium drives it                                                | Sign-in                  |
-| --------------- | --------- | ------------------------------------------------------------------- | ------------------------ |
-| **Claude Code** | Anthropic | Claude Agent SDK, running your installed `claude`                   | `claude` login           |
-| **Codex**       | OpenAI    | `codex app-server` JSON-RPC, with types generated from your install | `codex login`            |
-| **Cursor**      | Cursor    | `@cursor/sdk`, running Cursor's agent locally                       | Cursor's browser sign-in |
-| **OpenCode**    | Anomaly   | `@opencode/client`, over a private `opencode serve` per session     | `opencode auth login`    |
+| Harness         | Driven through                                      | Sign in                  |
+| --------------- | --------------------------------------------------- | ------------------------ |
+| **Claude Code** | Claude Agent SDK, running your installed `claude`   | `claude` login           |
+| **Codex**       | `codex app-server`, with types from your install    | `codex login`            |
+| **Cursor**      | `@cursor/sdk`, running Cursor's agent locally       | Cursor's browser sign-in |
+| **OpenCode**    | `@opencode/client`, over a private `opencode serve` | `opencode auth login`    |
 
-OpenCode runs the free models of OpenCode Zen without any sign-in, so an install alone is enough to
-start.
-
-Muse Code (Meta, `@muse-code/sdk` over `muse serve`) is switched off for now: on Windows, `muse serve`
-fails every sandboxed command even after `muse sandbox windows setup`.
-
-Cerium never bundles a provider's CLI. Each adapter checks your installed version against the range
-it was tested with: newer versions run and are marked untested, and only versions that are too old
-are blocked, with upgrade instructions.
-
-<p align="center">
-  <img src=".github/media/harnesses.png" alt="Harnesses settings showing each installed harness, its version, whether Cerium has tested it and how it's signed in" width="62%" />
-</p>
-
-Cerium is an independent project and is not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-Anysphere or Anomaly. Product names are the trademarks of their owners.
+Install any of them and sign in as usual; Cerium finds them. OpenCode's free models need no sign-in.
+Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Anysphere or
+Anomaly.
 
 ## How it works
 
@@ -171,28 +116,20 @@ flowchart LR
   Claude & Codex & Cursor & OpenCode <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
 ```
 
-- **Adapters** translate each harness's own stream into one canonical event schema. The UI, the
-  store and the orchestrator only ever see those events.
-- **The orchestration bus** is an MCP server Cerium injects into every session. It's the only way an
-  agent spawns another: each harness's native subagents are turned off, so every agent stays
-  visible in the thread.
-- **Everything is an event.** Threads persist as an append-only log in SQLite, so a stopped lead can
-  pick its harness session back up when you message it again, even after a restart.
+Adapters translate each harness's stream into one event schema, stored as an append-only log. Cerium
+runs no agent loop of its own: agents spawn and message each other only through an MCP server it
+injects into every session, so every agent stays visible in the thread.
 
 ## Install
 
-1. Install at least one harness and sign in to it the way you normally would.
-2. Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
-   - **Windows**: run `Cerium-Setup-<version>.exe`.
-   - **Linux**: make `Cerium-<version>-x86_64.AppImage` executable (`chmod +x`) and run it. It needs
-     FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later), and finds your harnesses on the
-     `PATH` your login shell sets up.
-3. Open Cerium. It finds your harnesses on its own; **Settings → Harnesses** shows what it found.
+Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
 
-> [!NOTE]
-> Cerium is in early development and currently ships **nightly** builds for **Windows** and
-> **Linux** (x64 AppImage). macOS is planned. Nightlies and stable releases are the same app: pick a
-> channel in Settings → Updates.
+- **Windows 10 and 11**: run `Cerium-Setup-<version>.exe`.
+- **Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` and run it. It needs FUSE 2 (`libfuse2`, or
+  `libfuse2t64` on Ubuntu 24.04 and later).
+
+Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
+pick in Settings → Updates. macOS is planned.
 
 ## Build from source
 
@@ -202,27 +139,9 @@ Requires [Node.js](https://nodejs.org) 24.11+ and [Bun](https://bun.sh) 1.4+.
 git clone https://github.com/CeriumHQ/cerium.git
 cd cerium
 bun install
-bun run dev          # backend, UI and desktop window in one terminal
+bun run dev      # backend, UI and desktop window; --browser for the UI in your browser
+bun run verify   # format, lint, typecheck and test, as CI does
 ```
-
-| Command                 | What it does                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------- |
-| `bun run dev`           | Backend, UI dev server and Electron window together                                   |
-| `bun run dev --browser` | The same, in your browser (from `localhost:5173`)                                     |
-| `bun run verify`        | Format, lint, typecheck and test, as CI does                                          |
-| `bun run package`       | Build this platform's package (Windows installer or AppImage) into `apps/desktop/out` |
-
-## Built with
-
-<p>
-  <img alt="Electron" src="https://img.shields.io/badge/Electron-1c1c1c?style=flat-square&logo=electron&logoColor=9FEAF9" />
-  <img alt="React" src="https://img.shields.io/badge/React-1c1c1c?style=flat-square&logo=react&logoColor=61DAFB" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-1c1c1c?style=flat-square&logo=typescript&logoColor=3178C6" />
-  <img alt="Effect" src="https://img.shields.io/badge/Effect-1c1c1c?style=flat-square&logo=effect&logoColor=white" />
-  <img alt="Tailwind CSS" src="https://img.shields.io/badge/Tailwind%20CSS-1c1c1c?style=flat-square&logo=tailwindcss&logoColor=06B6D4" />
-  <img alt="Vite" src="https://img.shields.io/badge/Vite+-1c1c1c?style=flat-square&logo=vite&logoColor=A855F7" />
-  <img alt="Bun" src="https://img.shields.io/badge/Bun-1c1c1c?style=flat-square&logo=bun&logoColor=FBF0DF" />
-</p>
 
 ## Contributing
 
@@ -231,4 +150,4 @@ Bug reports, ideas and pull requests are welcome. Security issues go through a
 
 ## License
 
-Cerium is free and open source under the [Apache License 2.0](LICENSE).
+Free and open source under the [Apache License 2.0](LICENSE).
