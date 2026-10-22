@@ -29,6 +29,10 @@ Thumbs.db
 notes/
 *.local.md
 scratch/
-# Personal Claude Code permissions for this machine
-.claude/settings.local.json
+# Local AI tooling and agent instructions: not published
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+skills-lock.json
 **/scripts/_*

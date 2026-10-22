@@ -1,6 +1,6 @@
 import { defineConfig } from "vite-plus";
 
-// Installed agent skills (.agents, .claude) are hash-locked by skills-lock.json; never rewrite them.
+// Local agent skills (.agents, .claude) are hash-locked by skills-lock.json; never rewrite them.
 const ignored = [
   "**/node_modules/**",
   "**/dist/**",

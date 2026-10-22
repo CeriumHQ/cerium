@@ -1,4 +1,4 @@
-// Checks commit messages against the rules in CONTRIBUTING.md: one Conventional Commits subject
+// Checks commit messages against the repository's rules: one Conventional Commits subject
 // line (`type(scope): summary`) with no body and no trailers. CI runs it on every push and pull
 // request.
 //
@@ -65,8 +65,10 @@ for (const { hash, parents, email, lines } of commits) {
 }
 
 if (failed > 0) {
-  console.error(`Commit messages: ${failed} of ${checked} checked break the rules in CONTRIBUTING.md.`);
+  console.error(
+    `Commit messages: ${failed} of ${checked} checked break the rules: one Conventional Commits subject line, no body, no trailers.`,
+  );
   process.exitCode = 1;
 } else {
-  console.log(`Commit messages: ${checked} checked, all follow the rules in CONTRIBUTING.md.`);
+  console.log(`Commit messages: ${checked} checked, all follow the rules.`);
 }

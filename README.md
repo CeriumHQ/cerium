@@ -32,7 +32,7 @@ their own official SDKs, and lets one conversation coordinate agents from all of
 [Features](#features) ·
 [How it works](#how-it-works) ·
 [Build from source](#build-from-source) ·
-[Contributing](CONTRIBUTING.md)
+[Contributing](#contributing)
 
 </div>
 
@@ -212,8 +212,6 @@ bun run dev          # backend, UI and desktop window in one terminal
 | `bun run verify`        | Format, lint, typecheck and test, as CI does                                          |
 | `bun run package`       | Build this platform's package (Windows installer or AppImage) into `apps/desktop/out` |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and how changes land.
-
 ## Built with
 
 <p>
@@ -228,9 +226,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout and how changes la
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md),
-and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through
-[SECURITY.md](SECURITY.md), not public issues.
+Bug reports, ideas and pull requests are welcome. Security issues go through a
+[private advisory](https://github.com/CeriumHQ/cerium/security/advisories/new), not public issues.
 
 ## License
 
