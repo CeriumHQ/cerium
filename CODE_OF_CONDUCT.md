@@ -51,7 +51,7 @@ an appointed representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the
-maintainer, [@nonlooped](https://github.com/nonlooped), using the contact details on their GitHub
+maintainers through [@CeriumHQ](https://github.com/CeriumHQ), using the contact details on its GitHub
 profile. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any

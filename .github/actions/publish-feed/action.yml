@@ -24,7 +24,7 @@ inputs:
   repository:
     description: The public releases repository; apps/desktop/electron-builder.ts reads the same one.
     required: false
-    default: nonlooped/cerium-releases
+    default: CeriumHQ/cerium-releases
 
 runs:
   using: composite

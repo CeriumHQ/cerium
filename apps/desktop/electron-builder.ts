@@ -77,7 +77,7 @@ export default {
   // reads a public repository that holds only releases (.github/actions/publish-feed).
   publish: {
     provider: "github",
-    owner: "nonlooped",
+    owner: "CeriumHQ",
     repo: "cerium-releases",
     channel: nightly ? "nightly" : "latest",
   },

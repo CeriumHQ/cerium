@@ -209,7 +209,7 @@ TOTAL_STAGES=9
 RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(cd "$RELAY_DIR/../.." && pwd)"
 SITE="https://cerium.nonlooped.xyz"
-REPO="https://github.com/nonlooped/cerium"
+REPO="https://github.com/CeriumHQ/cerium"
 SECRETS_FILE=""
 # The secrets' temporary file goes when the wizard ends, then its folder, only if that's empty.
 trap 'if [[ -n "$SECRETS_FILE" ]]; then rm -f "$SECRETS_FILE"; rmdir "${SECRETS_FILE%/*}" 2>/dev/null || true; fi' EXIT

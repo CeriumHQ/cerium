@@ -10,7 +10,7 @@ fixes; please update before reporting.
 **Please don't report security problems in public issues, discussions or pull requests.**
 
 Report them privately through GitHub instead:
-[**Report a vulnerability**](https://github.com/nonlooped/cerium/security/advisories/new).
+[**Report a vulnerability**](https://github.com/CeriumHQ/cerium/security/advisories/new).
 
 Include what you can of:
 

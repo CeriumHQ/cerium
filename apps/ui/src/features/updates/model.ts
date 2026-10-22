@@ -41,7 +41,7 @@ export const statusText = (updates: Updates): string => {
 
 /** The update feed's release page of a version, which says what changed in it. */
 export const releaseNotesUrl = (version: string) =>
-  `https://github.com/nonlooped/cerium-releases/releases/tag/v${version}`;
+  `https://github.com/CeriumHQ/cerium-releases/releases/tag/v${version}`;
 
 /** When the updater last looked, for statuses that come from a finished check. */
 export const checkedAt = (status: UpdateStatus): number | undefined =>

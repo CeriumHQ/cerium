@@ -11,8 +11,8 @@
 <h3>One thread. Every agent.</h3>
 
 <p>
-  <a href="https://github.com/nonlooped/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/nonlooped/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
-  <a href="https://github.com/nonlooped/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/nonlooped/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
+  <a href="https://github.com/CeriumHQ/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/CeriumHQ/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
+  <a href="https://github.com/CeriumHQ/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/CeriumHQ/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-f2f2f2?style=flat-square&labelColor=1c1c1c" /></a>
   <img alt="Platforms: Windows and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
   <img alt="Price: free forever" src="https://img.shields.io/badge/price-free%20forever-3fb950?style=flat-square&labelColor=1c1c1c" />
@@ -28,7 +28,7 @@
 **A desktop harness of harnesses.** Cerium drives Claude Code, Codex, Cursor and OpenCode through
 their own official SDKs, and lets one conversation coordinate agents from all of them at once.
 
-[**Download**](https://github.com/nonlooped/cerium/releases) ·
+[**Download**](https://github.com/CeriumHQ/cerium/releases) ·
 [Features](#features) ·
 [How it works](#how-it-works) ·
 [Build from source](#build-from-source) ·
@@ -182,7 +182,7 @@ flowchart LR
 ## Install
 
 1. Install at least one harness and sign in to it the way you normally would.
-2. Download the latest build from [Releases](https://github.com/nonlooped/cerium/releases):
+2. Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
    - **Windows**: run `Cerium-Setup-<version>.exe`.
    - **Linux**: make `Cerium-<version>-x86_64.AppImage` executable (`chmod +x`) and run it. It needs
      FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later), and finds your harnesses on the
@@ -199,7 +199,7 @@ flowchart LR
 Requires [Node.js](https://nodejs.org) 24.11+ and [Bun](https://bun.sh) 1.4+.
 
 ```sh
-git clone https://github.com/nonlooped/cerium.git
+git clone https://github.com/CeriumHQ/cerium.git
 cd cerium
 bun install
 bun run dev          # backend, UI and desktop window in one terminal

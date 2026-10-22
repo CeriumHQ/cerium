@@ -3,8 +3,8 @@
 Thanks for wanting to help. Cerium is early, so the most useful contributions right now are bug
 reports with clear steps, harness versions that misbehave, and small, focused fixes.
 
-- **Questions and ideas:** open a [discussion](https://github.com/nonlooped/cerium/discussions).
-- **Bugs:** open an [issue](https://github.com/nonlooped/cerium/issues/new/choose) with the bug
+- **Questions and ideas:** open a [discussion](https://github.com/CeriumHQ/cerium/discussions).
+- **Bugs:** open an [issue](https://github.com/CeriumHQ/cerium/issues/new/choose) with the bug
   template.
 - **Security problems:** follow [SECURITY.md](SECURITY.md). Please don't file them as issues.
 

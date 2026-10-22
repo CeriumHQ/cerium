@@ -19,7 +19,7 @@ const rule = (path: string, headers: ReadonlyArray<string>) =>
 export const APP_PATH = "/app/";
 
 /** The public repository the installers are published to (apps/desktop/electron-builder.ts). */
-const RELEASES = "https://github.com/nonlooped/cerium-releases/releases/download";
+const RELEASES = "https://github.com/CeriumHQ/cerium-releases/releases/download";
 
 /**
  * The relay's `_redirects`: `/download` fetches the Windows installer of the version deployed with
