@@ -48,9 +48,9 @@ describe("statusText", () => {
 
 describe("releaseNotesUrl", () => {
   it("links the GitHub release tagged with the version", () => {
-    expect(releaseNotesUrl("0.5.0")).toBe("https://github.com/CeriumHQ/cerium-releases/releases/tag/v0.5.0");
+    expect(releaseNotesUrl("0.5.0")).toBe("https://github.com/CeriumHQ/releases/releases/tag/v0.5.0");
     expect(releaseNotesUrl("0.7.0-nightly.n000031")).toBe(
-      "https://github.com/CeriumHQ/cerium-releases/releases/tag/v0.7.0-nightly.n000031",
+      "https://github.com/CeriumHQ/releases/releases/tag/v0.7.0-nightly.n000031",
     );
   });
 });

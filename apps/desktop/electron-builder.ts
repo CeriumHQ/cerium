@@ -78,7 +78,7 @@ export default {
   publish: {
     provider: "github",
     owner: "CeriumHQ",
-    repo: "cerium-releases",
+    repo: "releases",
     channel: nightly ? "nightly" : "latest",
   },
 } satisfies Configuration;
