@@ -30,7 +30,7 @@ reuses the servers already running.
 
 | Command                  | What it does                                                            |
 | ------------------------ | ----------------------------------------------------------------------- |
-| `bun run verify`         | Format check, lint, typecheck and tests: run it before you push         |
+| `bun run verify`         | Format check, lint, typecheck and tests; `git push` runs it too         |
 | `bun run fix`            | Apply formatting and lint fixes                                         |
 | `bun run test`           | Tests in watch mode (`bun run test --run` for a single pass)            |
 | `bun run typecheck`      | `tsc -b`, the authoritative type gate                                   |
@@ -112,8 +112,9 @@ These hold for every change, and pull requests that break them can't be merged:
 - Add a line for every user-visible change under `Unreleased` in [CHANGELOG.md](CHANGELOG.md), in the
   same commit as the change. Release notes quote it as written.
 - Pull requests run CI: commit messages, format, lint, types and the workflows, the tests on Linux
-  and Windows, and the AppImage and the installer, each started once to check it runs. Make sure
-  `bun run verify` passes before you push, and `bun run lint:workflows` when you change `.github`.
+  and Windows, and the AppImage and the installer, each started once to check it runs. `git push`
+  runs the ones your machine can first (`scripts/pre-push.ts`, set up by `bun install`): `verify`,
+  the commit messages, and `lint:workflows` when you change `.github`.
 
 ## License
 

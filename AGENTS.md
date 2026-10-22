@@ -67,7 +67,7 @@ tooltips, scroll areas, …) and style it; its docs ship with the package at
   of your own.
 - **Check harnesses live with `bun run live-check`** (`--help`): a short real turn per harness with a
   deadline each; extend `apps/backend/scripts/live/check.ts` when a check needs more.
-- **Routine actions need no permission**: `bun run verify` (what CI runs: check, typecheck, tests) and
+- **Routine actions need no permission**: `bun run verify` (check, typecheck, tests) and
   the other `package.json` scripts, starting and stopping your dev servers, and committing your
   finished work, which you do without asking. Pushing waits for the user to ask. The one decision that
   waits for the project owner is an ACP-based adapter (below); make the other calls yourself and say
@@ -106,5 +106,10 @@ tooltips, scroll areas, …) and style it; its docs ship with the package at
   the same commit in full (every file it touches); splitting a file's hunks is slow and error-prone.
 - **`CHANGELOG.md`** lists every change under `Unreleased`, which releases quote without rewriting;
   update it in the same commit as the change it describes.
-- CI is only watched when the user asks: then wait on it with `gh run watch --exit-status` in the
-  background, and run a failing job's command locally before pushing a fix.
+- **A push** runs the pre-push hook (`scripts/pre-push.ts`, set up by `bun install`): `verify`, the
+  commit-message check and, when `.github` changes, the workflow linters, every CI gate this machine
+  can run. A failing hook is a CI failure caught early: fix it, commit, push again. CI goes further
+  (tests on Linux and Windows, packaging, publishing), so after every push watch the pushed commit's
+  run to its end in the background with `gh run watch --exit-status`. A red run is yours to fix before
+  the next push: run the failing job's command locally, fix, push, watch again. A cause only the user
+  can reach (a secret, an account's settings) goes to them with the run's error.
