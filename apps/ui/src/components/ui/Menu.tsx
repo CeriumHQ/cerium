@@ -103,22 +103,31 @@ export function MenuRadioItem({ value, children }: { value: string; children: Re
 
 export const MenuRadioGroup = BaseMenu.RadioGroup;
 
-/** A choice that's on or off, ticked while it's on; the menu stays open for the next. */
+/**
+ * A choice that's on or off, ticked while it's on; the menu stays open for the next unless
+ * `closeOnClick`.
+ */
 export function MenuCheckboxItem({
   checked,
   onCheckedChange,
+  icon: Icon,
+  closeOnClick = false,
   children,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
+  icon?: LucideIcon;
+  closeOnClick?: boolean;
   children: ReactNode;
 }) {
   return (
     <BaseMenu.CheckboxItem
       checked={checked}
       onCheckedChange={(next) => onCheckedChange(next)}
+      closeOnClick={closeOnClick}
       className={`${itemClass} relative pr-7 text-fg-secondary data-checked:text-fg-primary data-highlighted:text-fg-primary`}
     >
+      {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
       {children}
       <BaseMenu.CheckboxItemIndicator className="absolute right-2 text-fg-secondary">
         <Check size={14} strokeWidth={2} />

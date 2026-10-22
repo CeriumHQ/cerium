@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import {
+  Ellipsis,
   FolderTree,
   GalleryVerticalEnd,
   GitBranch,
@@ -17,6 +18,7 @@ import type { ReactNode } from "react";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
+import { MenuCheckboxItem, MenuPopup, MenuRoot, MenuTrigger } from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { WEB } from "../backend/target.ts";
 import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
@@ -179,6 +181,72 @@ export function PanelToggles({
       {panels.files === undefined ? null : (
         <FilesToggle open={panels.files} onToggle={() => onTogglePanel("files")} />
       )}
+      {panels.agents === undefined || agents.length === 0 ? null : (
+        <AgentsToggle agents={agents} open={panels.agents} onToggle={() => onTogglePanel("agents")} />
+      )}
+    </>
+  );
+}
+
+/**
+ * The narrow window's take on the bar's buttons: the agents keep theirs, and the terminal and the
+ * other panels fold into one menu, so the thread's title keeps its room.
+ */
+export function CompactPanelMenu({
+  agents,
+  panels,
+  onTogglePanel,
+  terminal,
+}: {
+  agents: ReadonlyArray<ProviderId>;
+  panels: Partial<Record<SidePanelId, boolean>>;
+  onTogglePanel: (panel: SidePanelId) => void;
+  terminal?: { readonly open: boolean; readonly onToggle: () => void } | undefined;
+}) {
+  const items = [
+    { id: "artifacts", label: "Artifacts", icon: GalleryVerticalEnd },
+    { id: "github", label: "GitHub", icon: GitPullRequestArrow },
+    { id: "git", label: "Source control", icon: GitBranch },
+    { id: "files", label: "Files", icon: FolderTree },
+  ] as const;
+  const offered = items.filter((item) => panels[item.id] !== undefined);
+  return (
+    <>
+      {terminal || offered.length > 0 ? (
+        <MenuRoot>
+          <MenuTrigger>
+            <Button
+              aria-label="Panels"
+              className="mr-1 grid size-10 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary"
+            >
+              <Ellipsis size={18} strokeWidth={1.75} />
+            </Button>
+          </MenuTrigger>
+          <MenuPopup>
+            {terminal ? (
+              <MenuCheckboxItem
+                icon={SquareTerminal}
+                checked={terminal.open}
+                onCheckedChange={terminal.onToggle}
+                closeOnClick
+              >
+                Terminal
+              </MenuCheckboxItem>
+            ) : null}
+            {offered.map((item) => (
+              <MenuCheckboxItem
+                key={item.id}
+                icon={item.icon}
+                checked={panels[item.id] ?? false}
+                onCheckedChange={() => onTogglePanel(item.id)}
+                closeOnClick
+              >
+                {item.label}
+              </MenuCheckboxItem>
+            ))}
+          </MenuPopup>
+        </MenuRoot>
+      ) : null}
       {panels.agents === undefined || agents.length === 0 ? null : (
         <AgentsToggle agents={agents} open={panels.agents} onToggle={() => onTogglePanel("agents")} />
       )}

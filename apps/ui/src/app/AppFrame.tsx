@@ -19,7 +19,7 @@ import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
 import { GUTTER, panelLayout, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
-import { PanelToggles, TerminalToggle, Titlebar } from "./Titlebar.tsx";
+import { CompactPanelMenu, Titlebar } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -372,12 +372,12 @@ function CompactFrame({
                 {...(Object.keys(panels).length > 0 || terminal
                   ? {
                       trailing: (
-                        <>
-                          {terminal ? (
-                            <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
-                          ) : null}
-                          <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />
-                        </>
+                        <CompactPanelMenu
+                          agents={agents}
+                          panels={panels}
+                          onTogglePanel={onTogglePanel}
+                          terminal={terminal}
+                        />
                       ),
                     }
                   : {})}

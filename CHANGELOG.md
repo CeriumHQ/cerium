@@ -311,6 +311,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- UI: on a phone, a thread's title shows again. The terminal, artifacts, GitHub, Source control and files buttons had taken the whole top bar, squeezing the title to a letter or two; they now sit in one ⋯ menu beside the agents button, each ticked while its panel is open.
 - Accounts: a device no longer shows up in the account again each time it signs in. Every sign-in added a new device, and the old one stayed whenever the device lost its sign-in without signing out (site data cleared, an unreadable vault, a reinstall). Each desktop data folder and each browser now keeps an installation id apart from its sign-in, and signing in again from the same install takes back its place, name and threads with a new secret. The copies earlier sign-ins left are removed once: of the devices alike in kind, system, channel and name, the one seen last stays, unless another is connected at the time.
 - Desktop: Settings → Appearance → Scale, Ctrl + and Ctrl − size the window again. The window's zoom had been put in Chromium's manual mode, which leaves the page unzoomed whatever scale the shell sets.
 - Inbox: quitting the app no longer marks every thread with a live agent as unread, or moves those threads to the top. As the app quit, each agent's session ended before the agent was stopped, which counted as the agent failing: new activity in its thread. Agents are now stopped first. Threads an earlier quit marked unread stay unread until you open them or mark them read.
