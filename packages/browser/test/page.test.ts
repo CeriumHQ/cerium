@@ -58,7 +58,7 @@ const FIXTURE = `<!doctype html><title>Fixture</title>
 </script>`;
 
 describe.skipIf(browser === undefined)("a driven page", () => {
-  it("finds controls by text and name, types, presses keys and takes screenshots", { timeout: 90_000 }, () =>
+  it("finds controls by text and name, types, presses keys and takes screenshots", () =>
     driving("finds-controls", async (launched) => {
       const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
       await page.navigate(`data:text/html,${encodeURIComponent(FIXTURE)}`);
@@ -94,68 +94,59 @@ describe.skipIf(browser === undefined)("a driven page", () => {
       );
       assert.strictEqual(missing, 'Nothing visible matches "Nowhere".');
       page.close();
-    }),
-  );
+    }));
 
-  it(
-    "waits for late targets and finished transitions, and copes with a page a popup hid",
-    { timeout: 90_000 },
-    () =>
-      driving("waits-for-late-targets", async (launched) => {
-        const target = await pickPage(launched.origin);
-        const page = await Page.open(target.webSocketDebuggerUrl);
-        await page.navigate(`data:text/html,${encodeURIComponent(LATE)}`);
+  it("waits for late targets and finished transitions, and copes with a page a popup hid", () =>
+    driving("waits-for-late-targets", async (launched) => {
+      const target = await pickPage(launched.origin);
+      const page = await Page.open(target.webSocketDebuggerUrl);
+      await page.navigate(`data:text/html,${encodeURIComponent(LATE)}`);
 
-        await page.click({ text: "Appears later" }, { button: "left", count: 1 });
-        assert.strictEqual(await page.evaluate("document.getElementById('log').textContent"), "clicked");
+      await page.click({ text: "Appears later" }, { button: "left", count: 1 });
+      assert.strictEqual(await page.evaluate("document.getElementById('log').textContent"), "clicked");
 
-        await page.evaluate("document.getElementById('fade').classList.add('in')");
-        await page.settle();
-        assert.strictEqual(
-          await page.evaluate("getComputedStyle(document.getElementById('fade')).opacity"),
-          "1",
-        );
+      await page.evaluate("document.getElementById('fade').classList.add('in')");
+      await page.settle();
+      assert.strictEqual(
+        await page.evaluate("getComputedStyle(document.getElementById('fade')).opacity"),
+        "1",
+      );
 
-        // A popup puts the page behind it, where it draws no frames, so settling skips them…
-        await page.evaluate("void window.open('about:blank')");
-        assert.strictEqual(await page.evaluate("document.visibilityState"), "hidden");
-        const settling = Date.now();
-        await page.settle();
-        assert.isBelow(Date.now() - settling, 1_000);
-        page.close();
+      // A popup puts the page behind it, where it draws no frames, so settling skips them…
+      await page.evaluate("void window.open('about:blank')");
+      assert.strictEqual(await page.evaluate("document.visibilityState"), "hidden");
+      const settling = Date.now();
+      await page.settle();
+      assert.isBelow(Date.now() - settling, 1_000);
+      page.close();
 
-        // …and a page in the tool's own browser comes back to the front, where input answers at once.
-        const front = await Page.open(target.webSocketDebuggerUrl, { front: true });
-        assert.strictEqual(await front.evaluate("document.visibilityState"), "visible");
-        const hovering = Date.now();
-        await front.hover({ text: "Fades in" });
-        assert.isBelow(Date.now() - hovering, 1_000);
-        front.close();
-      }),
-  );
+      // …and a page in the tool's own browser comes back to the front, where input answers at once.
+      const front = await Page.open(target.webSocketDebuggerUrl, { front: true });
+      assert.strictEqual(await front.evaluate("document.visibilityState"), "visible");
+      const hovering = Date.now();
+      await front.hover({ text: "Fades in" });
+      assert.isBelow(Date.now() - hovering, 1_000);
+      front.close();
+    }));
 
-  it(
-    "drags with pointer events and with native drag and drop, and holds a drag midway",
-    { timeout: 90_000 },
-    () =>
-      driving("drags", async (launched) => {
-        const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
-        await page.navigate(`data:text/html,${encodeURIComponent(DRAGS)}`);
-        const log = () => page.evaluate<string>("document.getElementById('log').textContent");
+  it("drags with pointer events and with native drag and drop, and holds a drag midway", () =>
+    driving("drags", async (launched) => {
+      const page = await Page.open((await pickPage(launched.origin)).webSocketDebuggerUrl);
+      await page.navigate(`data:text/html,${encodeURIComponent(DRAGS)}`);
+      const log = () => page.evaluate<string>("document.getElementById('log').textContent");
 
-        await page.drag({ text: "Native card" }, { text: "Drop here" });
-        assert.strictEqual(await log(), "dropped native");
+      await page.drag({ text: "Native card" }, { text: "Drop here" });
+      assert.strictEqual(await log(), "dropped native");
 
-        await page.down({ text: "Pointer card" });
-        await page.move({ text: "Drop here" });
-        assert.isTrue(page.holding);
-        assert.strictEqual(await log(), "moving");
-        await page.up();
-        assert.isFalse(page.holding);
-        assert.strictEqual(await log(), "released over Drop here");
-        page.close();
-      }),
-  );
+      await page.down({ text: "Pointer card" });
+      await page.move({ text: "Drop here" });
+      assert.isTrue(page.holding);
+      assert.strictEqual(await log(), "moving");
+      await page.up();
+      assert.isFalse(page.holding);
+      assert.strictEqual(await log(), "released over Drop here");
+      page.close();
+    }));
 });
 
 const LATE = `<!doctype html><title>Late</title>

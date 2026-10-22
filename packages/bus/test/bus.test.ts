@@ -94,14 +94,11 @@ const mcpClient = (spec: McpServerSpec | undefined) => {
 /** The bus endpoint of the fake's `index`th session, once that session starts behind its thread. */
 const busOf = (fake: ReturnType<typeof makeFakeAdapter>, index: number) =>
   Effect.gen(function* () {
-    for (let waited = 0; waited < 250 && fake.sessions[index] === undefined; waited++) {
-      yield* Effect.sleep(Duration.millis(20));
-    }
-    return fake.sessions[index]?.options.mcpServers["cerium"];
+    while (fake.sessions[index] === undefined) yield* Effect.sleep(Duration.millis(20));
+    return fake.sessions[index].options.mcpServers["cerium"];
   });
 
-// Each test builds the whole stack, which takes seconds on a busy CI runner.
-describe("Cerium MCP bus", { timeout: 30_000 }, () => {
+describe("Cerium MCP bus", () => {
   it.live("serves the bus tools to each session under its own identity", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
@@ -215,11 +212,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
       assert.strictEqual(asked?.result?.structuredContent?.status, "asked");
       const advisorId = asked?.result?.structuredContent?.advisorId as AgentId;
       assert.strictEqual((yield* orchestrator.agent(advisorId)).access, "readOnly");
-      for (
-        let waited = 0;
-        waited < 100 && !fake.sessions[0]!.sent.some((sent) => sent.includes("Check the lockfile."));
-        waited++
-      ) {
+      while (!fake.sessions[0]!.sent.some((sent) => sent.includes("Check the lockfile."))) {
         yield* Effect.sleep(Duration.millis(20));
       }
       assert.include(
@@ -283,11 +276,7 @@ describe("Cerium MCP bus", { timeout: 30_000 }, () => {
         outcome: "answered",
         answers: [{ choices: ["Redis"], text: "we run it already" }],
       });
-      for (
-        let waited = 0;
-        waited < 100 && !fake.sessions[0]!.sent.some((sent) => sent.includes("Answer: Redis"));
-        waited++
-      ) {
+      while (!fake.sessions[0]!.sent.some((sent) => sent.includes("Answer: Redis"))) {
         yield* Effect.sleep(Duration.millis(20));
       }
       assert.include(

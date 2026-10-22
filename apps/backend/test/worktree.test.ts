@@ -87,8 +87,7 @@ const setup = Effect.gen(function* () {
 
 const TestLayer = Layer.mergeAll(Git.layer, fakeTerminals).pipe(Layer.provideMerge(NodeServices.layer));
 
-// Each test runs git a few dozen times, which takes seconds on Windows.
-describe("Worktrees", { timeout: 30_000 }, () => {
+describe("Worktrees", () => {
   it.effect(
     "checks the repository out on a branch of its own, in the same subfolder, with its env files",
     () =>

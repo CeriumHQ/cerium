@@ -54,8 +54,7 @@ const setup = Effect.gen(function* () {
   return { fs, path, folder, home, write, read, exists, checkpoints, spawner };
 });
 
-// Each test runs git a dozen times, which takes seconds on Windows.
-describe("Checkpoints", { timeout: 30_000 }, () => {
+describe("Checkpoints", () => {
   it.effect("puts back the files it is asked to, as a snapshot held them, and no others", () =>
     Effect.gen(function* () {
       const { folder, write, read, exists, checkpoints, fs, path } = yield* setup;

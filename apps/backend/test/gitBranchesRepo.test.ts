@@ -102,7 +102,7 @@ const diverged = Effect.gen(function* () {
   return { ...box, root };
 });
 
-describe("GitBranches state and branches", { timeout: 60_000 }, () => {
+describe("GitBranches state and branches", () => {
   it.effect("says where a repository stands", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;
@@ -185,7 +185,7 @@ describe("GitBranches state and branches", { timeout: 60_000 }, () => {
   );
 });
 
-describe("GitBranches switching", { timeout: 60_000 }, () => {
+describe("GitBranches switching", () => {
   it.effect("switches to a branch and carries changes that don't collide", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;
@@ -288,7 +288,7 @@ describe("GitBranches switching", { timeout: 60_000 }, () => {
   );
 });
 
-describe("GitBranches branch management", { timeout: 60_000 }, () => {
+describe("GitBranches branch management", () => {
   it.effect("makes a branch at the current commit and switches to it", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;
@@ -391,7 +391,7 @@ describe("GitBranches branch management", { timeout: 60_000 }, () => {
   );
 });
 
-describe("GitBranches syncing", { timeout: 60_000 }, () => {
+describe("GitBranches syncing", () => {
   it.effect("publishes a branch, then pushes, fetches and pulls", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;
@@ -527,7 +527,7 @@ describe("GitBranches syncing", { timeout: 60_000 }, () => {
   );
 });
 
-describe("GitBranches stash", { timeout: 60_000 }, () => {
+describe("GitBranches stash", () => {
   it.effect("stashes changes with a message, lists them, and applies, pops and drops them", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;
@@ -607,7 +607,7 @@ describe("GitBranches stash", { timeout: 60_000 }, () => {
   );
 });
 
-describe("GitBranches merging", { timeout: 60_000 }, () => {
+describe("GitBranches merging", () => {
   it.effect("merges a branch cleanly, and says when there is nothing to merge", () =>
     Effect.gen(function* () {
       const branches = yield* GitBranches;

@@ -167,7 +167,7 @@ const fakeWriter = (reply: string | undefined) => {
 const testLayer = (writer: Layer.Layer<QuickWriter>) =>
   Drafts.layer.pipe(Layer.provide(writer), Layer.provide(Git.layer), Layer.provideMerge(NodeServices.layer));
 
-describe("Drafts", { timeout: 30_000 }, () => {
+describe("Drafts", () => {
   it.effect("writes a commit message from what's staged, in the style of the repository's commits", () => {
     const writer = fakeWriter("```\nfeat(app): count to eleven\n```");
     return Effect.gen(function* () {

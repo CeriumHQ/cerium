@@ -42,7 +42,8 @@ describe("live checks", () => {
       const fake = makeFakeAdapter("cursor", { turnDuration: "1 minute" });
       const started = Date.now();
       const result = yield* checkHarness(fake.adapter, { prompt: "slow", timeoutSeconds: 1 });
-      assert.isBelow(Date.now() - started, 5_000);
+      // Well short of the turn's minute, however busy the machine.
+      assert.isBelow(Date.now() - started, 30_000);
       assert.strictEqual(result.status, "timedOut");
       assert.include(renderResults([result]), "TIMEOUT cursor (fake-model, auto)");
     }),

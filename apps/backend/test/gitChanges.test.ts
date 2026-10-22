@@ -189,7 +189,7 @@ export const repository = Effect.gen(function* () {
   return { root, write, read, fs, path, git: (...args: Array<string>) => git(root, ...args) };
 });
 
-describe("GitChanges", { timeout: 30_000 }, () => {
+describe("GitChanges", () => {
   it.effect("lists the whole repository's changes from a folder inside it, relative to its top", () =>
     Effect.gen(function* () {
       const changes = yield* GitChanges;

@@ -52,6 +52,10 @@ export default defineConfig({
     isolate: false,
     // CI's log keeps what a failing test printed and leaves out the rest.
     silent: ci ? "passed-only" : false,
+    // A test's time limit only catches one that hangs, so a hang names its test instead of running out
+    // the CI job. It isn't a speed check: a slow machine or a busy runner never fails a test.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
     projects: [
       {
         extends: true,

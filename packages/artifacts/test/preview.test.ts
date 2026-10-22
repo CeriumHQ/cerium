@@ -3,8 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 
 import { previewArtifact } from "../src/preview.ts";
 
-// Edge's first start on a loaded CI runner can take most of a minute.
-describe.skipIf(findBrowser() === undefined)("previewArtifact", { timeout: 90_000 }, () => {
+describe.skipIf(findBrowser() === undefined)("previewArtifact", () => {
   it("draws the page at the column's width and reports its height and errors", async () => {
     const preview = await previewArtifact({
       html: '<style>.box { height: 240px; background: var(--chart-1); }</style><div class="box"></div><script>missing()</script>',
