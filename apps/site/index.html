@@ -171,7 +171,7 @@
               src="./src/media/hero.webp"
               width="2560"
               height="1600"
-              alt="Cerium with a Claude lead adding job priorities while a Codex agent writes the tests, an OpenCode agent the docs and a Cursor agent reviews the scheduling, all four working, and the lead telling the project's other threads which file it is about to change"
+              alt="Cerium with a Claude lead adding cancellation to a job queue while a Codex agent writes the tests, an OpenCode agent the docs and a Cursor agent reviews it for race conditions, all four working"
             />
           </figure>
         </div>
@@ -315,23 +315,14 @@
               </li>
               <li data-step="1">
                 <div>
-                  <h3>The lead splits the work.</h3>
-                  <p>Tests to Codex, docs to OpenCode, a review to Cursor. All three start at once.</p>
+                  <h3>Four agents at once.</h3>
+                  <p>Tests to Codex, docs to OpenCode, a review to Cursor, while the lead builds it.</p>
                 </div>
               </li>
               <li data-step="2">
                 <div>
-                  <h3>Four agents, one window.</h3>
-                  <p>
-                    Every agent's plan and progress, side by side. They warn each other before touching the
-                    same files.
-                  </p>
-                </div>
-              </li>
-              <li data-step="3">
-                <div>
                   <h3>One answer comes back.</h3>
-                  <p>The lead runs the tests, checks the work and tells you who did what.</p>
+                  <p>The lead checks the work, runs the tests and tells you who did what.</p>
                 </div>
               </li>
             </ol>
@@ -350,7 +341,7 @@
                     width="1280"
                     height="800"
                     loading="lazy"
-                    alt="A request to add job priorities, with the lead starting on it"
+                    alt="A request to add cancellation to a job queue, with the lead starting on it"
                     data-frame="ask"
                   />
                   <img
@@ -358,7 +349,7 @@
                     width="1280"
                     height="800"
                     loading="lazy"
-                    alt="The lead's three helpers in Codex, OpenCode and Cursor, all four agents working"
+                    alt="The lead's three helpers in Codex, OpenCode and Cursor, all four agents working, with the agents panel open"
                     data-frame="team"
                   />
                   <img
@@ -385,28 +376,27 @@
               Nothing to switch to.
             </h2>
             <p class="mt-5 text-[18px] leading-[1.55] text-fg-secondary">
-              The project, a terminal and every answer sit beside the thread. Your phone picks up where your
-              desk left off.
+              Review the work and ship it beside the thread. Your phone picks up where your desk left off.
             </p>
           </div>
 
           <div class="plate-wide">
             <div class="plate-copy">
-              <h3>The whole project, beside the thread.</h3>
+              <h3>Git and GitHub, beside the thread.</h3>
               <p>
-                Walk the folder with git's changes marked and run a terminal in it, without leaving the thread
-                that's changing it.
+                Read each change as a diff, stage the lines you want and commit, then work through pull
+                requests and issues without leaving Cerium.
               </p>
             </div>
             <div class="plate-media">
               <div class="glow" aria-hidden="true"></div>
               <figure class="window glass">
                 <img
-                  src="./src/media/feature-window.webp"
+                  src="./src/media/feature-git.webp"
                   width="2400"
                   height="1500"
                   loading="lazy"
-                  alt="A finished thread with the project's files beside it, new and changed files marked, and a terminal below showing all 29 tests passing"
+                  alt="The agents' change to queue.ts as a diff, beside Source control listing the project's changed files with Stage and Commit"
                 />
               </figure>
             </div>
@@ -441,8 +431,8 @@
                   <figure class="window glass artifact">
                     <img
                       src="./src/media/feature-artifact.webp"
-                      width="1513"
-                      height="1766"
+                      width="1590"
+                      height="1324"
                       loading="lazy"
                       alt="An agent's answer drawn as a view of the test results: 29 of 29 passed, each test file with its tests and how long each took"
                     />
@@ -456,28 +446,16 @@
 
           <ul class="more">
             <li>
-              <h3>Undo a turn</h3>
+              <h3>Undo any turn</h3>
               <p>Take a thread back to before any message, its files included.</p>
             </li>
             <li>
               <h3>A worktree per thread</h3>
-              <p>Threads in one project stop changing each other's files.</p>
-            </li>
-            <li>
-              <h3>Dictate on your PC</h3>
-              <p>Speak the request. Whisper turns it into text on your own machine.</p>
+              <p>Threads working in one project never change each other's files.</p>
             </li>
             <li>
               <h3>Know what's left</h3>
               <p>Every plan's usage in one place, with a warning before it runs out.</p>
-            </li>
-            <li>
-              <h3>Ctrl K for everything</h3>
-              <p>Find a thread by anything said in it, or run any action.</p>
-            </li>
-            <li>
-              <h3>Updates itself</h3>
-              <p>Stable or nightly, checked at launch and every six hours.</p>
             </li>
           </ul>
         </div>

@@ -13,16 +13,15 @@ interface Shot {
   readonly width: number;
 }
 
-// The conversation's column of messages runs from 296 to 932.
+// The conversation's column of messages runs from 296 to 932 with the agents panel open, and from 406
+// to 1146 without it, as in the first frame.
 const shots: ReadonlyArray<Shot> = [
   // The request, and the lead getting started.
-  { frame: "ask", x: 296, y: 70, width: 636 },
-  // The three helpers' cards, and the lead warning the project's other threads.
-  { frame: "team", x: 296, y: 236, width: 636 },
-  // Pulled back: the agents panel with all four working.
+  { frame: "ask", x: 390, y: 60, width: 772 },
+  // Pulled back: the lead's plan for its helpers, and the agents panel with all four working.
   { frame: "team", x: 282, y: 30, width: 998 },
   // The lead's table of who did what.
-  { frame: "answer", x: 296, y: 176, width: 636 },
+  { frame: "answer", x: 296, y: 124, width: 636 },
 ];
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
