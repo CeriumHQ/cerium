@@ -44,9 +44,12 @@ if (!app.requestSingleInstanceLock()) app.quit();
  * `--dev-url=<url>` loads the UI from Vite's dev server instead of the built files; the last one given
  * wins, so `bun run dev` can name the port it picked. The development backend then runs on its own
  * (`bun run dev`) and the UI finds it through the dev server. The dev script also opens Chromium's
- * debugging port 9222, which `bun run ui open --attach=9222` drives.
+ * debugging port 9222, which `bun run ui open --attach=9222` drives. A packaged build ignores it, so
+ * nothing that starts Cerium can load another page into the window, preload bridge and all.
  */
-const devUrl = process.argv.findLast((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
+const devUrl = app.isPackaged
+  ? undefined
+  : process.argv.findLast((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
 
 let backend: ReturnType<typeof startBackend> | undefined;
 /** Settles once the packaged app's backend has started. */
