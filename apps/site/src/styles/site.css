@@ -888,6 +888,123 @@ main {
   border-top: 1px solid oklch(1 0 0 / 0.07);
 }
 
+/*
+ * Downloads: a glass card for each system over a little of the spectrum, a row for each kind of
+ * package and a button for each processor. The build that fits this machine is lit, and its card says
+ * so.
+ */
+.downloads {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 56px;
+}
+
+.downloads .glow {
+  inset: 15% 6% 5%;
+  opacity: 0.3;
+}
+
+.system {
+  padding: 22px 22px 10px;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.1),
+    0 1px 0 0 oklch(1 0 0 / 0.08) inset;
+}
+
+.system[data-yours] {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.24),
+    0 1px 0 0 oklch(1 0 0 / 0.1) inset;
+}
+
+.system h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.system h2 svg {
+  width: 20px;
+  height: 20px;
+}
+
+.yours {
+  display: none;
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--fg-tertiary);
+}
+
+.system[data-yours] .yours {
+  display: inline;
+}
+
+.build {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+}
+
+.build + .build {
+  border-top: 1px solid oklch(1 0 0 / 0.07);
+}
+
+.build p {
+  flex: 1 0 100%;
+  margin-bottom: 4px;
+  font-size: 15px;
+  color: var(--fg-primary);
+}
+
+.build p span {
+  margin-left: 6px;
+  font-size: 13px;
+  color: var(--fg-tertiary);
+}
+
+.build a {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-primary);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  transition: background-color 150ms ease;
+}
+
+.build a:hover {
+  background: var(--surface-hover);
+}
+
+.build a[data-yours] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+}
+
+@media (max-width: 899px) {
+  .downloads {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .system[data-yours] {
+    order: -1;
+  }
+}
+
 @media (max-width: 767px) {
   .fan.fan-merge {
     display: block;

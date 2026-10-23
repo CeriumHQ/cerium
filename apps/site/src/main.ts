@@ -1,6 +1,7 @@
 import "./styles/site.css";
 
 import { startLight } from "./light.ts";
+import { armGuess, askProcessor, download, mac, system } from "./platform.ts";
 import { startStory } from "./story.ts";
 import { startThemes } from "./themes.ts";
 
@@ -9,46 +10,11 @@ const onScroll = () => nav?.toggleAttribute("data-scrolled", scrollY > 8);
 addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
-// The download buttons fetch Windows' x64 installer. A visitor on Linux gets the package their
-// distribution installs when their browser names it (Ubuntu's and Fedora's Firefox do), else the
-// AppImage; on an Arm64 processor, each one's Arm64 build. Chromium names the processor only when
-// asked, and other browsers on Windows never do. A Mac gets Apple silicon's disk image, or Intel's
-// where Chromium says it has one; every Mac browser claims Intel in its user agent and Safari says no
-// more, so the note under the button offers Intel's too. An iPad asking for the desktop site says
-// Macintosh as well, but has a touch screen.
-const userAgent = navigator.userAgent;
-const linux = /Linux/.test(userAgent) && !/Android/.test(userAgent);
-const mac = /Macintosh/.test(userAgent) && navigator.maxTouchPoints < 2;
-/** The system the buttons name, where it isn't Windows. */
-const system = linux
-  ? { mark: "#mark-linux", name: "Linux" }
-  : mac
-    ? { mark: "#mark-apple", name: "Mac" }
-    : undefined;
-const hints = (
-  navigator as Navigator & {
-    readonly userAgentData?: {
-      getHighEntropyValues(hints: ReadonlyArray<string>): Promise<{ readonly architecture?: string }>;
-    };
-  }
-).userAgentData;
-
-const download = (arm: boolean) => {
-  if (mac) return arm ? "/download/mac" : "/download/mac-intel";
-  if (!linux) return arm && /Windows/.test(userAgent) ? "/download/windows-arm64" : undefined;
-  const kind = /Ubuntu|Debian|Mint/.test(userAgent)
-    ? "deb"
-    : /Fedora|Red Hat/.test(userAgent)
-      ? "rpm"
-      : "linux";
-  return `/download/${kind}${arm ? "-arm64" : ""}`;
-};
-
+// The download buttons fetch the build for the visitor's machine (platform.ts), and every Mac browser
+// claims Intel, so the note under the button offers Intel's too. /downloads/ lists every build.
 const pointDownloads = (arm: boolean) => {
-  const href = download(arm);
-  if (href === undefined) return;
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-download]")) {
-    link.href = href;
+    link.href = download(arm);
     if (system === undefined) continue;
     link.querySelector("svg")?.classList.remove("windows");
     link.querySelector("use")?.setAttribute("href", system.mark);
@@ -61,14 +27,8 @@ const pointDownloads = (arm: boolean) => {
   }
 };
 
-pointDownloads(mac || /aarch64|arm64/i.test(userAgent));
-void hints
-  ?.getHighEntropyValues(["architecture"])
-  .then(({ architecture }) => {
-    if (architecture === "arm") pointDownloads(true);
-    else if (mac && architecture === "x86") pointDownloads(false);
-  })
-  .catch(() => undefined);
+pointDownloads(armGuess);
+askProcessor(pointDownloads);
 
 const canvas = document.querySelector<HTMLCanvasElement>("[data-light]");
 const hero = document.querySelector<HTMLElement>("[data-hero]");

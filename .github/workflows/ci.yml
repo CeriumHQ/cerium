@@ -331,8 +331,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
-            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.createdAt) | reverse | .[].tagName' |
+          gh release list --limit 200 --json tagName,isPrerelease,publishedAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.publishedAt) | reverse | .[].tagName' |
             tail -n +"$((NIGHTLIES_KEPT + 1))" |
             while read -r tag; do
               gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"

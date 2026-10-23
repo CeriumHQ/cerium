@@ -48,9 +48,11 @@ runs:
         else
           gh release create "$TAG" "${files[@]}" --title "$TITLE" --notes-file "$NOTES" "${flags[@]}"
         fi
+        # By publication: a release's createdAt is its tagged commit's date, and every tag here names
+        # the repository's one commit, so createdAt would rank the newest nightly with the oldest.
         if [ "$NIGHTLY" = true ]; then
-          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
-            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.createdAt) | reverse | .[].tagName' |
+          gh release list --limit 200 --json tagName,isPrerelease,publishedAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.publishedAt) | reverse | .[].tagName' |
             tail -n +"$((NIGHTLIES_KEPT + 1))" |
             while read -r tag; do
               gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag from $GH_REPO"
