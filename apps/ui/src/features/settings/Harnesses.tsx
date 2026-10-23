@@ -74,7 +74,7 @@ export function HarnessesOnMachine({
       title={machine ? `On ${machine}` : "On this computer"}
       description={
         <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          Each harness keeps its own login; Cerium never sees your keys.
+          Each harness keeps its own login; Cerium never reads its keys.
           <InfoTip label="About the harnesses">
             Cerium drives the harnesses installed on this computer and never bundles their CLIs. Signing in
             and updating run each harness's own command. Cursor runs inside Cerium, through its own SDK, and
@@ -234,7 +234,7 @@ function HarnessRow({
           started={running("login")}
           onClose={() => setFlow(undefined)}
           title={`Sign in to ${name}`}
-          description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never sees it.`}
+          description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never reads it.`}
           command={auth._tag === "LoggedOut" ? auth.loginCommand : undefined}
           onFinished={onChanged}
         />
