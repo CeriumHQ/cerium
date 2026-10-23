@@ -45,7 +45,13 @@ export function ModelWell({ model, effort }: { readonly model: ReactNode; readon
   );
 }
 
-/** A bar for each effort the model offers, rising, lit up to the one it runs at. */
+/** The effort heat's colour `at` (0 to 1) along its gradient, cool to hot (styles/tokens.css). */
+const heat = (at: number): string =>
+  at <= 0.5
+    ? `color-mix(in oklab, var(--effort-warm) ${at * 200}%, var(--effort-cool))`
+    : `color-mix(in oklab, var(--effort-hot) ${(at - 0.5) * 200}%, var(--effort-warm))`;
+
+/** A bar for each effort the model offers, rising and warming, lit up to the one it runs at. */
 export function EffortMeter({
   efforts,
   level,
@@ -56,20 +62,26 @@ export function EffortMeter({
 }) {
   const rises = Math.max(1, efforts.length - 1);
   return (
-    <span aria-hidden className="flex h-3 shrink-0 items-end gap-0.5 text-fg-primary">
+    <span aria-hidden className="flex h-3 shrink-0 items-end gap-0.5">
       {efforts.map((effort, index) => (
         <span
           key={effort}
-          className={`w-[3px] rounded-[1px] bg-current transition-opacity ${index <= level ? "" : "opacity-25"}`}
-          style={{ height: `${4 + (8 * index) / rises}px` }}
+          className="w-[3px] rounded-[1px] transition-[background-color] duration-150"
+          style={{
+            height: `${4 + (8 * index) / rises}px`,
+            backgroundColor: index <= level ? heat(index / rises) : "var(--line-strong)",
+          }}
         />
       ))}
     </span>
   );
 }
 
+/** The efforts named under the slider's stops, short enough for six of them to sit side by side. */
+const shortEffortLabel: Record<ReasoningEffort, string> = { ...effortLabel, xhigh: "X-high" };
+
 /** The slider's thumb, in pixels: its stops sit where the thumb's centre lands. */
-const THUMB = 22;
+const THUMB = 18;
 
 /**
  * Picks among the efforts the model, or the models, offer: a meter that opens a slider with a stop
@@ -90,6 +102,8 @@ export function EffortPicker({
   const last = efforts.length - 1;
   const index = held ?? Math.max(0, efforts.indexOf(value));
   const label = effortLabel[efforts[index] ?? value];
+  /** Where a stop sits along the track: where the thumb's centre lands on it. */
+  const at = (stop: number) => `calc(${THUMB / 2}px + ${stop / last} * (100% - ${THUMB}px))`;
   if (last < 1) {
     return <span className="flex h-7 shrink-0 items-center px-2 text-[12px] text-fg-tertiary">{label}</span>;
   }
@@ -107,13 +121,16 @@ export function EffortPicker({
         <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50 outline-none">
           <Popover.Popup
             initialFocus={thumb}
-            className="w-62 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay px-3.5 pt-3 pb-2.5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
+            className="w-68 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay px-3.5 pt-3 pb-2.5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
           >
-            <div className="mb-3 flex items-baseline justify-between gap-3">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
               <Popover.Title className="text-[12px] font-normal text-fg-tertiary">
                 Reasoning effort
               </Popover.Title>
-              <span className="text-[13px] font-semibold">{label}</span>
+              <span className="flex items-center gap-2 text-[13px] font-semibold">
+                <EffortMeter efforts={efforts} level={index} />
+                {label}
+              </span>
             </div>
             <Slider.Root
               value={index}
@@ -128,31 +145,63 @@ export function EffortPicker({
                 if (picked !== undefined && picked !== value) onPick(picked);
               }}
             >
-              <Slider.Control className="flex h-5.5 w-full cursor-pointer touch-none items-center select-none">
-                <Slider.Track className="relative h-4 w-full rounded-full bg-surface-active">
-                  <Slider.Indicator className="rounded-full bg-fg-primary" />
+              <Slider.Control className="flex h-6 w-full cursor-pointer touch-none items-center select-none">
+                <Slider.Track className="relative h-2 w-full rounded-full bg-surface-active">
+                  {/* The whole heat, shown up to the thumb, so the fill warms as it grows; it glows in
+                      the colour it reaches. */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 transition-[filter] duration-150"
+                    style={{ filter: `drop-shadow(0 0 5px ${heat(index / last)})` }}
+                  >
+                    <span
+                      className={`absolute inset-0 rounded-full bg-(image:--effort-heat) ${held === undefined ? "transition-[clip-path] duration-200 ease-out-soft" : ""}`}
+                      style={{ clipPath: `inset(0 calc(100% - ${at(index)}) 0 0 round 9999px)` }}
+                    />
+                  </span>
                   {efforts.map((level, stop) => (
                     <span
                       key={level}
                       aria-hidden
                       className={`pointer-events-none absolute top-1/2 size-1 -translate-1/2 rounded-full ${
-                        stop <= index ? "bg-surface-overlay" : "bg-fg-tertiary"
+                        stop <= index ? "bg-surface-overlay/70" : "bg-fg-disabled"
                       }`}
-                      style={{ left: `calc(${THUMB / 2}px + ${stop / last} * (100% - ${THUMB}px))` }}
+                      style={{ left: at(stop) }}
                     />
                   ))}
                   <Slider.Thumb
                     inputRef={thumb}
                     aria-label="Reasoning effort"
                     getAriaValueText={(_, stop) => effortLabel[efforts[stop] ?? value]}
-                    className="size-5.5 rounded-full bg-fg-primary shadow-[0_0_0_3px_var(--surface-overlay)] transition-transform duration-100 has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus-ring data-dragging:scale-108"
+                    className="size-4.5 rounded-full border-[3px] bg-fg-primary shadow-[0_0_0_2px_var(--surface-overlay)] transition-[scale,border-color] duration-150 has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus-ring data-dragging:scale-110"
+                    style={{ borderColor: heat(index / last) }}
                   />
                 </Slider.Track>
               </Slider.Control>
             </Slider.Root>
-            <div className="mt-2 flex justify-between text-2xs text-fg-tertiary">
-              <span>{effortLabel[efforts[0] ?? value]}</span>
-              <span>{effortLabel[efforts[last] ?? value]}</span>
+            {/* Every stop by name, under its place on the track; a click picks it. */}
+            <div className="relative mt-1.5 h-4">
+              {efforts.map((level, stop) => (
+                <button
+                  key={level}
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setHeld(undefined);
+                    if (level !== value) onPick(level);
+                  }}
+                  className={`absolute top-0 -translate-x-1/2 text-2xs whitespace-nowrap transition-colors first:translate-x-0 last:-translate-x-full ${
+                    stop === index
+                      ? "font-medium text-fg-primary"
+                      : "text-fg-tertiary hover:text-fg-secondary"
+                  }`}
+                  style={{
+                    left: stop === 0 ? 0 : stop === last ? "100%" : at(stop),
+                  }}
+                >
+                  {shortEffortLabel[level]}
+                </button>
+              ))}
             </div>
           </Popover.Popup>
         </Popover.Positioner>

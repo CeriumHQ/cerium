@@ -184,6 +184,14 @@
   --shiki-token-changed: var(--status-attention);
 }
 
+/* Reasoning effort's heat, cool to hot, along the effort meter and slider (composer/Pickers.tsx). */
+:root {
+  --effort-cool: var(--status-running);
+  --effort-warm: var(--status-merged);
+  --effort-hot: var(--status-error);
+  --effort-heat: linear-gradient(90deg, var(--effort-cool), var(--effort-warm), var(--effort-hot));
+}
+
 @theme inline {
   --color-backdrop: var(--backdrop);
   --color-surface-window: var(--surface-window);
