@@ -3,6 +3,8 @@ import electronUpdater from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { linuxInstall } from "./linuxInstall.ts";
+
 // Updating Cerium from within. The installed app follows one release
 // channel's GitHub Releases through electron-updater: stable's latest release, or the newest
 // nightly. The UI shows what this module reports and asks it to check, download and install;
@@ -87,8 +89,10 @@ export const startUpdater = () => {
   };
 
   let channel = readChannel();
-  // On Linux, only an AppImage updates: electron-updater swaps the file its runtime names in APPIMAGE.
-  const updatable = app.isPackaged && (process.platform !== "linux" || Boolean(process.env["APPIMAGE"]));
+  // On Linux, an AppImage updates by electron-updater swapping the file its runtime names in APPIMAGE,
+  // and a .deb or .rpm by installing the next package with the system's package manager, which asks
+  // for the user's password (linuxInstall.ts). Anything else, a build run from a folder, doesn't.
+  const updatable = app.isPackaged && (process.platform !== "linux" || linuxInstall() !== undefined);
   let status: UpdateStatus = updatable ? { kind: "checking" } : { kind: "unsupported" };
 
   const snapshot = (): Updates => ({
@@ -185,7 +189,7 @@ export const startUpdater = () => {
     download,
     /**
      * Quits and runs the downloaded installer silently, or on Linux puts the new AppImage in the old
-     * one's place, then starts the new build.
+     * one's place or installs the new package, then starts the new build.
      */
     install: () => {
       if (status.kind === "ready") autoUpdater.quitAndInstall(true, true);

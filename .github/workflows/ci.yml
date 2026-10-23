@@ -25,7 +25,7 @@ env:
   NIGHTLIES_KEPT: 10
 
 # The jobs run side by side. Linting gates the Windows jobs, so a change that fails it spends no
-# Windows minutes; publishing waits for every check and both packages.
+# Windows minutes; publishing waits for every check and every package.
 jobs:
   # The commit messages, whether anything but documentation changed, and the nightly's version.
   plan:
@@ -170,14 +170,20 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
 
-  # Every change that reaches the app is packaged and started on both platforms. Nightlies ship these
-  # packages, packed fast (.github/actions/package).
+  # Every change that reaches the app is packaged and started on both platforms, on each processor's
+  # own runner. Nightlies ship these packages, packed fast (.github/actions/package).
   package-linux:
-    name: Package (Linux)
+    name: Package (Linux ${{ matrix.arch }})
     needs: [plan, lint]
     if: ${{ needs.plan.outputs.package == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-latest }
+          - { arch: Arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -189,10 +195,16 @@ jobs:
           compression: fast
 
   package-windows:
-    name: Package (Windows)
+    name: Package (Windows ${{ matrix.arch }})
     needs: [plan, lint]
     if: ${{ needs.plan.outputs.package == 'true' }}
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest }
+          - { arch: Arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -205,7 +217,7 @@ jobs:
           compression: fast
 
   # A push to main that changes the app publishes its nightly once everything passed: the relay
-  # first, so it already reads what the new version sends, then the release with both packages and
+  # first, so it already reads what the new version sends, then the release with every package and
   # the web UI, then the update feed. Runs publish one at a time, oldest first, and one waiting
   # behind another gives way to a newer one, whose nightly carries its commits. The release plan is
   # made again here, so a run that finishes after a later push's publishes nothing (scripts/release.ts).
@@ -243,13 +255,17 @@ jobs:
           PUBLISH: ${{ steps.replan.outputs.publish }}
           VERSION: ${{ steps.replan.outputs.version }}
           PACKAGED: ${{ needs.plan.outputs.version }}
+      # Each runner's packages in a folder of their own, then all in one, with the update files two
+      # runners both wrote merged (scripts/merge-update-files.ts).
       - name: Fetch the packages
         if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: package-*
-          path: apps/desktop/out
-          merge-multiple: true
+          path: ${{ runner.temp }}/packages
+      - name: Gather the packages
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        run: node scripts/merge-update-files.ts "$RUNNER_TEMP/packages" apps/desktop/out
       - name: Fetch the web app
         if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -276,9 +292,7 @@ jobs:
           TITLE: ${{ steps.replan.outputs.title }}
           COMMIT: ${{ steps.replan.outputs.commit }}
         run: |
-          gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/nightly.yml \
-            apps/desktop/out/*.AppImage apps/desktop/out/nightly-linux.yml \
-            apps/relay/dist/cerium-web-*.tar.gz \
+          gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
       - name: Prune old nightlies

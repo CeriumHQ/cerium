@@ -1,9 +1,10 @@
 name: Package the app
 description: >-
-  Builds the desktop shell and the UI it loads, and packages them for the runner's platform into
-  apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file; on Linux the
-  AppImage and its update file. Then starts what was packaged with --smoke-test
-  (apps/desktop/src/smokeTest.ts), and uploads the package as the `package-<OS>` artifact.
+  Builds the desktop shell and the UI it loads, and packages them for the runner's platform and
+  processor into apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file;
+  on Linux the AppImage, the .deb, the .rpm and their update file. Then starts what was packaged with
+  --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the .deb as well, and
+  uploads the packages as the `package-<OS>-<arch>` artifact.
 
 inputs:
   version:
@@ -25,7 +26,7 @@ runs:
       env:
         CERIUM_VERSION: ${{ inputs.version }}
 
-    # electron-builder downloads Electron, NSIS, the AppImage tools and the rest into these folders.
+    # electron-builder downloads Electron, NSIS, the AppImage tools, fpm and the rest into these folders.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
@@ -33,7 +34,13 @@ runs:
           ~/AppData/Local/electron-builder/Cache
           ~/.cache/electron
           ~/.cache/electron-builder
-        key: electron-builder-${{ runner.os }}-${{ hashFiles('apps/desktop/package.json') }}
+        key: electron-builder-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
+
+    # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild.
+    - name: Install rpmbuild
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded.
@@ -46,47 +53,75 @@ runs:
         CERIUM_VERSION: ${{ inputs.version }}
         COMPRESSION: ${{ inputs.compression }}
 
-    # Starts the packaged app as a user would and waits for its backend and UI. The AppImage is unpacked
-    # first, since the runner has no FUSE to mount it with, and runs on a virtual display, with the
-    # unprivileged user namespaces Chromium's sandbox needs, which Ubuntu's AppArmor keeps from it.
-    # Its report is printed again when it fails, in case the Windows app's own output went nowhere.
+    # Starts the packaged app as a user would and waits for its backend and UI. On Linux the .deb is
+    # installed first and started as the system's package manager left it: its AppArmor profile is what
+    # lets Chromium's sandbox into the unprivileged user namespaces Ubuntu's AppArmor otherwise keeps
+    # from it. Then the AppImage, unpacked since the runner has no FUSE to mount it with, which only
+    # sandboxes itself once those namespaces are let through. Then the .rpm, installed with dnf in a
+    # Fedora container that checks its dependencies resolve there, and started by a user of its own,
+    # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
+    # would keep the sandbox out of the namespaces a Fedora desktop lets it into. All run on a virtual
+    # display. A report is printed again when a start fails, in case the Windows app's own output
+    # went nowhere.
     - name: Smoke test
       shell: bash
       run: |
-        report="$RUNNER_TEMP/smoke-test"
-        if [ "$RUNNER_OS" = Windows ]; then
-          app=(apps/desktop/out/win-unpacked/Cerium.exe)
-        else
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/apps/desktop/out/Cerium-$VERSION-x86_64.AppImage" --appimage-extract > /dev/null)
-          app=(xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun")
-        fi
-        "${app[@]}" --smoke-test="$report" || {
-          status=$?
-          cat "$report/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
-          exit "$status"
+        smoke() {
+          local report="$RUNNER_TEMP/smoke-test/$1"
+          shift
+          "$@" --smoke-test="$report" || {
+            local status=$?
+            cat "$report/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
+            exit "$status"
+          }
         }
+        out=apps/desktop/out
+        if [ "$RUNNER_OS" = Windows ]; then
+          if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
+          smoke installer "$out/$unpacked/Cerium.exe"
+        else
+          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
+          smoke deb xvfb-run -a cerium
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
+          smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
+          mkdir -p "$RUNNER_TEMP/smoke-test/rpm" && chmod 777 "$RUNNER_TEMP/smoke-test/rpm"
+          docker run --rm --shm-size=1g --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+            -v "$GITHUB_WORKSPACE/$out:/packages:ro" -v "$RUNNER_TEMP/smoke-test/rpm:/smoke-test" \
+            "$FEDORA" bash -euo pipefail -c '
+              dnf install -y -q /packages/cerium-*.rpm xorg-x11-server-Xvfb xorg-x11-xauth
+              useradd -m user
+              su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+            status=$?
+            cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
+            exit "$status"
+          }
+        fi
       env:
         VERSION: ${{ inputs.version }}
+        # The newest Fedora release, the one most of its users run.
+        FEDORA: fedora:latest
 
     - name: Keep the smoke test's logs
       if: failure()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: smoke-test-${{ runner.os }}
+        name: smoke-test-${{ runner.os }}-${{ runner.arch }}
         path: |
-          ${{ runner.temp }}/smoke-test/smoke-test.log
-          ${{ runner.temp }}/smoke-test/logs
+          ${{ runner.temp }}/smoke-test/*/smoke-test.log
+          ${{ runner.temp }}/smoke-test/*/logs
         if-no-files-found: ignore
         retention-days: 7
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: package-${{ runner.os }}
+        name: package-${{ runner.os }}-${{ runner.arch }}
         path: |
           apps/desktop/out/*.exe
           apps/desktop/out/*.exe.blockmap
           apps/desktop/out/*.AppImage
+          apps/desktop/out/*.deb
+          apps/desktop/out/*.rpm
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
         if-no-files-found: error

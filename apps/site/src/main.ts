@@ -9,16 +9,50 @@ const onScroll = () => nav?.toggleAttribute("data-scrolled", scrollY > 8);
 addEventListener("scroll", onScroll, { passive: true });
 onScroll();
 
-// The download buttons fetch Windows' installer; a visitor on Linux gets the AppImage instead.
-if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) {
+// The download buttons fetch Windows' x64 installer. A visitor on Linux gets the package their
+// distribution installs when their browser names it (Ubuntu's and Fedora's Firefox do), else the
+// AppImage; on an Arm64 processor, each one's Arm64 build. Chromium names the processor only when
+// asked, and other browsers on Windows never do.
+const userAgent = navigator.userAgent;
+const linux = /Linux/.test(userAgent) && !/Android/.test(userAgent);
+const hints = (
+  navigator as Navigator & {
+    readonly userAgentData?: {
+      getHighEntropyValues(hints: ReadonlyArray<string>): Promise<{ readonly architecture?: string }>;
+    };
+  }
+).userAgentData;
+
+const download = (arm: boolean) => {
+  if (!linux) return arm && /Windows/.test(userAgent) ? "/download/windows-arm64" : undefined;
+  const kind = /Ubuntu|Debian|Mint/.test(userAgent)
+    ? "deb"
+    : /Fedora|Red Hat/.test(userAgent)
+      ? "rpm"
+      : "linux";
+  return `/download/${kind}${arm ? "-arm64" : ""}`;
+};
+
+const pointDownloads = (arm: boolean) => {
+  const href = download(arm);
+  if (href === undefined) return;
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-download]")) {
-    link.href = "/download/linux";
+    link.href = href;
+    if (!linux) continue;
     link.querySelector("svg")?.classList.remove("windows");
     link.querySelector("use")?.setAttribute("href", "#mark-linux");
     const system = link.querySelector("[data-download-system]");
     if (system !== null) system.textContent = "Linux";
   }
-}
+};
+
+pointDownloads(/aarch64|arm64/i.test(userAgent));
+void hints
+  ?.getHighEntropyValues(["architecture"])
+  .then(({ architecture }) => {
+    if (architecture === "arm") pointDownloads(true);
+  })
+  .catch(() => undefined);
 
 const canvas = document.querySelector<HTMLCanvasElement>("[data-light]");
 const hero = document.querySelector<HTMLElement>("[data-hero]");

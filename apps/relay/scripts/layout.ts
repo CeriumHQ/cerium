@@ -21,16 +21,28 @@ export const APP_PATH = "/app/";
 /** The public repository the installers are published to (apps/desktop/electron-builder.ts). */
 const RELEASES = "https://github.com/CeriumHQ/releases/releases/download";
 
+/** Each download's path under `/download`, and the file it names, as electron-builder names it. */
+const downloads = (version: string): ReadonlyArray<readonly [string, string]> => [
+  ["", `Cerium-Setup-${version}-x64.exe`],
+  ["/windows-arm64", `Cerium-Setup-${version}-arm64.exe`],
+  ["/linux", `Cerium-${version}-x86_64.AppImage`],
+  ["/linux-arm64", `Cerium-${version}-arm64.AppImage`],
+  ["/deb", `cerium_${version}_amd64.deb`],
+  ["/deb-arm64", `cerium_${version}_arm64.deb`],
+  ["/rpm", `cerium-${version}.x86_64.rpm`],
+  ["/rpm-arm64", `cerium-${version}.aarch64.rpm`],
+];
+
 /**
  * The relay's `_redirects`: `/download` fetches the Windows installer of the version deployed with
- * it, and `/download/linux` its AppImage, which the release workflows publish alongside.
+ * it, and the paths below it the Arm64 installer and each Linux package, which the release workflows
+ * publish alongside (apps/desktop/electron-builder.ts).
  */
 export const redirects = (root: WebBuild | undefined): string => {
   if (root === undefined) return "";
   const release = `${RELEASES}/v${root.version}`;
   return [
-    `/download ${release}/Cerium-Setup-${root.version}.exe 302`,
-    `/download/linux ${release}/Cerium-${root.version}-x86_64.AppImage 302`,
+    ...downloads(root.version).map(([path, file]) => `/download${path} ${release}/${file} 302`),
     "",
   ].join("\n");
 };

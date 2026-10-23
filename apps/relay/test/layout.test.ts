@@ -43,10 +43,20 @@ describe("the relay's web UI builds", () => {
     expect(headers.trimEnd().endsWith("/link\n  X-Frame-Options: DENY")).toBe(true);
   });
 
-  it("downloads the installer and the AppImage of the version deployed", () => {
+  it("downloads each installer and package of the version deployed", () => {
+    const release = "https://github.com/CeriumHQ/releases/releases/download/v0.4.0-nightly.n000031";
     expect(redirects(build("0.4.0-nightly.n000031"))).toBe(
-      "/download https://github.com/CeriumHQ/releases/releases/download/v0.4.0-nightly.n000031/Cerium-Setup-0.4.0-nightly.n000031.exe 302\n" +
-        "/download/linux https://github.com/CeriumHQ/releases/releases/download/v0.4.0-nightly.n000031/Cerium-0.4.0-nightly.n000031-x86_64.AppImage 302\n",
+      [
+        `/download ${release}/Cerium-Setup-0.4.0-nightly.n000031-x64.exe 302`,
+        `/download/windows-arm64 ${release}/Cerium-Setup-0.4.0-nightly.n000031-arm64.exe 302`,
+        `/download/linux ${release}/Cerium-0.4.0-nightly.n000031-x86_64.AppImage 302`,
+        `/download/linux-arm64 ${release}/Cerium-0.4.0-nightly.n000031-arm64.AppImage 302`,
+        `/download/deb ${release}/cerium_0.4.0-nightly.n000031_amd64.deb 302`,
+        `/download/deb-arm64 ${release}/cerium_0.4.0-nightly.n000031_arm64.deb 302`,
+        `/download/rpm ${release}/cerium-0.4.0-nightly.n000031.x86_64.rpm 302`,
+        `/download/rpm-arm64 ${release}/cerium-0.4.0-nightly.n000031.aarch64.rpm 302`,
+        "",
+      ].join("\n"),
     );
     expect(redirects(undefined)).toBe("");
   });

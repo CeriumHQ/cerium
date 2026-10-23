@@ -45,8 +45,8 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
-  # The web app and both packages build side by side, the packages packed smallest
-  # (.github/actions/web, .github/actions/package).
+  # The web app and every package build side by side, each processor's packages on its own runner,
+  # packed smallest (.github/actions/web, .github/actions/package).
   web:
     name: Build the web app
     needs: plan
@@ -64,11 +64,16 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
 
   package-linux:
-    name: Package (Linux)
+    name: Package (Linux ${{ matrix.arch }})
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-latest }
+          - { arch: Arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,10 +86,15 @@ jobs:
           compression: maximum
 
   package-windows:
-    name: Package (Windows)
+    name: Package (Windows ${{ matrix.arch }})
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest }
+          - { arch: Arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,8 +107,8 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
 
-  # The relay first, so it already reads what the new version sends, then the release with both
-  # packages and the web UI, then the update feed.
+  # The relay first, so it already reads what the new version sends, then the release with every
+  # package and the web UI, then the update feed.
   publish:
     name: Publish
     needs: [plan, web, package-linux, package-windows]
@@ -120,13 +130,17 @@ jobs:
         env:
           COMMIT: ${{ needs.plan.outputs.commit }}
           VERSION: ${{ needs.plan.outputs.version }}
+      # Each runner's packages in a folder of their own, then all in one, with the update files two
+      # runners both wrote merged (scripts/merge-update-files.ts).
       - name: Fetch the packages
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: package-*
-          path: apps/desktop/out
-          merge-multiple: true
+          path: ${{ runner.temp }}/packages
+      - name: Gather the packages
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        run: node scripts/merge-update-files.ts "$RUNNER_TEMP/packages" apps/desktop/out
       - name: Fetch the web app
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -153,9 +167,7 @@ jobs:
           TITLE: ${{ steps.notes.outputs.title }}
           COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
-          gh release create "$TAG" apps/desktop/out/*.exe apps/desktop/out/*.exe.blockmap apps/desktop/out/latest.yml \
-            apps/desktop/out/*.AppImage apps/desktop/out/latest-linux.yml \
-            apps/relay/dist/cerium-web-*.tar.gz \
+          gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest
       - name: Publish to the update feed

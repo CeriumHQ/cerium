@@ -2,7 +2,7 @@ import { app, Menu, Notification, powerSaveBlocker, Tray, type BrowserWindow } f
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { appImagePath, autostartEnabled, setAutostart } from "./autostart.ts";
+import { autostartEnabled, autostartProgram, setAutostart } from "./autostart.ts";
 
 // Staying reachable. While this machine is signed in to a Cerium
 // account, closing the window hides it to the tray, so the user's other devices can still reach it,
@@ -26,11 +26,11 @@ export const HIDDEN_FLAG = "--hidden";
 
 /**
  * Start at login only makes sense for the installed app; a development Electron isn't Cerium. On
- * Linux it is an autostart entry for the AppImage (autostart.ts).
+ * Linux it is an autostart entry for the AppImage or the installed package (autostart.ts).
  */
 export const startAtLogin = async () => {
   if (process.platform === "linux") {
-    const available = app.isPackaged && appImagePath() !== undefined;
+    const available = app.isPackaged && autostartProgram() !== undefined;
     return { available, enabled: available && (await autostartEnabled()) };
   }
   return {
@@ -111,9 +111,10 @@ export const backgroundMode = (options: {
         content: "Your other devices can reach this machine. Open or quit Cerium from here.",
       });
     } else if (Notification.isSupported()) {
+      const where = process.platform === "darwin" ? "the menu bar or the Dock" : "its tray icon";
       new Notification({
         title,
-        body: "Your other devices can reach this machine. Open or quit Cerium from its tray icon.",
+        body: `Your other devices can reach this machine. Open or quit Cerium from ${where}.`,
       }).show();
     }
     writeFileSync(shown, "");

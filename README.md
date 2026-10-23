@@ -124,9 +124,11 @@ injects into every session, so every agent stays visible in the thread.
 
 Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
 
-- **Windows 10 and 11**: run `Cerium-Setup-<version>.exe`.
-- **Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` and run it. It needs FUSE 2 (`libfuse2`, or
-  `libfuse2t64` on Ubuntu 24.04 and later).
+- **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC.
+- **Ubuntu and Debian**: `sudo apt install ./cerium_<version>_amd64.deb` (`arm64` on Arm).
+- **Fedora**: `sudo dnf install ./cerium-<version>.x86_64.rpm` (`aarch64` on Arm).
+- **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
+  needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
 
 Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
 pick in Settings → Updates. macOS is planned.
