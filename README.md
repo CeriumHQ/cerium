@@ -52,7 +52,7 @@ piece of the job to the one that does it best.
     <td width="50%" valign="top">
       <b>The real harnesses, on your plans</b><br />
       Each agent is the harness itself, driven through its official SDK on your own subscription.
-      Cerium never sees a token or key.
+      Cerium never reads a harness's token or key.
     </td>
   </tr>
   <tr>
@@ -128,7 +128,9 @@ injects into every session, so every agent stays visible in the thread.
 
 Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
 
-- **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC.
+- **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC. The
+  installer isn't code-signed yet, so SmartScreen warns that it "protected your PC": choose More info,
+  then Run anyway.
 - **Ubuntu and Debian**: `sudo apt install ./cerium_<version>_amd64.deb` (`arm64` on Arm).
 - **Fedora**: `sudo dnf install ./cerium-<version>.x86_64.rpm` (`aarch64` on Arm).
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
@@ -139,6 +141,29 @@ Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/rel
 
 Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
 pick in Settings → Updates.
+
+## Privacy
+
+Cerium has no telemetry. Your threads live in a SQLite database on your machine, and each harness
+talks to its own provider as it does without Cerium. Beyond that, Cerium itself only reaches out for:
+
+- **Your Cerium account, if you sign in.** Signing in (through Clerk) lets your phone and other
+  machines follow your threads. The relay at `cerium.nonlooped.xyz` then keeps, per account:
+  your name, email and profile picture from the sign-in; each device's name, platform, Cerium
+  version and update channel, when it was last seen, and a hash of its device key; a copy of every
+  thread on your signed-in machines, its messages, tool calls and their output, without images;
+  what you're drafting and when each thread was last read; and browsers' push subscriptions. While
+  you use Cerium from another device, the relay also passes traffic between it and your machine.
+  Signing a machine out, or removing it in Settings → Account, deletes its threads' copies, and
+  deleting a thread deletes its copy. Clerk keeps your sign-in, and Cloudflare, which runs the relay,
+  keeps its request logs.
+- **Updates.** The app checks this repository's GitHub Releases at launch and every six hours, and
+  downloads an update only when you ask. Settings → Harnesses looks up each harness's newest version
+  on npm or GitHub to tell you when one is out.
+- **Dictation.** The speech model you pick downloads from Hugging Face on first use, and your voice is
+  transcribed on your machine.
+- **Artifacts.** Pages an agent draws can load scripts over HTTPS, such as the chart libraries
+  Cerium suggests from `cdn.jsdelivr.net`, so viewing one may fetch from that CDN.
 
 ## Build from source
 
@@ -155,7 +180,8 @@ bun run verify   # format, lint, typecheck and test, as CI does
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. Security issues go through a
-[private advisory](https://github.com/CeriumHQ/cerium/security/advisories/new), not public issues.
+[private advisory](https://github.com/CeriumHQ/cerium/security/advisories/new), not public issues:
+see [SECURITY.md](SECURITY.md).
 
 ## License
 
