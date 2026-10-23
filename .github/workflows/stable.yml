@@ -136,7 +136,7 @@ jobs:
           apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
 
   # The relay first, so it already reads what the new version sends, then the release with every
-  # package and the web UI, then the update feed.
+  # package and the web UI, which installed apps update from.
   publish:
     name: Publish
     needs: [plan, web, package-linux, package-windows, package-macos]
@@ -175,9 +175,11 @@ jobs:
         with:
           name: web
           path: apps
-      # Wrangler deploys the relay.
+      # Wrangler deploys the relay, which needs only the relay's own dependencies.
       - if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: ./.github/actions/setup
+        with:
+          filter: "@cerium/relay"
       - name: Deploy the relay
         if: ${{ steps.notes.outputs.publish == 'true' }}
         uses: ./.github/actions/deploy-relay
@@ -198,12 +200,3 @@ jobs:
           gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
             --target "$COMMIT" --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md" --latest
-      - name: Publish to the update feed
-        if: ${{ steps.notes.outputs.publish == 'true' }}
-        uses: ./.github/actions/publish-feed
-        with:
-          tag: ${{ steps.notes.outputs.tag }}
-          title: ${{ steps.notes.outputs.title }}
-          notes-file: ${{ runner.temp }}/notes.md
-          nightly: "false"
-          token: ${{ secrets.CERIUM_RELEASES_TOKEN }}

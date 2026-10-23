@@ -18,6 +18,13 @@ const nightly = version?.includes("-nightly.") === true;
  * Privacy & Security, and updates download in the browser (src/macUpdates.ts).
  */
 const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
+/**
+ * Packed fast, for nightlies and runs that only check the packaging (.github/actions/package).
+ * electron-builder applies ELECTRON_BUILDER_COMPRESSION_LEVEL to its 7z archives and disk images
+ * only, so the .deb and .rpm, which it otherwise packs with xz, take gzip here: a few times faster,
+ * somewhat larger, and installed the same way.
+ */
+const fastPacking = process.env["ELECTRON_BUILDER_COMPRESSION_LEVEL"] !== undefined;
 
 export default {
   appId: "app.cerium.desktop",
@@ -97,6 +104,7 @@ export default {
   deb: {
     artifactName: "cerium_${version}_${arch}.${ext}",
     packageCategory: "devel",
+    ...(fastPacking ? { compression: "gz" } : {}),
     depends: [
       ...["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0"],
       ...["libuuid1", "libsecret-1-0", "libasound2", "libgbm1"],
@@ -108,6 +116,7 @@ export default {
   rpm: {
     artifactName: "cerium-${version}.${arch}.${ext}",
     fpm: ["--rpm-rpmbuild-define=_build_id_links none"],
+    ...(fastPacking ? { compression: "gzip" } : {}),
     depends: [
       ...["gtk3", "libnotify", "nss", "libXScrnSaver", "(libXtst or libXtst6)", "xdg-utils", "at-spi2-core"],
       ...["(libuuid or libuuid1)", "(alsa-lib or libasound2)", "(mesa-libgbm or libgbm1)"],
@@ -139,13 +148,11 @@ export default {
   // channel's update file beside the installer, latest.yml or nightly.yml (latest-linux.yml or
   // nightly-linux.yml beside the Linux packages, latest-linux-arm64.yml beside Arm64's,
   // latest-mac.yml or nightly-mac.yml beside the Mac's), and the
-  // release workflows publish it with the installer and its blockmap. The source repository is
-  // private, so the app reads a public repository that holds only releases
-  // (.github/actions/publish-feed).
+  // release workflows publish it with the installer and its blockmap to this repository's releases.
   publish: {
     provider: "github",
     owner: "CeriumHQ",
-    repo: "releases",
+    repo: "cerium",
     channel: nightly ? "nightly" : "latest",
   },
 } satisfies Configuration;

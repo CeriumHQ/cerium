@@ -22,10 +22,10 @@ describe("signedWithDeveloperId", () => {
 describe("diskImageUrl", () => {
   it("names the release's disk image for the processor", () => {
     expect(diskImageUrl("1.2.0", "arm64")).toBe(
-      "https://github.com/CeriumHQ/releases/releases/download/v1.2.0/Cerium-1.2.0-arm64.dmg",
+      "https://github.com/CeriumHQ/cerium/releases/download/v1.2.0/Cerium-1.2.0-arm64.dmg",
     );
     expect(diskImageUrl("1.2.1-nightly.n000042", "x64")).toBe(
-      "https://github.com/CeriumHQ/releases/releases/download/v1.2.1-nightly.n000042/Cerium-1.2.1-nightly.n000042-x64.dmg",
+      "https://github.com/CeriumHQ/cerium/releases/download/v1.2.1-nightly.n000042/Cerium-1.2.1-nightly.n000042-x64.dmg",
     );
   });
 });

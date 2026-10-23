@@ -5,9 +5,10 @@
 // the one whose name carries its own processor (apps/desktop/electron-builder.ts).
 //
 // Usage: node scripts/merge-update-files.ts <from> <to>
-// <from> holds one folder per runner's package artifact; every file in them lands in <to>.
+// <from> holds one folder per runner's package artifact; every file in them is moved to <to>, which
+// on the same disk takes no time where copying the packages took half a minute.
 
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** An update file's lines, with its `files:` list's lines apart from the rest. */
@@ -64,7 +65,7 @@ if (import.meta.main) {
   mkdirSync(to, { recursive: true });
   for (const [name, paths] of byName) {
     if (paths.length === 1) {
-      copyFileSync(paths[0]!, join(to, name));
+      renameSync(paths[0]!, join(to, name));
     } else if (isUpdateFile(name)) {
       writeFileSync(join(to, name), mergeUpdateFiles(paths.map((path) => readFileSync(path, "utf8"))));
       console.log(`Merged ${name} from ${paths.length} runners.`);

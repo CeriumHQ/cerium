@@ -6,8 +6,8 @@ import { join } from "node:path";
 // Apple's certificate) can't pass that check, so it offers the new version's disk image in the
 // browser instead, to drag into Applications.
 
-/** The public repository the releases are published to (electron-builder.ts). */
-const RELEASES = "https://github.com/CeriumHQ/releases/releases/download";
+/** The repository the releases are published to (electron-builder.ts). */
+const RELEASES = "https://github.com/CeriumHQ/cerium/releases/download";
 
 /** Whether `codesign -dv`'s report names a Developer ID certificate. */
 export const signedWithDeveloperId = (report: string): boolean =>

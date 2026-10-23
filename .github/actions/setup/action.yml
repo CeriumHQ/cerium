@@ -1,7 +1,15 @@
 name: Set up the workspace
 description: >-
-  Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile. On Windows it
-  first turns off Defender's real-time scanning.
+  Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile, or only one
+  package's. On Windows it first turns off Defender's real-time scanning.
+
+inputs:
+  filter:
+    description: >-
+      Installs only this workspace package's dependencies (`bun install --filter`), for a job that
+      runs one package's scripts. Empty installs the whole workspace.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -32,8 +40,9 @@ runs:
     # Installing also runs the root `prepare` script, which patches the Effect diagnostics into
     # TypeScript and Oxlint.
     - shell: bash
-      run: bun install --frozen-lockfile
+      run: bun install --frozen-lockfile ${FILTER:+--filter "$FILTER"}
       env:
+        FILTER: ${{ inputs.filter }}
         # Bun's package cache goes on the checkout's disk. Its default home on Windows is on C:, which
         # is much slower than the D: the checkout is on, and Bun can't hard-link packages across the
         # two, so installing there took several times as long. The cache isn't kept between runs:

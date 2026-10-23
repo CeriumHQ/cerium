@@ -44,7 +44,7 @@ describe("the relay's web UI builds", () => {
   });
 
   it("downloads each installer and package of the version deployed", () => {
-    const release = "https://github.com/CeriumHQ/releases/releases/download/v0.4.0-nightly.n000031";
+    const release = "https://github.com/CeriumHQ/cerium/releases/download/v0.4.0-nightly.n000031";
     expect(redirects(build("0.4.0-nightly.n000031"))).toBe(
       [
         `/download ${release}/Cerium-Setup-0.4.0-nightly.n000031-x64.exe 302`,

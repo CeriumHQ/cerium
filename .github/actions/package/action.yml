@@ -15,8 +15,9 @@ inputs:
   compression:
     description: >-
       `maximum` packs the installer smallest, for a stable release. `fast` packs it in about half the
-      time and a tenth larger, still with LZMA2, so it installs and updates the same way: for nightlies
-      and for runs that only check the packaging.
+      time and a tenth larger, still with LZMA2, and the .deb and .rpm with gzip instead of xz
+      (apps/desktop/electron-builder.ts), so each installs and updates the same way: for nightlies and
+      for runs that only check the packaging.
     required: true
   mac-certificate:
     description: The Developer ID Application certificate and its key, a base64 .p12 (macOS only).
@@ -42,6 +43,26 @@ inputs:
 runs:
   using: composite
   steps:
+    # The Fedora container the .rpm's smoke test runs in (below) is pulled, and fetches its package
+    # lists and the virtual display, while the app builds and packs, which leaves only the .rpm and
+    # the dependencies it names for the smoke test to install. The packages folder is mounted from
+    # its parent, which exists already. Its outcome lands in fedora-ready for the smoke test to read.
+    - name: Start the Fedora container
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/smoke-test/rpm" && chmod 777 "$RUNNER_TEMP/smoke-test/rpm"
+        (
+          docker run -d --name fedora --shm-size=1g --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined -v "$GITHUB_WORKSPACE/apps/desktop:/desktop:ro" \
+            -v "$RUNNER_TEMP/smoke-test/rpm:/smoke-test" "$FEDORA" sleep infinity &&
+            docker exec fedora dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth
+          echo $? > "$RUNNER_TEMP/fedora-ready"
+        ) > "$RUNNER_TEMP/fedora.log" 2>&1 &
+      env:
+        # The newest Fedora release, the one most of its users run.
+        FEDORA: fedora:latest
+
     - name: Build
       shell: bash
       run: bun run build:desktop
@@ -60,11 +81,14 @@ runs:
           ~/Library/Caches/electron-builder
         key: electron-builder-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
-    # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild.
+    # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild, which the x64
+    # image already has.
     - name: Install rpmbuild
       if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm
+      run: |
+        command -v rpmbuild > /dev/null ||
+          { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm; }
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
@@ -97,8 +121,9 @@ runs:
     # installed first and started as the system's package manager left it: its AppArmor profile is what
     # lets Chromium's sandbox into the unprivileged user namespaces Ubuntu's AppArmor otherwise keeps
     # from it. Then the AppImage, unpacked since the runner has no FUSE to mount it with, which only
-    # sandboxes itself once those namespaces are let through. Then the .rpm, installed with dnf in a
-    # Fedora container that checks its dependencies resolve there, and started by a user of its own,
+    # sandboxes itself once those namespaces are let through. Then the .rpm, installed with dnf in the
+    # Fedora container started above, which checks its dependencies resolve there, and started by a
+    # user of its own,
     # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
     # would keep the sandbox out of the namespaces a Fedora desktop lets it into. All run on a virtual
     # display. On macOS the app starts from its disk image, once its signature checks out. A report is
@@ -132,11 +157,14 @@ runs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
-          mkdir -p "$RUNNER_TEMP/smoke-test/rpm" && chmod 777 "$RUNNER_TEMP/smoke-test/rpm"
-          docker run --rm --shm-size=1g --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
-            -v "$GITHUB_WORKSPACE/$out:/packages:ro" -v "$RUNNER_TEMP/smoke-test/rpm:/smoke-test" \
-            "$FEDORA" bash -euo pipefail -c '
-              dnf install -y -q /packages/cerium-*.rpm xorg-x11-server-Xvfb xorg-x11-xauth
+          for _ in $(seq 300); do [ -s "$RUNNER_TEMP/fedora-ready" ] && break; sleep 1; done
+          if [ "$(cat "$RUNNER_TEMP/fedora-ready" 2>/dev/null)" != 0 ]; then
+            cat "$RUNNER_TEMP/fedora.log"
+            echo "::error::The Fedora container didn't start."
+            exit 1
+          fi
+          docker exec fedora bash -euo pipefail -c '
+              dnf install -y -q /desktop/out/cerium-*.rpm
               useradd -m user
               su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
             status=$?
@@ -146,8 +174,6 @@ runs:
         fi
       env:
         VERSION: ${{ inputs.version }}
-        # The newest Fedora release, the one most of its users run.
-        FEDORA: fedora:latest
 
     - name: Keep the smoke test's logs
       if: failure()
@@ -160,9 +186,12 @@ runs:
         if-no-files-found: ignore
         retention-days: 7
 
+    # Stored as they are: the packages are compressed already, and zipping them again slowed the Intel
+    # Mac's upload to a third of Linux's.
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: package-${{ runner.os }}-${{ runner.arch }}
+        compression-level: 0
         path: |
           apps/desktop/out/*.exe
           apps/desktop/out/*.exe.blockmap

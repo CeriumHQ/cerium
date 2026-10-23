@@ -18,8 +18,8 @@ const rule = (path: string, headers: ReadonlyArray<string>) =>
 /** Where the web app opens: the root is the website's. */
 export const APP_PATH = "/app/";
 
-/** The public repository the installers are published to (apps/desktop/electron-builder.ts). */
-const RELEASES = "https://github.com/CeriumHQ/releases/releases/download";
+/** The repository the installers are published to (apps/desktop/electron-builder.ts). */
+const RELEASES = "https://github.com/CeriumHQ/cerium/releases/download";
 
 /** Each download's path under `/download`, and the file it names, as electron-builder names it. */
 const downloads = (version: string): ReadonlyArray<readonly [string, string]> => [
