@@ -325,6 +325,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Repository: the bug report form lists OpenCode among the harnesses, asks for the macOS version too, and gives a version in the nightlies' current form (`0.6.0-nightly.n000048`).
 - Desktop: an installed Cerium ignores `--dev-url`, so nothing that starts it can load another page into its window. Only `bun run dev` loads the UI from Vite's dev server.
 - Releases: a nightly published to the update feed (`CeriumHQ/releases`) is no longer deleted straight after by its own prune step, which left the website's download button on a 404 and installed apps without the update. The prune ranked nightlies by `createdAt`, which GitHub sets from the tagged commit's date, and every tag there names the feed repository's one commit, so the newest ranked with the oldest; both prune steps now rank by `publishedAt`.
 - UI: on a phone, a thread's title shows again. The terminal, artifacts, GitHub, Source control and files buttons had taken the whole top bar, squeezing the title to a letter or two; they now sit in one ⋯ menu beside the agents button, each ticked while its panel is open.
