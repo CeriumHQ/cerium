@@ -2,7 +2,9 @@ name: Package the app
 description: >-
   Builds the desktop shell and the UI it loads, and packages them for the runner's platform and
   processor into apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file;
-  on Linux the AppImage, the .deb, the .rpm and their update file. Then starts what was packaged with
+  on Linux the AppImage, the .deb, the .rpm and their update file; on macOS the disk image, the zip
+  updates install from and their update file, signed with a Developer ID and notarized when the
+  certificate and API key are given, else signed ad hoc. Then starts what was packaged with
   --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the .deb as well, and
   uploads the packages as the `package-<OS>-<arch>` artifact.
 
@@ -16,6 +18,26 @@ inputs:
       time and a tenth larger, still with LZMA2, so it installs and updates the same way: for nightlies
       and for runs that only check the packaging.
     required: true
+  mac-certificate:
+    description: The Developer ID Application certificate and its key, a base64 .p12 (macOS only).
+    required: false
+    default: ""
+  mac-certificate-password:
+    description: The .p12's password.
+    required: false
+    default: ""
+  apple-api-key:
+    description: An App Store Connect API key (.p8 contents) that notarizes the signed app.
+    required: false
+    default: ""
+  apple-api-key-id:
+    description: The API key's ID.
+    required: false
+    default: ""
+  apple-api-issuer:
+    description: The API key's issuer ID.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -34,6 +56,8 @@ runs:
           ~/AppData/Local/electron-builder/Cache
           ~/.cache/electron
           ~/.cache/electron-builder
+          ~/Library/Caches/electron
+          ~/Library/Caches/electron-builder
         key: electron-builder-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
     # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild.
@@ -43,15 +67,31 @@ runs:
       run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
-    # fresh checkouts, and a second attempt has always succeeded.
+    # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
+    # the certificate in CSC_LINK and notarizes with the key file APPLE_API_KEY names; without them
+    # it signs ad hoc (apps/desktop/electron-builder.ts).
     - name: Package
       shell: bash
       run: |
         if [ "$COMPRESSION" = fast ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
+        if [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CERTIFICATE" ]; then
+          export CSC_LINK="$MAC_CERTIFICATE" CSC_KEY_PASSWORD="$MAC_CERTIFICATE_PASSWORD"
+          if [ -n "$APPLE_API_KEY_CONTENTS" ]; then
+            printf '%s' "$APPLE_API_KEY_CONTENTS" > "$RUNNER_TEMP/apple-api-key.p8"
+            export APPLE_API_KEY="$RUNNER_TEMP/apple-api-key.p8"
+          fi
+        fi
+        # electron-builder refuses half a notarization key.
+        if [ -z "${APPLE_API_KEY:-}" ]; then unset APPLE_API_KEY_ID APPLE_API_ISSUER; fi
         bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         COMPRESSION: ${{ inputs.compression }}
+        MAC_CERTIFICATE: ${{ inputs.mac-certificate }}
+        MAC_CERTIFICATE_PASSWORD: ${{ inputs.mac-certificate-password }}
+        APPLE_API_KEY_CONTENTS: ${{ inputs.apple-api-key }}
+        APPLE_API_KEY_ID: ${{ inputs.apple-api-key-id }}
+        APPLE_API_ISSUER: ${{ inputs.apple-api-issuer }}
 
     # Starts the packaged app as a user would and waits for its backend and UI. On Linux the .deb is
     # installed first and started as the system's package manager left it: its AppArmor profile is what
@@ -61,8 +101,8 @@ runs:
     # Fedora container that checks its dependencies resolve there, and started by a user of its own,
     # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
     # would keep the sandbox out of the namespaces a Fedora desktop lets it into. All run on a virtual
-    # display. A report is printed again when a start fails, in case the Windows app's own output
-    # went nowhere.
+    # display. On macOS the app starts from its disk image, once its signature checks out. A report is
+    # printed again when a start fails, in case the Windows app's own output went nowhere.
     - name: Smoke test
       shell: bash
       run: |
@@ -79,6 +119,13 @@ runs:
         if [ "$RUNNER_OS" = Windows ]; then
           if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
           smoke installer "$out/$unpacked/Cerium.exe"
+        elif [ "$RUNNER_OS" = macOS ]; then
+          # The app as the disk image holds it, mounted read-only as a user's Mac would.
+          mount="$RUNNER_TEMP/cerium-dmg"
+          hdiutil attach "$out"/Cerium-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
+          codesign --verify --deep --strict "$mount/Cerium.app"
+          smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
+          hdiutil detach "$mount" > /dev/null
         else
           sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
           smoke deb xvfb-run -a cerium
@@ -122,6 +169,9 @@ runs:
           apps/desktop/out/*.AppImage
           apps/desktop/out/*.deb
           apps/desktop/out/*.rpm
+          apps/desktop/out/*.dmg
+          apps/desktop/out/*-mac.zip
+          apps/desktop/out/*-mac.zip.blockmap
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
         if-no-files-found: error

@@ -107,11 +107,39 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
 
+  # Signed with the repository's Developer ID and notarized when it has them, else signed ad hoc.
+  package-macos:
+    name: Package (macOS ${{ matrix.arch }})
+    needs: plan
+    if: ${{ needs.plan.outputs.publish == 'true' }}
+    strategy:
+      matrix:
+        include:
+          - { arch: Arm64, runner: macos-15 }
+          - { arch: x64, runner: macos-15-intel }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/package
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          compression: maximum
+          mac-certificate: ${{ secrets.MAC_CERTIFICATE }}
+          mac-certificate-password: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          apple-api-key: ${{ secrets.APPLE_API_KEY }}
+          apple-api-key-id: ${{ secrets.APPLE_API_KEY_ID }}
+          apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
+
   # The relay first, so it already reads what the new version sends, then the release with every
   # package and the web UI, then the update feed.
   publish:
     name: Publish
-    needs: [plan, web, package-linux, package-windows]
+    needs: [plan, web, package-linux, package-windows, package-macos]
     if: ${{ needs.plan.outputs.publish == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
