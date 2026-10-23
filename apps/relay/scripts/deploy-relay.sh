@@ -209,6 +209,10 @@ TOTAL_STAGES=9
 RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(cd "$RELAY_DIR/../.." && pwd)"
 SITE="https://cerium.nonlooped.xyz"
+# Clerk's production instance for the site answers at clerk.<site>, and its publishable key is
+# pk_live_ followed by that host and a $, base64-encoded without padding.
+CLERK_HOST="clerk.${SITE#https://}"
+CLERK_PUBLISHABLE_KEY="pk_live_$(printf '%s$' "$CLERK_HOST" | base64 | tr -d '\n=')"
 REPO="https://github.com/CeriumHQ/cerium"
 SECRETS_FILE=""
 # The secrets' temporary file goes when the wizard ends, then its folder, only if that's empty.
@@ -257,52 +261,67 @@ pause "Press Enter once nonlooped.xyz is in this account."
 
 stage "The relay's settings"
 say "The relay needs four settings, stored by Cloudflare as encrypted secrets:"
-note "  CLERK_PUBLISHABLE_KEY, CLERK_JWT_KEY  your Clerk instance, from apps/relay/.dev.vars"
+note "  CLERK_PUBLISHABLE_KEY, CLERK_JWT_KEY  Clerk's production instance at $CLERK_HOST"
 note "  VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY    a new key pair that signs push notifications"
+note "apps/relay/.dev.vars holds the development instance's keys and stays local."
 existing=$(wrangler secret list 2>/dev/null || true)
 missing=()
 for name in CLERK_PUBLISHABLE_KEY CLERK_JWT_KEY VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do
   [[ "$existing" == *"\"$name\""* ]] || missing+=("$name")
 done
+# A relay still serving another instance's key (a development pk_test_ one) gets both Clerk keys anew.
+live_config=$(curl -fsS --max-time 15 "$SITE/api/config" 2>/dev/null || true)
+if [[ "$live_config" == *'"publishableKey"'* && "$live_config" != *"\"$CLERK_PUBLISHABLE_KEY\""* ]]; then
+  warn "The relay signs in with another Clerk instance; its keys are replaced with production's."
+  for name in CLERK_PUBLISHABLE_KEY CLERK_JWT_KEY; do
+    [[ " ${missing[*]} " == *" $name "* ]] || missing+=("$name")
+  done
+fi
 if (( ${#missing[@]} == 0 )); then
   say "The relay has all four already; they're kept as they are."
 else
-  [[ -f "$RELAY_DIR/.dev.vars" ]] ||
-    { warn "apps/relay/.dev.vars is missing: run bash apps/relay/scripts/setup-clerk.sh first."; exit 1; }
-  # Node reads .dev.vars itself, from a heredoc rather than an argument (Git Bash mangles
-  # backslashes in those), so the key's \n escapes stay as they are. It writes only what's missing
-  # to a private temporary file, deleted when this wizard ends.
-  SECRETS_FILE=$(cd "$RELAY_DIR" && CERIUM_MISSING="${missing[*]}" node --input-type=module <<'NODE'
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
+  # Node fetches the production instance's JWT public key from its Frontend API and writes only
+  # what's missing to a private temporary file, deleted when this wizard ends. Values go in through
+  # the environment rather than arguments, which Git Bash mangles.
+  SECRETS_FILE=$(CERIUM_MISSING="${missing[*]}" CERIUM_CLERK_HOST="$CLERK_HOST" \
+    CERIUM_CLERK_KEY="$CLERK_PUBLISHABLE_KEY" node --input-type=module <<'NODE'
+import { createPublicKey } from "node:crypto";
+import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const vars = {};
-for (const line of readFileSync(".dev.vars", "utf8").split(/\r?\n/)) {
-  const match = /^([A-Z_]+)=(.*)$/.exec(line);
-  if (match) vars[match[1]] = match[2].replace(/^(["'])(.*)\1$/, "$2");
+const { CERIUM_MISSING, CERIUM_CLERK_HOST, CERIUM_CLERK_KEY } = process.env;
+const wanted = new Set(CERIUM_MISSING.split(" "));
+const all = { CLERK_PUBLISHABLE_KEY: CERIUM_CLERK_KEY };
+// The key and the instance it names go up together: either alone verifies nothing.
+if (wanted.has("CLERK_PUBLISHABLE_KEY") || wanted.has("CLERK_JWT_KEY")) {
+  wanted.add("CLERK_PUBLISHABLE_KEY").add("CLERK_JWT_KEY");
+  const response = await fetch(`https://${CERIUM_CLERK_HOST}/.well-known/jwks.json`).catch((error) => {
+    console.error(`Couldn't reach ${CERIUM_CLERK_HOST}: ${error.message}`);
+    process.exit(1);
+  });
+  const { keys } = await response.json();
+  all.CLERK_JWT_KEY = createPublicKey({ key: keys[0], format: "jwk" })
+    .export({ type: "spki", format: "pem" })
+    .trim();
 }
-const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
-const raw = Buffer.from(await crypto.subtle.exportKey("raw", pair.publicKey)).toString("base64url");
-const { d } = await crypto.subtle.exportKey("jwk", pair.privateKey);
-// The relay's own pair, never the development one in .dev.vars.
-const all = { ...vars, VAPID_PUBLIC_KEY: raw, VAPID_PRIVATE_KEY: d };
-const wanted = new Set(process.env.CERIUM_MISSING.split(" "));
-// A new pair goes up whole: half of one matches nothing.
 if (wanted.has("VAPID_PUBLIC_KEY") || wanted.has("VAPID_PRIVATE_KEY")) {
+  // A new pair goes up whole: half of one matches nothing.
   wanted.add("VAPID_PUBLIC_KEY").add("VAPID_PRIVATE_KEY");
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]);
+  all.VAPID_PUBLIC_KEY = Buffer.from(await crypto.subtle.exportKey("raw", pair.publicKey)).toString("base64url");
+  all.VAPID_PRIVATE_KEY = (await crypto.subtle.exportKey("jwk", pair.privateKey)).d;
 }
 const secrets = Object.fromEntries([...wanted].map((name) => [name, all[name]]));
-const absent = Object.keys(secrets).filter((name) => !secrets[name]);
-if (absent.length > 0) {
-  console.error(`.dev.vars has no ${absent.join(", ")}`);
-  process.exit(1);
-}
 const file = join(mkdtempSync(join(tmpdir(), "cerium-relay-")), "secrets.json");
 writeFileSync(file, JSON.stringify(secrets), { mode: 0o600 });
 process.stdout.write(file.replaceAll("\\", "/"));
 NODE
-  ) || { warn "Couldn't prepare the settings. Run setup-clerk.sh again, then re-run this."; exit 1; }
+  ) || {
+    warn "Couldn't prepare the settings. Check that Clerk's production instance has ${SITE#https://}"
+    warn "as its domain with every DNS record verified (dashboard.clerk.com → Domains), then re-run."
+    exit 1
+  }
   say "Ready to upload: ${missing[*]}"
   note "They go up with the relay in the next stage."
 fi
@@ -363,7 +382,6 @@ step "Select Sign in. Your browser opens Cerium's sign-in page at $SITE."
 step "Sign in with Google, GitHub, X or an email and password."
 step "The page asks to connect this computer: select Connect, then go back to Cerium."
 note "The first device of an account is let in at once; later ones wait for you to allow them."
-note "Clerk shows a Development mode label for now: it's your Clerk development instance."
 pause "Press Enter once Settings → Account shows you signed in."
 
 stage "Connect your phone"
