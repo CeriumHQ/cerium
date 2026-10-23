@@ -59,7 +59,11 @@ export default {
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
   ],
   // main.ts loads the UI from ../../ui/dist beside dist/, which is resources/ui/dist once packaged.
-  extraResources: [{ from: "../ui/dist", to: "ui/dist" }],
+  // Cerium's own Apache-2.0 license goes along, as the license asks of every copy distributed.
+  extraResources: [
+    { from: "../ui/dist", to: "ui/dist" },
+    { from: "../../LICENSE", to: "LICENSE" },
+  ],
   // No asar archive: the Cursor SDK runs ripgrep and its sandbox from node_modules, and finds them by
   // walking up from the backend's script, which an archive would hide.
   asar: false,
