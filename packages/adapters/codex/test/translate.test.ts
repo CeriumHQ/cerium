@@ -388,6 +388,7 @@ describe("Session option mapping", () => {
         multi_agent: false,
         multi_agent_v2: false,
         default_mode_request_user_input: false,
+        reasoning_effort_override: true,
         apps: false,
         plugins: false,
       },

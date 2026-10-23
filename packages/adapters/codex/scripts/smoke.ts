@@ -13,9 +13,9 @@ import type { AdapterEvent, AgentSession } from "@cerium/harness";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CodexAdapter } from "../src/index.ts";
@@ -145,6 +145,10 @@ const program = Effect.gen(function* () {
     events.flatMap((payload) => (payload._tag === "MessageCompleted" ? [payload.text] : [])).at(-1);
   const usage = (events: ReadonlyArray<AdapterEvent["payload"]>) =>
     events.find((payload) => payload._tag === "UsageReported");
+  const sessionId = () => {
+    const started = seen.find((payload) => payload._tag === "SessionStarted");
+    return started?._tag === "SessionStarted" ? started.providerSessionId : "";
+  };
 
   const one = yield* turn(
     "Read hello.txt, then use apply_patch to create out.txt containing its contents in uppercase. " +
@@ -163,8 +167,19 @@ const program = Effect.gen(function* () {
   yield* session.setEffort("low");
   const two = yield* turn("Reply with just the smoke word.");
   yield* check(lastMessage(two)?.trim() === "BANANA", "appended developer instructions");
-  // Reported, not checked: on 0.162.1 the cache survived the switch in one run and not in another,
-  // which is why the manifest keeps `cacheSafeEffort: false`.
+  // Cached-token counts vary from run to run, so the cache-keeping switch is checked by the
+  // `configuration_update` item Codex writes to the thread's rollout. Only GPT-6 models take one.
+  if (model.startsWith("gpt-6")) {
+    const sessions = join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "sessions");
+    const rollout = readdirSync(sessions, { recursive: true, encoding: "utf8" }).find((file) =>
+      file.endsWith(`${sessionId()}.jsonl`),
+    );
+    yield* check(
+      rollout !== undefined &&
+        readFileSync(join(sessions, rollout), "utf8").includes('"type":"configuration_update"'),
+      "effort switch sent as a configuration_update",
+    );
+  }
   const cached = usage(two);
   yield* Console.log(
     `INFO cached input tokens after the effort switch: ${cached?._tag === "UsageReported" ? (cached.cachedInputTokens ?? 0) : "none reported"}`,
@@ -203,8 +218,7 @@ const program = Effect.gen(function* () {
     "interrupt ends the turn once, as interrupted",
   );
 
-  const started = seen.find((payload) => payload._tag === "SessionStarted");
-  const threadId = started?._tag === "SessionStarted" ? started.providerSessionId : "";
+  const threadId = sessionId();
   yield* Fiber.interrupt(consumer);
   yield* Console.log(
     "\nusage per turn:",

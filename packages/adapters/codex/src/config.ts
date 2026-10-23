@@ -168,6 +168,10 @@ export const threadConfig = (
       // Codex's own question tool, `request_user_input`, stays off in Default mode even where the user's
       // config turns it on: agents ask the user through the bus's `ask_user`.
       default_mode_request_user_input: false,
+      // An effort change rides in a `configuration_update` item instead of rewriting the request's
+      // effort, which keeps the prompt cache on models that support it (GPT-6). Off by default on
+      // 0.164.0, and only this per-thread table turns it on: `app-server -c` does not.
+      reasoning_effort_override: true,
       ...(options.includeUserMcpServers ? {} : { apps: false, plugins: false }),
     },
     mcp_servers: Object.fromEntries([...disabled, ...injected]),
