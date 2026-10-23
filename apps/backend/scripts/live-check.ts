@@ -3,7 +3,7 @@
 // reply. Every harness has a deadline and the process always exits, so a stuck session never hangs it.
 // It uses the logged-in harness accounts. Exits 0 when every harness passed.
 //
-// Usage: bun run live-check [--providers=claude,codex,cursor] [--access=auto] [--model=claude:haiku]
+// Usage: bun run live-check [--providers=claude,codex,muse,cursor] [--access=auto] [--model=claude:haiku]
 //          [--prompt="…"] [--todos] [--expect=a.txt,b.txt] [--expect-reply=DONE] [--max-approvals=0]
 //          [--approvals=deny|allow] [--timeout=180]
 

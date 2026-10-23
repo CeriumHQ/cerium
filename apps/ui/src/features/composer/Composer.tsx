@@ -24,7 +24,7 @@ import {
   type RefObject,
 } from "react";
 
-import { manifestsAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, manifestsAtom } from "../../backend/atoms.ts";
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -60,6 +60,8 @@ import { draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import type { MessageBox } from "./messageBox.ts";
 import {
+  accessLimit,
+  allowedAccess,
   effortFor,
   effortLabel,
   effortsOf,
@@ -209,7 +211,7 @@ export function Composer({
   const defaultAccess = useAtomValue(accessAtom);
   const modelId = draft.start?.model ?? defaultModel;
   const effort = draft.start?.effort ?? defaultEffort;
-  const access = draft.start?.access ?? defaultAccess;
+  const pickedAccess = draft.start?.access ?? defaultAccess;
   const [workplace, setWorkplace] = useAtom(workplaceAtom);
   /** A worktree is offered for a work thread in a folder git keeps, on a machine that makes them. */
   const gitFolder =
@@ -229,6 +231,13 @@ export function Composer({
   const chosen = multi ? pickModels(models, draft.start?.models ?? [], usable) : [];
   /** What the message starts: a thread with each chosen model, else one with the model. */
   const starting = multi && chosen.length > 0 ? chosen : model ? [model] : [];
+  // A mode a starting model's harness can't run here is offered disabled; the pick stays with the
+  // draft, for when that model is swapped out.
+  const limit = accessLimit(
+    AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []),
+    starting,
+  );
+  const access = allowedAccess(pickedAccess, limit);
   /** One effort for every model starting; each model that lacks it runs at its own default. */
   const efforts = effortsOf(starting);
   // Keep the effort valid when switching to a model with fewer levels.
@@ -782,7 +791,7 @@ export function Composer({
           </>
         ) : null}
         <div className="ml-auto pl-2">
-          <AccessPicker value={access} onPick={setAccess} />
+          <AccessPicker value={access} onPick={setAccess} limit={limit} />
         </div>
       </div>
     ) : null;

@@ -10,7 +10,7 @@ import { ChildProcessSpawner } from "effect/process";
 import { completeWithMuse } from "./complete.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
-import { sandboxInstructions, sandboxNotice } from "./policy.ts";
+import { limitInstructions, limitNotice, sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { startMuseSession } from "./session.ts";
 
@@ -51,18 +51,23 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
       );
 
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
-        const { executablePath: executable, setup } = yield* ready;
-        // Commands in this mode would fail until the sandbox is set up: tell the agent and the user.
-        const problem = setup?.blocks.includes(options.access) ? setup.reason : undefined;
-        if (problem === undefined) return yield* startMuseSession(executable, options);
+        const { executablePath: executable, setup, limit } = yield* ready;
+        // Commands in this mode would fail, until the sandbox is set up or for as long as Muse can't
+        // sandbox them here: tell the agent and the user.
+        const blocked = setup?.blocks.includes(options.access)
+          ? { instructions: sandboxInstructions(setup.reason), notice: sandboxNotice(setup.reason) }
+          : limit?.blocks.includes(options.access)
+            ? { instructions: limitInstructions, notice: limitNotice }
+            : undefined;
+        if (blocked === undefined) return yield* startMuseSession(executable, options);
         const session = yield* startMuseSession(executable, {
           ...options,
-          appendSystemPrompt: [options.appendSystemPrompt, sandboxInstructions(problem)]
+          appendSystemPrompt: [options.appendSystemPrompt, blocked.instructions]
             .filter((part) => part !== undefined)
             .join("\n\n"),
         });
         const notice: AdapterEvent = {
-          payload: { _tag: "AgentError", kind: "unknown", message: sandboxNotice(problem), retryable: false },
+          payload: { _tag: "AgentError", kind: "unknown", message: blocked.notice, retryable: false },
         };
         return { ...session, events: Stream.concat(Stream.make(notice), session.events) };
       });

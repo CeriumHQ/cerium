@@ -53,6 +53,18 @@ export const HarnessSetup = Schema.Struct({
 });
 export type HarnessSetup = typeof HarnessSetup.Type;
 
+/**
+ * Access modes the harness can't run on this machine and no setup fixes, such as Muse's when `muse serve`
+ * reports its sandbox unavailable. The UI offers the others only.
+ */
+export const HarnessLimit = Schema.Struct({
+  /** The modes it can't run. */
+  blocks: Schema.Array(AccessMode),
+  /** Why, in a few words, for the disabled options. */
+  reason: Schema.NonEmptyString,
+});
+export type HarnessLimit = typeof HarnessLimit.Type;
+
 export const HarnessInstalled = Schema.TaggedStruct("HarnessInstalled", {
   provider: ProviderId,
   executablePath: Schema.NonEmptyString,
@@ -68,6 +80,8 @@ export const HarnessInstalled = Schema.TaggedStruct("HarnessInstalled", {
   updateCommand: Schema.optionalKey(Schema.NonEmptyString),
   auth: AuthStatus,
   setup: Schema.optionalKey(HarnessSetup),
+  /** Since `RPC_VERSION` 21. */
+  limit: Schema.optionalKey(HarnessLimit),
 });
 
 /** How a browser sign-in is going, as the harness's SDK reports it. */

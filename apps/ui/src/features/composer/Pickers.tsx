@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Popover } from "@base-ui/react/popover";
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { Slider } from "@base-ui/react/slider";
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, HarnessLimit, ReasoningEffort } from "@cerium/protocol";
 import { Eye, FilePen, ShieldCheck, ShieldOff, ShieldQuestion, type LucideIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
@@ -165,9 +165,12 @@ export function EffortPicker({
 export function AccessPicker({
   value,
   onPick,
+  limit,
 }: {
   readonly value: AccessMode;
   readonly onPick: (access: AccessMode) => void;
+  /** Modes a starting model's harness can't run here: offered disabled, with its reason. */
+  readonly limit?: HarnessLimit | undefined;
 }) {
   const Icon = accessIcon[value];
   return (
@@ -185,16 +188,20 @@ export function AccessPicker({
         {accessOptions.find((option) => option.value === value)?.label}
       </BaseSelect.Trigger>
       <SelectPopup>
-        {accessOptions.map((option) => (
-          <SelectItem
-            key={option.value}
-            value={option.value}
-            icon={accessIcon[option.value]}
-            description={option.description}
-          >
-            {option.label}
-          </SelectItem>
-        ))}
+        {accessOptions.map((option) => {
+          const blocked = limit?.blocks.includes(option.value) === true;
+          return (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              icon={accessIcon[option.value]}
+              description={blocked ? limit?.reason : option.description}
+              disabled={blocked}
+            >
+              {option.label}
+            </SelectItem>
+          );
+        })}
       </SelectPopup>
     </SelectRoot>
   );

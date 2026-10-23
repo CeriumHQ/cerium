@@ -1,7 +1,9 @@
-import type { ModelInfo } from "@cerium/protocol";
+import type { HarnessStatus, ModelInfo } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  accessLimit,
+  allowedAccess,
   effortFor,
   effortsOf,
   findModels,
@@ -123,5 +125,41 @@ describe("findModels", () => {
 
   it("finds none when a word matches nothing", () => {
     expect(findModels(list, "opus gemini")).toEqual([]);
+  });
+});
+
+describe("access a harness can't run", () => {
+  const limit = { blocks: ["ask", "acceptEdits", "auto"] as const, reason: "Muse can't sandbox commands" };
+  const harnesses: ReadonlyArray<HarnessStatus> = [
+    {
+      _tag: "HarnessInstalled",
+      provider: "muse",
+      executablePath: "muse-bin.exe",
+      version: "1.4.12",
+      auth: { _tag: "LoggedIn" },
+      limit: { blocks: [...limit.blocks], reason: limit.reason },
+    },
+    {
+      _tag: "HarnessInstalled",
+      provider: "claude",
+      executablePath: "claude.exe",
+      version: "3.1.0",
+      auth: { _tag: "LoggedIn" },
+    },
+  ];
+
+  it("limits a start that includes the harness, and nothing else", () => {
+    expect(accessLimit(harnesses, [opus, model("muse", "spark")])).toEqual({
+      blocks: ["ask", "acceptEdits", "auto"],
+      reason: "Muse can't sandbox commands",
+    });
+    expect(accessLimit(harnesses, [opus])).toBeUndefined();
+  });
+
+  it("starts in Full access when the pick is a mode the harness can't run", () => {
+    const limited = accessLimit(harnesses, [model("muse", "spark")]);
+    expect(allowedAccess("auto", limited)).toBe("fullAccess");
+    expect(allowedAccess("readOnly", limited)).toBe("readOnly");
+    expect(allowedAccess("auto", undefined)).toBe("auto");
   });
 });

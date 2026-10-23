@@ -1,5 +1,5 @@
 import { compareVersions, type McpServerSpec, type PermissionDecision } from "@cerium/harness";
-import type { AccessMode, HarnessSetup, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, HarnessLimit, HarnessSetup, ReasoningEffort } from "@cerium/protocol";
 import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
 import type {
   ApprovalChoice,
@@ -97,6 +97,26 @@ export const sandboxInstructions = (problem: string): string =>
 export const sandboxNotice = (problem: string): string =>
   `Muse can't run commands here yet: its Windows sandbox isn't set up (${problem}). Run \`${SANDBOX_SETUP_COMMAND}\`` +
   " once in a terminal opened as administrator, or give this thread Full access. Settings → Harnesses shows how.";
+
+/**
+ * What the probe reports when `muse serve` says it can't sandbox commands although nothing is left to set
+ * up, as Muse 1.4.8 to 1.4.12 do on Windows (meta-models/muse-code-sdk#107). Full access runs outside the
+ * sandbox and Read only runs no commands, so both still work.
+ */
+export const sandboxLimit: HarnessLimit = {
+  blocks: SANDBOXED,
+  reason: "Muse can't sandbox commands on this computer yet",
+};
+
+/** The agent's side of `sandboxLimit`, for a session started in a mode it blocks. */
+export const limitInstructions =
+  "Your shell tool cannot run commands in this session: Muse can't sandbox commands on this computer." +
+  " Do not retry commands. Do what you can without them, and tell the user that commands need Full access.";
+
+/** The user's side of `sandboxLimit`. */
+export const limitNotice =
+  "Muse can't run commands in this thread: it can't sandbox them on this computer yet. Start a thread with" +
+  " Full access for an agent that runs commands.";
 
 /**
  * Per-host settings for every Cerium session. Cerium's bus is the only way to spawn:

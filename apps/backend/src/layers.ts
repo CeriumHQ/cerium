@@ -1,6 +1,7 @@
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
 import { CursorAdapter } from "@cerium/adapter-cursor";
+import { MuseAdapter } from "@cerium/adapter-muse";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
 import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
 import {
@@ -65,16 +66,14 @@ export interface BackendOptions {
   readonly vault?: Layer.Layer<Vault, never, FileSystem.FileSystem | Path.Path>;
 }
 
-/**
- * Every harness adapter in this build. Muse's stays out until `muse serve` runs sandboxed commands on
- * Windows (`OFFERED_PROVIDERS`); a thread it ran still opens, and says no Muse adapter is installed.
- */
+/** Every harness adapter in this build. */
 export const AdaptersLive = Layer.effect(
   Adapters,
   Effect.gen(function* () {
     const adapters = [
       yield* ClaudeAdapter,
       yield* CodexAdapter,
+      yield* MuseAdapter,
       yield* CursorAdapter,
       yield* OpenCodeAdapter,
     ];
@@ -82,7 +81,13 @@ export const AdaptersLive = Layer.effect(
   }),
 ).pipe(
   Layer.provide(
-    Layer.mergeAll(ClaudeAdapter.layer, CodexAdapter.layer, CursorAdapter.layer, OpenCodeAdapter.layer),
+    Layer.mergeAll(
+      ClaudeAdapter.layer,
+      CodexAdapter.layer,
+      MuseAdapter.layer,
+      CursorAdapter.layer,
+      OpenCodeAdapter.layer,
+    ),
   ),
 );
 

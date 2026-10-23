@@ -4,9 +4,9 @@ import { MspError } from "@muse-code/sdk";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { openHost, query } from "./host.ts";
+import { openHost, query, type MuseHost } from "./host.ts";
 import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
-import { sandboxProblem, sandboxSetup } from "./policy.ts";
+import { sandboxLimit, sandboxProblem, sandboxSetup } from "./policy.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "muse", message, cause });
@@ -57,14 +57,23 @@ const UsageRead = Schema.Struct({ usage: Schema.optionalKey(Schema.Struct({ tier
 const METHODS: Record<string, string> = { accountLogin: "meta.ai", apiKey: "apiKey", envKey: "apiKey" };
 
 /**
- * Reads the login state from MSP's `account/read` on a throwaway host: the credential lane in effect, never
- * the credential. The method is experimental, so when a host stops serving it the probe reports signed in
+ * Asks a throwaway host what sessions would find: the login state, from MSP's `account/read` (the
+ * credential lane in effect, never the credential), and whether it can sandbox commands, from its
+ * handshake. `account/read` is experimental, so when a host stops serving it the probe reports signed in
  * and a session's `authRequired` turn failure surfaces the problem instead.
  */
-export const readMuseAuth = Effect.fn("MuseAdapter.readAuth")(function* (executablePath: string) {
+export const readMuseHost = Effect.fn("MuseAdapter.readHost")(function* (executablePath: string) {
   const host = yield* openHost(executablePath, ["serve", "--no-session-log"], {
     capabilities: { experimentalApi: true, userInputDialogs: false },
   });
+  return {
+    auth: yield* readAuth(host),
+    // An older host leaves it out, which reads as a sandbox that works.
+    sandboxUnavailable: host.spawned.initializeResult.sandboxAvailability === "unavailable",
+  };
+}, Effect.scoped);
+
+const readAuth = Effect.fn("MuseAdapter.readAuth")(function* (host: MuseHost) {
   const account = yield* query(host, "account/read").pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(AccountState)),
     Effect.asSome,
@@ -90,7 +99,7 @@ export const readMuseAuth = Effect.fn("MuseAdapter.readAuth")(function* (executa
   }
   const method = METHODS[state];
   return { _tag: "LoggedIn", ...(method ? { method } : {}), ...plan } satisfies AuthStatus;
-}, Effect.scoped);
+});
 
 export const probeMuse = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -113,13 +122,16 @@ export const probeMuse = Effect.gen(function* () {
   }
 
   const setup = process.platform === "win32" ? yield* checkWindowsSandbox(executable.value) : undefined;
+  const host = yield* readMuseHost(executable.value);
   return {
     _tag: "HarnessInstalled",
     provider: "muse",
     executablePath: executable.value,
     version,
-    auth: yield* readMuseAuth(executable.value),
+    auth: host.auth,
     ...(setup === undefined ? {} : { setup }),
+    // A sandbox that still needs its setup says so; one that is set up and still can't run is a limit.
+    ...(setup === undefined && host.sandboxUnavailable ? { limit: sandboxLimit } : {}),
   } satisfies HarnessStatus;
 });
 

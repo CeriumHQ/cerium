@@ -1,4 +1,11 @@
-import type { AccessMode, ModelInfo, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type {
+  AccessMode,
+  HarnessLimit,
+  HarnessStatus,
+  ModelInfo,
+  ProviderId,
+  ReasoningEffort,
+} from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 
@@ -140,3 +147,26 @@ export const accessOptions: ReadonlyArray<{
     description: "Edits and runs anything without asking, outside the sandbox",
   },
 ];
+
+/**
+ * The access modes the starting models' harnesses can't run on this machine (`HarnessLimit`), with the
+ * reason the first of them gives.
+ */
+export const accessLimit = (
+  harnesses: ReadonlyArray<HarnessStatus>,
+  starting: ReadonlyArray<Pick<ModelInfo, "provider">>,
+): HarnessLimit | undefined => {
+  const limits = harnesses.flatMap((status) =>
+    status._tag === "HarnessInstalled" &&
+    status.limit !== undefined &&
+    starting.some((model) => model.provider === status.provider)
+      ? [status.limit]
+      : [],
+  );
+  const [first] = limits;
+  return first && { blocks: [...new Set(limits.flatMap((limit) => limit.blocks))], reason: first.reason };
+};
+
+/** The access a thread starts with: the one picked, or Full access, the one that runs commands, when it's limited. */
+export const allowedAccess = (access: AccessMode, limit: HarnessLimit | undefined): AccessMode =>
+  limit?.blocks.includes(access) ? "fullAccess" : access;

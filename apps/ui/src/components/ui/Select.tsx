@@ -67,7 +67,7 @@ export function SelectItem({
     <BaseSelect.Item
       value={value}
       {...(disabled ? { disabled } : {})}
-      className={`grid cursor-default items-center gap-x-2 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:opacity-40 max-md:py-2.5 max-md:text-[15px] ${
+      className={`grid cursor-default items-center gap-x-2 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:text-fg-disabled max-md:py-2.5 max-md:text-[15px] ${
         Icon ? "grid-cols-[auto_1fr_auto]" : "grid-cols-[1fr_auto]"
       }`}
     >
