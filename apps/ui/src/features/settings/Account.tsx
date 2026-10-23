@@ -481,7 +481,7 @@ function ThisComputerSection() {
                   ? "Only the installed app can start with Windows."
                   : mac
                     ? "Only the installed app can open at login."
-                    : "Only the AppImage can start at login."
+                    : "Only the installed app can start at login."
                 : `Opens in ${tray} when you sign in, so this computer is reachable after a restart.`}
             </p>
             {error ? <p className="text-[12.5px] text-error">{error}</p> : null}

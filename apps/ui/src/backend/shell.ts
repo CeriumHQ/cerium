@@ -78,8 +78,8 @@ export interface ShellBridge {
    */
   readonly setPresence?: (presence: { signedIn: boolean; working: boolean }) => void;
   /**
-   * Whether Cerium starts when the user signs in to the computer; only the installed app can, and on
-   * Linux only the AppImage.
+   * Whether Cerium starts when the user signs in to the computer; only the installed app can: on
+   * Linux the AppImage or the .deb or .rpm package.
    */
   readonly startAtLogin?: () => Promise<StartAtLogin>;
   readonly setStartAtLogin?: (enabled: boolean) => Promise<StartAtLogin>;
