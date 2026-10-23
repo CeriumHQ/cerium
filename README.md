@@ -14,7 +14,7 @@
   <a href="https://github.com/CeriumHQ/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/CeriumHQ/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
   <a href="https://github.com/CeriumHQ/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/CeriumHQ/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-f2f2f2?style=flat-square&labelColor=1c1c1c" /></a>
-  <img alt="Platforms: Windows and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
+  <img alt="Platforms: Windows, macOS and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
 </p>
 
 <p>
@@ -129,9 +129,12 @@ Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/rel
 - **Fedora**: `sudo dnf install ./cerium-<version>.x86_64.rpm` (`aarch64` on Arm).
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
   needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
+- **macOS**: open `Cerium-<version>-arm64.dmg` on Apple silicon, or `-x64.dmg` on an
+  Intel Mac, and drag Cerium into Applications. Until it is notarized, open it once, then choose
+  Open Anyway in System Settings → Privacy & Security.
 
 Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
-pick in Settings → Updates. macOS is planned.
+pick in Settings → Updates.
 
 ## Build from source
 
