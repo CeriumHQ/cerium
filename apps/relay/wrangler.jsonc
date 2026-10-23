@@ -23,6 +23,16 @@
     ],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Account", "Link"] }],
+  // What src/limits.ts allows each client, per Cloudflare location. Each namespace_id is unique in
+  // the Cloudflare account, so no other Worker shares these counters; a period changed here changes
+  // in src/limits.ts too, which tells refused clients how long to wait.
+  "ratelimits": [
+    { "name": "SIGN_IN_LIMIT", "namespace_id": "4101", "simple": { "limit": 10, "period": 60 } },
+    { "name": "PUBLIC_LIMIT", "namespace_id": "4102", "simple": { "limit": 30, "period": 10 } },
+    { "name": "ADDRESS_LIMIT", "namespace_id": "4103", "simple": { "limit": 100, "period": 10 } },
+    { "name": "DEVICE_LIMIT", "namespace_id": "4104", "simple": { "limit": 30, "period": 10 } },
+    { "name": "CONNECT_LIMIT", "namespace_id": "4105", "simple": { "limit": 10, "period": 60 } },
+  ],
   // The Account object's SQL migrations (migrations/migrations.js) are bundled as text.
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "observability": { "enabled": true },

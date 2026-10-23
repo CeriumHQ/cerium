@@ -54,7 +54,15 @@ export class AccountError extends Schema.TaggedError<AccountError>()("AccountErr
   message: Schema.String,
   /** The relay's HTTP status, when it answered. */
   status: Schema.optionalKey(Schema.Int),
+  /** How many seconds the relay asked to wait before trying again, when it refused for too many requests. */
+  retryAfter: Schema.optionalKey(Schema.Int),
 }) {}
+
+/** The seconds a response's `Retry-After` asks to wait, when it gives a number of them. */
+const retryAfterOf = (response: HttpClientResponse.HttpClientResponse): number | undefined => {
+  const seconds = Number(response.headers["retry-after"] ?? "");
+  return Number.isInteger(seconds) && seconds > 0 ? seconds : undefined;
+};
 
 /** Cerium's own relay. */
 export const DEFAULT_RELAY_URL = "https://cerium.nonlooped.xyz";
@@ -218,6 +226,7 @@ export class Account extends Context.Service<
             Effect.orElseSucceed(() => ({})),
             Effect.flatMap((body) => {
               const message = (body as { message?: unknown }).message;
+              const retryAfter = response.status === 429 ? retryAfterOf(response) : undefined;
               return Effect.fail(
                 new AccountError({
                   message:
@@ -225,6 +234,7 @@ export class Account extends Context.Service<
                       ? message
                       : `Cerium's cloud refused the request (${response.status}).`,
                   status: response.status,
+                  ...(retryAfter === undefined ? {} : { retryAfter }),
                 }),
               );
             }),
@@ -459,7 +469,9 @@ export class Account extends Context.Service<
               }
               // Gone or refused: this link won't be confirmed. Anything else is worth asking again.
               if ("error" in claim && (claim.error.status === 410 || claim.error.status === 403)) break;
-              yield* Effect.sleep(CLAIM_EVERY);
+              // Asked to slow down, it waits as long as the relay says.
+              const wait = "error" in claim ? claim.error.retryAfter : undefined;
+              yield* Effect.sleep(wait === undefined ? CLAIM_EVERY : `${wait} seconds`);
             }
             yield* forget("The sign-in wasn't confirmed in time. Try again.");
           });

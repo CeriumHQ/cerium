@@ -39,7 +39,11 @@ let pushKey: Promise<string | undefined> | undefined;
 /** The relay's public VAPID key, which subscriptions are made for; none when it sends no notifications. */
 export const relayPushKey = (): Promise<string | undefined> =>
   (pushKey ??= fetch("/api/config", { cache: "no-store" })
-    .then(async (response): Promise<{ vapidPublicKey?: unknown }> => (response.ok ? response.json() : {}))
+    .then(async (response): Promise<{ vapidPublicKey?: unknown }> => {
+      // A refusal, such as too many requests, says nothing about the key.
+      if (!response.ok) throw new Error(`The relay answered ${response.status}.`);
+      return response.json();
+    })
     .then(({ vapidPublicKey }) => (typeof vapidPublicKey === "string" ? vapidPublicKey : undefined))
     .catch(() => {
       // Asked again next time.

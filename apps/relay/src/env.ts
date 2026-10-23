@@ -1,8 +1,9 @@
 import type { Account } from "./account.ts";
+import type { Limiters } from "./limits.ts";
 import type { Link } from "./link.ts";
 
 /** The relay's bindings (wrangler.jsonc) and settings (.dev.vars locally, Wrangler secrets deployed). */
-export interface Env {
+export interface Env extends Limiters {
   readonly ACCOUNTS: DurableObjectNamespace<Account>;
   readonly LINKS: DurableObjectNamespace<Link>;
   readonly ASSETS: Fetcher;
