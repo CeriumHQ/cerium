@@ -888,6 +888,66 @@ main {
   border-top: 1px solid oklch(1 0 0 / 0.07);
 }
 
+/* Privacy: one readable column of prose under the page's title. */
+.policy > :not(h1) {
+  max-width: 40rem;
+}
+
+.policy p,
+.policy li {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--fg-secondary);
+}
+
+.policy p {
+  margin-top: 1rem;
+}
+
+.policy .lead {
+  margin-top: 1.25rem;
+  font-size: 17px;
+}
+
+.policy h2 {
+  margin-top: 3rem;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.policy ul {
+  margin-top: 1rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.policy li + li {
+  margin-top: 0.5rem;
+}
+
+.policy li::marker {
+  color: var(--fg-tertiary);
+}
+
+.policy strong {
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+
+.policy a {
+  color: var(--fg-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.policy .updated {
+  margin-top: 3rem;
+  font-size: 14px;
+  color: var(--fg-tertiary);
+}
+
 /*
  * Downloads: a glass card for each system over a little of the spectrum, a row for each kind of
  * package and a button for each processor. The build that fits this machine is lit, and its card says
