@@ -17,12 +17,15 @@ runs:
     # Defender scans every file a process opens and every program that starts, which slows installing,
     # building, packaging and the thousands of git processes the tests start. The runner is a fresh
     # machine that lasts one job. Where scanning can't be turned off, the checkout and the temporary
-    # folder are left out of it instead.
+    # folder are left out of it instead. Windows on Arm's runners never let it be turned off, and
+    # asking took over half a minute there, so they only get the exclusions.
     - if: runner.os == 'Windows'
       shell: pwsh
       run: |
         try {
-          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          if ($env:RUNNER_ARCH -ne 'ARM64') {
+            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          }
           Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP -ErrorAction SilentlyContinue
           "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
         } catch {
