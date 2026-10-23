@@ -36,7 +36,7 @@ export function UpdateNotice() {
         <>
           {versionLabel(version)} is available.{" "}
           <button type="button" onClick={() => void bridge?.downloadUpdate?.()} className={linkClass}>
-            Update
+            {updates.manual ? "Download" : "Update"}
           </button>
           <span className="text-fg-tertiary"> · </span>
           <a href={releaseNotesUrl(version)} target="_blank" rel="noreferrer" className={linkClass}>

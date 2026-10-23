@@ -11,8 +11,16 @@ import { followKeyboard, followVisualViewport } from "./web/viewport.ts";
 
 // Electron's preload exposes `window.cerium`; anywhere else this is the browser preview.
 document.documentElement.dataset["shell"] = "cerium" in window ? "electron" : "browser";
-// Only Windows puts Acrylic behind the window; elsewhere the page paints its own backdrop.
-if (window.cerium?.platform === "win32") document.documentElement.dataset["acrylic"] = "";
+// The desktop app's system, which lays out the titlebar around its caption buttons and spells the
+// shortcuts (lib/keys.ts). The browser preview takes `?platform=darwin` to stand in for a Mac's.
+const platform =
+  window.cerium?.platform ??
+  (import.meta.env.DEV ? new URLSearchParams(location.search).get("platform") : null);
+if (platform) document.documentElement.dataset["platform"] = platform;
+// Windows puts Acrylic behind the window and macOS Vibrancy; elsewhere the page paints its own backdrop.
+if (window.cerium?.platform === "win32" || window.cerium?.platform === "darwin") {
+  document.documentElement.dataset["acrylic"] = "";
+}
 document.documentElement.dataset["theme"] ??= "dark";
 // The web client runs on phones too, with their keyboards and touch.
 if (WEB) {

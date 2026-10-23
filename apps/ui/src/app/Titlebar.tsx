@@ -26,7 +26,7 @@ import type { SidePanelId } from "./panelLayout.ts";
 
 /**
  * The system draws its minimize / maximize / close buttons here (Electron's titleBarOverlay), Windows
- * its own and Electron Linux's.
+ * its own and Electron Linux's. A Mac's traffic lights sit at the other end (`--titlebar-inset`).
  */
 const CAPTION_BUTTON_WIDTH = 46;
 
@@ -77,14 +77,14 @@ export function Titlebar({
 }: TitlebarProps) {
   const showSidebar = sidebarOpen || settingsOpen;
   return (
-    <header className="flex h-10 shrink-0 items-center gap-2 pl-3 [app-region:drag]">
+    <header className="flex h-10 shrink-0 items-center gap-2 pl-(--titlebar-inset) [app-region:drag]">
       {/*
        * Spans the sidebar while it shows, so the toggle sits over the sidebar's own edge; shrinks to
        * its contents, in step with the sidebar, once it folds. The sidebar's width, less the titlebar's
-       * left padding and the gutter beside it.
+       * left padding (past the traffic lights on a Mac) and the gutter beside it.
        */}
       <div
-        style={{ width: showSidebar ? sidebarWidth - 18 : "fit-content" }}
+        style={{ width: showSidebar ? `calc(${sidebarWidth - 6}px - var(--titlebar-inset))` : "fit-content" }}
         className={`flex shrink-0 items-center gap-2.5 pr-2 [interpolate-size:allow-keywords] ${
           resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
@@ -337,7 +337,7 @@ export function ArtifactsToggle({ open, onToggle }: { open: boolean; onToggle: (
 /** Shows the open thread's terminals under its conversation. */
 export function TerminalToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut="Ctrl `">
+    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut="Control `">
       <Button
         onClick={onToggle}
         aria-pressed={open}
@@ -412,7 +412,11 @@ function CaptionButtons() {
     );
   }
   return (
-    <div className="flex h-full text-fg-secondary" style={{ width }} aria-hidden="true">
+    <div
+      className="flex h-full text-fg-secondary in-data-[platform=darwin]:hidden"
+      style={{ width }}
+      aria-hidden="true"
+    >
       {[Minus, Square, X].map((Icon, index) => (
         <span key={index} className="grid h-full flex-1 place-items-center">
           <Icon size={index === 1 ? 10 : 13} strokeWidth={1.25} />

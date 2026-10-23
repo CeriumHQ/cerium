@@ -25,7 +25,9 @@ export const statusText = (updates: Updates): string => {
         ? `Ahead of the latest stable release. Cerium moves to stable once one passes ${updates.version}.`
         : `You're on the latest ${channelLabel[updates.channel].toLowerCase()} release.`;
     case "available":
-      return `${versionLabel(status.version)} is available.`;
+      return updates.manual
+        ? `${versionLabel(status.version)} is available. It downloads in your browser; drag it into Applications.`
+        : `${versionLabel(status.version)} is available.`;
     case "downloading":
       return `Downloading ${versionLabel(status.version)}…`;
     case "ready":

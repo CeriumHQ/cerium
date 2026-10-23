@@ -1,7 +1,8 @@
 import type { Configuration } from "electron-builder";
 
 // Packages the desktop shell and its backend for the platform and processor it runs on: an unsigned
-// installer on Windows, an AppImage, a .deb and an .rpm on Linux, each for x64 or Arm64. Each
+// installer on Windows, an AppImage, a .deb and an .rpm on Linux, a disk image on macOS, each for x64
+// or Arm64. Each
 // processor packages on its own runner, since the native modules' prebuilt binaries come from npm
 // packages Bun installs only for the processor it runs on. The release workflows set CERIUM_VERSION
 // from scripts/release.ts; without it this builds at the package's own version. Stable and nightly
@@ -10,6 +11,13 @@ import type { Configuration } from "electron-builder";
 
 const version = process.env["CERIUM_VERSION"];
 const nightly = version?.includes("-nightly.") === true;
+/**
+ * A Developer ID certificate to sign the Mac app with (CSC_LINK, set by the release workflows when
+ * the repository has one), which also has it notarized when APPLE_API_KEY and its ID and issuer are
+ * set. Without one the app is signed ad hoc: it runs on Apple silicon, the user lets it open once in
+ * Privacy & Security, and updates download in the browser (src/macUpdates.ts).
+ */
+const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
 
 export default {
   appId: "app.cerium.desktop",
@@ -34,9 +42,11 @@ export default {
   files: [
     "dist/**",
     "package.json",
-    // The tray's icon (background.ts), and the window's on Linux (main.ts).
+    // The tray's icon (background.ts), and the window's on Linux (main.ts); the menu bar's on macOS.
     "build/icon.ico",
     "build/icon.png",
+    "build/trayTemplate.png",
+    "build/trayTemplate@2x.png",
     { from: "../../packages/store/migrations", to: "migrations" },
     "!node_modules/@cerium/**",
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
@@ -103,9 +113,32 @@ export default {
       ...["(libuuid or libuuid1)", "(alsa-lib or libasound2)", "(mesa-libgbm or libgbm1)"],
     ],
   },
+  // A disk image to drag the app into Applications from, and the zip electron-updater installs
+  // updates from, each for the processor of the Mac it is built on: Apple silicon (arm64) or Intel
+  // (x64). Both processors' zips share one latest-mac.yml (scripts/merge-update-files.ts), from which
+  // electron-updater picks the one naming its own.
+  mac: {
+    target: ["dmg", "zip"],
+    icon: "build/icon-mac.png",
+    category: "public.app-category.developer-tools",
+    artifactName: "Cerium-${version}-${arch}-mac.${ext}",
+    // With a certificate electron-builder finds the identity in it; without, "-" signs ad hoc.
+    ...(developerId ? {} : { identity: "-" }),
+    // Notarizing needs the hardened runtime, which an ad hoc signature can't have without its
+    // libraries failing validation.
+    hardenedRuntime: developerId,
+    entitlements: "build/entitlements.mac.plist",
+    entitlementsInherit: "build/entitlements.mac.plist",
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Cerium listens while you dictate a message. The audio never leaves this Mac.",
+    },
+  },
+  dmg: { artifactName: "Cerium-${version}-${arch}.${ext}" },
   // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
   // channel's update file beside the installer, latest.yml or nightly.yml (latest-linux.yml or
-  // nightly-linux.yml beside the Linux packages, latest-linux-arm64.yml beside Arm64's), and the
+  // nightly-linux.yml beside the Linux packages, latest-linux-arm64.yml beside Arm64's,
+  // latest-mac.yml or nightly-mac.yml beside the Mac's), and the
   // release workflows publish it with the installer and its blockmap. The source repository is
   // private, so the app reads a public repository that holds only releases
   // (.github/actions/publish-feed).

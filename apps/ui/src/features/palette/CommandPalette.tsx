@@ -8,6 +8,7 @@ import { Fragment, useState } from "react";
 
 import { threadSearchAtom, threadSearchKey } from "../../backend/search.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { keyLabel } from "../../lib/keys.ts";
 import { shortAgo } from "../../lib/time.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { StatusIndicator } from "../threads/StatusIndicator.tsx";
@@ -208,7 +209,9 @@ function CommandRow({ command, words }: { command: PaletteCommand; words: Readon
         <Marked pieces={highlight(command.label, words)} />
       </span>
       {command.keys ? (
-        <kbd className="shrink-0 font-sans text-2xs text-fg-tertiary max-md:hidden">{command.keys}</kbd>
+        <kbd className="shrink-0 font-sans text-2xs text-fg-tertiary max-md:hidden">
+          {keyLabel(command.keys)}
+        </kbd>
       ) : null}
     </span>
   );

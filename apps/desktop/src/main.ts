@@ -29,9 +29,10 @@ import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
-// The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows,
-// the backend's launcher, and the tray that keeps a signed-in machine reachable (background.ts), and
-// the updater (updater.ts). Everything else lives in the UI and the backend.
+// The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows
+// and Vibrancy on macOS, the backend's launcher, and the tray that keeps a signed-in machine
+// reachable (background.ts), and the updater (updater.ts). Everything else lives in the UI and the
+// backend.
 
 /** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
 const smokeTest = prepareSmokeTest();
@@ -53,16 +54,31 @@ let backendStarting: Promise<void> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
 let mainWindow: BrowserWindow | undefined;
 
-/** Started at login: straight to the tray, unless the UI says this machine isn't signed in. */
-const startHidden = process.argv.includes(HIDDEN_FLAG);
+const windows = process.platform === "win32";
+const mac = process.platform === "darwin";
+const linux = process.platform === "linux";
+
+const appIcon = join(import.meta.dirname, "..", "build", "icon.png");
+
+/**
+ * Started at login: straight to the tray, unless the UI says this machine isn't signed in. Windows
+ * and Linux start Cerium with a flag; macOS says so itself, and passes no arguments.
+ */
+const startHidden =
+  process.argv.includes(HIDDEN_FLAG) ||
+  (mac && app.isPackaged && app.getLoginItemSettings().wasOpenedAtLogin);
 /** How long a hidden start waits to hear whether it's signed in before showing the window anyway. */
 const HIDDEN_START_TIMEOUT_MS = 15_000;
 
-const windows = process.platform === "win32";
-
 const background = backgroundMode({
-  // Linux trays take a PNG.
-  icon: join(import.meta.dirname, "..", "build", windows ? "icon.ico" : "icon.png"),
+  // Linux trays take a PNG. The menu bar takes a template image, a black mark macOS tints to the bar,
+  // and finds its @2x beside it.
+  icon: join(
+    import.meta.dirname,
+    "..",
+    "build",
+    windows ? "icon.ico" : mac ? "trayTemplate.png" : "icon.png",
+  ),
   window: () => mainWindow,
 });
 
@@ -80,7 +96,8 @@ const TITLEBAR_HEIGHT = 40;
 
 /**
  * The system draws the caption buttons (Electron itself on Linux); their symbols follow the theme
- * like the UI's own text, and they grow with the window's zoom as the titlebar does.
+ * like the UI's own text, and they grow with the window's zoom as the titlebar does. macOS draws its
+ * traffic lights in its own colours, so only the height applies there.
  */
 const titleBarOverlay = (zoom = 1) => ({
   color: "#00000000",
@@ -88,15 +105,33 @@ const titleBarOverlay = (zoom = 1) => ({
   height: Math.round(TITLEBAR_HEIGHT * zoom),
 });
 
+/** The traffic lights' frame is this tall; they sit this far in from the left, as in Finder. */
+const TRAFFIC_LIGHTS_HEIGHT = 14;
+const TRAFFIC_LIGHTS_INSET = 14;
+
+/** Where the traffic lights go: centred on the titlebar at the window's zoom, so they line up with it. */
+const trafficLightPosition = (zoom = 1) => ({
+  x: TRAFFIC_LIGHTS_INSET,
+  y: Math.round((TITLEBAR_HEIGHT * zoom - TRAFFIC_LIGHTS_HEIGHT) / 2),
+});
+
+/** Keeps the caption buttons in step with the window's zoom and the theme. */
+const syncCaptionButtons = (window: BrowserWindow, zoom: number) => {
+  if (mac) window.setWindowButtonPosition(trafficLightPosition(zoom));
+  else window.setTitleBarOverlay(titleBarOverlay(zoom));
+};
+
 /**
  * The menu a desktop app needs, with the browser's keys left out: no Close (Ctrl+W closes a thread
  * tab), no Reload rows (a reload tears the whole UI down), no zoom items (the UI keeps the scale the
  * user picked and applies it through `cerium:set-zoom`, so Ctrl + and Ctrl − reach the page, and
- * Ctrl 0 opens a thread), and DevTools only while the app isn't packaged.
+ * Ctrl 0 opens a thread), and DevTools only while the app isn't packaged. macOS shows it in the menu
+ * bar, so it leads with the app's own menu (About, Hide, Quit) in place of File, whose Close Window
+ * would take ⌘W from the thread tabs, and keeps the Window menu's Zoom and Bring All to Front.
  */
 const applicationMenu = () =>
   Menu.buildFromTemplate([
-    { role: "fileMenu" },
+    mac ? { role: "appMenu" } : { role: "fileMenu" },
     { role: "editMenu" },
     {
       label: "View",
@@ -105,7 +140,12 @@ const applicationMenu = () =>
         : [{ role: "toggleDevTools" }, { type: "separator" }, { role: "togglefullscreen" }],
     },
     // Minimized and shown from the taskbar as a family of apps does; no Close row beside it.
-    { label: "Window", submenu: [{ role: "minimize" }] },
+    {
+      label: "Window",
+      submenu: mac
+        ? [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }]
+        : [{ role: "minimize" }],
+    },
   ]);
 
 /**
@@ -132,20 +172,30 @@ const createWindow = () => {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    // On Windows the page paints nothing behind its surfaces, so Acrylic shows through. Acrylic only
-    // reaches the page area of a transparent window (electron/electron#47510); restoreNativeFrame puts
-    // back the resize frame and rounded corners Electron removes from those. Linux has no Acrylic, so
-    // the page paints its own backdrop and the window stays opaque, keeping its frame and shadow.
+    // On Windows and macOS the page paints nothing behind its surfaces, so the system's glass shows
+    // through. Acrylic only reaches the page area of a transparent window (electron/electron#47510);
+    // restoreNativeFrame puts back the resize frame and rounded corners Electron removes from those.
+    // macOS puts Vibrancy behind an ordinary window, which keeps its frame and shadow, and dims it
+    // while the window is in the background as its own apps do. Linux has no glass, so the page
+    // paints its own backdrop and the window stays opaque, keeping its frame and shadow.
     ...(windows
       ? { transparent: true, backgroundMaterial: "acrylic" as const, backgroundColor: "#00000000" }
-      : { backgroundColor: "#181818" }),
+      : mac
+        ? {
+            vibrancy: "under-window" as const,
+            visualEffectState: "followWindow" as const,
+            backgroundColor: "#00000000",
+          }
+        : { backgroundColor: "#181818" }),
     titleBarStyle: "hidden",
+    // On macOS this reports the traffic lights' corner to the page (Window Controls Overlay), which
+    // keeps its titlebar clear of them.
     titleBarOverlay: titleBarOverlay(),
-    // The installed Windows app takes its icon from its executable; this is for `bun run dev`, which
-    // runs Electron's own, and for Linux, whose window managers ask the window.
-    ...(devUrl === undefined && windows
-      ? {}
-      : { icon: join(import.meta.dirname, "..", "build", "icon.png") }),
+    ...(mac ? { trafficLightPosition: trafficLightPosition() } : {}),
+    // The installed app takes its icon from its executable or bundle; this is for `bun run dev`,
+    // which runs Electron's own, and for Linux, whose window managers ask the window. macOS's dock
+    // takes it from the app instead (below).
+    ...(devUrl === undefined && !linux ? {} : { icon: appIcon }),
     webPreferences: {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,
@@ -215,6 +265,8 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
 );
 
 app.on("second-instance", () => background.show());
+// Clicking the dock icon brings back a window hidden to the menu bar.
+app.on("activate", () => background.show());
 
 /** A toast about a thread, and the count of threads waiting over the taskbar icon (notifications.ts). */
 ipcMain.on("cerium:notify", (_event, request: unknown) => {
@@ -253,9 +305,9 @@ ipcMain.handle("cerium:reveal-path", (_event, target: unknown) => {
 });
 
 /**
- * Whether Windows' privacy settings let Cerium use the microphone: Chromium reports a block as a
- * device that failed to start, or as silence, so dictation asks here what it meant. Linux has no
- * such setting.
+ * Whether Windows' or macOS's privacy settings let Cerium use the microphone: Chromium reports a
+ * block as a device that failed to start, or as silence, so dictation asks here what it meant. Linux
+ * has no such setting.
  */
 ipcMain.handle("cerium:microphone-access", () =>
   process.platform === "win32" || process.platform === "darwin"
@@ -263,9 +315,12 @@ ipcMain.handle("cerium:microphone-access", () =>
     : "granted",
 );
 
-/** Windows' microphone privacy page, for dictation the settings there block. */
+/** The system's microphone privacy page, for dictation the settings there block. */
 ipcMain.handle("cerium:open-microphone-settings", async () => {
-  if (process.platform === "win32") await shell.openExternal("ms-settings:privacy-microphone");
+  if (windows) await shell.openExternal("ms-settings:privacy-microphone");
+  if (mac) {
+    await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+  }
 });
 
 /** Opens a file the explorer lists in its own app (openPath.ts). */
@@ -283,8 +338,8 @@ ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>
 ipcMain.handle("cerium:text-command", (event, command: unknown) => runTextCommand(event.sender, command));
 
 /**
- * The UI's theme choice. Windows tints Acrylic from the native theme, and the caption buttons follow
- * it everywhere, so it follows the UI. Answers whether that means dark colours: after a forced theme,
+ * The UI's theme choice. Windows tints Acrylic and macOS its Vibrancy from the native theme, and the
+ * caption buttons follow it everywhere, so it follows the UI. Answers whether that means dark colours: after a forced theme,
  * the page's `prefers-color-scheme` doesn't return to the system's own when the choice goes back to
  * "system", so the UI asks here instead.
  */
@@ -298,13 +353,13 @@ ipcMain.on("cerium:set-zoom", (event, factor: unknown) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   if (window === null || typeof factor !== "number" || !(factor >= 0.5 && factor <= 2)) return;
   event.sender.setZoomFactor(factor);
-  window.setTitleBarOverlay(titleBarOverlay(factor));
+  syncCaptionButtons(window, factor);
 });
 
 // The system switching between light and dark, or the UI changing the theme.
 nativeTheme.on("updated", () => {
   for (const window of BrowserWindow.getAllWindows()) {
-    window.setTitleBarOverlay(titleBarOverlay(window.webContents.getZoomFactor()));
+    syncCaptionButtons(window, window.webContents.getZoomFactor());
     window.webContents.send("cerium:dark-colors", nativeTheme.shouldUseDarkColors);
   }
 });
@@ -325,6 +380,8 @@ void app.whenReady().then(() => {
   Menu.setApplicationMenu(applicationMenu());
   // Dark until the UI loads and reports the user's choice.
   nativeTheme.themeSource = "dark";
+  // `bun run dev` on macOS runs Electron's own bundle, whose dock icon is Electron's.
+  if (mac && devUrl !== undefined) app.dock?.setIcon(appIcon);
   createWindow();
   if (smokeTest !== undefined && mainWindow !== undefined) {
     runSmokeTest({

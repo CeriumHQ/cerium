@@ -17,6 +17,7 @@ import { useState, type ReactNode } from "react";
 
 import { DialogButton, DialogCheck, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { keyLabel } from "../../lib/keys.ts";
 import { mergeStateNote } from "./model.ts";
 import { CommentBox } from "./parts.tsx";
 import type { PullActions } from "./usePullRequest.ts";
@@ -337,7 +338,7 @@ export function PullComposer({
         tone="primary"
         onClick={() => void comment()}
         disabled={busy || text === ""}
-        title="Comment (Ctrl Enter)"
+        title={`Comment (${keyLabel("Ctrl Enter")})`}
       >
         {actions.busy === "comment" ? "Commenting…" : "Comment"}
       </DialogButton>

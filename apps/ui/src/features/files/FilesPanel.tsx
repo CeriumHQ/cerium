@@ -9,6 +9,7 @@ import { applyChanges, expandedAtom, treeAtom } from "../../backend/explorer.ts"
 import { shellBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { primaryHeld } from "../../lib/keys.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { resolvePath } from "../transcript/paths.ts";
 import { Filter, ChangesList } from "./FileLists.tsx";
@@ -106,7 +107,7 @@ export function FilesPanel({
     );
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
+    if (primaryHeld(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
       event.preventDefault();
       setView("files");
       setFiltering(true);

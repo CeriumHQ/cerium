@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
+import { keyLabel } from "../../lib/keys.ts";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { numberHunks } from "../viewer/model.ts";
 import { Avatar, loginOf, Reactions, When } from "./parts.tsx";
@@ -205,7 +206,7 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
           tone="primary"
           onClick={() => void reply()}
           disabled={busy || text.trim() === ""}
-          title="Reply (Ctrl Enter)"
+          title={`Reply (${keyLabel("Ctrl Enter")})`}
         >
           {actions.busy === "reply" ? "Replying…" : "Reply"}
         </DialogButton>

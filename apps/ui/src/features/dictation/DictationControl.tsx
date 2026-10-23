@@ -7,7 +7,8 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { elapsed, problemText } from "./model.ts";
 import type { Dictation } from "./useDictation.ts";
 
-export const DICTATION_SHORTCUT = "Ctrl M";
+// Control on a Mac too, where ⌘M minimizes the window (lib/keys.ts).
+export const DICTATION_SHORTCUT = "Control M";
 
 /** Clicking keeps the cursor in the message, where the words go. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();

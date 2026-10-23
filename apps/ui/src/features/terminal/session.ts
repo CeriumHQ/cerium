@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ITheme } from "@xterm/xterm";
 
+import { usesCommandKey } from "../../lib/keys.ts";
 import { isOpenableLink } from "../transcript/menus.ts";
 import { readTheme } from "./theme.ts";
 
@@ -116,9 +117,12 @@ export class TerminalSession {
     this.terminal.attachCustomKeyEventHandler((event) => this.#keyHandled(event));
 
     // The window's own shortcuts (Ctrl K, Ctrl N, …) are keys the shell uses too: inside the terminal
-    // they are the shell's, but for the one that shows and hides the terminal.
+    // they are the shell's, but for the one that shows and hides the terminal. On a Mac they take ⌘,
+    // which no shell reads, so they stay the window's.
     this.host.addEventListener("keydown", (event) => {
-      if (!(event.ctrlKey && event.code === "Backquote")) event.stopPropagation();
+      if (event.ctrlKey && event.code === "Backquote") return;
+      if (usesCommandKey() && event.metaKey) return;
+      event.stopPropagation();
     });
     this.sized = new Promise((resolve) => {
       this.#onFirstFit = resolve;
@@ -139,6 +143,9 @@ export class TerminalSession {
   /** Whether the emulator hands the key to the window instead of the shell. */
   #keyHandled(event: KeyboardEvent): boolean {
     if (event.type !== "keydown") return true;
+    // ⌘ keys on a Mac are the app's: ⌘C and ⌘V copy and paste through the Edit menu, and the rest
+    // are the window's shortcuts.
+    if (usesCommandKey() && event.metaKey) return false;
     const ctrl = event.ctrlKey && !event.metaKey && !event.altKey;
     const key = event.key.toLowerCase();
     // The window shows and hides the terminal with it.

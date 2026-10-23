@@ -78,7 +78,10 @@ import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 import { WorktreeChip, WorktreePicker } from "./WorktreePicker.tsx";
 
-/** Ctrl M starts and stops dictation, which no browser or Windows key takes in a text box. */
+/**
+ * Control M starts and stops dictation, which no browser or Windows key takes in a text box; on a Mac
+ * too, where ⌘M minimizes.
+ */
 const isDictationKey = (event: KeyboardEvent<HTMLDivElement>) =>
   event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyM";
 

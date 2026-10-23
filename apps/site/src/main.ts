@@ -12,9 +12,19 @@ onScroll();
 // The download buttons fetch Windows' x64 installer. A visitor on Linux gets the package their
 // distribution installs when their browser names it (Ubuntu's and Fedora's Firefox do), else the
 // AppImage; on an Arm64 processor, each one's Arm64 build. Chromium names the processor only when
-// asked, and other browsers on Windows never do.
+// asked, and other browsers on Windows never do. A Mac gets Apple silicon's disk image, or Intel's
+// where Chromium says it has one; every Mac browser claims Intel in its user agent and Safari says no
+// more, so the note under the button offers Intel's too. An iPad asking for the desktop site says
+// Macintosh as well, but has a touch screen.
 const userAgent = navigator.userAgent;
 const linux = /Linux/.test(userAgent) && !/Android/.test(userAgent);
+const mac = /Macintosh/.test(userAgent) && navigator.maxTouchPoints < 2;
+/** The system the buttons name, where it isn't Windows. */
+const system = linux
+  ? { mark: "#mark-linux", name: "Linux" }
+  : mac
+    ? { mark: "#mark-apple", name: "Mac" }
+    : undefined;
 const hints = (
   navigator as Navigator & {
     readonly userAgentData?: {
@@ -24,6 +34,7 @@ const hints = (
 ).userAgentData;
 
 const download = (arm: boolean) => {
+  if (mac) return arm ? "/download/mac" : "/download/mac-intel";
   if (!linux) return arm && /Windows/.test(userAgent) ? "/download/windows-arm64" : undefined;
   const kind = /Ubuntu|Debian|Mint/.test(userAgent)
     ? "deb"
@@ -38,19 +49,24 @@ const pointDownloads = (arm: boolean) => {
   if (href === undefined) return;
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-download]")) {
     link.href = href;
-    if (!linux) continue;
+    if (system === undefined) continue;
     link.querySelector("svg")?.classList.remove("windows");
-    link.querySelector("use")?.setAttribute("href", "#mark-linux");
-    const system = link.querySelector("[data-download-system]");
-    if (system !== null) system.textContent = "Linux";
+    link.querySelector("use")?.setAttribute("href", system.mark);
+    const name = link.querySelector("[data-download-system]");
+    if (name !== null) name.textContent = system.name;
+  }
+  // The note offers Intel's build while the button may still be Apple silicon's.
+  for (const note of document.querySelectorAll<HTMLElement>("[data-mac-intel]")) {
+    note.hidden = !(mac && arm);
   }
 };
 
-pointDownloads(/aarch64|arm64/i.test(userAgent));
+pointDownloads(mac || /aarch64|arm64/i.test(userAgent));
 void hints
   ?.getHighEntropyValues(["architecture"])
   .then(({ architecture }) => {
     if (architecture === "arm") pointDownloads(true);
+    else if (mac && architecture === "x86") pointDownloads(false);
   })
   .catch(() => undefined);
 

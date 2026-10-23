@@ -24,7 +24,7 @@ import {
   signIn,
   signOut,
 } from "../../backend/atoms.ts";
-import { onWindows, shellBridge, type StartAtLogin } from "../../backend/shell.ts";
+import { onMac, onWindows, shellBridge, type StartAtLogin } from "../../backend/shell.ts";
 import { openSignIn, signInHref } from "../../backend/signIn.ts";
 import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
@@ -431,6 +431,9 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
 function ThisComputerSection() {
   const bridge = shellBridge();
   const windows = onWindows();
+  const mac = onMac();
+  // Where a Mac keeps Cerium while its window is closed.
+  const tray = mac ? "the menu bar" : "the tray";
   const [startAtLogin, setStartAtLogin] = useState<StartAtLogin>();
   const [error, setError] = useState<string>();
   const labelId = useId();
@@ -445,7 +448,11 @@ function ThisComputerSection() {
     void bridge?.setStartAtLogin?.(enabled).then(setStartAtLogin, () => {
       setStartAtLogin((current) => current && { ...current, enabled: !enabled });
       setError(
-        windows ? "Windows didn't take that change. Try again." : "Cerium couldn't change that. Try again.",
+        windows
+          ? "Windows didn't take that change. Try again."
+          : mac
+            ? "macOS didn't take that change. Try again."
+            : "Cerium couldn't change that. Try again.",
       );
     });
   };
@@ -455,7 +462,7 @@ function ThisComputerSection() {
       title="This computer"
       description={
         <>
-          Closing the window keeps Cerium in the tray, so your other devices can still reach this computer.{" "}
+          Closing the window keeps Cerium in {tray}, so your other devices can still reach this computer.{" "}
           <InfoTip label="About keeping this computer awake" side="bottom">
             Agents at work keep it from going to sleep.
           </InfoTip>
@@ -466,14 +473,16 @@ function ThisComputerSection() {
         <SettingsCard className="flex items-start gap-4 p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span id={labelId} className="text-[13px] font-medium text-fg-primary">
-              {windows ? "Start with Windows" : "Start at login"}
+              {windows ? "Start with Windows" : mac ? "Open at login" : "Start at login"}
             </span>
             <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
               {startAtLogin?.available === false
                 ? windows
                   ? "Only the installed app can start with Windows."
-                  : "Only the AppImage can start at login."
-                : "Opens in the tray when you sign in, so this computer is reachable after a restart."}
+                  : mac
+                    ? "Only the installed app can open at login."
+                    : "Only the AppImage can start at login."
+                : `Opens in ${tray} when you sign in, so this computer is reachable after a restart.`}
             </p>
             {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
           </div>

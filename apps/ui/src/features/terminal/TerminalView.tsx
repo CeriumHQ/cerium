@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { restartTerminal, terminalSessionAtom } from "../../backend/terminals.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { usesCommandKey } from "../../lib/keys.ts";
 import { exitNote, messageOf } from "./model.ts";
 import type { TerminalSession } from "./session.ts";
 
@@ -103,7 +104,7 @@ function TerminalMenu({ session, selected }: { session: TerminalSession | undefi
     <>
       <MenuItem
         icon={Copy}
-        shortcut="Ctrl Shift C"
+        shortcut={usesCommandKey() ? "Ctrl C" : "Ctrl Shift C"}
         disabled={!selected}
         onClick={act((each) => each.copySelection())}
       >
@@ -111,7 +112,7 @@ function TerminalMenu({ session, selected }: { session: TerminalSession | undefi
       </MenuItem>
       <MenuItem
         icon={ClipboardPaste}
-        shortcut="Ctrl Shift V"
+        shortcut={usesCommandKey() ? "Ctrl V" : "Ctrl Shift V"}
         onClick={act(
           (each) =>
             void navigator.clipboard

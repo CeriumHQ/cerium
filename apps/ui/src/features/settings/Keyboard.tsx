@@ -4,6 +4,8 @@ import { useAtom } from "@effect/atom-react";
 import { useRef, useState, type KeyboardEvent } from "react";
 
 import { WEB } from "../../backend/target.ts";
+import { keyLabel } from "../../lib/keys.ts";
+import { DICTATION_SHORTCUT } from "../dictation/DictationControl.tsx";
 import { Keys, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import { isSendKey, sendKeyAtom, type SendKey } from "./preferences.ts";
 import { canScale } from "./scale.ts";
@@ -22,11 +24,11 @@ const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["Switch to Chat", "Ctrl Shift 2"],
   ["Show or hide the sidebar", "Ctrl B"],
   ["Show or hide the thread's agents", "Ctrl J"],
-  ["Show, focus or hide the terminal", "Ctrl `"],
+  ["Show, focus or hide the terminal", "Control `"],
   ["Open or close settings", "Ctrl ,"],
   ["Stop the running turn, or leave settings", "Esc"],
   // Only the desktop's message boxes dictate.
-  ...(WEB ? [] : ([["Start or stop dictating in the message box", "Ctrl M"]] as const)),
+  ...(WEB ? [] : ([["Start or stop dictating in the message box", DICTATION_SHORTCUT]] as const)),
   // The desktop window scales itself; a browser keeps its own zoom keys.
   ...(canScale()
     ? ([
@@ -41,10 +43,10 @@ const tabShortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["New thread in a tab", "Ctrl T"],
   ["Close the tab", "Ctrl W"],
   ["Reopen the tab closed last", "Ctrl Shift T"],
-  ["Next tab", "Ctrl Tab"],
-  ["Previous tab", "Ctrl Shift Tab"],
+  ["Next tab", "Control Tab"],
+  ["Previous tab", "Control Shift Tab"],
   ["Go to a tab, 9 being the last", "Alt 1–9"],
-  ["Move the tab left or right", "Ctrl Shift PgUp/PgDn"],
+  ["Move the tab left or right", "Control Shift PgUp/PgDn"],
   ["Open a sidebar thread in a tab of its own", "Ctrl Click"],
 ];
 
@@ -95,7 +97,7 @@ export function KeyboardSettings() {
                 key={option.value}
                 value={option.value}
                 nativeButton
-                render={<button type="button" aria-label={`${option.send} sends`} />}
+                render={<button type="button" aria-label={`${keyLabel(option.send)} sends`} />}
                 className="group flex flex-col gap-3 rounded-xl border border-line-subtle p-4 text-left transition-[border-color,box-shadow] duration-150 outline-none hover:border-line-strong focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:border-accent data-checked:ring-1 data-checked:ring-accent"
               >
                 <span className="flex items-center gap-2.5 text-[13px] text-fg-secondary group-data-checked:text-fg-primary">
@@ -172,7 +174,7 @@ function TryIt({ sendKey, onPress }: { sendKey: SendKey; onPress: (press: Press)
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={`Try it: type something and press ${sendKey === "enter" ? "Enter" : "Ctrl Enter"}`}
+          placeholder={`Try it: type something and press ${sendKey === "enter" ? "Enter" : keyLabel("Ctrl Enter")}`}
           aria-label="Try sending a message"
           className="block max-h-28 min-h-11 w-full resize-none rounded-xl border border-line-subtle bg-surface-raised px-3.5 py-2.5 text-[13.5px] leading-normal text-fg-primary transition-colors outline-none [field-sizing:content] placeholder:text-fg-tertiary focus:border-line-strong"
         />

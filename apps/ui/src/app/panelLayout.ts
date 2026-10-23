@@ -1,5 +1,14 @@
-/** The sidebar's width, including the gutter between it and the transcript. */
-export const SIDEBAR = { key: "cerium:sidebarWidth", fallback: 278, min: 232, max: 420 } as const;
+/**
+ * The sidebar's width, including the gutter between it and the transcript. On a Mac the traffic
+ * lights take the titlebar's corner above it, so it keeps room for the controls beside them.
+ */
+export const SIDEBAR = {
+  key: "cerium:sidebarWidth",
+  fallback: 278,
+  min: 232,
+  macMin: 256,
+  max: 420,
+} as const;
 export const INSPECTOR = { key: "cerium:inspectorWidth", fallback: 320, min: 280, max: 560 } as const;
 /** The files panel takes the inspector's place, a little wider for names and their status. */
 export const FILES = { key: "cerium:filesWidth", fallback: 340, min: 280, max: 560 } as const;
@@ -65,9 +74,10 @@ export const panelLayout = (
   sidebarShown: boolean,
   /** The panel beside the transcript: the inspector, or the files panel (which keeps its own saved width in `inspector`). */
   side: SidePanelSpec = INSPECTOR,
+  sidebarMin: number = SIDEBAR.min,
 ): PanelLayout => {
   const sidebarMax = Math.min(SIDEBAR.max, Math.floor(bodyWidth * 0.4));
-  const sidebarWidth = clampWidth(saved.sidebar, SIDEBAR.min, sidebarMax);
+  const sidebarWidth = clampWidth(saved.sidebar, sidebarMin, sidebarMax);
   const sidebarSpace = sidebarShown ? sidebarWidth : GUTTER;
   const roomBeside = bodyWidth - sidebarSpace - GUTTER * 2 - MIN_TRANSCRIPT;
   const floating = roomBeside < side.min;

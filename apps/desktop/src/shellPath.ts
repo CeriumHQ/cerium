@@ -4,7 +4,8 @@ import { userInfo } from "node:os";
 // The environment the packaged app's backend, and every harness and terminal it starts, runs with.
 // Started from a desktop launcher, a Linux app gets the session's environment, which lacks what the
 // user's shell profile adds to PATH (~/.local/bin, a Node version manager, Bun), where harness CLIs
-// install. So the user's shell runs once, as a terminal starts it, and its PATH comes first. An
+// install; a Mac app started from the Dock or Finder gets launchd's bare one, without Homebrew's
+// /opt/homebrew/bin either. So the user's shell runs once, as a terminal starts it, and its PATH comes first. An
 // AppImage's runtime also puts its own folders on PATH and the library and data paths, which would
 // reach every program the backend starts; they are taken off again. Windows keeps PATH in the
 // registry, so every app has it already.

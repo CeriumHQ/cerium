@@ -1,6 +1,7 @@
 import { useAtom, useAtomValue } from "@effect/atom-react";
 
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import { DICTATION_SHORTCUT } from "../dictation/DictationControl.tsx";
 import { speechLanguages, speechModel, speechModels, type SpeechModelId } from "../dictation/model.ts";
 import { dictationLanguageAtom, dictationModelAtom, downloadedModelsAtom } from "../dictation/preferences.ts";
 import { Keys, SettingsCard, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
@@ -64,7 +65,7 @@ export function DictationSettings() {
           <SettingsRow
             label="Start or stop dictating"
             hint="Esc drops the recording"
-            control={() => <Keys keys="Ctrl M" size="sm" />}
+            control={() => <Keys keys={DICTATION_SHORTCUT} size="sm" />}
           />
         </SettingsCard>
       </SettingsSection>

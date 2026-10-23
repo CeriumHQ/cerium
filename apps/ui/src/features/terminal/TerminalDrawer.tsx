@@ -162,7 +162,7 @@ export function TerminalDrawer({
           </Tabs.List>
           <IconButton icon={Plus} label="New terminal" onClick={start} />
           <div className="ml-auto" />
-          <IconButton icon={ChevronDown} label="Hide terminal" shortcut="Ctrl `" onClick={onHide} />
+          <IconButton icon={ChevronDown} label="Hide terminal" shortcut="Control `" onClick={onHide} />
         </div>
         {error ? (
           <Notice tone="error" clamp onDismiss={() => setError(undefined)}>

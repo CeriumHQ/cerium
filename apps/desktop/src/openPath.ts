@@ -60,6 +60,32 @@ const LINUX_RUNNABLE = [
   ".zsh",
 ];
 
+/**
+ * Kinds macOS runs, installs or mounts rather than shows: apps and their parts, Terminal's own
+ * scripts, Automator's workflows, AppleScript, installer packages and disk images. Any file marked
+ * executable counts too.
+ */
+const MAC_RUNNABLE = [
+  ".action",
+  ".app",
+  ".applescript",
+  ".bash",
+  ".command",
+  ".dmg",
+  ".jar",
+  ".mpkg",
+  ".pkg",
+  ".prefpane",
+  ".scpt",
+  ".scptd",
+  ".sh",
+  ".terminal",
+  ".tool",
+  ".webloc",
+  ".workflow",
+  ".zsh",
+];
+
 const runnableOnWindows = (path: string): boolean => {
   const extension = extname(path).toLowerCase();
   if (extension === "") return false;
@@ -69,8 +95,8 @@ const runnableOnWindows = (path: string): boolean => {
   return listed.includes(extension) || RUNNABLE.includes(extension);
 };
 
-const runnableOnLinux = async (path: string): Promise<boolean> => {
-  if (LINUX_RUNNABLE.includes(extname(path).toLowerCase())) return true;
+const runnableOnUnix = async (path: string, kinds: ReadonlyArray<string>): Promise<boolean> => {
+  if (kinds.includes(extname(path).toLowerCase())) return true;
   const file = await stat(path).catch(() => undefined);
   return file !== undefined && file.isFile() && (file.mode & 0o111) !== 0;
 };
@@ -83,7 +109,10 @@ const runnableOnLinux = async (path: string): Promise<boolean> => {
 export const openPath = async (target: unknown): Promise<void> => {
   if (typeof target !== "string" || !isAbsolute(target)) return;
   const path = normalize(target);
-  const runnable = process.platform === "win32" ? runnableOnWindows(path) : await runnableOnLinux(path);
+  const runnable =
+    process.platform === "win32"
+      ? runnableOnWindows(path)
+      : await runnableOnUnix(path, process.platform === "darwin" ? MAC_RUNNABLE : LINUX_RUNNABLE);
   if (runnable) shell.showItemInFolder(path);
   else await shell.openPath(path);
 };

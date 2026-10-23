@@ -5,7 +5,8 @@ import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { onWindows } from "../../backend/shell.ts";
+import { onMac, onWindows } from "../../backend/shell.ts";
+import { keyLabel } from "../../lib/keys.ts";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { UserMessage } from "../transcript/Blocks.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
@@ -41,7 +42,7 @@ export function AppearanceSettings() {
     <SettingsPage title="Appearance">
       <SettingsSection
         title="Theme"
-        info={`Every theme comes in light and dark. System follows ${onWindows() ? "Windows" : "your device's light or dark setting"}.`}
+        info={`Every theme comes in light and dark. System follows ${onWindows() ? "Windows" : onMac() ? "macOS" : "your device's light or dark setting"}.`}
         action={<ModePicker />}
       >
         <RadioGroup
@@ -193,7 +194,8 @@ function ScaleSection() {
         <span className="inline-flex flex-wrap items-center gap-x-1.5">
           Sizes the whole window.
           <InfoTip label="About scale">
-            Ctrl + and Ctrl − change it from anywhere; Ctrl 0 on the numpad goes back to 100%.
+            {keyLabel("Ctrl +")} and {keyLabel("Ctrl −")} change it from anywhere; {keyLabel("Ctrl 0")} on the
+            numpad goes back to 100%.
           </InfoTip>
         </span>
       }

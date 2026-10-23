@@ -20,6 +20,7 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { keyLabel, primaryHeld } from "../../lib/keys.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
@@ -105,7 +106,7 @@ export function Sidebar({
   // its scope, its sections and its folded groups decide, so the rendered rows are what's counted.
   const root = useRef<HTMLDivElement>(null);
   const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (!event.ctrlKey || event.shiftKey || event.altKey || event.metaKey || searchOpen) return;
+    if (!primaryHeld(event) || event.shiftKey || event.altKey || searchOpen) return;
     const digit = /^Digit(\d)$/.exec(event.code)?.[1];
     if (digit === undefined) return;
     event.preventDefault();
@@ -130,7 +131,9 @@ export function Sidebar({
         >
           <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary max-md:size-4" />
           {mode === "work" ? "New thread" : "New chat"}
-          <kbd className="ml-auto font-sans text-2xs text-fg-tertiary max-md:hidden">Ctrl N</kbd>
+          <kbd className="ml-auto font-sans text-2xs text-fg-tertiary max-md:hidden">
+            {keyLabel("Ctrl N")}
+          </kbd>
         </Button>
         <IconButton
           icon={Search}

@@ -20,6 +20,18 @@ body,
   height: 100%;
 }
 
+/*
+ * Where the titlebar's own controls start. macOS draws its traffic lights in the top-left corner,
+ * whose end Window Controls Overlay reports; in full screen they hide, and the bar starts at the edge.
+ */
+html {
+  --titlebar-inset: 12px;
+}
+
+html[data-platform="darwin"] {
+  --titlebar-inset: max(12px, env(titlebar-area-x, 78px));
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -34,12 +46,13 @@ body {
 }
 
 /*
- * The browser preview and Linux have no OS Acrylic behind the page, so they stand in a flat, neutral
- * desktop. On Windows, Cerium's body stays transparent and Windows provides the real backdrop
- * (`data-acrylic`). Acrylic takes its tint from Windows, not the theme, so every other theme paints
- * its own backdrop and is opaque, drawn as in the browser preview.
+ * The browser preview and Linux have no system glass behind the page, so they stand in a flat,
+ * neutral desktop. On Windows and macOS, Cerium's body stays transparent and the system provides the
+ * real backdrop (`data-acrylic`): Acrylic on Windows, Vibrancy on macOS. Both take their tint from
+ * the system, not the theme, so every other theme paints its own backdrop and is opaque, drawn as in
+ * the browser preview.
  */
-/* Real Acrylic already tints and blurs the desktop, so the window tint can be lighter. */
+/* Real Acrylic and Vibrancy already tint and blur the desktop, so the window tint can be lighter. */
 html[data-acrylic][data-palette="cerium"][data-theme="dark"] {
   --window-alpha: 0.45;
 }

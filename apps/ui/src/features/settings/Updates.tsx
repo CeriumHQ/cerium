@@ -152,7 +152,9 @@ function VersionSection({ updates }: { updates: Updates }) {
           </div>
           {status.kind === "available" || status.kind === "failed" ? (
             <Button onClick={() => void bridge?.downloadUpdate?.()} className={primaryClass}>
-              {status.kind === "failed" ? "Try again" : `Update to ${status.version}`}
+              {status.kind === "failed"
+                ? "Try again"
+                : `${updates.manual ? "Download" : "Update to"} ${status.version}`}
             </Button>
           ) : status.kind === "ready" ? (
             <Button onClick={() => void bridge?.installUpdate?.()} className={primaryClass}>

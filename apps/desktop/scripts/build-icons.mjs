@@ -39,6 +39,36 @@ const tile = (
 </svg>`;
 
 /**
+ * The Mac's app icon: the same tile on Apple's icon grid, a rounded square 824 units across on a
+ * 1024 canvas, with the soft shadow the Dock's other icons cast.
+ */
+const macTile = (
+  size,
+) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${INK_LIFT}"/><stop offset="1" stop-color="${INK}"/>
+    </linearGradient>
+    <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#g)" filter="url(#s)"/>
+  <rect x="104" y="104" width="816" height="816" rx="181" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="6"/>
+  <g transform="translate(512 512) scale(14) translate(-24.5 -24)">${mark(size, PAPER)}</g>
+</svg>`;
+
+/**
+ * The menu bar's icon: the mark alone in black on clear, a template image macOS tints to the bar's
+ * own colour, light or dark.
+ */
+const trayTemplate = (
+  size,
+) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 48 48">
+  <g transform="translate(24 24) scale(1.05) translate(-24.5 -24)">${mark(size, "#000000")}</g>
+</svg>`;
+
+/**
  * The Home Screen's icon: full-bleed, since iOS and Android cut their own shape. Android's maskable
  * icon keeps the mark smaller, inside the safe zone its masks never cut.
  */
@@ -166,6 +196,11 @@ void app.whenReady().then(async () => {
   writeFileSync(join(out, "icon.ico"), ico(images));
   // The window's own icon, and the base for other platforms' formats.
   writeFileSync(join(out, "icon.png"), await png(512));
+  // electron-builder turns this into the Mac app's .icns.
+  writeFileSync(join(out, "icon-mac.png"), await png(1024, macTile(1024)));
+  // The menu bar's 16-point icon, and the one Retina screens take.
+  writeFileSync(join(out, "trayTemplate.png"), await png(16, trayTemplate(16)));
+  writeFileSync(join(out, "trayTemplate@2x.png"), await png(32, trayTemplate(32)));
 
   writeFileSync(join(out, "installerSidebar.bmp"), bmp(await sidebar(page)));
   writeFileSync(join(out, "installerHeader.bmp"), bmp(await header(page)));

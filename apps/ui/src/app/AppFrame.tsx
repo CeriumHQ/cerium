@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 
+import { onMac } from "../backend/shell.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
 import { useKeyboardOpen } from "../web/viewport.ts";
@@ -142,11 +143,13 @@ function DesktopFrame({
   /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
 
+  const sidebarMin = onMac() ? SIDEBAR.macMin : SIDEBAR.min;
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
     bodyWidth,
     { sidebar: savedSidebar, inspector: savedSide },
     showSidebar,
     sideSpec,
+    sidebarMin,
   );
 
   const inspectorHandle = (
@@ -207,7 +210,7 @@ function DesktopFrame({
               label="Resize sidebar"
               edge="end"
               width={sidebarWidth}
-              min={SIDEBAR.min}
+              min={sidebarMin}
               max={sidebarMax}
               fallback={SIDEBAR.fallback}
               onResize={setSavedSidebar}

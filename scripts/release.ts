@@ -39,6 +39,7 @@ const shippingTypes = new Set(["build", "feat", "fix", "perf", "refactor", "reve
 const unsignedNote = [
   "The Windows installer is unsigned for now, so Windows SmartScreen asks before running it (More info → Run anyway).",
   "On Linux, download the AppImage, make it executable (`chmod +x Cerium-*.AppImage`) and run it; it needs FUSE 2 (`libfuse2`, `libfuse2t64` on Ubuntu 24.04 and later).",
+  "On a Mac, open the disk image for its processor (`arm64` for Apple silicon, `x64` for Intel) and drag Cerium into Applications. Until the app is notarized, macOS asks before its first start: try opening it once, then choose Open Anyway in System Settings → Privacy & Security.",
 ].join("\n\n");
 
 export const parseTag = (tag: string): Version | undefined => {

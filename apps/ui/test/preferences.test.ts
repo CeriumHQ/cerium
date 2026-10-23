@@ -15,6 +15,7 @@ const press = (key: string, modifiers: { shift?: boolean; ctrl?: boolean; compos
   key,
   shiftKey: modifiers.shift ?? false,
   ctrlKey: modifiers.ctrl ?? false,
+  metaKey: false,
   nativeEvent: { isComposing: modifiers.composing ?? false },
 });
 

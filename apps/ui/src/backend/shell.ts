@@ -57,7 +57,8 @@ export interface ShellBridge {
   /** Opens `html`, a page of its own, in the user's browser, from a file named after `name`. */
   readonly openHtml?: (html: string, name: string) => Promise<void>;
   /**
-   * The system draws the window's caption buttons, and on Windows tints its Acrylic, in this theme.
+   * The system draws the window's caption buttons, and tints its Acrylic on Windows and Vibrancy on
+   * macOS, in this theme.
    * Resolves whether that means dark colours, which for "system" is the system's own choice.
    */
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
@@ -105,8 +106,8 @@ export interface ShellBridge {
   /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */
   readonly microphoneAccess?: () => Promise<string>;
   /**
-   * Opens Windows' microphone privacy settings, where dictation's access is turned back on; absent
-   * elsewhere, which has no such page.
+   * Opens Windows' or macOS's microphone privacy settings, where dictation's access is turned back
+   * on; absent on Linux, which has no such page.
    */
   readonly openMicrophoneSettings?: () => Promise<void>;
 }
@@ -146,6 +147,8 @@ export interface Updates {
   readonly version: string;
   readonly buildChannel: UpdateChannel;
   readonly status: UpdateStatus;
+  /** This build can't install updates itself: downloading one opens it in the browser. */
+  readonly manual: boolean;
 }
 
 declare global {
@@ -156,6 +159,12 @@ declare global {
 
 /** Whether the desktop app runs on Windows, whose own names its settings use. */
 export const onWindows = (): boolean => window.cerium?.platform === "win32";
+
+/**
+ * Whether the desktop app runs on macOS, whose own names (the menu bar, login) its settings use; the
+ * browser preview stands in for it with `?platform=darwin` (main.tsx).
+ */
+export const onMac = (): boolean => document.documentElement.dataset["platform"] === "darwin";
 
 /**
  * The shell's bridge. While the window drives another machine, what reaches this computer's

@@ -7,6 +7,7 @@ import {
 import { Atom } from "effect/reactivity";
 
 import { WEB } from "../../backend/target.ts";
+import { primaryHeld } from "../../lib/keys.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import { accessOptions, effortLabel } from "../composer/models.ts";
 
@@ -78,6 +79,7 @@ export const isSendKey = (
     readonly key: string;
     readonly shiftKey: boolean;
     readonly ctrlKey: boolean;
+    readonly metaKey: boolean;
     readonly nativeEvent: { readonly isComposing: boolean };
   },
   sendKey: SendKey,
@@ -85,7 +87,7 @@ export const isSendKey = (
   event.key === "Enter" &&
   !event.shiftKey &&
   !event.nativeEvent.isComposing &&
-  (sendKey === "enter" || event.ctrlKey);
+  (sendKey === "enter" || primaryHeld(event));
 
 // The desktop's own notifications about this computer's threads; the web client's are Web Push,
 // which the relay keeps.

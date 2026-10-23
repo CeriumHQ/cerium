@@ -6,6 +6,7 @@ import { useId, type ReactNode } from "react";
 import { machineAtom } from "../../backend/machine.ts";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { keyCaps } from "../../lib/keys.ts";
 
 /**
  * A settings category: its title, a line on what it covers when the title doesn't say, and an action
@@ -172,7 +173,7 @@ export function Keys({
 }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {keys.split(" ").map((key) => (
+      {keyCaps(keys).map((key) => (
         <kbd
           key={key}
           className={`grid place-items-center rounded-md border font-sans font-medium transition-[translate,border-width,background-color,color] duration-100 ${

@@ -31,12 +31,15 @@ const downloads = (version: string): ReadonlyArray<readonly [string, string]> =>
   ["/deb-arm64", `cerium_${version}_arm64.deb`],
   ["/rpm", `cerium-${version}.x86_64.rpm`],
   ["/rpm-arm64", `cerium-${version}.aarch64.rpm`],
+  ["/mac", `Cerium-${version}-arm64.dmg`],
+  ["/mac-intel", `Cerium-${version}-x64.dmg`],
 ];
 
 /**
  * The relay's `_redirects`: `/download` fetches the Windows installer of the version deployed with
- * it, and the paths below it the Arm64 installer and each Linux package, which the release workflows
- * publish alongside (apps/desktop/electron-builder.ts).
+ * it, and the paths below it the Arm64 installer, each Linux package and the Mac's disk images (Apple
+ * silicon's at `/mac`, Intel's at `/mac-intel`), which the release workflows publish alongside
+ * (apps/desktop/electron-builder.ts).
  */
 export const redirects = (root: WebBuild | undefined): string => {
   if (root === undefined) return "";

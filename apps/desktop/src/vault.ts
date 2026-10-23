@@ -3,9 +3,9 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // This machine's Cerium sign-in, kept for the backend (apps/backend/src/vault.ts): encrypted with
-// Windows' data protection, so only this Windows account can read it, or on Linux with a key from the
-// desktop's keyring (GNOME Keyring, KWallet). The backend asks for it over its parent port; nothing
-// else can.
+// Windows' data protection, so only this Windows account can read it, on macOS with a key from the
+// user's Keychain, or on Linux with a key from the desktop's keyring (GNOME Keyring, KWallet). The
+// backend asks for it over its parent port; nothing else can.
 
 interface VaultRequest {
   readonly type: "vault";
@@ -40,7 +40,9 @@ const write = async (value: string | null) => {
     throw new Error(
       process.platform === "win32"
         ? "Windows can't protect Cerium's sign-in on this PC, so it wasn't saved."
-        : "No keyring can protect Cerium's sign-in on this computer, so it wasn't saved.",
+        : process.platform === "darwin"
+          ? "Your Keychain can't protect Cerium's sign-in on this Mac, so it wasn't saved."
+          : "No keyring can protect Cerium's sign-in on this computer, so it wasn't saved.",
     );
   }
   // Written beside it and moved into place, so a crash never leaves half a sign-in. Only this user

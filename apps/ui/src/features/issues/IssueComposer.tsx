@@ -5,6 +5,7 @@ import { ChevronDown, CircleCheck, CircleDot, CircleSlash, Lock } from "lucide-r
 import { issueDraftAtom } from "../../backend/issues.ts";
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { keyLabel } from "../../lib/keys.ts";
 import { CommentBox } from "../github/parts.tsx";
 import type { IssueActions } from "./useIssueActions.ts";
 
@@ -95,7 +96,7 @@ export function IssueComposer({
         tone="primary"
         onClick={() => void comment()}
         disabled={busy || text === ""}
-        title="Comment (Ctrl Enter)"
+        title={`Comment (${keyLabel("Ctrl Enter")})`}
       >
         {actions.busy === "comment" ? "Commenting…" : "Comment"}
       </DialogButton>

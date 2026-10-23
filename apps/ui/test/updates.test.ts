@@ -14,12 +14,19 @@ const updates = (status: UpdateStatus, extra: Partial<Updates> = {}): Updates =>
   version: "0.4.0",
   buildChannel: "stable",
   status,
+  manual: false,
   ...extra,
 });
 
 describe("statusText", () => {
   it("names the version on offer", () => {
     expect(statusText(updates({ kind: "available", version: "0.5.0" }))).toBe("Cerium 0.5.0 is available.");
+  });
+
+  it("says where a build that can't install it gets the version on offer", () => {
+    expect(statusText(updates({ kind: "available", version: "0.5.0" }, { manual: true }))).toContain(
+      "downloads in your browser",
+    );
   });
 
   it("says which channel is current", () => {

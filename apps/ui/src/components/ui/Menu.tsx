@@ -3,6 +3,8 @@ import { Menu as BaseMenu } from "@base-ui/react/menu";
 import { Check, type LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
+import { keyLabel } from "../../lib/keys.ts";
+
 // Cerium-styled parts over Base UI's Menu.
 
 export const MenuRoot = BaseMenu.Root;
@@ -50,7 +52,7 @@ export function MenuItem({
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  /** The item's keyboard shortcut, shown on the right, such as "Ctrl C". */
+  /** The item's keyboard shortcut, shown on the right, such as "Ctrl C" (lib/keys.ts). */
   shortcut?: string;
   tone?: "default" | "danger";
 }) {
@@ -67,7 +69,9 @@ export function MenuItem({
       {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
       {children}
       {shortcut ? (
-        <kbd className="ml-auto pl-6 font-sans text-2xs text-fg-tertiary max-md:hidden">{shortcut}</kbd>
+        <kbd className="ml-auto pl-6 font-sans text-2xs text-fg-tertiary max-md:hidden">
+          {keyLabel(shortcut)}
+        </kbd>
       ) : null}
     </BaseMenu.Item>
   );

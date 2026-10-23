@@ -55,6 +55,8 @@ describe("the relay's web UI builds", () => {
         `/download/deb-arm64 ${release}/cerium_0.4.0-nightly.n000031_arm64.deb 302`,
         `/download/rpm ${release}/cerium-0.4.0-nightly.n000031.x86_64.rpm 302`,
         `/download/rpm-arm64 ${release}/cerium-0.4.0-nightly.n000031.aarch64.rpm 302`,
+        `/download/mac ${release}/Cerium-0.4.0-nightly.n000031-arm64.dmg 302`,
+        `/download/mac-intel ${release}/Cerium-0.4.0-nightly.n000031-x64.dmg 302`,
         "",
       ].join("\n"),
     );

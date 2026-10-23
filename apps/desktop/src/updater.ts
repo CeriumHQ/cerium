@@ -1,9 +1,10 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import electronUpdater from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { linuxInstall } from "./linuxInstall.ts";
+import { diskImageUrl, updatesInPlace } from "./macUpdates.ts";
 
 // Updating Cerium from within. The installed app follows one release
 // channel's GitHub Releases through electron-updater: stable's latest release, or the newest
@@ -34,6 +35,11 @@ export interface Updates {
   readonly version: string;
   readonly buildChannel: UpdateChannel;
   readonly status: UpdateStatus;
+  /**
+   * This build can't install updates itself (a Mac build signed ad hoc, macUpdates.ts): downloading
+   * one opens its disk image in the browser.
+   */
+  readonly manual: boolean;
 }
 
 export const isUpdateChannel = (value: unknown): value is UpdateChannel =>
@@ -94,12 +100,21 @@ export const startUpdater = () => {
   // for the user's password (linuxInstall.ts). Anything else, a build run from a folder, doesn't.
   const updatable = app.isPackaged && (process.platform !== "linux" || linuxInstall() !== undefined);
   let status: UpdateStatus = updatable ? { kind: "checking" } : { kind: "unsupported" };
+  // A Mac build counts as manual until codesign says otherwise, well before the first check.
+  let manual = process.platform === "darwin";
+  if (updatable && manual) {
+    void updatesInPlace().then((inPlace) => {
+      manual = !inPlace;
+      set(status);
+    });
+  }
 
   const snapshot = (): Updates => ({
     channel,
     version: app.getVersion(),
     buildChannel: buildChannel(),
     status,
+    manual,
   });
   const set = (next: UpdateStatus) => {
     status = next;
@@ -155,6 +170,10 @@ export const startUpdater = () => {
   const download = async (): Promise<void> => {
     if (status.kind !== "available" && status.kind !== "failed") return;
     const { version } = status;
+    if (manual) {
+      await shell.openExternal(diskImageUrl(version));
+      return;
+    }
     set({ kind: "downloading", version, percent: 0 });
     try {
       await autoUpdater.downloadUpdate();
@@ -188,8 +207,9 @@ export const startUpdater = () => {
     },
     download,
     /**
-     * Quits and runs the downloaded installer silently, or on Linux puts the new AppImage in the old
-     * one's place or installs the new package, then starts the new build.
+     * Quits and runs the downloaded installer silently, on macOS puts the new app in the old one's
+     * place, or on Linux puts the new AppImage in the old one's place or installs the new package,
+     * then starts the new build.
      */
     install: () => {
       if (status.kind === "ready") autoUpdater.quitAndInstall(true, true);

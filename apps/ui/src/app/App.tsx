@@ -205,6 +205,7 @@ import { TurnFileView } from "../features/viewer/TurnFileView.tsx";
 import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
 import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
+import { primaryHeld } from "../lib/keys.ts";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
 import { useDesktopNotifications } from "../desktop/notifications.ts";
@@ -1125,7 +1126,7 @@ function Workspace() {
       group: "Actions",
       label: terminal.open ? "Hide terminal" : "Show terminal",
       icon: SquareTerminal,
-      keys: "Ctrl `",
+      keys: "Control `",
       when: terminal.available,
       run: terminal.toggle,
     },
@@ -1204,14 +1205,23 @@ function Workspace() {
     })),
   ];
 
-  /** The tabs' keys with Ctrl, as browsers have them; whether `event` was one. */
-  const tabShortcut = (event: KeyboardEvent) => {
+  /**
+   * The keys that step through and move the tabs, with Control as browsers have them (a Mac's too,
+   * whose ⌘Tab switches apps); whether `event` was one.
+   */
+  const tabStepShortcut = (event: KeyboardEvent) => {
     if (event.key === "Tab") tabs.step(event.shiftKey ? -1 : 1);
     else if (event.key === "PageDown" || event.key === "PageUp") {
       const by = event.key === "PageDown" ? 1 : -1;
       if (event.shiftKey) tabs.shift(by);
       else tabs.step(by);
-    } else if (event.key.toLowerCase() === "t") {
+    } else return false;
+    return true;
+  };
+
+  /** The tabs' other keys with Ctrl (⌘ on a Mac), as browsers have them; whether `event` was one. */
+  const tabShortcut = (event: KeyboardEvent) => {
+    if (event.key.toLowerCase() === "t") {
       if (event.shiftKey) tabs.reopen();
       else newThread();
     } else if (event.key.toLowerCase() === "w" && !event.shiftKey) tabs.closeActive();
@@ -1234,7 +1244,13 @@ function Workspace() {
       event.preventDefault();
       return;
     }
-    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    const control = event.ctrlKey && !event.metaKey && !event.altKey;
+    if (control && !searchOpen && !settingsOpen && !compact && tabStepShortcut(event)) {
+      event.preventDefault();
+      return;
+    }
+    // Ctrl is ⌘ in the Mac app (lib/keys.ts).
+    if (!primaryHeld(event) || event.altKey) return;
     // Ctrl + and Ctrl − scale the desktop window wherever focus is; a browser zooms the page itself.
     const scaling = canScale() ? scaleShortcut(event) : undefined;
     if (scaling !== undefined) {
