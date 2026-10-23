@@ -106,6 +106,7 @@ import type { OutgoingMessage, ThreadSetup } from "../features/composer/Composer
 import { hasContent } from "../features/composer/draft.ts";
 import {
   draftsAtom,
+  draftStartAtom,
   isNewDraftKey,
   newDraftKey,
   startedNow,
@@ -135,7 +136,7 @@ import { nameGitHubTab } from "../features/github/tabs.ts";
 import { IssueViewer } from "../features/issues/IssueViewer.tsx";
 import { IssuesTab } from "../features/issues/IssuesTab.tsx";
 import { ISSUES_VERSION } from "../features/issues/model.ts";
-import { TERMINAL_VERSION } from "../features/terminal/model.ts";
+import { PROJECT_TERMINAL_VERSION, TERMINAL_VERSION } from "../features/terminal/model.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
 import { canScale, scaleShortcut, useScale } from "../features/settings/scale.ts";
@@ -439,6 +440,13 @@ function Workspace() {
   const defaultFolder = folder ?? latestProject;
   /** What the window shows: the open thread, or the draft of one not started yet. */
   const current = openThread[mode] ?? blank[mode];
+  const currentStart = useAtomValue(draftStartAtom(current));
+  /**
+   * The project the work thread not started yet that the window shows would start in: its files,
+   * changes, GitHub repository and terminals are there to use before the first message.
+   */
+  const newProject =
+    mode === "work" && isNewDraftKey(current) ? (currentStart?.folder ?? defaultFolder) : undefined;
   // The panes follow whatever the window shows: the focused pane takes it, or the pane showing it takes focus.
   const storedPanes = panesByMode[mode];
   const panes = storedPanes ? followShown(storedPanes, current) : singlePane(MAIN_PANE, current);
@@ -712,15 +720,15 @@ function Workspace() {
   const toggleFiles = () => togglePanel("files");
   const toggleGit = () => togglePanel("git");
   /**
-   * The open work thread's folder, or the open file's, can be browsed here: it's on the machine the
-   * window drives, which knows how.
+   * The open work thread's folder, the open file's, or the project of the new work thread being
+   * written, can be browsed here: it's on the machine the window drives, which knows how.
    */
   const filesRoot =
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < FILES_VERSION
       ? undefined
       : selected?.thread.mode === "work" && selected.thread.cwd !== undefined
         ? selected.thread.cwd
-        : (openFile?.root ?? openCommitRoot);
+        : (openFile?.root ?? openCommitRoot ?? newProject);
   /** Its files open in Cerium's viewer, when the machine can serve them. */
   const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
   /** New threads there can have worktrees of their own. */
@@ -767,13 +775,19 @@ function Workspace() {
   /** The open work thread's repository, which Source control shows where its machine can. */
   const gitRoot =
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GIT_VERSION ? undefined : filesRoot;
-  // Its shells run on the same machine, in the same folder.
+  // Its shells run on the same machine, in the same folder; a new work thread's, in its project.
+  const terminalsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TERMINAL_VERSION;
+  const projectTerminalsOk =
+    drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= PROJECT_TERMINAL_VERSION;
   const terminal = useTerminalDrawer({
-    thread:
-      filesRoot !== undefined &&
-      (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TERMINAL_VERSION)
-        ? selected?.thread.id
-        : undefined,
+    owner:
+      filesRoot === undefined || !terminalsOk
+        ? undefined
+        : selected !== undefined
+          ? { threadId: selected.thread.id }
+          : newProject !== undefined && projectTerminalsOk
+            ? { project: newProject }
+            : undefined,
     suspended: settingsOpen || searchOpen,
     compact,
   });

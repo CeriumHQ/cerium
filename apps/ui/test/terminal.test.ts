@@ -44,7 +44,20 @@ describe("terminalsOf", () => {
       terminal("other", { threadId: "thr_b" as ThreadId }),
       terminal("a", { openedAt: 2 }),
     ];
-    expect(terminalsOf(all, "thr_a").map((each) => each.id)).toEqual(["a", "b"]);
+    expect(terminalsOf(all, { threadId: "thr_a" }).map((each) => each.id)).toEqual(["a", "b"]);
+  });
+
+  it("lists a project's own terminals, not its threads'", () => {
+    const projectTerminal = (id: string, project: string): TerminalInfo => {
+      const { threadId: _, ...rest } = terminal(id);
+      return { ...rest, project };
+    };
+    const all = [
+      projectTerminal("p", "C:\\work"),
+      terminal("thread", { cwd: "C:\\work" }),
+      projectTerminal("elsewhere", "C:\\other"),
+    ];
+    expect(terminalsOf(all, { project: "C:\\work" }).map((each) => each.id)).toEqual(["p"]);
   });
 });
 

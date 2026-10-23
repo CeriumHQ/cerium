@@ -25,12 +25,28 @@ export const drawerLayout = (columnHeight: number, saved: number): DrawerLayout 
   return { height: Math.min(Math.max(saved, DRAWER.min), max), max };
 };
 
-/** A thread's terminals, in the order they opened. */
+/** The `RPC_VERSION` that brought a project's terminals, opened before a thread starts there. */
+export const PROJECT_TERMINAL_VERSION = 22;
+
+/** Whose terminals the drawer shows: a work thread's, or a project's while a new thread is written there. */
+export type TerminalOwner = { readonly threadId: string } | { readonly project: string };
+
+/** What the drawer remembers per owner: the thread's id, or the project's folder. */
+export const ownerKey = (owner: TerminalOwner): string =>
+  "threadId" in owner ? owner.threadId : `project:${owner.project}`;
+
+/** An owner's terminals, in the order they opened. */
 export const terminalsOf = (
   all: ReadonlyArray<TerminalInfo>,
-  threadId: string,
+  owner: TerminalOwner,
 ): ReadonlyArray<TerminalInfo> =>
-  all.filter((terminal) => terminal.threadId === threadId).toSorted((a, b) => a.openedAt - b.openedAt);
+  all
+    .filter((terminal) =>
+      "threadId" in owner
+        ? terminal.threadId === owner.threadId
+        : terminal.threadId === undefined && terminal.project === owner.project,
+    )
+    .toSorted((a, b) => a.openedAt - b.openedAt);
 
 /** What each tab says: the shell's name, numbered once a thread has several of the same. */
 export const tabLabels = (terminals: ReadonlyArray<TerminalInfo>): ReadonlyArray<string> => {

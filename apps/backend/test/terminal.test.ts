@@ -211,6 +211,43 @@ describe("Terminals.open", () => {
   });
 });
 
+describe("Terminals.openProject", () => {
+  it.live("starts the shell in the project's folder, listed under the project, and restarts it there", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const project = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped();
+        const info = yield* terminals.openProject(project, size);
+        assert.strictEqual(info.project, project);
+        assert.isUndefined(info.threadId);
+        assert.strictEqual(info.cwd, (yield* Path.Path).resolve(project));
+        assert.strictEqual(spawned[0]?.options.cwd, info.cwd);
+        assert.deepStrictEqual(
+          (yield* terminals.list).map((each) => each.id),
+          [info.id],
+        );
+        spawned[0]?.end(0);
+        yield* settle;
+        const again = yield* terminals.restart(info.id, size);
+        assert.strictEqual(again.run, 2);
+        assert.strictEqual(again.project, project);
+      }),
+    );
+  });
+
+  it.live("refuses a folder that doesn't exist", () => {
+    const { provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const error = yield* terminals.openProject("/no/such/folder/here", size).pipe(Effect.flip);
+        assert.include(error.message, "doesn't exist");
+      }),
+    );
+  });
+});
+
 describe("Terminals.attach", () => {
   it.live("sends the screen as it stands, then what the shell prints, until it ends with its code", () => {
     const { spawned, provide } = withTerminals();
@@ -404,7 +441,7 @@ describe("Terminals input and lifecycle", () => {
         yield* terminals.closeThread(at("thr_a"));
         assert.deepStrictEqual(
           (yield* terminals.list).map((each) => each.threadId),
-          ["thr_b"],
+          [at("thr_b")],
         );
         assert.deepStrictEqual(
           spawned.map((each) => each.killed),

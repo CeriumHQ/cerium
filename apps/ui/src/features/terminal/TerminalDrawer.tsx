@@ -12,17 +12,26 @@ import { usePanelWidth } from "../../app/ResizeHandle.tsx";
 import { closeTerminal, openTerminal, terminalsAtom } from "../../backend/terminals.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { HeightHandle } from "./HeightHandle.tsx";
-import { DRAWER, drawerLayout, messageOf, shownTerminal, tabLabels, terminalsOf } from "./model.ts";
+import {
+  DRAWER,
+  drawerLayout,
+  messageOf,
+  shownTerminal,
+  tabLabels,
+  terminalsOf,
+  type TerminalOwner,
+} from "./model.ts";
 import { fittedSize } from "./session.ts";
 import { TerminalView } from "./TerminalView.tsx";
 
 /**
- * A work thread's terminals, docked under its conversation: tabs along the top, the open terminal
- * below, and its top edge to drag to the height it should be. In the phone-narrow window it is a pane
- * over the thread instead. Opened with no terminal in the thread, it starts one.
+ * A work thread's terminals, or a project's while a new thread is written there, docked under the
+ * conversation: tabs along the top, the open terminal below, and its top edge to drag to the height
+ * it should be. In the phone-narrow window it is a pane over the thread instead. Opened with no
+ * terminal of its owner's, it starts one.
  */
 export function TerminalDrawer({
-  threadId,
+  owner,
   chosen,
   onChoose,
   focus,
@@ -30,8 +39,8 @@ export function TerminalDrawer({
   onHide,
   onNewFocus,
 }: {
-  threadId: string;
-  /** The terminal this thread last showed. */
+  owner: TerminalOwner;
+  /** The terminal this owner last showed. */
   chosen: string | undefined;
   onChoose: (id: TerminalId) => void;
   /** Counts the times the cursor should go to the terminal. */
@@ -44,7 +53,7 @@ export function TerminalDrawer({
   const listed = useAtomValue(terminalsAtom);
   const loaded = AsyncResult.isSuccess(listed);
   const all = AsyncResult.getOrElse(listed, () => []);
-  const terminals = terminalsOf(all, threadId);
+  const terminals = terminalsOf(all, owner);
   const labels = tabLabels(terminals);
   const shown = shownTerminal(terminals, chosen);
   const open = useAtomSet(openTerminal, { mode: "promise" });
@@ -66,12 +75,13 @@ export function TerminalDrawer({
   }, []);
   const layout = drawerLayout(columnHeight || window.innerHeight, saved);
 
-  /** Starts a shell in the thread's folder, and shows it. */
+  /** Starts a shell in the thread's (or project's) folder, and shows it. */
   const start = () => {
     if (starting.current) return;
     starting.current = true;
     setError(undefined);
-    open({ payload: { threadId: threadId as ThreadId, size: fittedSize() } }).then(
+    const whose = "threadId" in owner ? { threadId: owner.threadId as ThreadId } : { project: owner.project };
+    open({ payload: { ...whose, size: fittedSize() } }).then(
       (info) => {
         starting.current = false;
         onChoose(info.id);

@@ -27,15 +27,15 @@ import {
 
 export { TerminalError };
 
-// The terminals of work threads. Each owns a shell on a pseudoterminal, started in its thread's
-// folder, and a screen that remembers what the shell printed (terminalScreen.ts): a viewer attaches to
+// The terminals of work threads, and of projects a new thread is being written for. Each owns a
+// shell on a pseudoterminal, started in its thread's (or project's) folder, and a screen that remembers what the shell printed (terminalScreen.ts): a viewer attaches to
 // a terminal rather than owning it, so reloading the window, or opening the thread on a phone, finds
 // the shell as it was. Every terminal ends when the backend stops.
 //
 // A terminal can also run one command of a harness's own, such as its sign-in, for Settings: it
 // belongs to no thread, starts in the home folder, and isn't listed with the threads' terminals.
 
-/** How many terminals one thread may have, and the backend in all. */
+/** How many terminals one thread (or project) may have, and the backend in all. */
 export const MAX_PER_THREAD = 8;
 export const MAX_TERMINALS = 32;
 
@@ -55,8 +55,10 @@ type Piece =
 /** A terminal that is open. Mutated only by the callbacks and methods below, never from outside. */
 interface Entry {
   readonly id: TerminalId;
-  /** The work thread it belongs to; none for a command's terminal. */
+  /** The work thread it belongs to; none for a project's or a command's terminal. */
   readonly threadId: ThreadId | undefined;
+  /** The project folder it belongs to, as the viewer named it; none for a thread's or a command's. */
+  readonly project: string | undefined;
   /** What a command's terminal runs, such as "claude:login": running it again replaces this one. */
   readonly command: string | undefined;
   readonly shell: ShellChoice;
@@ -86,9 +88,10 @@ interface Entry {
 
 const refuse = (error: TerminalError | StoreError) => new CeriumError({ message: error.message });
 
-const infoOf = (entry: Entry, threadId: ThreadId): TerminalInfo => ({
+const infoOf = (entry: Entry): TerminalInfo => ({
   id: entry.id,
-  threadId,
+  ...(entry.threadId === undefined ? {} : { threadId: entry.threadId }),
+  ...(entry.project === undefined ? {} : { project: entry.project }),
   shell: entry.shell.name,
   cwd: entry.cwd,
   openedAt: entry.openedAt,
@@ -114,6 +117,8 @@ export class Terminals extends Context.Service<
     readonly list: Effect.Effect<ReadonlyArray<TerminalInfo>>;
     /** Opens a shell in a work thread's folder. */
     open(threadId: ThreadId, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError | StoreError>;
+    /** Opens a shell in a project folder, for the new thread being written there. */
+    openProject(project: string, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError>;
     /**
      * Runs one program in the home folder, in a terminal of no thread, replacing the one that ran the
      * same `command` before. Its viewer attaches, writes and closes it by its id, like any terminal.
@@ -163,7 +168,7 @@ export class Terminals extends Context.Service<
 
         const currentList = () =>
           [...entries.values()].flatMap((entry) =>
-            entry.threadId === undefined ? [] : [infoOf(entry, entry.threadId)],
+            entry.threadId === undefined && entry.project === undefined ? [] : [infoOf(entry)],
           );
         const publishList = () => {
           PubSub.publishUnsafe(listed, currentList());
@@ -298,14 +303,9 @@ export class Terminals extends Context.Service<
           ),
         );
 
-        const folderOf = Effect.fn("Terminals.folderOf")(function* (threadId: ThreadId) {
-          const thread = Option.getOrUndefined(yield* store.getThread(threadId));
-          if (thread === undefined)
-            return yield* new TerminalError({ message: "That thread doesn't exist." });
-          if (thread.mode !== "work" || thread.cwd === undefined) {
-            return yield* new TerminalError({ message: "Only work threads have a terminal." });
-          }
-          const cwd = path.resolve(thread.cwd);
+        /** `folder`, resolved, once it's a folder that exists. */
+        const existingFolder = Effect.fn("Terminals.existingFolder")(function* (folder: string) {
+          const cwd = path.resolve(folder);
           const info = yield* fs.stat(cwd).pipe(Effect.option);
           if (Option.isNone(info)) return yield* new TerminalError({ message: `${cwd} doesn't exist.` });
           if (info.value.type !== "Directory") {
@@ -314,15 +314,26 @@ export class Terminals extends Context.Service<
           return cwd;
         });
 
+        const folderOf = Effect.fn("Terminals.folderOf")(function* (threadId: ThreadId) {
+          const thread = Option.getOrUndefined(yield* store.getThread(threadId));
+          if (thread === undefined)
+            return yield* new TerminalError({ message: "That thread doesn't exist." });
+          if (thread.mode !== "work" || thread.cwd === undefined) {
+            return yield* new TerminalError({ message: "Only work threads have a terminal." });
+          }
+          return yield* existingFolder(thread.cwd);
+        });
+
         /** Starts `shell` in a new terminal, once there's room for one. */
         const create = Effect.fn("Terminals.create")(function* (fields: {
-          readonly threadId: ThreadId | undefined;
-          readonly command: string | undefined;
+          readonly threadId?: ThreadId;
+          readonly project?: string;
+          readonly command?: string;
           readonly shell: ShellChoice;
           readonly cwd: string;
           readonly size: TerminalSize;
         }) {
-          const { threadId, command, shell, cwd, size } = fields;
+          const { threadId, project, command, shell, cwd, size } = fields;
           if (entries.size >= MAX_TERMINALS) {
             return yield* new TerminalError({
               message: `Cerium runs ${MAX_TERMINALS} terminals at most. Close one to open another.`,
@@ -339,6 +350,7 @@ export class Terminals extends Context.Service<
           const entry: Entry = {
             id: `term_${randomUUID().replaceAll("-", "").slice(0, 12)}` as TerminalId,
             threadId,
+            project,
             command,
             shell,
             cwd,
@@ -373,8 +385,21 @@ export class Terminals extends Context.Service<
             });
           }
           const shell = options.shell ?? chooseShell(host);
-          const entry = yield* create({ threadId, command: undefined, shell, cwd, size });
-          return infoOf(entry, threadId);
+          return infoOf(yield* create({ threadId, shell, cwd, size }));
+        });
+
+        const openProject = Effect.fn("Terminals.openProject")(function* (
+          project: string,
+          size: TerminalSize,
+        ) {
+          const cwd = yield* existingFolder(project);
+          if ([...entries.values()].filter((entry) => entry.project === project).length >= MAX_PER_THREAD) {
+            return yield* new TerminalError({
+              message: `A project can have ${MAX_PER_THREAD} terminals. Close one to open another.`,
+            });
+          }
+          const shell = options.shell ?? chooseShell(host);
+          return infoOf(yield* create({ project, shell, cwd, size }));
         });
 
         const runCommand = Effect.fn("Terminals.run")(function* (
@@ -384,7 +409,7 @@ export class Terminals extends Context.Service<
         ) {
           const earlier = [...entries.values()].filter((entry) => entry.command === command);
           yield* Effect.forEach(earlier, dispose, { discard: true });
-          const entry = yield* create({ threadId: undefined, command, shell: program, cwd: homedir(), size });
+          const entry = yield* create({ command, shell: program, cwd: homedir(), size });
           return {
             id: entry.id,
             ...(entry.windowsBuild === undefined ? {} : { windowsBuild: entry.windowsBuild }),
@@ -440,6 +465,7 @@ export class Terminals extends Context.Service<
           changes: Stream.fromPubSub(listed),
           list: Effect.sync(currentList),
           open,
+          openProject,
           run: runCommand,
           attach,
           write: (id, data) =>
@@ -453,14 +479,14 @@ export class Terminals extends Context.Service<
           restart: (id, size) =>
             Effect.gen(function* () {
               const entry = yield* find(id);
-              const { threadId } = entry;
-              if (threadId === undefined) {
+              const { threadId, project } = entry;
+              if (threadId === undefined && project === undefined) {
                 return yield* new TerminalError({ message: "That command has ended. Run it again instead." });
               }
               if (entry.pty !== undefined) {
                 return yield* new TerminalError({ message: "That terminal is still running." });
               }
-              yield* folderOf(threadId).pipe(
+              yield* (threadId === undefined ? existingFolder(entry.cwd) : folderOf(threadId)).pipe(
                 Effect.mapError((error) =>
                   error._tag === "TerminalError" ? error : new TerminalError({ message: error.message }),
                 ),
@@ -483,7 +509,7 @@ export class Terminals extends Context.Service<
                 ),
               );
               publishList();
-              return infoOf(entry, threadId);
+              return infoOf(entry);
             }),
           close: (id) => find(id).pipe(Effect.flatMap(dispose)),
           closeThread: (threadId) =>
@@ -504,7 +530,13 @@ const exitOf = (code: number | undefined): TerminalOutput =>
 export const terminalHandlers = (terminals: Terminals["Service"]) =>
   TerminalRpcs.of({
     WatchTerminals: () => terminals.changes,
-    OpenTerminal: ({ threadId, size }) => terminals.open(threadId, size).pipe(Effect.mapError(refuse)),
+    OpenTerminal: ({ threadId, project, size }) =>
+      (threadId !== undefined
+        ? terminals.open(threadId, size)
+        : project !== undefined
+          ? terminals.openProject(project, size)
+          : Effect.fail(new TerminalError({ message: "Say which thread or project the terminal is for." }))
+      ).pipe(Effect.mapError(refuse)),
     AttachTerminal: ({ id, size }) => terminals.attach(id, size).pipe(Stream.mapError(refuse)),
     WriteTerminal: ({ id, data }) => terminals.write(id, data).pipe(Effect.mapError(refuse)),
     ResizeTerminal: ({ id, size }) => terminals.resize(id, size).pipe(Effect.mapError(refuse)),

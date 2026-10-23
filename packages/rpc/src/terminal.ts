@@ -4,7 +4,8 @@ import { Rpc, RpcGroup } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
 
-// The terminals a machine runs for its work threads. The backend owns each pseudoterminal, so a
+// The terminals a machine runs for its work threads, and for its projects before a thread starts
+// there. The backend owns each pseudoterminal, so a
 // terminal looks the same in the desktop window and on a phone or browser driving the machine, and
 // keeps running when the window closes.
 
@@ -23,8 +24,13 @@ export const MAX_TERMINAL_WRITE = 64 * 1024;
 
 export const TerminalInfo = Schema.Struct({
   id: TerminalId,
-  /** The work thread it belongs to, whose folder it started in. */
-  threadId: ThreadId,
+  /**
+   * The work thread it belongs to, whose folder it started in. Absent for a project's terminal, which
+   * viewers before `RPC_VERSION` 22 leave out of the list.
+   */
+  threadId: Schema.optionalKey(ThreadId),
+  /** The project folder it belongs to, as it was opened for a new thread there. Since `RPC_VERSION` 22. */
+  project: Schema.optionalKey(Schema.String),
   /** The shell's name as its tab shows it, such as "PowerShell" or "zsh". */
   shell: Schema.String,
   cwd: Schema.String,
@@ -72,11 +78,16 @@ export const TerminalRpcs = RpcGroup.make(
   /** Every terminal on the machine, now and after every change: opened, closed, ended or restarted. */
   Rpc.make("WatchTerminals", { success: LenientArray(TerminalInfo), stream: true }),
   /**
-   * Opens a shell in a work thread's folder. Refused for a chat, a thread without a folder or one
-   * that already has as many terminals as it may.
+   * Opens a shell in a work thread's folder, or in `project`, a folder a new thread would start in
+   * (since `RPC_VERSION` 22). Refused for a chat, a thread without a folder, a project that isn't a
+   * folder, or one that already has as many terminals as it may.
    */
   Rpc.make("OpenTerminal", {
-    payload: { threadId: ThreadId, size: TerminalSize },
+    payload: {
+      threadId: Schema.optionalKey(ThreadId),
+      project: Schema.optionalKey(Schema.String),
+      size: TerminalSize,
+    },
     success: TerminalInfo,
     error: CeriumError,
   }),
