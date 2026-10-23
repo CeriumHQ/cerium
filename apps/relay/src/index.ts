@@ -1,4 +1,5 @@
 import {
+  ClaimLinkRequest,
   ConfirmLinkRequest,
   CreateLinkRequest,
   credentialFromProtocols,
@@ -8,6 +9,7 @@ import {
   randomToken,
   RenameDeviceRequest,
   ThreadId,
+  type ConfirmLinkResponse,
   type CreateLinkResponse,
   type Credential,
 } from "@cerium/protocol";
@@ -16,6 +18,7 @@ import type { Outcome } from "./account.ts";
 import { clerkUser } from "./clerk.ts";
 import { vapidKeys, type Env } from "./env.ts";
 import { bearer, json, param, readBody, refuse, refusedSocket } from "./http.ts";
+import { limit } from "./limits.ts";
 
 export { Account } from "./account.ts";
 export { Link } from "./link.ts";
@@ -37,6 +40,8 @@ const route = async (request: Request, env: Env): Promise<Response> => {
   const parts = url.pathname.split("/").filter((part) => part !== "");
   const [api, resource, id, action] = parts;
   if (api !== "api" || parts.length > 4) return refuse(404, "Not found.");
+  const refused = await limit(env, request, resource, id);
+  if (refused !== undefined) return refused;
   const method = request.method;
 
   if (resource === "config" && method === "GET" && id === undefined) {
@@ -52,9 +57,14 @@ const route = async (request: Request, env: Env): Promise<Response> => {
     const body = await readBody(request, CreateLinkRequest);
     if (body === undefined) return refuse(400, "That sign-in request isn't one the relay understands.");
     const linkId = randomToken(32) as LinkId;
-    const expiresAt = await linkStub(env, linkId).create(body.device, body.secretHash, body.installation);
+    const created = await linkStub(env, linkId).create(body);
+    if (!created.ok) return refuse(created.status, created.message);
     return json(
-      { id: linkId, url: `${env.PUBLIC_ORIGIN}/link#${linkId}`, expiresAt } satisfies CreateLinkResponse,
+      {
+        id: linkId,
+        url: `${env.PUBLIC_ORIGIN}/link#${linkId}`,
+        expiresAt: created.expiresAt,
+      } satisfies CreateLinkResponse,
       201,
     );
   }
@@ -75,13 +85,17 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       if (accountId === undefined) return refuse(401, "Sign in to connect this machine.");
       const body = await readBody(request, ConfirmLinkRequest);
       if (body === undefined) return refuse(400, "That confirmation isn't one the relay understands.");
-      const outcome = await link.confirm(accountId, body.profile);
-      return outcome.ok ? new Response(null, { status: 204 }) : refuse(outcome.status, outcome.message);
+      const outcome = await link.confirm(linkId, accountId, body.profile);
+      return outcome.ok
+        ? json({ next: outcome.next } satisfies ConfirmLinkResponse)
+        : refuse(outcome.status, outcome.message);
     }
     if (action === "claim" && method === "POST") {
       const secret = bearer(request);
       if (secret === undefined) return refuse(401, "The machine's secret is missing.");
-      const outcome = await link.claim(secret);
+      // Without a code it only asks whether the machine joined already.
+      const body = (await readBody(request, ClaimLinkRequest)) ?? {};
+      const outcome = await link.claim(secret, body.code);
       if (outcome === "expired") return refuse(410, "The sign-in link expired before it was confirmed.");
       if (outcome === "forbidden") return refuse(403, "That isn't the machine that started this sign-in.");
       return json(outcome);

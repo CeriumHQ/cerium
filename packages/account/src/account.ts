@@ -9,11 +9,13 @@ import {
   DeviceId,
   formatCredential,
   hashSecret,
+  LinkCallback,
   parseCredential,
   randomToken,
   RelayMessage,
   relayProtocols,
   type ChannelId,
+  type ClaimLinkRequest,
   type CreateLinkRequest,
   type Credential,
   type DeviceDraft,
@@ -27,6 +29,7 @@ import {
 import {
   Context,
   Data,
+  Deferred,
   Effect,
   FiberHandle,
   Layer,
@@ -85,6 +88,34 @@ export interface AccountOptions {
    * or a network back, and returns how to stop. Sleep is noticed anyway, from timers running late.
    */
   readonly wakes?: (check: () => void) => () => void;
+  /** How the sign-in page hands this device its code; a device without one can't sign in. */
+  readonly handoff?: LinkHandoff | undefined;
+}
+
+/** A code the sign-in page handed this device, for the link it names. */
+export interface HandedCode {
+  readonly link: string;
+  readonly code: string;
+}
+
+/**
+ * How the sign-in page hands this device the code that finishes signing in, which only a device
+ * beside the browser the user confirmed in can take: a desktop listens on its loopback address,
+ * which the relay records with the link; the web client is sent back to its own page with the code.
+ */
+export interface LinkHandoff {
+  /**
+   * Starts taking codes, for as long as the scope lasts: on `callback`, the one a link made before a
+   * restart named, or on a new one. The page goes to `returnTo(link)` once it handed one over.
+   */
+  listen(options: {
+    readonly callback?: LinkCallback | undefined;
+    readonly returnTo: (link: string) => string;
+  }): Effect.Effect<
+    { readonly callback?: LinkCallback; readonly next: Effect.Effect<HandedCode> },
+    AccountError,
+    Scope.Scope
+  >;
 }
 
 /** What the vault keeps once signed in: the credential and what the relay said about the account. */
@@ -104,6 +135,8 @@ const Pending = Schema.TaggedStruct("Pending", {
   relayUrl: Schema.String,
   link: CreateLinkResponse,
   secret: Schema.String,
+  /** Where the page hands a desktop its code, listened on again after a restart. */
+  callback: Schema.optionalKey(LinkCallback),
 });
 type Pending = typeof Pending.Type;
 
@@ -122,7 +155,7 @@ const CHECK_WITHIN = "4 seconds";
 /** A timer running this late means the device slept or its page was suspended. */
 const ASLEEP_AFTER_MS = 15_000;
 const TICK = "5 seconds";
-/** How often a device waiting for the browser asks whether the user confirmed. */
+/** How soon a device that has its code asks again when the relay couldn't be reached. */
 const CLAIM_EVERY = "2 seconds";
 
 /** Reconnecting backs off from one second to thirty, jittered so devices don't stampede. */
@@ -268,12 +301,14 @@ export class Account extends Context.Service<
             Effect.flatMap(decode(CreateLinkResponse)),
           );
 
-        const claimLink = (id: string, secret: string) =>
-          send(
-            HttpClientRequest.post(`${relay}/api/links/${id}/claim`).pipe(
-              HttpClientRequest.bearerToken(secret),
-            ),
-          ).pipe(Effect.flatMap(decode(ClaimLinkResponse)));
+        const claimLink = (id: string, secret: string, code: string) =>
+          HttpClientRequest.post(`${relay}/api/links/${id}/claim`).pipe(
+            HttpClientRequest.bearerToken(secret),
+            HttpClientRequest.bodyJson({ code } satisfies ClaimLinkRequest),
+            Effect.orDie,
+            Effect.flatMap(send),
+            Effect.flatMap(decode(ClaimLinkResponse)),
+          );
 
         // ---- State ---------------------------------------------------------------------------
 
@@ -431,11 +466,23 @@ export class Account extends Context.Service<
 
         // ---- Signing in ----------------------------------------------------------------------
 
-        /** Asks the relay until the user confirms, then saves the sign-in and connects. */
-        const waitForBrowser = ({ link, secret }: Pending) =>
+        /**
+         * Waits for the page to hand over this link's code once the user confirms, claims the link
+         * with it, then saves the sign-in and connects.
+         */
+        const waitForBrowser = ({ link, secret }: Pending, next: Effect.Effect<HandedCode>) =>
           Effect.gen(function* () {
+            // Codes for other links, which a page someone else sent the user might bring, are no use.
+            const handed = yield* Effect.gen(function* () {
+              while (true) {
+                const got = yield* next;
+                if (got.link === link.id) return got.code;
+              }
+            }).pipe(Effect.timeoutOption(Math.max(0, link.expiresAt - Date.now())));
+            if (Option.isNone(handed))
+              return yield* forget("The sign-in wasn't confirmed in time. Try again.");
             while (Date.now() < link.expiresAt) {
-              const claim = yield* claimLink(link.id, secret).pipe(
+              const claim = yield* claimLink(link.id, secret, handed.value).pipe(
                 Effect.map((answer) => ({ answer })),
                 Effect.catch((error: AccountError) => Effect.succeed({ error })),
               );
@@ -473,16 +520,38 @@ export class Account extends Context.Service<
               const wait = "error" in claim ? claim.error.retryAfter : undefined;
               yield* Effect.sleep(wait === undefined ? CLAIM_EVERY : `${wait} seconds`);
             }
-            yield* forget("The sign-in wasn't confirmed in time. Try again.");
+            yield* forget("The sign-in couldn't be finished. Try again.");
           });
 
-        /** Waits for the browser on a link, kept so a reload or restart waits on it again. */
-        const awaitLink = (pending: Pending) =>
+        const { handoff } = options;
+        const noHandoff = new AccountError({ message: "This device can't sign in to Cerium." });
+        /** Where the page goes once it handed a desktop its code: back to say how it went. */
+        const returnTo = (link: string) => `${relay}/link#${link}`;
+
+        const signingIn = (pending: Pending) =>
           SubscriptionRef.set(state, {
             _tag: "SigningIn",
             url: pending.link.url,
             expiresAt: pending.link.expiresAt,
-          }).pipe(Effect.andThen(FiberHandle.run(session, waitForBrowser(pending))), Effect.asVoid);
+          });
+
+        /** Waits for the browser again on a link a reload or restart found. */
+        const resumeLink = (pending: Pending) =>
+          handoff === undefined
+            ? forget()
+            : signingIn(pending).pipe(
+                Effect.andThen(
+                  FiberHandle.run(
+                    session,
+                    handoff.listen({ callback: pending.callback, returnTo }).pipe(
+                      Effect.flatMap((listening) => waitForBrowser(pending, listening.next)),
+                      Effect.catch((error: AccountError) => forget(error.message)),
+                      Effect.scoped,
+                    ),
+                  ),
+                ),
+                Effect.asVoid,
+              );
 
         const signIn = Effect.gen(function* () {
           const current = yield* SubscriptionRef.get(state);
@@ -492,18 +561,45 @@ export class Account extends Context.Service<
           // Opening the page again reuses the link it's waiting on.
           if (current._tag === "SigningIn" && current.expiresAt > Date.now() + 30_000)
             return { url: current.url };
-          const secret = randomToken(32);
-          const secretHash = yield* Effect.promise(() => hashSecret(secret));
-          const link = yield* createLink({
-            device: options.device,
-            secretHash,
-            ...(options.installation === undefined ? {} : { installation: options.installation }),
-          });
-          const pending: Pending = { _tag: "Pending", relayUrl: relay, link, secret };
-          // Best effort: without it, the sign-in still finishes unless this device restarts first.
-          yield* save(pending).pipe(Effect.ignore);
-          yield* awaitLink(pending);
-          return { url: link.url };
+          if (handoff === undefined) return yield* noHandoff;
+          // Listening, making the link and waiting on it all run in the session, which ends the
+          // listener with it; this waits only until the link is made.
+          const started = yield* Deferred.make<{ readonly url: string }, AccountError>();
+          yield* FiberHandle.run(
+            session,
+            Effect.gen(function* () {
+              const listening = yield* handoff.listen({ returnTo });
+              const secret = randomToken(32);
+              const secretHash = yield* Effect.promise(() => hashSecret(secret));
+              const link = yield* createLink({
+                device: options.device,
+                secretHash,
+                ...(options.installation === undefined ? {} : { installation: options.installation }),
+                ...(listening.callback === undefined ? {} : { callback: listening.callback }),
+              });
+              const pending: Pending = {
+                _tag: "Pending",
+                relayUrl: relay,
+                link,
+                secret,
+                ...(listening.callback === undefined ? {} : { callback: listening.callback }),
+              };
+              // Best effort: without it, the sign-in still finishes unless this device restarts first.
+              yield* save(pending).pipe(Effect.ignore);
+              yield* signingIn(pending);
+              yield* Deferred.succeed(started, { url: link.url });
+              yield* waitForBrowser(pending, listening.next);
+            }).pipe(
+              Effect.catch((error: AccountError) => Deferred.fail(started, error)),
+              // Cancelled before the link was made, the caller hears so; done, this does nothing.
+              Effect.ensuring(
+                Deferred.fail(started, new AccountError({ message: "Signing in was cancelled." })),
+              ),
+              Effect.scoped,
+              Effect.asVoid,
+            ),
+          );
+          return yield* Deferred.await(started);
         });
 
         const cancelSignIn = Effect.gen(function* () {
@@ -569,7 +665,7 @@ export class Account extends Context.Service<
           // A sign-in for another relay (a development one, say) can't be used here.
           if (found === undefined || found.relayUrl !== relay) yield* forget();
           else if (!("_tag" in found)) yield* start(found);
-          else if (found.link.expiresAt > Date.now()) yield* awaitLink(found);
+          else if (found.link.expiresAt > Date.now()) yield* resumeLink(found);
           else yield* forget();
         }
 

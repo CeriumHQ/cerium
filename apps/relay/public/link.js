@@ -1,8 +1,11 @@
 // The page a machine opens in the user's browser to join their Cerium account, and the web client
 // opens in its own tab. It signs in with Clerk, shows which device is asking, and confirms it with
-// the user's session token; a browser goes back to the app afterwards. The link's id rides in the
-// URL's fragment, so it never reaches a server log; it's kept for the tab in case a sign-in redirect
-// drops it.
+// the user's session token. Confirming hands the page a one-time code, which it takes where the
+// relay says: to Cerium on this computer, listening on its loopback address, which sends the page
+// back here; or to the web client on this origin. The device joins once it claims the link with that
+// code, so a link someone else started and sent the user can't join their account. The link's id
+// rides in the URL's fragment, so it never reaches a server log; it's kept for the tab in case a
+// sign-in redirect drops it.
 
 const CLERK_JS_VERSION = "6.37.0";
 const CLERK_UI_VERSION = "1.38.1";
@@ -14,7 +17,11 @@ const panel = document.getElementById("panel");
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
-// Lucide's monitor, smartphone, globe, check and link-2-off.
+/** How long the page waits for the machine to claim a link it confirmed, and how often it asks. */
+const FINISH_WITHIN_MS = 15_000;
+const FINISH_POLL_MS = 1_000;
+
+// Lucide's monitor, smartphone, globe, check, link-2-off and loader-circle.
 const icons = {
   desktop: svg('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
   phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
@@ -25,6 +32,7 @@ const icons = {
   muted: svg(
     '<path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><path d="M8 12h4"/><path d="m2 2 20 20"/>',
   ),
+  waiting: svg('<path d="M21 12a9 9 0 1 1-6.219-8.56"/>'),
 };
 
 const escapeHtml = (text) =>
@@ -195,13 +203,31 @@ const main = async () => {
     );
   }
   const device = link.body.device;
-  if (link.body.status === "confirmed") {
-    if (isBrowser(device)) return location.replace("/app/");
-    return showOutcome(
+  const showConnected = () =>
+    showOutcome(
       "success",
-      "Already connected",
-      `${device.name} is part of your account. You can close this tab.`,
+      "Connected",
+      `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
     );
+  let status = link.body.status;
+  let error;
+  // Cerium on this computer took the code and sent the page back: it joins in a moment.
+  if (status === "approved" && !isBrowser(device)) {
+    showOutcome("waiting", "Finishing in Cerium", `${device.name} is joining your account…`);
+    const until = Date.now() + FINISH_WITHIN_MS;
+    while (status === "approved" && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, FINISH_POLL_MS));
+      const again = await request(`/api/links/${id}`).catch(() => undefined);
+      if (again?.status === 404) return showExpired();
+      if (again?.ok) status = again.body.status;
+    }
+    if (status === "approved")
+      error =
+        "Cerium on this computer didn't take this sign-in. If you started it here, make sure Cerium is open and connect again.";
+  }
+  if (status === "confirmed") {
+    if (isBrowser(device)) return location.replace("/app/");
+    return showConnected();
   }
 
   const key = config.body.publishableKey;
@@ -215,7 +241,6 @@ const main = async () => {
 
   let signInMount;
   let busy = false;
-  let error;
   let finished = false;
 
   const unmountSignIn = () => {
@@ -295,22 +320,25 @@ const main = async () => {
         error = result.body.message ?? `The relay couldn't connect this ${noun(device)}. Try again.`;
         return;
       }
+      const next = result.body.next;
+      if (typeof next !== "string") {
+        error = `The relay couldn't connect this ${noun(device)}. Try again.`;
+        return;
+      }
       finished = true;
       try {
         sessionStorage.removeItem(STORED_LINK);
       } catch {
         // Storage is off; nothing was kept.
       }
-      // A browser signs in from its own tab: back to the app, which finishes signing in.
+      // A browser signs in from its own tab: back to the app, which finishes signing in with the
+      // code. A machine's Cerium takes it on this computer and sends the page back here.
       if (isBrowser(device)) {
-        location.replace("/app/");
+        location.replace(next);
         return;
       }
-      showOutcome(
-        "success",
-        "Connected",
-        `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
-      );
+      showOutcome("waiting", "Finishing in Cerium", `${device.name} is joining your account…`);
+      location.assign(next);
     } catch {
       error = "Couldn't reach Cerium's relay. Check your connection and try again.";
     } finally {
@@ -322,6 +350,12 @@ const main = async () => {
   clerk.addListener(() => render());
   render();
 };
+
+// Back from a page the code was taken to, the browser may show this one as it was left: load it
+// again, to say how the sign-in went.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) location.reload();
+});
 
 main().catch(() =>
   showOutcome(

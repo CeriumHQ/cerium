@@ -1,4 +1,4 @@
-import { Account, CloudThreads, Vault, VaultError } from "@cerium/account";
+import { Account, CloudThreads, Vault, VaultError, type HandedCode, type LinkHandoff } from "@cerium/account";
 import { Installation, randomToken, type DeviceDraft } from "@cerium/protocol";
 import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
@@ -114,6 +114,35 @@ const browserWakes = (check: () => void) => {
   };
 };
 
+const HANDED = /^#cerium-link=([A-Za-z0-9_-]{32,})\.([A-Za-z0-9_-]{32,})$/;
+
+/**
+ * The code Cerium's sign-in page sent this page back with, once the user confirmed in it, taken off
+ * the URL so it's neither kept in history nor read twice. The page runs on this origin, so the code
+ * reaches only this browser.
+ */
+const handedBack = (): HandedCode | undefined => {
+  const match = HANDED.exec(location.hash);
+  if (match === null) return undefined;
+  history.replaceState(history.state, "", location.pathname + location.search);
+  return { link: match[1]!, code: match[2]! };
+};
+
+/** The web client takes its code from the URL it was sent back to, once. */
+const pageHandoff = (handed: HandedCode | undefined): LinkHandoff => {
+  let left = handed;
+  return {
+    listen: () =>
+      Effect.succeed({
+        next: Effect.suspend(() => {
+          const code = left;
+          left = undefined;
+          return code === undefined ? Effect.never : Effect.succeed(code);
+        }),
+      }),
+  };
+};
+
 /**
  * This page as a device: `Account` and `CloudThreads`, on the relay that served it. Read from the page
  * only once built, which only the web client does.
@@ -126,6 +155,7 @@ export const WebDevice = Layer.suspend(() =>
         device: thisBrowser(),
         installation: thisInstallation(),
         wakes: browserWakes,
+        handoff: pageHandoff(handedBack()),
       }),
     ),
     Layer.provide(browserVault),

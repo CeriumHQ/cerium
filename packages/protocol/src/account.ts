@@ -106,6 +106,19 @@ export type AccountState = typeof AccountState.Type;
 // ---------------------------------------------------------------------------------------------
 // The relay's API
 
+/**
+ * Where a desktop's sign-in page hands it the code that finishes signing in: a port on the
+ * computer's loopback address, which the page in that computer's browser reaches and no other
+ * computer's can. A browser is sent back to the web client on the relay's own origin instead.
+ */
+export const LinkCallback = Schema.Struct({
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1024, maximum: 65535 })),
+});
+export type LinkCallback = typeof LinkCallback.Type;
+
+/** The path a desktop's loopback listener takes the page's code on. */
+export const LINK_CALLBACK_PATH = "/cerium/link";
+
 /** `POST /api/links`: a machine starts signing in. */
 export const CreateLinkRequest = Schema.Struct({
   device: DeviceDraft,
@@ -113,23 +126,28 @@ export const CreateLinkRequest = Schema.Struct({
   secretHash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
   /** Absent from desktops older than installations, which join as a new device each time. */
   installation: Schema.optionalKey(Installation),
+  /** A desktop's; the relay refuses a desktop without one, and a browser with one. */
+  callback: Schema.optionalKey(LinkCallback),
 });
 export type CreateLinkRequest = typeof CreateLinkRequest.Type;
 
 export const CreateLinkResponse = Schema.Struct({ id: LinkId, url: Schema.String, expiresAt: EpochMillis });
 export type CreateLinkResponse = typeof CreateLinkResponse.Type;
 
-/** `GET /api/links/<id>`: what the sign-in page shows. */
+/**
+ * `GET /api/links/<id>`: what the sign-in page shows. `approved`: confirmed in a browser, waiting
+ * for the device to claim it with the code the page handed it; `confirmed`: the device joined.
+ */
 export const LinkView = Schema.Struct({
   device: DeviceDraft,
-  status: Schema.Literals(["pending", "confirmed"]),
+  status: Schema.Literals(["pending", "approved", "confirmed"]),
   expiresAt: EpochMillis,
 });
 export type LinkView = typeof LinkView.Type;
 
 /**
- * `POST /api/links/<id>/confirm`, sent with the user's Clerk session token: the device joins the
- * account, able to see and drive it at once.
+ * `POST /api/links/<id>/confirm`, sent with the user's Clerk session token: the user lets the device
+ * join their account. It joins only once it claims the link with the code this hands the page.
  */
 export const ConfirmLinkRequest = Schema.Struct({
   profile: Schema.Struct({
@@ -140,7 +158,21 @@ export const ConfirmLinkRequest = Schema.Struct({
 });
 export type ConfirmLinkRequest = typeof ConfirmLinkRequest.Type;
 
-/** `POST /api/links/<id>/claim`, with the device secret: the account it joined, once confirmed. */
+/** The one-time code that finishes a sign-in, unguessable. */
+export const LinkCode = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{32,}$/));
+
+/** The confirmation's answer: where the page goes next, carrying the code to the device. */
+export const ConfirmLinkResponse = Schema.Struct({ next: Schema.String });
+export type ConfirmLinkResponse = typeof ConfirmLinkResponse.Type;
+
+/**
+ * `POST /api/links/<id>/claim`, with the device secret: the device joins the account with the code
+ * the page handed it. Without one, it only hears whether it joined already.
+ */
+export const ClaimLinkRequest = Schema.Struct({ code: Schema.optionalKey(LinkCode) });
+export type ClaimLinkRequest = typeof ClaimLinkRequest.Type;
+
+/** The claim's answer: the account it joined, or that the user hasn't confirmed yet. */
 export const ClaimLinkResponse = Schema.Union([
   Schema.TaggedStruct("Pending", {}),
   Schema.TaggedStruct("Linked", { account: AccountProfile, deviceId: DeviceId }),

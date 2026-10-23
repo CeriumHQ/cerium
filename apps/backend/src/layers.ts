@@ -27,6 +27,7 @@ import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
 import { limitWarnings } from "./limits.ts";
+import { loopbackHandoff } from "./linkHandoff.ts";
 import { Notifications } from "./notify.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { remoteRoutes, TunnelSocketServer } from "./remote.ts";
@@ -204,9 +205,10 @@ export const backendLayer = (options: BackendOptions) =>
       Terminals.layer({ version: options.account?.device.version ?? "dev" }).pipe(Layer.provide(Ptys.layer)),
     ),
     Layer.provideMerge(
-      Account.layer(
-        options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") },
-      ).pipe(
+      Account.layer({
+        handoff: loopbackHandoff,
+        ...(options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") }),
+      }).pipe(
         Layer.provide(options.vault ?? fileVault(join(options.dataDirectory, "account.json"))),
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(Socket.layerWebSocketConstructorGlobal),

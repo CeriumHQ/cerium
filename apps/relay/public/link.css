@@ -261,8 +261,19 @@ body {
   color: var(--status-success);
 }
 
-.outcome-icon.muted {
+.outcome-icon.muted,
+.outcome-icon.waiting {
   color: var(--fg-tertiary);
+}
+
+.outcome-icon.waiting svg {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading {
@@ -284,5 +295,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .button {
     transition: none;
+  }
+
+  .outcome-icon.waiting svg {
+    animation: none;
   }
 }
