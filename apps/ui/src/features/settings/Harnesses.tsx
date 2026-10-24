@@ -7,14 +7,14 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
+import { githubStatusAtom } from "../../backend/github.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { accessOptions } from "../composer/models.ts";
-import { GitHubSection } from "../github/GitHubSettings.tsx";
+import { GitHubRow } from "../github/GitHubSettings.tsx";
 import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
 import { accountLabel } from "./harnessModel.ts";
-import { SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsPage } from "./parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
 /** Each provider's harness by the name its makers give it. */
@@ -28,69 +28,50 @@ export const harnessName: Record<ProviderId, string> = {
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 
+/**
+ * Each harness on the driven machine, and the GitHub CLI, with the account each runs on and the one
+ * thing to do about it. Check again reads them all afresh, and says when it last ran.
+ */
 export function HarnessSettings() {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
   const refreshModels = useAtomRefresh(modelsAtom);
-  const driven = useAtomValue(machineAtom);
-  // A harness just signed in or updated may offer different models too.
-  const refresh = () => {
-    refreshHarnesses();
-    refreshModels();
-  };
-  return (
-    <SettingsPage perMachine title="Harnesses">
-      <HarnessesOnMachine result={result} machine={driven?.name} onCheck={refresh} />
-      <GitHubSection />
-    </SettingsPage>
-  );
-}
-
-/**
- * Each harness on a machine, with the account it runs on and the one thing to do about it. Checking
- * belongs to the page; this shows what the check found, and says when it last ran.
- */
-export function HarnessesOnMachine({
-  result,
-  machine,
-  onCheck,
-}: {
-  result: AsyncResult.AsyncResult<ReadonlyArray<HarnessStatus>, unknown>;
-  /** The machine's name when Cerium drives another one. */
-  machine: string | undefined;
-  onCheck: () => void;
-}) {
+  const refreshGitHub = useAtomRefresh(githubStatusAtom);
+  const machine = useAtomValue(machineAtom)?.name;
   const [checkedAt, setCheckedAt] = useState<number>();
   const checking = result.waiting;
+  // A harness just signed in or updated may offer different models too.
   const check = () => {
     setCheckedAt(Date.now());
-    onCheck();
+    refreshHarnesses();
+    refreshModels();
+    refreshGitHub();
   };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> | undefined => undefined);
   const failed = AsyncResult.isFailure(result);
 
   return (
-    <SettingsSection
-      title={machine ? `On ${machine}` : "On this computer"}
-      description={
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          Each harness keeps its own login; Cerium never reads its keys.
-          <InfoTip label="About the harnesses">
-            Cerium drives the harnesses installed on this computer and never bundles their CLIs. Signing in
-            and updating run each harness's own command. Cursor runs inside Cerium, through its own SDK, and
-            updates with it.
-          </InfoTip>
-        </span>
-      }
+    <SettingsPage
+      perMachine
+      title="Harnesses"
+      description="Each keeps its own login, and Cerium never reads its keys. Signing in and updating run its own command."
       action={
-        <Button
-          onClick={check}
-          disabled={checking}
-          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
-        >
-          <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
-          {checking ? "Checking…" : "Check again"}
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* The last check, once finished, so a check that changed nothing still shows it ran. */}
+          {checkedAt !== undefined && !checking && !failed ? (
+            <span className="text-xs text-fg-tertiary tabular-nums max-sm:hidden">
+              Checked {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          ) : null}
+          <Button
+            onClick={check}
+            disabled={checking}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
+          >
+            <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
+            {checking ? "Checking…" : "Check again"}
+          </Button>
+        </div>
       }
     >
       {failed ? (
@@ -112,15 +93,12 @@ export function HarnessesOnMachine({
               />
             </li>
           ))}
+          <li>
+            <GitHubRow />
+          </li>
         </ul>
       )}
-      {/* The result of the last check, once it has finished, so a check that changed nothing still shows it ran. */}
-      {checkedAt !== undefined && !checking && !failed ? (
-        <p className="text-right text-xs text-fg-tertiary tabular-nums">
-          Checked {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-        </p>
-      ) : null}
-    </SettingsSection>
+    </SettingsPage>
   );
 }
 

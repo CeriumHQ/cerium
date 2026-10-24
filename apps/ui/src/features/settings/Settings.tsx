@@ -6,14 +6,11 @@ import {
   Blocks,
   Bot,
   ChevronRight,
-  CircleArrowUp,
-  CircleDollarSign,
   CircleUserRound,
   Gauge,
   Keyboard,
-  Mic,
   Palette,
-  Wrench,
+  Settings2,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef } from "react";
@@ -24,34 +21,30 @@ import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { ArchivedSettings } from "./Archived.tsx";
-import { DictationSettings } from "./Dictation.tsx";
+import { GeneralSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
-import { ToolSettings } from "./Tools.tsx";
-import { UpdateSettings } from "./Updates.tsx";
-import { SpendSettings } from "./Spend.tsx";
 import { UsageSettings } from "./Usage.tsx";
 
 export type SettingsCategory =
+  | "general"
   | "account"
   | "notifications"
   | "appearance"
   | "agents"
-  | "tools"
   | "harnesses"
   | "usage"
-  | "spend"
   | "keyboard"
-  | "dictation"
-  | "archived"
-  | "updates";
+  | "archived";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
   readonly label: string;
   readonly icon: LucideIcon;
 }> = [
+  // The desktop's own: starting at login, Discord, dictation and updates. A browser has none of them.
+  ...(WEB ? [] : [{ id: "general" as const, label: "General", icon: Settings2 }]),
   { id: "account", label: "Account", icon: CircleUserRound },
   // Push notifications in a browser; the desktop's own through its shell.
   ...(WEB || window.cerium?.notify
@@ -59,18 +52,10 @@ const categories: ReadonlyArray<{
     : []),
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
-  { id: "tools", label: "Tools", icon: Wrench },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
   { id: "usage", label: "Usage", icon: Gauge },
-  { id: "spend", label: "Cost", icon: CircleDollarSign },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
-  // The desktop's message boxes dictate; a phone's keyboard has a microphone of its own.
-  ...(WEB ? [] : [{ id: "dictation" as const, label: "Dictation", icon: Mic }]),
   { id: "archived", label: "Archived", icon: Archive },
-  // The installed app updates itself through the shell (apps/desktop/src/updater.ts).
-  ...(!WEB && window.cerium?.updates
-    ? [{ id: "updates" as const, label: "Updates", icon: CircleArrowUp }]
-    : []),
 ];
 
 /** The categories this window offers, which the command palette lists as pages to jump to. */
@@ -213,6 +198,8 @@ export function SettingsView({
 }) {
   const openHarnesses = onOpen ? () => onOpen("harnesses") : undefined;
   switch (category) {
+    case "general":
+      return <GeneralSettings key={category} />;
     case "account":
       return <AccountSettings key={category} />;
     case "notifications":
@@ -227,21 +214,13 @@ export function SettingsView({
           {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})}
         />
       );
-    case "tools":
-      return <ToolSettings key={category} harnesses={harnesses} />;
     case "harnesses":
       return <HarnessSettings key={category} />;
     case "usage":
       return <UsageSettings key={category} {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})} />;
-    case "spend":
-      return <SpendSettings key={category} />;
     case "keyboard":
       return <KeyboardSettings key={category} />;
-    case "dictation":
-      return <DictationSettings key={category} />;
     case "archived":
       return <ArchivedSettings key={category} />;
-    case "updates":
-      return <UpdateSettings key={category} />;
   }
 }

@@ -1,30 +1,13 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
-import { Slider } from "@base-ui/react/slider";
 import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
 
-import { onMac, onWindows } from "../../backend/shell.ts";
 import { keyLabel } from "../../lib/keys.ts";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
-import { UserMessage } from "../transcript/Blocks.tsx";
-import { Markdown } from "../transcript/Markdown.tsx";
-import type { TranscriptBlock } from "../transcript/model.ts";
-import { ToolGroup } from "../transcript/ToolGroup.tsx";
-import { ResponseHeader } from "../transcript/Transcript.tsx";
+import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { paletteAtom, palettes, type Palette } from "./palettes.ts";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
-import {
-  scaleAtom,
-  scales,
-  textScale,
-  textSizeAtom,
-  textSizes,
-  themeAtom,
-  themes,
-  type Theme,
-} from "./preferences.ts";
+import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
+import { scaleAtom, scales, textSizeAtom, textSizes, themeAtom, themes, type Theme } from "./preferences.ts";
 import { canScale } from "./scale.ts";
 import { useShownTheme } from "./theme.ts";
 
@@ -36,15 +19,10 @@ const modes: Record<Theme, { label: string; icon: LucideIcon }> = {
 
 export function AppearanceSettings() {
   const [palette, setPalette] = useAtom(paletteAtom);
-  const [textSize, setTextSize] = useAtom(textSizeAtom);
   const shown = useShownTheme();
   return (
     <SettingsPage title="Appearance">
-      <SettingsSection
-        title="Theme"
-        info={`Every theme comes in light and dark. System follows ${onWindows() ? "Windows" : onMac() ? "macOS" : "your device's light or dark setting"}.`}
-        action={<ModePicker />}
-      >
+      <SettingsSection title="Theme" action={<ModePicker />}>
         <RadioGroup
           value={palette}
           onValueChange={(value) => setPalette(value as Palette)}
@@ -73,22 +51,11 @@ export function AppearanceSettings() {
         </RadioGroup>
       </SettingsSection>
 
-      {canScale() ? <ScaleSection /> : null}
-
-      <SettingsSection
-        title="Conversation text"
-        description={
-          <span className="inline-flex flex-wrap items-center gap-x-1.5">
-            Scales messages, tool calls and approvals.
-            <InfoTip label="About conversation text">The rest of the window keeps its size.</InfoTip>
-          </span>
-        }
-      >
-        <TextSizeSlider
-          value={textSize}
-          onChange={(index) => setTextSize(textSizes[index]?.id ?? "default")}
-        />
-        <ConversationSample scale={textScale(textSize)} />
+      <SettingsSection title="Size">
+        <SettingsList>
+          <TextSizeRow />
+          {canScale() ? <ScaleRow /> : null}
+        </SettingsList>
       </SettingsSection>
     </SettingsPage>
   );
@@ -120,6 +87,63 @@ function ModePicker() {
         );
       })}
     </RadioGroup>
+  );
+}
+
+/** The conversation's text size; the rest of the window keeps its own. */
+function TextSizeRow() {
+  const [textSize, setTextSize] = useAtom(textSizeAtom);
+  const current = textSizes.find((size) => size.id === textSize);
+  return (
+    <SettingsRow
+      label="Conversation text"
+      hint="Messages, tool calls and approvals"
+      className="pr-2.5"
+      control={() => (
+        <SelectRoot value={textSize} onValueChange={(next) => next !== null && setTextSize(next)}>
+          <SelectTrigger label="Conversation text size">
+            <span className="font-medium text-fg-primary">{current?.label}</span>
+            <span className="text-fg-tertiary tabular-nums">{current?.px}px</span>
+          </SelectTrigger>
+          <SelectPopup>
+            {textSizes.map((size) => (
+              <SelectItem key={size.id} value={size.id} description={`${size.px}px`}>
+                {size.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
+  );
+}
+
+/** The whole window's size, which Ctrl + and Ctrl − also step through. */
+function ScaleRow() {
+  const [scale, setScale] = useAtom(scaleAtom);
+  return (
+    <SettingsRow
+      label="Window scale"
+      hint={`${keyLabel("Ctrl +")} and ${keyLabel("Ctrl −")} change it from anywhere`}
+      className="pr-2.5"
+      control={() => (
+        <SelectRoot
+          value={String(scale)}
+          onValueChange={(next) => setScale(scales.find((each) => String(each) === next) ?? 100)}
+        >
+          <SelectTrigger label="Window scale">
+            <span className="font-medium text-fg-primary tabular-nums">{scale}%</span>
+          </SelectTrigger>
+          <SelectPopup>
+            {scales.map((each) => (
+              <SelectItem key={each} value={String(each)}>
+                {`${each}%`}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
   );
 }
 
@@ -163,176 +187,5 @@ function WindowSample({ palette, theme }: { palette: Palette; theme: "dark" | "l
         </span>
       </span>
     </span>
-  );
-}
-
-function TextSizeSlider({ value, onChange }: { value: string; onChange: (index: number) => void }) {
-  const index = textSizes.findIndex((size) => size.id === value);
-  return (
-    <StepSlider
-      label="Conversation text size"
-      stops={textSizes.length}
-      index={index}
-      onChange={onChange}
-      valueText={(at) => textSizes[at]?.label ?? ""}
-      readout={
-        <>
-          {textSizes[index]?.label} <span className="text-fg-tertiary">· {textSizes[index]?.px}px</span>
-        </>
-      }
-    />
-  );
-}
-
-/** The whole window's size, Ctrl + and Ctrl − included; a way back to 100% once it's changed. */
-function ScaleSection() {
-  const [scale, setScale] = useAtom(scaleAtom);
-  return (
-    <SettingsSection
-      title="Scale"
-      description={
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          Sizes the whole window.
-          <InfoTip label="About scale">
-            {keyLabel("Ctrl +")} and {keyLabel("Ctrl −")} change it from anywhere; {keyLabel("Ctrl 0")} on the
-            numpad goes back to 100%.
-          </InfoTip>
-        </span>
-      }
-      action={
-        scale === 100 ? undefined : (
-          <button
-            type="button"
-            onClick={() => setScale(100)}
-            className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            Reset to 100%
-          </button>
-        )
-      }
-    >
-      <StepSlider
-        label="Window scale"
-        stops={scales.length}
-        index={scales.indexOf(scale)}
-        onChange={(index) => setScale(scales[index] ?? 100)}
-        valueText={(at) => `${scales[at] ?? 100}%`}
-        readout={`${scale}%`}
-      />
-    </SettingsSection>
-  );
-}
-
-/** A slider that snaps to `stops` evenly spaced stops, each marked on its track. */
-function StepSlider({
-  label,
-  stops,
-  index,
-  onChange,
-  valueText,
-  readout,
-}: {
-  label: string;
-  stops: number;
-  index: number;
-  onChange: (index: number) => void;
-  valueText: (index: number) => string;
-  readout: ReactNode;
-}) {
-  const last = stops - 1;
-  return (
-    <div className="flex items-center gap-4">
-      <span aria-hidden="true" className="w-4 text-center text-[12px] font-medium text-fg-tertiary">
-        A
-      </span>
-      <Slider.Root
-        value={index}
-        onValueChange={(next) => onChange(Array.isArray(next) ? (next[0] ?? 1) : next)}
-        min={0}
-        max={last}
-        step={1}
-        className="flex-1"
-      >
-        <Slider.Control className="flex h-6 touch-none items-center select-none">
-          <Slider.Track className="relative h-1 w-full rounded-full bg-line-strong">
-            <Slider.Indicator className="rounded-full bg-fg-secondary" />
-            {Array.from({ length: stops }, (_, mark) => (
-              <span
-                key={mark}
-                aria-hidden="true"
-                className={`absolute top-1/2 size-1.5 -translate-1/2 rounded-full ${
-                  mark <= index ? "bg-fg-secondary" : "bg-fg-disabled"
-                }`}
-                style={{ left: `${(mark / last) * 100}%` }}
-              />
-            ))}
-            <Slider.Thumb
-              aria-label={label}
-              getAriaValueText={(_formatted, at) => valueText(at)}
-              className="size-4 rounded-full bg-accent shadow-raised outline-none transition-[scale] duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-surface-panel data-dragging:scale-110"
-            />
-          </Slider.Track>
-        </Slider.Control>
-      </Slider.Root>
-      <span aria-hidden="true" className="w-4 text-center text-[17px] font-medium text-fg-tertiary">
-        A
-      </span>
-      <span className="w-24 text-right text-[12.5px] text-fg-secondary tabular-nums">{readout}</span>
-    </div>
-  );
-}
-
-const sampleTools: ReadonlyArray<Extract<TranscriptBlock, { kind: "tool" }>> = [
-  {
-    kind: "tool",
-    id: "sample:read",
-    toolName: "Read",
-    input: { file_path: "src/greet.ts" },
-    status: "done",
-    changedFiles: [],
-  },
-  {
-    kind: "tool",
-    id: "sample:edit",
-    toolName: "Edit",
-    input: { file_path: "src/greet.ts", old_string: "greet", new_string: "welcome" },
-    status: "done",
-    changedFiles: ["src/greet.ts"],
-  },
-];
-
-/** A few lines of conversation at the chosen size, drawn by the transcript's own components. */
-function ConversationSample({ scale }: { scale: number }) {
-  return (
-    <SettingsCard className="relative h-64 overflow-hidden bg-surface-window/40">
-      <div
-        aria-hidden="true"
-        inert
-        className="h-full mask-b-from-[calc(100%-3rem)] px-6 pt-5"
-        style={{ zoom: scale }}
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex justify-end">
-            <UserMessage
-              block={{
-                kind: "user",
-                id: "sample:user",
-                text: "Rename `greet` to `welcome`.",
-                attachments: [],
-                mentions: [],
-              }}
-            />
-          </div>
-          <ResponseHeader agent={{ provider: "claude", model: "Opus 5.5" }} />
-          <ToolGroup tools={sampleTools} activity="idle" />
-          <Markdown
-            streaming={false}
-            text={
-              "Renamed `greet` to `welcome` in **src/greet.ts**. Nothing else called it, so no other files changed."
-            }
-          />
-        </div>
-      </div>
-    </SettingsCard>
   );
 }

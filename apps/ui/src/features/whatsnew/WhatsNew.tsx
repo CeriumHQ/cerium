@@ -11,7 +11,7 @@ const releases = parseChangelog(changelog).slice(0, RELEASES);
 
 /**
  * The newest entries of CHANGELOG.md, newest release first, in a dialog. It opens after an update
- * and from the command palette and Settings → Updates; Esc and the backdrop close it.
+ * and from the command palette and Settings → General; Esc and the backdrop close it.
  */
 export function WhatsNew({
   open,

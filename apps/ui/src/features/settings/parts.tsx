@@ -4,7 +4,6 @@ import { Monitor } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyCaps } from "../../lib/keys.ts";
 
@@ -57,32 +56,23 @@ export function SettingsPage({
   );
 }
 
-/**
- * Related settings under a heading, with room for an action on the right. What the heading doesn't
- * say goes in `info`, behind a small "i" beside it, so the section opens on the setting itself;
- * `description` is for the one line a decision can't do without.
- */
+/** Related settings under a heading, with a line under it when the heading needs one, and an action on the right. */
 export function SettingsSection({
   title,
-  info,
   description,
   action,
   children,
 }: {
-  title: string;
-  info?: ReactNode;
+  title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3.5">
+    <section className="flex flex-col gap-3">
       <div className="flex items-end gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="flex items-center gap-1.5 text-[13.5px] font-medium text-fg-primary">
-            {title}
-            {info ? <InfoTip label={`About ${title.toLowerCase()}`}>{info}</InfoTip> : null}
-          </h2>
+          <h2 className="flex items-center gap-2 text-[13.5px] font-medium text-fg-primary">{title}</h2>
           {description ? (
             <p className="text-[12.5px] leading-relaxed text-fg-tertiary">{description}</p>
           ) : null}
@@ -96,20 +86,17 @@ export function SettingsSection({
 
 /**
  * One setting inside a card: its name, a short line under it when the name isn't enough, and its
- * control on the right (a switch, a menu). `info` holds the longer explanation behind an "i", and
- * `error` says why the last change didn't save. `control` receives the id of the name, for a control
- * with no label of its own.
+ * control on the right (a switch, a menu). `error` says why the last change didn't save. `control`
+ * receives the id of the name, for a control with no label of its own.
  */
 export function SettingsRow({
   label,
-  info,
   hint,
   error,
   control,
   className,
 }: {
-  label: string;
-  info?: ReactNode;
+  label: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   control: (labelledBy: string) => ReactNode;
@@ -118,16 +105,29 @@ export function SettingsRow({
   const labelId = useId();
   return (
     <div className={`flex min-h-12 items-center gap-4 px-4 py-2.5 ${className ?? ""}`}>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium text-fg-primary">
-          <span id={labelId}>{label}</span>
-          {info ? <InfoTip label={`About ${label.toLowerCase()}`}>{info}</InfoTip> : null}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span id={labelId} className="text-[13px] font-medium text-fg-primary">
+          {label}
         </span>
         {hint ? <span className="text-xs leading-relaxed text-fg-tertiary">{hint}</span> : null}
         {error ? <span className="text-xs leading-relaxed text-error">{error}</span> : null}
       </div>
       {control(labelId)}
     </div>
+  );
+}
+
+/** A card of settings rows, a hairline between each. */
+export function SettingsList({ children }: { children: ReactNode }) {
+  return <SettingsCard className="flex flex-col divide-y divide-line-subtle">{children}</SettingsCard>;
+}
+
+/** A small tag beside a heading, such as "Experimental". */
+export function SettingsTag({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-full border border-line-subtle px-1.5 text-2xs font-normal text-fg-tertiary">
+      {children}
+    </span>
   );
 }
 

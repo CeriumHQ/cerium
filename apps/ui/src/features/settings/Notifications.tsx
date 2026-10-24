@@ -6,7 +6,6 @@ import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from
 
 import { accountAtom, subscribePush, unsubscribePush } from "../../backend/atoms.ts";
 import { WEB } from "../../backend/target.ts";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { thisBrowser } from "../../web/device.ts";
 import {
   notificationsOf,
@@ -17,7 +16,14 @@ import {
   turnOffPush,
   turnOnPush,
 } from "../../web/push.ts";
-import { SettingsCard, SettingsPage, SettingsRow, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import {
+  SettingsCard,
+  SettingsList,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitch,
+} from "./parts.tsx";
 import { notifyBadgeAtom, notifyKindsAtom, notifySoundAtom } from "./preferences.ts";
 
 // Notifications. In the web client, push notifications on this phone, tablet or browser: turning
@@ -167,48 +173,42 @@ function PushSettings({ noun }: { noun: string }) {
 
   return (
     <>
-      <SettingsSection title={`On this ${noun}`}>
-        <SettingsCard className="flex items-start gap-4 p-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span id={masterId} className="text-[13px] font-medium text-fg-primary max-md:text-[15px]">
-              Allow notifications
-            </span>
-            <p className="text-[12.5px] leading-relaxed text-fg-tertiary max-md:text-[13.5px]">
-              {allowed === "denied"
-                ? blockedText
-                : online
-                  ? "Arrive even when Cerium is closed."
-                  : "Connect to Cerium's cloud to change this."}
-            </p>
-            {shown !== undefined && allowed === "granted" ? (
-              <button
-                type="button"
-                onClick={sendTest}
-                className="mt-1 w-fit rounded-md px-2 py-1 -ml-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:text-[13.5px]"
-              >
-                {testSent ? "Sent" : "Send a test"}
-              </button>
-            ) : null}
-            {error ? <p className="text-[12.5px] text-error max-md:text-[13.5px]">{error}</p> : null}
-          </div>
-          <SettingsSwitch
-            checked={shown !== undefined}
-            onCheckedChange={(on) => (on ? choose(NOTIFICATION_KINDS) : turnOff())}
-            disabled={!online || allowed === "denied"}
-            labelledBy={masterId}
-          />
-        </SettingsCard>
-      </SettingsSection>
+      <SettingsCard className="flex items-start gap-4 p-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span id={masterId} className="text-[13px] font-medium text-fg-primary max-md:text-[15px]">
+            Allow notifications
+          </span>
+          <p className="text-[12.5px] leading-relaxed text-fg-tertiary max-md:text-[13.5px]">
+            {allowed === "denied"
+              ? blockedText
+              : online
+                ? "Arrive even when Cerium is closed."
+                : "Connect to Cerium's cloud to change this."}
+          </p>
+          {shown !== undefined && allowed === "granted" ? (
+            <button
+              type="button"
+              onClick={sendTest}
+              className="mt-1 w-fit rounded-md px-2 py-1 -ml-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:text-[13.5px]"
+            >
+              {testSent ? "Sent" : "Send a test"}
+            </button>
+          ) : null}
+          {error ? <p className="text-[12.5px] text-error max-md:text-[13.5px]">{error}</p> : null}
+        </div>
+        <SettingsSwitch
+          checked={shown !== undefined}
+          onCheckedChange={(on) => (on ? choose(NOTIFICATION_KINDS) : turnOff())}
+          disabled={!online || allowed === "denied"}
+          labelledBy={masterId}
+        />
+      </SettingsCard>
       {shown === undefined ? null : (
         <SettingsSection
-          title="Tell me when"
-          action={
-            <InfoTip label="When Cerium stays quiet" side="bottom">
-              Not for a thread you have open on any of your devices, or while Cerium is open here.
-            </InfoTip>
-          }
+          title="Notify me when"
+          description="Never for a thread you have open on any of your devices, or while Cerium is open here."
         >
-          <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+          <SettingsList>
             {NOTIFICATION_KINDS.map((kind) => (
               <KindRow
                 key={kind}
@@ -218,7 +218,7 @@ function PushSettings({ noun }: { noun: string }) {
                 onChange={(on) => toggleKind(kind, on)}
               />
             ))}
-          </SettingsCard>
+          </SettingsList>
         </SettingsSection>
       )}
     </>
@@ -246,63 +246,61 @@ function DesktopNotificationSettings() {
   };
 
   return (
-    <SettingsPage title="Notifications" description="When agents on this computer need you, finish or fail.">
-      <SettingsSection
-        title="On this computer"
-        info="Only while you're away from Cerium's window, and never for the thread you have open."
-        action={
-          on ? (
-            <button
-              type="button"
-              onClick={sendTest}
-              className="rounded-md px-2 py-1 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-            >
-              {testSent ? "Sent" : "Send a test"}
-            </button>
-          ) : null
-        }
-      >
-        <SettingsCard className="flex flex-col divide-y divide-line-subtle">
-          <SettingsRow
-            label="Show notifications"
-            control={(labelledBy) => (
-              <SettingsSwitch
-                checked={on}
-                onCheckedChange={(next) => setKinds(next ? NOTIFICATION_KINDS : [])}
-                labelledBy={labelledBy}
-              />
-            )}
-          />
-          {on ? (
-            <>
-              <SettingsRow
-                label="Play a sound"
-                control={(labelledBy) => (
-                  <SettingsSwitch
-                    checked={sound === "on"}
-                    onCheckedChange={(next) => setSound(next ? "on" : "off")}
-                    labelledBy={labelledBy}
-                  />
-                )}
-              />
-              <SettingsRow
-                label="Count on the taskbar"
-                hint="Threads that notified since you last opened them."
-                control={(labelledBy) => (
-                  <SettingsSwitch
-                    checked={badge === "on"}
-                    onCheckedChange={(next) => setBadge(next ? "on" : "off")}
-                    labelledBy={labelledBy}
-                  />
-                )}
-              />
-            </>
-          ) : null}
-        </SettingsCard>
-      </SettingsSection>
+    <SettingsPage
+      title="Notifications"
+      description="Shown while you're away from Cerium's window, and never for the thread you have open."
+      action={
+        on ? (
+          <button
+            type="button"
+            onClick={sendTest}
+            className="rounded-md px-2 py-1 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          >
+            {testSent ? "Sent" : "Send a test"}
+          </button>
+        ) : null
+      }
+    >
+      <SettingsList>
+        <SettingsRow
+          label="Show notifications"
+          control={(labelledBy) => (
+            <SettingsSwitch
+              checked={on}
+              onCheckedChange={(next) => setKinds(next ? NOTIFICATION_KINDS : [])}
+              labelledBy={labelledBy}
+            />
+          )}
+        />
+        {on ? (
+          <>
+            <SettingsRow
+              label="Play a sound"
+              control={(labelledBy) => (
+                <SettingsSwitch
+                  checked={sound === "on"}
+                  onCheckedChange={(next) => setSound(next ? "on" : "off")}
+                  labelledBy={labelledBy}
+                />
+              )}
+            />
+            <SettingsRow
+              label="Count on the taskbar"
+              hint="Threads that notified since you last opened them."
+              control={(labelledBy) => (
+                <SettingsSwitch
+                  checked={badge === "on"}
+                  onCheckedChange={(next) => setBadge(next ? "on" : "off")}
+                  labelledBy={labelledBy}
+                />
+              )}
+            />
+          </>
+        ) : null}
+      </SettingsList>
       {on ? (
-        <SettingsSection title="Tell me when">
-          <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+        <SettingsSection title="Notify me when">
+          <SettingsList>
             {NOTIFICATION_KINDS.map((kind) => (
               <KindRow
                 key={kind}
@@ -316,7 +314,7 @@ function DesktopNotificationSettings() {
                 }
               />
             ))}
-          </SettingsCard>
+          </SettingsList>
         </SettingsSection>
       ) : null}
     </SettingsPage>
@@ -334,18 +332,20 @@ function KindRow({
   disabled: boolean;
   onChange: (on: boolean) => void;
 }) {
-  const labelId = useId();
   const { label, description } = kindText[kind];
   return (
-    <div className="flex items-start gap-4 p-4">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span id={labelId} className="text-[13px] font-medium text-fg-primary max-md:text-[15px]">
-          {label}
-        </span>
-        <p className="text-[12.5px] leading-relaxed text-fg-tertiary max-md:text-[13.5px]">{description}</p>
-      </div>
-      <SettingsSwitch checked={checked} onCheckedChange={onChange} disabled={disabled} labelledBy={labelId} />
-    </div>
+    <SettingsRow
+      label={label}
+      hint={description}
+      control={(labelledBy) => (
+        <SettingsSwitch
+          checked={checked}
+          onCheckedChange={onChange}
+          disabled={disabled}
+          labelledBy={labelledBy}
+        />
+      )}
+    />
   );
 }
 

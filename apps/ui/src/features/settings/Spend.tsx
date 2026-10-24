@@ -1,20 +1,18 @@
-import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ProviderId, SpendReport, SpendTotals } from "@cerium/protocol";
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ChevronRight, CircleDollarSign, RefreshCw } from "lucide-react";
+import { ChevronRight, CircleDollarSign } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
 import { spendAtom } from "../../backend/spend.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { harnessName } from "./Harnesses.tsx";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsCard, SettingsSection } from "./parts.tsx";
 import {
   bucketLabel,
   cacheShare,
@@ -78,61 +76,46 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
   }
 };
 
-export function SpendSettings() {
-  const [range, setRange] = useState<SpendRange>("week");
+/**
+ * What agents used over `range`, for the Usage page: the totals over a chart, then each model,
+ * harness, thread or agent's share. The page's Refresh reads it again.
+ */
+export function SpendSection({
+  range,
+  onRange,
+}: {
+  range: SpendRange;
+  onRange: (range: SpendRange) => void;
+}) {
   const [by, setBy] = useState<Breakdown>("model");
-  const atom = spendAtom(range);
-  const result = useAtomValue(atom);
-  const refresh = useAtomRefresh(atom);
+  const result = useAtomValue(spendAtom(range));
   const driven = useAtomValue(machineAtom);
   const report = AsyncResult.getOrElse(result, (): SpendReport | undefined => undefined);
 
   return (
-    <SettingsPage
-      perMachine
+    <SettingsSection
       title="Tokens & cost"
-      description={
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          What agents have used.
-          <InfoTip label="About tokens and cost">
-            Counted from each turn the harness reported. Cost is only what a harness reports, at its own
-            rates: on a subscription it shows what the use is worth, not a charge. Codex and Cursor report
-            none, so they show tokens only. Deleted threads are not counted.
-          </InfoTip>
-        </span>
-      }
+      description="Cost is what each harness reports at its own rates: on a subscription, what the use is worth, not a charge."
       action={
-        <div className="flex items-center gap-2">
-          <ToggleGroup
-            value={[range]}
-            onValueChange={(value) => {
-              const next = spendRanges.find((each) => each.id === value[0]);
-              if (next) setRange(next.id);
-            }}
-            aria-label="Time range"
-            className="flex items-center"
-          >
-            {spendRanges.map(({ id, label }) => (
-              <Toggle
-                key={id}
-                value={id}
-                className="rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-              >
-                {label}
-              </Toggle>
-            ))}
-          </ToggleGroup>
-          <Tooltip label="Refresh">
-            <Button
-              aria-label="Refresh"
-              onClick={refresh}
-              disabled={result.waiting}
-              className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary disabled:opacity-50"
+        <ToggleGroup
+          value={[range]}
+          onValueChange={(value) => {
+            const next = spendRanges.find((each) => each.id === value[0]);
+            if (next) onRange(next.id);
+          }}
+          aria-label="Time range"
+          className="flex shrink-0 items-center"
+        >
+          {spendRanges.map(({ id, label }) => (
+            <Toggle
+              key={id}
+              value={id}
+              className="rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
             >
-              <RefreshCw size={14} strokeWidth={1.75} className={result.waiting ? "animate-spin" : ""} />
-            </Button>
-          </Tooltip>
-        </div>
+              {label}
+            </Toggle>
+          ))}
+        </ToggleGroup>
       }
     >
       {AsyncResult.isFailure(result) && report === undefined ? (
@@ -146,37 +129,34 @@ export function SpendSettings() {
       ) : report.totals.turns === 0 ? (
         <Empty range={range} />
       ) : (
-        <div className="flex flex-col gap-8">
+        <>
           <Summary report={report} range={range} />
-          <SettingsSection
-            title="Breakdown"
-            action={
-              <ToggleGroup
-                value={[by]}
-                onValueChange={(value) => {
-                  const next = breakdowns.find((each) => each.id === value[0]);
-                  if (next) setBy(next.id);
-                }}
-                aria-label="Break down by"
-                className="flex items-center"
-              >
-                {breakdowns.map(({ id, label }) => (
-                  <Toggle
-                    key={id}
-                    value={id}
-                    className="rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-                  >
-                    {label}
-                  </Toggle>
-                ))}
-              </ToggleGroup>
-            }
-          >
-            <Rows rows={rowsOf(report, by)} />
-          </SettingsSection>
-        </div>
+          <div className="flex items-center gap-2 pt-2">
+            <span className="text-[12.5px] text-fg-tertiary">By</span>
+            <ToggleGroup
+              value={[by]}
+              onValueChange={(value) => {
+                const next = breakdowns.find((each) => each.id === value[0]);
+                if (next) setBy(next.id);
+              }}
+              aria-label="Break down by"
+              className="flex items-center"
+            >
+              {breakdowns.map(({ id, label }) => (
+                <Toggle
+                  key={id}
+                  value={id}
+                  className="rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+                >
+                  {label}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          </div>
+          <Rows rows={rowsOf(report, by)} />
+        </>
       )}
-    </SettingsPage>
+    </SettingsSection>
   );
 }
 

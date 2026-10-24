@@ -6,12 +6,15 @@ import { Gauge, RefreshCw } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
+import { spendAtom } from "../../backend/spend.ts";
 import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { harnessName } from "./Harnesses.tsx";
-import { SettingsCard, SettingsPage } from "./parts.tsx";
+import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SpendSection } from "./Spend.tsx";
+import type { SpendRange } from "./spendModel.ts";
 import {
   evenLeft,
   leftLabel,
@@ -36,9 +39,16 @@ function useNow() {
   return now;
 }
 
+/** What's left of each subscription's limits, and the tokens and cost agents have used. */
 export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) {
   const result = useAtomValue(usageAtom);
-  const refresh = useAtomRefresh(usageAtom);
+  const refreshUsage = useAtomRefresh(usageAtom);
+  const [range, setRange] = useState<SpendRange>("week");
+  const refreshSpend = useAtomRefresh(spendAtom(range));
+  const refresh = () => {
+    refreshUsage();
+    refreshSpend();
+  };
   const driven = useAtomValue(machineAtom);
   const now = useNow();
 
@@ -60,15 +70,6 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
     <SettingsPage
       perMachine
       title="Usage"
-      description={
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          What's left of each subscription's limits.
-          <InfoTip label="About usage">
-            Each harness reports its own limits, and Cerium shows them as they are. Harnesses signed in with
-            an API key have none to show, and Cursor and OpenCode don't report theirs yet.
-          </InfoTip>
-        </span>
-      }
       action={
         <div className="flex items-center gap-3">
           {checkedAt ? (
@@ -87,7 +88,10 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
+      <SettingsSection
+        title="Limits"
+        description="As each harness reports them. API keys have none, and Cursor and OpenCode don't report theirs yet."
+      >
         {AsyncResult.isFailure(result) && snapshot === undefined ? (
           <SettingsCard className="px-4 py-3.5 text-[13px] text-error">
             {driven
@@ -107,7 +111,8 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
             Where you'd be at an even pace. Stay right of it and the limit lasts until it resets.
           </p>
         ) : null}
-      </div>
+      </SettingsSection>
+      <SpendSection range={range} onRange={setRange} />
     </SettingsPage>
   );
 }

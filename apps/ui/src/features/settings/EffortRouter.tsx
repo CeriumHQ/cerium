@@ -12,10 +12,9 @@ import {
 } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { WEB } from "../../backend/target.ts";
-import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { messageOf } from "../terminal/model.ts";
-import { SettingsCard, SettingsRow, SettingsSwitch } from "./parts.tsx";
+import { SettingsList, SettingsRow, SettingsSection, SettingsSwitch, SettingsTag } from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
@@ -26,7 +25,7 @@ const spent = (usd: number): string =>
 const childrenLabel = { router: "Auto", lead: "Lead's level" } as const;
 
 /**
- * The experimental effort router, folded away: a decision model, through the user's own OpenRouter
+ * The experimental effort router: a decision model, through the user's own OpenRouter
  * key, picks the reasoning effort of agents on Auto before each turn. The key is typed only into the
  * desktop app of the computer whose agents use it; another device sees that there is one, and can
  * remove it.
@@ -87,29 +86,23 @@ export function EffortRouterSetting() {
     );
   };
 
-  const hint = router.enabled
-    ? known && known.monthUsd > 0
-      ? `On · ${spent(known.monthUsd)} this month`
-      : "On"
-    : "Off";
-
   return (
-    <Disclosure
-      summary={
-        <span className="flex items-center gap-2">
+    <SettingsSection
+      title={
+        <>
           Effort router
-          <span className="rounded-full border border-line-subtle px-1.5 text-2xs font-normal text-fg-tertiary">
-            Experimental
-          </span>
-        </span>
+          <SettingsTag>Experimental</SettingsTag>
+        </>
       }
-      hint={hint}
     >
-      <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+      <SettingsList>
         <SettingsRow
           label="Pick effort automatically"
-          info="Before each turn of an agent on Auto, a decision model reads the message and the recent conversation and picks its reasoning effort. Models that keep their prompt cache across a change are routed every turn, others only on a new session's first. When it isn't sure, or takes over 1.5 seconds, the level stays."
-          hint={key === undefined && !router.enabled ? "Add an OpenRouter key first." : undefined}
+          hint={
+            key === undefined && !router.enabled
+              ? "Add an OpenRouter key first."
+              : "Before each turn of an agent on Auto, a decision model picks its effort. Unsure or slow, the level stays."
+          }
           error={routerError}
           control={(labelledBy) => (
             <SettingsSwitch
@@ -163,7 +156,7 @@ export function EffortRouterSetting() {
         {router.enabled ? (
           <SettingsRow
             label="Agents a lead starts"
-            info="For agents a lead on Auto starts without naming an effort. Auto routes each of them too; Lead's level runs them at the level the lead is on when it starts them."
+            hint="When the lead names no effort for them"
             className="pr-2.5"
             control={() => (
               <SelectRoot
@@ -196,7 +189,7 @@ export function EffortRouterSetting() {
             </span>
           ) : null}
         </div>
-      </SettingsCard>
-    </Disclosure>
+      </SettingsList>
+    </SettingsSection>
   );
 }

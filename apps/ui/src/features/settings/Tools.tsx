@@ -1,43 +1,16 @@
 import type { AdvisorSettings, ModelInfo, ReasoningEffort } from "@cerium/protocol";
-import { useAtomValue } from "@effect/atom-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { effortLabel, modelKey, pickModel, useModels } from "../composer/models.ts";
+import { effortLabel, modelKey } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
-import { SettingsCard, SettingsPage, SettingsRow, SettingsSection, SettingsSwitch } from "./parts.tsx";
-import { modelAtom } from "./preferences.ts";
+import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
-/** What agents can call on beyond their own harness: the advisor, and the MCP servers they're given. */
-export function ToolSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
-  const models = useModels();
-  const leadKey = useAtomValue(modelAtom);
-  const lead = pickModel(models, leadKey, readyProviders(harnesses));
-
-  return (
-    <SettingsPage perMachine title="Tools">
-      <SettingsSection
-        title="Advisor"
-        info={
-          <>
-            A model your agents can ask when they're stuck. It reads what it needs and answers, but never
-            edits, runs commands or starts agents. Each thread starts its own with the first question, so it
-            remembers what that thread asked. Agents started after you turn it on are told it's there.
-          </>
-        }
-      >
-        <AdvisorSetting models={models} harnesses={harnesses} leadModel={lead} />
-      </SettingsSection>
-
-      <SettingsSection title="MCP servers" info={mcpInfo}>
-        <McpServersSetting />
-      </SettingsSection>
-    </SettingsPage>
-  );
-}
+// What agents can call on beyond their own harness: the advisor, and the MCP servers they're given.
+// Rows for the Agents page's Tools card.
 
 /** An advisor is there to think hard, so a new pick starts at the model's strongest effort. */
 const advisorEffort = (model: ModelInfo, wanted?: ReasoningEffort) =>
@@ -52,7 +25,7 @@ const advisorPick = (model: ModelInfo, wanted?: ReasoningEffort) => {
  * Whether agents may ask an advisor, and the model and effort it answers with. Saved by the backend;
  * the pick is kept while it's off. Turning it on with no pick yet starts from the lead model.
  */
-function AdvisorSetting({
+export function AdvisorRows({
   models,
   harnesses,
   leadModel,
@@ -80,10 +53,10 @@ function AdvisorSetting({
   };
 
   return (
-    <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+    <>
       <SettingsRow
-        label="Let agents ask an advisor"
-        hint="A model they can put a question to when they're stuck"
+        label="Advisor"
+        hint="A model agents can ask when they're stuck. It reads and answers, but never edits or runs anything."
         error={error}
         control={(labelledBy) => (
           <SettingsSwitch
@@ -96,94 +69,76 @@ function AdvisorSetting({
       />
       {advisor.enabled ? (
         <SettingsRow
-          label="Answers with"
+          label="Advisor model"
           hint={
             idle && picked ? (
               <span className="text-attention">{providerName[picked.provider]} can't run right now.</span>
-            ) : (
-              "Your strongest model makes the best advisor."
-            )
+            ) : undefined
           }
           className="pr-2.5"
           control={() => (
-            <SelectRoot
-              value={model ? modelKey(model) : null}
-              onValueChange={(next) => next !== null && chooseModel(next)}
-            >
-              <SelectTrigger label="Advisor model">
-                {picked ? <ProviderLogo provider={picked.provider} size={13} /> : null}
-                <span className="font-medium text-fg-primary">
-                  {model?.label ?? picked?.model ?? "Choose"}
-                </span>
-              </SelectTrigger>
-              <SelectPopup>
-                <ModelGroups models={models} harnesses={harnesses} />
-              </SelectPopup>
-            </SelectRoot>
+            <span className="flex shrink-0 items-center">
+              <SelectRoot
+                value={model ? modelKey(model) : null}
+                onValueChange={(next) => next !== null && chooseModel(next)}
+              >
+                <SelectTrigger label="Advisor model">
+                  {picked ? <ProviderLogo provider={picked.provider} size={13} /> : null}
+                  <span className="font-medium text-fg-primary">
+                    {model?.label ?? picked?.model ?? "Choose"}
+                  </span>
+                </SelectTrigger>
+                <SelectPopup>
+                  <ModelGroups models={models} harnesses={harnesses} />
+                </SelectPopup>
+              </SelectRoot>
+              {model && picked && effort ? (
+                <SelectRoot
+                  value={effort}
+                  onValueChange={(next) =>
+                    next !== null && save({ enabled: true, model: { ...picked, effort: next } })
+                  }
+                >
+                  <SelectTrigger label="Advisor reasoning effort">{effortLabel[effort]}</SelectTrigger>
+                  <SelectPopup>
+                    {model.efforts.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {effortLabel[level]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </SelectRoot>
+              ) : null}
+            </span>
           )}
         />
       ) : null}
-      {advisor.enabled && model && picked && effort ? (
-        <SettingsRow
-          label="Reasoning effort"
-          className="pr-2.5"
-          control={() => (
-            <SelectRoot
-              value={effort}
-              onValueChange={(next) =>
-                next !== null && save({ enabled: true, model: { ...picked, effort: next } })
-              }
-            >
-              <SelectTrigger label="Advisor reasoning effort">
-                <span className="font-medium text-fg-primary">{effortLabel[effort]}</span>
-              </SelectTrigger>
-              <SelectPopup>
-                {model.efforts.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {effortLabel[level]}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </SelectRoot>
-          )}
-        />
-      ) : null}
-    </SettingsCard>
+    </>
   );
 }
 
-const mcpInfo = (
-  <>
-    Agents always get Cerium's own tools. You can also give them the MCP servers you set up in each harness,
-    like those in Claude Code's settings or a project's{" "}
-    <code className="font-mono text-[11px] text-fg-primary">.mcp.json</code>. A change applies to agents
-    started after it.
-  </>
-);
-
-/** Where an agent's tools come from: Cerium's always, and the user's own servers while the setting is on. */
-function McpServersSetting() {
+/** Whether agents get the user's own MCP servers as well as Cerium's, which they always have. */
+export function McpServersRow() {
   const { value: on, saved, save, error } = useSetting("includeUserMcpServers", true);
   return (
-    <SettingsCard className="flex flex-col divide-y divide-line-subtle">
-      <SettingsRow
-        label="Cerium"
-        hint="Coordinate agents, drive UIs, run live checks"
-        control={() => <span className="shrink-0 text-xs text-fg-tertiary">Always on</span>}
-      />
-      <SettingsRow
-        label="Your servers"
-        hint={on ? "From each harness's own settings" : "Left out"}
-        error={error}
-        control={(labelledBy) => (
-          <SettingsSwitch
-            checked={on}
-            onCheckedChange={save}
-            disabled={saved === undefined}
-            labelledBy={labelledBy}
-          />
-        )}
-      />
-    </SettingsCard>
+    <SettingsRow
+      label="Your MCP servers"
+      hint={
+        <>
+          The ones set up in each harness, like a project's{" "}
+          <code className="font-mono text-[11px] text-fg-secondary">.mcp.json</code>. Cerium's own tools are
+          always on.
+        </>
+      }
+      error={error}
+      control={(labelledBy) => (
+        <SettingsSwitch
+          checked={on}
+          onCheckedChange={save}
+          disabled={saved === undefined}
+          labelledBy={labelledBy}
+        />
+      )}
+    />
   );
 }

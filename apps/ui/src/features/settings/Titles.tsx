@@ -2,13 +2,12 @@ import { TITLE_MODELS, type ModelInfo, type ProviderId } from "@cerium/protocol"
 import { Zap } from "lucide-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { modelKey } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
-import { SettingsCard, SettingsRow, SettingsSwitch } from "./parts.tsx";
+import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
 const AUTOMATIC = "automatic";
@@ -22,11 +21,10 @@ const automaticModel = (models: ReadonlyArray<ModelInfo>, ready: ReadonlySet<Pro
   )[0];
 
 /**
- * Whether new threads are named from their first message, and by which model, folded away until
- * asked for: it's a setting few change, and the fold says where it stands. Saved by the backend;
- * Automatic follows Cerium's order of quick models.
+ * Whether new threads are named from their first message, and by which model: rows for a card of
+ * settings. Saved by the backend; Automatic follows Cerium's order of quick models.
  */
-export function TitleSetting({
+export function TitleRows({
   models,
   harnesses,
 }: {
@@ -53,84 +51,71 @@ export function TitleSetting({
     );
   };
 
-  const namer = picked ? pickedInfo?.label : automatic?.label;
-  const summary = !titles.enabled ? (
-    "Off"
-  ) : picked !== undefined && !pickedReady ? (
-    <span className="text-attention">{providerName[picked.provider]} can't run right now</span>
-  ) : namer ? (
-    `Named by ${namer}`
-  ) : (
-    "On"
-  );
-
   return (
-    <Disclosure summary="Thread titles" hint={summary}>
-      <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+    <>
+      <SettingsRow
+        label="Name new threads"
+        hint="A quick model gives each a short title. A name you give it yourself stays."
+        error={error}
+        control={(labelledBy) => (
+          <SettingsSwitch
+            checked={titles.enabled}
+            onCheckedChange={(on) => save({ ...titles, enabled: on })}
+            disabled={saved === undefined}
+            labelledBy={labelledBy}
+          />
+        )}
+      />
+      {titles.enabled ? (
         <SettingsRow
-          label="Name new threads"
-          info="A thread starts out named after the first line of your message. A quick model then gives it a short title while the agent works. A name you give it yourself always stays."
-          error={error}
-          control={(labelledBy) => (
-            <SettingsSwitch
-              checked={titles.enabled}
-              onCheckedChange={(on) => save({ ...titles, enabled: on })}
-              disabled={saved === undefined}
-              labelledBy={labelledBy}
-            />
+          label="Named by"
+          hint={
+            picked !== undefined && !pickedReady ? (
+              <span className="text-attention">
+                {providerName[picked.provider]} can't run right now, so threads keep their first line.
+              </span>
+            ) : undefined
+          }
+          className="pr-2.5"
+          control={() => (
+            <SelectRoot
+              value={
+                picked === undefined ? AUTOMATIC : modelKey({ provider: picked.provider, id: picked.model })
+              }
+              onValueChange={(next) => next !== null && choose(next)}
+            >
+              <SelectTrigger label="Model that names threads">
+                {picked === undefined ? (
+                  <>
+                    {automatic ? <ProviderLogo provider={automatic.provider} size={13} /> : null}
+                    <span className="font-medium text-fg-primary">Automatic</span>
+                    {automatic ? <span className="text-fg-tertiary">{automatic.label}</span> : null}
+                  </>
+                ) : (
+                  <>
+                    <ProviderLogo provider={picked.provider} size={13} />
+                    <span className="font-medium text-fg-primary">{pickedInfo?.label ?? picked.model}</span>
+                  </>
+                )}
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem
+                  value={AUTOMATIC}
+                  icon={Zap}
+                  description={
+                    automatic
+                      ? `${automatic.label} now, the quickest your harnesses offer`
+                      : "The quickest model your harnesses offer"
+                  }
+                >
+                  Automatic
+                </SelectItem>
+                <ModelGroups models={models} harnesses={harnesses} separated />
+              </SelectPopup>
+            </SelectRoot>
           )}
         />
-        {titles.enabled ? (
-          <SettingsRow
-            label="Named by"
-            hint={
-              picked !== undefined && !pickedReady ? (
-                <span className="text-attention">
-                  {providerName[picked.provider]} can't run right now, so threads keep their first line.
-                </span>
-              ) : undefined
-            }
-            className="pr-2.5"
-            control={() => (
-              <SelectRoot
-                value={
-                  picked === undefined ? AUTOMATIC : modelKey({ provider: picked.provider, id: picked.model })
-                }
-                onValueChange={(next) => next !== null && choose(next)}
-              >
-                <SelectTrigger label="Model that names threads">
-                  {picked === undefined ? (
-                    <>
-                      {automatic ? <ProviderLogo provider={automatic.provider} size={13} /> : null}
-                      <span className="font-medium text-fg-primary">Automatic</span>
-                      {automatic ? <span className="text-fg-tertiary">{automatic.label}</span> : null}
-                    </>
-                  ) : (
-                    <>
-                      <ProviderLogo provider={picked.provider} size={13} />
-                      <span className="font-medium text-fg-primary">{pickedInfo?.label ?? picked.model}</span>
-                    </>
-                  )}
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem
-                    value={AUTOMATIC}
-                    icon={Zap}
-                    description={
-                      automatic
-                        ? `${automatic.label} now, the quickest your harnesses offer`
-                        : "The quickest model your harnesses offer"
-                    }
-                  >
-                    Automatic
-                  </SelectItem>
-                  <ModelGroups models={models} harnesses={harnesses} separated />
-                </SelectPopup>
-              </SelectRoot>
-            )}
-          />
-        ) : null}
-      </SettingsCard>
-    </Disclosure>
+      ) : null}
+    </>
   );
 }

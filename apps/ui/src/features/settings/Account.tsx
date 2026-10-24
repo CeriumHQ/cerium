@@ -14,7 +14,7 @@ import {
   Smartphone,
   Trash2,
 } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   accountAtom,
@@ -24,11 +24,9 @@ import {
   signIn,
   signOut,
 } from "../../backend/atoms.ts";
-import { onMac, onWindows, shellBridge, type StartAtLogin } from "../../backend/shell.ts";
 import { openSignIn, signInHref } from "../../backend/signIn.ts";
 import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
-import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
 import {
   deviceDetails,
@@ -40,8 +38,7 @@ import {
   thisDevice,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
-import { DiscordSection } from "./Discord.tsx";
-import { SettingsCard, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 
 type SignedIn = Extract<AccountState, { _tag: "SignedIn" }>;
 
@@ -65,20 +62,16 @@ export function AccountSettings() {
             : "Optional. Signed out, nothing leaves this computer."
       }
     >
-      <SettingsSection title="Cerium account">
-        {account === undefined ? (
-          <SettingsCard className="px-4 py-6 text-[13px] text-fg-tertiary">Checking…</SettingsCard>
-        ) : account._tag === "SignedIn" ? (
-          <AccountCard account={account} />
-        ) : (
-          <SignInCard account={account} />
-        )}
-      </SettingsSection>
+      {account === undefined ? (
+        <SettingsCard className="px-4 py-6 text-[13px] text-fg-tertiary">Checking…</SettingsCard>
+      ) : account._tag === "SignedIn" ? (
+        <AccountCard account={account} />
+      ) : (
+        <SignInCard account={account} />
+      )}
       {account?._tag === "SignedIn" && thisDevice(account) !== undefined ? (
         <DevicesSection account={account} />
       ) : null}
-      {account?._tag === "SignedIn" && !WEB ? <ThisComputerSection /> : null}
-      <DiscordSection />
     </SettingsPage>
   );
 }
@@ -132,11 +125,8 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
               <LogIn size={13} strokeWidth={2} />
               {starting ? "Opening your browser…" : "Sign in"}
             </Button>
-            <p className="flex items-center gap-1.5 text-[12.5px] text-fg-tertiary">
-              Cerium never sees your password.
-              <InfoTip label="Sign-in options" side="bottom">
-                Google, GitHub, X or an email and password, on Cerium's sign-in page.
-              </InfoTip>
+            <p className="text-[12.5px] text-fg-tertiary">
+              Google, GitHub, X or email. Cerium never sees your password.
             </p>
             {shownError ? <p className="w-full text-[12.5px] text-error">{shownError}</p> : null}
           </div>
@@ -424,76 +414,5 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
         onConfirm={() => run(remove({ payload: { deviceId } }))}
       />
     </div>
-  );
-}
-
-/** What keeps this computer reachable: the tray, and starting when the user signs in. */
-function ThisComputerSection() {
-  const bridge = shellBridge();
-  const windows = onWindows();
-  const mac = onMac();
-  // Where a Mac keeps Cerium while its window is closed.
-  const tray = mac ? "the menu bar" : "the tray";
-  const [startAtLogin, setStartAtLogin] = useState<StartAtLogin>();
-  const [error, setError] = useState<string>();
-  const labelId = useId();
-
-  useEffect(() => {
-    void bridge?.startAtLogin?.().then(setStartAtLogin, () => undefined);
-  }, [bridge]);
-
-  const change = (enabled: boolean) => {
-    setError(undefined);
-    setStartAtLogin((current) => current && { ...current, enabled });
-    void bridge?.setStartAtLogin?.(enabled).then(setStartAtLogin, () => {
-      setStartAtLogin((current) => current && { ...current, enabled: !enabled });
-      setError(
-        windows
-          ? "Windows didn't take that change. Try again."
-          : mac
-            ? "macOS didn't take that change. Try again."
-            : "Cerium couldn't change that. Try again.",
-      );
-    });
-  };
-
-  return (
-    <SettingsSection
-      title="This computer"
-      description={
-        <>
-          Closing the window keeps Cerium in {tray}, so your other devices can still reach this computer.{" "}
-          <InfoTip label="About keeping this computer awake" side="bottom">
-            Agents at work keep it from going to sleep.
-          </InfoTip>
-        </>
-      }
-    >
-      {bridge?.startAtLogin ? (
-        <SettingsCard className="flex items-start gap-4 p-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span id={labelId} className="text-[13px] font-medium text-fg-primary">
-              {windows ? "Start with Windows" : mac ? "Open at login" : "Start at login"}
-            </span>
-            <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
-              {startAtLogin?.available === false
-                ? windows
-                  ? "Only the installed app can start with Windows."
-                  : mac
-                    ? "Only the installed app can open at login."
-                    : "Only the installed app can start at login."
-                : `Opens in ${tray} when you sign in, so this computer is reachable after a restart.`}
-            </p>
-            {error ? <p className="text-[12.5px] text-error">{error}</p> : null}
-          </div>
-          <SettingsSwitch
-            checked={startAtLogin?.enabled ?? false}
-            onCheckedChange={change}
-            disabled={startAtLogin?.available !== true}
-            labelledBy={labelId}
-          />
-        </SettingsCard>
-      ) : null}
-    </SettingsSection>
   );
 }

@@ -6,7 +6,6 @@ import { useState } from "react";
 import { githubStatusAtom } from "../../backend/github.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ActionDialog } from "../settings/ActionDialog.tsx";
-import { SettingsSection } from "../settings/parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "../settings/ToolRow.tsx";
 import { GitHubSignInSteps, nextAttempt } from "./GitHubSignIn.tsx";
 import { GitHubMark } from "./parts.tsx";
@@ -15,10 +14,10 @@ import { GitHubMark } from "./parts.tsx";
 const GH_RELEASES_URL = "https://github.com/cli/cli/releases/latest";
 
 /**
- * The machine's GitHub CLI, which the GitHub panel goes through, in the harnesses' row: who it's
- * signed in as, and the way to sign in. `gh` keeps the credential.
+ * The machine's GitHub CLI, which pull requests and issues go through, as a row of the harnesses'
+ * list: who it's signed in as, and the way to sign in. `gh` keeps the credential.
  */
-export function GitHubSection() {
+export function GitHubRow() {
   const result = useAtomValue(githubStatusAtom);
   const refresh = useAtomRefresh(githubStatusAtom);
   const local = useAtomValue(machineAtom) === undefined;
@@ -87,16 +86,8 @@ export function GitHubSection() {
     );
 
   return (
-    <SettingsSection
-      title="GitHub"
-      info={
-        <>
-          Pull requests and issues go through GitHub's own CLI, gh, on this computer. It keeps your sign-in;
-          Cerium never reads it.
-        </>
-      }
-    >
-      <div className="rounded-xl border border-line-subtle">{row}</div>
+    <>
+      {row}
       <ActionDialog
         open={attempt !== undefined}
         onOpenChange={(open) => {
@@ -116,6 +107,6 @@ export function GitHubSection() {
           />
         )}
       </ActionDialog>
-    </SettingsSection>
+    </>
   );
 }
