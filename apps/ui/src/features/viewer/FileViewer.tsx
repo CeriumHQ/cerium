@@ -4,7 +4,7 @@ import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { FileDiff, FilePreview as Preview } from "@cerium/rpc";
 import { RegistryContext, useAtom, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
-import { AsyncResult } from "effect/reactivity";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { Columns2, Ellipsis, FolderOpen, Rows2, SquareArrowOutUpRight, WrapText, X } from "lucide-react";
 import { useContext, useEffect, useEffectEvent, type ReactNode } from "react";
 
@@ -61,6 +61,9 @@ import { HtmlPreview, MarkdownPreview, MediaPreview, messageOf, Note, SvgPreview
 const WHOLE_FILE = 1_000_000;
 /** Unchanged lines around each change otherwise. */
 const CONTEXT = 3;
+
+/** What's read for the diff while another view shows. */
+const noDiff: Atom.Atom<AsyncResult.AsyncResult<FileDiff, unknown>> = Atom.make(AsyncResult.initial());
 
 const toggleClass =
   "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
@@ -246,8 +249,12 @@ export function FileViewer({
   const [whole, setWhole] = useAtom(wholeDiffAtom(key));
   /** Opened from Source control, it shows what's staged or what isn't, rather than both against the last commit. */
   const [side, setSide] = useAtom(diffSideAtom(key));
-  const diffResult = useAtomValue(diffAtom(diffKey(root, path, from, whole ? WHOLE_FILE : CONTEXT)));
-  const diff = view === "diff" ? Option.getOrUndefined(AsyncResult.value(diffResult)) : undefined;
+  // Read only while it shows: each change to the file reads the diff again, which can be long.
+  const diffShown = view === "diff" && side === undefined;
+  const diffResult = useAtomValue(
+    diffShown ? diffAtom(diffKey(root, path, from, whole ? WHOLE_FILE : CONTEXT)) : noDiff,
+  );
+  const diff = diffShown ? Option.getOrUndefined(AsyncResult.value(diffResult)) : undefined;
 
   // The machine says when the file or git's view of it changes; the viewer reads it again then.
   const onBatch = useEffectEvent(
