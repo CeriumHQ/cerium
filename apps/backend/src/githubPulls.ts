@@ -65,6 +65,8 @@ const PAGE = 30;
 const TIMELINE_PAGE = 100;
 /** Pages of changed files read at most: GitHub lists 3,000 files of a pull request, a hundred a page. */
 const MAX_FILE_PAGES = 30;
+/** Pages of changed files asked for at once, past the first. */
+const FILE_PAGES_AT_ONCE = 5;
 
 // ---------------------------------------------------------------------------------------------
 // Searching
@@ -816,16 +818,29 @@ export const pullRequests = (github: GitHub["Service"]) => {
 
     files: Effect.fn("PullRequests.files")(function* (cwd: string, number: number) {
       const repository = yield* at(cwd);
+      const page = (which: number) =>
+        github
+          .rest(
+            repository.host,
+            "GET",
+            `repos/${nameOf(repository)}/pulls/${number}/files?per_page=100&page=${which}`,
+          )
+          .pipe(Effect.map((answer): ReadonlyArray<unknown> => (Array.isArray(answer) ? answer : [])));
       const files: Array<ChangedFile> = [];
-      for (let page = 1; page <= MAX_FILE_PAGES; page++) {
-        const answer = yield* github.rest(
-          repository.host,
-          "GET",
-          `repos/${nameOf(repository)}/pulls/${number}/files?per_page=100&page=${page}`,
+      // The first page holds most pull requests' files. Past it a few pages are asked for at once,
+      // rather than one after another, and the list ends at the first that isn't full.
+      for (let first = 1; first <= MAX_FILE_PAGES;) {
+        const count = first === 1 ? 1 : Math.min(FILE_PAGES_AT_ONCE, MAX_FILE_PAGES - first + 1);
+        const pages = yield* Effect.forEach(
+          Array.from({ length: count }, (_, index) => first + index),
+          page,
+          { concurrency: "unbounded" },
         );
-        const listed = Array.isArray(answer) ? answer : [];
-        files.push(...listed.flatMap((each) => changedFileOf(each) ?? []));
-        if (listed.length < 100) return { files };
+        for (const listed of pages) {
+          files.push(...listed.flatMap((each) => changedFileOf(each) ?? []));
+          if (listed.length < 100) return { files };
+        }
+        first += count;
       }
       return { files, truncated: true };
     }),

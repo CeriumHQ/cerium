@@ -1,5 +1,8 @@
-import { describe, expect, it } from "@effect/vitest";
+import type { GitHubRepository } from "@cerium/rpc";
+import { assert, describe, expect, it } from "@effect/vitest";
+import { Effect } from "effect";
 
+import type { GitHub } from "../src/github.ts";
 import {
   changedFileOf,
   checkOf,
@@ -7,6 +10,7 @@ import {
   parseChecks,
   parsePullRequestDetail,
   parsePullRequestPage,
+  pullRequests,
   pullRequestSearch,
   reviewersOf,
   threadOf,
@@ -325,6 +329,59 @@ describe("checks and files", () => {
       noDiff: true,
     });
   });
+
+  it.effect("lists every changed file, a page at a time in order, up to the last that isn't full", () =>
+    Effect.gen(function* () {
+      /** GitHub with a pull request that changes `count` files, keeping which pages were asked for. */
+      const changing = (count: number) => {
+        const asked: Array<number> = [];
+        const github = {
+          repository: () =>
+            Effect.succeed({ host: "github.com", owner: "team", name: "app" } as GitHubRepository),
+          rest: (_host: string, _method: string, path: string) =>
+            Effect.sync(() => {
+              const page = Number(/[?&]page=(\d+)/.exec(path)?.[1]);
+              asked.push(page);
+              const start = (page - 1) * 100;
+              return Array.from({ length: Math.max(0, Math.min(100, count - start)) }, (_, index) => ({
+                filename: `f${start + index}.ts`,
+                status: "modified",
+                additions: 1,
+                deletions: 0,
+              }));
+            }),
+        } as unknown as GitHub["Service"];
+        return { asked, files: pullRequests(github).files("/work", 7) };
+      };
+      const names = (listed: { readonly files: ReadonlyArray<{ readonly path: string }> }) =>
+        listed.files.map((file) => file.path);
+
+      const few = changing(42);
+      const fewListed = yield* few.files;
+      assert.deepStrictEqual(
+        names(fewListed),
+        Array.from({ length: 42 }, (_, index) => `f${index}.ts`),
+      );
+      assert.deepStrictEqual(few.asked, [1]);
+      assert.isUndefined(fewListed.truncated);
+
+      const many = changing(750);
+      const manyListed = yield* many.files;
+      assert.deepStrictEqual(
+        names(manyListed),
+        Array.from({ length: 750 }, (_, index) => `f${index}.ts`),
+      );
+      assert.isUndefined(manyListed.truncated);
+      // Every page up to the first that isn't full, and only a few past it.
+      assert.includeMembers(many.asked, [1, 2, 3, 4, 5, 6, 7, 8]);
+      assert.isAtMost(Math.max(...many.asked), 13);
+
+      // GitHub lists 3,000 at most.
+      const most = yield* changing(5_000).files;
+      assert.lengthOf(most.files, 3_000);
+      assert.isTrue(most.truncated);
+    }),
+  );
 
   it("finds a branch's pull request from the repository it's pushed to", () => {
     const pull = (owner: string, state: string, number: number) => ({
