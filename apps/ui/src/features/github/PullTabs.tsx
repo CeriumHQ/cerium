@@ -18,7 +18,7 @@ import {
   ExternalLink,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   pullCommitsAtom,
@@ -29,6 +29,7 @@ import {
 } from "../../backend/github.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { shortAgo } from "../../lib/time.ts";
+import { LINE_HEIGHT } from "../viewer/CodeView.tsx";
 import type { DiffLayout } from "../viewer/DiffView.tsx";
 import { DiffView } from "../viewer/DiffView.tsx";
 import type { NumberedLine } from "../viewer/model.ts";
@@ -232,6 +233,40 @@ const fileStatusWord: Record<ChangedFile["status"], string> = {
   changed: "Changed",
 };
 
+/** How far from the view a file's diff starts drawing, so it's drawn by the time it scrolls in. */
+const NEAR = "1500px";
+
+/** The nearest ancestor that scrolls `element`, which a margin around the view must reach past. */
+const scrollerOf = (element: Element): Element | null => {
+  for (let at = element.parentElement; at !== null; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at);
+    if (overflowY === "auto" || overflowY === "scroll") return at;
+  }
+  return null;
+};
+
+/**
+ * Draws `children` once they near the view, and keeps them drawn: a pull request of many files opens
+ * without drawing every diff at once. Until then a space about their height holds their place.
+ */
+function WhenNear({ height, children }: { height: number; children: ReactNode }) {
+  const [near, setNear] = useState(false);
+  const holder = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const target = holder.current;
+    if (near || target === null) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setNear(true);
+      },
+      { root: scrollerOf(target), rootMargin: NEAR },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [near]);
+  return near ? children : <div ref={holder} style={{ height }} />;
+}
+
 /** The threads on each file, by path. */
 const threadsByPath = (threads: ReadonlyArray<ReviewThread>) => {
   const byPath = new Map<string, Array<ReviewThread>>();
@@ -296,6 +331,8 @@ function FileDiff({
   const [open, setOpen] = useState(
     file.additions + file.deletions <= FOLD_LINES && file.status !== "removed",
   );
+  /** A file that starts open draws its diff as it nears the view; one the user opens is in view already. */
+  const [lazy, setLazy] = useState(open);
   // A thread goes under the line it's on, on its side of the diff; one the diff no longer shows goes above.
   const placed = new Map<string, Array<ReviewThread>>();
   const placeable = new Set<string>();
@@ -330,10 +367,23 @@ function FileDiff({
   };
   const name = file.path.split("/").at(-1) ?? file.path;
   const folder = file.path.slice(0, file.path.length - name.length);
+  const diff = (
+    <DiffView
+      hunks={file.hunks}
+      path={file.path}
+      layout={layout}
+      onExpand={undefined}
+      scroll={false}
+      after={after}
+    />
+  );
   return (
     <section className="overflow-hidden rounded-xl border border-line-subtle bg-surface-raised">
       <Button
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setOpen((current) => !current);
+          setLazy(false);
+        }}
         aria-expanded={open}
         className={`sticky top-0 z-10 flex min-h-10 w-full items-center gap-2 bg-surface-raised px-3 py-2 text-left transition-colors hover:bg-surface-hover ${open ? "border-b border-line-subtle" : ""}`}
       >
@@ -382,15 +432,12 @@ function FileDiff({
                 ? "GitHub doesn't show this file's changes: it's binary, or too large."
                 : "No changes to show."}
             </p>
+          ) : lazy ? (
+            <WhenNear height={file.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0) * LINE_HEIGHT}>
+              {diff}
+            </WhenNear>
           ) : (
-            <DiffView
-              hunks={file.hunks}
-              path={file.path}
-              layout={layout}
-              onExpand={undefined}
-              scroll={false}
-              after={after}
-            />
+            diff
           )}
         </>
       ) : null}
