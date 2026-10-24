@@ -147,4 +147,45 @@ describe("makeSubscriptionUsage", () => {
       assert.deepStrictEqual(reads.slice(2), ["codex"]);
     }),
   );
+
+  it.effect("reads a harness whose turns keep ending at most once a minute, and once after them", () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const claude = withUsage(
+        "claude",
+        Effect.sync(() => {
+          reads += 1;
+          return Option.some({ meters: [meter] });
+        }),
+      );
+      const events = yield* PubSub.unbounded<AgentEvent>();
+      const usage = yield* makeSubscriptionUsage(new Map([["claude", claude]]), Stream.fromPubSub(events));
+      yield* usage.watch.pipe(Stream.runDrain, Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      assert.strictEqual(reads, 1);
+
+      yield* PubSub.publish(
+        events,
+        event("a1", { _tag: "SessionStarted", provider: "claude", providerSessionId: "s", model: "m" }),
+      );
+      const turnEnds = event("a1", { _tag: "TurnCompleted", stopReason: "completed" });
+      yield* PubSub.publish(events, turnEnds);
+      yield* TestClock.adjust("5 seconds");
+      assert.strictEqual(reads, 2);
+
+      // Six more turns end over the next minute: one read follows them, once the minute is up.
+      for (let turn = 0; turn < 6; turn++) {
+        yield* PubSub.publish(events, turnEnds);
+        yield* TestClock.adjust("9 seconds");
+      }
+      assert.strictEqual(reads, 2);
+      yield* TestClock.adjust("15 seconds");
+      assert.strictEqual(reads, 3);
+
+      // No turn ended since: nothing more to read.
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual(reads, 3);
+    }),
+  );
 });

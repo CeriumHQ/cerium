@@ -8,8 +8,8 @@ import {
   Effect,
   Layer,
   Option,
+  Queue,
   Ref,
-  Result,
   Schedule,
   Stream,
   SubscriptionRef,
@@ -20,6 +20,12 @@ const USAGE_TIMEOUT = Duration.seconds(30);
 
 /** Turns that end this close together are followed by one read. */
 const TURN_SETTLE = Duration.seconds(5);
+
+/**
+ * The least time between the reads one harness's turns ask for. A busy agent ends many turns a
+ * minute, and reading Claude's usage starts a whole Claude Code.
+ */
+const TURN_READ_GAP = Duration.minutes(1);
 
 /** How often the usage is read again while someone watches it. */
 const REFRESH_EVERY = Duration.minutes(5);
@@ -86,8 +92,9 @@ interface State {
 
 /**
  * The usage of every subscribed harness, kept as last read. It is read again whenever someone starts
- * watching, a few seconds after a harness's turns end while someone watches, and every five minutes
- * while someone does; nobody watching, it reads nothing. The limit warnings (limits.ts) always watch.
+ * watching, a few seconds after a harness's turns end (at most once a minute) while someone watches,
+ * and every five minutes while someone does; nobody watching, it reads nothing. The limit warnings
+ * (limits.ts) always watch.
  */
 export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(function* (
   adapters: ReadonlyMap<ProviderId, HarnessAdapter>,
@@ -137,21 +144,31 @@ export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(functio
   const readAll = readSome(order);
 
   // A harness's turns spend its limits: once they settle, its meters are read again for whoever
-  // watches. A turn of an agent whose harness isn't known yet reads them all.
+  // watches, and then not for its turns again for a minute. Turns that end meanwhile ask for one read
+  // when the minute is up. A turn of an agent whose harness isn't known yet reads them all.
+  const turnsEnded = new Map<ProviderId, Queue.Queue<void>>();
+  for (const adapter of adapters.values()) {
+    if (adapter.usage === undefined) continue;
+    const ended = yield* Queue.dropping<void>(1);
+    turnsEnded.set(adapter.provider, ended);
+    yield* Queue.take(ended).pipe(
+      Effect.andThen(Effect.sleep(TURN_SETTLE)),
+      Effect.andThen(
+        Effect.when(readOne(adapter).pipe(Effect.andThen(Effect.sleep(TURN_READ_GAP))), watched),
+      ),
+      Effect.forever,
+      Effect.forkScoped,
+    );
+  }
   const providerOf = new Map<AgentId, ProviderId>();
   yield* events.pipe(
-    Stream.filterMap((event) => {
-      const { agentId, payload } = event;
+    Stream.runForEach(({ agentId, payload }) => {
       if (payload._tag === "SessionStarted") providerOf.set(agentId, payload.provider);
-      return payload._tag === "TurnCompleted" ? Result.succeed(providerOf.get(agentId)) : Result.fail(event);
+      if (payload._tag !== "TurnCompleted") return Effect.void;
+      const provider = providerOf.get(agentId);
+      const asked = [...turnsEnded].filter(([each]) => provider === undefined || each === provider);
+      return Effect.forEach(asked, ([, ended]) => Queue.offer(ended, undefined), { discard: true });
     }),
-    Stream.groupedWithin(64, TURN_SETTLE),
-    Stream.runForEach((ended) =>
-      Effect.when(
-        ended.includes(undefined) ? readAll : readSome(ended.filter((each) => each !== undefined)),
-        watched,
-      ),
-    ),
     Effect.forkScoped,
   );
   yield* Effect.when(readAll, watched).pipe(Effect.repeat(Schedule.spaced(REFRESH_EVERY)), Effect.forkScoped);
