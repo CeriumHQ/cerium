@@ -32,11 +32,14 @@ import {
   lineId,
   linesBetween,
   pickedHunks,
+  sameDiff,
   unstagePaths,
   type DiscardWords,
 } from "./model.ts";
 
 const sideLabel: Readonly<Record<GitSide, string>> = { unstaged: "Unstaged", staged: "Staged" };
+
+const noPicks: ReadonlySet<string> = new Set();
 
 const toggleClass =
   "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
@@ -117,7 +120,13 @@ export function SideDiff({
       gitDiffKey({ root, path, side: shown, from: shown === "staged" ? change?.from : undefined, context }),
     ),
   );
-  const diff = Option.getOrUndefined(AsyncResult.value(result));
+  const read = Option.getOrUndefined(AsyncResult.value(result));
+  // Any change in the repository reads the diff again. One that says the same as the diff shown
+  // leaves that one shown, so its picks hold and its lines aren't drawn again. It's set while
+  // rendering, as React allows for the component's own state.
+  const [held, setHeld] = useState(read);
+  const diff = read !== undefined && held !== undefined && sameDiff(read, held) ? held : read;
+  if (diff !== held) setHeld(diff);
   const failed = AsyncResult.isFailure(result)
     ? reasonOf(Cause.squash(result.cause), "Git couldn't compare that file.")
     : undefined;
@@ -152,14 +161,15 @@ export function SideDiff({
     readonly open: boolean;
   }>();
 
-  // Picks belong to the diff they were made on: one that reads the same keeps them.
-  const signature = diff === undefined ? "" : `${shown}\n${JSON.stringify(diff.hunks)}`;
+  // Picks belong to the diff they were made on, on its side: one that reads the same is the same.
   const [picks, setPicks] = useState<{
-    readonly signature: string;
+    readonly diff: FileDiff;
+    readonly side: GitSide;
     readonly ids: ReadonlySet<string>;
     readonly anchor?: string;
   }>();
-  const picked = picks?.signature === signature ? picks.ids : new Set<string>();
+  const current = picks !== undefined && picks.diff === diff && picks.side === shown ? picks : undefined;
+  const picked = current === undefined ? noPicks : current.ids;
   const hunks = diff?.hunks ?? [];
 
   const act = async (work: () => Promise<unknown>, fallback: string) => {
@@ -169,9 +179,10 @@ export function SideDiff({
       setPicks(undefined);
     } catch (error) {
       setFailure(reasonOf(error, fallback));
-    } finally {
-      refreshGitStatus(registry, root);
     }
+    // Not a `finally`: the React Compiler skips a component that has one. The catch takes every
+    // failure, so this runs either way.
+    refreshGitStatus(registry, root);
   };
   const ask = (words: DiscardWords, run: () => void) => setAsking({ words, run, open: true });
 
@@ -299,13 +310,15 @@ export function SideDiff({
   };
 
   const onPick = (hunk: number, line: number, extend: boolean) => {
+    if (diff === undefined) return;
     const id = lineId(hunk, line);
     const next = new Set(picked);
-    if (extend && picks?.anchor !== undefined && picks.signature === signature) {
-      for (const each of linesBetween(hunks, picks.anchor, id)) next.add(each);
+    const anchor = current === undefined ? undefined : current.anchor;
+    if (extend && anchor !== undefined) {
+      for (const each of linesBetween(hunks, anchor, id)) next.add(each);
     } else if (next.has(id)) next.delete(id);
     else next.add(id);
-    setPicks({ signature, ids: next, anchor: id });
+    setPicks({ diff, side: shown, ids: next, anchor: id });
   };
 
   const stats = diff === undefined ? undefined : diffStats(diff.hunks);

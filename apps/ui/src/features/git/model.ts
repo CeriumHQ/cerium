@@ -1,4 +1,4 @@
-import type { DiffHunk, GitFileChange, GitSide, PickedHunk } from "@cerium/rpc";
+import type { DiffHunk, FileDiff, GitFileChange, GitSide, PickedHunk } from "@cerium/rpc";
 import { Atom } from "effect/reactivity";
 
 // What Source control shows of a repository and does to it: its changed files as a tree of the folders
@@ -185,6 +185,24 @@ export const discardWords = (
 
 /** A changed line of a diff, by its hunk's index and its own within the hunk. */
 export const lineId = (hunk: number, line: number) => `${hunk}:${line}`;
+
+/** Two reads of a diff say the same, line for line. */
+export const sameDiff = (a: FileDiff, b: FileDiff): boolean =>
+  a === b ||
+  (a.binary === b.binary &&
+    a.truncated === b.truncated &&
+    a.hunks.length === b.hunks.length &&
+    a.hunks.every((hunk, at) => {
+      const other = b.hunks[at]!;
+      return (
+        hunk.oldStart === other.oldStart &&
+        hunk.newStart === other.newStart &&
+        hunk.lines.length === other.lines.length &&
+        hunk.lines.every(
+          (line, index) => line.kind === other.lines[index]!.kind && line.text === other.lines[index]!.text,
+        )
+      );
+    }));
 
 /** Every changed line from `from` to `to`, whichever comes first, both included. */
 export const linesBetween = (

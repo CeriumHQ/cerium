@@ -10,6 +10,7 @@ import {
   linesBetween,
   lineId,
   pickedHunks,
+  sameDiff,
   splitMessage,
   unstagePaths,
 } from "../src/features/git/model.ts";
@@ -132,6 +133,17 @@ describe("picking lines", () => {
     // An unchanged line is never picked, whatever was asked.
     expect(picked[1]!.lines.map((line) => line.picked)).toEqual([false, false]);
     expect(picked[1]).toMatchObject({ oldStart: 10, newStart: 10 });
+  });
+
+  it("knows a diff read again that says the same, so its picks hold", () => {
+    const again = structuredClone(hunks);
+    expect(sameDiff({ hunks }, { hunks: again })).toBe(true);
+    expect(sameDiff({ hunks }, { hunks: again, truncated: true })).toBe(false);
+    const edited = hunks.map((hunk, at) =>
+      at === 1 ? { ...hunk, lines: hunk.lines.map((line) => ({ ...line, text: `${line.text}!` })) } : hunk,
+    );
+    expect(sameDiff({ hunks }, { hunks: edited })).toBe(false);
+    expect(sameDiff({ hunks }, { hunks: hunks.slice(1) })).toBe(false);
   });
 });
 
