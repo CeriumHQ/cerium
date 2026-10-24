@@ -18,6 +18,8 @@ import {
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { Git } from "./git.ts";
+
 // What Source control's header does to a folder's repository: which branch is checked out and how it
 // stands against its upstream, switching and managing branches, syncing with the remote, the stash,
 // and merges that stop on conflicts. It runs the user's own `git`, which keeps its credentials and
@@ -344,11 +346,17 @@ export const parseBranches = (
       remote.push({ name, remote: owner, committedAt, subject });
     }
   }
+  // Which local branch follows each remote one; the first listed, when several do.
+  const followers = new Map<string, string>();
+  for (const each of local) {
+    if (each.upstream !== undefined && !followers.has(each.upstream.name))
+      followers.set(each.upstream.name, each.name);
+  }
   return {
     local,
     remote: remote.map((branch) => {
-      const follower = local.find((each) => each.upstream?.name === branch.name);
-      return follower === undefined ? branch : { ...branch, local: follower.name };
+      const follower = followers.get(branch.name);
+      return follower === undefined ? branch : { ...branch, local: follower };
     }),
   };
 };
@@ -431,13 +439,14 @@ export class GitBranches extends Context.Service<
     resolve(root: string, path: string, side: ResolveSide): Effect.Effect<void, GitBranchesError>;
   }
 >()("cerium/backend/GitBranches") {
-  /** Requires `FileSystem`, `Path` and `ChildProcessSpawner`. */
+  /** Requires `FileSystem`, `Path`, `ChildProcessSpawner` and `Git`. */
   static readonly layer = Layer.effect(
     GitBranches,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const git = yield* Git;
 
       const refuse = (message: string) => new GitBranchesError({ message });
       const fail = (message: string) => Effect.fail(refuse(message));
@@ -520,6 +529,15 @@ export class GitBranches extends Context.Service<
         const base = path.resolve(root);
         const info = yield* fs.stat(base).pipe(Effect.mapError(() => refuse("That folder is gone.")));
         if (info.type !== "Directory") return yield* fail("That isn't a folder.");
+        // Where git lately said a repository is, as the rest of Source control remembers it, spares
+        // a git for every read the panel makes.
+        const known = yield* git.repository(base);
+        if (known !== undefined) {
+          const { top, prefix, gitDir } = known;
+          return { base, top, prefix, gitDir } satisfies Repository;
+        }
+        // Outside one git is asked afresh, so a repository made since shows at once and a folder git
+        // refuses says why.
         const result = yield* run(base, [
           "--no-optional-locks",
           "rev-parse",
@@ -537,9 +555,10 @@ export class GitBranches extends Context.Service<
         const [inside, prefix = "", gitDir = "", top = ""] = result.stdout
           .split("\n")
           .map((line) => line.replace(/\r$/, ""));
-        return inside === "true" && gitDir !== "" && top !== ""
-          ? ({ base, top: path.resolve(top), prefix, gitDir } satisfies Repository)
-          : undefined;
+        if (inside !== "true" || gitDir === "" || top === "") return undefined;
+        // A repository made since git was last asked is news to the rest of Source control too.
+        yield* git.forget(base);
+        return { base, top: path.resolve(top), prefix, gitDir } satisfies Repository;
       });
 
       const requireRepository = Effect.fn("GitBranches.requireRepository")(function* (root: string) {
@@ -696,18 +715,23 @@ export class GitBranches extends Context.Service<
 
       const branches = Effect.fn("GitBranches.branches")(function* (root: string) {
         const repository = yield* requireRepository(root);
-        const remotes = yield* remoteNames(repository.base);
-        const listed = yield* runOk(
-          repository.base,
+        const [remotes, listed] = yield* Effect.all(
           [
-            "--no-optional-locks",
-            "for-each-ref",
-            "--sort=-committerdate",
-            `--format=${BRANCH_FORMAT}`,
-            "refs/heads",
-            "refs/remotes",
+            remoteNames(repository.base),
+            runOk(
+              repository.base,
+              [
+                "--no-optional-locks",
+                "for-each-ref",
+                "--sort=-committerdate",
+                `--format=${BRANCH_FORMAT}`,
+                "refs/heads",
+                "refs/remotes",
+              ],
+              "Git couldn't list the branches.",
+            ),
           ],
-          "Git couldn't list the branches.",
+          { concurrency: 2 },
         );
         const { local, remote } = parseBranches(listed.stdout, remotes);
         const truncated = local.length > MAX_LOCAL_BRANCHES || remote.length > MAX_REMOTE_BRANCHES;

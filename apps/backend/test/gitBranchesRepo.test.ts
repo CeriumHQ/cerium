@@ -3,11 +3,12 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { Git } from "../src/git.ts";
 import { GitBranches } from "../src/gitBranches.ts";
 import { madeOnce } from "./repositories.ts";
 
 // Real repositories, as the service sees them.
-const TestLayer = GitBranches.layer.pipe(Layer.provideMerge(NodeServices.layer));
+const TestLayer = GitBranches.layer.pipe(Layer.provide(Git.layer), Layer.provideMerge(NodeServices.layer));
 
 /** Runs git in `cwd` as the test's own user, away from the machine's git configuration. */
 const git = Effect.fn("git")(function* (cwd: string, ...args: Array<string>) {
@@ -146,6 +147,9 @@ describe("GitBranches state and branches", () => {
       assert.deepStrictEqual(state, { repository: false, remotes: [], changes: 0, conflicts: [] });
       const error = yield* branches.branches(box.base).pipe(Effect.flip);
       assert.strictEqual(error.message, "This folder isn't in a git repository.");
+      // One made since shows at once, though git said a moment ago there was none.
+      yield* git(box.base, "init", "-q", "-b", "main");
+      assert.isTrue((yield* branches.state(box.base)).repository);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 

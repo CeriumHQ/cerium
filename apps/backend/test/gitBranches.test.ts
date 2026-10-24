@@ -242,6 +242,15 @@ describe("branch lists", () => {
     ]);
   });
 
+  it("names the first listed of the local branches that follow the same remote one", () => {
+    const output = [
+      line("refs/heads/newer", " ", "origin/main", "", "", "300", "a"),
+      line("refs/heads/main", "*", "origin/main", "", "", "200", "b"),
+      line("refs/remotes/origin/main", " ", "", "", "", "200", "b"),
+    ].join("\n");
+    expect(parseBranches(output, ["origin"]).remote.map((branch) => branch.local)).toEqual(["newer"]);
+  });
+
   it("reads stashes, the user's words and git's own", () => {
     const output = [
       ["abc123abc123", "On main: before the refactor", "1700000000"].join("\0"),
