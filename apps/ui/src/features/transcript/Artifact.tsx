@@ -77,11 +77,24 @@ const subscribeTheme = (onChange: () => void) => {
   return () => observer.disconnect();
 };
 
-/** The window's theme as a page sees it, as a string so the same theme compares equal. */
+/** The theme last read, by the mode and palette it was read under. */
+let readTheme: { readonly under: string; readonly snapshot: string } | undefined;
+
+/**
+ * The window's theme as a page sees it, as a string so the same theme compares equal. It's read again
+ * only once the mode or palette changes: every frame asks for it on each of its renders, and reading
+ * the computed style each time made the browser work out the window's styles again.
+ */
 const themeSnapshot = (): string => {
-  const style = getComputedStyle(document.documentElement);
-  const mode = document.documentElement.dataset["theme"] === "light" ? "light" : "dark";
-  return JSON.stringify(themeFromTokens(mode, (token) => style.getPropertyValue(token)));
+  const { dataset } = document.documentElement;
+  const under = `${dataset["theme"]}:${dataset["palette"]}`;
+  if (readTheme?.under !== under) {
+    const style = getComputedStyle(document.documentElement);
+    const mode = dataset["theme"] === "light" ? "light" : "dark";
+    const theme = themeFromTokens(mode, (token) => style.getPropertyValue(token));
+    readTheme = { under, snapshot: JSON.stringify(theme) };
+  }
+  return readTheme.snapshot;
 };
 
 /** An agent's HTML visual: drawn once its code fence closes, with a placeholder while it streams. */
