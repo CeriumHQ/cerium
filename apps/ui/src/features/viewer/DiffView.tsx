@@ -106,6 +106,35 @@ const NoPick = () => <span className="w-6 shrink-0" aria-hidden="true" />;
 /** A picked line's mark down its left edge. */
 const pickedEdge = "shadow-[inset_2px_0_0_var(--color-accent)]";
 
+/** The words each changed line lost or gained against the line it replaced, by index in the hunk. */
+const rangesOf = (lines: ReadonlyArray<NumberedLine>) => {
+  const pairs = replacedPairs(lines);
+  const ranges = new Map<number, ReadonlyArray<Range>>();
+  for (const [index, other] of pairs) {
+    const line = lines[index]!;
+    if (line.kind !== "removed") continue;
+    const words = changedWords(line.text, lines[other]!.text);
+    if (words === undefined) continue;
+    ranges.set(index, words.removed);
+    ranges.set(other, words.added);
+  }
+  return ranges;
+};
+
+/**
+ * The hunks numbered, the words that changed in each hunk's lines, and each side highlighted. A hook
+ * of its own so the React Compiler keeps them from one render to the next: worked out in the
+ * component, which reads them after the highlighting hooks, they were worked out again on every
+ * render, word-by-word comparisons and all.
+ */
+function useNumbered(hunks: ReadonlyArray<DiffHunk>, path: string) {
+  const numbered = numberHunks(hunks);
+  const ranges = numbered.hunks.map((hunk) => rangesOf(hunk.lines));
+  const oldTokens = useHighlight(numbered.oldText, path);
+  const newTokens = useHighlight(numbered.newText, path);
+  return { hunks: numbered.hunks, ranges, oldTokens, newTokens };
+}
+
 /** One side's line: its number, its marker, and its text with the changed words picked out. */
 function Cell({
   line,
@@ -191,9 +220,8 @@ export function DiffView({
     );
   const edgeOf = (hunk: number, index: number, line: NumberedLine) =>
     picking !== undefined && line.kind !== "context" && picking.picked(hunk, index) ? pickedEdge : "";
-  const numbered = numberHunks(hunks);
-  const oldTokens = useHighlight(numbered.oldText, path);
-  const newTokens = useHighlight(numbered.newText, path);
+  const numbered = useNumbered(hunks, path);
+  const { ranges, oldTokens, newTokens } = numbered;
   const tokensOf = (line: NumberedLine | undefined, side: "old" | "new") => {
     if (line === undefined) return undefined;
     return side === "old"
@@ -208,28 +236,13 @@ export function DiffView({
   const widest = last === undefined ? 1 : Math.max(last.oldStart, last.newStart) + last.lines.length;
   const gutter = `calc(${String(widest).length}ch + 1rem)`;
 
-  /** The words each changed line lost or gained against the line it replaced, by index in the hunk. */
-  const rangesOf = (lines: ReadonlyArray<NumberedLine>) => {
-    const pairs = replacedPairs(lines);
-    const ranges = new Map<number, ReadonlyArray<Range>>();
-    for (const [index, other] of pairs) {
-      const line = lines[index]!;
-      if (line.kind !== "removed") continue;
-      const words = changedWords(line.text, lines[other]!.text);
-      if (words === undefined) continue;
-      ranges.set(index, words.removed);
-      ranges.set(other, words.added);
-    }
-    return ranges;
-  };
-
   return (
     <div
       className={`font-mono text-[12.5px] leading-[1.6] select-text ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
     >
       <div className={layout === "split" || !scroll ? "min-w-full" : "w-max min-w-full"}>
         {numbered.hunks.map((hunk, hunkIndex) => {
-          const ranges = rangesOf(hunk.lines);
+          const changed = ranges[hunkIndex]!;
           const indexOf = new Map(hunk.lines.map((line, index) => [line, index]));
           const actions = picking?.hunkActions(hunkIndex);
           return (
@@ -254,7 +267,7 @@ export function DiffView({
                         <Cell
                           line={line}
                           number={line.new}
-                          ranges={ranges.get(index) ?? []}
+                          ranges={changed.get(index) ?? []}
                           tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
                           gutter={gutter}
                           wrap={!scroll}
@@ -272,7 +285,7 @@ export function DiffView({
                           <Cell
                             line={row.left}
                             number={row.left?.old}
-                            ranges={row.left ? (ranges.get(indexOf.get(row.left)!) ?? []) : []}
+                            ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
                             tokens={tokensOf(row.left, "old")}
                             gutter={gutter}
                             wrap
@@ -288,7 +301,7 @@ export function DiffView({
                             number={row.right?.new}
                             ranges={
                               row.right && row.right.kind !== "context"
-                                ? (ranges.get(indexOf.get(row.right)!) ?? [])
+                                ? (changed.get(indexOf.get(row.right)!) ?? [])
                                 : []
                             }
                             tokens={tokensOf(row.right, "new")}
