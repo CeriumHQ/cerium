@@ -10,34 +10,43 @@ import { openSignIn } from "../../../backend/signIn.ts";
 import { CeriumMark } from "../../../components/CeriumMark.tsx";
 import { ProviderLogo } from "../../../components/ProviderLogo.tsx";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
-import { lightOf, markIn, usePose, type Posing } from "../scene.tsx";
+import { lightOf, markIn, usePose, usePulse, type Posing } from "../scene.tsx";
 import type { ChapterProps } from "../Welcome.tsx";
 
 /** How long after the chapter comes in the phone's notifications arrive, one and then the other. */
 const NOTIFY_AFTER = [1_500, 2_700] as const;
 
-/** Every beam meets again at the phone: whatever the agents are doing reaches you there. */
-const pose: Posing = (stage) => {
-  const { x, y, size } = markIn(stage, "everywhere", {
-    x: stage.width * 0.5,
-    y: stage.height * 0.5,
-    size: 130,
-  });
-  const mark = { x, y };
-  const phone = lightOf(stage, "phone", "everywhere");
-  const notice = lightOf(stage, "notice", "everywhere");
-  // The beams land on the notification, inside the phone's edge.
-  const target = {
-    x: (phone?.x ?? stage.width * 0.8) + 10,
-    y: notice === undefined ? mark.y : notice.y + notice.height * 0.4,
+/**
+ * Every beam meets again at the phone, once a notification arrives there: whatever the agents are
+ * doing reaches you.
+ */
+const pose =
+  (arrived: boolean): Posing =>
+  (stage) => {
+    const { x, y, size } = markIn(stage, "everywhere", {
+      x: stage.width * 0.5,
+      y: stage.height * 0.5,
+      size: 130,
+    });
+    const mark = { x, y };
+    const phone = lightOf(stage, "phone", "everywhere");
+    const notice = lightOf(stage, "notice", "everywhere");
+    // The beams land on the notification, inside the phone's edge.
+    const target = {
+      x: (phone?.x ?? stage.width * 0.8) + 10,
+      y: notice === undefined ? mark.y : notice.y + notice.height * 0.4,
+    };
+    return {
+      mark: { ...mark, size, opacity: 1 },
+      incoming: { from: { x: mark.x + stage.width * 0.04, y: -80 }, intensity: 1 },
+      beams: [-2, -1, 0, 1, 2].map((offset) => ({
+        x: target.x,
+        y: target.y + offset * 3,
+        intensity: arrived ? 0.7 : 0,
+      })),
+      dust: 0.7,
+    };
   };
-  return {
-    mark: { ...mark, size, opacity: 1 },
-    incoming: { from: { x: mark.x + stage.width * 0.04, y: -80 }, intensity: 1 },
-    beams: [-2, -1, 0, 1, 2].map((offset) => ({ x: target.x, y: target.y + offset * 3, intensity: 0.7 })),
-    dust: 0.7,
-  };
-};
 
 const messageOf = (error: unknown) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
@@ -55,7 +64,11 @@ export function Everywhere({ number, titleId, active, onNext }: ChapterProps) {
     const timers = NOTIFY_AFTER.map((after, index) => setTimeout(() => setArrived(index + 1), after));
     return () => timers.forEach(clearTimeout);
   }, [active]);
-  usePose(active, pose, arrived);
+  usePose(active, pose(arrived > 0), arrived);
+  const pulse = usePulse();
+  useEffect(() => {
+    if (arrived === 1) pulse();
+  }, [arrived, pulse]);
 
   return (
     <div className="grid h-full grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] items-center gap-[clamp(24px,5vw,96px)] px-(--welcome-gutter) pb-[2vh]">

@@ -3,7 +3,7 @@ import { OFFERED_PROVIDERS, type HarnessStatus, type ProviderId } from "@cerium/
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowUpRight, Check, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { harnessesAtom, modelsAtom } from "../../../backend/atoms.ts";
 import { ProviderLogo } from "../../../components/ProviderLogo.tsx";
@@ -11,7 +11,7 @@ import { accountLabel } from "../../settings/harnessModel.ts";
 import { harnessName, installUrl, useHarnessFlows } from "../../settings/Harnesses.tsx";
 import { harnessReadiness, readinessSummary, type Readiness } from "../model.ts";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
-import { lightOf, markIn, usePose, type Posing } from "../scene.tsx";
+import { lightOf, markIn, usePose, usePulse, type Posing } from "../scene.tsx";
 import type { ChapterProps } from "../Welcome.tsx";
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
@@ -61,6 +61,14 @@ export function Agents({ number, titleId, active }: ChapterProps) {
     harnessReadiness(statuses?.find((status) => status.provider === provider)),
   );
   usePose(active, pose(readiness), readiness.join());
+  // A harness coming ready, as a sign-in finishes, sends a pulse down the light to it.
+  const pulse = usePulse();
+  const ready = readiness.filter((each) => each === "ready").length;
+  const readyBefore = useRef(ready);
+  useEffect(() => {
+    if (ready > readyBefore.current && active) pulse();
+    readyBefore.current = ready;
+  }, [ready, active, pulse]);
   const summary = readinessSummary(readiness);
 
   return (

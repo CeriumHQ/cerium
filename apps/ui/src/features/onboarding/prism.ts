@@ -77,7 +77,7 @@ const BEAM_END_WIDTH = 64;
 const INCOMING_WIDTH = 22;
 
 /** How much dust drifts through the stage. */
-const MOTES = 90;
+const MOTES = 240;
 
 /** How stiff the scene's easing from pose to pose is, and how much it's damped (critically, here). */
 const STIFFNESS = 38;
@@ -412,7 +412,6 @@ export class Prism {
         0.05 * beam.intensity * strength,
       ]);
     }
-    if (scene.dust > 0) this.#drawDust(glow, scene, lightTo, beams, palette);
 
     context.setTransform(scale, 0, 0, scale, 0, 0);
     context.globalCompositeOperation = palette.dark ? "lighter" : "source-over";
@@ -431,7 +430,10 @@ export class Prism {
       if (beam.intensity <= 0.002) continue;
       line(context, beam.from, beam.to, beam.color, 1.2, [(palette.dark ? 0.95 : 0.85) * beam.intensity, 0]);
     }
-    if (pulse !== undefined) this.#drawPulse(context, pulse, scene.from, lightTo, beams, palette);
+    if (scene.dust > 0) this.#drawDust(context, scene, lightTo, beams, palette);
+    if (pulse !== undefined && scene.incoming > 0.05) {
+      this.#drawPulse(context, pulse, scene.incoming, scene.from, lightTo, beams, palette);
+    }
 
     context.globalCompositeOperation = "source-over";
     if (scene.mark.opacity > 0.002) {
@@ -446,9 +448,9 @@ export class Prism {
     }
   }
 
-  /** Dust drifting about the stage, seen only where light falls on it. */
+  /** Dust drifting about the stage, seen only where light falls on it: a glint, and a little halo. */
   #drawDust(
-    context: OffscreenCanvasRenderingContext2D,
+    context: CanvasRenderingContext2D,
     scene: Scene,
     lightTo: Point,
     beams: ReadonlyArray<Ray>,
@@ -457,8 +459,8 @@ export class Prism {
     const { width, height } = this.#size;
     const time = this.#reduceMotion ? 0 : this.#time;
     for (const mote of this.#motes) {
-      const x =
-        ((mote.x + Math.sin(time * mote.speed + mote.phase) * 0.04 + time * mote.speed * 0.08) % 1) * width;
+      const across = mote.x + Math.sin(time * mote.speed + mote.phase) * 0.04 + time * mote.speed * 0.08;
+      const x = (((across % 1) + 1) % 1) * width;
       const y = (mote.y + Math.cos(time * mote.speed * 0.8 + mote.phase) * 0.05) * height;
       const point = { x, y };
       let lit = litBy(point, scene.from, lightTo, INCOMING_WIDTH * 1.6) * scene.incoming;
@@ -470,12 +472,18 @@ export class Prism {
           color = beam.color;
         }
       }
-      const twinkle = 0.6 + 0.4 * Math.sin(time * 3 + mote.phase * 5);
-      const alpha = lit * scene.dust * twinkle * (palette.dark ? 0.9 : 0.6);
-      if (alpha < 0.02) continue;
-      context.fillStyle = rgba(color, alpha);
+      const twinkle = 0.55 + 0.45 * Math.sin(time * 3 + mote.phase * 5);
+      const alpha = lit * scene.dust * twinkle * (palette.dark ? 1 : 0.7);
+      if (alpha < 0.03) continue;
+      const halo = mote.size * 3.2;
+      const glow = context.createRadialGradient(x, y, 0, x, y, halo);
+      glow.addColorStop(0, rgba(color, alpha * 0.55));
+      glow.addColorStop(1, rgba(color, 0));
+      context.fillStyle = glow;
+      context.fillRect(x - halo, y - halo, halo * 2, halo * 2);
+      context.fillStyle = rgba(palette.dark ? SHINE : color, alpha);
       context.beginPath();
-      context.arc(x, y, mote.size * 1.6, 0, Math.PI * 2);
+      context.arc(x, y, mote.size * 0.55, 0, Math.PI * 2);
       context.fill();
     }
   }
@@ -484,6 +492,7 @@ export class Prism {
   #drawPulse(
     context: CanvasRenderingContext2D,
     t: number,
+    incoming: number,
     from: Point,
     to: Point,
     beams: ReadonlyArray<Ray>,
@@ -499,7 +508,7 @@ export class Prism {
     const fade = Math.sin(Math.PI * t);
     if (t < 0.5) {
       const along = easeInOut(t / 0.5);
-      blob(lerpPoint(from, to, along), palette.light, 0.9 * fade, 26);
+      blob(lerpPoint(from, to, along), palette.light, 0.9 * fade * incoming, 26);
     } else {
       const along = easeOut((t - 0.5) / 0.5);
       for (const beam of beams) {

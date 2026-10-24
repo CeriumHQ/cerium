@@ -202,13 +202,14 @@ function Pane({
         aria-hidden="true"
         className="welcome-pane-glow pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
       />
+      <span aria-hidden="true" className="welcome-pane-caustic pointer-events-none absolute" />
       <span className="absolute top-[clamp(10px,1.1vw,16px)] right-[clamp(10px,1.1vw,16px)] grid size-4 place-items-center rounded-full border border-fg-primary/30 transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
         <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
       </span>
       <span className="relative truncate font-display text-[clamp(14px,1.35vw,20px)] font-light tracking-tight font-stretch-expanded [font-size-adjust:none]">
         {label}
       </span>
-      <span className="relative mt-1 truncate font-mono text-[10px] tracking-[0.12em] text-fg-tertiary uppercase">
+      <span className="relative mt-1 truncate font-mono text-[10px] tracking-[0.12em] text-fg-tertiary uppercase group-data-checked:text-fg-secondary">
         {kind}
       </span>
     </span>

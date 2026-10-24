@@ -93,6 +93,13 @@ export function SceneProvider({
       );
     };
     element.addEventListener("pointermove", point);
+    // A click on the stage, not on one of its controls, sends a pulse down the light.
+    const press = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : undefined;
+      if (event.button !== 0 || target?.closest("button, a, input, textarea, [role='radio']") != null) return;
+      prism.pulse();
+    };
+    element.addEventListener("pointerdown", press);
     const visibility = () => {
       prism.hidden = document.hidden;
     };
@@ -101,6 +108,7 @@ export function SceneProvider({
       sized.disconnect();
       themed.disconnect();
       element.removeEventListener("pointermove", point);
+      element.removeEventListener("pointerdown", press);
       document.removeEventListener("visibilitychange", visibility);
       scene.attach(undefined);
       prism.dispose();

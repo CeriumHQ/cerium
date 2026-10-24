@@ -11,7 +11,7 @@ import { themeAtom } from "../../settings/preferences.ts";
 import { useShownTheme } from "../../settings/theme.ts";
 import { harnessReadiness } from "../model.ts";
 import { Eyebrow, Headline, Keycap, Reveal } from "../parts.tsx";
-import { fan, markIn, usePose, type Posing } from "../scene.tsx";
+import { fan, markIn, usePose, usePulse, useSettled, type Posing } from "../scene.tsx";
 import type { ChapterProps } from "../Welcome.tsx";
 
 /** The keys worth knowing from the first minute. */
@@ -54,6 +54,8 @@ export function Ready({ number, titleId, active, onGo }: ChapterProps) {
     (provider) => harnessReadiness(statuses.find((status) => status.provider === provider)) === "ready",
   );
   usePose(active, pose(OFFERED_PROVIDERS.map((provider) => ready.includes(provider))), ready.join());
+  // Once in, the light runs through the mark once more, out to every harness that's ready.
+  useSettled(active, usePulse(), 900);
 
   const glass = palettes.find((each) => each.id === palette)?.label ?? "Cerium";
   const mode = theme === "system" ? `follows the system, ${shown} now` : theme;
