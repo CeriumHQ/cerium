@@ -28,7 +28,7 @@ import { DEFAULT_RELAY_URL } from "@cerium/account";
 import { thisInstallation, thisMachine } from "./device.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
-import { parentPort as shell } from "./shell.ts";
+import { isSetPath, parentPort as shell } from "./shell.ts";
 import { fileEffortRouterKey, fileVault, shellEffortRouterKey, shellVault } from "./vault.ts";
 
 const flag = (name: string) =>
@@ -44,9 +44,12 @@ const appVersion = flag("app-version") ?? "dev";
 const token = randomBytes(32).toString("hex");
 mkdirSync(dataDirectory, { recursive: true });
 
-// Stopping goes through runMain's signal handling, so the backend's finalizers run.
+// Stopping goes through runMain's signal handling, so the backend's finalizers run. A PATH the user's
+// shell gave differently from the one this started on, which the shell asks for meanwhile, is what
+// the harnesses and terminals started from now on find their programs on.
 shell?.on("message", ({ data }) => {
   if (data === "stop") process.emit("SIGTERM", "SIGTERM");
+  if (isSetPath(data)) process.env["PATH"] = data.path;
 });
 
 // Until onboarding builds the catalog with the user, these lead it, followed by every model the

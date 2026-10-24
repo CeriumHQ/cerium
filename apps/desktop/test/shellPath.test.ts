@@ -1,6 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { mergePaths, pathBetweenMarks, withoutAppImage } from "../src/shellPath.ts";
+import {
+  mergePaths,
+  pathBetweenMarks,
+  rememberedPath,
+  rememberPath,
+  withoutAppImage,
+  withShellPath,
+} from "../src/shellPath.ts";
 
 describe("pathBetweenMarks", () => {
   it("reads the PATH between the marks, whatever the profile printed around it", () => {
@@ -41,5 +51,30 @@ describe("withoutAppImage", () => {
 
   it("leaves a folder that only starts like the AppImage's", () => {
     expect(withoutAppImage({ PATH: `${appDir}-other/bin` }, appDir)).toEqual({ PATH: `${appDir}-other/bin` });
+  });
+});
+
+describe("withShellPath", () => {
+  it("puts the shell's PATH ahead of the session's, and leaves the session's alone without one", () => {
+    const env = { PATH: "/usr/bin:/bin", HOME: "/home/me" };
+    expect(withShellPath(env, "/home/me/.local/bin:/usr/bin")).toEqual({
+      PATH: "/home/me/.local/bin:/usr/bin:/bin",
+      HOME: "/home/me",
+    });
+    expect(withShellPath(env, undefined)).toBe(env);
+  });
+});
+
+describe("rememberedPath", () => {
+  it("gives back the PATH kept last time, and none before one was kept", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "cerium-shell-path-"));
+    try {
+      const file = join(folder, "shell-path.txt");
+      expect(rememberedPath(file)).toBeUndefined();
+      await rememberPath(file, "/home/me/.local/bin:/usr/bin");
+      expect(rememberedPath(file)).toBe("/home/me/.local/bin:/usr/bin");
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

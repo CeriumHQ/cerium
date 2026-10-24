@@ -29,8 +29,9 @@ const isConnection = (message: unknown): message is BackendConnection =>
   typeof (message as { url?: unknown }).url === "string" &&
   typeof (message as { token?: unknown }).token === "string";
 
-/** Starts the backend with `env` (shellPath.ts), restarting it whenever it stops. */
-export const startBackend = (env: NodeJS.ProcessEnv) => {
+/** Starts the backend with `initial` (shellPath.ts), restarting it whenever it stops. */
+export const startBackend = (initial: NodeJS.ProcessEnv) => {
+  let env = initial;
   const logs = app.getPath("logs");
   mkdirSync(logs, { recursive: true });
   const log = createWriteStream(join(logs, "backend.log"), { flags: "a" });
@@ -79,21 +80,37 @@ export const startBackend = (env: NodeJS.ProcessEnv) => {
   };
   launch();
 
+  /** Where the UI connects, once the backend listens. */
+  const connectionOf = (): Promise<BackendConnection> => {
+    if (connection !== undefined) return Promise.resolve(connection);
+    return new Promise((resolve, reject) => {
+      const ready = (listening: BackendConnection) => {
+        clearTimeout(timeout);
+        resolve(listening);
+      };
+      const timeout = setTimeout(() => {
+        waiting = waiting.filter((other) => other !== ready);
+        reject(new Error("Cerium's backend didn't start in time."));
+      }, CONNECT_TIMEOUT_MS);
+      waiting.push(ready);
+    });
+  };
+
   return {
-    /** Where the UI connects, once the backend listens. */
-    connection: (): Promise<BackendConnection> => {
-      if (connection !== undefined) return Promise.resolve(connection);
-      return new Promise((resolve, reject) => {
-        const ready = (listening: BackendConnection) => {
-          clearTimeout(timeout);
-          resolve(listening);
-        };
-        const timeout = setTimeout(() => {
-          waiting = waiting.filter((other) => other !== ready);
-          reject(new Error("Cerium's backend didn't start in time."));
-        }, CONNECT_TIMEOUT_MS);
-        waiting.push(ready);
-      });
+    connection: connectionOf,
+    /**
+     * Gives the backend another PATH: the running one takes it for what it starts next, once it
+     * listens (and so listens to the shell), and any that starts after it starts with it.
+     */
+    setPath: (path: string) => {
+      env = { ...env, PATH: path };
+      const running = child;
+      void connectionOf().then(
+        () => {
+          if (child === running) running?.postMessage({ _tag: "SetPath", path });
+        },
+        () => undefined,
+      );
     },
     /** Asks the backend to shut down, so its finalizers run, and kills it if it takes too long. */
     stop: (): Promise<void> =>

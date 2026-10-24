@@ -23,7 +23,13 @@ import {
 import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { saveImage } from "./saveImage.ts";
-import { backendEnvironment } from "./shellPath.ts";
+import {
+  loginShellPath,
+  rememberedPath,
+  rememberPath,
+  sessionEnvironment,
+  withShellPath,
+} from "./shellPath.ts";
 import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
@@ -369,13 +375,40 @@ nativeTheme.on("updated", () => {
 
 nameAppForNotifications();
 
-void app.whenReady().then(() => {
-  // The backend looks for the harnesses on the PATH a terminal would have (shellPath.ts).
-  if (devUrl === undefined) {
-    backendStarting = backendEnvironment().then((env) => {
-      backend = startBackend(env);
-    });
+/** Where the PATH the user's shell gave last time is kept, so a start needn't wait for the shell. */
+const SHELL_PATH_FILE = "shell-path.txt";
+
+/**
+ * Starts the backend, which looks for the harnesses on the PATH a terminal would have (shellPath.ts).
+ * Asking the user's shell for it can take seconds, and the window waits for the backend, so a start
+ * after the first goes ahead on the PATH the shell gave last time, and a PATH it gives differently
+ * now reaches the running backend once it's there.
+ */
+const launchBackend = async () => {
+  if (process.platform === "win32") {
+    backend = startBackend(process.env);
+    return;
   }
+  const env = sessionEnvironment();
+  const file = join(app.getPath("userData"), SHELL_PATH_FILE);
+  const remembered = rememberedPath(file);
+  const asked = loginShellPath(env).then((path) => {
+    if (path !== undefined && path !== remembered) void rememberPath(file, path);
+    return path;
+  });
+  if (remembered === undefined) {
+    backend = startBackend(withShellPath(env, await asked));
+    return;
+  }
+  const started = startBackend(withShellPath(env, remembered));
+  backend = started;
+  void asked.then((path) => {
+    if (path !== undefined && path !== remembered) started.setPath(withShellPath(env, path)["PATH"] ?? path);
+  });
+};
+
+void app.whenReady().then(() => {
+  if (devUrl === undefined) backendStarting = launchBackend();
   updater = startUpdater();
   // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
   // gets its groups from what a right-click was on now.

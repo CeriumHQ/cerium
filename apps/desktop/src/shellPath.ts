@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 
 // The environment the packaged app's backend, and every harness and terminal it starts, runs with.
@@ -8,7 +10,8 @@ import { userInfo } from "node:os";
 // /opt/homebrew/bin either. So the user's shell runs once, as a terminal starts it, and its PATH comes first. An
 // AppImage's runtime also puts its own folders on PATH and the library and data paths, which would
 // reach every program the backend starts; they are taken off again. Windows keeps PATH in the
-// registry, so every app has it already.
+// registry, so every app has it already. A profile can take seconds to load, so the PATH it gave is
+// kept for the next start, which starts the backend on it while the shell is asked again.
 
 /** Printed around the PATH, so what the shell's profile prints itself is left out. */
 const MARK = "__CERIUM_PATH__";
@@ -45,7 +48,7 @@ export const withoutAppImage = (env: NodeJS.ProcessEnv, appDir: string): NodeJS.
 };
 
 /** The PATH the user's login shell sets up, with its interactive profile; undefined if it can't say. */
-const loginShellPath = (env: NodeJS.ProcessEnv): Promise<string | undefined> => {
+export const loginShellPath = (env: NodeJS.ProcessEnv): Promise<string | undefined> => {
   const shell = env["SHELL"] || userInfo().shell || "/bin/sh";
   return new Promise((resolve) => {
     execFile(
@@ -58,12 +61,25 @@ const loginShellPath = (env: NodeJS.ProcessEnv): Promise<string | undefined> => 
   });
 };
 
-/** The backend's environment: Cerium's own on Windows; elsewhere, as described above. */
-export const backendEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
-  if (process.platform === "win32") return process.env;
+/** The backend's environment before the shell's PATH joins it: Cerium's own, less an AppImage's folders. */
+export const sessionEnvironment = (): NodeJS.ProcessEnv => {
   const appDir = process.env["APPDIR"];
-  const env = appDir ? withoutAppImage(process.env, appDir) : { ...process.env };
-  const path = await loginShellPath(env);
-  if (path !== undefined) env["PATH"] = mergePaths(path, env["PATH"] ?? "");
-  return env;
+  return appDir ? withoutAppImage(process.env, appDir) : { ...process.env };
 };
+
+/** `env` with the shell's `path` ahead of its own PATH; `env` itself without one. */
+export const withShellPath = (env: NodeJS.ProcessEnv, path: string | undefined): NodeJS.ProcessEnv =>
+  path === undefined ? env : { ...env, PATH: mergePaths(path, env["PATH"] ?? "") };
+
+/** The shell's PATH as it was kept in `file` last time; undefined when none was. */
+export const rememberedPath = (file: string): string | undefined => {
+  try {
+    return readFileSync(file, "utf8") || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Keeps the shell's PATH in `file` for the next start; one that can't be kept is asked for again then. */
+export const rememberPath = (file: string, path: string): Promise<void> =>
+  writeFile(file, path, "utf8").catch(() => undefined);
