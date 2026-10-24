@@ -66,6 +66,7 @@ import {
   answerQuestion,
   sendMessage,
   setThreadArchived,
+  setThreadLater,
   settledEventsAtom,
   stopAgent,
   stopThread,
@@ -153,14 +154,14 @@ import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import { ArchiveWorktreeDialog } from "../features/threads/ArchiveWorktree.tsx";
-import type { ThreadSummary } from "../features/threads/model.ts";
+import { LATER_VERSION, type ThreadSummary } from "../features/threads/model.ts";
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { EDIT_VERSION, STEER_VERSION } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
-import { StatusIndicator } from "../features/threads/StatusIndicator.tsx";
+import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
 import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
@@ -666,6 +667,7 @@ function Workspace() {
   const [stopAllOpen, setStopAllOpen] = useState(false);
   const rename = useAtomSet(renameThread, { mode: "promise" });
   const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
+  const putOff = useAtomSet(setThreadLater, { mode: "promise" });
   const remove = useAtomSet(deleteThread, { mode: "promise" });
   const save = useAtomSet(saveProject, { mode: "promise" });
   /** Runs a backend action, reporting a failure in the notice bar; resolves whether it worked. */
@@ -1618,7 +1620,6 @@ function Workspace() {
     }
     const newTitle = mode === "work" ? "New thread" : "New chat";
     if (tab === undefined) return { title: newTitle };
-    const status = tab.status ?? "idle";
     // Threads side by side often differ only in their model (multi agent), so it leads the detail.
     const shownLead = resolve(leaf.key).shown;
     const lead = shownLead ? leadOf(shownLead.agents) : undefined;
@@ -1628,8 +1629,8 @@ function Workspace() {
     return {
       title: tab.title || newTitle,
       ...(detail ? { detail } : {}),
-      icon: tab.draft ? undefined : status !== "idle" || tab.unread ? (
-        <StatusIndicator status={status} unread={tab.unread === true} />
+      icon: tab.draft ? undefined : tab.thread ? (
+        <ThreadMark thread={tab.thread} unread={tab.unread === true} size="small" />
       ) : tab.provider ? (
         <ProviderLogo provider={tab.provider} size={12} />
       ) : undefined,
@@ -1738,6 +1739,19 @@ function Workspace() {
               },
             )
           }
+          {...(drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LATER_VERSION
+            ? {
+                onLater: (threadId: string, until: number | undefined) =>
+                  void attempt(
+                    putOff({
+                      payload: { threadId: threadId as ThreadId, ...(until === undefined ? {} : { until }) },
+                    }),
+                  ).then((done) => {
+                    if (done) refreshThreads();
+                  }),
+              }
+            : {})}
+          open={tabs.tabs.map((tab) => tab.key)}
           harnesses={indicators}
           onOpenSettings={openSettings}
           searchOpen={searchOpen}

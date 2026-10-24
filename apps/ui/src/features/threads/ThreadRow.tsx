@@ -6,14 +6,13 @@ import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
 import { DeleteThreadDialog } from "./Delete.tsx";
 import type { ThreadSummary } from "./model.ts";
-import { ProjectBadge } from "./ProjectBadge.tsx";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { moreRoom, RowFrame, yieldsToMore } from "./RowFrame.tsx";
-import { CornerStatus, ProviderStack, StatusIndicator } from "./StatusIndicator.tsx";
+import { ProviderStack, ThreadMark } from "./StatusIndicator.tsx";
 
 /**
- * What leads a row: the thread's project badge with its status on the corner, which tells projects
- * apart when the list holds several; a bare status dot when it doesn't; or nothing.
+ * What leads a row: the thread's mark (project, harness and status) at the size of a project badge,
+ * which tells projects apart when the list holds several; a smaller one when it doesn't; or nothing.
  */
 export type RowMark = "badge" | "dot" | "none";
 
@@ -66,22 +65,9 @@ export function ThreadRow({
   const offline = thread.elsewhere?.online === false;
   const content = (
     <>
-      {mark === "badge" ? (
-        <span className="relative shrink-0">
-          {thread.folder && thread.project ? (
-            <ProjectBadge
-              folder={thread.folder}
-              name={thread.project}
-              lookup={thread.elsewhere === undefined}
-            />
-          ) : (
-            <span className="block size-4.5" />
-          )}
-          <CornerStatus status={thread.status} unread={unread} />
-        </span>
-      ) : mark === "dot" ? (
-        <StatusIndicator status={thread.status} unread={unread} />
-      ) : null}
+      {mark === "none" ? null : (
+        <ThreadMark thread={thread} unread={unread} size={mark === "badge" ? "medium" : "small"} />
+      )}
       {editing ? (
         <TitleField title={thread.title} onDone={finish} className={`-mx-1 h-6 ${titleClass}`} />
       ) : (
@@ -90,7 +76,9 @@ export function ThreadRow({
           {title}
         </span>
       )}
-      {harness || thread.providers.length > 1 ? <ProviderStack providers={thread.providers} /> : null}
+      {new Set(thread.providers).size > 1 || (harness && mark === "none") ? (
+        <ProviderStack providers={thread.providers} />
+      ) : null}
       {thread.machine ? (
         <span
           title={offline ? `On ${thread.machine}, which is offline` : `On ${thread.machine}`}

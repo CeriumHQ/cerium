@@ -148,6 +148,7 @@ export function useThreadTabs({
         unread: thread.unread,
         ...(thread.providers[0] ? { provider: thread.providers[0] } : {}),
         ...(thread.project ? { project: thread.project } : {}),
+        thread,
       };
     const draft = drafts.find((candidate) => candidate.key === key);
     return {

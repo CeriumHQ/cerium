@@ -11,7 +11,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel } from "../../lib/keys.ts";
 import { shortAgo } from "../../lib/time.ts";
 import type { ThreadSummary } from "../threads/model.ts";
-import { StatusIndicator } from "../threads/StatusIndicator.tsx";
+import { ThreadMark } from "../threads/StatusIndicator.tsx";
 import {
   highlight,
   MIN_MESSAGE_QUERY,
@@ -230,8 +230,8 @@ function ResultRow({
   const offline = thread.elsewhere?.online === false;
   return (
     <>
-      <span className="mt-[5px] grid shrink-0 place-items-center max-md:mt-[7px]">
-        <StatusIndicator status={thread.status} unread={thread.unread} />
+      <span className="mt-[3px] grid shrink-0 place-items-center max-md:mt-[5px]">
+        <ThreadMark thread={thread} unread={thread.unread} size="small" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2">

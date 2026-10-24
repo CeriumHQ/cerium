@@ -22,7 +22,7 @@ import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Me
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import type { ThreadSummary } from "../threads/model.ts";
 import { paneDrag } from "../split/drag.ts";
-import { StatusIndicator } from "../threads/StatusIndicator.tsx";
+import { ThreadMark } from "../threads/StatusIndicator.tsx";
 import type { GitHubTab } from "../github/model.ts";
 import type { FileTab } from "../viewer/model.ts";
 
@@ -39,6 +39,8 @@ export interface TabView {
   /** Its lead's harness. */
   readonly provider?: ProviderId;
   readonly project?: string;
+  /** The thread it holds, once the list has brought it: what its mark is drawn from. */
+  readonly thread?: ThreadSummary;
   /** It shows in a pane beside the focused one. */
   readonly beside?: boolean;
   /** A work thread's file the viewer shows, rather than a thread. */
@@ -285,10 +287,7 @@ function ThreadTab({
   onReopen?: () => void;
   onSplit?: (side: "right" | "bottom") => void;
 }) {
-  const status = tab.status ?? "idle";
   const unread = tab.unread === true && !active;
-  // A status worth seeing leads the tab; a resting thread shows its harness instead.
-  const signal = !tab.draft && (status !== "idle" || unread);
   return (
     <ContextMenuArea
       menu={
@@ -372,8 +371,10 @@ function ThreadTab({
               >
                 <PenLine size={8} strokeWidth={2.25} />
               </span>
-            ) : signal ? (
-              <StatusIndicator status={status} unread={unread} />
+            ) : tab.thread ? (
+              <span className={active || unread || tab.thread.status !== "idle" ? "" : "opacity-80"}>
+                <ThreadMark thread={tab.thread} unread={unread} size="small" />
+              </span>
             ) : tab.provider ? (
               <span className={active ? "" : "opacity-70 grayscale-[0.4]"}>
                 <ProviderLogo provider={tab.provider} size={12} />
