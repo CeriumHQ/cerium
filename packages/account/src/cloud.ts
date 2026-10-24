@@ -8,7 +8,7 @@ import {
   type ReadEntry,
   type ThreadId,
 } from "@cerium/protocol";
-import { Context, Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from "effect";
+import { Context, Effect, Layer, Option, PubSub, Schema, Stream, SubscriptionRef } from "effect";
 
 import { Account, AccountError, type RelayEvent } from "./account.ts";
 
@@ -100,12 +100,19 @@ export class CloudThreads extends Context.Service<
       const threads = yield* SubscriptionRef.make<AccountThreads>(empty);
       const drafts = yield* SubscriptionRef.make<AccountDrafts>(noDrafts);
 
+      // Most of what the relay says (an upload accepted, a tunnel's frame) changes neither, and every
+      // value set goes whole to every window watching, so only a changed one is set.
+      const changedFrom = <A>(current: A, next: A) => (next === current ? Option.none() : Option.some(next));
       yield* Effect.gen(function* () {
         const events = yield* account.relayEvents;
         while (true) {
           const event = yield* PubSub.take(events);
-          yield* SubscriptionRef.update(threads, (current) => applyNotice(current, event));
-          yield* SubscriptionRef.update(drafts, (current) => applyDraftNotice(current, event));
+          yield* SubscriptionRef.updateSome(threads, (current) =>
+            changedFrom(current, applyNotice(current, event)),
+          );
+          yield* SubscriptionRef.updateSome(drafts, (current) =>
+            changedFrom(current, applyDraftNotice(current, event)),
+          );
         }
       }).pipe(Effect.scoped, Effect.forkScoped);
 
