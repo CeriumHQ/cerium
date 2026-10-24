@@ -334,6 +334,17 @@ const FAR = "1500px";
 /** Room around a page saved as an image, beside the page's own width. */
 const SAVED_MARGIN = 24;
 
+/** Saves an artifact's image where the user picks, or downloads it where the window can't ask. */
+const savePngAs = async (image: { readonly mediaType: string; readonly data: string }, fileName: string) => {
+  const bridge = shellBridge();
+  if (bridge?.saveImage) {
+    await bridge.saveImage(`data:${image.mediaType};base64,${image.data}`, fileName);
+    return;
+  }
+  const bytes = Uint8Array.from(atob(image.data), (char) => char.charCodeAt(0));
+  download(new Blob([bytes], { type: image.mediaType }), fileName);
+};
+
 /** Taking the artifact out of the conversation: an image or a page to keep, or a browser tab. */
 function ArtifactMenu({
   code,
@@ -360,29 +371,22 @@ function ArtifactMenu({
       title: name,
     });
 
+  // Without a `try`, whose `finally` or conditionals would make the React Compiler skip the menu.
   const savePng = async () => {
     const theme = JSON.parse(themeSnapshot()) as ArtifactTheme;
     setSaving(true);
-    try {
-      const { mediaType, data } = await render({
-        payload: {
-          html: withLocalFiles(code, files ?? NO_FILES),
-          width: Math.round(widthOf()) + SAVED_MARGIN * 2,
-          mode: theme.mode,
-          variables: theme.variables,
-        },
-      });
-      const fileName = artifactFileName(title, "png");
-      if (bridge?.saveImage) await bridge.saveImage(`data:${mediaType};base64,${data}`, fileName);
-      else {
-        const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-        download(new Blob([bytes], { type: mediaType }), fileName);
-      }
-    } catch (error) {
-      onError(`Couldn't save as PNG: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setSaving(false);
-    }
+    const payload = {
+      html: withLocalFiles(code, files ?? NO_FILES),
+      width: Math.round(widthOf()) + SAVED_MARGIN * 2,
+      mode: theme.mode,
+      variables: theme.variables,
+    };
+    await render({ payload })
+      .then((image) => savePngAs(image, artifactFileName(title, "png")))
+      .catch((error: unknown) =>
+        onError(`Couldn't save as PNG: ${error instanceof Error ? error.message : String(error)}`),
+      );
+    setSaving(false);
   };
   const saveHtml = () =>
     download(new Blob([standalone()], { type: "text/html" }), artifactFileName(title, "html"));
