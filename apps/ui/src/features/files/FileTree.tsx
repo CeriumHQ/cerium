@@ -47,7 +47,7 @@ function TreeRow({
   messageBox,
   onFocus,
   onActivate,
-  onOpenTab,
+  viewer,
 }: {
   row: Row;
   root: string;
@@ -58,12 +58,15 @@ function TreeRow({
   /** The viewer shows this file. */
   shown: boolean;
   messageBox: MessageBox | undefined;
-  onFocus: () => void;
+  // The tree's own, the same for every row and every render, so a row whose props didn't change
+  // isn't drawn again, menu and tooltip and all.
+  onFocus: (path: string) => void;
   /** Pressed: `tab` on a modified click, which a folder ignores. */
-  onActivate: (tab: boolean) => void;
-  /** Opens the file in the viewer in a tab of its own, from its menu; absent without a viewer. */
-  onOpenTab: (() => void) | undefined;
+  onActivate: (row: Row, tab: boolean) => void;
+  /** Opens a file in the viewer in a tab of its own, from its menu; absent without a viewer. */
+  viewer: OpenFile | undefined;
 }) {
+  const onOpenTab = viewer && !row.folder && !row.gone ? () => viewer(row.path) : undefined;
   const extra = notes(row, touch);
   const changed = row.state !== undefined;
   const muted = row.ignored || row.heavy;
@@ -102,15 +105,15 @@ function TreeRow({
           aria-expanded={row.folder ? row.expanded : undefined}
           data-path={row.path}
           aria-selected={shown}
-          onClick={(event) => onActivate(wantsTab(event))}
+          onClick={(event) => onActivate(row, wantsTab(event))}
           onAuxClick={(event) => {
-            if (event.button === 1) onActivate(true);
+            if (event.button === 1) onActivate(row, true);
           }}
           onMouseDown={(event) => {
             // The middle button opens on release; pressed, it would start the browser's autoscroll.
             if (event.button === 1) event.preventDefault();
           }}
-          onFocus={onFocus}
+          onFocus={() => onFocus(row.path)}
           style={{ paddingLeft: 4 + row.depth * INDENT }}
           className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
             changed || touch ? "text-fg-primary" : "text-fg-secondary"
@@ -222,6 +225,14 @@ export function FileTree({
     container.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(row.path)}"]`)?.focus();
   };
 
+  const activate = (row: Row, tab: boolean) => {
+    setFocused(row.path);
+    // A folder opens and closes once, however many clicks a double click counts.
+    if (row.folder) {
+      if (!tab) setOpen(row.path, !row.expanded);
+    } else onOpen?.(row.path);
+  };
+
   const run = (action: KeyAction) => {
     switch (action.kind) {
       case "focus":
@@ -279,16 +290,10 @@ export function FileTree({
           touch={row.folder ? undefined : touched.files.get(touchedKey(touched, row.path))?.change}
           touchedInside={row.folder && !row.expanded && touched.folders.has(touchedKey(touched, row.path))}
           shown={!row.folder && row.path === activePath}
-          onOpenTab={viewer && !row.folder && !row.gone ? () => viewer(row.path) : undefined}
+          viewer={viewer}
           messageBox={messageBox}
-          onFocus={() => setFocused(row.path)}
-          onActivate={(tab) => {
-            setFocused(row.path);
-            // A folder opens and closes once, however many clicks a double click counts.
-            if (row.folder) {
-              if (!tab) setOpen(row.path, !row.expanded);
-            } else onOpen?.(row.path);
-          }}
+          onFocus={setFocused}
+          onActivate={activate}
         />
       ))}
     </div>
