@@ -1,10 +1,22 @@
-import { query, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
 import { Cause, Effect, Queue, Stream } from "effect";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
+
+/**
+ * The session `inspectClaude` asks. Without a `cwd` it is asked about the account (its models, its
+ * usage), which needs none of the user's MCP servers: Claude Code would otherwise start each of them
+ * for the question.
+ */
+export const inspectOptions = (executablePath: string, cwd: string | undefined): Options => ({
+  pathToClaudeCodeExecutable: executablePath,
+  ...(cwd === undefined ? { mcpServers: {}, strictMcpConfig: true } : { cwd }),
+  persistSession: false,
+  settingSources: ["user", "project", "local"],
+});
 
 /**
  * Asks the user's `claude` something only a session answers. The session is never sent a prompt and
@@ -22,12 +34,7 @@ export const inspectClaude = <A>(
       Effect.sync(() =>
         query({
           prompt: Stream.toAsyncIterable(Stream.fromQueue(input)),
-          options: {
-            pathToClaudeCodeExecutable: executablePath,
-            ...(cwd === undefined ? {} : { cwd }),
-            persistSession: false,
-            settingSources: ["user", "project", "local"],
-          },
+          options: inspectOptions(executablePath, cwd),
         }),
       ),
       (session) => Effect.tryPromise({ try: () => use(session), catch: failure(message) }),
