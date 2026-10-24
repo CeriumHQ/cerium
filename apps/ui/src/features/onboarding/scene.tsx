@@ -84,6 +84,15 @@ export function SceneProvider({
 
     const sized = new ResizeObserver(size);
     sized.observe(element);
+    // Moved to a screen of another density, the canvases draw at its.
+    let density = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const rescaled = () => {
+      density.removeEventListener("change", rescaled);
+      density = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      density.addEventListener("change", rescaled);
+      size();
+    };
+    density.addEventListener("change", rescaled);
     // The theme and its palette can change from the welcome itself.
     const themed = new MutationObserver(() => prism.recolor(readPalette(element)));
     themed.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
@@ -108,6 +117,7 @@ export function SceneProvider({
     document.addEventListener("visibilitychange", visibility);
     return () => {
       sized.disconnect();
+      density.removeEventListener("change", rescaled);
       themed.disconnect();
       element.removeEventListener("pointermove", point);
       element.removeEventListener("pointerdown", press);

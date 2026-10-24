@@ -50,13 +50,16 @@ export const welcomeKey = (event: {
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
   readonly altKey: boolean;
-  /** The key went to a control that keeps the keys for itself: a text field, or a group the arrows move in. */
-  readonly ownsKeys: boolean;
+  /** The key went to a text field, which keeps every key for itself. */
+  readonly inField: boolean;
+  /** The key went to a group the arrows move through, such as the themes, which keeps the arrows. */
+  readonly inGroup: boolean;
   /** The key went to a button or link, which Enter presses. */
   readonly onButton: boolean;
 }): WelcomeKey => {
-  if (event.ctrlKey || event.metaKey || event.altKey || event.ownsKeys) return undefined;
+  if (event.ctrlKey || event.metaKey || event.altKey || event.inField) return undefined;
   if (event.key === "Escape") return "skip";
+  if (event.inGroup && event.key !== "PageDown" && event.key !== "PageUp") return undefined;
   if (event.key === "ArrowRight" || event.key === "PageDown") return "next";
   if (event.key === "ArrowLeft" || event.key === "PageUp") return "back";
   if (event.key === "Enter" && !event.onButton) return "next";

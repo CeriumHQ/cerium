@@ -166,7 +166,7 @@ import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
-import { welcomeOpenAtom } from "../features/onboarding/state.ts";
+import { welcomeOpenAtom, welcomeShownAtom } from "../features/onboarding/state.ts";
 import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
 import type { DragSource } from "../features/split/drag.ts";
 import {
@@ -991,10 +991,11 @@ function Workspace() {
     setSettingsPane(category ? "page" : "nav");
     setSettingsOpen(true);
   };
-  // Back from settings, the cursor returns to the message box; a phone's keyboard stays down.
+  // Back from settings or the welcome, the cursor returns to the message box; a phone's keyboard stays down.
+  const welcoming = useAtomValue(welcomeShownAtom);
   useEffect(() => {
-    if (!settingsOpen && !compact) focusComposer();
-  }, [settingsOpen, compact]);
+    if (!settingsOpen && !compact && !welcoming) focusComposer();
+  }, [settingsOpen, compact, welcoming]);
 
   const chooseFolder = (picked: string) => {
     setFolder(picked);

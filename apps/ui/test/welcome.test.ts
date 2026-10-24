@@ -51,7 +51,8 @@ describe("welcomeKey", () => {
       ctrlKey: false,
       metaKey: false,
       altKey: false,
-      ownsKeys: false,
+      inField: false,
+      inGroup: false,
       onButton: false,
       ...more,
     });
@@ -64,11 +65,13 @@ describe("welcomeKey", () => {
     expect(press("a")).toBeUndefined();
   });
 
-  it("leaves Enter to a button, every key to a control that owns them, and shortcuts alone", () => {
+  it("leaves Enter to a button, the arrows to a group, every key to a field, and shortcuts alone", () => {
     expect(press("Enter", { onButton: true })).toBeUndefined();
     expect(press("ArrowRight", { onButton: true })).toBe("next");
-    expect(press("ArrowRight", { ownsKeys: true })).toBeUndefined();
-    expect(press("Escape", { ownsKeys: true })).toBeUndefined();
+    expect(press("ArrowRight", { inGroup: true })).toBeUndefined();
+    expect(press("Escape", { inGroup: true })).toBe("skip");
+    expect(press("PageDown", { inGroup: true })).toBe("next");
+    expect(press("Escape", { inField: true })).toBeUndefined();
     expect(press("ArrowRight", { ctrlKey: true })).toBeUndefined();
   });
 });

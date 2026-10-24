@@ -262,3 +262,8 @@ html:active-view-transition-type(welcome)::view-transition-new(root) {
   animation-duration: 520ms;
   animation-timing-function: ease-in-out;
 }
+
+/* A glass picked spreads over the whole welcome, its corner's mark included. */
+html:active-view-transition-type(glass) [data-launch-mark] {
+  view-transition-name: none;
+}

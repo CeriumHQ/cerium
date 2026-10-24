@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
 import { CeriumMark } from "../../components/CeriumMark.tsx";
+import { keyCaps } from "../../lib/keys.ts";
 import { Agents } from "./chapters/Agents.tsx";
 import { Everywhere } from "./chapters/Everywhere.tsx";
 import { Glass } from "./chapters/Glass.tsx";
@@ -10,6 +11,7 @@ import { Hello } from "./chapters/Hello.tsx";
 import { Ready } from "./chapters/Ready.tsx";
 import { Thread } from "./chapters/Thread.tsx";
 import { CHAPTERS, chapterFromQuery, stepChapter, welcomeKey, type ChapterId } from "./model.ts";
+import { Keycap } from "./parts.tsx";
 import { lightOf, SceneProvider, usePose } from "./scene.tsx";
 
 /** How long a chapter takes to go, while the next one comes in after it. */
@@ -49,6 +51,8 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   const index = entry.index;
   /** The chapter on its way out, and which way the welcome is going. */
   const [leaving, setLeaving] = useState<{ readonly index: number; readonly direction: 1 | -1 }>();
+  /** The chapter whose parts have all come in. */
+  const [settled, setSettled] = useState<number>();
   const [visited, setVisited] = useState(index);
   const stage = useRef<HTMLDialogElement>(null);
   const last = index === CHAPTERS.length - 1;
@@ -57,6 +61,8 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     if (to === index || to < 0 || to >= CHAPTERS.length) return;
     setLeaving({ index, direction: to > index ? 1 : -1 });
     setEntry({ index: to, after: true });
+    // A chapter come back to comes in again, however soon.
+    setSettled(undefined);
     setVisited((most) => Math.max(most, to));
   };
   /** The welcome is closing, for good: the light gathers into the corner's mark, and the window is handed over. */
@@ -79,7 +85,6 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     const timer = setTimeout(() => setLeaving(undefined), LEAVE_MS);
     return () => clearTimeout(timer);
   }, [leaving]);
-  const [settled, setSettled] = useState<number>();
   useEffect(() => {
     const timer = setTimeout(() => setSettled(index), ENTER_MS);
     return () => clearTimeout(timer);
@@ -92,17 +97,25 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
       ?.focus({ preventScroll: true });
   }, [index]);
 
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
+  /**
+   * The welcome's keys, from anywhere on it. A dialog opened over it, such as a harness's sign-in,
+   * keeps its own; every other key stops here, so the window under the welcome never acts on one.
+   */
+  const onKey = (event: React.KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : undefined;
+    if (
+      (target?.closest("dialog, [role='dialog'], [role='alertdialog']") ?? stage.current) !== stage.current
+    ) {
+      return;
+    }
+    event.stopPropagation();
     const action = welcomeKey({
       key: event.key,
       ctrlKey: event.ctrlKey,
       metaKey: event.metaKey,
       altKey: event.altKey,
-      // A field, a group the arrows move in, or a dialog opened over the welcome keeps its keys.
-      ownsKeys:
-        target?.closest("input, textarea, [contenteditable='true'], [role='radiogroup']") != null ||
-        (target?.closest("dialog, [role='dialog']") ?? stage.current) !== stage.current,
+      inField: target?.closest("input, textarea, [contenteditable='true']") != null,
+      inGroup: target?.closest("[role='radiogroup']") != null,
       onButton: target?.closest("button, a") != null,
     });
     if (action === undefined || closing) return;
@@ -110,12 +123,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     if (action === "next") next();
     else if (action === "back") back();
     else close();
-  });
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => onKey(event);
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
+  };
 
   const shown = [
     ...(leaving === undefined ? [] : [{ at: leaving.index, state: "leave" as const }]),
@@ -124,15 +132,18 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   return (
     // Open as the page's own layer rather than the top layer, so the dialogs a harness's sign-in opens
     // show over it; the window under it is inert meanwhile, so it's as modal as one.
+    // Focusable itself, so a click on its glass keeps the keys on the welcome.
     <dialog
       open
       ref={stage}
+      tabIndex={-1}
+      onKeyDown={onKey}
       aria-modal="true"
       aria-labelledby={titleIdOf(CHAPTERS[index]!.id)}
       data-welcome=""
       data-direction={leaving?.direction === -1 ? "back" : "forward"}
       data-closing={closing ? "" : undefined}
-      className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-hidden border-0 bg-surface-window p-0 text-fg-primary"
+      className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
     >
       <SceneProvider className="flex flex-col">
         {/* The window can be moved by its top edge; the system draws its buttons over the right of it. */}
@@ -182,14 +193,25 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
                 Skip
               </Button>
             )}
-            <Button
-              onClick={back}
-              disabled={index === 0}
-              aria-label="Back"
-              className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-[color,background-color,opacity] hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-0"
-            >
-              <ArrowLeft size={16} strokeWidth={1.5} />
-            </Button>
+            {index === 0 ? (
+              // Where Back will be: until the welcome is first moved on, that the keys work as the button does.
+              <span
+                className={`flex h-10 items-center gap-1.5 pr-1 text-[11.5px] text-fg-tertiary transition-opacity duration-500 max-md:hidden ${
+                  visited === 0 ? "" : "opacity-0"
+                }`}
+              >
+                Press
+                <Keycap>{keyCaps("Enter").join("")}</Keycap>
+              </span>
+            ) : (
+              <Button
+                onClick={back}
+                aria-label="Back"
+                className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+              >
+                <ArrowLeft size={16} strokeWidth={1.5} />
+              </Button>
+            )}
             <ContinueButton onClick={next}>
               {last ? "Open Cerium" : index === 0 ? "Begin" : "Continue"}
             </ContinueButton>

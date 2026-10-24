@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
@@ -10,7 +10,7 @@ import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { chapterFromQuery, opensOnLaunch, WELCOMED_KEY } from "../features/onboarding/model.ts";
-import { threadCountAtom, welcomeOpenAtom } from "../features/onboarding/state.ts";
+import { threadCountAtom, welcomeOpenAtom, welcomeShownAtom } from "../features/onboarding/state.ts";
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
 import { remember, stored } from "../lib/storage.ts";
@@ -73,6 +73,8 @@ export function Launch({ children }: { children: ReactNode }) {
       remember(WELCOMED_KEY, "done");
     }
   }, [threadCount]);
+  const setShown = useAtomSet(welcomeShownAtom);
+  useEffect(() => setShown(welcoming), [welcoming, setShown]);
   const openAsked = useEffectEvent(() => {
     if (asked && !launching && !welcoming) swap(() => setWelcoming(true), "welcome");
   });

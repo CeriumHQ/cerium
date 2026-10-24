@@ -55,8 +55,10 @@ interface Ray {
 interface Scene {
   readonly mark: { readonly x: number; readonly y: number; readonly size: number; readonly opacity: number };
   readonly from: Point;
-  /** The light's own end, when it runs on past the mark rather than into the facet. */
-  readonly to: Point | undefined;
+  /** Where the light ends: the facet, or a point of its own as it runs on past the mark. */
+  readonly to: Point;
+  /** How far the light runs on past the mark rather than into the facet, 0 to 1. */
+  readonly through: number;
   readonly incoming: number;
   readonly dust: number;
   readonly beams: ReadonlyArray<BeamPose>;
@@ -98,7 +100,8 @@ const BEAMS_AFTER = 0.75;
 /** Where each part of a pose sits among its numbers (`poseNumbers`). */
 const INCOMING_AT = 8;
 const DUST_AT = 9;
-const BEAMS_AT = 10;
+const THROUGH_AT = 10;
+const BEAMS_AT = 11;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -170,9 +173,18 @@ class Spring {
   }
 }
 
-/** A pose's numbers, each on a spring, in a fixed order. */
+/** Where the light meets the facet of a mark at `mark`, as big as `mark.size`. */
+const facetInOf = (mark: { readonly x: number; readonly y: number; readonly size: number }): Point => ({
+  x: mark.x + ((FACET_X - FACET_HALF) * mark.size) / 48,
+  y: mark.y,
+});
+
+/**
+ * A pose's numbers, each on a spring, in a fixed order. A light that ends in the facet ends where the
+ * facet is, so easing between that and one of its own end is a matter of moving the end.
+ */
 const poseNumbers = (pose: PrismPose): Array<number> => {
-  const to = pose.incoming.to ?? { x: Number.NaN, y: Number.NaN };
+  const to = pose.incoming.to ?? facetInOf(pose.mark);
   return [
     pose.mark.x,
     pose.mark.y,
@@ -184,6 +196,7 @@ const poseNumbers = (pose: PrismPose): Array<number> => {
     to.y,
     pose.incoming.intensity,
     pose.dust,
+    pose.incoming.to === undefined ? 0 : 1,
     ...pose.beams.flatMap((beam) => [beam.x, beam.y, beam.intensity]),
   ];
 };
@@ -282,12 +295,7 @@ export class Prism {
       });
     } else {
       this.#springs.forEach((spring, index) => {
-        const value = numbers[index]!;
-        // A pose whose light runs to the facet has no point of its own: it follows the facet.
-        if (Number.isNaN(value) || Number.isNaN(spring.value)) {
-          spring.value = value;
-          spring.target = value;
-        } else spring.target = value;
+        spring.target = numbers[index]!;
         if (this.#reduceMotion) spring.snap();
       });
     }
@@ -358,12 +366,15 @@ export class Prism {
     for (let index = BEAMS_AT; index + 2 < values.length; index += 3) {
       beams.push({ x: at(index), y: at(index + 1) - lean.y * 14, intensity: clamp01(at(index + 2)) });
     }
-    const to = Number.isNaN(at(6)) ? undefined : { x: at(6), y: at(7) };
+    // A light ending in the facet follows the mark as it leans; one of its own end stays put.
+    const through = clamp01(at(THROUGH_AT));
+    const facet = facetInOf(mark);
     return {
       mark,
       // The light comes in from wherever the pointer leans, pivoting where it lands.
       from: { x: at(4) + lean.x * this.#size.width * 0.1, y: at(5) + lean.y * this.#size.height * 0.1 },
-      to,
+      to: { x: facet.x + (at(6) - facet.x) * through, y: facet.y + (at(7) - facet.y) * through },
+      through,
       incoming: clamp01(at(INCOMING_AT)),
       dust: clamp01(at(DUST_AT)),
       beams,
@@ -382,11 +393,10 @@ export class Prism {
     if (palette === undefined || this.#springs === undefined || width === 0) return;
     const scene = this.#current();
     const unit = scene.mark.size / 48;
-    const facetIn = { x: scene.mark.x + (FACET_X - FACET_HALF) * unit, y: scene.mark.y };
     const facetOut = { x: scene.mark.x + (FACET_X + FACET_HALF) * unit, y: scene.mark.y };
-    const lightTo = scene.to ?? facetIn;
-    // The light through the facet only, so a mark faded away splits nothing.
-    const split = scene.to === undefined ? scene.mark.opacity : 0;
+    const lightTo = scene.to;
+    // Only light that goes into the facet splits, so a mark faded away splits nothing.
+    const split = scene.mark.opacity * (1 - scene.through);
     const shimmer = this.#reduceMotion ? 1 : 0.92 + 0.08 * Math.sin(this.#time * 2.3);
     const pulse = this.#pulseFrom === undefined ? undefined : (now - this.#pulseFrom) / PULSE_MS;
 
@@ -449,7 +459,7 @@ export class Prism {
         unit,
         palette,
         scene.incoming * split,
-        lightTo === facetIn ? scene.from : undefined,
+        scene.through < 0.5 ? scene.from : undefined,
       );
     }
   }

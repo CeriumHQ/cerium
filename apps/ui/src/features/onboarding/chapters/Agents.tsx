@@ -69,7 +69,9 @@ export function Agents({ number, titleId, active }: ChapterProps) {
     if (ready > readyBefore.current && active) pulse();
     readyBefore.current = ready;
   }, [ready, active, pulse]);
-  const summary = readinessSummary(readiness);
+  const failed = AsyncResult.isFailure(result) && statuses === undefined;
+  const summary = failed ? "Couldn't check the harnesses" : readinessSummary(readiness);
+  const none = !failed && statuses !== undefined && !readiness.includes("ready");
 
   return (
     <div className="grid h-full grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-center gap-[clamp(24px,5vw,96px)] px-(--welcome-gutter) pb-[2vh]">
@@ -89,7 +91,7 @@ export function Agents({ number, titleId, active }: ChapterProps) {
           sign in as usual: Cerium finds them, and never reads their keys.
         </Reveal>
         <Reveal order={4} className="mt-[clamp(22px,4vh,40px)] flex flex-wrap items-center gap-x-4 gap-y-2">
-          <output aria-live="polite" className="text-[13px] text-fg-primary">
+          <output aria-live="polite" className={`text-[13px] ${failed ? "text-error" : "text-fg-primary"}`}>
             {summary}
           </output>
           <Button
@@ -100,6 +102,11 @@ export function Agents({ number, titleId, active }: ChapterProps) {
             <RefreshCw size={12} strokeWidth={1.75} className={result.waiting ? "animate-spin" : ""} />
             {result.waiting ? "Checking…" : "Check again"}
           </Button>
+          {none ? (
+            <p className="w-full text-[12.5px] leading-relaxed text-fg-tertiary">
+              You can carry on, and set one up later from Settings → Harnesses.
+            </p>
+          ) : null}
         </Reveal>
       </div>
 

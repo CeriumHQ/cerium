@@ -93,8 +93,11 @@ export function Glass({ number, titleId, active }: ChapterProps) {
   const remember = (event: React.PointerEvent) => {
     pressed.current = { x: event.clientX, y: event.clientY };
   };
+  /** Where a pick's wipe spreads from: the press that made it, or the pane picked with the keys. */
   const fromElement = (element: Element | null) => {
-    if (pressed.current !== undefined) return pressed.current;
+    const press = pressed.current;
+    pressed.current = undefined;
+    if (press !== undefined) return press;
     const box = element?.getBoundingClientRect();
     return box === undefined ? undefined : { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   };

@@ -7,6 +7,12 @@ import { WEB } from "../../backend/target.ts";
 export const welcomeOpenAtom = Atom.make(false).pipe(Atom.keepAlive);
 
 /**
+ * Whether the welcome is on screen, over the window: what the window would open by itself (What's new)
+ * waits for it, and the message box takes the cursor back once it's gone.
+ */
+export const welcomeShownAtom = Atom.make(false).pipe(Atom.keepAlive);
+
+/**
  * How many threads this computer lists, which decides whether the welcome opens on launch; undefined
  * until it answers. The web client never asks: it opens no welcome.
  */
