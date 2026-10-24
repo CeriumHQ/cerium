@@ -128,6 +128,63 @@ describe("History", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
+  it.effect("marks what is unpushed on every page, and among the commits a search finds", () =>
+    Effect.gen(function* () {
+      const history = yield* History;
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped();
+      // The same history, its commits a day apart, so how far back git looks matters.
+      yield* git(root, "init", "-q");
+      for (const [day, [file, text, subject, author]] of [
+        ["src/app.ts", "one\n", "Add the app", "Ann Lee <ann@example.com>"],
+        ["src/app.ts", "two\n", "Fix login bug", "Ann Lee <ann@example.com>"],
+        ["README.md", "# Title\n", "Document it", "Bob Ray <bob@example.com>"],
+        ["src/main.ts", "one\n", "Rename the app", "Ann Lee <ann@example.com>"],
+      ].entries()) {
+        yield* fs.makeDirectory(path.join(root, "src"), { recursive: true });
+        yield* fs.writeFileString(path.join(root, file!), text!);
+        yield* git(root, "add", "-A");
+        const date = `${1_700_000_000 + day * 86_400} +0000`;
+        yield* spawner.string(
+          ChildProcess.make("git", ["commit", "-q", "-m", subject!, `--author=${author}`], {
+            cwd: root,
+            env: {
+              GIT_AUTHOR_DATE: date,
+              GIT_COMMITTER_DATE: date,
+              GIT_COMMITTER_NAME: "Ann Lee",
+              GIT_COMMITTER_EMAIL: "ann@example.com",
+            },
+            extendEnv: true,
+          }),
+        );
+      }
+      const remote = yield* fs.makeTempDirectoryScoped();
+      yield* git(remote, "init", "-q", "--bare");
+      yield* git(root, "remote", "add", "origin", remote);
+      // The remote has the first two commits, not the last two.
+      yield* git(root, "push", "-q", "origin", "HEAD~2:refs/heads/main");
+      yield* git(root, "fetch", "-q", "origin");
+      const marks = (page: { readonly commits: ReadonlyArray<{ subject: string; unpushed?: boolean }> }) =>
+        page.commits.map((commit) => [commit.subject, commit.unpushed === true]);
+      assert.deepStrictEqual(marks(yield* history.commits(root, { offset: 0, limit: 1 })), [
+        ["Rename the app", true],
+      ]);
+      assert.deepStrictEqual(marks(yield* history.commits(root, { offset: 1, limit: 2 })), [
+        ["Document it", true],
+        ["Fix login bug", false],
+      ]);
+      assert.deepStrictEqual(marks(yield* history.commits(root, { query: "bob", offset: 0, limit: 5 })), [
+        ["Document it", true],
+      ]);
+      assert.deepStrictEqual(marks(yield* history.commits(root, { query: "app", offset: 0, limit: 5 })), [
+        ["Rename the app", true],
+        ["Add the app", false],
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
   it.effect("shows the branch, tags and upstreams a commit carries as refs", () =>
     Effect.gen(function* () {
       const history = yield* History;

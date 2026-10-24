@@ -255,7 +255,10 @@ export class History extends Context.Service<
         const base = yield* folderOf(root);
         const prefix = yield* prefixOf(base);
         if (prefix === undefined) return { repository: false, commits: [], more: false } satisfies CommitPage;
-        const head = yield* git(base, ["rev-parse", "--verify", "--quiet", "HEAD"]);
+        const [head, remote] = yield* Effect.all(
+          [git(base, ["rev-parse", "--verify", "--quiet", "HEAD"]), git(base, ["remote"])],
+          { concurrency: 2 },
+        );
         if (head.code !== 0) return { repository: true, commits: [], more: false } satisfies CommitPage;
         // Each list takes its first `want` commits from the top, so the first `want` of the merge are right.
         const want = offset + limit + 1;
@@ -265,22 +268,39 @@ export class History extends Context.Service<
           term === ""
             ? yield* logged(base, want, [])
             : mergeCommits(
-                yield* logged(base, want, [`--grep=${term}`, "--regexp-ignore-case", "--fixed-strings"]),
-                yield* logged(base, want, [`--author=${term}`, "--regexp-ignore-case", "--fixed-strings"]),
+                ...(yield* Effect.all(
+                  [
+                    logged(base, want, [`--grep=${term}`, "--regexp-ignore-case", "--fixed-strings"]),
+                    logged(base, want, [`--author=${term}`, "--regexp-ignore-case", "--fixed-strings"]),
+                  ],
+                  { concurrency: 2 },
+                )),
               );
-        // What is on no remote branch is unpushed, but only in a repository that has a remote to push to.
-        const remotes = (yield* git(base, ["remote"])).stdout.trim() !== "";
-        const unpushed = remotes
-          ? new Set(
-              (yield* git(base, ["rev-list", "HEAD", "--not", "--remotes"])).stdout
-                .split("\n")
-                .filter(Boolean),
-            )
-          : new Set<string>();
         const page = found.slice(offset, offset + limit + 1);
+        const shown = page.slice(0, limit);
+        // What is on no remote branch is unpushed, but only in a repository that has a remote to push to.
+        // Nothing older than the oldest commit listed up to the page's end is on it, so git looks back no
+        // further, rather than through all of a history no remote has.
+        const oldest = found
+          .slice(0, offset + limit)
+          .reduce((least, record) => Math.min(least, record.committed), Number.POSITIVE_INFINITY);
+        const unpushed =
+          remote.stdout.trim() !== "" && shown.length > 0
+            ? new Set(
+                (yield* git(base, [
+                  "rev-list",
+                  `--max-age=${Math.floor(oldest / 1000)}`,
+                  "HEAD",
+                  "--not",
+                  "--remotes",
+                ])).stdout
+                  .split("\n")
+                  .filter(Boolean),
+              )
+            : new Set<string>();
         return {
           repository: true,
-          commits: page.slice(0, limit).map(({ commit }) => ({
+          commits: shown.map(({ commit }) => ({
             ...commit,
             ...(unpushed.has(commit.sha) ? { unpushed: true } : {}),
           })),
