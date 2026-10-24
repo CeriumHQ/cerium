@@ -494,27 +494,31 @@ export class Files extends Context.Service<
           try: () => readdir(target, { withFileTypes: true }),
           catch: () => new FilesError({ message: "That folder couldn't be read." }),
         });
-        const entries = yield* Effect.forEach(
-          dirents.filter((dirent) => !(dirent.isDirectory() && VCS_FOLDERS.has(dirent.name))),
-          (dirent) =>
-            Effect.gen(function* () {
-              const link = dirent.isSymbolicLink();
-              // A link's kind is its target's; one that leads nowhere is listed as a file.
-              const folder = link
-                ? yield* fs.stat(path.join(target, dirent.name)).pipe(
-                    Effect.map((linked) => linked.type === "Directory"),
-                    Effect.orElseSucceed(() => false),
-                  )
-                : dirent.isDirectory();
-              return {
-                name: dirent.name,
-                folder,
-                ...(link ? { link: true as const } : {}),
-                ...(folder && SKIPPED.has(dirent.name) ? { heavy: true as const } : {}),
-              } satisfies FileEntry;
-            }),
-          { concurrency: 16 },
+        const listed = dirents.filter((dirent) => !(dirent.isDirectory() && VCS_FOLDERS.has(dirent.name)));
+        // A link's kind is its target's, so links alone are looked at again; one that leads nowhere
+        // is listed as a file.
+        const linkedFolders = new Set(
+          (yield* Effect.forEach(
+            listed.filter((dirent) => dirent.isSymbolicLink()),
+            (dirent) =>
+              fs.stat(path.join(target, dirent.name)).pipe(
+                Effect.map((linked) => (linked.type === "Directory" ? [dirent.name] : [])),
+                Effect.orElseSucceed(() => []),
+              ),
+            { concurrency: 16 },
+          )).flat(),
         );
+        const entries: Array<FileEntry> = [];
+        for (const dirent of listed) {
+          const link = dirent.isSymbolicLink();
+          const folder = link ? linkedFolders.has(dirent.name) : dirent.isDirectory();
+          entries.push({
+            name: dirent.name,
+            folder,
+            ...(link ? { link: true as const } : {}),
+            ...(folder && SKIPPED.has(dirent.name) ? { heavy: true as const } : {}),
+          });
+        }
         const sorted = entries.toSorted(compareEntries);
         const shown = sorted.slice(0, MAX_ENTRIES);
         const repository = yield* repositoryOf(base);

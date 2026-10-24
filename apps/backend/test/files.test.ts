@@ -397,6 +397,33 @@ describe("Files", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
+  // Making a link on Windows takes a right most accounts don't have.
+  it.effect.skipIf(process.platform === "win32")(
+    "lists a link as what it leads to, or a file when it's broken",
+    () =>
+      Effect.gen(function* () {
+        const files = yield* Files;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped();
+        yield* fs.makeDirectory(path.join(root, "real"));
+        yield* fs.writeFileString(path.join(root, "real.txt"), "x");
+        yield* fs.symlink(path.join(root, "real"), path.join(root, "to-folder"));
+        yield* fs.symlink(path.join(root, "real.txt"), path.join(root, "to-file"));
+        yield* fs.symlink(path.join(root, "gone"), path.join(root, "broken"));
+        yield* fs.symlink(path.join(root, "real"), path.join(root, "node_modules"));
+        const listing = yield* files.list(root, "");
+        assert.deepStrictEqual(listing.entries, [
+          { name: "node_modules", folder: true, link: true, heavy: true },
+          { name: "real", folder: true },
+          { name: "to-folder", folder: true, link: true },
+          { name: "broken", folder: false, link: true },
+          { name: "real.txt", folder: false },
+          { name: "to-file", folder: false, link: true },
+        ]);
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
   it.effect("lists a folder outside git without marking anything ignored", () =>
     Effect.gen(function* () {
       const files = yield* Files;
