@@ -169,6 +169,9 @@ const markMentions = (text: string, tokens: ReadonlyArray<string>): string => {
   return text.replace(pattern, (token) => `\`${token}\``);
 };
 
+/** A reference link's definition (`[docs]: https://…`), which the links using it need in the same block. */
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:/m;
+
 /** Agent-written markdown, or the user's own message. Streamdown completes unterminated syntax while text streams and sanitizes it. */
 export function Markdown({
   text,
@@ -195,11 +198,17 @@ export function Markdown({
   };
 }) {
   const mentions = new Map((user?.mentions ?? []).map((mention) => [mentionToken(mention), mention]));
+  // Rendered block by block, as a reply streams, and still once it's complete: rendering the whole
+  // text at once instead parsed every block of it again and rebuilt them all as the reply finished
+  // (about 4 ms a kilobyte, with its artifacts drawn again). Text with a reference link's definition
+  // renders whole, so its links find it.
+  const byBlock = streaming || !REFERENCE_DEFINITION.test(text);
   return (
     <Mentions value={mentions}>
       <Streamdown
-        mode={streaming ? "streaming" : "static"}
+        mode={byBlock ? "streaming" : "static"}
         isAnimating={streaming}
+        parseIncompleteMarkdown={streaming}
         controls={controls}
         plugins={plugins}
         components={
