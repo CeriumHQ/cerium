@@ -132,7 +132,7 @@ export function EffortPicker({
         className={`${triggerClass} gap-2`}
       >
         <EffortMeter efforts={efforts} level={index} />
-        <span className="text-[12px]">{automatic ? "Auto" : label}</span>
+        <span className="text-[12px]">{automatic ? `Auto · ${label}` : label}</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50 outline-none">

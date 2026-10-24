@@ -1,6 +1,6 @@
 import type { ReasoningEffort } from "@cerium/protocol";
 
-import { isAnswerNotice, type TranscriptBlock } from "./model.ts";
+import { isAnswerNotice, type RoutedDecision, type TranscriptBlock } from "./model.ts";
 import { outputText, type ToolBlock } from "./tools.ts";
 
 // How a thread's blocks become what the transcript shows: inputs, a header per response, tool calls
@@ -10,8 +10,16 @@ type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind:
 
 export type Item =
   | { readonly kind: "input"; readonly id: string; readonly blocks: ReadonlyArray<TranscriptBlock> }
-  /** The start of a response, with the model it ran on (absent when the thread never said). */
-  | { readonly kind: "header"; readonly id: string; readonly model?: string }
+  /**
+   * The start of a response, with the model it ran on (absent when the thread never said) and, for
+   * an agent on Auto, what the effort router decided for it.
+   */
+  | {
+      readonly kind: "header";
+      readonly id: string;
+      readonly model?: string;
+      readonly routed?: RoutedDecision;
+    }
   /** Where the user switched the agent's model, or just its effort. */
   | {
       readonly kind: "switch";
@@ -20,6 +28,8 @@ export type Item =
       readonly effort?: ReasoningEffort;
       readonly change: "model" | "effort";
     }
+  /** The effort router's decision for a turn inside a response, such as one a child's result began. */
+  | { readonly kind: "routed"; readonly id: string; readonly decision: RoutedDecision }
   | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
   | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
   /** A request to start an agent that waits for the user's approval, which leaves no card yet. */
@@ -94,8 +104,14 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
   // The model the agent runs on, for the header of the response that starts next.
   let model: string | undefined;
   let headerDue = true;
+  // The router decides before the turn's input arrives, so its word waits for the response's header.
+  let routed: Block<"routed"> | undefined;
   for (const block of visible(blocks)) {
     const last = items.at(-1);
+    if (block.kind === "routed") {
+      routed = block;
+      continue;
+    }
     if (block.kind === "model") {
       model = block.model;
       if (block.change !== "start") {
@@ -112,6 +128,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     if (block.kind === "replaced") {
       said = [];
       headerDue = true;
+      routed = undefined;
       items.push({
         kind: "replaced",
         id: block.id,
@@ -138,8 +155,17 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     // One header per response: only the user's own messages start a new one. Results from child
     // agents arrive mid-response and stay inside it.
     if (headerDue) {
-      items.push({ kind: "header", id: `header:${block.id}`, ...(model ? { model } : {}) });
+      items.push({
+        kind: "header",
+        id: `header:${block.id}`,
+        ...(model ? { model } : {}),
+        ...(routed ? { routed: routed.decision } : {}),
+      });
       headerDue = false;
+      routed = undefined;
+    } else if (routed !== undefined) {
+      items.push({ kind: "routed", id: routed.id, decision: routed.decision });
+      routed = undefined;
     }
     const previous = items.at(-1);
     if (isSpawnCall(block) && block.status !== "error") {
@@ -205,6 +231,19 @@ export const showsProgress = (item: Item | undefined): boolean => {
     default:
       return false;
   }
+};
+
+/**
+ * What the effort router decided for a response that hasn't started: its last decision, unless a
+ * response has begun since.
+ */
+export const pendingRouted = (blocks: ReadonlyArray<TranscriptBlock>): RoutedDecision | undefined => {
+  for (let index = blocks.length - 1; index >= 0; index--) {
+    const block = blocks[index]!;
+    if (block.kind === "routed") return block.decision;
+    if (block.kind !== "user" && block.kind !== "model" && !isAnswerNotice(block)) return undefined;
+  }
+  return undefined;
 };
 
 /** The model the agent runs on at the end of the thread, which a response about to start runs on. */

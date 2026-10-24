@@ -35,7 +35,7 @@ import { FoldedText } from "./FoldedText.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type { TranscriptBlock, UserBlock } from "./model.ts";
+import type { RoutedDecision, TranscriptBlock, UserBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
@@ -434,7 +434,7 @@ const stoppedNote = {
 } as const;
 
 /** Why the effort router left the level where it was. */
-const keptReason = (routed: NonNullable<Block<"turnEnd">["routed"]>): string => {
+const keptReason = (routed: RoutedDecision): string => {
   switch (routed.kept) {
     case "cache":
       return "Changing it would restart this model's prompt cache";
@@ -450,7 +450,7 @@ const keptReason = (routed: NonNullable<Block<"turnEnd">["routed"]>): string => 
 };
 
 /** The level the effort router ran a turn at, with how it decided under the pointer. */
-function RoutedEffort({ routed }: { routed: NonNullable<Block<"turnEnd">["routed"]> }) {
+export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
   const level = routed.effort === undefined ? "" : effortLabel[routed.effort];
   const facts = [
     routed.kept === undefined && routed.confidence !== undefined
@@ -474,7 +474,7 @@ function RoutedEffort({ routed }: { routed: NonNullable<Block<"turnEnd">["routed
         </span>
       }
     >
-      <Button className="-mx-1 flex h-6 items-center gap-1 rounded-md px-1 transition-colors hover:text-fg-secondary">
+      <Button className="-mx-1 flex h-5 items-center gap-1 rounded-md px-1 transition-colors hover:text-fg-secondary">
         <Sparkles size={11} strokeWidth={2} />
         Auto · {level}
       </Button>
@@ -494,11 +494,10 @@ export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: str
     block.usage !== undefined && block.usage.inputTokens + block.usage.outputTokens > 0
       ? block.usage
       : undefined;
-  if (usage === undefined && text === "" && stopped === undefined && block.routed === undefined) return null;
+  if (usage === undefined && text === "" && stopped === undefined) return null;
   return (
     <div className="flex min-h-6 items-center gap-2.5 text-2xs text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
-      {block.routed?.effort === undefined ? null : <RoutedEffort routed={block.routed} />}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">
           <stopped.Icon size={11} strokeWidth={2} />

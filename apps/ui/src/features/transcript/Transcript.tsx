@@ -31,6 +31,7 @@ import {
   PermissionCard,
   QueuedInput,
   Reasoning,
+  RoutedEffort,
   SpawnAsk,
   SpawnCard,
   TurnFooter,
@@ -39,12 +40,13 @@ import {
   type ChildState,
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
-import { currentModel, layout, showsProgress, type Item } from "./layout.ts";
+import { currentModel, layout, pendingRouted, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type {
   AgentActivity,
   QueuedMessages,
+  RoutedDecision,
   TranscriptBlock,
   TurnChanges as TurnChangesModel,
 } from "./model.ts";
@@ -240,7 +242,10 @@ export function Transcript({
                 true height, and the content jumped under the scroll position. */}
             {items.map((item) => renderItem(item, false))}
             {working && !responding ? (
-              <ResponseHeader agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }} />
+              <ResponseHeader
+                agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
+                routed={pendingRouted(shown)}
+              />
             ) : null}
             {working ? <Working /> : null}
             {held ? (
@@ -377,7 +382,13 @@ const TranscriptItem = memo(
             </div>
           );
         case "header":
-          return <ResponseHeader key={each.id} agent={{ provider, model }} />;
+          return <ResponseHeader key={each.id} agent={{ provider, model }} routed={each.routed} />;
+        case "routed":
+          return each.decision.effort === undefined ? null : (
+            <div key={each.id} className="flex text-xs text-fg-tertiary">
+              <RoutedEffort routed={each.decision} />
+            </div>
+          );
         case "switch":
           return (
             <ModelSwitch
@@ -451,13 +462,21 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   );
 }
 
-export function ResponseHeader({ agent }: { agent: TranscriptProps["agent"] }) {
+/** The start of a response: the model it ran on and, for an agent on Auto, the effort the router chose. */
+export function ResponseHeader({
+  agent,
+  routed,
+}: {
+  agent: TranscriptProps["agent"];
+  routed?: RoutedDecision | undefined;
+}) {
   return (
     <div className="flex items-center gap-2 pt-2 text-xs text-fg-tertiary">
       <span className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">
         <ProviderLogo provider={agent.provider} size={11} />
       </span>
       <span className="font-medium text-fg-secondary">{agent.model}</span>
+      {routed?.effort === undefined ? null : <RoutedEffort routed={routed} />}
     </div>
   );
 }

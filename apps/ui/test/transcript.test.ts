@@ -2,7 +2,7 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 import { describe, expect, it } from "@effect/vitest";
 
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
-import { currentModel, layout } from "../src/features/transcript/layout.ts";
+import { currentModel, layout, pendingRouted } from "../src/features/transcript/layout.ts";
 import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -212,7 +212,7 @@ describe("the model each response ran on", () => {
     ]);
   });
 
-  it("puts the effort router's decision on its turn's footer, and runs on the level it picked", () => {
+  it("puts the effort router's decision on its response's header, and runs on the level it picked", () => {
     const blocks = buildTranscript(
       events(
         started,
@@ -225,13 +225,44 @@ describe("the model each response ran on", () => {
         ...say("once more"),
       ),
     );
-    const ends = blocks.flatMap((block) => (block.kind === "turnEnd" ? [block.routed] : []));
-    expect(ends).toEqual([
+    const headers = layout(blocks).flatMap((item) => (item.kind === "header" ? [item.routed] : []));
+    expect(headers).toEqual([
       { effort: "low", confidence: 0.8, ms: 400, costUsd: 0.00002 },
       { effort: "low", kept: "unsure", confidence: 0.3 },
       undefined,
     ]);
     expect(blocks.filter((block) => block.kind === "model")).toHaveLength(1);
+  });
+
+  it("shows the router's decision before the response starts, and inside one a child's result began", () => {
+    const decided = buildTranscript(
+      events(
+        started,
+        { _tag: "EffortRouted", effort: "high", confidence: 0.9 },
+        {
+          _tag: "TurnInput",
+          items: [{ _tag: "FromUser", text: "plan it" }],
+        },
+      ),
+    );
+    expect(pendingRouted(decided)).toEqual({ effort: "high", confidence: 0.9 });
+
+    const answered = buildTranscript(
+      events(
+        started,
+        ...say("plan it"),
+        { _tag: "EffortRouted", effort: "low", confidence: 0.7 },
+        {
+          _tag: "TurnInput",
+          items: [{ _tag: "FromAgent", agentId: "c" as AgentId, threadId: "t" as ThreadId, text: "done" }],
+        },
+        { _tag: "TurnCompleted", stopReason: "completed" },
+      ),
+    );
+    expect(pendingRouted(answered)).toBeUndefined();
+    expect(layout(answered).filter((item) => item.kind === "routed")).toMatchObject([
+      { decision: { effort: "low", confidence: 0.7 } },
+    ]);
   });
 
   it("reads a switch by another id for the session's own model as an effort change", () => {
