@@ -405,6 +405,14 @@ const SUMMARY_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
 
 const FILE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set(["FileChanged"]);
 
+const QUEUE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
+  "MessageQueued",
+  "TurnInput",
+  "TurnCompleted",
+  "MessageWithdrawn",
+  "ConversationRewound",
+]);
+
 /** A thread's events of the kinds in `tags`, changing only when one of them arrives. */
 const eventsOfKinds = (threadId: ThreadId, tags: ReadonlySet<EventPayload["_tag"]>) =>
   Atom.make((get) =>
@@ -422,6 +430,9 @@ export const summaryEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKin
 
 /** The files a thread's agents changed, as they report them, for the files panel. */
 export const fileChangesAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, FILE_TAGS));
+
+/** The events a lead's queued messages are worked out from, for the ones waiting in the message box. */
+export const queueEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, QUEUE_TAGS));
 
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");
@@ -443,6 +454,7 @@ export const interruptAgent = Backend.runtime.fn<{ readonly payload: { readonly 
     ),
 );
 export const steerAgent = Backend.mutation("SteerAgent");
+export const withdrawMessage = Backend.mutation("WithdrawMessage");
 export const stopAgent = Backend.runtime.fn<{ readonly payload: { readonly agentId: AgentId } }>()(
   ({ payload }, get) =>
     Backend.use((client) => client("StopAgent", payload)).pipe(

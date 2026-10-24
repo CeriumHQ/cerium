@@ -75,7 +75,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 25;
+export const RPC_VERSION = 26;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -292,6 +292,15 @@ export const MachineRpcs = RpcGroup.make(
    * waiting for its next step. Since `RPC_VERSION` 19.
    */
   Rpc.make("SteerAgent", { payload: { agentId: AgentId }, error: CeriumError }),
+  /**
+   * Takes back one of the user's messages still queued for a lead. Answers false when the agent has
+   * already taken it. Since `RPC_VERSION` 26.
+   */
+  Rpc.make("WithdrawMessage", {
+    payload: { agentId: AgentId, messageId: Schema.NonEmptyString },
+    success: Schema.Boolean,
+    error: CeriumError,
+  }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   /**
    * Stops all of a thread's work: interrupts every agent's turn and denies what waits on the user.

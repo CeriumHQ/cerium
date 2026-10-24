@@ -362,6 +362,11 @@ export const MessageQueued = Schema.TaggedStruct("MessageQueued", {
   message: FromUser,
 });
 
+/** The user took back a queued message before the agent took it; no turn delivers it. */
+export const MessageWithdrawn = Schema.TaggedStruct("MessageWithdrawn", {
+  messageId: Schema.NonEmptyString,
+});
+
 export const AgentSpawned = Schema.TaggedStruct("AgentSpawned", {
   childId: AgentId,
   role: Schema.NonEmptyString,
@@ -459,6 +464,7 @@ export const EventPayload = Schema.Union([
   TurnFilesReverted,
   FilesRestored,
   MessageQueued,
+  MessageWithdrawn,
   AgentSpawned,
   AgentStateChanged,
   ModelChanged,

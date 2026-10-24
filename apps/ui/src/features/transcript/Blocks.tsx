@@ -7,7 +7,6 @@ import {
   Brain,
   Check,
   ChevronRight,
-  Clock,
   CornerDownRight,
   Pencil,
   RotateCcw,
@@ -35,7 +34,7 @@ import { FoldedText } from "./FoldedText.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type { RoutedDecision, TranscriptBlock, UserBlock } from "./model.ts";
+import type { RoutedDecision, TranscriptBlock } from "./model.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
@@ -132,50 +131,6 @@ export function UserMessage({
         </div>
       )}
     </MessageMenuArea>
-  );
-}
-
-/** The user's messages waiting to reach the agent, with why they wait. */
-export function QueuedInput({
-  messages,
-  note,
-  onSteer,
-}: {
-  messages: ReadonlyArray<UserBlock>;
-  note: string;
-  /** Interrupts the agent to send the messages now. Absent where they can only wait. */
-  onSteer?: (() => void) | undefined;
-}) {
-  // Pressed once per wait: the turn's end brings the messages in, and this button goes with them.
-  const [steered, setSteered] = useState(false);
-  return (
-    <div className="flex flex-col items-end gap-2 py-3">
-      <div className="flex w-full flex-col items-end gap-2 opacity-70">
-        {messages.map((block) => (
-          <UserMessage key={block.id} block={block} />
-        ))}
-      </div>
-      <div className="flex items-center gap-2 text-[12px] text-fg-tertiary">
-        <p className="flex items-center gap-1.5">
-          <Clock size={12} strokeWidth={1.75} />
-          {steered ? "Steering…" : note}
-        </p>
-        {onSteer && !steered ? (
-          <Tooltip label="Interrupt the agent and send now">
-            <Button
-              onClick={() => {
-                setSteered(true);
-                onSteer();
-              }}
-              className="flex h-6 items-center gap-1 rounded-md border border-line-subtle px-2 font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary"
-            >
-              <CornerDownRight size={12} strokeWidth={1.75} />
-              Steer
-            </Button>
-          </Tooltip>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

@@ -12,7 +12,7 @@ import {
   type RefObject,
 } from "react";
 
-import { cloudEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
+import { cloudEventsAtom, queueEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
@@ -31,7 +31,8 @@ import type { TurnFileTab } from "../features/viewer/model.ts";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityCapsule } from "../features/composer/ActivityCapsule.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
-import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
+import type { Queue } from "../features/composer/QueueTray.tsx";
+import { buildTranscript, holdsQueue, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
@@ -92,6 +93,11 @@ export interface ThreadPaneActions {
    * can't.
    */
   readonly steer?: ((agentId: AgentId) => Promise<unknown>) | undefined;
+  /**
+   * Takes back one of the user's messages waiting for a lead, resolving false when the agent took it
+   * first; absent when the machine's backend can't.
+   */
+  readonly withdraw?: ((agentId: AgentId, messageId: string) => Promise<boolean>) | undefined;
   readonly switchLead: (agentId: AgentId, choice: ModelSwitch) => Promise<unknown>;
   readonly respond: (
     agentId: AgentId,
@@ -188,6 +194,7 @@ export function ThreadPane({
   // message box and approvals, reads only those its agents' summaries come from.
   const eventsAtom: EventsAtom = selected ? threadEventsAtom(selected.thread.id) : cloudEvents;
   const summaryAtom: EventsAtom = selected ? summaryEventsAtom(selected.thread.id) : cloudEvents;
+  const queueAtom: EventsAtom = selected ? queueEventsAtom(selected.thread.id) : cloudEvents;
   const events = AsyncResult.getOrElse(useAtomValue(summaryAtom), (): ReadonlyArray<AgentEvent> => []);
   const draftStart = useAtomValue(draftStartAtom(draftKey));
   const newFolder = draftStart?.folder ?? folder;
@@ -205,6 +212,28 @@ export function ThreadPane({
   const sameModel = (a: string, b: string) =>
     a === b ||
     (lead !== undefined && modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b));
+  const queueEvents = AsyncResult.getOrElse(useAtomValue(queueAtom), (): ReadonlyArray<AgentEvent> => []);
+  const queued = queuedMessages(lead ? queueEvents.filter((event) => event.agentId === lead.id) : []);
+  const leadActivity = leadRunning ? "running" : leadEnded ? "ended" : "idle";
+  // Messages waiting behind a running turn, or for an ended lead, wait in the message box, where they
+  // can be taken back. A thread read from the cloud copy can't touch them: that takes its machine.
+  const { withdraw, steer } = actions;
+  const queue: Queue | undefined =
+    lead && holdsQueue(queued, leadActivity)
+      ? {
+          messages: queued.messages,
+          ended: leadActivity === "ended",
+          ...(cloud || !steer ? {} : { onSteer: () => void attempt(steer(lead.id)) }),
+          ...(cloud || !withdraw
+            ? {}
+            : {
+                onWithdraw: async (messageId: string) => {
+                  const taken = withdraw(lead.id, messageId);
+                  return (await attempt(taken)) && (await taken);
+                },
+              }),
+        }
+      : undefined;
 
   return (
     // The terminal drawer docks under the conversation, which keeps its message box floating above it.
@@ -222,7 +251,7 @@ export function ThreadPane({
               agent={{ provider: lead.provider, model: leadModel }}
               modelName={(model) => modelLabel(models, lead.provider, model)}
               {...(cloud ? {} : { messageBox: box })}
-              activity={leadRunning ? "running" : leadEnded ? "ended" : "idle"}
+              activity={leadActivity}
               bottomInset={composerHeight}
               childState={(childId) => {
                 const child = agents.find((agent) => agent.id === childId);
@@ -243,9 +272,6 @@ export function ThreadPane({
               onAnswerQuestion={(requestId, response) =>
                 cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
               }
-              {...(cloud || !actions.steer
-                ? {}
-                : { onSteer: () => void attempt(actions.steer?.(lead.id) ?? Promise.resolve()) })}
               // A thread read from the cloud copy can't go back: that takes its machine.
               {...(cloud || !actions.edit
                 ? {}
@@ -324,6 +350,7 @@ export function ThreadPane({
                 <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
               ) : undefined
             }
+            queue={queue}
             above={
               cloud ? (
                 <ConnectingNote machine={cloud.name} />

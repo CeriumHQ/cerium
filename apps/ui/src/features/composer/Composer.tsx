@@ -49,6 +49,7 @@ import { CommentTray } from "./CommentTray.tsx";
 import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
 import {
   draftMentions,
+  segmentsOf,
   draftText,
   emptyDraft,
   hasContent,
@@ -81,6 +82,7 @@ import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 import { WorktreeChip, WorktreePicker } from "./WorktreePicker.tsx";
+import { QueueTray, type Queue } from "./QueueTray.tsx";
 
 /**
  * Control M starts and stops dictation, which no browser or Windows key takes in a text box; on a Mac
@@ -186,6 +188,8 @@ interface ComposerProps {
   readonly takesFocus?: boolean;
   /** The step the lead's running turn is on, shown over the box's corner while it runs. */
   readonly activity?: ReactNode;
+  /** The user's messages waiting for the lead, listed at the top of the box. */
+  readonly queue?: Queue | undefined;
 }
 
 /** The message box, floating over the bottom of the transcript. */
@@ -202,6 +206,7 @@ export function Composer({
   onHeight,
   takesFocus = true,
   activity,
+  queue,
 }: ComposerProps) {
   const setDrafts = useAtomSet(draftsAtom);
   const machine = useAtomValue(machineAtom);
@@ -498,33 +503,36 @@ export function Composer({
   const stopDictating = useEffectEvent(() => dictation.cancel());
   useEffect(() => () => stopDictating(), [draftKey]);
 
+  /** Adds text and files to the draft, skipping files it already holds. */
+  const appendToDraft: MessageBox["append"] = ({ segments, attachments = [], replacing }) => {
+    const key = draftKey;
+    updateDraft(key, (current) => {
+      const attached = new Set(
+        current.attachments.flatMap((attachment) =>
+          attachment.state._tag === "Ready" ? [attachment.state.attachment.path] : [],
+        ),
+      );
+      return {
+        ...current,
+        attachments: [
+          ...current.attachments,
+          ...attachments
+            .filter((attachment) => !attached.has(attachment.path))
+            .map((attachment): DraftAttachment => ({
+              id: crypto.randomUUID(),
+              name: attachment.name,
+              mediaType: attachment.mediaType,
+              state: { _tag: "Ready", attachment },
+            })),
+        ],
+      };
+    });
+    editor.current?.append(segments, replacing);
+  };
+
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
-    append: ({ segments, attachments = [], replacing }) => {
-      const key = draftKey;
-      updateDraft(key, (current) => {
-        const attached = new Set(
-          current.attachments.flatMap((attachment) =>
-            attachment.state._tag === "Ready" ? [attachment.state.attachment.path] : [],
-          ),
-        );
-        return {
-          ...current,
-          attachments: [
-            ...current.attachments,
-            ...attachments
-              .filter((attachment) => !attached.has(attachment.path))
-              .map((attachment): DraftAttachment => ({
-                id: crypto.randomUUID(),
-                name: attachment.name,
-                mediaType: attachment.mediaType,
-                state: { _tag: "Ready", attachment },
-              })),
-          ],
-        };
-      });
-      editor.current?.append(segments, replacing);
-    },
+    append: appendToDraft,
     comment: ({ quote, text }) =>
       updateDraft(draftKey, (current) => ({
         ...current,
@@ -905,6 +913,19 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
+          {queue ? (
+            <div className={oneLine ? "basis-full" : undefined}>
+              <QueueTray
+                queue={queue}
+                onEdit={(message) =>
+                  appendToDraft({
+                    segments: segmentsOf(message.text, message.mentions),
+                    attachments: message.attachments,
+                  })
+                }
+              />
+            </div>
+          ) : null}
           {comments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />

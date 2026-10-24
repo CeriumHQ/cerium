@@ -67,6 +67,7 @@ import {
   respondToPermission,
   steerAgent,
   summaryEventsAtom,
+  withdrawMessage,
   answerQuestion,
   sendMessage,
   setThreadArchived,
@@ -161,7 +162,7 @@ import { LATER_VERSION, type ThreadSummary } from "../features/threads/model.ts"
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
-import { EDIT_VERSION, STEER_VERSION } from "../features/transcript/model.ts";
+import { EDIT_VERSION, STEER_VERSION, WITHDRAW_VERSION } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
@@ -674,6 +675,7 @@ function Workspace() {
   const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
   const interrupt = useAtomSet(interruptAgent, { mode: "promise" });
   const steer = useAtomSet(steerAgent, { mode: "promise" });
+  const withdraw = useAtomSet(withdrawMessage, { mode: "promise" });
   const stop = useAtomSet(stopAgent, { mode: "promise" });
   const stopEverything = useAtomSet(stopThread, { mode: "promise" });
   /** Waiting on the user to confirm stopping every agent in the open thread. */
@@ -1479,6 +1481,10 @@ function Workspace() {
     steer:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STEER_VERSION
         ? (agentId) => steer({ payload: { agentId } })
+        : undefined,
+    withdraw:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WITHDRAW_VERSION
+        ? (agentId, messageId) => withdraw({ payload: { agentId, messageId } })
         : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
     respond: (agentId, requestId, decision, scope) =>

@@ -252,6 +252,8 @@ export const Handlers = MachineRpcs.toLayer(
           .interruptAgent(agentId, includeChildren === undefined ? {} : { includeChildren })
           .pipe(Effect.mapError(refuse)),
       SteerAgent: ({ agentId }) => orchestrator.steerAgent(agentId).pipe(Effect.mapError(refuse)),
+      WithdrawMessage: ({ agentId, messageId }) =>
+        orchestrator.withdrawMessage(agentId, messageId).pipe(Effect.mapError(refuse)),
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
       StopThread: ({ threadId }) => orchestrator.stopThread(threadId).pipe(Effect.mapError(refuse)),
       RenameThread: ({ threadId, title }) =>

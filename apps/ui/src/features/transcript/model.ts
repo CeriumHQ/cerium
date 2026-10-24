@@ -19,6 +19,9 @@ export const EDIT_VERSION = 11;
 /** The `RPC_VERSION` that brought `SteerAgent`; an older machine's queued messages wait for the turn's end. */
 export const STEER_VERSION = 19;
 
+/** The `RPC_VERSION` that brought `WithdrawMessage`; an older machine's queued messages can't be taken back. */
+export const WITHDRAW_VERSION = 26;
+
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
 
@@ -430,6 +433,9 @@ export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessage
       case "TurnCompleted":
         turnOpen = false;
         break;
+      case "MessageWithdrawn":
+        queued.delete(payload.messageId);
+        break;
       // Every message queued before a rewind went with the turns it replaced.
       case "ConversationRewound":
         queued.clear();
@@ -441,3 +447,10 @@ export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessage
   }
   return { messages: [...queued.values()], behindTurn: turnOpen };
 };
+
+/**
+ * Whether queued messages wait in the message box rather than read as sent: behind a running turn,
+ * or for an ended agent to start again. Ones waiting only for the session to start read as sent.
+ */
+export const holdsQueue = (queued: QueuedMessages, activity: AgentActivity): boolean =>
+  queued.messages.length > 0 && (activity === "ended" || (activity === "running" && queued.behindTurn));

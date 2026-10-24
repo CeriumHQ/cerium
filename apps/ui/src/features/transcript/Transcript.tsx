@@ -30,7 +30,6 @@ import {
   ModelSwitch,
   Notice,
   PermissionCard,
-  QueuedInput,
   Reasoning,
   RoutedEffort,
   SpawnAsk,
@@ -44,12 +43,13 @@ import { WorkspaceFolder } from "./FileChip.tsx";
 import { currentModel, layout, pendingRouted, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
-import type {
-  AgentActivity,
-  QueuedMessages,
-  RoutedDecision,
-  TranscriptBlock,
-  TurnChanges as TurnChangesModel,
+import {
+  holdsQueue,
+  type AgentActivity,
+  type QueuedMessages,
+  type RoutedDecision,
+  type TranscriptBlock,
+  type TurnChanges as TurnChangesModel,
 } from "./model.ts";
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
@@ -98,11 +98,6 @@ interface TranscriptProps {
    * (or the preview), messages offer no restore.
    */
   readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
-  /**
-   * Interrupts the lead to send the messages waiting behind its turn now, rather than at its next
-   * step. Without it, they only wait.
-   */
-  readonly onSteer?: () => void;
   /** Opens the files a turn changed and undoes them; without it, a turn's files are only listed. */
   readonly turnFiles?: TurnFileActions | undefined;
 }
@@ -138,7 +133,6 @@ export function Transcript({
   onEditMessage,
   onPreviewRestore,
   onRestoreMessage,
-  onSteer,
   turnFiles,
 }: TranscriptProps) {
   // Read from the spawns as text, which stays equal while they do, so `actions` below stays the same
@@ -151,10 +145,8 @@ export function Transcript({
     return (agentId: string) => roles.get(agentId) ?? "An agent";
   }, [spawned]);
   // Messages waiting for the agent's session read as sent, with its progress below them. Ones that
-  // wait behind a running turn, or for an ended agent to start again, sit after it and say so.
-  const held =
-    queued.messages.length > 0 && (activity === "ended" || (activity === "running" && queued.behindTurn));
-  const shown = held ? blocks : [...blocks, ...queued.messages];
+  // wait behind a running turn, or for an ended agent to start again, wait in the message box.
+  const shown = holdsQueue(queued, activity) ? blocks : [...blocks, ...queued.messages];
   const { viewport, following, toEnd } = useStickToBottom(
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
@@ -254,19 +246,6 @@ export function Transcript({
               />
             ) : null}
             {working ? <Working /> : null}
-            {held ? (
-              <QueuedInput
-                // A new wait offers steering again.
-                key={queued.messages[0]?.id}
-                messages={queued.messages}
-                note={
-                  activity === "ended"
-                    ? "Not sent yet · goes with your next message"
-                    : "Queued · sends at the agent's next step"
-                }
-                onSteer={activity === "ended" ? undefined : onSteer}
-              />
-            ) : null}
           </div>
         </ScrollArea>
         <SelectionReply within={column} />

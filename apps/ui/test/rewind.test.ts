@@ -2,7 +2,7 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 import { describe, expect, it } from "@effect/vitest";
 
 import { layout } from "../src/features/transcript/layout.ts";
-import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
+import { buildTranscript, holdsQueue, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
   payloads.map((payload, sequence) => ({
@@ -99,5 +99,29 @@ describe("edited messages", () => {
       ),
     );
     expect(queued).toEqual({ messages: [], behindTurn: false });
+  });
+});
+
+describe("withdrawn messages", () => {
+  const waiting = events(
+    { _tag: "MessageQueued", message: { _tag: "FromUser", id: "m1", text: "one" } },
+    { _tag: "TurnInput", items: [{ _tag: "FromUser", id: "m1", text: "one" }] },
+    { _tag: "MessageQueued", message: { _tag: "FromUser", id: "m2", text: "two" } },
+    { _tag: "MessageQueued", message: { _tag: "FromUser", id: "m3", text: "three" } },
+    { _tag: "MessageWithdrawn", messageId: "m2" },
+  );
+
+  it("leave the queue, and the rest keep their order", () => {
+    const queued = queuedMessages(waiting);
+    expect(queued.messages.map((message) => message.text)).toEqual(["three"]);
+    expect(queued.behindTurn).toBe(true);
+  });
+
+  it("wait in the box only behind a running turn or for an ended lead", () => {
+    const queued = queuedMessages(waiting);
+    expect(holdsQueue(queued, "running")).toBe(true);
+    expect(holdsQueue(queued, "ended")).toBe(true);
+    expect(holdsQueue(queued, "idle")).toBe(false);
+    expect(holdsQueue(queuedMessages([]), "running")).toBe(false);
   });
 });

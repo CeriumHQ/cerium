@@ -68,7 +68,7 @@ import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } 
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
 import { commandOf, FolderActivity, turnFiles, type TurnWork } from "./turnFiles.ts";
-import { liveEvents, replayNotice, rewindPoint, startsAnew } from "./rewind.ts";
+import { liveEvents, replayNotice, rewindPoint, startsAnew, undeliveredIds } from "./rewind.ts";
 import {
   Adapters,
   BusEndpoint,
@@ -237,6 +237,7 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "SpawnApprovalRequested",
   "SpawnApprovalResolved",
   "MessageQueued",
+  "MessageWithdrawn",
   "TurnInput",
   "MessageCompleted",
   "SessionStarted",
@@ -373,6 +374,11 @@ export class Orchestrator extends Context.Service<
      * waiting for its tool calls to finish. Does nothing when no message waits or no turn is running.
      */
     steerAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Takes back one of the user's messages waiting for a lead, so no turn delivers it. False when the
+     * agent has already taken it.
+     */
+    withdrawMessage(agentId: AgentId, messageId: string): Effect.Effect<boolean, OrchestratorError>;
     /** Ends the agent's session. */
     stopAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
@@ -1708,6 +1714,7 @@ export class Orchestrator extends Context.Service<
           if (payload._tag === "MessageQueued" && payload.message.id !== undefined) {
             undelivered.set(payload.message.id, payload.message);
           }
+          if (payload._tag === "MessageWithdrawn") undelivered.delete(payload.messageId);
           if (payload._tag === "TurnInput") {
             for (const item of payload.items)
               if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
@@ -2055,6 +2062,7 @@ export class Orchestrator extends Context.Service<
           if (payload._tag === "MessageQueued" && payload.message.id !== undefined) {
             going.add(payload.message.id);
           }
+          if (payload._tag === "MessageWithdrawn") going.delete(payload.messageId);
         }
         for (const id of delivered) going.delete(id);
         const files = yield* filePlan(thread, since, snapshot);
@@ -2560,6 +2568,54 @@ export class Orchestrator extends Context.Service<
         steerAgent: Effect.fn("Orchestrator.steerAgent")(function* (agentId: AgentId) {
           yield* steer(yield* runtime(agentId));
         }),
+
+        // Under the accept permit, so a message being accepted can't slip between taking the inbox
+        // and putting the rest back.
+        withdrawMessage: (agentId: AgentId, messageId: string) =>
+          acceptPermit.withPermits(1)(
+            Effect.gen(function* () {
+              const isIt = (item: InputItem) => item._tag === "FromUser" && item.id === messageId;
+              const live = runtimes.get(agentId);
+              const session = live !== undefined && !live.ended ? live : undefined;
+              // A lead picked back up after a rewind holds what waited for the user's next message.
+              const kept = held.get(agentId);
+              let found = kept?.undelivered.some(isIt) === true;
+              if (found && kept !== undefined) {
+                held.set(agentId, { ...kept, undelivered: kept.undelivered.filter((item) => !isIt(item)) });
+              }
+              if (!found && session !== undefined) {
+                // Only what still waits in the inbox: one the turn loop has taken is on its way in.
+                const waiting = yield* Queue.clear(session.inbox);
+                const rest = waiting.filter((item) => !isIt(item));
+                found = rest.length < waiting.length;
+                yield* Queue.offerAll(session.inbox, rest);
+                // Nothing left of the user's to steer the running turn for.
+                if (found) session.userWaiting = rest.some((item) => item._tag === "FromUser");
+              }
+              if (!found && session === undefined) {
+                // A lead without a session keeps what it never took in its history, for its next one.
+                const events = liveEvents(
+                  yield* store
+                    .listEvents(agentId, {
+                      tags: ["MessageQueued", "MessageWithdrawn", "TurnInput", "ConversationRewound"],
+                    })
+                    .pipe(Effect.mapError(unavailable)),
+                );
+                found = undeliveredIds(events).has(messageId);
+              }
+              if (!found) return false;
+              const withdrawn = { _tag: "MessageWithdrawn", messageId } as const;
+              if (session !== undefined) yield* emit(session, withdrawn);
+              else {
+                const info =
+                  live?.info ??
+                  Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+                if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+                yield* emitStored(info, withdrawn);
+              }
+              return true;
+            }),
+          ),
 
         stopAgent: Effect.fn("Orchestrator.stopAgent")(function* (agentId: AgentId) {
           const rt = yield* runtime(agentId);

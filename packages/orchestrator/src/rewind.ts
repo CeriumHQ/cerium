@@ -20,6 +20,21 @@ export const liveEvents = (events: ReadonlyArray<AgentEvent>): ReadonlyArray<Age
   return live;
 };
 
+/** The user's messages an agent's live events queued and no turn delivered, nor the user took back. */
+export const undeliveredIds = (events: ReadonlyArray<AgentEvent>): ReadonlySet<string> => {
+  const waiting = new Set<string>();
+  for (const { payload } of events) {
+    if (payload._tag === "MessageQueued" && payload.message.id !== undefined) waiting.add(payload.message.id);
+    if (payload._tag === "MessageWithdrawn") waiting.delete(payload.messageId);
+    if (payload._tag === "TurnInput") {
+      for (const item of payload.items) if (item._tag === "FromUser" && item.id) waiting.delete(item.id);
+    }
+    // Every message queued before a rewind went with the turns it replaced.
+    if (payload._tag === "ConversationRewound") waiting.clear();
+  }
+  return waiting;
+};
+
 /** Where a rewind to before one of the user's messages goes back to, and how its session follows. */
 export interface RewindPoint {
   /** The sequence of the turn that delivered the message: it and everything after are replaced. */
