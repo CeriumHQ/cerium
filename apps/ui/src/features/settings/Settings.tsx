@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleUserRound,
   Gauge,
+  GitBranch,
   Keyboard,
   Palette,
   Settings2,
@@ -23,6 +24,7 @@ import { GeneralSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
+import { SourceControlSettings } from "./SourceControl.tsx";
 import { UsageSettings } from "./Usage.tsx";
 
 export type SettingsCategory =
@@ -32,6 +34,7 @@ export type SettingsCategory =
   | "appearance"
   | "agents"
   | "harnesses"
+  | "sourceControl"
   | "usage"
   | "keyboard";
 
@@ -50,6 +53,7 @@ const categories: ReadonlyArray<{
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "harnesses", label: "Harnesses", icon: Blocks },
+  { id: "sourceControl", label: "Source control", icon: GitBranch },
   { id: "usage", label: "Usage", icon: Gauge },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
 ];
@@ -212,6 +216,8 @@ export function SettingsView({
       );
     case "harnesses":
       return <HarnessSettings key={category} />;
+    case "sourceControl":
+      return <SourceControlSettings key={category} />;
     case "usage":
       return <UsageSettings key={category} {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})} />;
     case "keyboard":

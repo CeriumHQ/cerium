@@ -7,11 +7,9 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
-import { githubStatusAtom } from "../../backend/github.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
-import { GitHubRow } from "../github/GitHubSettings.tsx";
 import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
 import { accountLabel } from "./harnessModel.ts";
 import { SettingsPage } from "./parts.tsx";
@@ -29,14 +27,12 @@ export const harnessName: Record<ProviderId, string> = {
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 
 /**
- * Each harness on the driven machine, and the GitHub CLI, with the account each runs on and the one
- * thing to do about it. Check again reads them all afresh, and says when it last ran.
+ * Each harness on the driven machine, with the account it runs on and the one thing to do about it. Check again reads them all afresh, and says when it last ran.
  */
 export function HarnessSettings() {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
   const refreshModels = useAtomRefresh(modelsAtom);
-  const refreshGitHub = useAtomRefresh(githubStatusAtom);
   const machine = useAtomValue(machineAtom)?.name;
   const [checkedAt, setCheckedAt] = useState<number>();
   const checking = result.waiting;
@@ -45,7 +41,6 @@ export function HarnessSettings() {
     setCheckedAt(Date.now());
     refreshHarnesses();
     refreshModels();
-    refreshGitHub();
   };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> | undefined => undefined);
   const failed = AsyncResult.isFailure(result);
@@ -93,9 +88,6 @@ export function HarnessSettings() {
               />
             </li>
           ))}
-          <li>
-            <GitHubRow />
-          </li>
         </ul>
       )}
     </SettingsPage>
