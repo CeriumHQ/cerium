@@ -31,17 +31,24 @@ const accessTone: Record<AccessMode, string> = {
   fullAccess: "text-attention",
 };
 
-/** The model and its effort, set into the box together; the effort is absent for models without one. */
-export function ModelWell({ model, effort }: { readonly model: ReactNode; readonly effort?: ReactNode }) {
+/**
+ * The thread's setup as one outlined pill: the model, its effort and, for a new thread, its access,
+ * each a segment that opens its own menu. The effort is absent for models without one.
+ */
+export function ModelWell({
+  model,
+  effort,
+  access,
+}: {
+  readonly model: ReactNode;
+  readonly effort?: ReactNode;
+  readonly access?: ReactNode;
+}) {
   return (
-    <div className="flex h-8 shrink-0 items-center rounded-[9px] border border-line-subtle bg-surface-sunken px-px">
+    <div className="flex h-8 min-w-0 shrink-0 items-stretch divide-x divide-line-subtle overflow-hidden rounded-[10px] border border-line-subtle [&>*]:h-full [&>*]:rounded-none [&>*]:px-2.5">
       {model}
-      {effort ? (
-        <>
-          <span aria-hidden className="mx-0.5 h-3.5 w-px shrink-0 bg-line-strong" />
-          {effort}
-        </>
-      ) : null}
+      {effort}
+      {access}
     </div>
   );
 }
@@ -265,10 +272,7 @@ export function AccessPicker({
         if (access !== null) onPick(access);
       }}
     >
-      <BaseSelect.Trigger
-        aria-label="Access"
-        className="flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line-subtle pr-2.5 pl-2 text-[12px] whitespace-nowrap text-fg-secondary transition-colors select-none hover:border-line-strong hover:text-fg-primary data-popup-open:border-line-strong data-popup-open:text-fg-primary"
-      >
+      <BaseSelect.Trigger aria-label="Access" className={triggerClass}>
         <Icon size={12} strokeWidth={2} className={accessTone[value]} />
         {accessOptions.find((option) => option.value === value)?.label}
       </BaseSelect.Trigger>

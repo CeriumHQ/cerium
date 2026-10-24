@@ -639,13 +639,14 @@ export function Composer({
   const discSize = oneLine ? "m-0.5 size-9" : "size-8";
   const stopButton = (
     <Tooltip label="Stop" shortcut="Esc">
+      {/* A ring turns around it while the turn runs, so the one control that ends it stands out. */}
       <Button
         onClick={onStop}
         onMouseDown={keepFocus}
         aria-label="Stop"
-        className={`grid shrink-0 place-items-center rounded-full bg-surface-active text-fg-primary transition-colors hover:bg-line-strong ${discSize}`}
+        className={`relative grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] before:absolute before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary hover:opacity-90 active:scale-95 motion-reduce:before:animate-none ${discSize}`}
       >
-        <Square size={12} fill="currentColor" />
+        <Square size={11} fill="currentColor" strokeWidth={0} />
       </Button>
     </Tooltip>
   );
@@ -660,7 +661,8 @@ export function Composer({
         onMouseDown={keepFocus}
         disabled={!canSend && !asksForProject}
         aria-label={sendLabel}
-        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30 ${discSize}`}
+        // With nothing to send it's an outlined ring rather than a faded disc, which read as broken.
+        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform,background-color] hover:opacity-90 active:scale-95 disabled:bg-transparent disabled:text-fg-tertiary disabled:opacity-100 disabled:ring-1 disabled:ring-line-strong disabled:ring-inset ${discSize}`}
       >
         <ArrowUp size={16} strokeWidth={2.25} />
       </Button>
@@ -818,13 +820,19 @@ export function Composer({
             />
           ) : undefined
         }
+        access={
+          target.mode === "work" ? (
+            <AccessPicker value={access} onPick={setAccess} limit={limit} />
+          ) : undefined
+        }
       />
     ) : null;
 
-  // Where a new work thread runs, as a path (project / folder or worktree), and what its agents may do.
+  // Where a new work thread runs, as a path (project / folder or worktree), in a glass capsule over
+  // the box's corner: it says where the message goes, so it stays out of the message itself.
   const newPlace =
     target.kind === "new" && target.mode === "work" ? (
-      <div className="flex min-w-0 flex-wrap items-center gap-0.5 px-2 pt-2">
+      <div className="pointer-events-auto mb-2 ml-1.5 inline-flex max-w-full min-w-0 items-center gap-px rounded-[10px] border border-line-subtle bg-surface-panel p-0.5 backdrop-blur-2xl [&>button]:h-6">
         <ProjectPicker
           folder={target.folder}
           open={projectsOpen}
@@ -851,9 +859,6 @@ export function Composer({
             />
           </>
         ) : null}
-        <div className="ml-auto pl-2">
-          <AccessPicker value={access} onPick={setAccess} limit={limit} />
-        </div>
       </div>
     ) : null;
 
@@ -877,13 +882,16 @@ export function Composer({
             onPick={pick}
           />
         ) : null}
+        {oneLine ? null : newPlace}
+        {/* Glass in the transcript's own tone: the box stands apart by its edge and the blur of what
+            scrolls under it, not by being lighter or darker than the conversation. */}
         <div
-          className={`pointer-events-auto relative rounded-2xl border bg-surface-raised backdrop-blur-2xl transition-colors ${
-            dragging ? "border-accent" : "border-line-subtle focus-within:border-line-strong"
+          className={`pointer-events-auto relative rounded-[18px] border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
+            dragging ? "border-accent" : "border-line-strong"
           } ${oneLine ? "flex flex-wrap items-end p-1" : ""}`}
         >
           {dragging ? (
-            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-2xl bg-surface-overlay text-[13px] text-fg-secondary backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-[13px] text-fg-secondary backdrop-blur-xl">
               <span className="flex items-center gap-2">
                 <Paperclip size={14} strokeWidth={1.75} />
                 Drop to attach
@@ -893,7 +901,6 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
-          {oneLine ? null : newPlace}
           {comments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
@@ -937,10 +944,10 @@ export function Composer({
           {oneLine ? (
             actions
           ) : (
-            <div className="flex items-end gap-1 px-2 pb-2">
+            <div className="flex items-end gap-1 px-2.5 pt-1 pb-2.5">
               {/* The pickers wrap among themselves on a narrow screen, so send keeps its corner
                   instead of dropping onto a row of its own. */}
-              <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
+              <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-1">
                 {attachButton}
                 {thread ? threadSetup : newSetup}
               </div>

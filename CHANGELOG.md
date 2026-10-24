@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The message box is glass in the conversation's own tone instead of a lighter card. A new thread's project and worktree sit in a small capsule above it. Model, effort and access share one outlined pill whose segments each open their menu as before. Send shows as an outlined ring until there's something to send, and stop is solid, with a ring turning around it while the turn runs.
+
 ### Removed
 
 - The repository's `social-preview.png`: GitHub now reuses the website's `og.jpg`, the same share image `apps/site/index.html` points to, uploaded through Settings → Social preview.
