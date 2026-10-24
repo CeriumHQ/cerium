@@ -195,6 +195,11 @@ interface Runtime {
   turnToolCalls: number;
   turnFailed: boolean;
   readonly turnFiles: Set<string>;
+  /**
+   * The provider's message last stored with one of its events. A message makes several events (an
+   * edit of many files, a reply with tool calls), and each kept the whole of it again.
+   */
+  storedRaw: unknown;
 }
 
 /** A model of the agent's harness, and its effort (none for a model without an effort setting). */
@@ -589,8 +594,13 @@ export class Orchestrator extends Context.Service<
           yield* PubSub.publish(feed, event);
         });
 
+      /** Records a runtime's event, keeping the provider's message only with the first it makes. */
       const emit = (rt: Runtime, payload: EventPayload, raw?: unknown) =>
-        Effect.suspend(() => record(rt.info, rt.sequence++, payload, raw));
+        Effect.suspend(() => {
+          const original = raw !== undefined && raw === rt.storedRaw ? undefined : raw;
+          if (original !== undefined && !isEphemeral(payload)) rt.storedRaw = original;
+          return record(rt.info, rt.sequence++, payload, original);
+        });
 
       /** Records an event of an agent that has no runtime, such as a lead stopped before a restart. */
       const emitStored = (info: AgentInfo, payload: EventPayload) =>
@@ -1314,6 +1324,7 @@ export class Orchestrator extends Context.Service<
             turnToolCalls: 0,
             turnFailed: false,
             turnFiles: new Set(),
+            storedRaw: undefined,
           };
           runtimes.set(info.id, rt);
 
