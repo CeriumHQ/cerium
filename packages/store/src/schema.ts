@@ -56,6 +56,12 @@ export const events = sqliteTable(
   (table) => [
     uniqueIndex("events_agent_sequence").on(table.agentId, table.sequence),
     index("events_thread_at").on(table.threadId, table.at),
+    // Counting each thread's events the cloud copy keeps, every round of it, reads only this index;
+    // without it, the count read every event's row (a tenth of a second on a 1.7 GB store).
+    index("events_thread_tag").on(table.threadId, table.tag),
+    // Reads of one kind of event (open questions and saved attachments at startup, usage for the
+    // spend report) find them here instead of reading every event.
+    index("events_tag_at").on(table.tag, table.at),
   ],
 );
 
