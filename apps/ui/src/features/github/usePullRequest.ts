@@ -133,18 +133,20 @@ export function usePullActions(cwd: string, number: number): PullActions {
     running.current = true;
     setBusy(name);
     setError(undefined);
+    let result: { readonly done: A } | undefined;
     try {
       const done = await work();
       setTimeout(() => refreshPull(registry, cwd, number), SEARCH_LAG);
-      return { done };
+      result = { done };
     } catch (cause) {
       setError(messageOf(cause));
-      return undefined;
-    } finally {
-      running.current = false;
-      setBusy(undefined);
-      refreshPull(registry, cwd, number);
     }
+    // Not a `finally`: the React Compiler skips a hook that has one. The catch takes every failure,
+    // so this runs either way.
+    running.current = false;
+    setBusy(undefined);
+    refreshPull(registry, cwd, number);
+    return result;
   };
   const worked = async (name: PullAction, work: () => Promise<unknown>) =>
     (await run(name, work)) !== undefined;

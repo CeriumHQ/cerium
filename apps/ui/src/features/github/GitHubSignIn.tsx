@@ -22,7 +22,7 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
     return (
       <GitHubSignInSteps
         attempt={attempt}
-        onRetry={() => setAttempt(++attempts)}
+        onRetry={() => setAttempt(nextAttempt())}
         onCancel={() => setAttempt(undefined)}
         onSignedIn={() => {
           setAttempt(undefined);
@@ -34,7 +34,7 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="flex items-center gap-2">
       <Button
-        onClick={() => setAttempt(++attempts)}
+        onClick={() => setAttempt(nextAttempt())}
         className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
       >
         <LogIn size={13} strokeWidth={2} />

@@ -54,9 +54,10 @@ export function NewIssueDialog({
       setBody(written.body);
     } catch (cause) {
       setError(messageOf(cause));
-    } finally {
-      setWriting(false);
     }
+    // Not a `finally`: the React Compiler skips a component that has one. The catch takes every
+    // failure, so this runs either way.
+    setWriting(false);
   };
 
   const reset = () => {
@@ -71,10 +72,10 @@ export function NewIssueDialog({
     running.current = true;
     setBusy(true);
     setError(undefined);
+    // Out of the `try`: the React Compiler skips a component whose `try` holds a conditional.
+    const payload = { cwd, title: title.trim(), body, ...(labels.size === 0 ? {} : { labels: [...labels] }) };
     try {
-      const made = await create({
-        payload: { cwd, title: title.trim(), body, ...(labels.size === 0 ? {} : { labels: [...labels] }) },
-      });
+      const made = await create({ payload });
       reset();
       onOpenChange(false);
       // GitHub's search takes a moment to list it, so the list is read again now and once more soon.
@@ -83,10 +84,9 @@ export function NewIssueDialog({
       onCreated(made.number, title.trim());
     } catch (cause) {
       setError(messageOf(cause));
-    } finally {
-      running.current = false;
-      setBusy(false);
     }
+    running.current = false;
+    setBusy(false);
   };
 
   return (

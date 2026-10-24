@@ -58,20 +58,22 @@ export function useIssueActions(cwd: string, number: number): IssueActions {
     running.current = true;
     setBusy(name);
     setError(undefined);
+    let worked = false;
     try {
       await work();
       // GitHub's search takes a few seconds to catch up, so the list is read once more after it.
       setTimeout(() => refreshIssueList(registry, cwd), SEARCH_LAG);
-      return true;
+      worked = true;
     } catch (cause) {
       setError(messageOf(cause));
-      return false;
-    } finally {
-      running.current = false;
-      setBusy(undefined);
-      refreshIssue(registry, issueKey(cwd, number));
-      refreshIssueList(registry, cwd);
     }
+    // Not a `finally`: the React Compiler skips a hook that has one. The catch takes every failure,
+    // so this runs either way.
+    running.current = false;
+    setBusy(undefined);
+    refreshIssue(registry, issueKey(cwd, number));
+    refreshIssueList(registry, cwd);
+    return worked;
   };
 
   return {

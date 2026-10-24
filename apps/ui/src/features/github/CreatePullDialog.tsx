@@ -65,9 +65,10 @@ export function CreatePullDialog({
       setBody(written.body);
     } catch (cause) {
       setError(messageOf(cause));
-    } finally {
-      setWriting(false);
     }
+    // Not a `finally`: the React Compiler skips a component that has one. The catch takes every
+    // failure, so this runs either way.
+    setWriting(false);
   };
 
   const submit = async () => {
@@ -83,10 +84,9 @@ export function CreatePullDialog({
       onCreated(made.number, made.title);
     } catch (cause) {
       setError(messageOf(cause));
-    } finally {
-      running.current = false;
-      setBusy(false);
     }
+    running.current = false;
+    setBusy(false);
   };
 
   return (

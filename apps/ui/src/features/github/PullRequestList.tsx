@@ -86,6 +86,16 @@ export function PullRequestList({
 }
 
 type StateFilter = NonNullable<PullRequestFilters["state"]>;
+type FlagFilter = "createdByMe" | "reviewRequested" | "assignedToMe";
+
+/**
+ * The filters with one of their flags set or cleared. Out here because the React Compiler skips a
+ * component that takes a computed key out of an object.
+ */
+const withFlag = (filters: PullRequestFilters, name: FlagFilter, on: boolean): PullRequestFilters => {
+  const { [name]: _, ...rest } = filters;
+  return on ? { ...rest, [name]: true } : rest;
+};
 
 /** The search field and the filter menu over the list. */
 function FilterBar({
@@ -114,10 +124,7 @@ function FilterBar({
   }, [text]);
 
   const count = pullFilterCount(filters);
-  const set = (name: "createdByMe" | "reviewRequested" | "assignedToMe", on: boolean) => {
-    const { [name]: _, ...rest } = filters;
-    onChange(on ? { ...rest, [name]: true } : rest);
-  };
+  const set = (name: FlagFilter, on: boolean) => onChange(withFlag(filters, name, on));
   return (
     <SearchBar value={text} onChange={setText} placeholder="Search pull requests">
       <MenuRoot>
