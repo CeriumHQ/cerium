@@ -25,6 +25,8 @@ export const agents = sqliteTable(
     provider: text("provider", { enum: ["claude", "codex", "muse", "cursor", "opencode"] }).notNull(),
     model: text("model").notNull(),
     effort: text("effort", { enum: ["minimal", "low", "medium", "high", "xhigh", "max"] }),
+    /** Null for agents never set to Auto. */
+    autoEffort: integer("auto_effort", { mode: "boolean" }),
     access: text("access", { enum: ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"] }).notNull(),
     state: text("state", { enum: ["queued", "running", "idle", "stopped", "failed"] }).notNull(),
     providerSessionId: text("provider_session_id"),

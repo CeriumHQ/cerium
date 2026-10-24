@@ -42,7 +42,7 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 }) {}
 
 /** `effort: null` clears the effort, for a model its harness offers no effort setting for. */
-export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "providerSessionId">> & {
+export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "providerSessionId" | "autoEffort">> & {
   readonly effort?: AgentInfo["effort"] | null;
   readonly updatedAt: number;
 };
@@ -315,6 +315,7 @@ export class Store extends Context.Service<
                 ...agent,
                 parentId: agent.parentId ?? null,
                 effort: agent.effort ?? null,
+                autoEffort: agent.autoEffort ?? null,
                 providerSessionId: agent.providerSessionId ?? null,
               }),
             ),

@@ -1,6 +1,7 @@
 import type { HarnessAdapter, McpServerSpec } from "@cerium/harness";
 import type {
   AgentId,
+  ModelInfo,
   ProviderId,
   ReasoningEffort,
   ThreadId,
@@ -33,7 +34,14 @@ export interface CatalogEntry {
  */
 export class Catalog extends Context.Service<
   Catalog,
-  { readonly entries: Effect.Effect<ReadonlyArray<CatalogEntry>> }
+  {
+    readonly entries: Effect.Effect<ReadonlyArray<CatalogEntry>>;
+    /**
+     * Every model the harnesses offered when the backend started, with their efforts, for the effort
+     * router; absent where nothing listed them.
+     */
+    readonly models?: Effect.Effect<ReadonlyArray<ModelInfo>>;
+  }
 >()("cerium/orchestrator/Catalog") {
   static fromEntries = (entries: ReadonlyArray<CatalogEntry>) =>
     Layer.succeed(Catalog, { entries: Effect.succeed(entries) });

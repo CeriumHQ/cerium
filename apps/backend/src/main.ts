@@ -29,7 +29,7 @@ import { thisInstallation, thisMachine } from "./device.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
 import { parentPort as shell } from "./shell.ts";
-import { fileVault, shellVault } from "./vault.ts";
+import { fileEffortRouterKey, fileVault, shellEffortRouterKey, shellVault } from "./vault.ts";
 
 const flag = (name: string) =>
   process.argv.find((arg) => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -84,6 +84,10 @@ const options = {
     installation: thisInstallation(dataDirectory),
   },
   vault: shell === undefined ? fileVault(join(dataDirectory, "account.json")) : shellVault(shell),
+  effortRouterKey:
+    shell === undefined
+      ? fileEffortRouterKey(join(dataDirectory, "effort-router.json"))
+      : shellEffortRouterKey(shell),
 };
 
 Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(NodeRuntime.runMain);

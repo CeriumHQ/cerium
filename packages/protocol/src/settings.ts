@@ -1,6 +1,7 @@
 import { Effect, Schema, Struct } from "effect";
 
 import { ReasoningEffort } from "./capabilities.ts";
+import { withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
 
 /**
@@ -64,6 +65,22 @@ export type DiscordSettings = typeof DiscordSettings.Type;
 const defaultDiscord: DiscordSettings = { enabled: false, showProject: false };
 
 /**
+ * The experimental effort router: on agents set to Auto, a decision model (Jev, through the user's
+ * own OpenRouter key) picks each turn's reasoning effort. It stays off without a saved key.
+ */
+export const EffortRouterSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /**
+   * Who picks the effort of a child an Auto lead spawns without one: `router`, the child is Auto too;
+   * `lead`, it runs at its lead's current level.
+   */
+  children: withFallback(Schema.Literals(["router", "lead"]), "router"),
+});
+export type EffortRouterSettings = typeof EffortRouterSettings.Type;
+
+const defaultEffortRouter: EffortRouterSettings = { enabled: false, children: "router" };
+
+/**
  * The user's settings the backend applies. Preferences that only change the window (theme, text
  * size, keys) stay in the UI.
  */
@@ -76,6 +93,8 @@ export const Settings = Schema.Struct({
   titles: TitleSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultTitles))),
   /** Read as its default from a backend that predates it. */
   discord: DiscordSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultDiscord))),
+  /** Read as its default from a backend that predates it. */
+  effortRouter: EffortRouterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultEffortRouter))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -88,4 +107,5 @@ export const defaultSettings: Settings = {
   advisor: defaultAdvisor,
   titles: defaultTitles,
   discord: defaultDiscord,
+  effortRouter: defaultEffortRouter,
 };

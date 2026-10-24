@@ -41,7 +41,10 @@ export const CapabilityManifest = Schema.Struct({
   switching: Schema.Struct({
     model: Schema.Boolean,
     effort: Schema.Boolean,
-    /** Effort can change mid-session without invalidating the provider's prompt cache. */
+    /**
+     * Some of the harness's models keep the provider's prompt cache when effort changes mid-session;
+     * `ModelInfo.cacheSafeEffort` says which.
+     */
     cacheSafeEffort: Schema.Boolean,
   }),
   input: Schema.Struct({

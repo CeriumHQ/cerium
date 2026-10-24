@@ -43,6 +43,8 @@ export interface DraftStart {
    */
   readonly models?: ReadonlyArray<string>;
   readonly effort?: ReasoningEffort;
+  /** Off when the user took this draft off Auto; absent, it starts on Auto while the effort router is on. */
+  readonly autoEffort?: boolean;
   readonly access?: AccessMode;
   /** The thread runs in a git worktree of its own. */
   readonly worktree?: boolean;

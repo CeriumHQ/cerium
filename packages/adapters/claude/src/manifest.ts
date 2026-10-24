@@ -22,8 +22,8 @@ export const claudeManifest: CapabilityManifest = {
   provider: "claude",
   releases: { npmPackage: "@anthropic-ai/claude-code", updateCommand: "claude update" },
   session: { resume: true, fork: true },
-  // Effort switches mid-session through `applyFlagSettings({ effortLevel })`. The smoke test shows the
-  // prompt cache surviving the switch (turn 2 after medium → low: 53 new vs 33.6k cached input tokens).
+  // Effort switches mid-session through `applyFlagSettings({ effortLevel })`. The prompt cache survives
+  // the switch on the 5.5 and Fable 5.1 models only (`CACHE_SAFE_EFFORT` in models.ts).
   switching: { model: true, effort: true, cacheSafeEffort: true },
   input: { images: true },
   permissions: { approvals: "callback", readOnlyMode: true },

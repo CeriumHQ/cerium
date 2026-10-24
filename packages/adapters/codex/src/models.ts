@@ -32,9 +32,17 @@ export const toModelInfo = (model: Model): ModelInfo => {
     ...(model.description ? { description: model.description } : {}),
     efforts: ceriumEfforts(model.supportedReasoningEfforts.map((option) => option.reasoningEffort)),
     ...(defaultEffort ? { defaultEffort } : {}),
+    ...(CACHE_SAFE_EFFORT.has(model.model) ? { cacheSafeEffort: true } : {}),
     ...(model.isDefault ? { isDefault: true } : {}),
   };
 };
+
+/**
+ * The models whose prompt cache survived an effort switch in a live check (0.164.0, medium → low,
+ * with `reasoning_effort_override` on): Codex sends it as a `configuration_update`. GPT-5.6 models
+ * start the cache over.
+ */
+const CACHE_SAFE_EFFORT: ReadonlySet<string> = new Set(["gpt-6-luna"]);
 
 /** Asks the user's `codex` which models its picker offers. No thread is started. */
 export const listCodexModels = Effect.fn("CodexAdapter.listModels")(function* (executablePath: string) {

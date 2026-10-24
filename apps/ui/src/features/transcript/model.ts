@@ -2,6 +2,7 @@ import type {
   AccessMode,
   AgentEvent,
   Attachment,
+  EffortRouted,
   FromUser,
   InputItem,
   Mention,
@@ -83,6 +84,8 @@ export type TranscriptBlock =
       };
       /** The files the turn changed, once its snapshot after it is in. */
       readonly changes?: TurnChanges;
+      /** What the effort router decided before the turn, for an agent on Auto. */
+      readonly routed?: Omit<EffortRouted, "_tag">;
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string }
   /**
@@ -158,6 +161,8 @@ export const buildTranscript = (
   const indexOf = new Map<string, number>();
   let lastUsage: Extract<TranscriptBlock, { kind: "turnEnd" }>["usage"];
   let running: { model: string; effort: ReasoningEffort | undefined } | undefined;
+  /** The effort router's decision for the turn about to end. */
+  let routed: Omit<EffortRouted, "_tag"> | undefined;
   /** The turn in progress, by the id its files are recorded under. */
   let turnId: string | undefined;
 
@@ -188,6 +193,7 @@ export const buildTranscript = (
         for (const [key, index] of indexOf) if (index >= start) indexOf.delete(key);
         if (replaced.length > 0) blocks.push({ kind: "replaced", id: `replaced:${id}`, blocks: replaced });
         lastUsage = undefined;
+        routed = undefined;
         break;
       }
       // A restore's files follow the rewind of its conversation.
@@ -220,6 +226,15 @@ export const buildTranscript = (
           ...(effort ? { effort } : {}),
           change,
         });
+        break;
+      }
+      // A routed level is the one the agent runs at from here, so a later switch to it is no change.
+      case "EffortRouted": {
+        const { _tag, ...decision } = payload;
+        routed = decision;
+        if (running !== undefined && payload.effort !== undefined) {
+          running = { ...running, effort: payload.effort };
+        }
         break;
       }
       case "TurnInput":
@@ -353,8 +368,10 @@ export const buildTranscript = (
           id: `turnEnd:${id}`,
           stopReason: payload.stopReason,
           ...(lastUsage ? { usage: lastUsage } : {}),
+          ...(routed ? { routed } : {}),
         });
         lastUsage = undefined;
+        routed = undefined;
         break;
       case "TurnFilesChanged": {
         const key = `turn:${payload.turnId}`;

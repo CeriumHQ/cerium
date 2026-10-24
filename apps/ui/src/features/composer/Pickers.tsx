@@ -2,9 +2,18 @@ import { Button } from "@base-ui/react/button";
 import { Popover } from "@base-ui/react/popover";
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { Slider } from "@base-ui/react/slider";
+import { Switch } from "@base-ui/react/switch";
 import type { AccessMode, HarnessLimit, ReasoningEffort } from "@cerium/protocol";
-import { Eye, FilePen, ShieldCheck, ShieldOff, ShieldQuestion, type LucideIcon } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import {
+  Eye,
+  FilePen,
+  ShieldCheck,
+  ShieldOff,
+  ShieldQuestion,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 import { SelectItem, SelectPopup, SelectRoot, triggerClass } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -85,23 +94,28 @@ const THUMB = 18;
 
 /**
  * Picks among the efforts the model, or the models, offer: a meter that opens a slider with a stop
- * for each of them. A model with one effort has nothing to pick, and shows it.
+ * for each of them. A model with one effort has nothing to pick, and shows it. With `auto`, the
+ * effort router is on and a switch under the slider hands it the pick; picking a level takes it back.
  */
 export function EffortPicker({
   efforts,
   value,
   onPick,
+  auto,
 }: {
   readonly efforts: ReadonlyArray<ReasoningEffort>;
   readonly value: ReasoningEffort;
   readonly onPick: (effort: ReasoningEffort) => void;
+  readonly auto?: { readonly on: boolean; readonly onChange: (on: boolean) => void } | undefined;
 }) {
   /** The stop a drag is on, shown at once and picked only as the drag ends. */
   const [held, setHeld] = useState<number>();
   const thumb = useRef<HTMLInputElement>(null);
+  const autoLabel = useId();
   const last = efforts.length - 1;
   const index = held ?? Math.max(0, efforts.indexOf(value));
   const label = effortLabel[efforts[index] ?? value];
+  const automatic = auto?.on === true && held === undefined;
   /** Where a stop sits along the track: where the thumb's centre lands on it. */
   const at = (stop: number) => `calc(${THUMB / 2}px + ${stop / last} * (100% - ${THUMB}px))`;
   if (last < 1) {
@@ -113,9 +127,12 @@ export function EffortPicker({
         if (!open) setHeld(undefined);
       }}
     >
-      <Popover.Trigger aria-label={`Reasoning effort: ${label}`} className={`${triggerClass} gap-2`}>
+      <Popover.Trigger
+        aria-label={automatic ? `Reasoning effort: Auto, ${label} now` : `Reasoning effort: ${label}`}
+        className={`${triggerClass} gap-2`}
+      >
         <EffortMeter efforts={efforts} level={index} />
-        <span className="text-[12px]">{label}</span>
+        <span className="text-[12px]">{automatic ? "Auto" : label}</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50 outline-none">
@@ -129,6 +146,7 @@ export function EffortPicker({
               </Popover.Title>
               <span className="flex items-center gap-2 text-[13px] font-semibold">
                 <EffortMeter efforts={efforts} level={index} />
+                {automatic ? <span className="font-normal text-fg-tertiary">Auto ·</span> : null}
                 {label}
               </span>
             </div>
@@ -142,7 +160,8 @@ export function EffortPicker({
               onValueCommitted={(next) => {
                 setHeld(undefined);
                 const picked = efforts[next];
-                if (picked !== undefined && picked !== value) onPick(picked);
+                // On Auto, picking even the level it's at takes the pick back.
+                if (picked !== undefined && (picked !== value || auto?.on)) onPick(picked);
               }}
             >
               <Slider.Control className="flex h-6 w-full cursor-pointer touch-none items-center select-none">
@@ -188,7 +207,7 @@ export function EffortPicker({
                   tabIndex={-1}
                   onClick={() => {
                     setHeld(undefined);
-                    if (level !== value) onPick(level);
+                    if (level !== value || auto?.on) onPick(level);
                   }}
                   className={`absolute top-0 -translate-x-1/2 text-2xs whitespace-nowrap transition-colors first:translate-x-0 last:-translate-x-full ${
                     stop === index
@@ -203,6 +222,25 @@ export function EffortPicker({
                 </button>
               ))}
             </div>
+            {auto ? (
+              <div className="-mx-3.5 mt-2.5 flex items-center gap-3 border-t border-line-subtle px-3.5 pt-2.5">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span id={autoLabel} className="flex items-center gap-1.5 text-[12.5px] font-medium">
+                    <Sparkles size={12} strokeWidth={2} className="text-fg-tertiary" />
+                    Auto
+                  </span>
+                  <span className="text-2xs text-fg-tertiary">Picks the level for each turn</span>
+                </span>
+                <Switch.Root
+                  checked={auto.on}
+                  onCheckedChange={auto.onChange}
+                  aria-labelledby={autoLabel}
+                  className="relative flex h-4.5 w-8 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-accent"
+                >
+                  <Switch.Thumb className="size-3.5 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3.5 data-checked:bg-accent-fg" />
+                </Switch.Root>
+              </div>
+            ) : null}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

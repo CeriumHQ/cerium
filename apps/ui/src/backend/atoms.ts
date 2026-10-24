@@ -283,6 +283,15 @@ export const settingsAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("Settings", undefined));
 });
 
+/**
+ * Whether the driven machine has an OpenRouter key for the effort router, and what its decisions
+ * cost. Re-read after a reconnect; a machine too old for the router fails it.
+ */
+export const effortRouterStatusAtom = Backend.runtime.atom((get) => {
+  get(connectionAtom);
+  return Backend.use((client) => client("EffortRouterStatus", undefined));
+});
+
 /** How long a thread's events are kept after it closes, so going back to it shows it at once. */
 const CLOSED_THREAD_TTL = "5 minutes";
 
@@ -366,6 +375,9 @@ export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const deleteThread = Backend.mutation("DeleteThread");
 export const updateSettings = Backend.mutation("UpdateSettings");
+export const removeEffortRouterKey = Backend.mutation("RemoveEffortRouterKey");
+// The key is only ever typed into the desktop app of the computer whose agents use it.
+export const saveEffortRouterKey = LocalBackend.mutation("SaveEffortRouterKey");
 // This computer's account is managed only from its own backend, whatever the window drives.
 export const signIn = LocalBackend.mutation("SignIn");
 export const cancelSignIn = LocalBackend.mutation("CancelSignIn");

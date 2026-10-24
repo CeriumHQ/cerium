@@ -101,6 +101,11 @@ export const AgentInfo = Schema.Struct({
   provider: ProviderId,
   model: Schema.NonEmptyString,
   effort: Schema.optionalKey(ReasoningEffort),
+  /**
+   * Set to Auto: while the effort router is on, it picks the effort of each turn, and `effort` is
+   * the level the agent last ran at.
+   */
+  autoEffort: Schema.optionalKey(Schema.Boolean),
   access: AccessMode,
   state: AgentState,
   providerSessionId: Schema.optionalKey(Schema.NonEmptyString),

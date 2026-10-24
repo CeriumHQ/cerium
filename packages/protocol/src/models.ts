@@ -13,6 +13,11 @@ export const ModelInfo = Schema.Struct({
   /** Efforts the model accepts, lowest first. Empty when the harness has no effort setting for it. */
   efforts: Schema.Array(ReasoningEffort),
   defaultEffort: Schema.optionalKey(ReasoningEffort),
+  /**
+   * A live check measured the provider's prompt cache surviving an effort switch mid-session on this
+   * model, so the effort router may change it every turn. Absent: not measured, or the cache restarts.
+   */
+  cacheSafeEffort: Schema.optionalKey(Schema.Boolean),
   /** The model the harness picks when none is named. */
   isDefault: Schema.optionalKey(Schema.Boolean),
 });

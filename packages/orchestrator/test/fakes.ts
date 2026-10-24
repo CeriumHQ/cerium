@@ -1,5 +1,5 @@
 import type { HarnessAdapter } from "@cerium/harness";
-import type { AgentEvent } from "@cerium/protocol";
+import type { AgentEvent, ModelInfo } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { NodeServices } from "@effect/platform-node";
 import { Duration, Effect, Layer, Stream } from "effect";
@@ -12,6 +12,7 @@ import {
   BusEndpoint,
   Catalog,
   Checkpoints,
+  EffortDecider,
   Orchestrator,
   OrchestratorConfig,
   UserSettings,
@@ -38,13 +39,25 @@ export const testLayer = (
     readonly checkpoints?: Layer.Layer<Checkpoints>;
     /** A database file to keep across layers, as the app keeps it across restarts. */
     readonly database?: string;
+    /** The models the harnesses offer, with their efforts, for the effort router. */
+    readonly models?: ReadonlyArray<ModelInfo>;
+    /** The effort router's decision model; without one the router never runs. */
+    readonly decider?: EffortDecider["Service"];
   } = {},
 ) =>
   Orchestrator.layer.pipe(
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(testStore(options.database)),
     Layer.provide(Adapters.fromList(adapters)),
-    Layer.provide(Catalog.fromEntries(options.catalog ?? [])),
+    Layer.provide(
+      Layer.succeed(Catalog, {
+        entries: Effect.succeed(options.catalog ?? []),
+        models: Effect.succeed(options.models ?? []),
+      }),
+    ),
+    Layer.provide(
+      options.decider === undefined ? Layer.empty : Layer.succeed(EffortDecider, options.decider),
+    ),
     Layer.provide(fakeBus),
     Layer.provide(options.worktrees ?? Worktrees.unavailable),
     Layer.provide(options.checkpoints ?? Checkpoints.unavailable),

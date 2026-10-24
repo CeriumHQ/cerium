@@ -382,7 +382,31 @@ export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
   model: Schema.NonEmptyString,
   /** Absent for a model its harness offers no effort setting for. */
   effort: Schema.optionalKey(ReasoningEffort),
+  /** The agent is on Auto from here: the effort router picks its effort while it is on. */
+  autoEffort: Schema.optionalKey(Schema.Boolean),
 });
+
+/**
+ * The effort router's word on the turn about to start, for an agent set to Auto: the level the turn
+ * runs at. Without `kept`, the router picked it; with it, the agent kept the level it had:
+ * - `cache`: its model starts the prompt cache over when effort changes, so only a new session's
+ *   first turn is routed.
+ * - `unsure`: the decision model's confidence was under the floor.
+ * - `timeout`, `failed`: no answer in time, or no usable one (`detail` says why).
+ */
+export const EffortRouted = Schema.TaggedStruct("EffortRouted", {
+  /** Absent when the agent kept its harness's own default level. */
+  effort: Schema.optionalKey(ReasoningEffort),
+  kept: Schema.optionalKey(withFallback(Schema.Literals(["cache", "unsure", "timeout", "failed"]), "failed")),
+  /** The decision model's confidence in the level it found likeliest, from 0 to 1. */
+  confidence: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+  /** How long deciding took, in milliseconds. */
+  ms: Schema.optionalKey(NonNegativeInt),
+  /** What the decision cost, as OpenRouter reported it. */
+  costUsd: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  detail: Schema.optionalKey(Schema.String),
+});
+export type EffortRouted = typeof EffortRouted.Type;
 
 /** A spawn outside the catalog waits for the user. */
 export const SpawnApprovalRequested = Schema.TaggedStruct("SpawnApprovalRequested", {
@@ -438,6 +462,7 @@ export const EventPayload = Schema.Union([
   AgentSpawned,
   AgentStateChanged,
   ModelChanged,
+  EffortRouted,
   SpawnApprovalRequested,
   SpawnApprovalResolved,
   ThreadRenamed,

@@ -43,7 +43,8 @@ import { Projects } from "./project.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
-import { fileVault } from "./vault.ts";
+import { EffortRouter } from "./effortRouter.ts";
+import { fileEffortRouterKey, fileVault, type EffortRouterKey } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 import { worktreesLayer } from "./worktree.ts";
 
@@ -65,6 +66,8 @@ export interface BackendOptions {
   readonly worktreeDirectory?: string;
   /** Where the sign-in is kept; by default a plain file in the data folder, as a development backend keeps it. */
   readonly vault?: Layer.Layer<Vault, never, FileSystem.FileSystem | Path.Path>;
+  /** Where the effort router's key is kept; by default a plain file in the data folder, like `vault`. */
+  readonly effortRouterKey?: Layer.Layer<EffortRouterKey, never, FileSystem.FileSystem | Path.Path>;
 }
 
 /** Every harness adapter in this build. */
@@ -131,6 +134,7 @@ const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
     Effect.gen(function* () {
       const adapters = yield* Adapters;
       const known = yield* Deferred.make<ReadonlyArray<CatalogEntry>>();
+      const models = yield* Deferred.make<ReadonlyArray<ModelInfo>>();
       yield* Effect.forEach(
         [...adapters.values()],
         (adapter) =>
@@ -140,10 +144,14 @@ const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
           ),
         { concurrency: "unbounded" },
       ).pipe(
-        Effect.flatMap((offered) => Deferred.succeed(known, catalogFrom(curated, offered.flat()))),
+        Effect.flatMap((offered) =>
+          Deferred.succeed(models, offered.flat()).pipe(
+            Effect.andThen(Deferred.succeed(known, catalogFrom(curated, offered.flat()))),
+          ),
+        ),
         Effect.forkScoped,
       );
-      return { entries: Deferred.await(known) };
+      return { entries: Deferred.await(known), models: Deferred.await(models) };
     }),
   ).pipe(Layer.provide(AdaptersLive));
 
@@ -180,7 +188,21 @@ export const backendLayer = (options: BackendOptions) =>
         SubscriptionUsage.layer,
       ),
     ),
-    Layer.provideMerge(Orchestrator.layer),
+    // With the effort router's decision model, through the user's own OpenRouter key.
+    Layer.provideMerge(
+      Orchestrator.layer.pipe(
+        Layer.provideMerge(EffortRouter.decider),
+        Layer.provideMerge(
+          EffortRouter.layer.pipe(
+            Layer.provide(
+              options.effortRouterKey ??
+                fileEffortRouterKey(join(options.dataDirectory, "effort-router.json")),
+            ),
+            Layer.provide(FetchHttpClient.layer),
+          ),
+        ),
+      ),
+    ),
     Layer.provideMerge(
       worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),
     ),

@@ -1,19 +1,23 @@
 import { randomUUID } from "node:crypto";
 
 import { Vault, VaultError } from "@cerium/account";
-import { Deferred, Effect, FileSystem, Layer, Option, Path } from "effect";
+import { Context, Deferred, Effect, FileSystem, Layer, Option, Path } from "effect";
 
 import type { ParentPort } from "./shell.ts";
 
-// Where the backend keeps this machine's Cerium sign-in: the one credential Cerium holds, its own.
-// The packaged shell encrypts it with Windows' data protection; a
-// development backend keeps it in its data folder as it is.
+// Where the backend keeps its secrets: this machine's Cerium sign-in, Cerium's own credential, and the
+// OpenRouter key the user gave the effort router. The packaged shell encrypts them with Windows' data
+// protection; a development backend keeps them in its data folder as they are.
+
+/** Which of the shell's secrets: absent for the sign-in. */
+type SecretName = "effortRouter";
 
 /** What the backend asks the shell over its parent port, and what the shell answers. */
 export interface VaultRequest {
   readonly type: "vault";
   readonly id: string;
   readonly op: "read" | "write";
+  readonly name?: SecretName;
   /** For a write: the new contents, or `null` to forget them. */
   readonly value?: string | null;
 }
@@ -31,58 +35,78 @@ const isReply = (message: unknown): message is VaultReply =>
   (message as { type?: unknown }).type === "vault" &&
   typeof (message as { id?: unknown }).id === "string";
 
-/** The packaged shell's vault, asked for over the backend's parent port. */
-export const shellVault = (port: ParentPort) =>
-  Layer.sync(Vault, () => {
-    const waiting = new Map<string, (reply: VaultReply) => void>();
-    port.on("message", ({ data }) => {
-      if (!isReply(data)) return;
-      waiting.get(data.id)?.(data);
-      waiting.delete(data.id);
+/** The OpenRouter key the effort router decides with; kept like the sign-in, never sent anywhere else. */
+export class EffortRouterKey extends Context.Service<EffortRouterKey, Vault["Service"]>()(
+  "cerium/backend/EffortRouterKey",
+) {}
+
+/** One of the packaged shell's secrets, asked for over the backend's parent port. */
+const shellSecret = (port: ParentPort, name: SecretName | undefined): Vault["Service"] => {
+  const waiting = new Map<string, (reply: VaultReply) => void>();
+  port.on("message", ({ data }) => {
+    if (!isReply(data)) return;
+    waiting.get(data.id)?.(data);
+    waiting.delete(data.id);
+  });
+
+  const ask = (request: Pick<VaultRequest, "op" | "value">) =>
+    Effect.gen(function* () {
+      const id = randomUUID();
+      const answer = yield* Deferred.make<VaultReply>();
+      waiting.set(id, (reply) => Deferred.doneUnsafe(answer, Effect.succeed(reply)));
+      port.postMessage({
+        type: "vault",
+        id,
+        ...(name === undefined ? {} : { name }),
+        ...request,
+      } satisfies VaultRequest);
+      const reply = yield* Deferred.await(answer).pipe(
+        Effect.timeoutOrElse({
+          duration: "10 seconds",
+          orElse: () => Effect.fail(new VaultError({ message: "Cerium's window didn't answer in time." })),
+        }),
+        Effect.ensuring(Effect.sync(() => waiting.delete(id))),
+      );
+      if (reply.error !== undefined) return yield* new VaultError({ message: reply.error });
+      return reply;
     });
 
-    const ask = (request: Omit<VaultRequest, "type" | "id">) =>
-      Effect.gen(function* () {
-        const id = randomUUID();
-        const answer = yield* Deferred.make<VaultReply>();
-        waiting.set(id, (reply) => Deferred.doneUnsafe(answer, Effect.succeed(reply)));
-        port.postMessage({ type: "vault", id, ...request } satisfies VaultRequest);
-        const reply = yield* Deferred.await(answer).pipe(
-          Effect.timeoutOrElse({
-            duration: "10 seconds",
-            orElse: () => Effect.fail(new VaultError({ message: "Cerium's window didn't answer in time." })),
-          }),
-          Effect.ensuring(Effect.sync(() => waiting.delete(id))),
-        );
-        if (reply.error !== undefined) return yield* new VaultError({ message: reply.error });
-        return reply;
-      });
+  return Vault.of({
+    read: ask({ op: "read" }).pipe(Effect.map((reply) => reply.value ?? undefined)),
+    write: (value) => ask({ op: "write", value: value ?? null }).pipe(Effect.asVoid),
+  });
+};
 
+/** The packaged shell's vault for the sign-in. */
+export const shellVault = (port: ParentPort) => Layer.sync(Vault, () => shellSecret(port, undefined));
+
+/** The packaged shell's vault for the effort router's key. */
+export const shellEffortRouterKey = (port: ParentPort) =>
+  Layer.sync(EffortRouterKey, () => shellSecret(port, "effortRouter"));
+
+/** A development backend's secret: a plain file. `what` names it in errors. */
+const fileSecret = (file: string, what: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const failed = (message: string) => () => new VaultError({ message });
     return Vault.of({
-      read: ask({ op: "read" }).pipe(Effect.map((reply) => reply.value ?? undefined)),
-      write: (value) => ask({ op: "write", value: value ?? null }).pipe(Effect.asVoid),
+      read: fs.readFileString(file).pipe(Effect.option, Effect.map(Option.getOrUndefined)),
+      write: (value) =>
+        value === undefined
+          ? fs.remove(file, { force: true }).pipe(Effect.mapError(failed(`Couldn't forget ${what}.`)))
+          : fs
+              .makeDirectory(path.dirname(file), { recursive: true })
+              .pipe(
+                Effect.andThen(fs.writeFileString(file, value)),
+                Effect.mapError(failed(`Couldn't save ${what}.`)),
+              ),
     });
   });
 
-/** A development backend's vault: a plain file. Requires `FileSystem` and `Path`. */
-export const fileVault = (file: string) =>
-  Layer.effect(
-    Vault,
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const failed = (message: string) => () => new VaultError({ message });
-      return Vault.of({
-        read: fs.readFileString(file).pipe(Effect.option, Effect.map(Option.getOrUndefined)),
-        write: (value) =>
-          value === undefined
-            ? fs.remove(file, { force: true }).pipe(Effect.mapError(failed("Couldn't forget the sign-in.")))
-            : fs
-                .makeDirectory(path.dirname(file), { recursive: true })
-                .pipe(
-                  Effect.andThen(fs.writeFileString(file, value)),
-                  Effect.mapError(failed("Couldn't save the sign-in.")),
-                ),
-      });
-    }),
-  );
+/** A development backend's vault for the sign-in. Requires `FileSystem` and `Path`. */
+export const fileVault = (file: string) => Layer.effect(Vault, fileSecret(file, "the sign-in"));
+
+/** A development backend's effort router key. Requires `FileSystem` and `Path`. */
+export const fileEffortRouterKey = (file: string) =>
+  Layer.effect(EffortRouterKey, fileSecret(file, "the effort router's key"));

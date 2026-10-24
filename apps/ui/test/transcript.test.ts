@@ -212,6 +212,28 @@ describe("the model each response ran on", () => {
     ]);
   });
 
+  it("puts the effort router's decision on its turn's footer, and runs on the level it picked", () => {
+    const blocks = buildTranscript(
+      events(
+        started,
+        { _tag: "EffortRouted", effort: "low", confidence: 0.8, ms: 400, costUsd: 0.00002 },
+        ...say("rename it"),
+        { _tag: "EffortRouted", effort: "low", kept: "unsure", confidence: 0.3 },
+        ...say("again"),
+        // Already on the routed level: no switch to show.
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "low" },
+        ...say("once more"),
+      ),
+    );
+    const ends = blocks.flatMap((block) => (block.kind === "turnEnd" ? [block.routed] : []));
+    expect(ends).toEqual([
+      { effort: "low", confidence: 0.8, ms: 400, costUsd: 0.00002 },
+      { effort: "low", kept: "unsure", confidence: 0.3 },
+      undefined,
+    ]);
+    expect(blocks.filter((block) => block.kind === "model")).toHaveLength(1);
+  });
+
   it("reads a switch by another id for the session's own model as an effort change", () => {
     const blocks = buildTranscript(
       events(started, { _tag: "ModelChanged", model: "opus", effort: "low" }),

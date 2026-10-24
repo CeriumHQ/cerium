@@ -7,6 +7,7 @@ import {
   Checkpoints,
   Orchestrator,
   UserSettings,
+  type EffortDecisionError,
   type OrchestratorError,
 } from "@cerium/orchestrator";
 import {
@@ -36,6 +37,7 @@ import { homedir } from "node:os";
 
 import { Repositories, type RepositoryError } from "./clone.ts";
 import { Drafts } from "./drafts.ts";
+import { EffortRouter } from "./effortRouter.ts";
 import { fileDiffOf, Files, resolveInside, type FilesError } from "./files.ts";
 import { GitBranches, gitBranchHandlers } from "./gitBranches.ts";
 import { GitChanges, gitChangesHandlers } from "./gitChanges.ts";
@@ -65,6 +67,8 @@ const refuse = (
     | GitError
     | StoreError,
 ) => new CeriumError({ message: error.message });
+
+const refuseDecision = (error: EffortDecisionError) => new CeriumError({ message: error.message });
 
 /** A snapshot of a folder, as `TurnFilesChanged` names one: a git tree's id. */
 const isSnapshot = (id: string) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id);
@@ -127,6 +131,7 @@ export const Handlers = MachineRpcs.toLayer(
     const store = yield* Store;
     const usage = yield* SubscriptionUsage;
     const releases = yield* Releases;
+    const effortRouter = yield* EffortRouter;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -224,9 +229,13 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator.revertTurn(agentId, turnId, direction).pipe(Effect.mapError(refuse)),
       RestoreBefore: ({ agentId, messageId }) =>
         orchestrator.restoreBefore(agentId, messageId).pipe(Effect.mapError(refuse)),
-      SwitchModel: ({ agentId, model, effort }) =>
+      SwitchModel: ({ agentId, model, effort, autoEffort }) =>
         orchestrator
-          .switchModel(agentId, { model, ...(effort ? { effort } : {}) })
+          .switchModel(agentId, {
+            model,
+            ...(effort ? { effort } : {}),
+            ...(autoEffort === undefined ? {} : { autoEffort }),
+          })
           .pipe(Effect.mapError(refuse)),
       RespondToPermission: ({ agentId, requestId, decision, scope }) =>
         orchestrator
@@ -395,6 +404,8 @@ export const Handlers = MachineRpcs.toLayer(
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
+      EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
+      RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
       ...terminalHandlers(terminals),
       ...gitBranchHandlers(gitBranches),
       ...gitChangesHandlers(gitChanges, drafts),
@@ -449,6 +460,10 @@ const DeviceHandlers = deviceHandlers({
   working,
   notifications: Effect.gen(function* () {
     return (yield* Notifications).told;
+  }),
+  saveEffortRouterKey: Effect.gen(function* () {
+    const router = yield* EffortRouter;
+    return (key: string) => router.save(key).pipe(Effect.mapError(refuseDecision));
   }),
 });
 

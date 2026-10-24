@@ -75,7 +75,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 22;
+export const RPC_VERSION = 23;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -116,10 +116,24 @@ export const CreateThreadPayload = Schema.Struct({
     provider: ProviderId,
     model: Schema.NonEmptyString,
     effort: Schema.optionalKey(ReasoningEffort),
+    /** The lead starts on Auto, where the effort router is on. Since `RPC_VERSION` 23. */
+    autoEffort: Schema.optionalKey(Schema.Boolean),
     access: AccessMode,
   }),
 });
 export type CreateThreadPayload = typeof CreateThreadPayload.Type;
+
+/**
+ * The effort router's key and what it has spent. The key is never sent back: only its last four
+ * characters, so the user can tell which one is saved.
+ */
+export const EffortRouterStatus = Schema.Struct({
+  key: Schema.optionalKey(Schema.Struct({ last4: Schema.String })),
+  /** What the router's decisions cost since the start of this month, in the machine's time zone. */
+  monthUsd: Schema.Finite,
+  totalUsd: Schema.Finite,
+});
+export type EffortRouterStatus = typeof EffortRouterStatus.Type;
 
 /** A thread whose messages match a search, and the passage around its best match in pieces. */
 export const ThreadMatch = Schema.Struct({
@@ -229,6 +243,11 @@ export const MachineRpcs = RpcGroup.make(
       agentId: AgentId,
       model: Schema.NonEmptyString,
       effort: Schema.optionalKey(ReasoningEffort),
+      /**
+       * Puts the agent on Auto (`true`) or takes it off (`false`); absent leaves it as it is, unless
+       * `effort` is given, which takes it off. Since `RPC_VERSION` 23.
+       */
+      autoEffort: Schema.optionalKey(Schema.Boolean),
     },
     success: AgentInfo,
     error: CeriumError,
@@ -550,6 +569,10 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("Settings", { success: Settings }),
   /** Changes the given settings; resolves with all of them. */
   Rpc.make("UpdateSettings", { payload: SettingsPatch, success: Settings, error: CeriumError }),
+  /** Whether the effort router has a key here, and what it has spent. Since `RPC_VERSION` 23. */
+  Rpc.make("EffortRouterStatus", { success: EffortRouterStatus, error: CeriumError }),
+  /** Forgets the effort router's key and turns the router off. Since `RPC_VERSION` 23. */
+  Rpc.make("RemoveEffortRouterKey", { success: EffortRouterStatus, error: CeriumError }),
 ).merge(TerminalRpcs, GitBranchRpcs, GitRpcs, GitHubRpcs, IssueRpcs);
 
 /**
@@ -609,6 +632,16 @@ export const DeviceRpcs = RpcGroup.make(
    * signed in or not; a desktop shows it natively. Nothing for a browser.
    */
   Rpc.make("WatchNotifications", { success: ThreadNotification, stream: true }),
+  /**
+   * Checks an OpenRouter key with one decision and keeps it, encrypted, for the effort router. Only a
+   * desktop's own window saves one: through the relay the key would pass readable. Refused by a
+   * browser.
+   */
+  Rpc.make("SaveEffortRouterKey", {
+    payload: { key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)) },
+    success: EffortRouterStatus,
+    error: CeriumError,
+  }),
 );
 
 /** A desktop backend's own endpoint, for its own UI: the machine and the device. */

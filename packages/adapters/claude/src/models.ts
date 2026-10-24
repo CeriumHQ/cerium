@@ -51,8 +51,21 @@ export const listClaudeModels = Effect.fn("ClaudeAdapter.listModels")(function* 
     label: model.displayName,
     ...(model.description ? { description: model.description } : {}),
     efforts: model.supportsEffort === true ? [...(model.supportedEffortLevels ?? [])] : [],
+    ...(CACHE_SAFE_EFFORT.has(model.resolvedModel ?? model.value) ? { cacheSafeEffort: true } : {}),
     ...(model.value === defaultId ? { isDefault: true } : {}),
   }));
 });
 
 const DEFAULT_ROW = "default";
+
+/**
+ * The models whose prompt cache survived `applyFlagSettings({ effortLevel })` in a live check
+ * (Claude Code 2.1.309, medium → low). Opus 5, Sonnet 5 and Sonnet 4.6 started the cache over, Opus 5
+ * despite Anthropic listing it for per-message effort.
+ */
+const CACHE_SAFE_EFFORT: ReadonlySet<string> = new Set([
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  "claude-fable-5-1",
+]);

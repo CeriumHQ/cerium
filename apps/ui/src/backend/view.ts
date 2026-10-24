@@ -144,6 +144,7 @@ export const toAgentSummaries = (
       provider: agent.provider,
       model: modelLabel(models, agent.provider, model),
       ...(agent.effort ? { effort: agent.effort } : {}),
+      ...(agent.autoEffort ? { autoEffort: true as const } : {}),
       access: agent.access,
       state: agent.state,
       awaitingApproval: approvals.length > 0 || spawns.length > 0 || questions.length > 0,

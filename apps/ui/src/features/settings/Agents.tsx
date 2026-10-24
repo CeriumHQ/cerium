@@ -28,6 +28,7 @@ import {
 } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { EffortRouterSetting } from "./EffortRouter.tsx";
 import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import { TitleSetting } from "./Titles.tsx";
@@ -111,7 +112,10 @@ export function AgentSettings({
         <AccessPicker value={access} onChange={setAccess} />
       </SettingsSection>
 
-      <TitleSetting models={models} harnesses={harnesses} />
+      <div className="flex flex-col gap-2">
+        <TitleSetting models={models} harnesses={harnesses} />
+        <EffortRouterSetting />
+      </div>
     </SettingsPage>
   );
 }

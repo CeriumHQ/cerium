@@ -24,7 +24,7 @@ import {
   type RefObject,
 } from "react";
 
-import { harnessesAtom, manifestsAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, manifestsAtom, settingsAtom } from "../../backend/atoms.ts";
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -103,6 +103,8 @@ export interface ThreadSetup {
   readonly model: string;
   /** Absent for models the harness offers no effort setting for. */
   readonly effort?: ReasoningEffort;
+  /** The effort router picks the lead's effort each turn, starting from `effort`. */
+  readonly autoEffort?: boolean;
   readonly access: AccessMode;
   /** A work thread runs in a git worktree of its own. */
   readonly worktree?: boolean;
@@ -119,6 +121,8 @@ export type ComposerTarget =
       readonly modelId: string;
       /** Absent for models the harness offers no effort setting for. */
       readonly effort?: ReasoningEffort | undefined;
+      /** The effort router picks the lead's effort each turn. */
+      readonly autoEffort?: boolean | undefined;
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
       /** The thread's own worktree's branch, and the branch it was made from. */
@@ -212,6 +216,10 @@ export function Composer({
   const modelId = draft.start?.model ?? defaultModel;
   const effort = draft.start?.effort ?? defaultEffort;
   const pickedAccess = draft.start?.access ?? defaultAccess;
+  // While the machine's effort router is on, a new thread starts on Auto unless taken off it.
+  const settings = useAtomValue(settingsAtom);
+  const routerOn = AsyncResult.isSuccess(settings) && settings.value.effortRouter.enabled;
+  const autoEffort = routerOn && (draft.start?.autoEffort ?? true);
   const [workplace, setWorkplace] = useAtom(workplaceAtom);
   /** A worktree is offered for a work thread in a folder git keeps, on a machine that makes them. */
   const gitFolder =
@@ -318,7 +326,9 @@ export function Composer({
 
   /** Remembers a pick in the open new thread's draft; nothing else changes it. */
   const pickForDraft = (
-    pick: Partial<Pick<DraftStart, "folder" | "model" | "models" | "effort" | "access" | "worktree">>,
+    pick: Partial<
+      Pick<DraftStart, "folder" | "model" | "models" | "effort" | "autoEffort" | "access" | "worktree">
+    >,
   ) =>
     updateDraft(draftKey, (current) => {
       const start = startOf(current);
@@ -343,9 +353,10 @@ export function Composer({
     setDefaultModel(value);
     pickForDraft({ model: value });
   };
+  /** A level picked by hand, which takes the draft off Auto. */
   const setEffort = (value: ReasoningEffort) => {
     setDefaultEffort(value);
-    pickForDraft({ effort: value });
+    pickForDraft({ effort: value, ...(routerOn ? { autoEffort: false } : {}) });
   };
   const setAccess = (value: AccessMode) => pickForDraft({ access: value });
 
@@ -359,7 +370,7 @@ export function Composer({
       : undefined;
   /** A pick the machine hasn't confirmed yet, which holds only while the thread still has what it was made against. */
   const [pending, setPending] = useState<{ readonly base: string; readonly choice: ModelSwitch }>();
-  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}`;
+  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}|${thread?.autoEffort}`;
   const picked = pending?.base === base ? pending.choice : undefined;
   const threadModel =
     thread === undefined
@@ -368,9 +379,9 @@ export function Composer({
           (candidate) =>
             candidate.provider === thread.provider && candidate.id === (picked?.model ?? thread.modelId),
         );
-  const threadEffort = threadModel
-    ? effortFor(threadModel, picked ? picked.effort : thread?.effort)
-    : undefined;
+  // Turning Auto on asks for no level, so the lead's own shows until the router picks one.
+  const threadEffort = threadModel ? effortFor(threadModel, picked?.effort ?? thread?.effort) : undefined;
+  const threadAuto = routerOn && (picked ? picked.autoEffort === true : thread?.autoEffort === true);
   const switchLead = (choice: ModelSwitch) => {
     if (thread?.onSwitch === undefined) return;
     setPending({ base, choice });
@@ -519,6 +530,7 @@ export function Composer({
         provider: each.provider,
         model: each.id,
         ...(level ? { effort: level } : {}),
+        ...(level && autoEffort ? { autoEffort } : {}),
         access: isNew && target.mode === "chat" ? "readOnly" : access,
         ...(worktree ? { worktree } : {}),
       };
@@ -668,7 +680,7 @@ export function Composer({
                 shown={threadShown}
                 providers={[thread.provider]}
                 available={new Set([thread.provider])}
-                onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort))}
+                onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort, threadAuto))}
                 {...(running ? { note: "Applies from the next turn" } : {})}
               />
             ) : (
@@ -693,6 +705,19 @@ export function Composer({
                   efforts={threadModel.efforts}
                   value={threadEffort}
                   onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
+                  auto={
+                    routerOn
+                      ? {
+                          on: threadAuto,
+                          onChange: (on) =>
+                            switchLead(
+                              on
+                                ? { model: threadModel.id, autoEffort: true }
+                                : { model: threadModel.id, effort: threadEffort, autoEffort: false },
+                            ),
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <FixedChip tip="The effort this thread started with">
@@ -754,7 +779,14 @@ export function Composer({
         }
         effort={
           activeEffort ? (
-            <EffortPicker efforts={efforts} value={activeEffort} onPick={setEffort} />
+            <EffortPicker
+              efforts={efforts}
+              value={activeEffort}
+              onPick={setEffort}
+              auto={
+                routerOn ? { on: autoEffort, onChange: (on) => pickForDraft({ autoEffort: on }) } : undefined
+              }
+            />
           ) : undefined
         }
       />

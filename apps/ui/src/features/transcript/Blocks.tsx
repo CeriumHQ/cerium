@@ -11,6 +11,7 @@ import {
   CornerDownRight,
   Pencil,
   RotateCcw,
+  Sparkles,
   Split,
   Workflow,
   X,
@@ -432,6 +433,55 @@ const stoppedNote = {
   maxTurns: { text: "Stopped at the turn limit", Icon: Ban },
 } as const;
 
+/** Why the effort router left the level where it was. */
+const keptReason = (routed: NonNullable<Block<"turnEnd">["routed"]>): string => {
+  switch (routed.kept) {
+    case "cache":
+      return "Changing it would restart this model's prompt cache";
+    case "unsure":
+      return routed.confidence === undefined
+        ? "The router wasn't sure enough"
+        : `The router was only ${Math.round(routed.confidence * 100)}% sure`;
+    case "timeout":
+      return "The router didn't answer in time";
+    default:
+      return routed.detail ?? "The router couldn't decide";
+  }
+};
+
+/** The level the effort router ran a turn at, with how it decided under the pointer. */
+function RoutedEffort({ routed }: { routed: NonNullable<Block<"turnEnd">["routed"]> }) {
+  const level = routed.effort === undefined ? "" : effortLabel[routed.effort];
+  const facts = [
+    routed.kept === undefined && routed.confidence !== undefined
+      ? `${Math.round(routed.confidence * 100)}% sure`
+      : undefined,
+    routed.ms === undefined ? undefined : `${(routed.ms / 1000).toFixed(1)} s`,
+    routed.costUsd === undefined ? undefined : `$${Number(routed.costUsd.toPrecision(2))}`,
+  ].filter((fact) => fact !== undefined);
+  return (
+    <Tooltip
+      side="top"
+      label={
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">
+            {routed.kept === undefined ? `Picked ${level}` : `Kept ${level}`}
+          </span>
+          {routed.kept === undefined ? null : <span className="text-fg-secondary">{keptReason(routed)}</span>}
+          {facts.length > 0 ? (
+            <span className="text-fg-tertiary tabular-nums">{facts.join(" · ")}</span>
+          ) : null}
+        </span>
+      }
+    >
+      <Button className="-mx-1 flex h-6 items-center gap-1 rounded-md px-1 transition-colors hover:text-fg-secondary">
+        <Sparkles size={11} strokeWidth={2} />
+        Auto · {level}
+      </Button>
+    </Tooltip>
+  );
+}
+
 /**
  * The end of a response: a button that copies it, and what the turn cost. The transcript shows it
  * under the latest response, and under earlier ones while the pointer is over them.
@@ -444,10 +494,11 @@ export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: str
     block.usage !== undefined && block.usage.inputTokens + block.usage.outputTokens > 0
       ? block.usage
       : undefined;
-  if (usage === undefined && text === "" && stopped === undefined) return null;
+  if (usage === undefined && text === "" && stopped === undefined && block.routed === undefined) return null;
   return (
     <div className="flex min-h-6 items-center gap-2.5 text-2xs text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
+      {block.routed?.effort === undefined ? null : <RoutedEffort routed={block.routed} />}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">
           <stopped.Icon size={11} strokeWidth={2} />

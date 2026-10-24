@@ -39,6 +39,7 @@ const StoredDraft = Schema.Struct({
       model: Schema.optionalKey(Schema.String),
       models: Schema.optionalKey(Schema.Array(Schema.String)),
       effort: Schema.optionalKey(ReasoningEffort),
+      autoEffort: Schema.optionalKey(Schema.Boolean),
       access: Schema.optionalKey(AccessMode),
       worktree: Schema.optionalKey(Schema.Boolean),
     }),

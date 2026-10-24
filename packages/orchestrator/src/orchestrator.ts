@@ -11,11 +11,13 @@ import {
   type AgentId,
   type AgentInfo,
   type AgentState,
+  type EffortRouted,
   type EventId,
   type EventPayload,
   type FromUser,
   type InputItem,
   type Mention,
+  type ModelInfo,
   type ProviderId,
   type Question,
   type QuestionResponse,
@@ -44,12 +46,23 @@ import {
   Path,
   PubSub,
   Queue,
+  Result,
   Scope,
   Semaphore,
   Stream,
 } from "effect";
 import { Base64 } from "effect/encoding";
 
+import {
+  CONFIDENCE_FLOOR,
+  DECISION_TIMEOUT,
+  EffortDecider,
+  effortState,
+  likeliest,
+  RECENT_EXCHANGES,
+  type Exchange,
+  type TurnFacts,
+} from "./effort.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
@@ -82,6 +95,8 @@ export interface CreateThreadInput {
     readonly provider: ProviderId;
     readonly model: string;
     readonly effort?: ReasoningEffort;
+    /** The lead starts on Auto: the effort router picks its effort while it is on. */
+    readonly autoEffort?: boolean;
     readonly access: AccessMode;
   };
 }
@@ -168,17 +183,33 @@ interface Runtime {
   steering: boolean;
   /** The model and effort its harness session runs with; its next turn brings them in line with `info`. */
   applied: ModelChoice;
+  /** Its session is new and has run no turn: the one turn the router may route on any model. */
+  fresh: boolean;
+  /** The exchanges before its next turn, for the effort router; read from the store when first needed. */
+  recent: Array<Exchange> | undefined;
+  /** How its last turn went, for the effort router. */
+  lastTurn: TurnFacts | undefined;
+  /** The tool calls, failure and changed files of the turn in progress. */
+  turnToolCalls: number;
+  turnFailed: boolean;
+  readonly turnFiles: Set<string>;
 }
 
 /** A model of the agent's harness, and its effort (none for a model without an effort setting). */
 export interface ModelChoice {
   readonly model: string;
   readonly effort?: ReasoningEffort;
+  /**
+   * Auto: the effort router picks the effort while it is on. Absent from a switch, the agent stays as
+   * it is unless an effort is picked, which takes it off.
+   */
+  readonly autoEffort?: boolean;
 }
 
 const choiceOf = (info: AgentInfo): ModelChoice => ({
   model: info.model,
   ...(info.effort ? { effort: info.effort } : {}),
+  ...(info.autoEffort ? { autoEffort: true } : {}),
 });
 
 /** A thread's advisor: the read-only child Cerium starts for `ask_advisor`. */
@@ -405,6 +436,11 @@ export class Orchestrator extends Context.Service<
       const bus = yield* BusEndpoint;
       const config = yield* OrchestratorConfig;
       const settings = yield* UserSettings;
+      const decider = Option.getOrElse(yield* Effect.serviceOption(EffortDecider), () => EffortDecider.none);
+      /** The effort router runs: the user turned it on and its decision model has a key. */
+      const routerOn = Effect.gen(function* () {
+        return (yield* settings.get).effortRouter.enabled && (yield* decider.ready);
+      });
       const titles = yield* ThreadTitles;
       const worktrees = yield* Worktrees;
       const checkpoints = yield* Checkpoints;
@@ -540,17 +576,24 @@ export class Orchestrator extends Context.Service<
       const recordModel = (info: AgentInfo, rt: Runtime | undefined, choice: ModelChoice) =>
         Effect.gen(function* () {
           const updatedAt = yield* Clock.currentTimeMillis;
-          const { effort: _previous, ...rest } = info;
+          const { effort: _previous, autoEffort: _wasAuto, ...rest } = info;
+          const autoEffort = choice.autoEffort === true;
           const next: AgentInfo = {
             ...rest,
             model: choice.model,
             ...(choice.effort ? { effort: choice.effort } : {}),
+            ...(autoEffort ? { autoEffort } : {}),
             updatedAt,
           };
           // Stored first, so a switch the store refused isn't half made: the next turn and the next
           // start of the session agree on what the agent runs.
           yield* store
-            .updateAgent(info.id, { model: choice.model, effort: choice.effort ?? null, updatedAt })
+            .updateAgent(info.id, {
+              model: choice.model,
+              effort: choice.effort ?? null,
+              autoEffort,
+              updatedAt,
+            })
             .pipe(Effect.mapError(unavailable));
           if (rt !== undefined) rt.info = next;
           const payload: EventPayload = { _tag: "ModelChanged", ...choiceOf(next) };
@@ -733,6 +776,13 @@ export class Orchestrator extends Context.Service<
                 return;
               }
               yield* emit(rt, payload, event.raw);
+              if (
+                payload._tag === "AgentError" ||
+                (payload._tag === "TurnCompleted" && payload.stopReason === "error")
+              ) {
+                rt.turnFailed = true;
+              }
+              if (payload._tag === "FileChanged") rt.turnFiles.add(payload.path);
               switch (payload._tag) {
                 case "SessionStarted": {
                   const updatedAt = yield* Clock.currentTimeMillis;
@@ -755,6 +805,7 @@ export class Orchestrator extends Context.Service<
                   return;
                 case "ToolCallStarted":
                   rt.openCalls.add(payload.callId);
+                  rt.turnToolCalls += 1;
                   return;
                 case "ToolCallCompleted":
                   rt.openCalls.delete(payload.callId);
@@ -901,6 +952,10 @@ export class Orchestrator extends Context.Service<
           rt.halted = false;
           rt.steering = false;
           rt.openCalls.clear();
+          rt.turnToolCalls = 0;
+          rt.turnFailed = false;
+          rt.turnFiles.clear();
+          const startedAt = yield* Clock.currentTimeMillis;
           rt.turn = yield* Deferred.make<void>();
           const turnId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
           // The folder as it was before the turn, which restoring to before its messages goes back to.
@@ -913,6 +968,7 @@ export class Orchestrator extends Context.Service<
             // nothing to stop; it ends here with the reason.
             Effect.catch((error) =>
               Effect.gen(function* () {
+                rt.turnFailed = true;
                 yield* emit(rt, {
                   _tag: "AgentError",
                   kind: "unknown",
@@ -927,6 +983,16 @@ export class Orchestrator extends Context.Service<
           // A stopped agent's turn ends here too, so it isn't counted as working in the folder for good.
           yield* Deferred.await(rt.turn).pipe(Effect.onInterrupt(() => Effect.asVoid(endWork(rt.info.id))));
           rt.turn = undefined;
+          // What the effort router reads before the next turn.
+          rt.fresh = false;
+          rt.lastTurn = {
+            toolCalls: rt.turnToolCalls,
+            seconds: Math.round(((yield* Clock.currentTimeMillis) - startedAt) / 1000),
+            failed: rt.turnFailed,
+            filesChanged: rt.turnFiles.size,
+          };
+          rt.recent?.push({ sent: renderTurn(items), replied: rt.lastMessage ?? "" });
+          rt.recent?.splice(0, Math.max(0, rt.recent.length - RECENT_EXCHANGES));
           const work = yield* endWork(rt.info.id);
           // And as it was after, so a restore can tell the files this turn changed from another thread's,
           // and the turn's summary which files it changed: saved behind the turn, so the agent is free at once.
@@ -980,7 +1046,10 @@ export class Orchestrator extends Context.Service<
                 // A pick made while this one was being applied stands, for the next turn to try.
                 const now = choiceOf(rt.info);
                 if (now.model === wanted.model && now.effort === wanted.effort) {
-                  yield* recordModel(rt.info, rt, rt.applied);
+                  yield* recordModel(rt.info, rt, {
+                    ...rt.applied,
+                    ...(rt.info.autoEffort ? { autoEffort: true } : {}),
+                  });
                 }
               }),
             ),
@@ -989,6 +1058,98 @@ export class Orchestrator extends Context.Service<
             Effect.catch((error) => Effect.logWarning(`Couldn't record a refused switch: ${error.message}`)),
           );
         });
+
+      /** The agent's last exchanges, read from its stored events the first time the router needs them. */
+      const recentOf = (rt: Runtime) =>
+        Effect.gen(function* () {
+          if (rt.recent !== undefined) return rt.recent;
+          const events = yield* store.listEvents(rt.info.id).pipe(Effect.orElseSucceed(() => []));
+          const recent: Array<Exchange> = [];
+          let sent: string | undefined;
+          let replied = "";
+          for (const { payload } of events) {
+            if (payload._tag === "TurnInput") {
+              sent = renderTurn(payload.items);
+              replied = "";
+            } else if (payload._tag === "MessageCompleted") {
+              replied = payload.text;
+            } else if (payload._tag === "TurnCompleted" && sent !== undefined) {
+              recent.push({ sent, replied });
+              sent = undefined;
+            } else if (payload._tag === "ConversationRewound") {
+              recent.length = 0;
+            }
+          }
+          rt.recent = recent.slice(-RECENT_EXCHANGES);
+          return rt.recent;
+        });
+
+      /**
+       * On an agent set to Auto, the effort router picks the effort of the turn about to start, and
+       * the thread records what it decided. A model that starts its prompt cache over when effort
+       * changes is routed only on a new session's first turn. Whatever goes wrong, the turn keeps its
+       * level and goes ahead.
+       */
+      const routeEffort = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
+        Effect.gen(function* () {
+          if (rt.info.autoEffort !== true || !(yield* routerOn)) return;
+          const models = yield* (catalog.models ?? Effect.succeed([])).pipe(
+            Effect.timeoutOption("3 seconds"),
+            Effect.map(Option.getOrElse((): ReadonlyArray<ModelInfo> => [])),
+          );
+          const model = models.find(
+            (each) => each.provider === rt.info.provider && each.id === rt.info.model,
+          );
+          const [lowest, ...higher] = model?.efforts ?? [];
+          // Nothing to pick between.
+          if (model === undefined || lowest === undefined || higher.length === 0) return;
+          const levels = [lowest, ...higher] as const;
+          const current = rt.info.effort ?? model.defaultEffort;
+          const kept = (reason: NonNullable<EffortRouted["kept"]>, extra: Partial<EffortRouted> = {}) =>
+            emit(rt, {
+              _tag: "EffortRouted",
+              ...(current ? { effort: current } : {}),
+              kept: reason,
+              ...extra,
+            });
+          if (model.cacheSafeEffort !== true && !rt.fresh) return yield* kept("cache");
+
+          const state = effortState(
+            {
+              from: items.some((item) => item._tag === "FromUser") ? "user" : "agent",
+              text: renderTurn(items),
+            },
+            yield* recentOf(rt),
+            rt.lastTurn,
+          );
+          const startedAt = yield* Clock.currentTimeMillis;
+          const asked = yield* decider
+            .decide({ levels, state })
+            .pipe(Effect.timeoutOption(DECISION_TIMEOUT), Effect.result);
+          const ms = (yield* Clock.currentTimeMillis) - startedAt;
+          if (Result.isFailure(asked)) return yield* kept("failed", { ms, detail: asked.failure.message });
+          if (Option.isNone(asked.success)) return yield* kept("timeout", { ms });
+          const answer = asked.success.value;
+          const spent = {
+            ms,
+            confidence: Math.min(1, Math.max(0, answer.confidence)),
+            ...(answer.costUsd === undefined ? {} : { costUsd: answer.costUsd }),
+          };
+          const top = likeliest(levels, answer.probabilities);
+          if (top === undefined)
+            return yield* kept("failed", { ...spent, detail: "The answer named no level." });
+          if (answer.confidence < CONFIDENCE_FLOOR) return yield* kept("unsure", spent);
+          if (top !== rt.info.effort) {
+            const updatedAt = yield* Clock.currentTimeMillis;
+            yield* store
+              .updateAgent(rt.info.id, { effort: top, updatedAt })
+              .pipe(Effect.mapError(unavailable));
+            rt.info = { ...rt.info, effort: top, updatedAt };
+          }
+          yield* emit(rt, { _tag: "EffortRouted", effort: top, ...spent });
+        }).pipe(
+          Effect.catchCause((cause) => Effect.logWarning(`Couldn't route ${rt.info.id}'s effort`, cause)),
+        );
 
       /**
        * Delivers inbox items as turns, one turn at a time. Agents never wait for one another's turns
@@ -1010,8 +1171,13 @@ export class Orchestrator extends Context.Service<
 
           yield* setState(rt, "queued");
           // A session that never started took nothing: what the user sent waits for the next start.
-          const session = yield* Deferred.await(rt.started).pipe(
-            Effect.tapError(() => setState(rt, "failed")),
+          // The effort router decides meanwhile, so a starting session doesn't wait on it as well.
+          const [session] = yield* Effect.all(
+            [
+              Deferred.await(rt.started).pipe(Effect.tapError(() => setState(rt, "failed"))),
+              routeEffort(rt, items),
+            ],
+            { concurrency: 2 },
           );
           yield* applyModel(rt, session);
           yield* runTurn(rt, session, items);
@@ -1108,6 +1274,12 @@ export class Orchestrator extends Context.Service<
             openCalls: new Set(),
             steering: false,
             applied: choiceOf(info),
+            fresh: options.resume === undefined,
+            recent: undefined,
+            lastTurn: undefined,
+            turnToolCalls: 0,
+            turnFailed: false,
+            turnFiles: new Set(),
           };
           runtimes.set(info.id, rt);
 
@@ -1214,7 +1386,12 @@ export class Orchestrator extends Context.Service<
       const launchChild = (lead: Runtime, request: SpawnRequest, target: SpawnTarget) =>
         Effect.gen(function* () {
           const createdAt = yield* now;
-          const effort = target.effort;
+          // A child of an Auto lead spawned without an effort is routed too, or runs at its lead's
+          // level, as the user chose.
+          const { children } = (yield* settings.get).effortRouter;
+          const follows = request.effort === undefined && lead.info.autoEffort === true && (yield* routerOn);
+          const autoEffort = follows && children === "router";
+          const effort = follows && children === "lead" ? (lead.info.effort ?? target.effort) : target.effort;
           const child: AgentInfo = {
             id: (yield* makeId("agt")) as AgentId,
             threadId: lead.info.threadId,
@@ -1223,6 +1400,7 @@ export class Orchestrator extends Context.Service<
             provider: target.provider,
             model: target.model,
             ...(effort ? { effort } : {}),
+            ...(autoEffort ? { autoEffort: true } : {}),
             access: childAccess(lead, request),
             state: "idle",
             createdAt,
@@ -2047,6 +2225,7 @@ export class Orchestrator extends Context.Service<
           provider: input.lead.provider,
           model: input.lead.model,
           ...(effort ? { effort } : {}),
+          ...(input.lead.autoEffort ? { autoEffort: true } : {}),
           access: input.mode === "chat" ? "readOnly" : input.lead.access,
           state: "idle",
           createdAt,
@@ -2153,9 +2332,23 @@ export class Orchestrator extends Context.Service<
               }
               const current = choiceOf(info);
               // No effort for the same model keeps the one it has, which its session also keeps.
-              const choice: ModelChoice =
+              const { effort, model } =
                 picked.effort === undefined && picked.model === current.model ? current : picked;
-              if (choice.model === current.model && choice.effort === current.effort) return info;
+              // Picking an effort takes the agent off Auto; otherwise it stays as it is.
+              const autoEffort =
+                picked.autoEffort ?? (picked.effort === undefined && current.autoEffort === true);
+              const choice: ModelChoice = {
+                model,
+                ...(effort ? { effort } : {}),
+                ...(autoEffort ? { autoEffort } : {}),
+              };
+              if (
+                choice.model === current.model &&
+                choice.effort === current.effort &&
+                choice.autoEffort === current.autoEffort
+              ) {
+                return info;
+              }
               const switching = adapters.get(info.provider)?.manifest.switching;
               if (choice.model !== current.model && switching?.model !== true) {
                 return yield* notAllowed(`${info.provider} can't switch a session to another model.`);
@@ -2566,6 +2759,8 @@ export class Orchestrator extends Context.Service<
             worktree: request.worktree ?? origin.worktree !== undefined,
             lead: {
               ...target,
+              // A new lead starts on Auto while the router is on, unless the caller named an effort.
+              ...(request.effort === undefined && (yield* routerOn) ? { autoEffort: true } : {}),
               access: narrowAccess(caller.info.access, request.access ?? caller.info.access),
             },
           });

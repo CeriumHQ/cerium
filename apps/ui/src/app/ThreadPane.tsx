@@ -290,6 +290,7 @@ export function ThreadPane({
                     model: leadModel,
                     modelId: lead.model,
                     effort: lead.effort,
+                    autoEffort: lead.autoEffort,
                     folder: viewed.thread.cwd,
                     worktree: viewed.thread.worktree,
                     ...(leadEnded ? { ended: leadEnded } : {}),

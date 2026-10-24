@@ -15,8 +15,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { settingsAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -311,6 +314,8 @@ function AgentDetails({
   onAnswerQuestion?: AnswerQuestion;
 }) {
   const AccessIcon = accessIcon[agent.access];
+  const settings = useAtomValue(settingsAtom);
+  const routerOn = AsyncResult.isSuccess(settings) && settings.value.effortRouter.enabled;
   const [confirmingStop, setConfirmingStop] = useState(false);
   const failed = agent.state === "failed";
   const ended = failed || agent.state === "stopped";
@@ -335,7 +340,11 @@ function AgentDetails({
           >
             {agent.model}
             {agent.effort ? (
-              <span className="font-normal text-fg-tertiary"> · {effortLabel[agent.effort]}</span>
+              <span className="font-normal text-fg-tertiary">
+                {" "}
+                · {agent.autoEffort && routerOn ? "Auto, " : ""}
+                {effortLabel[agent.effort]}
+              </span>
             ) : null}
           </p>
           <p className="flex min-w-0 items-center gap-1 text-xs text-fg-tertiary max-md:text-[13px]">
