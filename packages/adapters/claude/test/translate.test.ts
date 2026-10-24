@@ -188,6 +188,37 @@ describe("ClaudeTranslator edge cases", () => {
     ]);
   });
 
+  it("pairs a message's later text block with its stream after the earlier one completed", () => {
+    const translator = new ClaudeTranslator();
+    const stream = (event: object) =>
+      ({ type: "stream_event", parent_tool_use_id: null, event }) as unknown as SDKMessage;
+    const text = (index: number, delta: string) => [
+      stream({ type: "content_block_start", index, content_block: { type: "text", text: "" } }),
+      stream({ type: "content_block_delta", index, delta: { type: "text_delta", text: delta } }),
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: { id: "msg_4", content: [{ type: "text", text: delta }] },
+      } as unknown as SDKMessage,
+    ];
+    const ids = [
+      stream({ type: "message_start", message: { id: "msg_4" } }),
+      ...text(0, "a"),
+      ...text(2, "b"),
+    ]
+      .flatMap((message) => translator.translate(message))
+      .map((event) => [
+        event.payload._tag,
+        "messageId" in event.payload ? event.payload.messageId : undefined,
+      ]);
+    expect(ids).toEqual([
+      ["MessageDelta", "msg_4:0"],
+      ["MessageCompleted", "msg_4:0"],
+      ["MessageDelta", "msg_4:2"],
+      ["MessageCompleted", "msg_4:2"],
+    ]);
+  });
+
   it("numbers completed text blocks when partial messages are off", () => {
     const translator = new ClaudeTranslator();
     const block = (text: string) =>

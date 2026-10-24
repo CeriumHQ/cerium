@@ -153,7 +153,10 @@ export class ClaudeTranslator {
 
   #blockId(apiMessageId: string, type: "text" | "thinking"): string {
     const key = `${apiMessageId}|${type}`;
-    const index = this.#pendingBlocks.get(key)?.shift();
+    const pending = this.#pendingBlocks.get(key);
+    const index = pending?.shift();
+    // An emptied list reads as no list, so it isn't kept for every message of a long session.
+    if (pending?.length === 0) this.#pendingBlocks.delete(key);
     if (index !== undefined) return `${apiMessageId}:${index}`;
     const completed = this.#completedBlocks.get(key) ?? 0;
     this.#completedBlocks.set(key, completed + 1);
