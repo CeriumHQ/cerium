@@ -1,5 +1,6 @@
 import { findBrowser, launchBrowser, Page, pickPage } from "@cerium/browser";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -12,7 +13,8 @@ import { BACKDROPS, DEFAULT_THEMES, type ArtifactMode, type ArtifactTheme } from
 
 // Renders an artifact the way the conversation will, in the user's own Edge or Chrome without a
 // window, so an agent can look at its page before it replies. Node only: exported from
-// `@cerium/artifacts/preview`, apart from what the UI imports.
+// `@cerium/artifacts/preview`, apart from what the UI imports. It runs in the backend's own process,
+// so its files are read and written without blocking every agent and request the backend serves.
 
 export interface ArtifactPreview {
   readonly png: Uint8Array;
@@ -54,7 +56,7 @@ const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
  * The local files a page names, read as the conversation will (data files only inside `folder`), and
  * those that couldn't be.
  */
-const readLocalFiles = (html: string, folder: string | undefined) => {
+const readLocalFiles = async (html: string, folder: string | undefined) => {
   const urls = new Map<string, string>();
   const missing: Array<{ level: string; text: string }> = [];
   for (const path of localFiles(html)) {
@@ -62,10 +64,10 @@ const readLocalFiles = (html: string, folder: string | undefined) => {
     try {
       if (type === undefined || !isAbsolute(path))
         throw new Error("not an absolute path to a known kind of file");
-      const size = statSync(path).size;
+      const { size } = await stat(path);
       if (type.kind === "image") {
         if (size > MAX_IMAGE_BYTES) throw new Error("larger than 25 MB");
-        urls.set(path, `data:${type.mediaType};base64,${readFileSync(path).toString("base64")}`);
+        urls.set(path, `data:${type.mediaType};base64,${(await readFile(path)).toString("base64")}`);
         continue;
       }
       const inside = folder === undefined ? undefined : relative(resolve(folder), resolve(path));
@@ -73,7 +75,7 @@ const readLocalFiles = (html: string, folder: string | undefined) => {
         throw new Error("data files are embedded only from the thread's folder");
       }
       if (size > MAX_DATA_BYTES) throw new Error("larger than 2 MB");
-      urls.set(path, dataFileUrl(type.mediaType, readFileSync(path, "utf8")));
+      urls.set(path, dataFileUrl(type.mediaType, await readFile(path, "utf8")));
     } catch (cause) {
       const reason = cause instanceof Error && "code" in cause ? String(cause.code) : String(cause);
       missing.push({ level: "error", text: `Couldn't embed the local file ${path}: ${reason}` });
@@ -116,10 +118,10 @@ export const previewArtifact = async (input: {
       "Previews need Microsoft Edge or Google Chrome, and neither is installed.",
     );
   }
-  const { urls, missing } = readLocalFiles(input.html, input.folder);
-  const folder = mkdtempSync(join(tmpdir(), "cerium-artifact-"));
+  const { urls, missing } = await readLocalFiles(input.html, input.folder);
+  const folder = await mkdtemp(join(tmpdir(), "cerium-artifact-"));
   const file = join(folder, "artifact.html");
-  writeFileSync(
+  await writeFile(
     file,
     artifactDocument(withLocalFiles(input.html, urls), {
       theme: input.theme ?? DEFAULT_THEMES[input.mode],
@@ -173,6 +175,6 @@ export const previewArtifact = async (input: {
   } finally {
     page?.close();
     await browser.close();
-    rmSync(folder, { recursive: true, force: true });
+    await rm(folder, { recursive: true, force: true });
   }
 };
