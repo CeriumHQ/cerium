@@ -23,6 +23,20 @@ import type { TranscriptBlock } from "./model.ts";
 
 export type ToolBlock = Extract<TranscriptBlock, { kind: "tool" }>;
 
+/**
+ * Whether two tool blocks are the same call as it stood. Blocks are built afresh from the events on
+ * every update, but a call's input and output are its events' own, so they compare by reference.
+ */
+export const sameTool = (a: ToolBlock, b: ToolBlock): boolean =>
+  a === b ||
+  (a.id === b.id &&
+    a.toolName === b.toolName &&
+    a.status === b.status &&
+    a.input === b.input &&
+    a.output === b.output &&
+    a.changedFiles.length === b.changedFiles.length &&
+    a.changedFiles.every((path, index) => path === b.changedFiles[index]));
+
 const field = (input: unknown, key: string): string | undefined => {
   const value =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>)[key] : undefined;

@@ -6,6 +6,7 @@ import {
   failureLine,
   hasToolMenu,
   outputText,
+  sameTool,
   summarizeTools,
   toolImages,
   toolInputView,
@@ -226,6 +227,20 @@ describe("toolMenuPlan", () => {
 
 const toolCall = (toolName: string, input: unknown, output?: unknown, status: ToolBlock["status"] = "done") =>
   ({ kind: "tool", id: "tool:1", toolName, input, output, status, changedFiles: [] }) satisfies ToolBlock;
+
+describe("sameTool", () => {
+  it("finds a call rebuilt from the same events unchanged, and one that moved on changed", () => {
+    const input = { command: "ls" };
+    const output = [{ type: "text", text: "total 0" }];
+    const call = { ...toolCall("Bash", input, output), changedFiles: ["a.ts"] };
+    expect(sameTool(call, { ...call, changedFiles: ["a.ts"] })).toBe(true);
+    expect(sameTool(call, { ...call, status: "error" })).toBe(false);
+    expect(sameTool(call, { ...call, changedFiles: ["a.ts", "b.ts"] })).toBe(false);
+    expect(sameTool(toolCall("Bash", input), toolCall("Bash", input, output))).toBe(false);
+    // Outputs are the events' own, so another output is another result, whatever it holds.
+    expect(sameTool(call, { ...call, output: [{ type: "text", text: "total 0" }] })).toBe(false);
+  });
+});
 
 describe("summarizeTools", () => {
   it("counts what the calls did by kind, and files once however often they were touched", () => {

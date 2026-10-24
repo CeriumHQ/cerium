@@ -10,7 +10,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useContext, useState, type ReactNode } from "react";
+import { memo, useContext, useState, type ReactNode } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
 import { FileImageThumb, ImageThumb, ToolOutputImageThumb } from "../../components/ImageThumb.tsx";
@@ -26,6 +26,7 @@ import {
   failureLine,
   hasToolMenu,
   outputText,
+  sameTool,
   summarizeTools,
   toolImages,
   toolInputView,
@@ -144,75 +145,91 @@ export function ToolRun({
   );
 }
 
-/** Consecutive tool calls, shown as one activity card with a row per call. */
-export function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-line-subtle">
-      {tools.map((tool, index) => (
-        <ToolRow key={tool.id} tool={tool} divider={index > 0} activity={activity} />
-      ))}
-    </div>
-  );
-}
+/**
+ * Consecutive tool calls, shown as one activity card with a row per call. The card and each row
+ * render again only when their calls changed: while the agent works, every streamed word and every
+ * call lays its run out afresh.
+ */
+export const ToolGroup = memo(
+  function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
+    return (
+      <div className="overflow-hidden rounded-lg border border-line-subtle">
+        {tools.map((tool, index) => (
+          <ToolRow key={tool.id} tool={tool} divider={index > 0} activity={activity} />
+        ))}
+      </div>
+    );
+  },
+  (before, after) =>
+    before.activity === after.activity &&
+    before.tools.length === after.tools.length &&
+    before.tools.every((tool, index) => sameTool(tool, after.tools[index]!)),
+);
 
-function ToolRow({
-  tool,
-  divider,
-  activity,
-}: {
-  tool: ToolBlock;
-  divider: boolean;
-  activity: AgentActivity;
-}) {
-  const [open, setOpen] = useState(false);
-  const { icon: Icon, verb, detail, mono } = describeTool(tool);
-  // A failed call says why on its row, so a folded run opens onto what went wrong.
-  const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
-  const header = (
-    <Collapsible.Trigger className="group block w-full text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
-      <span className="flex h-7 items-center gap-2 px-2.5 max-md:h-9">
-        <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-        <span className="shrink-0 font-medium text-fg-primary">{verb}</span>
-        {detail ? (
-          <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
-            {detail}
+const ToolRow = memo(
+  function ToolRow({
+    tool,
+    divider,
+    activity,
+  }: {
+    tool: ToolBlock;
+    divider: boolean;
+    activity: AgentActivity;
+  }) {
+    const [open, setOpen] = useState(false);
+    const { icon: Icon, verb, detail, mono } = describeTool(tool);
+    // A failed call says why on its row, so a folded run opens onto what went wrong.
+    const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
+    const header = (
+      <Collapsible.Trigger className="group block w-full text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
+        <span className="flex h-7 items-center gap-2 px-2.5 max-md:h-9">
+          <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+          <span className="shrink-0 font-medium text-fg-primary">{verb}</span>
+          {detail ? (
+            <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
+              {detail}
+            </span>
+          ) : null}
+          {tool.changedFiles.length > 0 ? (
+            <span className="shrink-0 rounded border border-line-subtle px-1.5 text-2xs text-fg-secondary">
+              {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
+            </span>
+          ) : null}
+          <span className="ml-auto flex shrink-0 items-center gap-2">
+            <ToolStatus status={tool.status} activity={activity} />
+            <ChevronRight
+              size={13}
+              className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100 pointer-coarse:opacity-100"
+            />
           </span>
-        ) : null}
-        {tool.changedFiles.length > 0 ? (
-          <span className="shrink-0 rounded border border-line-subtle px-1.5 text-2xs text-fg-secondary">
-            {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
-          </span>
-        ) : null}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
-          <ToolStatus status={tool.status} activity={activity} />
-          <ChevronRight
-            size={13}
-            className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100 pointer-coarse:opacity-100"
-          />
         </span>
-      </span>
-      {reason && !open ? (
-        <span className="block truncate pr-3 pb-1.5 pl-[31px] text-[12px] text-error">{reason}</span>
-      ) : null}
-    </Collapsible.Trigger>
-  );
-  return (
-    <Collapsible.Root
-      open={open}
-      onOpenChange={setOpen}
-      className={divider ? "border-t border-line-subtle" : ""}
-    >
-      {hasToolMenu(tool) ? (
-        <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
-      ) : (
-        header
-      )}
-      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <ToolBody tool={tool} />
-      </Collapsible.Panel>
-    </Collapsible.Root>
-  );
-}
+        {reason && !open ? (
+          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-[12px] text-error">{reason}</span>
+        ) : null}
+      </Collapsible.Trigger>
+    );
+    return (
+      <Collapsible.Root
+        open={open}
+        onOpenChange={setOpen}
+        className={divider ? "border-t border-line-subtle" : ""}
+      >
+        {hasToolMenu(tool) ? (
+          <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
+        ) : (
+          header
+        )}
+        <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+          <ToolBody tool={tool} />
+        </Collapsible.Panel>
+      </Collapsible.Root>
+    );
+  },
+  (before, after) =>
+    before.divider === after.divider &&
+    before.activity === after.activity &&
+    sameTool(before.tool, after.tool),
+);
 
 /**
  * A tool row's right-click menu. It renders only while open: what it copies includes the output laid
