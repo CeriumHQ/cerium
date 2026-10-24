@@ -245,7 +245,7 @@ export function ArtifactDialog({
 
 /**
  * The artifact drawn small, as the conversation's column shows it scaled to the box's width: only
- * once the box comes into view, and not to be used.
+ * while the box is in or near view, and not to be used.
  */
 export function ArtifactThumbnail({
   code,
@@ -260,25 +260,37 @@ export function ArtifactThumbnail({
   const page = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [pageHeight, setPageHeight] = useState(PLACEHOLDER_HEIGHT);
-  const [seen, setSeen] = useState(false);
+  const [near, setNear] = useState(false);
   useEffect(() => {
     const element = box.current;
     if (!element) return;
     const sizes = new ResizeObserver(() => setWidth(element.clientWidth - THUMBNAIL_INSET * 2));
     sizes.observe(element);
-    const views = new IntersectionObserver(
+    // The page is drawn as the box comes near view, and its frame goes once the box is far from it:
+    // the artifacts panel lists up to 120, each a page running in a frame of its own. `scrollMargin`
+    // reaches past the list's own edges, which `rootMargin` stops at; a browser without it leaves each
+    // frame drawn.
+    const coming = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setSeen(true);
-          views.disconnect();
-        }
+        if (entries.some((entry) => entry.isIntersecting)) setNear(true);
       },
-      { rootMargin: "200px" },
+      { rootMargin: NEAR, scrollMargin: NEAR },
     );
-    views.observe(element);
+    coming.observe(element);
+    const going =
+      "scrollMargin" in IntersectionObserver.prototype
+        ? new IntersectionObserver(
+            (entries) => {
+              if (entries.every((entry) => !entry.isIntersecting)) setNear(false);
+            },
+            { rootMargin: FAR, scrollMargin: FAR },
+          )
+        : undefined;
+    going?.observe(element);
     return () => {
       sizes.disconnect();
-      views.disconnect();
+      coming.disconnect();
+      going?.disconnect();
     };
   }, []);
   // The box takes the page's height, scaled, up to a limit: a short page doesn't leave it empty.
@@ -288,7 +300,7 @@ export function ArtifactThumbnail({
     const sizes = new ResizeObserver(() => setPageHeight(element.offsetHeight));
     sizes.observe(element);
     return () => sizes.disconnect();
-  }, [seen, width]);
+  }, [near, width]);
   const scale = Math.max(width, 0) / ARTIFACT_COLUMN_WIDTH;
   const height = Math.round(
     Math.min(Math.max(pageHeight * scale, THUMBNAIL_MIN), THUMBNAIL_MAX) + THUMBNAIL_INSET * 2,
@@ -296,13 +308,14 @@ export function ArtifactThumbnail({
   return (
     // A mask or filter over the frame would stop it being drawn: the frame runs in a process of its own.
     <div ref={box} inert aria-hidden style={{ height }} className={`relative overflow-hidden ${className}`}>
-      {seen && width > 0 ? (
+      {near && width > 0 ? (
         <div
           ref={page}
           style={{ width: ARTIFACT_COLUMN_WIDTH, scale, top: THUMBNAIL_INSET, left: THUMBNAIL_INSET }}
           className="pointer-events-none absolute origin-top-left"
         >
-          <ArtifactFrame code={code} title={title} quiet />
+          {/* Drawn again, the page holds the height it had, so the box keeps its size meanwhile. */}
+          <ArtifactFrame code={code} title={title} quiet startHeight={pageHeight} />
         </div>
       ) : null}
     </div>
@@ -313,6 +326,10 @@ export function ArtifactThumbnail({
 const THUMBNAIL_INSET = 10;
 const THUMBNAIL_MIN = 36;
 const THUMBNAIL_MAX = 150;
+
+/** How near view a thumbnail's page is drawn, and how far from it its frame goes. */
+const NEAR = "200px";
+const FAR = "1500px";
 
 /** Room around a page saved as an image, beside the page's own width. */
 const SAVED_MARGIN = 24;
@@ -428,6 +445,7 @@ function ArtifactFrame({
   title,
   remember = false,
   quiet = false,
+  startHeight,
   onError,
   onPointer,
   onReply,
@@ -437,13 +455,15 @@ function ArtifactFrame({
   remember?: boolean;
   /** Nothing shows until the page is drawn, for a page shown too small to read "Drawing…". */
   quiet?: boolean;
+  /** The height held until the page reports its own, in place of the placeholder's. */
+  startHeight?: number;
   onError?: (message: string) => void;
   onPointer?: (inside: boolean) => void;
   onReply?: ((text: string) => void) | undefined;
 }) {
   const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(() => (remember ? heights.get(code) : undefined));
+  const [height, setHeight] = useState(() => (remember ? heights.get(code) : startHeight));
   const [drawn, setDrawn] = useState(false);
   const [hostReady, setHostReady] = useState(false);
   const rendered = useRef(false);
