@@ -1,7 +1,8 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Exit, Fiber, FileSystem, Layer, Path, Stream } from "effect";
+import { Effect, Exit, Fiber, FileSystem, Layer, Path, Queue, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { watch } from "node:fs";
 import { posix, win32 } from "node:path";
 
 import {
@@ -10,6 +11,7 @@ import {
   decodeText,
   Files,
   gitFolderChange,
+  gitFolderSkips,
   limitHunks,
   mediaOf,
   parseDiff,
@@ -19,6 +21,7 @@ import {
   resolveInside,
   stateOf,
   watchedChange,
+  watchSkips,
   withoutPartialCharacter,
 } from "../src/files.ts";
 import { Git } from "../src/git.ts";
@@ -185,6 +188,30 @@ describe("watching", () => {
     expect(gitFolderChange("worktrees/other/index", common)).toBeUndefined();
     expect(gitFolderChange("objects/ab/cdef", common)).toBeUndefined();
   });
+
+  it("leaves unwatched what it would drop, and all below it", () => {
+    expect(watchSkips("src")).toBe(false);
+    expect(watchSkips("src/a.ts")).toBe(false);
+    // A dependency folder's own entry still changes its parent's listing.
+    expect(watchSkips("node_modules")).toBe(false);
+    expect(watchSkips("apps/ui/node_modules")).toBe(false);
+    expect(watchSkips("node_modules/react")).toBe(true);
+    expect(watchSkips("apps\\ui\\node_modules\\react")).toBe(true);
+    expect(watchSkips(".hg")).toBe(true);
+    // Git's folder is walked for the index, HEAD and the refs, and nothing else.
+    expect(watchSkips(".git")).toBe(false);
+    expect(watchSkips(".git/index")).toBe(false);
+    expect(watchSkips(".git/refs")).toBe(false);
+    expect(watchSkips(".git/refs/heads/main")).toBe(false);
+    expect(watchSkips(".git/rebase-merge")).toBe(false);
+    expect(watchSkips(".git/objects")).toBe(true);
+    expect(watchSkips(".git/logs")).toBe(true);
+    expect(watchSkips(".git/worktrees")).toBe(true);
+    expect(gitFolderSkips("refs", { own: false, common: true })).toBe(false);
+    expect(gitFolderSkips("index", { own: true, common: false })).toBe(false);
+    expect(gitFolderSkips("refs", { own: true, common: false })).toBe(true);
+    expect(gitFolderSkips("worktrees", { own: false, common: true })).toBe(true);
+  });
 });
 
 describe("git diff", () => {
@@ -305,6 +332,10 @@ describe("media", () => {
     expect(mediaOf("Makefile")).toBeUndefined();
   });
 });
+
+/** Node takes a watcher's `ignore` from 24.14; before, it watches everything and only the classifiers drop it. */
+const [nodeMajor = 0, nodeMinor = 0] = process.versions.node.split(".").map(Number);
+const watchTakesIgnore = nodeMajor === 24 ? nodeMinor >= 14 : nodeMajor > 24;
 
 // A real repository, as the service sees one.
 const TestLayer = Files.layer.pipe(Layer.provide(Git.layer), Layer.provideMerge(NodeServices.layer));
@@ -609,5 +640,40 @@ describe("Files", () => {
       assert.isDefined(batch);
       assert.isTrue(batch!.status);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.live.skipIf(!watchTakesIgnore)(
+    "never hears from inside dependencies or git's objects, while the rest and the refs report",
+    () =>
+      Effect.gen(function* () {
+        const { root, write, fs, path } = yield* repository;
+        yield* fs.makeDirectory(path.join(root, "node_modules", "dep"), { recursive: true });
+        // What the OS reports to a watcher told what the explorer skips, before anything classifies it.
+        const reported = Stream.callback<string>((queue) =>
+          Effect.acquireRelease(
+            Effect.sync(() =>
+              watch(root, { recursive: true, ignore: watchSkips }, (_event, name) => {
+                if (name !== null) Queue.offerUnsafe(queue, name.replaceAll("\\", "/"));
+              }),
+            ),
+            (watcher) => Effect.sync(() => watcher.close()),
+          ),
+        );
+        const watching = yield* reported.pipe(
+          Stream.takeUntil((name) => name === ".git/refs/heads/main"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        yield* Effect.sleep("300 millis");
+        yield* write("node_modules/dep/more.js", "unseen");
+        yield* write("src/app.ts", "changed\n");
+        yield* git(root, "commit", "-q", "-am", "second");
+        const names = yield* Fiber.join(watching).pipe(Effect.timeout("10 seconds"));
+        assert.include(names, "src/app.ts");
+        assert.isFalse(names.some((name) => name.startsWith("node_modules/")));
+        assert.isFalse(
+          names.some((name) => name.startsWith(".git/objects/") || name.startsWith(".git/logs/")),
+        );
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 });

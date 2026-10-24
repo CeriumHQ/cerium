@@ -366,6 +366,24 @@ export const watchedChange = (relative: string): Change | undefined => {
   return { path: segments.join("/") };
 };
 
+/**
+ * Whether the watcher can leave `relative` and everything below it unwatched. On Linux, Node watches
+ * a folder by walking it and watching every folder inside, so this keeps it out of dependencies and
+ * git's objects instead of dropping their floods after they arrive. Whatever `watchedChange` drops,
+ * it drops everything below too, but for git's own folder, whose insides say what git did.
+ */
+export const watchSkips = (relative: string): boolean =>
+  segmentsOf(relative).join("/") !== ".git" && watchedChange(relative) === undefined;
+
+/**
+ * `watchSkips` for one of git's own folders watched on its own. `gitFolderChange` reads only a path's
+ * first segment, so what it drops, it drops with everything below.
+ */
+export const gitFolderSkips = (
+  relative: string,
+  folder: { readonly own: boolean; readonly common: boolean },
+): boolean => gitFolderChange(relative, folder) === undefined;
+
 // ---------------------------------------------------------------------------------------------
 
 /** Where a folder sits in a git repository: `prefix` is its path from the repository's top, with a trailing slash. */
@@ -638,14 +656,21 @@ export class Files extends Context.Service<
         return fileDiffOf(added.stdout, added.truncated);
       });
 
-      /** What changes under `folder`, as `classify` reads each path the OS reports there. */
-      const watching = (folder: string, classify: (relative: string) => Change | undefined) =>
+      /**
+       * What changes under `folder`, as `classify` reads each path the OS reports there; what `skips`
+       * says is never watched, where the OS lets Node leave it out.
+       */
+      const watching = (
+        folder: string,
+        classify: (relative: string) => Change | undefined,
+        skips: (relative: string) => boolean,
+      ) =>
         Stream.callback<Change, FilesError>(
           (queue) =>
             Effect.acquireRelease(
               Effect.try({
                 try: () => {
-                  const watcher = watchFolder(folder, { recursive: true }, (_event, name) => {
+                  const watcher = watchFolder(folder, { recursive: true, ignore: skips }, (_event, name) => {
                     if (name === null) return;
                     // Floods inside dependency folders are dropped before they queue.
                     const change = classify(name.toString());
@@ -678,15 +703,18 @@ export class Files extends Context.Service<
                 ? []
                 : [...new Set([repository.gitDir, repository.commonDir])]
                     .filter((folder) => !isInside(base, folder))
-                    .map((folder) =>
-                      watching(folder, (relative) =>
-                        gitFolderChange(relative, {
-                          own: folder === repository.gitDir,
-                          common: folder === repository.commonDir,
-                        }),
-                      ),
-                    );
-            return Stream.mergeAll([watching(base, watchedChange), ...gitFolders], {
+                    .map((folder) => {
+                      const which = {
+                        own: folder === repository.gitDir,
+                        common: folder === repository.commonDir,
+                      };
+                      return watching(
+                        folder,
+                        (relative) => gitFolderChange(relative, which),
+                        (relative) => gitFolderSkips(relative, which),
+                      );
+                    });
+            return Stream.mergeAll([watching(base, watchedChange, watchSkips), ...gitFolders], {
               concurrency: "unbounded",
             }).pipe(
               Stream.groupedWithin(2_000, BATCH_WINDOW),
