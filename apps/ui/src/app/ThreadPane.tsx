@@ -29,6 +29,8 @@ import { useModels } from "../features/composer/models.ts";
 import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
+import { ActivityCapsule } from "../features/composer/ActivityCapsule.tsx";
+import { liveActivity } from "../features/composer/activity.ts";
 import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
@@ -199,6 +201,10 @@ export function ThreadPane({
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const { attempt, restore, turnFiles } = actions;
+  /** Whether two of the lead's model ids name the same model. */
+  const sameModel = (a: string, b: string) =>
+    a === b ||
+    (lead !== undefined && modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b));
 
   return (
     // The terminal drawer docks under the conversation, which keeps its message box floating above it.
@@ -211,9 +217,7 @@ export function ThreadPane({
               key={viewed.thread.id}
               events={eventsAtom}
               lead={lead.id}
-              sameModel={(a, b) =>
-                a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b)
-              }
+              sameModel={sameModel}
               folder={viewed.thread.cwd}
               agent={{ provider: lead.provider, model: leadModel }}
               modelName={(model) => modelLabel(models, lead.provider, model)}
@@ -315,6 +319,11 @@ export function ThreadPane({
                   }
             }
             running={leadRunning && cloud === undefined}
+            activity={
+              leadRunning && lead ? (
+                <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
+              ) : undefined
+            }
             above={
               cloud ? (
                 <ConnectingNote machine={cloud.name} />
@@ -373,4 +382,30 @@ function LeadTranscript({
       queued={queuedMessages(leadEvents)}
     />
   );
+}
+
+/**
+ * The step the lead's running turn is on, over the message box. It reads every event, as the
+ * conversation does, so only it renders again as the turn's words and tool calls stream in.
+ */
+function LeadActivity({
+  events: eventsAtom,
+  lead,
+  sameModel,
+}: {
+  readonly events: EventsAtom;
+  readonly lead: AgentId;
+  readonly sameModel: (a: string, b: string) => boolean;
+}) {
+  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const leadEvents = events.filter((event) => event.agentId === lead);
+  // The step lies in the running turn: folding only that keeps each batch cheap in a long thread.
+  const turn = leadEvents.slice(
+    Math.max(
+      0,
+      leadEvents.findLastIndex((event) => event.payload._tag === "TurnInput"),
+    ),
+  );
+  const activity = liveActivity(buildTranscript(turn, sameModel), turn);
+  return activity ? <ActivityCapsule activity={activity} /> : null;
 }

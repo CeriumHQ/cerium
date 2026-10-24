@@ -184,6 +184,8 @@ interface ComposerProps {
   readonly onHeight?: (height: number) => void;
   /** Opening a thread puts the cursor in the box; not in a pane beside the focused one. */
   readonly takesFocus?: boolean;
+  /** The step the lead's running turn is on, shown over the box's corner while it runs. */
+  readonly activity?: ReactNode;
 }
 
 /** The message box, floating over the bottom of the transcript. */
@@ -199,6 +201,7 @@ export function Composer({
   above,
   onHeight,
   takesFocus = true,
+  activity,
 }: ComposerProps) {
   const setDrafts = useAtomSet(draftsAtom);
   const machine = useAtomValue(machineAtom);
@@ -883,6 +886,7 @@ export function Composer({
           />
         ) : null}
         {oneLine ? null : newPlace}
+        {!oneLine && running ? activity : null}
         {/* Glass in the transcript's own tone: the box stands apart by its edge and the blur of what
             scrolls under it, not by being lighter or darker than the conversation. */}
         <div

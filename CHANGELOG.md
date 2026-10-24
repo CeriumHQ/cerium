@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - The message box is glass in the conversation's own tone instead of a lighter card. A new thread's project and worktree sit in a small capsule above it. Model, effort and access share one outlined pill whose segments each open their menu as before. Send shows as an outlined ring until there's something to send, and stop is solid, with a ring turning around it while the turn runs.
+- While a turn runs, a capsule above the message box names the step the agent is on ("Edit Pickers.tsx", "Thinking") next to the turn's running time.
 
 ### Removed
 
