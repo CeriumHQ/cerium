@@ -233,6 +233,33 @@ describe("MuseTranslator tool calls and files", () => {
   });
 });
 
+describe("MuseTranslator late frames", () => {
+  it("adds nothing for an item that finished", () => {
+    const translator = new MuseTranslator({ workspace: "/work" });
+    const tool = { itemId: "c1", kind: "toolCall", tool: "shell", args: "{}" };
+    translate(translator, [
+      item("started", tool),
+      item("completed", { ...tool, status: "completed" }),
+      item("started", { itemId: "m1", kind: "agentMessage" }),
+      item("completed", { itemId: "m1", kind: "agentMessage", text: "HI" }),
+      item("started", { itemId: "r1", kind: "reasoning" }),
+      frame("item/delta", { itemId: "r1", field: "summary.0", delta: "Plan" }),
+      item("completed", { itemId: "r1", kind: "reasoning", summary: ["Plan"] }),
+    ]);
+    expect(
+      translate(translator, [
+        item("started", tool),
+        frame("item/updated", { item: tool }),
+        item("completed", { ...tool, status: "completed" }),
+        frame("item/delta", { itemId: "m1", delta: "late" }),
+        item("started", { itemId: "m1", kind: "agentMessage" }),
+        frame("item/delta", { itemId: "m1", delta: "later" }),
+        frame("item/delta", { itemId: "r1", field: "summary.1", delta: "late" }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
 describe("MuseTranslator turn endings", () => {
   const endOf = (terminal: string, extra: Record<string, unknown> = {}) => {
     const translator = new MuseTranslator({ workspace: "/work" });

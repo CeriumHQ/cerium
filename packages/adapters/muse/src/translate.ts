@@ -58,12 +58,15 @@ export class MuseTranslator {
   readonly #usage = new Map<string, TurnUsage>();
   /** The session's cumulative cost estimate so far; unknown for a resumed session until it moves. */
   #costSoFar: number | undefined;
+  /** Each open item's kind, which its deltas need. */
   readonly #kinds = new Map<string, string>();
   /** Items whose completion was emitted, so a re-delivered `item/completed` adds nothing. */
   readonly #finished = new Set<string>();
+  /** Open tool calls whose start was emitted. */
   readonly #startedTools = new Set<string>();
   /** `item/delta` frames that arrived before their item, waiting to learn its kind. */
   readonly #earlyDeltas = new Map<string, Array<ItemDeltaParams>>();
+  /** The summary part each open reasoning item streams. */
   readonly #reasoningPart = new Map<string, number>();
   #todos: ReadonlyArray<TodoItem> = [];
 
@@ -188,11 +191,19 @@ export class MuseTranslator {
 
   #item(item: Item, phase: "started" | "updated" | "completed"): ReadonlyArray<EventPayload> {
     const id = item.itemId;
-    this.#kinds.set(id, item.kind);
-    const early = phase === "completed" ? [] : this.#flushEarlyDeltas(id);
-    if (phase === "completed") this.#earlyDeltas.delete(id);
-    const finishing = phase === "completed" && !this.#finished.has(id);
-    if (finishing) this.#finished.add(id);
+    // A finished item's later events (a re-delivered `item/completed`) add nothing and its deltas are
+    // dropped, so nothing is kept of it but that it finished.
+    if (this.#finished.has(id)) return [];
+    const finishing = phase === "completed";
+    if (finishing) {
+      this.#finished.add(id);
+      this.#kinds.delete(id);
+      this.#earlyDeltas.delete(id);
+      this.#reasoningPart.delete(id);
+    } else {
+      this.#kinds.set(id, item.kind);
+    }
+    const early = finishing ? [] : this.#flushEarlyDeltas(id);
 
     switch (item.kind) {
       case "agentMessage":
@@ -229,6 +240,7 @@ export class MuseTranslator {
           });
         }
         if (finishing) {
+          this.#startedTools.delete(id);
           const succeeded = item.status === "completed";
           payloads.push({
             _tag: "ToolCallCompleted",
@@ -273,12 +285,12 @@ export class MuseTranslator {
   }
 
   #delta(delta: ItemDeltaParams): ReadonlyArray<EventPayload> {
+    if (this.#finished.has(delta.itemId)) return [];
     const kind = this.#kinds.get(delta.itemId);
     if (kind === undefined) {
       this.#earlyDeltas.set(delta.itemId, [...(this.#earlyDeltas.get(delta.itemId) ?? []), delta]);
       return [];
     }
-    if (this.#finished.has(delta.itemId)) return [];
     const field = delta.field ?? "text";
     if (kind === "agentMessage" && field === "text") {
       return delta.delta === "" ? [] : [{ _tag: "MessageDelta", messageId: delta.itemId, text: delta.delta }];
