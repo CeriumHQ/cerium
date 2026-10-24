@@ -107,6 +107,13 @@ describe("layout", () => {
       permission({ decision: "allow", scope: "once" }),
     ]);
     expect(decided.map((item) => item.kind)).toEqual(["input", "header", "run"]);
+    // A decided request whose call left no row still tells what was decided.
+    const alone = layout([
+      user("u"),
+      tool("other", "Bash", "ok"),
+      permission({ decision: "deny", scope: "once" }),
+    ]);
+    expect(alone.map((item) => item.kind)).toEqual(["input", "header", "run", "block"]);
   });
 
   it("shows a question as its card, and what the agent does with the answer as a new response", () => {

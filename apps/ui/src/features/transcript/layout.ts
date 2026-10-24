@@ -48,11 +48,17 @@ export type Item =
       readonly files?: number;
     };
 
+// Every update asks these of every call; most are a harness's own tools, which the prefix rules out
+// before the pattern runs.
 const isSpawnCall = (block: TranscriptBlock): block is ToolBlock =>
-  block.kind === "tool" && /^mcp__[^_]+__spawn_agent$/.test(block.toolName);
+  block.kind === "tool" &&
+  block.toolName.startsWith("mcp__") &&
+  /^mcp__[^_]+__spawn_agent$/.test(block.toolName);
 
 const isAskCall = (block: TranscriptBlock): block is ToolBlock =>
-  block.kind === "tool" && /^mcp__[^_]+__ask_user$/.test(block.toolName);
+  block.kind === "tool" &&
+  block.toolName.startsWith("mcp__") &&
+  /^mcp__[^_]+__ask_user$/.test(block.toolName);
 
 /** How a spawn call turned out, from its result: the agent started, or the user must approve it first. */
 const spawnResult = (call: ToolBlock): "spawned" | "pendingApproval" | undefined => {
@@ -73,25 +79,31 @@ const spawnResult = (call: ToolBlock): "spawned" | "pendingApproval" | undefined
  * a line of its own. Likewise a question shows as its card, and only a refused `ask_user` call as a row.
  */
 const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<TranscriptBlock> => {
-  const pending = new Set(
-    blocks.flatMap((block) =>
-      block.kind === "permission" && block.resolution === undefined
-        ? [block.id.replace(/^permission:/, "")]
-        : [],
-    ),
-  );
-  const toolIds = new Set(
-    blocks.flatMap((block) => (block.kind === "tool" ? [block.id.replace(/^tool:/, "")] : [])),
-  );
+  // Requests by the block id of the call each gates, so a long thread's thousands of calls are looked
+  // up by their own ids rather than each renamed to compare.
+  const pending = new Set<string>();
+  const decided = new Map<string, string>();
+  for (const block of blocks) {
+    if (block.kind !== "permission") continue;
+    const call = block.id.replace(/^permission:/, "tool:");
+    if (block.resolution === undefined) pending.add(call);
+    else decided.set(call, block.id);
+  }
+  /** The decided requests whose call has a row. */
+  const told = new Set<string>();
+  if (decided.size > 0) {
+    for (const block of blocks) {
+      const request = block.kind === "tool" ? decided.get(block.id) : undefined;
+      if (request !== undefined) told.add(request);
+    }
+  }
   return blocks.filter((block) => {
     if (isSpawnCall(block) && block.status !== "error" && spawnResult(block) !== "pendingApproval") {
       return false;
     }
     if (isAskCall(block) && block.status !== "error") return false;
-    if (block.kind === "tool") return !pending.has(block.id.replace(/^tool:/, ""));
-    if (block.kind === "permission") {
-      return block.resolution === undefined || !toolIds.has(block.id.replace(/^permission:/, ""));
-    }
+    if (block.kind === "tool") return !pending.has(block.id);
+    if (block.kind === "permission") return block.resolution === undefined || !told.has(block.id);
     return true;
   });
 };
