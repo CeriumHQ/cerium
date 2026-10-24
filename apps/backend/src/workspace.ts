@@ -78,10 +78,32 @@ export const withFolders = (files: ReadonlyArray<string>): ReadonlyArray<Workspa
 const depth = (path: string) => path.split("/").length;
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-/** How well `entry` matches `query` (lower is better), or undefined when it doesn't. */
-const score = (entry: WorkspaceEntry, query: string): number | undefined => {
-  const path = entry.path.toLowerCase();
-  const name = baseName(path);
+/**
+ * A folder's entries as the search reads them: each one's path in lower case, its name and its
+ * depth, worked out once for the listing rather than on every keystroke.
+ */
+export interface SearchableEntries {
+  readonly entries: ReadonlyArray<WorkspaceEntry>;
+  readonly paths: ReadonlyArray<string>;
+  readonly names: ReadonlyArray<string>;
+  readonly depths: ReadonlyArray<number>;
+}
+
+export const searchable = (entries: ReadonlyArray<WorkspaceEntry>): SearchableEntries => {
+  const paths = entries.map((entry) => entry.path.toLowerCase());
+  return {
+    entries,
+    paths,
+    names: paths.map(baseName),
+    depths: entries.map((entry) => depth(entry.path)),
+  };
+};
+
+/**
+ * How well an entry matches `query` (lower is better), or undefined when it doesn't, by its path
+ * and name in lower case.
+ */
+const score = (path: string, name: string, query: string): number | undefined => {
   if (name === query) return 0;
   if (name.startsWith(query)) return 1;
   if (name.includes(query)) return 2;
@@ -101,31 +123,46 @@ const score = (entry: WorkspaceEntry, query: string): number | undefined => {
  * query, the folder's top level, folders first.
  */
 export const rankEntries = (
-  entries: ReadonlyArray<WorkspaceEntry>,
+  listing: SearchableEntries,
   query: string,
   limit: number,
 ): ReadonlyArray<WorkspaceEntry> => {
+  const { entries, paths, names, depths } = listing;
   const wanted = query.trim().toLowerCase().replaceAll("\\", "/");
   if (wanted === "") {
     return entries
-      .filter((entry) => depth(entry.path) === 1)
+      .filter((_, index) => depths[index] === 1)
       .toSorted((a, b) => Number(b.folder) - Number(a.folder) || a.path.localeCompare(b.path))
       .slice(0, limit);
   }
-  return entries
-    .flatMap((entry) => {
-      const rank = score(entry, wanted);
-      return rank === undefined ? [] : [{ entry, rank }];
-    })
-    .toSorted(
-      (a, b) =>
-        a.rank - b.rank ||
-        depth(a.entry.path) - depth(b.entry.path) ||
-        a.entry.path.length - b.entry.path.length ||
-        a.entry.path.localeCompare(b.entry.path),
-    )
-    .slice(0, limit)
-    .map(({ entry }) => entry);
+  if (limit < 1) return [];
+  type Match = { readonly index: number; readonly rank: number };
+  // Matches that tie keep the listing's order.
+  const compare = (a: Match, b: Match) =>
+    a.rank - b.rank ||
+    depths[a.index]! - depths[b.index]! ||
+    entries[a.index]!.path.length - entries[b.index]!.path.length ||
+    entries[a.index]!.path.localeCompare(entries[b.index]!.path) ||
+    a.index - b.index;
+  // The best matches so far, best first. Most of a long listing loses to the worst of them and is
+  // turned away at once, rather than sorted with every other match only to be cut.
+  const best: Array<Match> = [];
+  for (let index = 0; index < entries.length; index++) {
+    const rank = score(paths[index]!, names[index]!, wanted);
+    if (rank === undefined) continue;
+    const match = { index, rank };
+    if (best.length === limit && compare(match, best[limit - 1]!) > 0) continue;
+    let low = 0;
+    let high = best.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (compare(best[middle]!, match) < 0) low = middle + 1;
+      else high = middle;
+    }
+    best.splice(low, 0, match);
+    if (best.length > limit) best.pop();
+  }
+  return best.map((match) => entries[match.index]!);
 };
 
 export class Workspace extends Context.Service<
@@ -205,6 +242,7 @@ export class Workspace extends Context.Service<
             gitFiles(cwd).pipe(
               Effect.map(withFolders),
               Effect.catch(() => walk(cwd)),
+              Effect.map(searchable),
             ),
         });
 

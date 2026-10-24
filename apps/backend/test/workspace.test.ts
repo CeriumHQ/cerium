@@ -1,16 +1,54 @@
+import type { WorkspaceEntry } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { imageType, rankEntries, safeFileName, withFolders } from "../src/workspace.ts";
+import { imageType, rankEntries, safeFileName, searchable, withFolders } from "../src/workspace.ts";
 
-const entries = withFolders([
-  "README.md",
-  "apps/ui/src/features/transcript/Transcript.tsx",
-  "apps/ui/src/features/transcript/model.ts",
-  "apps/ui/test/transcript.test.ts",
-  "packages/protocol/src/events.ts",
-]);
+const entries = searchable(
+  withFolders([
+    "README.md",
+    "apps/ui/src/features/transcript/Transcript.tsx",
+    "apps/ui/src/features/transcript/model.ts",
+    "apps/ui/test/transcript.test.ts",
+    "packages/protocol/src/events.ts",
+  ]),
+);
 
 const paths = (query: string) => rankEntries(entries, query, 10).map((entry) => entry.path);
+
+/** The ranking as it was first written, sorting every match: what `rankEntries` must still give. */
+const rankedBySorting = (list: ReadonlyArray<WorkspaceEntry>, query: string, limit: number) => {
+  const depth = (path: string) => path.split("/").length;
+  const wanted = query.trim().toLowerCase().replaceAll("\\", "/");
+  const score = (entry: WorkspaceEntry) => {
+    const path = entry.path.toLowerCase();
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    if (name === wanted) return 0;
+    if (name.startsWith(wanted)) return 1;
+    if (name.includes(wanted)) return 2;
+    if (path.includes(wanted)) return 3;
+    let at = 0;
+    for (const char of wanted) {
+      at = path.indexOf(char, at);
+      if (at === -1) return undefined;
+      at++;
+    }
+    return 4;
+  };
+  return list
+    .flatMap((entry) => {
+      const rank = score(entry);
+      return rank === undefined ? [] : [{ entry, rank }];
+    })
+    .toSorted(
+      (a, b) =>
+        a.rank - b.rank ||
+        depth(a.entry.path) - depth(b.entry.path) ||
+        a.entry.path.length - b.entry.path.length ||
+        a.entry.path.localeCompare(b.entry.path),
+    )
+    .slice(0, limit)
+    .map(({ entry }) => entry);
+};
 
 describe("rankEntries", () => {
   it("offers the folder's top level, folders first, before anything is typed", () => {
@@ -29,6 +67,44 @@ describe("rankEntries", () => {
   it("matches characters in order across the path", () => {
     expect(paths("protev")).toEqual(["packages/protocol/src/events.ts"]);
     expect(paths("zzz")).toEqual([]);
+  });
+
+  it("ranks a long listing as sorting every match would, ties in the listing's order", () => {
+    // Names that differ only in case, that collate alike (é written whole and as e and its accent),
+    // and the same path twice, so many matches tie on everything but where they are listed.
+    const parts = [
+      "src",
+      "Src",
+      "app",
+      "a",
+      "é",
+      "é".normalize("NFD"),
+      "index.ts",
+      "Index.ts",
+      "tab.tsx",
+      "readme.md",
+    ];
+    let seed = 7;
+    const next = (below: number) => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed % below;
+    };
+    const list: Array<WorkspaceEntry> = [];
+    for (let count = 0; count < 3_000; count++) {
+      const path = Array.from({ length: 1 + next(4) }, () => parts[next(parts.length)]!).join("/");
+      list.push({ path, folder: next(2) === 0 });
+      if (next(10) === 0) list.push({ path, folder: next(2) === 0 });
+    }
+    const prepared = searchable(list);
+    // Where each entry is listed, so equal entries in a different order still tell apart.
+    const places = (ranked: ReadonlyArray<WorkspaceEntry>) => ranked.map((entry) => list.indexOf(entry));
+    for (const query of ["a", "s", "in", "index", "É", "e", "ts", "src/a", " A\\é ", "zz"]) {
+      for (const limit of [1, 7, 50, 10_000]) {
+        expect(places(rankEntries(prepared, query, limit)), `${query} ${limit}`).toEqual(
+          places(rankedBySorting(list, query, limit)),
+        );
+      }
+    }
   });
 });
 
