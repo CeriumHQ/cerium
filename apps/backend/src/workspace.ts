@@ -2,6 +2,8 @@ import type { Attachment, ImageData, WorkspaceEntry } from "@cerium/protocol";
 import { Cache, Context, Crypto, Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
 import { Base64 } from "effect/encoding";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import type { Dirent } from "node:fs";
+import { readdir } from "node:fs/promises";
 
 import { sweepAttachments } from "./attachments.ts";
 
@@ -218,14 +220,20 @@ export class Workspace extends Context.Service<
           const queue = [""];
           while (queue.length > 0 && entries.length < MAX_WALKED) {
             const folder = queue.shift()!;
-            const names = yield* fs
-              .readDirectory(path.join(cwd, folder))
-              .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
-            for (const name of names.toSorted((a, b) => a.localeCompare(b))) {
+            const dirents = yield* Effect.tryPromise(() =>
+              readdir(path.join(cwd, folder), { withFileTypes: true }),
+            ).pipe(Effect.orElseSucceed((): ReadonlyArray<Dirent> => []));
+            for (const dirent of dirents.toSorted((a, b) => a.name.localeCompare(b.name))) {
+              const { name } = dirent;
               const relative = folder === "" ? name : `${folder}/${name}`;
-              const info = yield* Effect.option(fs.stat(path.join(cwd, relative)));
-              if (info._tag === "None") continue;
-              const isFolder = info.value.type === "Directory";
+              // The listing says what each entry is but a link, which is what it leads to; one that
+              // leads nowhere is left out.
+              let isFolder = dirent.isDirectory();
+              if (dirent.isSymbolicLink()) {
+                const info = yield* Effect.option(fs.stat(path.join(cwd, relative)));
+                if (info._tag === "None") continue;
+                isFolder = info.value.type === "Directory";
+              }
               if (isFolder && SKIPPED.has(name)) continue;
               entries.push({ path: relative, folder: isFolder });
               if (isFolder) queue.push(relative);

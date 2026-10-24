@@ -1,7 +1,17 @@
 import type { WorkspaceEntry } from "@cerium/protocol";
-import { describe, expect, it } from "@effect/vitest";
+import { Store } from "@cerium/store";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, expect, it } from "@effect/vitest";
+import { Effect, FileSystem, Layer, Path } from "effect";
 
-import { imageType, rankEntries, safeFileName, searchable, withFolders } from "../src/workspace.ts";
+import {
+  imageType,
+  rankEntries,
+  safeFileName,
+  searchable,
+  withFolders,
+  Workspace,
+} from "../src/workspace.ts";
 
 const entries = searchable(
   withFolders([
@@ -106,6 +116,49 @@ describe("rankEntries", () => {
       }
     }
   });
+});
+
+describe("Workspace.search", () => {
+  // Making a link on Windows takes a right most accounts don't have.
+  it.effect.skipIf(process.platform === "win32")(
+    "walks a folder outside git, links as what they lead to, past dependencies and broken links",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped();
+        const attachmentsDirectory = yield* fs.makeTempDirectoryScoped();
+        for (const file of ["b.txt", "a/deep/c.txt", "node_modules/dep/index.js", "real/d.txt"]) {
+          yield* fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
+          yield* fs.writeFileString(path.join(root, file), "x");
+        }
+        yield* fs.symlink(path.join(root, "real"), path.join(root, "linked"));
+        yield* fs.symlink(path.join(root, "gone"), path.join(root, "broken"));
+        const [top, texts, deps] = yield* Effect.gen(function* () {
+          const workspace = yield* Workspace;
+          return yield* Effect.forEach(["", "txt", "dep"], (query) => workspace.search(root, query, 100));
+        }).pipe(
+          Effect.provide(
+            Workspace.layer({ attachmentsDirectory }).pipe(
+              Layer.provide(Store.layer({ filename: ":memory:" })),
+            ),
+          ),
+        );
+        assert.deepStrictEqual(top, [
+          { path: "a", folder: true },
+          { path: "linked", folder: true },
+          { path: "real", folder: true },
+          { path: "b.txt", folder: false },
+        ]);
+        assert.deepStrictEqual(texts!.map((entry) => entry.path).toSorted(), [
+          "a/deep/c.txt",
+          "b.txt",
+          "linked/d.txt",
+          "real/d.txt",
+        ]);
+        assert.deepStrictEqual(deps!.map((entry) => entry.path).toSorted(), ["a/deep", "a/deep/c.txt"]);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 });
 
 describe("withFolders", () => {
