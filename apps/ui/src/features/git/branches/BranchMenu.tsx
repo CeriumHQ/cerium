@@ -1,5 +1,5 @@
 import { Popover } from "@base-ui/react/popover";
-import type { LocalBranch, RemoteBranch } from "@cerium/rpc";
+import type { GitBranchList, LocalBranch, RemoteBranch } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import {
   ArrowDown,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { branchListAtom } from "../../../backend/branches.ts";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../../components/ui/Menu.tsx";
@@ -99,6 +99,18 @@ export function BranchMenu({
   );
 }
 
+/** The list's rows for `query`: the matching local branches, then the remote ones, then the offer to make one. */
+const entriesOf = (list: GitBranchList | undefined, query: string): ReadonlyArray<Entry> => {
+  const shown = list === undefined ? { local: [], remote: [] } : matchBranches(list, query);
+  const wanted = query.trim();
+  const canCreate = list !== undefined && wanted !== "" && !hasLocalBranch(list, wanted);
+  return [
+    ...shown.local.map((branch): Entry => ({ kind: "local", branch })),
+    ...shown.remote.map((branch): Entry => ({ kind: "remote", branch })),
+    ...(canCreate ? [{ kind: "create", name: wanted } satisfies Entry] : []),
+  ];
+};
+
 function BranchList({
   root,
   controls,
@@ -116,14 +128,9 @@ function BranchList({
   const [highlight, setHighlight] = useState(0);
   const state = controls.state;
 
-  const shown = list === undefined ? { local: [], remote: [] } : matchBranches(list, query);
-  const wanted = query.trim();
-  const canCreate = list !== undefined && wanted !== "" && !hasLocalBranch(list, wanted);
-  const entries: ReadonlyArray<Entry> = [
-    ...shown.local.map((branch): Entry => ({ kind: "local", branch })),
-    ...shown.remote.map((branch): Entry => ({ kind: "remote", branch })),
-    ...(canCreate ? [{ kind: "create", name: wanted } satisfies Entry] : []),
-  ];
+  // Kept by hand: the list reads the rows after its own hooks, where the React Compiler can't keep them,
+  // and it would match every branch again, and draw every row again, as the highlight moves.
+  const entries = useMemo(() => entriesOf(list, query), [list, query]);
   const active = Math.min(highlight, Math.max(0, entries.length - 1));
 
   useEffect(() => {
@@ -163,19 +170,6 @@ function BranchList({
     }
   };
 
-  const row = (entry: Entry, at: number) => (
-    <Row
-      key={entry.kind === "create" ? "create" : `${entry.kind}:${entry.branch.name}`}
-      id={entryId(at)}
-      entry={entry}
-      highlighted={at === active}
-      controls={controls}
-      onHover={() => setHighlight(at)}
-      onPick={() => pick(entry)}
-      onAsk={onAsk}
-    />
-  );
-
   return (
     <>
       <input
@@ -200,16 +194,25 @@ function BranchList({
         ) : entries.length === 0 ? (
           <p className="px-2 py-3 text-[12.5px] text-fg-tertiary">No branch matches.</p>
         ) : null}
-        {shown.local.length > 0 ? <Section label="Local" /> : null}
-        {shown.local.map((branch, at) => row({ kind: "local", branch }, at))}
-        {shown.remote.length > 0 ? <Section label="Remote" /> : null}
-        {shown.remote.map((branch, at) => row({ kind: "remote", branch }, shown.local.length + at))}
-        {canCreate ? (
-          <>
-            <Section label="New" />
-            {row({ kind: "create", name: wanted }, entries.length - 1)}
-          </>
-        ) : null}
+        {/* The rows take the same entries and handlers on every render, so moving the highlight
+            draws again only the rows it leaves and reaches. */}
+        {entries.map((entry, at) => (
+          <Fragment key={entry.kind === "create" ? "create" : `${entry.kind}:${entry.branch.name}`}>
+            {at === 0 || entries[at - 1]!.kind !== entry.kind ? (
+              <Section label={sectionLabel[entry.kind]} />
+            ) : null}
+            <Row
+              id={entryId(at)}
+              at={at}
+              entry={entry}
+              highlighted={at === active}
+              controls={controls}
+              onHover={setHighlight}
+              onPick={pick}
+              onAsk={onAsk}
+            />
+          </Fragment>
+        ))}
         {list?.truncated === true ? (
           <p className="px-2 py-2 text-[12px] text-fg-tertiary">
             More branches exist than are listed. Search to find them.
@@ -228,12 +231,19 @@ function BranchList({
   );
 }
 
+const sectionLabel: Readonly<Record<Entry["kind"], string>> = {
+  local: "Local",
+  remote: "Remote",
+  create: "New",
+};
+
 function Section({ label }: { readonly label: string }) {
   return <p className="px-2 pt-2 pb-1 text-2xs font-medium text-fg-tertiary select-none">{label}</p>;
 }
 
 function Row({
   id,
+  at,
   entry,
   highlighted,
   controls,
@@ -242,11 +252,13 @@ function Row({
   onAsk,
 }: {
   readonly id: string;
+  /** Where it is in the list. */
+  readonly at: number;
   readonly entry: Entry;
   readonly highlighted: boolean;
   readonly controls: BranchControls;
-  readonly onHover: () => void;
-  readonly onPick: () => void;
+  readonly onHover: (at: number) => void;
+  readonly onPick: (entry: Entry) => void;
   readonly onAsk: (dialog: BranchDialog) => void;
 }) {
   const here = controls.state?.branch;
@@ -262,7 +274,7 @@ function Row({
       tabIndex={-1}
       // Not `disabled`, which would keep the tooltip that says why from opening.
       aria-disabled={blocked !== undefined}
-      onClick={blocked === undefined ? onPick : undefined}
+      onClick={blocked === undefined ? () => onPick(entry) : undefined}
       className={mainClass}
     >
       {entry.kind === "create" ? (
@@ -300,7 +312,7 @@ function Row({
   );
   return (
     <div
-      onMouseEnter={onHover}
+      onMouseEnter={() => onHover(at)}
       data-highlighted={highlighted ? "" : undefined}
       className="group flex items-center rounded-lg data-highlighted:bg-surface-hover"
     >
