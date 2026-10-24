@@ -38,6 +38,8 @@ const FONT_FAMILY = [
  */
 const FONT_SIZE = 13.5;
 const SCROLLBACK = 5_000;
+/** The least time between two fits while the terminal's container is resized. */
+const FIT_MS = 80;
 
 export interface Size {
   readonly cols: number;
@@ -183,10 +185,28 @@ export class TerminalSession {
     };
     if (this.#fontLoaded) show();
     else void this.#font.then(show);
-    const observer = new ResizeObserver(() => this.fit());
+    // Each fit to a new width reflows the whole scrollback and resizes the shell's screen, so while the
+    // container is being resized the emulator is fitted at most every FIT_MS, and once more as it stops.
+    let pause: ReturnType<typeof setTimeout> | undefined;
+    let again = false;
+    const refit = () => {
+      if (pause !== undefined) {
+        again = true;
+        return;
+      }
+      this.fit();
+      pause = setTimeout(() => {
+        pause = undefined;
+        if (!again) return;
+        again = false;
+        refit();
+      }, FIT_MS);
+    };
+    const observer = new ResizeObserver(refit);
     observer.observe(container);
     return () => {
       observer.disconnect();
+      clearTimeout(pause);
       this.host.remove();
     };
   }
