@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Sparkles, Users } from "lucide-react";
+import { Route, Users } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import {
@@ -174,7 +174,7 @@ export function EffortRouterSetting() {
                   <span className="font-medium text-fg-primary">{childrenLabel[router.children]}</span>
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="router" icon={Sparkles} description="The router picks their effort too">
+                  <SelectItem value="router" icon={Route} description="The router picks their effort too">
                     {childrenLabel.router}
                   </SelectItem>
                   <SelectItem value="lead" icon={Users} description="They run at the lead's current level">

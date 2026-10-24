@@ -11,7 +11,7 @@ import {
   CornerDownRight,
   Pencil,
   RotateCcw,
-  Sparkles,
+  Route,
   Split,
   Workflow,
   X,
@@ -475,7 +475,7 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
       }
     >
       <Button className="-mx-1 flex h-5 items-center gap-1 rounded-md px-1 transition-colors hover:text-fg-secondary">
-        <Sparkles size={11} strokeWidth={2} />
+        <Route size={11} strokeWidth={2} />
         Auto · {level}
       </Button>
     </Tooltip>

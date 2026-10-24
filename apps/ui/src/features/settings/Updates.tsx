@@ -3,7 +3,7 @@ import { Progress } from "@base-ui/react/progress";
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { useAtomSet } from "@effect/atom-react";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { ExternalLink, ScrollText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { shellBridge, type UpdateChannel, type Updates } from "../../backend/shell.ts";
@@ -135,7 +135,7 @@ function VersionSection({ updates }: { updates: Updates }) {
               onClick={() => openWhatsNew(true)}
               className="mt-1 flex w-fit items-center gap-1.5 rounded-md text-[12.5px] text-fg-secondary transition-colors hover:text-fg-primary"
             >
-              <Sparkles size={12} strokeWidth={1.75} />
+              <ScrollText size={12} strokeWidth={1.75} />
               What's new in this version
             </button>
             {offered !== undefined ? (

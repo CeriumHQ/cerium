@@ -1,5 +1,5 @@
 import { TITLE_MODELS, type ModelInfo, type ProviderId } from "@cerium/protocol";
-import { Sparkles } from "lucide-react";
+import { Zap } from "lucide-react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
@@ -115,7 +115,7 @@ export function TitleSetting({
                 <SelectPopup>
                   <SelectItem
                     value={AUTOMATIC}
-                    icon={Sparkles}
+                    icon={Zap}
                     description={
                       automatic
                         ? `${automatic.label} now, the quickest your harnesses offer`

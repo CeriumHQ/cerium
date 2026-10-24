@@ -1,11 +1,11 @@
 import { Button } from "@base-ui/react/button";
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { LoaderCircle, PenLine } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Tooltip } from "./Tooltip.tsx";
 
 /**
- * The button that has a quick model write a field's text: a square with the sparkle alone, or with
+ * The button that has a quick model write a field's text: a square with the pen alone, or with
  * its words beside it. While the model writes it turns, and a press does nothing.
  */
 export function GenerateButton({
@@ -21,11 +21,11 @@ export function GenerateButton({
   readonly busy: boolean;
   readonly disabled?: boolean;
   readonly onClick: () => void;
-  /** Words beside the sparkle; without them the button is a square. */
+  /** Words beside the pen; without them the button is a square. */
   readonly children?: ReactNode;
   readonly className?: string;
 }) {
-  const Icon = busy ? LoaderCircle : Sparkles;
+  const Icon = busy ? LoaderCircle : PenLine;
   return (
     <Tooltip label={busy ? "Writing…" : label}>
       <Button

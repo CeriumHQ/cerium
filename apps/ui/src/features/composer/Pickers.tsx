@@ -4,15 +4,7 @@ import { Select as BaseSelect } from "@base-ui/react/select";
 import { Slider } from "@base-ui/react/slider";
 import { Switch } from "@base-ui/react/switch";
 import type { AccessMode, HarnessLimit, ReasoningEffort } from "@cerium/protocol";
-import {
-  Eye,
-  FilePen,
-  ShieldCheck,
-  ShieldOff,
-  ShieldQuestion,
-  Sparkles,
-  type LucideIcon,
-} from "lucide-react";
+import { Eye, FilePen, Route, ShieldCheck, ShieldOff, ShieldQuestion, type LucideIcon } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 
 import { SelectItem, SelectPopup, SelectRoot, triggerClass } from "../../components/ui/Select.tsx";
@@ -226,7 +218,7 @@ export function EffortPicker({
               <div className="-mx-3.5 mt-2.5 flex items-center gap-3 border-t border-line-subtle px-3.5 pt-2.5">
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span id={autoLabel} className="flex items-center gap-1.5 text-[12.5px] font-medium">
-                    <Sparkles size={12} strokeWidth={2} className="text-fg-tertiary" />
+                    <Route size={12} strokeWidth={2} className="text-fg-tertiary" />
                     Auto
                   </span>
                   <span className="text-2xs text-fg-tertiary">Picks the level for each turn</span>

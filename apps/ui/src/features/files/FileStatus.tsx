@@ -1,5 +1,5 @@
 import type { FileState } from "@cerium/rpc";
-import { Sparkles } from "lucide-react";
+import { PencilLine } from "lucide-react";
 
 import { stateLetter, stateWord, touchWord } from "./model.ts";
 
@@ -46,7 +46,7 @@ export function StateDot({ state, count }: { state: FileState; count: number }) 
 /** Marks what this thread's agents changed. */
 export function TouchedMark({ change }: { change: "created" | "modified" | "deleted" }) {
   return (
-    <Sparkles
+    <PencilLine
       size={11}
       strokeWidth={2}
       className="shrink-0 text-fg-tertiary"
