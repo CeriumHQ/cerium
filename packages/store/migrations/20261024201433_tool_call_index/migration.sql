@@ -1,0 +1,1 @@
+CREATE INDEX `events_tool_call` ON `events` (`thread_id`,json_extract("payload", '$.callId')) WHERE "events"."tag" = 'ToolCallCompleted';

@@ -219,6 +219,26 @@ const isAdvisor = (info: AgentInfo) => info.parentId !== undefined && info.role 
 
 const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("image/");
 
+/**
+ * What resuming a lead reads of its history: the requests it waited on, the turns, messages and
+ * rewinds of its conversation, and the agents it spawned. Its tool calls and their output, most of
+ * a long history, say nothing about any of it.
+ */
+const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
+  "PermissionRequested",
+  "PermissionResolved",
+  "QuestionAsked",
+  "QuestionResolved",
+  "SpawnApprovalRequested",
+  "SpawnApprovalResolved",
+  "MessageQueued",
+  "TurnInput",
+  "MessageCompleted",
+  "SessionStarted",
+  "ConversationRewound",
+  "AgentSpawned",
+];
+
 /** Events the store never keeps: streamed text, and new titles, which the thread's record holds. */
 const isEphemeral = (payload: EventPayload) =>
   payload._tag === "MessageDelta" || payload._tag === "ReasoningDelta" || payload._tag === "ThreadRenamed";
@@ -1073,7 +1093,11 @@ export class Orchestrator extends Context.Service<
       const recentOf = (rt: Runtime) =>
         Effect.gen(function* () {
           if (rt.recent !== undefined) return rt.recent;
-          const events = yield* store.listEvents(rt.info.id).pipe(Effect.orElseSucceed(() => []));
+          const events = yield* store
+            .listEvents(rt.info.id, {
+              tags: ["TurnInput", "MessageCompleted", "TurnCompleted", "ConversationRewound"],
+            })
+            .pipe(Effect.orElseSucceed(() => []));
           const recent: Array<Exchange> = [];
           let sent: string | undefined;
           let replied = "";
@@ -1636,7 +1660,9 @@ export class Orchestrator extends Context.Service<
         // A failed session's held notices come back from its history below.
         heldNotices.delete(agentId);
         // What rewinds replaced is no longer the conversation the session goes on from.
-        const history = liveEvents(yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable)));
+        const history = liveEvents(
+          yield* store.listEvents(agentId, { tags: RESUME_TAGS }).pipe(Effect.mapError(unavailable)),
+        );
         // Approvals and questions the old session was waiting on died with it, and so did its requests to
         // start agents (which a restart of Cerium has forgotten anyway); messages it never took go to the
         // new one.
@@ -1915,7 +1941,9 @@ export class Orchestrator extends Context.Service<
         since: number,
         now: string,
       ) {
-        const events = yield* store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable));
+        const events = yield* store
+          .listThreadEvents(threadId, { tags: ["TurnInput", "FilesSaved", "FileChanged"] })
+          .pipe(Effect.mapError(unavailable));
         const changed = new Set<string>();
         for (const agentEvents of Map.groupBy(events, (event) => event.agentId).values()) {
           const work = workSince(agentEvents, since);

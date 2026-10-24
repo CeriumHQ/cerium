@@ -109,6 +109,30 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("lists every thread and agent as they stand after each write", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const states = Effect.map(store.listAllAgents, (all) => all.map((agent) => agent.state));
+        assert.deepStrictEqual(yield* store.listThreads, []);
+        assert.deepStrictEqual(yield* store.listAllAgents, []);
+        yield* store.createThread(thread);
+        assert.deepStrictEqual(yield* store.listThreads, [thread]);
+        yield* store.updateThread(thread.id, { title: "Renamed" });
+        assert.deepStrictEqual(yield* store.listThreads, [{ ...thread, title: "Renamed" }]);
+        yield* store.createAgent({ ...lead, state: "running" });
+        assert.deepStrictEqual(yield* states, ["running"]);
+        yield* store.updateAgent(lead.id, { state: "idle", updatedAt: 5 });
+        assert.deepStrictEqual(yield* states, ["idle"]);
+        yield* store.stopLiveAgents;
+        assert.deepStrictEqual(yield* states, ["stopped"]);
+        yield* store.deleteThread(thread.id);
+        assert.deepStrictEqual(yield* store.listThreads, []);
+        assert.deepStrictEqual(yield* store.listAllAgents, []);
+      }),
+    ),
+  );
+
   it.effect("finds threads by the words in their messages, the user's and the agents'", () =>
     withStore(
       Effect.gen(function* () {
@@ -405,6 +429,46 @@ describe("Store", () => {
           assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 3, 10)), []);
         }),
       ),
+  );
+
+  it.effect("finds how a tool call in a thread ended by its id, through the index", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const other: ThreadInfo = { ...thread, id: "thr_other" as ThreadId };
+        const otherLead: AgentInfo = { ...lead, id: "agt_other" as AgentId, threadId: other.id };
+        yield* store.createThread(thread);
+        yield* store.createThread(other);
+        yield* store.createAgent(lead);
+        yield* store.createAgent(otherLead);
+        const tool = (id: string, threadEvent: AgentEvent, payload: AgentEvent["payload"]): AgentEvent => ({
+          ...threadEvent,
+          id: id as EventId,
+          payload,
+        });
+        const done = (callId: string) =>
+          ({ _tag: "ToolCallCompleted", callId, output: `out ${callId}`, isError: false }) as const;
+        yield* store.appendEvents([
+          tool("evt_started", event(1), {
+            _tag: "ToolCallStarted",
+            callId: "call_1",
+            toolName: "Bash",
+            input: {},
+          }),
+          tool("evt_1", event(2), done("call_1")),
+          tool("evt_2", event(3), done("call_2")),
+        ]);
+        yield* store.appendEvents([
+          tool("evt_elsewhere", { ...event(1), threadId: other.id, agentId: otherLead.id }, done("call_3")),
+        ]);
+        const found = (threadId: ThreadId, callId: string) =>
+          store.findToolCompletion(threadId, callId).pipe(Effect.map(Option.map((stored) => stored.id)));
+        assert.deepStrictEqual(yield* found(thread.id, "call_1"), Option.some("evt_1"));
+        assert.deepStrictEqual(yield* found(thread.id, "call_2"), Option.some("evt_2"));
+        assert.isTrue(Option.isNone(yield* found(thread.id, "call_3")));
+        assert.deepStrictEqual(yield* found(other.id, "call_3"), Option.some("evt_elsewhere"));
+      }),
+    ),
   );
 
   it.effect("stores a batch atomically", () =>

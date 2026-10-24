@@ -90,7 +90,6 @@ export const CloudCopy = Layer.effectDiscard(
       let start = from;
       while (true) {
         const page = yield* store.listSyncedEvents(threadId, start, PAGE);
-        if (page.length === 0) return;
         for (const batch of batches(page.map(cloudEvent))) {
           const answer = yield* Deferred.make<number>();
           accepted.set(threadId, answer);
@@ -103,6 +102,8 @@ export const CloudCopy = Layer.effectDiscard(
           if (count < start + batch.length) return;
           start = count;
         }
+        // A page short of full was the last; asking again would only read an empty one.
+        if (page.length < PAGE) return;
       }
     });
 
@@ -111,11 +112,17 @@ export const CloudCopy = Layer.effectDiscard(
       const known = cursors;
       if (known === undefined) return;
       const local = yield* overviews;
-      const changed = local.filter((overview) => sent.get(overview.thread.id) !== JSON.stringify(overview));
+      const changed = local.flatMap((overview) => {
+        const json = JSON.stringify(overview);
+        return sent.get(overview.thread.id) === json ? [] : [{ overview, json }];
+      });
       for (let index = 0; index < changed.length; index += 50) {
-        yield* account.send({ _tag: "SyncThreads", threads: changed.slice(index, index + 50) });
+        yield* account.send({
+          _tag: "SyncThreads",
+          threads: changed.slice(index, index + 50).map(({ overview }) => overview),
+        });
       }
-      for (const overview of changed) sent.set(overview.thread.id, JSON.stringify(overview));
+      for (const { overview, json } of changed) sent.set(overview.thread.id, json);
 
       const here = new Set(local.map((overview) => overview.thread.id as string));
       const gone = [...new Set([...known.keys(), ...sent.keys()])].filter(

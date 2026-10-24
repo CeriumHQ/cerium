@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const threads = sqliteTable("threads", {
@@ -65,6 +66,11 @@ export const events = sqliteTable(
     // Reads of one kind of event (open questions and saved attachments at startup, usage for the
     // spend report) find them here instead of reading every event.
     index("events_tag_at").on(table.tag, table.at),
+    // A tool's image, read on its own as the transcript scrolls to it, is found by its call here
+    // instead of by searching the text of every tool result in its thread, screenshots and all.
+    index("events_tool_call")
+      .on(table.threadId, sql`json_extract(${table.payload}, '$.callId')`)
+      .where(sql`${table.tag} = 'ToolCallCompleted'`),
   ],
 );
 

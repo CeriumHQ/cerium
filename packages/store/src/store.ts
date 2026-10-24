@@ -143,14 +143,21 @@ export class Store extends Context.Service<
     readonly listAllAgents: Effect.Effect<ReadonlyArray<AgentInfo>, StoreError>;
     /** Appends atomically: either every event is stored or none is. */
     appendEvents(batch: ReadonlyArray<AgentEvent>): Effect.Effect<void, StoreError>;
+    /**
+     * An agent's events in order, those after `afterSequence` only when given, and only those of the
+     * kinds in `tags` when given: a history's tool output (screenshots and all) is most of it.
+     */
     listEvents(
       agentId: AgentId,
-      options?: { readonly afterSequence?: number },
+      options?: { readonly afterSequence?: number; readonly tags?: ReadonlyArray<EventPayload["_tag"]> },
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** The highest stored sequence for an agent, so a restarted agent continues after it. */
     lastSequence(agentId: AgentId): Effect.Effect<Option.Option<number>, StoreError>;
-    /** Every agent's events in a thread, in the order they happened. */
-    listThreadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
+    /** Every agent's events in a thread, in the order they happened; only the kinds in `tags` when given. */
+    listThreadEvents(
+      threadId: ThreadId,
+      options?: { readonly tags?: ReadonlyArray<EventPayload["_tag"]> },
+    ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** How a tool call in a thread ended, for reading an image of its output on its own. */
     findToolCompletion(
       threadId: ThreadId,
@@ -232,15 +239,28 @@ export class Store extends Context.Service<
           "Could not migrate the database",
           migrate(db, { migrationsFolder: options.migrationsFolder ?? defaultMigrationsFolder }),
         );
-        const decode =
-          <S extends Schema.Top>(schema: S, message: string) =>
-          (row: unknown) =>
-            Schema.decodeUnknownEffect(schema)(withoutNulls(row)).pipe(
-              Effect.mapError((cause) => new StoreError({ message, cause })),
-            );
+        const decode = <S extends Schema.Top>(schema: S, message: string) => {
+          const decodeRow = Schema.decodeUnknownEffect(schema);
+          return (row: unknown) =>
+            decodeRow(withoutNulls(row)).pipe(Effect.mapError((cause) => new StoreError({ message, cause })));
+        };
         const decodeThread = decode(ThreadInfo, "Stored thread is invalid");
         const decodeAgent = decode(AgentInfo, "Stored agent is invalid");
         const decodeEvent = decode(AgentEvent, "Stored event is invalid");
+
+        // Every thread and every agent, as last read, until one is written: lists of every thread are
+        // read again after almost every event, for each window, the cloud copy and whether anything
+        // works, and decoding each row was most of the time they took.
+        const allThreads = remembered(
+          query("Could not list threads", db.select().from(threads).orderBy(asc(threads.createdAt))).pipe(
+            Effect.flatMap((rows) => Effect.forEach(rows, decodeThread)),
+          ),
+        );
+        const allAgents = remembered(
+          query("Could not list agents", db.select().from(agents).orderBy(asc(agents.createdAt))).pipe(
+            Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent)),
+          ),
+        );
 
         return Store.of({
           createThread: (thread) =>
@@ -254,18 +274,18 @@ export class Store extends Context.Service<
                 laterUntil: thread.laterUntil ?? null,
                 runId: thread.runId ?? null,
               }),
-            ),
+            ).pipe(allThreads.forget),
           getThread: (id) =>
             query("Could not read the thread", db.select().from(threads).where(eq(threads.id, id))).pipe(
               Effect.flatMap((rows) => Effect.forEach(rows, decodeThread)),
               Effect.map((rows) => Option.fromNullishOr(rows[0])),
             ),
-          listThreads: query(
-            "Could not list threads",
-            db.select().from(threads).orderBy(asc(threads.createdAt)),
-          ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeThread))),
+          listThreads: allThreads.read,
           updateThread: (id, patch) =>
-            query("Could not update the thread", db.update(threads).set(patch).where(eq(threads.id, id))),
+            query(
+              "Could not update the thread",
+              db.update(threads).set(patch).where(eq(threads.id, id)),
+            ).pipe(allThreads.forget),
           deleteThread: (id) =>
             query(
               "Could not delete the thread",
@@ -276,7 +296,7 @@ export class Store extends Context.Service<
                   tx.delete(threads).where(eq(threads.id, id)),
                 ]),
               ),
-            ),
+            ).pipe(allThreads.forget, allAgents.forget),
           // `message_search` is kept by triggers on the events and threads tables (the thread_search
           // migration).
           searchMessages: (typed, { mode, limit }) => {
@@ -321,9 +341,11 @@ export class Store extends Context.Service<
                 autoEffort: agent.autoEffort ?? null,
                 providerSessionId: agent.providerSessionId ?? null,
               }),
-            ),
+            ).pipe(allAgents.forget),
           updateAgent: (id, patch) =>
-            query("Could not update the agent", db.update(agents).set(patch).where(eq(agents.id, id))),
+            query("Could not update the agent", db.update(agents).set(patch).where(eq(agents.id, id))).pipe(
+              allAgents.forget,
+            ),
           getAgent: (id) =>
             query("Could not read the agent", db.select().from(agents).where(eq(agents.id, id))).pipe(
               Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent)),
@@ -334,10 +356,7 @@ export class Store extends Context.Service<
               "Could not list agents",
               db.select().from(agents).where(eq(agents.threadId, threadId)).orderBy(asc(agents.createdAt)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent))),
-          listAllAgents: query(
-            "Could not list agents",
-            db.select().from(agents).orderBy(asc(agents.createdAt)),
-          ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent))),
+          listAllAgents: allAgents.read,
           appendEvents: (batch) =>
             batch.length === 0
               ? Effect.void
@@ -373,6 +392,7 @@ export class Store extends Context.Service<
                     options?.afterSequence === undefined
                       ? undefined
                       : gt(events.sequence, options.afterSequence),
+                    options?.tags === undefined ? undefined : inArray(events.tag, [...options.tags]),
                   ),
                 )
                 .orderBy(asc(events.sequence)),
@@ -385,13 +405,18 @@ export class Store extends Context.Service<
                 .from(events)
                 .where(eq(events.agentId, agentId)),
             ).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0]?.last))),
-          listThreadEvents: (threadId) =>
+          listThreadEvents: (threadId, options) =>
             query(
               "Could not list thread events",
               db
                 .select(eventColumns)
                 .from(events)
-                .where(eq(events.threadId, threadId))
+                .where(
+                  and(
+                    eq(events.threadId, threadId),
+                    options?.tags === undefined ? undefined : inArray(events.tag, [...options.tags]),
+                  ),
+                )
                 .orderBy(asc(events.at), asc(events.sequence)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
           findToolCompletion: (threadId, callId) =>
@@ -403,9 +428,8 @@ export class Store extends Context.Service<
                 .where(
                   and(
                     eq(events.threadId, threadId),
-                    eq(events.tag, "ToolCallCompleted"),
-                    // Finding the id in the text first spares parsing every screenshot's payload.
-                    sql`instr(${events.payload}, ${JSON.stringify(callId)}) > 0`,
+                    // Written out as in `events_tool_call`, so the planner can tell the index covers it.
+                    sql`${events.tag} = 'ToolCallCompleted'`,
                     sql`json_extract(${events.payload}, '$.callId') = ${callId}`,
                   ),
                 )
@@ -482,16 +506,27 @@ export class Store extends Context.Service<
               .where(notInArray(events.tag, STREAM_DELTAS))
               .groupBy(events.threadId),
           ).pipe(Effect.map((rows) => new Map(rows.map((row) => [row.threadId, row.events])))),
+          // The page is found among the thread's rowids alone, which an index holds: ordering the rows
+          // themselves sorted every event of the thread, payloads and all, to skip to the offset.
           listSyncedEvents: (threadId, offset, limit) =>
             query(
               "Could not list thread events",
               db
                 .select(eventColumns)
                 .from(events)
-                .where(and(eq(events.threadId, threadId), notInArray(events.tag, STREAM_DELTAS)))
-                .orderBy(sql`rowid`)
-                .limit(limit)
-                .offset(offset),
+                .where(
+                  inArray(
+                    sql`rowid`,
+                    db
+                      .select({ rowid: sql`rowid` })
+                      .from(events)
+                      .where(and(eq(events.threadId, threadId), notInArray(events.tag, STREAM_DELTAS)))
+                      .orderBy(sql`rowid`)
+                      .limit(limit)
+                      .offset(offset),
+                  ),
+                )
+                .orderBy(sql`rowid`),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
           stopLiveAgents: query(
             "Could not stop live agents",
@@ -499,7 +534,7 @@ export class Store extends Context.Service<
               .update(agents)
               .set({ state: "stopped" })
               .where(inArray(agents.state, ["queued", "running", "idle"])),
-          ),
+          ).pipe(allAgents.forget),
           readSettings: query("Could not read settings", db.select().from(settings)).pipe(
             Effect.map((rows) => Object.fromEntries(rows.map((row) => [row.key, row.value]))),
           ),
@@ -541,6 +576,34 @@ export class Store extends Context.Service<
     );
   }
 }
+
+/**
+ * A read's result, kept until `forget` follows a write that changes it. A read that a write overtakes
+ * keeps nothing, so what is kept was read after the last write.
+ */
+const remembered = <A, E>(fresh: Effect.Effect<A, E>) => {
+  let kept: Option.Option<A> = Option.none();
+  let writes = 0;
+  return {
+    read: Effect.suspend(() => {
+      if (Option.isSome(kept)) return Effect.succeed(kept.value);
+      const before = writes;
+      return Effect.tap(fresh, (value) =>
+        Effect.sync(() => {
+          if (writes === before) kept = Option.some(value);
+        }),
+      );
+    }),
+    forget: <B, E2, R>(write: Effect.Effect<B, E2, R>) =>
+      Effect.ensuring(
+        write,
+        Effect.sync(() => {
+          writes++;
+          kept = Option.none();
+        }),
+      ),
+  };
+};
 
 /** SQL NULL columns map to absent optional keys in the protocol schemas. */
 const withoutNulls = (row: unknown): unknown =>
