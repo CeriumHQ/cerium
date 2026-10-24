@@ -1,10 +1,11 @@
 import {
   HarnessUnavailable,
+  shareProbe,
   type AdapterEvent,
   type HarnessAdapter,
   type SessionOptions,
 } from "@cerium/harness";
-import { Context, Effect, Exit, FileSystem, Layer, Path, Stream } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithMuse } from "./complete.ts";
@@ -13,6 +14,8 @@ import { listMuseModels } from "./models.ts";
 import { limitInstructions, limitNotice, sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { startMuseSession } from "./session.ts";
+
+const SIGNED_OUT = `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`;
 
 export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
   "cerium/adapters/muse/MuseAdapter",
@@ -24,11 +27,11 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
       const platform = yield* Effect.context<
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
       >();
-      const probe = probeMuse.pipe(Effect.provide(platform));
+      const probes = yield* shareProbe(probeMuse.pipe(Effect.provide(platform)));
 
       /** The installed harness, once it is known to be usable. */
       const ready = Effect.gen(function* () {
-        const status = yield* probe;
+        const status = yield* probes.kept;
         if (status._tag === "HarnessMissing") {
           return yield* new HarnessUnavailable({
             provider: "muse",
@@ -40,15 +43,11 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
           return yield* new HarnessUnavailable({
             provider: "muse",
             reason: "loggedOut",
-            message: `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`,
+            message: SIGNED_OUT,
           });
         }
         return status;
       });
-      // Completions are meant to be quick, so they skip the probe for a while after one passes.
-      const readyForCompletion = yield* ready.pipe(
-        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
-      );
 
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
         const { executablePath: executable, setup, limit } = yield* ready;
@@ -59,7 +58,9 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
           : limit?.blocks.includes(options.access)
             ? { instructions: limitInstructions, notice: limitNotice }
             : undefined;
-        if (blocked === undefined) return yield* startMuseSession(executable, options);
+        if (blocked === undefined) {
+          return probes.watchSignIn(yield* startMuseSession(executable, options), SIGNED_OUT);
+        }
         const session = yield* startMuseSession(executable, {
           ...options,
           appendSystemPrompt: [options.appendSystemPrompt, blocked.instructions]
@@ -69,18 +70,19 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         const notice: AdapterEvent = {
           payload: { _tag: "AgentError", kind: "unknown", message: blocked.notice, retryable: false },
         };
-        return { ...session, events: Stream.concat(Stream.make(notice), session.events) };
+        return probes.watchSignIn(
+          { ...session, events: Stream.concat(Stream.make(notice), session.events) },
+          SIGNED_OUT,
+        );
       });
 
       return MuseAdapter.of({
         provider: "muse",
         manifest: museManifest,
-        probe,
+        probe: probes.fresh,
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
         complete: (request) =>
-          readyForCompletion.pipe(
-            Effect.flatMap((status) => completeWithMuse(status.executablePath, request)),
-          ),
+          ready.pipe(Effect.flatMap((status) => completeWithMuse(status.executablePath, request))),
         startSession,
       });
     }),

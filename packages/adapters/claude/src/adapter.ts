@@ -1,5 +1,5 @@
-import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
+import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithClaude } from "./complete.ts";
@@ -11,6 +11,8 @@ import { startClaudeSession } from "./session.ts";
 import { listClaudeSkills } from "./skills.ts";
 import { readClaudeUsage } from "./usage.ts";
 
+const SIGNED_OUT = `Claude Code is not logged in. Run \`${LOGIN_COMMAND}\`.`;
+
 export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter>()(
   "cerium/adapters/claude/ClaudeAdapter",
 ) {
@@ -21,11 +23,11 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
       const platform = yield* Effect.context<
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
       >();
-      const probe = probeClaude.pipe(Effect.provide(platform));
+      const probes = yield* shareProbe(probeClaude.pipe(Effect.provide(platform)));
 
       /** The installed executable, once it is known to be usable. */
       const ready = Effect.gen(function* () {
-        const status = yield* probe;
+        const status = yield* probes.kept;
         if (status._tag === "HarnessMissing") {
           return yield* new HarnessUnavailable({
             provider: "claude",
@@ -37,32 +39,26 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
           return yield* new HarnessUnavailable({
             provider: "claude",
             reason: "loggedOut",
-            message: `Claude Code is not logged in. Run \`${LOGIN_COMMAND}\`.`,
+            message: SIGNED_OUT,
           });
         }
         return status.executablePath;
       });
-      // Completions are meant to be quick, so they skip the probe for a while after one passes.
-      const readyForCompletion = yield* ready.pipe(
-        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
-      );
 
       const startSession = Effect.fn("ClaudeAdapter.startSession")(function* (options: SessionOptions) {
-        return yield* startClaudeSession(yield* ready, options);
+        return probes.watchSignIn(yield* startClaudeSession(yield* ready, options), SIGNED_OUT);
       });
 
       return ClaudeAdapter.of({
         provider: "claude",
         manifest: claudeManifest,
-        probe,
+        probe: probes.fresh,
         listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
         listSkills: (cwd) =>
           ready.pipe(Effect.flatMap((executablePath) => listClaudeSkills(executablePath, cwd))),
         usage: ready.pipe(Effect.flatMap(readClaudeUsage)),
         complete: (request) =>
-          readyForCompletion.pipe(
-            Effect.flatMap((executablePath) => completeWithClaude(executablePath, request)),
-          ),
+          ready.pipe(Effect.flatMap((executablePath) => completeWithClaude(executablePath, request))),
         fork: forkClaudeSession,
         startSession,
       });

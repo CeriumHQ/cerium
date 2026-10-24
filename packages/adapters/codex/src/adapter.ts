@@ -1,5 +1,5 @@
-import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
+import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithCodex } from "./complete.ts";
@@ -9,6 +9,8 @@ import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
 import { startCodexSession } from "./session.ts";
 import { readCodexUsage } from "./usage.ts";
+
+const SIGNED_OUT = `Codex is not logged in. Run \`${LOGIN_COMMAND}\`.`;
 
 export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>()(
   "cerium/adapters/codex/CodexAdapter",
@@ -24,11 +26,11 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         FileSystem.FileSystem,
         Path.Path,
       )(yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path>());
-      const probe = probeCodex.pipe(Effect.provide(platform));
+      const probes = yield* shareProbe(probeCodex.pipe(Effect.provide(platform)));
 
       /** The installed executable, once it is known to be usable. */
       const ready = Effect.gen(function* () {
-        const status = yield* probe;
+        const status = yield* probes.kept;
         if (status._tag === "HarnessMissing") {
           return yield* new HarnessUnavailable({
             provider: "codex",
@@ -40,24 +42,21 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
           return yield* new HarnessUnavailable({
             provider: "codex",
             reason: "loggedOut",
-            message: `Codex is not logged in. Run \`${LOGIN_COMMAND}\`.`,
+            message: SIGNED_OUT,
           });
         }
         return status.executablePath;
       });
-      // Completions are meant to be quick, so they skip the probe for a while after one passes.
-      const readyForCompletion = yield* ready.pipe(
-        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
-      );
 
       const startSession = Effect.fn("CodexAdapter.startSession")(function* (options: SessionOptions) {
-        return yield* startCodexSession(yield* ready, options).pipe(Effect.provide(platform));
+        const session = yield* startCodexSession(yield* ready, options).pipe(Effect.provide(platform));
+        return probes.watchSignIn(session, SIGNED_OUT);
       });
 
       return CodexAdapter.of({
         provider: "codex",
         manifest: codexManifest,
-        probe,
+        probe: probes.fresh,
         listModels: ready.pipe(Effect.flatMap(listCodexModels), Effect.provide(platform)),
         listSkills: (cwd) =>
           ready.pipe(
@@ -66,7 +65,7 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
           ),
         usage: ready.pipe(Effect.flatMap(readCodexUsage), Effect.provide(platform)),
         complete: (request) =>
-          readyForCompletion.pipe(
+          ready.pipe(
             Effect.flatMap((executablePath) => completeWithCodex(executablePath, request)),
             Effect.provide(platform),
           ),

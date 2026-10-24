@@ -1,5 +1,5 @@
-import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, Exit, FileSystem, Layer, Path, RcRef } from "effect";
+import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import { Context, Effect, FileSystem, Layer, Path, RcRef } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 import { tmpdir } from "node:os";
 
@@ -56,13 +56,15 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
           Effect.scoped,
         );
 
-      const probe = probeOpenCode((executablePath) => withServer(executablePath, readAuth)).pipe(
-        Effect.provide(platform),
+      const probes = yield* shareProbe(
+        probeOpenCode((executablePath) => withServer(executablePath, readAuth)).pipe(
+          Effect.provide(platform),
+        ),
       );
 
       /** The installed executable, once it is known to be usable. */
       const ready = Effect.gen(function* () {
-        const status = yield* probe;
+        const status = yield* probes.kept;
         if (status._tag === "HarnessMissing") {
           return yield* new HarnessUnavailable({
             provider: "opencode",
@@ -79,10 +81,6 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
         }
         return status.executablePath;
       });
-      // Completions are meant to be quick, so they skip the probe for a while after one passes.
-      const readyForCompletion = yield* ready.pipe(
-        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "5 minutes" : 0)),
-      );
 
       const startSession = Effect.fn("OpenCodeAdapter.startSession")(function* (options: SessionOptions) {
         return yield* startOpenCodeSession(yield* ready, options).pipe(Effect.provide(platform));
@@ -91,7 +89,7 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
       return OpenCodeAdapter.of({
         provider: "opencode",
         manifest: opencodeManifest,
-        probe,
+        probe: probes.fresh,
         listModels: ready.pipe(
           Effect.flatMap((executablePath) =>
             withServer(executablePath, (client) => readCatalog(client, tmpdir())),
@@ -105,7 +103,7 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
             ),
           ),
         complete: (request) =>
-          readyForCompletion.pipe(
+          ready.pipe(
             Effect.flatMap((executablePath) =>
               withServer(executablePath, (client) =>
                 readCatalog(client, request.cwd).pipe(
