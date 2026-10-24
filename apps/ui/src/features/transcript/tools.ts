@@ -311,13 +311,13 @@ const isImageItem = (value: unknown) => isRecord(value) && value["type"] === "im
  * so their text items stand for them (JSON laid out, images left to the thumbnails); anything else
  * is shown as JSON with blobs elided.
  */
-export const outputText = (output: unknown): string => {
+const textOf = (output: unknown): string => {
   if (output === undefined || output === null) return "";
   if (typeof output === "string") return prettyJson(output);
   if (Array.isArray(output)) {
     return output
       .filter((item) => !isImageItem(item))
-      .map(outputText)
+      .map(textOf)
       .filter((text) => text !== "")
       .join("\n\n");
   }
@@ -330,10 +330,26 @@ export const outputText = (output: unknown): string => {
       Array.isArray(output["content"]) &&
       Object.keys(output).every((key) => key === "content" || key === "isError")
     ) {
-      return outputText(output["content"]);
+      return textOf(output["content"]);
     }
   }
   return JSON.stringify(output, withoutBlobs, 2);
+};
+
+/**
+ * Each output's text, by the output. An output is its event's own and never changes, while laying it
+ * out parses and prints its JSON again, and the transcript asks for it on every update.
+ */
+const texts = new WeakMap<object, string>();
+
+/** A tool's output as the text a person reads (see `textOf`). */
+export const outputText = (output: unknown): string => {
+  if (typeof output !== "object" || output === null) return textOf(output);
+  const known = texts.get(output);
+  if (known !== undefined) return known;
+  const text = textOf(output);
+  texts.set(output, text);
+  return text;
 };
 
 /** What the tool's input shows in its place when it isn't a plain string. */
