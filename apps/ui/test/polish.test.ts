@@ -110,6 +110,18 @@ describe("PolishGrid", () => {
     expect(isEmpty(grid.bounds)).toBe(true);
   });
 
+  it("knows its clearest cell as the fog comes back", () => {
+    const grid = new PolishGrid(40, 40, 4);
+    expect(grid.peak).toBe(0);
+    grid.dab(10, 10, 2, 0.3);
+    grid.dab(30, 30, 2, 0.8);
+    expect(grid.peak).toBeCloseTo(0.8);
+    grid.fog(0.5);
+    expect(grid.peak).toBeCloseTo(0.4);
+    grid.fog(0.001);
+    expect(grid.peak).toBe(0);
+  });
+
   it("shrinks its bounds as the edges fog over", () => {
     const grid = new PolishGrid(40, 40, 4);
     grid.dab(18, 18, 8, 0.05);

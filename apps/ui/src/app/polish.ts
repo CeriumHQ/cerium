@@ -78,6 +78,19 @@ export class PolishGrid {
     return !isEmpty(this.#bounds);
   }
 
+  /** How clear the clearest cell is. */
+  get peak(): number {
+    const { cols, values } = this;
+    const bounds = this.#bounds;
+    let peak = 0;
+    for (let row = bounds.top; row < bounds.bottom; row++) {
+      for (let col = bounds.left; col < bounds.right; col++) {
+        peak = Math.max(peak, values[row * cols + col] ?? 0);
+      }
+    }
+    return peak;
+  }
+
   /** How clear the cell at `col`, `row` is; outside the grid, frosted. */
   at(col: number, row: number): number {
     if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) return 0;

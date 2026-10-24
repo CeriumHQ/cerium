@@ -133,6 +133,12 @@ const SWEEP_MS = 1_150;
 const SWEEP_REACH = 0.72;
 /** The cloth stays in view this long after the pointer stops. */
 const CLOTH_LINGER_MS = 900;
+/**
+ * The least change the fog's return is painted for: half a step of a canvas's 8-bit colour, on the
+ * question's letters, where clearness shows most. Over a little that's still clear the fog changes
+ * the glass by less than that from one frame to the next, so most of its long tail paints nothing new.
+ */
+const HALF_STEP = 0.5 / 255;
 
 /** A CSS colour as its 0–255 channels and 0–1 alpha. */
 const channels = (color: string): Rgba => {
@@ -206,6 +212,9 @@ export class Frost {
   #typed = new PolishGrid(1, 1);
   /** The cells drawn clear last frame, cleared from the mask once the fog has them. */
   #painted: CellBounds = { left: 0, top: 0, right: 0, bottom: 0 };
+  /** The clearest the pointer's polish was when last painted, and what the fog has kept of it since. */
+  #paintedPeak = 0;
+  #fadedSince = 1;
   #revealTarget = 0;
   #revealShown = 0;
   #rubbedAt = Number.NEGATIVE_INFINITY;
@@ -411,7 +420,9 @@ export class Frost {
       const factor = fogFactor(now - this.#rubbedAt, elapsed);
       if (factor < 1) {
         this.#rubbed.fog(factor);
-        this.#changed = true;
+        this.#fadedSince *= factor;
+        const change = this.#paintedPeak * (1 - this.#fadedSince);
+        if (change >= HALF_STEP || !this.#rubbed.clear) this.#changed = true;
       }
       busy = busy || this.#rubbed.clear;
     }
@@ -453,6 +464,8 @@ export class Frost {
     const { scale } = drawn.scene;
     const rubbed = this.#rubbed;
     const typed = this.#typed;
+    this.#paintedPeak = rubbed.peak;
+    this.#fadedSince = 1;
     const clear = union(rubbed.bounds, typed.bounds);
     const stale = union(clear, this.#painted);
     this.#painted = clear;
