@@ -58,7 +58,7 @@ import {
   type DraftStart,
   type Trigger,
 } from "./draft.ts";
-import { draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "./drafts.ts";
+import { draftAtom, draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "./drafts.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import type { MessageBox } from "./messageBox.ts";
 import {
@@ -200,7 +200,7 @@ export function Composer({
   onHeight,
   takesFocus = true,
 }: ComposerProps) {
-  const [drafts, setDrafts] = useAtom(draftsAtom);
+  const setDrafts = useAtomSet(draftsAtom);
   const machine = useAtomValue(machineAtom);
   /** Bumped when the box itself replaces a draft (sent, or given back), so the editor shows it. */
   const [epoch, setEpoch] = useState(0);
@@ -216,7 +216,7 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const save = useAtomSet(saveAttachment, { mode: "promise" });
-  const draft = drafts[draftKey] ?? emptyDraft;
+  const draft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
   // New threads start with the model and effort the last one was given, which are also the defaults
   // in settings. Access always starts from the settings default. A pick here stays with the draft.
   const [defaultModel, setDefaultModel] = useAtom(modelAtom);

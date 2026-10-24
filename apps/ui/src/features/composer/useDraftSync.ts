@@ -39,3 +39,12 @@ export function useDraftSync(signedIn: boolean, here: string | undefined) {
     return () => clearTimeout(timer);
   }, [drafts]);
 }
+
+/**
+ * `useDraftSync` in a component of its own, which renders nothing: the drafts change with every key
+ * typed, and a component that reads them renders again for each.
+ */
+export function DraftSync({ signedIn, here }: { signedIn: boolean; here: string | undefined }) {
+  useDraftSync(signedIn, here);
+  return null;
+}

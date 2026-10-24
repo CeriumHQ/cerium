@@ -7,11 +7,12 @@ import {
   type AgentEvent,
   type AgentId,
   type DeviceId,
+  type EventPayload,
   type ProviderId,
   type ThreadId,
   type ThreadNotification,
 } from "@cerium/protocol";
-import { Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
+import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
@@ -90,6 +91,9 @@ const sameRead =
     a.waiting === b.waiting &&
     (AsyncResult.isSuccess(a) && AsyncResult.isSuccess(b) ? same(a.value, b.value) : a === b);
 
+/** The least time between two reads of the thread list, in milliseconds. */
+const LIST_SPACING = 250;
+
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
 export const activityAtom = Backend.runtime.atom((get) =>
   Stream.unwrap(
@@ -120,6 +124,15 @@ export const threadsAtom = Backend.runtime
       return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
     }
     const listThreads = Backend.use((client) => client("ListThreads", undefined));
+    // While agents work, events keep coming and reads would follow one another without a break,
+    // each decoding and comparing every thread; a read waits until `LIST_SPACING` after the last.
+    let readAt = Number.NEGATIVE_INFINITY;
+    const read = Effect.gen(function* () {
+      const wait = readAt + LIST_SPACING - (yield* Clock.currentTimeMillis);
+      if (wait > 0) yield* Effect.sleep(wait);
+      readAt = yield* Clock.currentTimeMillis;
+      return yield* listThreads;
+    });
     return Stream.unwrap(
       Effect.map(subscribeLive(get), (live) =>
         Stream.concat(
@@ -129,7 +142,7 @@ export const threadsAtom = Backend.runtime
       ),
     ).pipe(
       Stream.buffer({ capacity: 1, strategy: "sliding" }),
-      Stream.mapEffect(() => listThreads),
+      Stream.mapEffect(() => read),
       resubscribe,
     );
   })
@@ -369,6 +382,46 @@ export const settledEventsAtom = Atom.family((threadId: ThreadId) =>
     ),
   ).pipe(Atom.withEquality(sameRead(sameEvents))),
 );
+
+/**
+ * What a thread's agents' summaries (`toAgentSummaries`) and its artifacts read of its events: its
+ * messages, usage, todo lists, models, failures and requests of the user. Tool calls, most of a
+ * working thread's events, change none of it.
+ */
+const SUMMARY_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
+  "MessageCompleted",
+  "UsageReported",
+  "TodosUpdated",
+  "SessionStarted",
+  "ModelChanged",
+  "AgentError",
+  "PermissionRequested",
+  "PermissionResolved",
+  "SpawnApprovalRequested",
+  "SpawnApprovalResolved",
+  "QuestionAsked",
+  "QuestionResolved",
+]);
+
+const FILE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set(["FileChanged"]);
+
+/** A thread's events of the kinds in `tags`, changing only when one of them arrives. */
+const eventsOfKinds = (threadId: ThreadId, tags: ReadonlySet<EventPayload["_tag"]>) =>
+  Atom.make((get) =>
+    AsyncResult.map(get(settledEventsAtom(threadId)), (events) =>
+      events.filter((event) => tags.has(event.payload._tag)),
+    ),
+  ).pipe(Atom.withEquality(sameRead(sameEvents)));
+
+/**
+ * A thread's events its agents' summaries and artifacts are worked out from. The window reads these
+ * rather than every event: rendering it again took tens of milliseconds, and an agent at work makes
+ * several events a second, most of them tool calls that change nothing it shows.
+ */
+export const summaryEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, SUMMARY_TAGS));
+
+/** The files a thread's agents changed, as they report them, for the files panel. */
+export const fileChangesAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, FILE_TAGS));
 
 export const createThread = Backend.mutation("CreateThread");
 export const sendMessage = Backend.mutation("SendMessage");

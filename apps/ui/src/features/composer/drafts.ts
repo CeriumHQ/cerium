@@ -281,6 +281,9 @@ export const newThreadDraftsAtom = Atom.make((get) => newThreadDrafts(get(drafts
   Atom.withEquality(sameDrafts),
 );
 
+/** One draft, which changes only when it does: another changes with every key typed into its box. */
+export const draftAtom = Atom.family((key: string) => Atom.make((get) => get(draftsAtom)[key]));
+
 /** How long a draft's text is, for the parts of the window that answer typing without reading it. */
 export const draftLengthAtom = Atom.family((key: string) =>
   Atom.make((get) => draftText(get(draftsAtom)[key]?.segments ?? []).length),

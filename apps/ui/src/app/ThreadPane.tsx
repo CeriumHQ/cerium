@@ -2,9 +2,17 @@ import type { AgentEvent, AgentId, ProviderId, RestorePreview } from "@cerium/pr
 import type { ThreadOverview } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
-import { cloudEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
+import { cloudEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
@@ -25,6 +33,8 @@ import { buildTranscript, queuedMessages } from "../features/transcript/model.ts
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./ModeSwitch.tsx";
+
+type EventsAtom = Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>>;
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 
@@ -171,12 +181,12 @@ export function ThreadPane({
   const [composerHeight, setComposerHeight] = useState(0);
 
   const viewed = selected ?? cloud?.overview;
-  const eventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
-    ? threadEventsAtom(selected.thread.id)
-    : cloud
-      ? cloudEventsAtom(`${cloud.machine}:${cloud.overview.thread.id}`)
-      : noEvents;
-  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const cloudEvents = cloud ? cloudEventsAtom(`${cloud.machine}:${cloud.overview.thread.id}`) : noEvents;
+  // Every event, streamed text included, for the conversation alone; the pane around it, with its
+  // message box and approvals, reads only those its agents' summaries come from.
+  const eventsAtom: EventsAtom = selected ? threadEventsAtom(selected.thread.id) : cloudEvents;
+  const summaryAtom: EventsAtom = selected ? summaryEventsAtom(selected.thread.id) : cloudEvents;
+  const events = AsyncResult.getOrElse(useAtomValue(summaryAtom), (): ReadonlyArray<AgentEvent> => []);
   const draftStart = useAtomValue(draftStartAtom(draftKey));
   const newFolder = draftStart?.folder ?? folder;
 
@@ -188,7 +198,6 @@ export function ThreadPane({
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const leadEvents = lead ? events.filter((event) => event.agentId === lead.id) : [];
   const { attempt, restore, turnFiles } = actions;
 
   return (
@@ -198,15 +207,14 @@ export function ThreadPane({
         {notices}
         <div className="relative min-h-0 flex-1">
           {viewed && lead ? (
-            <Transcript
+            <LeadTranscript
               key={viewed.thread.id}
+              events={eventsAtom}
+              lead={lead.id}
+              sameModel={(a, b) =>
+                a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b)
+              }
               folder={viewed.thread.cwd}
-              blocks={buildTranscript(
-                leadEvents,
-                (a, b) =>
-                  a === b || modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b),
-              )}
-              queued={queuedMessages(leadEvents)}
               agent={{ provider: lead.provider, model: leadModel }}
               modelName={(model) => modelLabel(models, lead.provider, model)}
               {...(cloud ? {} : { messageBox: box })}
@@ -337,5 +345,32 @@ export function ThreadPane({
       </div>
       {drawer}
     </div>
+  );
+}
+
+/**
+ * The lead's conversation from the thread's events, which renders again for every batch of them that
+ * streams in. Only it does: rendering the pane around it as well redrew its message box, approvals
+ * and every card that reads the transcript's actions, even for words a subagent streamed.
+ */
+function LeadTranscript({
+  events: eventsAtom,
+  lead,
+  sameModel,
+  ...props
+}: Omit<ComponentProps<typeof Transcript>, "blocks" | "queued"> & {
+  readonly events: EventsAtom;
+  readonly lead: AgentId;
+  /** Whether two of the lead's model ids name the same model. */
+  readonly sameModel: (a: string, b: string) => boolean;
+}) {
+  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const leadEvents = events.filter((event) => event.agentId === lead);
+  return (
+    <Transcript
+      {...props}
+      blocks={buildTranscript(leadEvents, sameModel)}
+      queued={queuedMessages(leadEvents)}
+    />
   );
 }

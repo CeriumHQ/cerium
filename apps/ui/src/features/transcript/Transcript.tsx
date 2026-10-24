@@ -7,6 +7,7 @@ import {
   Fragment,
   memo,
   use,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -140,10 +141,15 @@ export function Transcript({
   onSteer,
   turnFiles,
 }: TranscriptProps) {
-  const roles = new Map(
-    blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role] as const] : [])),
+  // Read from the spawns as text, which stays equal while they do, so `actions` below stays the same
+  // object: every card that reads it renders again when it changes, which was every streamed batch.
+  const spawned = JSON.stringify(
+    blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role]] : [])),
   );
-  const roleOf = (agentId: string) => roles.get(agentId) ?? "An agent";
+  const roleOf = useMemo(() => {
+    const roles = new Map<string, string>(JSON.parse(spawned) as Array<[string, string]>);
+    return (agentId: string) => roles.get(agentId) ?? "An agent";
+  }, [spawned]);
   // Messages waiting for the agent's session read as sent, with its progress below them. Ones that
   // wait behind a running turn, or for an ended agent to start again, sit after it and say so.
   const held =

@@ -55,6 +55,7 @@ import {
   createThread,
   deleteThread,
   editMessage,
+  fileChangesAtom,
   harnessesAtom,
   interruptAgent,
   localWorkingAtom,
@@ -65,11 +66,11 @@ import {
   restoreBefore,
   respondToPermission,
   steerAgent,
+  summaryEventsAtom,
   answerQuestion,
   sendMessage,
   setThreadArchived,
   setThreadLater,
-  settledEventsAtom,
   stopAgent,
   stopThread,
   switchModel,
@@ -120,7 +121,7 @@ import {
 import type { MessageBox } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
-import { useDraftSync } from "../features/composer/useDraftSync.ts";
+import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
@@ -411,7 +412,6 @@ function Workspace() {
   const drivenId = driven?.id ?? thisComputer;
   const deviceOf = (id: string) => devices.find((device) => device.id === id);
   const nameOf = (id: string) => deviceOf(id)?.name ?? "another computer";
-  useDraftSync(account._tag === "SignedIn", WEB ? undefined : thisComputer);
   // Until the driven machine answers, or while it can't, its threads read from the copy too.
   const elsewhere = accountThreads.threads.filter(
     (each) =>
@@ -546,14 +546,23 @@ function Workspace() {
     }
   });
   useEffect(() => markSeen(), [selectedSummary?.id, selectedSummary?.updatedAt]);
-  // The open thread's events: live from the driven machine, or the cloud copy of another machine's.
-  // Without streamed text, which nothing here reads: its pane renders that, and the window doesn't.
+  // What the window reads of the open thread's events: live from the driven machine, or the cloud
+  // copy of another machine's. Only the kinds its agents and artifacts are worked out from, and the
+  // files changed while the files panel lists them: its pane renders the conversation, and the window
+  // doesn't render again for every tool call or streamed word.
+  const cloudEvents = cloudSelected
+    ? cloudEventsAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
+    : noEvents;
   const eventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
-    ? settledEventsAtom(selected.thread.id)
-    : cloudSelected
-      ? cloudEventsAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
-      : noEvents;
+    ? summaryEventsAtom(selected.thread.id)
+    : cloudEvents;
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const fileEventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
+    ? filesOpen
+      ? fileChangesAtom(selected.thread.id)
+      : noEvents
+    : cloudEvents;
+  const fileEvents = AsyncResult.getOrElse(useAtomValue(fileEventsAtom), (): ReadonlyArray<AgentEvent> => []);
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
     setOpenAfterSwitch({ mode: threadMode, id: threadId });
@@ -803,7 +812,7 @@ function Workspace() {
   });
   const filesPanel = useFilesExplorer({
     root: filesRoot,
-    events,
+    events: fileEvents,
     messageBox,
     open: filesOpen && !settingsOpen,
     onOpenFile: openInViewer,
@@ -1911,6 +1920,7 @@ function Workspace() {
           />
         </div>
       )}
+      <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
       {selected ? (
         <StopAllDialog
           scope={stopScope}
