@@ -224,7 +224,8 @@ export const startLight = (canvas: HTMLCanvasElement, options: { scale?: number 
     gl.uniform1f(arrive, still.matches ? 1 : easeOut((elapsed - 0.2) / 0.9));
     gl.uniform1f(lit, still.matches ? 1 : easeOut((elapsed - 0.95) / 1.5));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    canvas.dataset["lit"] = "";
+    // Marked once: written again every frame, the same value still changed the attribute each time.
+    if (!("lit" in canvas.dataset)) canvas.dataset["lit"] = "";
   };
 
   const loop = (now: number) => {
