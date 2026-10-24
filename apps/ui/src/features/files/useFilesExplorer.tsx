@@ -1,12 +1,20 @@
 import type { AgentEvent } from "@cerium/protocol";
 import { RegistryContext } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { applyChanges, expandedAtom, watchAtom } from "../../backend/explorer.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { FilesPanel } from "./FilesPanel.tsx";
-import { noTouched, touchedFiles, type OpenFile } from "./model.ts";
+import { noTouched, sameTouched, touchedFiles, type OpenFile } from "./model.ts";
 
 /**
  * The files panel of a thread's folder `root`, while it is open, kept current: the machine says what
@@ -40,7 +48,13 @@ export function useFilesExplorer({
 }): ReactNode | undefined {
   const registry = useContext(RegistryContext);
   const active = root !== undefined && open;
-  const touched = active ? touchedFiles(events, root) : noTouched;
+  const read = active ? touchedFiles(events, root) : noTouched;
+  // Every event the thread gets reads them again; while they say the same, the panel keeps what it
+  // has, so its rows aren't drawn again for each event. It's set while rendering, as React allows
+  // for the component's own state.
+  const [kept, setKept] = useState(read);
+  const touched = sameTouched(read, kept) ? kept : read;
+  if (touched !== kept) setKept(touched);
 
   // The machine says what changed under the folder, in batches.
   const onBatch = useEffectEvent((batch: Parameters<typeof applyChanges>[2]) => {
@@ -75,12 +89,23 @@ export function useFilesExplorer({
     if (fresh.length > 0) onBatch({ paths: fresh, status: true });
   }, [touched, active, root]);
 
+  // The opener comes new with each of the window's renders, which would draw every row of the tree
+  // again; the panel holds one of its own that calls the latest.
+  const opener = useRef(onOpenFile);
+  useLayoutEffect(() => {
+    opener.current = onOpenFile;
+  });
+  const opens = onOpenFile !== undefined;
+  const openFile: OpenFile | undefined = opens
+    ? (path, options) => opener.current?.(path, options)
+    : undefined;
+
   return active ? (
     <FilesPanel
       root={root}
       touched={touched}
       messageBox={messageBox}
-      onOpenFile={onOpenFile}
+      onOpenFile={openFile}
       activePath={activePath}
       onClose={onClose}
       {...(onShowChanges === undefined ? {} : { onShowChanges })}

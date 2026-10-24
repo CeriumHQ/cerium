@@ -9,6 +9,8 @@ import {
   indexChanges,
   keyAction,
   noChanges,
+  noTouched,
+  sameTouched,
   stateAt,
   touchedFiles,
   typeAhead,
@@ -184,6 +186,20 @@ describe("touchedFiles", () => {
     expect(touched.files.get("a.ts")?.change).toBe("created");
     const removed = touchedFiles([changed("a.ts", "created", 1), changed("a.ts", "deleted", 2)], "/work");
     expect(removed.files.get("a.ts")?.change).toBe("deleted");
+  });
+
+  it("reads the same after events that touch nothing, and differently after another edit", () => {
+    const once = [changed("a.ts", "created", 1)];
+    const said: AgentEvent = {
+      ...once[0]!,
+      id: "evt_2" as EventId,
+      payload: { _tag: "MessageDelta", messageId: "msg_1", text: "Done." },
+    };
+    expect(sameTouched(touchedFiles(once, "/work"), touchedFiles([...once, said], "/work"))).toBe(true);
+    // An edit to a file already touched counts, so the panel reads it again.
+    const twice = [...once, changed("a.ts", "modified", 2)];
+    expect(sameTouched(touchedFiles(once, "/work"), touchedFiles(twice, "/work"))).toBe(false);
+    expect(sameTouched(touchedFiles(once, "/work"), noTouched)).toBe(false);
   });
 });
 

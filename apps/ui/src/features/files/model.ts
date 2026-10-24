@@ -181,6 +181,16 @@ export const touchedFiles = (events: ReadonlyArray<AgentEvent>, root: string): T
 
 export const noTouched: Touched = { insensitive: false, files: new Map(), folders: new Set() };
 
+/** Two reads of what the agents touched say the same: the same files, each changed alike as often. */
+export const sameTouched = (a: Touched, b: Touched): boolean =>
+  a === b ||
+  (a.insensitive === b.insensitive &&
+    a.files.size === b.files.size &&
+    [...a.files].every(([key, file]) => {
+      const other = b.files.get(key);
+      return other?.path === file.path && other.change === file.change && other.count === file.count;
+    }));
+
 /** How a file the agents touched is told apart on its row, for the tooltip. */
 export const touchWord = (change: "created" | "modified" | "deleted") =>
   change === "created"
