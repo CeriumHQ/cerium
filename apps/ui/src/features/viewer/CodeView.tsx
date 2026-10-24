@@ -5,7 +5,18 @@ import type { Piece } from "./model.ts";
 
 /** Lines drawn together; the browser skips painting the ones scrolled far out of view. */
 const CHUNK = 100;
-const LINE_HEIGHT = 19.2;
+/** A line's height: 12.5px text, 1.6 apart. */
+const LINE_HEIGHT = 20;
+
+/**
+ * A chunk of `lines` lines, which the browser lays out and paints only near the view, taking it for
+ * that many unwrapped lines until it has. Only its height is guessed: a guessed width would widen a
+ * view that is as wide as its longest line.
+ */
+const chunkStyle = (lines: number): CSSProperties => ({
+  contentVisibility: "auto",
+  containIntrinsicSize: `auto none auto ${lines * LINE_HEIGHT}px`,
+});
 
 /** A run of highlighted text; a colourless run is plain text. */
 export function Run({ piece, mark }: { piece: Piece; mark?: string }) {
@@ -55,13 +66,7 @@ export function CodeView({ text, path, wrap }: { text: string; path: string; wra
         {chunks.map((first) => {
           const shown = lines.slice(first, first + CHUNK);
           return (
-            <div
-              key={first}
-              style={{
-                contentVisibility: "auto",
-                containIntrinsicSize: `auto ${shown.length * LINE_HEIGHT}px`,
-              }}
-            >
+            <div key={first} style={chunkStyle(shown.length)}>
               {shown.map((line, index) => (
                 <div
                   key={first + index}
