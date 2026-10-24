@@ -206,6 +206,25 @@ describe("History", () => {
       assert.isFalse(Exit.isFailure(yield* Effect.exit(history.detail(root, fix.sha))));
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
+
+  it.effect("cuts a commit's diff too long to read at its last whole line, and says so", () =>
+    Effect.gen(function* () {
+      const history = yield* History;
+      const { root, write } = yield* repository;
+      // Few lines, but more of them than git is read for.
+      const line = "x".repeat(2_500);
+      yield* write("big.txt", `${line}\n`.repeat(2_000));
+      yield* git(root, "add", "-A");
+      yield* git(root, "commit", "-q", "-m", "Add a big file");
+      const [big] = (yield* history.commits(root, { offset: 0, limit: 1 })).commits;
+      const diff = yield* history.diff(root, big!.sha, "big.txt");
+      assert.isTrue(diff.truncated);
+      const lines = diff.hunks.flatMap((hunk) => hunk.lines);
+      assert.isAbove(lines.length, 0);
+      assert.isBelow(lines.length, 2_000);
+      assert.isTrue(lines.every((each) => each.kind === "added" && each.text === line));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
 });
 
 describe("Repositories", () => {

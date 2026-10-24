@@ -9,7 +9,7 @@ import type {
 } from "@cerium/rpc";
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 
-import { limitHunks, parseDiff, resolveInside } from "./files.ts";
+import { DIFF_BYTES, fileDiffOf, resolveInside } from "./files.ts";
 import { Git, gitFailure } from "./git.ts";
 
 // Source control's History tab: the commits of the branch checked out in a work thread's folder, one
@@ -170,10 +170,6 @@ export class HistoryError extends Schema.TaggedError<HistoryError>()("HistoryErr
 
 /** Changed files one commit lists at most. */
 const MAX_FILES = 1_000;
-/** What may be read of a commit's diff from git, in characters; past it, the diff is cut at a line. */
-const DIFF_CHARS = 4 * 1024 * 1024;
-/** Lines of a commit's diff that are sent. */
-const MAX_DIFF_LINES = 20_000;
 /** Unchanged lines around each change, unless the viewer asks for more. */
 const DIFF_CONTEXT = 3;
 
@@ -208,8 +204,12 @@ export class History extends Context.Service<
       const path = yield* Path.Path;
       const repos = yield* Git;
 
-      /** Runs git to look at `cwd`'s repository; an exit with an error is read by the caller. */
-      const git = (cwd: string, args: ReadonlyArray<string>) => repos.run(cwd, args, { look: true });
+      /**
+       * Runs git to look at `cwd`'s repository; an exit with an error is read by the caller. At most
+       * `limit` bytes are read, as `Git.run` reads them.
+       */
+      const git = (cwd: string, args: ReadonlyArray<string>, limit?: number) =>
+        repos.run(cwd, args, { look: true, ...(limit === undefined ? {} : { limit }) });
 
       /** `root` as a folder, or the refusal to say why it isn't one. */
       const folderOf = Effect.fn("History.folderOf")(function* (root: string) {
@@ -359,31 +359,28 @@ export class History extends Context.Service<
         const record = yield* show(base, sha, false);
         const [parent] = record.parents;
         const paths = [`${prefix}${relative}`, ...(from === undefined ? [] : [`${prefix}${from}`])];
-        const { stdout, stderr, code } = yield* git(base, [
-          "diff-tree",
-          "--root",
-          "--no-commit-id",
-          "-p",
-          "-M",
-          "--no-color",
-          "--no-ext-diff",
-          "--no-textconv",
-          `-U${Math.max(0, Math.floor(context))}`,
-          ...(parent === undefined ? [record.commit.sha] : [parent, record.commit.sha]),
-          "--",
-          ...paths,
-        ]);
-        if (code !== 0) return yield* gitFailure({ stdout, stderr }, "Git couldn't compare that file.");
-        const cut = stdout.length > DIFF_CHARS;
-        const { hunks, binary } = parseDiff(
-          cut ? stdout.slice(0, stdout.lastIndexOf("\n", DIFF_CHARS)) : stdout,
+        const { stdout, stderr, code, truncated } = yield* git(
+          base,
+          [
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "-p",
+            "-M",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            `-U${Math.max(0, Math.floor(context))}`,
+            ...(parent === undefined ? [record.commit.sha] : [parent, record.commit.sha]),
+            "--",
+            ...paths,
+          ],
+          DIFF_BYTES,
         );
-        const limited = limitHunks(hunks, MAX_DIFF_LINES);
-        return {
-          hunks: limited.hunks,
-          ...(binary ? { binary: true } : {}),
-          ...(cut || limited.truncated ? { truncated: true } : {}),
-        } satisfies FileDiff;
+        if (code !== 0 && !truncated)
+          return yield* gitFailure({ stdout, stderr }, "Git couldn't compare that file.");
+        // A diff git was stopped in is cut at its last whole line.
+        return fileDiffOf(truncated ? stdout.slice(0, stdout.lastIndexOf("\n")) : stdout, truncated);
       });
 
       return History.of({ commits, detail, diff });
