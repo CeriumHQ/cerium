@@ -20,6 +20,7 @@ import {
 import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
+  ArchiveRestore,
   Bot,
   Columns2,
   FolderTree,
@@ -1198,6 +1199,23 @@ function Workspace() {
       keys: "Ctrl Shift T",
       when: !compact,
       run: tabs.reopen,
+    },
+    {
+      // An archived thread, a chat most of all, is found through the palette, and brought back here.
+      id: "restore-thread",
+      group: "Actions",
+      label: "Restore from archive",
+      icon: ArchiveRestore,
+      keywords: "unarchive archived",
+      when: selectedSummary?.archivedAt !== undefined,
+      run: () => {
+        if (selectedSummary === undefined) return;
+        void attempt(
+          setArchived({ payload: { threadId: selectedSummary.id as ThreadId, archived: false } }),
+        ).then((restored) => {
+          if (restored) refreshThreads();
+        });
+      },
     },
     {
       id: "settings",

@@ -1,6 +1,5 @@
 import { Button } from "@base-ui/react/button";
 import {
-  Archive,
   ArrowLeft,
   Bell,
   Blocks,
@@ -20,7 +19,6 @@ import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
-import { ArchivedSettings } from "./Archived.tsx";
 import { GeneralSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
@@ -35,8 +33,7 @@ export type SettingsCategory =
   | "agents"
   | "harnesses"
   | "usage"
-  | "keyboard"
-  | "archived";
+  | "keyboard";
 
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
@@ -55,7 +52,6 @@ const categories: ReadonlyArray<{
   { id: "harnesses", label: "Harnesses", icon: Blocks },
   { id: "usage", label: "Usage", icon: Gauge },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
-  { id: "archived", label: "Archived", icon: Archive },
 ];
 
 /** The categories this window offers, which the command palette lists as pages to jump to. */
@@ -220,7 +216,5 @@ export function SettingsView({
       return <UsageSettings key={category} {...(openHarnesses ? { onOpenHarnesses: openHarnesses } : {})} />;
     case "keyboard":
       return <KeyboardSettings key={category} />;
-    case "archived":
-      return <ArchivedSettings key={category} />;
   }
 }
