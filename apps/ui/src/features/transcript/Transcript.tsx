@@ -50,6 +50,7 @@ import type {
 } from "./model.ts";
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
+import { SelectionReply } from "./SelectionReply.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
@@ -163,6 +164,7 @@ export function Transcript({
   const scale = textScale(useAtomValue(textSizeAtom));
   // A phone's keyboard shrinks the message box to one line, so the end needs less room.
   const oneLine = useKeyboardOpen();
+  const column = useRef<HTMLDivElement>(null);
   const actions: TranscriptActions = {
     roleOf,
     childState,
@@ -225,6 +227,7 @@ export function Transcript({
           }`}
         >
           <div
+            ref={column}
             className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
             // The inset is in screen pixels; the column's zoom would scale it.
             style={{
@@ -255,6 +258,7 @@ export function Transcript({
             ) : null}
           </div>
         </ScrollArea>
+        <SelectionReply within={column} />
         {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
         <Button
           onClick={toEnd}
@@ -465,7 +469,9 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
     case "message":
       return (
         <MessageMenuArea text={block.text} className="select-text">
-          <Markdown text={block.text} streaming={block.streaming} />
+          <div data-reply-source>
+            <Markdown text={block.text} streaming={block.streaming} />
+          </div>
         </MessageMenuArea>
       );
     case "reasoning":

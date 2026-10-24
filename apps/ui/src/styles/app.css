@@ -119,6 +119,11 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   background: var(--selection);
 }
 
+/* The passage a comment is being written on, still marked once the comment box takes the selection. */
+::highlight(cerium-reply) {
+  background: var(--selection);
+}
+
 /* Text a light sweeps across while something is in progress. */
 @utility text-shimmer {
   background: linear-gradient(90deg, var(--fg-tertiary) 40%, var(--fg-primary) 50%, var(--fg-tertiary) 60%) 0

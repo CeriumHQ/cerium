@@ -23,6 +23,11 @@ export interface MessageBox {
     readonly attachments?: ReadonlyArray<Attachment>;
     readonly replacing?: string | undefined;
   }): void;
+  /**
+   * A comment on a passage of the agent's response, listed above the draft's text and sent before
+   * it. Focus stays where it is, so the user can go on to the next passage.
+   */
+  comment(content: { readonly quote: string; readonly text: string }): void;
 }
 
 /** The open thread's message box; absent while there is none to write in (an ended thread's). */
@@ -39,6 +44,7 @@ export const useMessageBoxHandle = () => {
   const box: MessageBox = {
     mention: (mention) => ref.current?.mention(mention),
     append: (content) => ref.current?.append(content),
+    comment: (content) => ref.current?.comment(content),
   };
   return [ref, box] as const;
 };

@@ -50,18 +50,46 @@ export interface DraftStart {
   readonly worktree?: boolean;
 }
 
+/** A remark on a passage the user selected in one of the agent's responses. */
+export interface DraftComment {
+  readonly id: string;
+  /** The passage, as the response showed it. */
+  readonly quote: string;
+  readonly text: string;
+}
+
 export interface Draft {
   readonly segments: ReadonlyArray<Segment>;
   readonly attachments: ReadonlyArray<DraftAttachment>;
+  /** Comments on passages of the agent's responses, which the message sends before its text. */
+  readonly comments?: ReadonlyArray<DraftComment>;
   /** Set for a thread not started yet. */
   readonly start?: DraftStart;
 }
 
 export const emptyDraft: Draft = { segments: [], attachments: [] };
 
-/** Something the user wrote or attached, which a message could send. */
+/** Something the user wrote, attached or commented, which a message could send. */
 export const hasContent = (draft: Draft | undefined): draft is Draft =>
-  draft !== undefined && (draftText(draft.segments).trim() !== "" || draft.attachments.length > 0);
+  draft !== undefined &&
+  (draftText(draft.segments).trim() !== "" ||
+    draft.attachments.length > 0 ||
+    (draft.comments?.length ?? 0) > 0);
+
+/** A passage as a Markdown quote: blank lines inside it kept to one, each line marked. */
+const quoted = (passage: string): string =>
+  passage
+    .trim()
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n")
+    .map((line) => (line.trim() === "" ? ">" : `> ${line}`))
+    .join("\n");
+
+/** What the agent reads: each comment as its quoted passage and the remark below it, then the text. */
+export const withComments = (text: string, comments: ReadonlyArray<DraftComment>): string =>
+  [...comments.map((comment) => [quoted(comment.quote), comment.text.trim()]).flat(), text.trim()]
+    .filter((part) => part !== "")
+    .join("\n\n");
 
 /** The text agents read: each mention as its token. */
 export const draftText = (segments: ReadonlyArray<Segment>): string =>

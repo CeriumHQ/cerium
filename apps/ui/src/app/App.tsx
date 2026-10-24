@@ -367,6 +367,7 @@ function Workspace() {
     return {
       mention: (mention) => box()?.mention(mention),
       append: (content) => box()?.append(content),
+      comment: (content) => box()?.comment(content),
     };
   });
   const [onPaneHandles] = useState(() => (key: string, handles: PaneHandles | undefined) => {

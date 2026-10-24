@@ -45,12 +45,14 @@ import {
 } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
+import { CommentTray } from "./CommentTray.tsx";
 import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
 import {
   draftMentions,
   draftText,
   emptyDraft,
   hasContent,
+  withComments,
   type Draft,
   type DraftAttachment,
   type DraftStart,
@@ -260,7 +262,8 @@ export function Composer({
   const ready = draft.attachments.flatMap((attachment) =>
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   );
-  const written = text.trim() !== "" || ready.length > 0;
+  const comments = draft.comments ?? [];
+  const written = text.trim() !== "" || ready.length > 0 || comments.length > 0;
   const sendable = written && !preparing && !connecting && (!isNew || starting.length > 0);
   const canSend = sendable && !needsFolder;
   /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
@@ -512,7 +515,26 @@ export function Composer({
       });
       editor.current?.append(segments, replacing);
     },
+    comment: ({ quote, text }) =>
+      updateDraft(draftKey, (current) => ({
+        ...current,
+        comments: [...(current.comments ?? []), { id: crypto.randomUUID(), quote, text }],
+      })),
   }));
+
+  const editComment = (id: string, text: string) =>
+    updateDraft(draftKey, (current) => ({
+      ...current,
+      comments: (current.comments ?? []).map((comment) =>
+        comment.id === id ? { ...comment, text } : comment,
+      ),
+    }));
+  const removeComment = (id: string) =>
+    updateDraft(draftKey, (current) => {
+      const { comments: _, ...rest } = current;
+      const kept = current.comments?.filter((comment) => comment.id !== id) ?? [];
+      return kept.length > 0 ? { ...rest, comments: kept } : rest;
+    });
 
   const pick = (mention: Mention) => {
     editor.current?.insertMention(mention);
@@ -542,10 +564,10 @@ export function Composer({
     setDrafts((current) => withoutDraft(current, key));
     setEpoch((current) => current + 1);
     setTrigger(undefined);
-    void onSend({ text: text.trim(), attachments: ready, mentions: draftMentions(draft.segments) }, [
-      setupOf(first),
-      ...rest.map(setupOf),
-    ]).then((delivered) => {
+    void onSend(
+      { text: withComments(text, comments), attachments: ready, mentions: draftMentions(draft.segments) },
+      [setupOf(first), ...rest.map(setupOf)],
+    ).then((delivered) => {
       if (delivered) {
         for (const attachment of sent.attachments) {
           if (attachment.preview) URL.revokeObjectURL(attachment.preview);
@@ -865,6 +887,11 @@ export function Composer({
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
           {oneLine ? null : newPlace}
+          {comments.length > 0 ? (
+            <div className={oneLine ? "basis-full" : undefined}>
+              <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
+            </div>
+          ) : null}
           {draft.attachments.length > 0 ? (
             <div className={oneLine ? "basis-full" : undefined}>
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />

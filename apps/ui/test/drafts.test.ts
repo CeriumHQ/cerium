@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { Draft } from "../src/features/composer/draft.ts";
+import { withComments, type Draft } from "../src/features/composer/draft.ts";
 import {
   mergeDrafts,
   newThreadDrafts,
@@ -49,6 +49,12 @@ describe("serializeDrafts and parseDrafts", () => {
       state: { _tag: "Ready", attachment: screenshot },
     });
     expect(draft.attachments[0]?.preview).toBeUndefined();
+  });
+
+  it("keeps a draft that holds only comments on the agent's response", () => {
+    const comments = [{ id: "c", quote: "Use a mutex", text: "Why not a channel?" }];
+    const restored = parseDrafts(serializeDrafts({ thread: { segments: [], attachments: [], comments } }));
+    expect(restored["thread"]?.comments).toEqual(comments);
   });
 
   it("leaves out drafts with nothing to send", () => {
@@ -109,5 +115,21 @@ describe("mergeDrafts", () => {
     const merged = mergeDrafts({ "new:1": work }, incoming);
     expect(merged["new:1"]).toBe(work);
     expect(merged["new:2"]?.segments).toEqual([text("other tab")]);
+  });
+});
+
+describe("withComments", () => {
+  it("quotes each passage above its comment, then the message's own text", () => {
+    const comments = [
+      { id: "a", quote: "  Use a mutex\n\n\n\nfor the cache  ", text: " Why not a channel? " },
+      { id: "b", quote: "Retry three times", text: "" },
+    ];
+    expect(withComments("  Otherwise looks good.\n", comments)).toBe(
+      "> Use a mutex\n>\n> for the cache\n\nWhy not a channel?\n\n> Retry three times\n\nOtherwise looks good.",
+    );
+  });
+
+  it("is the text alone without comments", () => {
+    expect(withComments(" Ship it ", [])).toBe("Ship it");
   });
 });

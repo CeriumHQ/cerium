@@ -30,6 +30,9 @@ const StoredSegment = Schema.Union([
 const StoredDraft = Schema.Struct({
   segments: Schema.Array(StoredSegment),
   attachments: Schema.Array(Attachment),
+  comments: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ id: Schema.String, quote: Schema.String, text: Schema.String })),
+  ),
   start: Schema.optionalKey(
     Schema.Struct({
       mode: Schema.Literals(["work", "chat"]),
@@ -55,6 +58,7 @@ export const toStored = (draft: Draft): StoredDraft => ({
   attachments: draft.attachments.flatMap((attachment) =>
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   ),
+  ...(draft.comments?.length ? { comments: draft.comments } : {}),
   ...(draft.start ? { start: draft.start } : {}),
 });
 
@@ -66,6 +70,7 @@ export const fromStored = (draft: StoredDraft): Draft => ({
     mediaType: attachment.mediaType,
     state: { _tag: "Ready", attachment },
   })),
+  ...(draft.comments?.length ? { comments: draft.comments } : {}),
   ...(draft.start ? { start: draft.start } : {}),
 });
 
@@ -73,7 +78,9 @@ export const fromStored = (draft: StoredDraft): Draft => ({
 export const keptDraft = (draft: Draft | undefined): StoredDraft | undefined => {
   if (draft === undefined) return undefined;
   const kept = toStored(draft);
-  return kept.attachments.length > 0 || draftText(kept.segments).trim() !== "" ? kept : undefined;
+  return kept.attachments.length > 0 || kept.comments !== undefined || draftText(kept.segments).trim() !== ""
+    ? kept
+    : undefined;
 };
 
 /** The drafts worth keeping, as storage holds them. */
