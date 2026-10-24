@@ -116,7 +116,8 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
       altKey: event.altKey,
       inField: target?.closest("input, textarea, [contenteditable='true']") != null,
       inGroup: target?.closest("[role='radiogroup']") != null,
-      onButton: target?.closest("button, a") != null,
+      // A theme is picked as it takes focus, so Enter on one moves on, as it does from the glass.
+      onButton: target?.closest("button:not([role='radio']), a") != null,
     });
     if (action === undefined || closing) return;
     event.preventDefault();

@@ -71,6 +71,7 @@ describe("welcomeKey", () => {
     expect(press("ArrowRight", { inGroup: true })).toBeUndefined();
     expect(press("Escape", { inGroup: true })).toBe("skip");
     expect(press("PageDown", { inGroup: true })).toBe("next");
+    expect(press("Enter", { inGroup: true })).toBe("next");
     expect(press("Escape", { inField: true })).toBeUndefined();
     expect(press("ArrowRight", { ctrlKey: true })).toBeUndefined();
   });
