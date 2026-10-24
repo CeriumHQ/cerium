@@ -1,19 +1,16 @@
 import type { HarnessStatus } from "@cerium/protocol";
 
-// The welcome Cerium opens with on a computer's first run: a few chapters, each a pane of glass the
-// light passes through, from hello to the first thread. Its chapters, when it opens by itself, and
-// how the keys step through it.
+// The welcome Cerium opens with on a computer's first run: hello, the glass it's cut from, and, only
+// while no harness can run a thread, signing in to one. When it opens by itself, the steps it takes,
+// and how the keys step through it.
 
-/** The welcome's chapters, in order; the rail at its foot names them. */
-export const CHAPTERS = [
-  { id: "hello", label: "Hello" },
-  { id: "glass", label: "Glass" },
-  { id: "thread", label: "Ask once" },
-  { id: "agents", label: "Agents" },
-  { id: "everywhere", label: "Everywhere" },
-  { id: "ready", label: "Ready" },
-] as const;
-export type ChapterId = (typeof CHAPTERS)[number]["id"];
+/** The welcome's steps, in order. */
+export const STEPS = ["hello", "glass", "connect"] as const;
+export type StepId = (typeof STEPS)[number];
+
+/** The steps a welcome takes: signing in to a harness only while none can run a thread. */
+export const stepsFor = (needsHarness: boolean): ReadonlyArray<StepId> =>
+  needsHarness ? STEPS : STEPS.filter((step) => step !== "connect");
 
 /** Set once the welcome was finished or skipped on this computer; it doesn't open by itself again. */
 export const WELCOMED_KEY = "cerium:welcomed";
@@ -30,19 +27,14 @@ export const opensOnLaunch = (state: {
   readonly threads: number | undefined;
 }): boolean => !state.web && state.welcomed === undefined && state.threads === 0;
 
-/** The chapter `by` steps from `index`, held at the first and the last. */
-export const stepChapter = (index: number, by: number): number =>
-  Math.min(CHAPTERS.length - 1, Math.max(0, index + by));
-
-/** The chapter a development build opens on, from `?welcome=<chapter>`; the first for a bare `?welcome`. */
-export const chapterFromQuery = (search: string): number | undefined => {
+/** The step a development build opens on, from `?welcome=<step>`; the first for a bare `?welcome`. */
+export const stepFromQuery = (search: string): StepId | undefined => {
   const params = new URLSearchParams(search);
   if (!params.has("welcome")) return undefined;
-  const index = CHAPTERS.findIndex((chapter) => chapter.id === params.get("welcome"));
-  return Math.max(0, index);
+  return STEPS.find((step) => step === params.get("welcome")) ?? "hello";
 };
 
-/** What a key press does in the welcome, if anything: the keys never act while a field has them. */
+/** What a key press does in the welcome, if anything. */
 export type WelcomeKey = "next" | "back" | "skip" | undefined;
 
 export const welcomeKey = (event: {
@@ -66,7 +58,7 @@ export const welcomeKey = (event: {
   return undefined;
 };
 
-/** Whether a harness can run agents yet, as the welcome lights its beam: a harness not yet heard of is unknown. */
+/** Whether a harness can run a thread yet: a harness not yet heard of is unknown. */
 export type Readiness = "ready" | "attention" | "missing" | "unknown";
 
 export const harnessReadiness = (status: HarnessStatus | undefined): Readiness => {
@@ -75,19 +67,6 @@ export const harnessReadiness = (status: HarnessStatus | undefined): Readiness =
   return status.auth._tag === "LoggedOut" || status.setup !== undefined ? "attention" : "ready";
 };
 
-/** The harnesses in a line: how many are ready, how many need the user, how many aren't installed. */
-export const readinessSummary = (all: ReadonlyArray<Readiness>): string => {
-  if (all.length === 0 || all.every((each) => each === "unknown")) return "Looking for your harnesses…";
-  const count = (readiness: Readiness) => all.filter((each) => each === readiness).length;
-  const ready = count("ready");
-  const attention = count("attention");
-  const missing = count("missing");
-  if (ready === 0 && attention === 0) return "None installed yet";
-  return [
-    ready > 0 ? `${ready} ready` : undefined,
-    attention > 0 ? `${attention} to set up` : undefined,
-    missing > 0 ? `${missing} not installed` : undefined,
-  ]
-    .filter((part) => part !== undefined)
-    .join(" · ");
-};
+/** Whether the welcome asks for a harness: once the harnesses are known, and none of them can run. */
+export const needsHarness = (statuses: ReadonlyArray<HarnessStatus> | undefined): boolean =>
+  statuses !== undefined && !statuses.some((status) => harnessReadiness(status) === "ready");

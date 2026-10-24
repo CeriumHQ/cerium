@@ -9,8 +9,7 @@ import { paletteAtom, palettes, type Palette } from "../../settings/palettes.ts"
 import { themeAtom, themes, type Theme } from "../../settings/preferences.ts";
 import { useShownTheme } from "../../settings/theme.ts";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
-import { lightOf, usePose, type Posing } from "../scene.tsx";
-import type { ChapterProps } from "../Welcome.tsx";
+import type { StepProps } from "../Welcome.tsx";
 
 /** Each glass as the welcome tells it: what the trade calls it, and how it takes the light. */
 const GLASSES: Record<Palette, { readonly kind: string; readonly light: string }> = {
@@ -29,19 +28,6 @@ const MODES: Record<Theme, { readonly label: string; readonly icon: LucideIcon }
   dark: { label: "Dark", icon: Moon },
   light: { label: "Light", icon: Sun },
   system: { label: "System", icon: Monitor },
-};
-
-/** The light runs straight through every pane, so each tints it as the beam passes behind. */
-const pose: Posing = (stage) => {
-  const panes = lightOf(stage, "panes", "glass");
-  const y = panes === undefined ? stage.height * 0.62 : panes.y + panes.height * 0.46;
-  const mark = { x: stage.width + 140, y, size: 220, opacity: 0 };
-  return {
-    mark,
-    incoming: { from: { x: -80, y: y - 14 }, to: { x: stage.width + 80, y: y + 14 }, intensity: 1 },
-    beams: [0, 1, 2, 3, 4].map(() => ({ x: mark.x, y, intensity: 0 })),
-    dust: 0.7,
-  };
 };
 
 /**
@@ -66,14 +52,13 @@ const wipe = (update: () => void, from: { readonly x: number; readonly y: number
   document.startViewTransition({ update: () => flushSync(update), types: ["glass"] });
 };
 
-/** The second chapter: the glass Cerium is cut from, and light or dark. */
-export function Glass({ number, titleId, active }: ChapterProps) {
+/** The second step: the glass Cerium is cut from, and light or dark. */
+export function Glass({ number, titleId }: StepProps) {
   const [palette, setPalette] = useAtom(paletteAtom);
   const [theme, setTheme] = useAtom(themeAtom);
   const shown = useShownTheme();
   /** Where the pointer last pressed, which a pick's wipe spreads from. */
   const pressed = useRef<{ x: number; y: number }>(undefined);
-  usePose(active, pose);
 
   const tilt = (event: React.PointerEvent<HTMLDivElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
@@ -149,32 +134,38 @@ export function Glass({ number, titleId, active }: ChapterProps) {
         </Reveal>
       </div>
 
-      <RadioGroup
-        value={palette}
-        onValueChange={(value, details) =>
-          wipe(() => setPalette(value as Palette), fromElement(details.event.target as Element | null))
-        }
-        aria-label="Theme"
-        data-light="panes"
-        onPointerMove={tilt}
-        onPointerLeave={untilt}
-        className="grid h-[clamp(168px,34vh,300px)] grid-cols-6 gap-[clamp(10px,1.4vw,22px)]"
-      >
-        {palettes.map((option, index) => (
-          <Reveal key={option.id} order={4 + index * 0.6} className="min-w-0">
-            <Radio.Root
-              value={option.id}
-              nativeButton
-              onPointerDown={remember}
-              render={<button type="button" aria-label={`${option.label}: ${GLASSES[option.id].kind}`} />}
-              style={{ "--px": (index - 2.5) / 2.5 } as CSSProperties}
-              className="group relative block size-full rounded-[clamp(14px,1.6vw,24px)] text-left outline-none"
-            >
-              <Pane palette={option.id} theme={shown} label={option.label} kind={GLASSES[option.id].kind} />
-            </Radio.Root>
-          </Reveal>
-        ))}
-      </RadioGroup>
+      <div className="relative">
+        {/* A ray of light runs behind every pane, so each tints it as it passes through. */}
+        <Reveal
+          order={3}
+          className="welcome-ray pointer-events-none absolute top-[46%] right-[calc(-1*var(--welcome-gutter))] left-[calc(-1*var(--welcome-gutter))] h-px"
+        />
+        <RadioGroup
+          value={palette}
+          onValueChange={(value, details) =>
+            wipe(() => setPalette(value as Palette), fromElement(details.event.target as Element | null))
+          }
+          aria-label="Theme"
+          onPointerMove={tilt}
+          onPointerLeave={untilt}
+          className="relative grid h-[clamp(168px,34vh,300px)] grid-cols-6 gap-[clamp(10px,1.4vw,22px)]"
+        >
+          {palettes.map((option, index) => (
+            <Reveal key={option.id} order={4 + index * 0.6} className="min-w-0">
+              <Radio.Root
+                value={option.id}
+                nativeButton
+                onPointerDown={remember}
+                render={<button type="button" aria-label={`${option.label}: ${GLASSES[option.id].kind}`} />}
+                style={{ "--px": (index - 2.5) / 2.5 } as CSSProperties}
+                className="group relative block size-full rounded-[clamp(14px,1.6vw,24px)] text-left outline-none"
+              >
+                <Pane palette={option.id} theme={shown} label={option.label} kind={GLASSES[option.id].kind} />
+              </Radio.Root>
+            </Reveal>
+          ))}
+        </RadioGroup>
+      </div>
     </div>
   );
 }

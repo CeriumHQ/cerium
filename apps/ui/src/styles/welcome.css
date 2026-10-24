@@ -1,11 +1,11 @@
 /*
- * The welcome (features/onboarding): its chapters come in a part at a time and go together. A headline's
- * letters stretch out from narrow as they sharpen, on the display face's width axis; the chapter's
- * other parts rise after it; the chapter going lifts away, blurring, the way the next one came.
+ * The welcome (features/onboarding): its steps come in a part at a time and go together. A headline's
+ * letters stretch out from narrow as they sharpen, on the display face's width axis; the step's other
+ * parts rise after it; the step going lifts away, blurring, the way the next one came.
  */
 
 [data-welcome] {
-  /* The welcome's margin, which its chapters and its foot line up on. */
+  /* The welcome's margin, which its steps and its foot line up on. */
   --welcome-gutter: clamp(28px, 6.4vw, 112px);
 }
 
@@ -21,7 +21,7 @@
   animation: welcome-rise 900ms var(--ease-out-soft) calc(var(--d) * 90ms + 220ms + var(--after, 0ms)) both;
 }
 
-/* A chapter coming in as another goes waits for it to have mostly gone. */
+/* A step coming in as another goes waits for it to have mostly gone. */
 [data-welcome] [data-state="enter"][data-after] {
   --after: 300ms;
 }
@@ -89,30 +89,36 @@
 }
 
 /*
- * The light behind the welcome (features/onboarding/prism.ts): the beam coming in, tinted by the
- * theme's accent as light through coloured glass is, and the five it splits into, a spectrum's worth.
+ * The welcome's light: the ray behind the glass panes, tinted by the theme's accent as light through
+ * coloured glass is, and the colour the mark's glass takes (features/onboarding/glass.ts), lighter in
+ * light mode so a dark accent doesn't make it smoked.
  */
 [data-welcome] {
   --welcome-light: color-mix(in oklab, var(--accent) 60%, white);
-  --welcome-beam-1: oklch(0.8 0.11 32);
-  --welcome-beam-2: oklch(0.86 0.1 84);
-  --welcome-beam-3: oklch(0.84 0.1 155);
-  --welcome-beam-4: oklch(0.79 0.1 238);
-  --welcome-beam-5: oklch(0.76 0.11 300);
+  --welcome-glass: var(--accent);
 }
 
 [data-theme="light"] [data-welcome],
 [data-theme="light"][data-welcome] {
   --welcome-light: var(--accent);
-  --welcome-beam-1: oklch(0.66 0.15 32);
-  --welcome-beam-2: oklch(0.74 0.14 78);
-  --welcome-beam-3: oklch(0.66 0.13 155);
-  --welcome-beam-4: oklch(0.6 0.14 245);
-  --welcome-beam-5: oklch(0.58 0.15 300);
+  --welcome-glass: color-mix(in oklab, var(--accent) 45%, white);
+}
+
+.welcome-ray {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--welcome-light) 12%,
+    var(--welcome-light) 88%,
+    transparent
+  );
+  box-shadow: 0 0 14px 1px color-mix(in oklab, var(--welcome-light) 45%, transparent);
+  rotate: 0.5deg;
+  opacity: 0.8;
 }
 
 /*
- * A pane of each glass (chapters/Glass.tsx), in its own theme's tokens: tinted by its accent, blurring
+ * A pane of each glass (steps/Glass.tsx), in its own theme's tokens: tinted by its accent, blurring
  * the light behind it. The panes turn to face the pointer, fanned towards the middle while it's away,
  * and a sheen slides across each as it turns.
  */
@@ -199,46 +205,11 @@ html:active-view-transition-type(glass)::view-transition-new(root) {
   }
 }
 
-/* The phone in the account chapter (chapters/Everywhere.tsx): its glass, and notifications dropping in. */
-.welcome-phone-sheen {
-  background: linear-gradient(
-    125deg,
-    oklch(1 0 0 / 0.07) 0%,
-    transparent 28%,
-    transparent 62%,
-    oklch(1 0 0 / 0.04) 100%
-  );
-}
-
-.welcome-notice {
-  opacity: 0;
-  translate: 0 -18px;
-  scale: 0.96;
-  filter: blur(4px);
-  transition:
-    opacity 500ms ease-out,
-    translate 700ms cubic-bezier(0.2, 1.3, 0.4, 1),
-    scale 700ms cubic-bezier(0.2, 1.3, 0.4, 1),
-    filter 500ms ease-out;
-}
-
-.welcome-notice[data-arrived] {
-  opacity: 1;
-  translate: none;
-  scale: none;
-  filter: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .welcome-notice {
-    translate: none;
-    scale: none;
-    filter: none;
-  }
-}
-
-/* Closing: the chapter and the foot fade as the light gathers into the corner's mark. */
-[data-welcome][data-closing] :is(main, footer) {
+/*
+ * Closing: the step's words and the foot fade, and the window is handed over. The mark stays, so it's
+ * the one that flies to the window's.
+ */
+[data-welcome][data-closing] :is(footer, main section > * > :not([data-launch-mark])) {
   pointer-events: none;
   animation: welcome-close 360ms ease-in both;
 }

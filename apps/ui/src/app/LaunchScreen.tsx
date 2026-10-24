@@ -9,7 +9,7 @@ import { machineAtom } from "../backend/machine.ts";
 import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
-import { chapterFromQuery, opensOnLaunch, WELCOMED_KEY } from "../features/onboarding/model.ts";
+import { opensOnLaunch, stepFromQuery, WELCOMED_KEY } from "../features/onboarding/model.ts";
 import { threadCountAtom, welcomeOpenAtom, welcomeShownAtom } from "../features/onboarding/state.ts";
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
@@ -56,7 +56,7 @@ export function Launch({ children }: { children: ReactNode }) {
   const handOver = () => {
     const welcome =
       opensOnLaunch({ web: WEB, welcomed: stored(WELCOMED_KEY), threads: threadCount }) ||
-      (import.meta.env.DEV && chapterFromQuery(location.search) !== undefined);
+      (import.meta.env.DEV && stepFromQuery(location.search) !== undefined);
     swap(() => {
       setLaunching(false);
       setWelcoming(welcome);

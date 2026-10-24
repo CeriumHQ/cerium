@@ -1,75 +1,77 @@
 import { Button } from "@base-ui/react/button";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
+import { harnessesAtom } from "../../backend/atoms.ts";
 import { CeriumMark } from "../../components/CeriumMark.tsx";
-import { keyCaps } from "../../lib/keys.ts";
-import { Agents } from "./chapters/Agents.tsx";
-import { Everywhere } from "./chapters/Everywhere.tsx";
-import { Glass } from "./chapters/Glass.tsx";
-import { Hello } from "./chapters/Hello.tsx";
-import { Ready } from "./chapters/Ready.tsx";
-import { Thread } from "./chapters/Thread.tsx";
-import { CHAPTERS, chapterFromQuery, stepChapter, welcomeKey, type ChapterId } from "./model.ts";
-import { Keycap } from "./parts.tsx";
-import { lightOf, SceneProvider, usePose } from "./scene.tsx";
+import { Connect } from "./steps/Connect.tsx";
+import { Glass } from "./steps/Glass.tsx";
+import { Hello } from "./steps/Hello.tsx";
+import { needsHarness, stepFromQuery, stepsFor, welcomeKey, type StepId } from "./model.ts";
 
-/** How long a chapter takes to go, while the next one comes in after it. */
+/** How long a step takes to go, while the next one comes in after it. */
 const LEAVE_MS = 520;
 /**
- * How long a chapter takes to come in, every part of it. Its parts' animations end then, so nothing on
- * the stage stays blurred or lifted, and a pane's glass blurs what's behind it again.
+ * How long a step takes to come in, every part of it. Its parts' animations end then, so nothing on the
+ * stage stays blurred or lifted, and a pane's glass blurs what's behind it again.
  */
 const ENTER_MS = 2_600;
-/** How long the welcome takes to close: its chapter fades, and the light gathers into the mark at its corner. */
-const CLOSE_MS = 520;
+/** How long the welcome takes to close: its step and its foot fade, and the window is handed over. */
+const CLOSE_MS = 420;
 
-/** What each chapter is handed by the stage. */
-export interface ChapterProps {
+/** What each step is handed by the stage. */
+export interface StepProps {
   readonly number: number;
-  /** The headline's id, which names the welcome while the chapter shows. */
+  /** The headline's id, which names the welcome while the step shows. */
   readonly titleId: string;
-  /** The chapter is the one showing, not the one on its way out. */
+  /** The step is the one showing, not the one on its way out. */
   readonly active: boolean;
-  /** Moves on to the next chapter. */
-  readonly onNext: () => void;
-  /** Goes to another chapter. */
-  readonly onGo: (chapter: ChapterId) => void;
 }
 
 /**
- * The welcome: a full window of glass with a chapter at a time on it, the light behind them all, and
- * the rail of chapters and the way on at its foot. It opens on a computer's first run, once the launch
- * screen gives way, and again from the command palette. Finishing or skipping it hands the window over.
+ * The welcome: a full window of glass with a step at a time on it, and the way on at its foot. It opens
+ * on a computer's first run, once the launch screen gives way, and again from the command palette.
+ * Finishing or skipping it hands the window over.
  */
 export function Welcome({ onDone }: { readonly onDone: () => void }) {
+  const asked = import.meta.env.DEV ? stepFromQuery(location.search) : undefined;
+  const statuses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => undefined);
+  // Once it asks for a harness it keeps the step, even as one signs in there.
+  const [asks, setAsks] = useState(asked === "connect");
+  if (!asks && needsHarness(statuses)) setAsks(true);
+  const steps = stepsFor(asks);
+
   const [entry, setEntry] = useState(() => ({
-    index: (import.meta.env.DEV ? chapterFromQuery(location.search) : 0) ?? 0,
-    /** It came in as another chapter went, so it waits for that one to go first. */
+    step: asked ?? ("hello" as StepId),
+    /** It came in as another step went, so it waits for that one to go first. */
     after: false,
   }));
-  const index = entry.index;
-  /** The chapter on its way out, and which way the welcome is going. */
-  const [leaving, setLeaving] = useState<{ readonly index: number; readonly direction: 1 | -1 }>();
-  /** The chapter whose parts have all come in. */
-  const [settled, setSettled] = useState<number>();
+  const index = Math.max(0, steps.indexOf(entry.step));
+  const step = steps[index]!;
+  const last = index === steps.length - 1;
+  /** The step on its way out, and which way the welcome is going. */
+  const [leaving, setLeaving] = useState<{ readonly step: StepId; readonly direction: 1 | -1 }>();
+  /** The step whose parts have all come in. */
+  const [settled, setSettled] = useState<StepId>();
   const [visited, setVisited] = useState(index);
   const stage = useRef<HTMLDialogElement>(null);
-  const last = index === CHAPTERS.length - 1;
 
   const go = (to: number) => {
-    if (to === index || to < 0 || to >= CHAPTERS.length) return;
-    setLeaving({ index, direction: to > index ? 1 : -1 });
-    setEntry({ index: to, after: true });
-    // A chapter come back to comes in again, however soon.
+    const next = steps[to];
+    if (next === undefined || to === index) return;
+    setLeaving({ step, direction: to > index ? 1 : -1 });
+    setEntry({ step: next, after: true });
+    // A step come back to comes in again, however soon.
     setSettled(undefined);
     setVisited((most) => Math.max(most, to));
   };
-  /** The welcome is closing, for good: the light gathers into the corner's mark, and the window is handed over. */
+  /** The welcome is closing, for good: its step fades and the window is handed over. */
   const [closing, setClosing] = useState(false);
   const close = () => setClosing(true);
-  const next = () => (last ? close() : go(stepChapter(index, 1)));
-  const back = () => go(stepChapter(index, -1));
+  const next = () => (last ? close() : go(index + 1));
+  const back = () => go(index - 1);
   const done = useEffectEvent(onDone);
   useEffect(() => {
     if (!closing) return;
@@ -86,16 +88,14 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     return () => clearTimeout(timer);
   }, [leaving]);
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(index), ENTER_MS);
+    const timer = setTimeout(() => setSettled(step), ENTER_MS);
     return () => clearTimeout(timer);
-  }, [index]);
+  }, [step]);
 
-  // The headline takes focus as each chapter comes in, so a screen reader reads where the welcome is.
+  // The headline takes focus as each step comes in, so a screen reader reads where the welcome is.
   useEffect(() => {
-    stage.current
-      ?.querySelector<HTMLElement>(`#${titleIdOf(CHAPTERS[index]!.id)}`)
-      ?.focus({ preventScroll: true });
-  }, [index]);
+    stage.current?.querySelector<HTMLElement>(`#${titleIdOf(step)}`)?.focus({ preventScroll: true });
+  }, [step]);
 
   /**
    * The welcome's keys, from anywhere on it. A dialog opened over it, such as a harness's sign-in,
@@ -127,159 +127,111 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   };
 
   const shown = [
-    ...(leaving === undefined ? [] : [{ at: leaving.index, state: "leave" as const }]),
-    { at: index, state: settled === index ? ("shown" as const) : ("enter" as const) },
+    ...(leaving === undefined ? [] : [{ id: leaving.step, state: "leave" as const }]),
+    { id: step, state: settled === step ? ("shown" as const) : ("enter" as const) },
   ];
   return (
     // Open as the page's own layer rather than the top layer, so the dialogs a harness's sign-in opens
-    // show over it; the window under it is inert meanwhile, so it's as modal as one.
-    // Focusable itself, so a click on its glass keeps the keys on the welcome.
+    // show over it; the window under it is inert meanwhile, so it's as modal as one. Focusable itself,
+    // so a click on its glass keeps the keys on the welcome.
     <dialog
       open
       ref={stage}
       tabIndex={-1}
       onKeyDown={onKey}
       aria-modal="true"
-      aria-labelledby={titleIdOf(CHAPTERS[index]!.id)}
+      aria-labelledby={titleIdOf(step)}
       data-welcome=""
       data-direction={leaving?.direction === -1 ? "back" : "forward"}
       data-closing={closing ? "" : undefined}
-      className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
+      className="fixed inset-0 m-0 flex size-full max-h-none max-w-none flex-col overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
     >
-      <SceneProvider className="flex flex-col">
-        {/* The window can be moved by its top edge; the system draws its buttons over the right of it. */}
-        <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
-        <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
-          <span data-light="corner" className="flex">
-            <CeriumMark size={18} landing className="text-fg-primary" />
-          </span>
-          <span className="text-[13px] font-medium tracking-tight text-fg-secondary">Cerium</span>
-        </header>
-        <Finale active={closing} />
+      {/* The window can be moved by its top edge; the system draws its buttons over the right of it. */}
+      <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
+      <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
+        {/* The mark that flies to and from the window's: the glass one while hello shows, else this. */}
+        <CeriumMark size={18} landing={step !== "hello"} className="text-fg-primary" />
+        <span className="text-[13px] font-medium tracking-tight text-fg-secondary">Cerium</span>
+      </header>
 
-        <main className="relative grid min-h-0 flex-1">
-          {shown.map(({ at, state }) => {
-            const chapter = CHAPTERS[at]!;
-            return (
-              <section
-                key={chapter.id}
-                data-chapter={chapter.id}
-                data-state={state}
-                data-after={entry.after ? "" : undefined}
-                aria-hidden={state === "leave" ? true : undefined}
-                inert={state === "leave"}
-                className="col-start-1 row-start-1 min-h-0"
-              >
-                <Chapter
-                  id={chapter.id}
-                  number={at + 1}
-                  titleId={titleIdOf(chapter.id)}
-                  active={state !== "leave" && !closing}
-                  onNext={next}
-                  onGo={(chapter) => go(CHAPTERS.findIndex((each) => each.id === chapter))}
-                />
-              </section>
-            );
-          })}
-        </main>
+      <main className="relative grid min-h-0 flex-1">
+        {shown.map(({ id, state }) => (
+          <section
+            key={id}
+            data-step={id}
+            data-state={state}
+            data-after={entry.after ? "" : undefined}
+            aria-hidden={state === "leave" ? true : undefined}
+            inert={state === "leave"}
+            className="col-start-1 row-start-1 min-h-0"
+          >
+            <Step
+              id={id}
+              number={steps.indexOf(id) + 1}
+              titleId={titleIdOf(id)}
+              active={state !== "leave" && !closing}
+            />
+          </section>
+        ))}
+      </main>
 
-        <footer className="relative flex shrink-0 items-end gap-8 px-(--welcome-gutter) pt-4 pb-6">
-          <Rail index={index} visited={visited} onPick={go} />
-          <div className="flex shrink-0 items-center gap-2">
-            {last ? null : (
-              <Button
-                onClick={close}
-                className="mr-2 h-9 rounded-full px-3 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-primary"
-              >
-                Skip
-              </Button>
-            )}
-            {index === 0 ? (
-              // Where Back will be: until the welcome is first moved on, that the keys work as the button does.
-              <span
-                className={`flex h-10 items-center gap-1.5 pr-1 text-[11.5px] text-fg-tertiary transition-opacity duration-500 max-md:hidden ${
-                  visited === 0 ? "" : "opacity-0"
-                }`}
-              >
-                Press
-                <Keycap>{keyCaps("Enter").join("")}</Keycap>
-              </span>
-            ) : (
-              <Button
-                onClick={back}
-                aria-label="Back"
-                className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-              >
-                <ArrowLeft size={16} strokeWidth={1.5} />
-              </Button>
-            )}
-            <ContinueButton onClick={next}>
-              {last ? "Open Cerium" : index === 0 ? "Begin" : "Continue"}
-            </ContinueButton>
-          </div>
-        </footer>
-      </SceneProvider>
+      <footer className="relative flex shrink-0 items-center gap-8 px-(--welcome-gutter) pt-4 pb-6">
+        <Progress steps={steps} index={index} visited={visited} onPick={go} />
+        <div className="flex shrink-0 items-center gap-2">
+          {last ? null : (
+            <Button
+              onClick={close}
+              className="mr-2 h-9 rounded-full px-3 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-primary"
+            >
+              Skip
+            </Button>
+          )}
+          {index === 0 ? null : (
+            <Button
+              onClick={back}
+              aria-label="Back"
+              className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            >
+              <ArrowLeft size={16} strokeWidth={1.5} />
+            </Button>
+          )}
+          <ContinueButton onClick={next}>
+            {last ? "Open Cerium" : index === 0 ? "Begin" : "Continue"}
+          </ContinueButton>
+        </div>
+      </footer>
     </dialog>
   );
 }
 
-const titleIdOf = (chapter: ChapterId) => `welcome-${chapter}`;
+const titleIdOf = (step: StepId) => `welcome-${step}`;
 
-/** As the welcome closes, the light goes out and the glass mark flies into the corner's, shrinking to it. */
-function Finale({ active }: { readonly active: boolean }) {
-  usePose(active, (stage) => {
-    const place = lightOf(stage, "corner");
-    // The corner's mark draws its ring's centre at the middle of its square.
-    const at =
-      place === undefined
-        ? { x: 24, y: 20 }
-        : { x: place.x + place.width / 2, y: place.y + place.height / 2 };
-    return {
-      mark: { ...at, size: place?.width ?? 18, opacity: 0 },
-      incoming: { from: at, intensity: 0 },
-      beams: [0, 1, 2, 3, 4].map(() => ({ ...at, intensity: 0 })),
-      dust: 0,
-    };
-  });
-  return null;
-}
-
-/** The chapters along the foot: a hairline each, filled up to where the welcome is, its name above. */
-function Rail({
+/** Where the welcome is: a hairline a step, filled up to this one; a step seen is a click away. */
+function Progress({
+  steps,
   index,
   visited,
   onPick,
 }: {
+  readonly steps: ReadonlyArray<StepId>;
   readonly index: number;
-  /** The furthest chapter seen, which the rail can go back to. */
+  /** The furthest step seen. */
   readonly visited: number;
   readonly onPick: (index: number) => void;
 }) {
   return (
-    <nav aria-label="Welcome chapters" className="flex min-w-0 flex-1 gap-1.5">
-      {CHAPTERS.map((chapter, at) => (
+    <nav aria-label="Welcome steps" className="flex min-w-0 flex-1 gap-1.5">
+      {steps.map((step, at) => (
         <button
-          key={chapter.id}
+          key={step}
           type="button"
           onClick={() => onPick(at)}
           disabled={at > visited}
           aria-current={at === index ? "step" : undefined}
-          aria-label={`${chapter.label}, ${at + 1} of ${CHAPTERS.length}`}
-          className="group flex min-w-0 flex-1 flex-col gap-2.5 pb-1 text-left disabled:cursor-default"
+          aria-label={`Step ${at + 1} of ${steps.length}`}
+          className="group relative h-6 w-12 disabled:cursor-default"
         >
-          <span
-            className={`flex items-baseline gap-2 truncate font-mono text-[10.5px] tracking-[0.16em] uppercase transition-colors duration-300 ${
-              at === index
-                ? "text-fg-primary"
-                : at <= visited
-                  ? "text-fg-tertiary group-hover:text-fg-secondary"
-                  : "text-fg-disabled"
-            }`}
-          >
-            <span className="tabular-nums opacity-60">{String(at + 1).padStart(2, "0")}</span>
-            <span className="truncate max-lg:hidden">{chapter.label}</span>
-          </span>
-          <span className="relative h-px w-full overflow-hidden bg-line-strong">
+          <span className="absolute inset-x-0 top-1/2 h-px overflow-hidden bg-line-strong">
             <span
               className="absolute inset-0 origin-left bg-fg-primary transition-[scale,opacity] duration-700 ease-out-soft"
               style={{ scale: `${at <= index ? 1 : 0} 1`, opacity: at === index ? 1 : 0.35 }}
@@ -327,19 +279,13 @@ function ContinueButton({
   );
 }
 
-function Chapter({ id, ...props }: ChapterProps & { readonly id: ChapterId }) {
+function Step({ id, ...props }: StepProps & { readonly id: StepId }) {
   switch (id) {
     case "hello":
       return <Hello {...props} />;
     case "glass":
       return <Glass {...props} />;
-    case "thread":
-      return <Thread {...props} />;
-    case "agents":
-      return <Agents {...props} />;
-    case "everywhere":
-      return <Everywhere {...props} />;
-    case "ready":
-      return <Ready {...props} />;
+    case "connect":
+      return <Connect {...props} />;
   }
 }

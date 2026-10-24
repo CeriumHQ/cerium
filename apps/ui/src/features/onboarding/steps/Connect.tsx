@@ -3,52 +3,23 @@ import { OFFERED_PROVIDERS, type HarnessStatus, type ProviderId } from "@cerium/
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowUpRight, Check, RefreshCw } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { harnessesAtom, modelsAtom } from "../../../backend/atoms.ts";
 import { ProviderLogo } from "../../../components/ProviderLogo.tsx";
 import { accountLabel } from "../../settings/harnessModel.ts";
 import { harnessName, installUrl, useHarnessFlows } from "../../settings/Harnesses.tsx";
-import { harnessReadiness, readinessSummary, type Readiness } from "../model.ts";
+import { harnessReadiness, type Readiness } from "../model.ts";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
-import { lightOf, markIn, usePose, usePulse, type Posing } from "../scene.tsx";
-import type { ChapterProps } from "../Welcome.tsx";
+import type { StepProps } from "../Welcome.tsx";
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 
-/** How brightly each harness's beam reaches its row: full once it can run, faint while it can't yet. */
-const BRIGHTNESS: Record<Readiness, number> = { ready: 1, attention: 0.22, missing: 0, unknown: 0.12 };
-
-/** The light falls into the mark beside the harnesses, and each beam reaches its own row. */
-const pose =
-  (statuses: ReadonlyArray<Readiness>): Posing =>
-  (stage) => {
-    const { facet, ...mark } = markIn(stage, "agents", {
-      x: stage.width * 0.55,
-      y: stage.height * 0.5,
-      size: 150,
-    });
-    return {
-      mark: { ...mark, opacity: 1 },
-      incoming: { from: { x: mark.x + stage.width * 0.05, y: -80 }, intensity: 1 },
-      beams: OFFERED_PROVIDERS.map((provider, index) => {
-        const row = lightOf(stage, provider, "agents");
-        if (row === undefined) return { ...facet, intensity: 0 };
-        return {
-          x: row.x + 2,
-          y: row.y + row.height / 2,
-          intensity: BRIGHTNESS[statuses[index] ?? "unknown"],
-        };
-      }),
-      dust: 0.8,
-    };
-  };
-
 /**
- * The fourth chapter: the harnesses on this computer, as they really are. Each beam lights up as its
- * harness is ready to run, and each row offers the one thing to do about it: install, sign in or set up.
+ * The step a welcome takes only while no harness on this computer can run a thread: each harness, with
+ * the one thing to do about it, install, sign in or set up, as Settings → Harnesses offers.
  */
-export function Agents({ number, titleId, active }: ChapterProps) {
+export function Connect({ number, titleId }: StepProps) {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
   const refreshModels = useAtomRefresh(modelsAtom);
@@ -57,43 +28,17 @@ export function Agents({ number, titleId, active }: ChapterProps) {
     refreshHarnesses();
     refreshModels();
   };
-  const readiness = OFFERED_PROVIDERS.map((provider) =>
-    harnessReadiness(statuses?.find((status) => status.provider === provider)),
-  );
-  usePose(active, pose(readiness), readiness.join());
-  // A harness coming ready, as a sign-in finishes, sends a pulse down the light to it.
-  const pulse = usePulse();
-  const ready = readiness.filter((each) => each === "ready").length;
-  const readyBefore = useRef(ready);
-  useEffect(() => {
-    if (ready > readyBefore.current && active) pulse();
-    readyBefore.current = ready;
-  }, [ready, active, pulse]);
-  const failed = AsyncResult.isFailure(result) && statuses === undefined;
-  const summary = failed ? "Couldn't check the harnesses" : readinessSummary(readiness);
-  const none = !failed && statuses !== undefined && !readiness.includes("ready");
 
   return (
-    <div className="grid h-full grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-center gap-[clamp(24px,5vw,96px)] px-(--welcome-gutter) pb-[2vh]">
-      <div className="flex flex-col">
+    <div className="grid h-full grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center gap-[clamp(24px,6vw,120px)] px-(--welcome-gutter) pb-[2vh]">
+      <div className="flex flex-col items-start">
         <Eyebrow number={number}>Harnesses</Eyebrow>
         <Headline
           id={titleId}
-          lines={["Bring your", "agents."]}
+          lines={["Connect", "a harness."]}
           className="text-[length:clamp(48px,min(6.6vw,11vh),112px)]"
         />
-        <Reveal
-          order={3}
-          as="p"
-          className="mt-[clamp(18px,3.4vh,32px)] max-w-[26rem] text-[15px] leading-relaxed text-fg-secondary"
-        >
-          Each agent is the harness itself, run through its own SDK on your own plan. Install any of them and
-          sign in as usual: Cerium finds them, and never reads their keys.
-        </Reveal>
-        <Reveal order={4} className="mt-[clamp(22px,4vh,40px)] flex flex-wrap items-center gap-x-4 gap-y-2">
-          <output aria-live="polite" className={`text-[13px] ${failed ? "text-error" : "text-fg-primary"}`}>
-            {summary}
-          </output>
+        <Reveal order={3} className="mt-[clamp(22px,4vh,40px)]">
           <Button
             onClick={check}
             disabled={result.waiting}
@@ -102,32 +47,20 @@ export function Agents({ number, titleId, active }: ChapterProps) {
             <RefreshCw size={12} strokeWidth={1.75} className={result.waiting ? "animate-spin" : ""} />
             {result.waiting ? "Checking…" : "Check again"}
           </Button>
-          {none ? (
-            <p className="w-full text-[12.5px] leading-relaxed text-fg-tertiary">
-              You can carry on, and set one up later from Settings → Harnesses.
-            </p>
-          ) : null}
         </Reveal>
       </div>
-
-      <div className="grid grid-cols-[clamp(104px,12vw,180px)_minmax(0,1fr)] items-center gap-x-[clamp(28px,5vw,88px)]">
-        {/* The light draws the mark here. */}
-        <div data-light="mark" className="aspect-square w-full" />
-        <ul className="flex flex-col gap-[clamp(6px,1.2vh,12px)]">
-          {OFFERED_PROVIDERS.map((provider, index) => (
-            <li key={provider} data-light={provider}>
-              <Reveal order={3 + index * 0.5}>
-                <HarnessCard
-                  provider={provider}
-                  status={statuses?.find((status) => status.provider === provider)}
-                  unknown={statuses === undefined}
-                  onChanged={check}
-                />
-              </Reveal>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className="flex flex-col gap-[clamp(6px,1.2vh,12px)]">
+        {OFFERED_PROVIDERS.map((provider, index) => (
+          <Reveal key={provider} as="li" order={3 + index * 0.5}>
+            <HarnessCard
+              provider={provider}
+              status={statuses?.find((status) => status.provider === provider)}
+              unknown={statuses === undefined}
+              onChanged={check}
+            />
+          </Reveal>
+        ))}
+      </ul>
     </div>
   );
 }

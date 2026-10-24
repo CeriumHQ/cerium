@@ -1,16 +1,23 @@
 import type { HarnessStatus } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { DEMO_RUNS, demoAt, demoTimes, leadStatus } from "../src/features/onboarding/demo.ts";
 import {
-  CHAPTERS,
-  chapterFromQuery,
   harnessReadiness,
+  needsHarness,
   opensOnLaunch,
-  readinessSummary,
-  stepChapter,
+  stepFromQuery,
+  stepsFor,
   welcomeKey,
 } from "../src/features/onboarding/model.ts";
+
+const installed = (auth: Extract<HarnessStatus, { _tag: "HarnessInstalled" }>["auth"]): HarnessStatus => ({
+  _tag: "HarnessInstalled",
+  provider: "claude",
+  executablePath: "/usr/bin/claude",
+  version: "2.1.0",
+  auth,
+});
+const missing: HarnessStatus = { _tag: "HarnessMissing", provider: "codex", installHint: "npm i -g codex" };
 
 describe("opensOnLaunch", () => {
   it("opens on a desktop's first run, with no threads yet", () => {
@@ -25,22 +32,19 @@ describe("opensOnLaunch", () => {
   });
 });
 
-describe("stepChapter", () => {
-  it("steps through the chapters and holds at either end", () => {
-    expect(stepChapter(0, 1)).toBe(1);
-    expect(stepChapter(0, -1)).toBe(0);
-    expect(stepChapter(CHAPTERS.length - 1, 1)).toBe(CHAPTERS.length - 1);
+describe("stepsFor", () => {
+  it("says hello and offers the glass, and asks for a harness only when one is needed", () => {
+    expect(stepsFor(false)).toEqual(["hello", "glass"]);
+    expect(stepsFor(true)).toEqual(["hello", "glass", "connect"]);
   });
 });
 
-describe("chapterFromQuery", () => {
-  it("names a chapter, or the first for a bare flag, and nothing without one", () => {
-    expect(chapterFromQuery("?welcome=agents")).toBe(
-      CHAPTERS.findIndex((chapter) => chapter.id === "agents"),
-    );
-    expect(chapterFromQuery("?welcome")).toBe(0);
-    expect(chapterFromQuery("?welcome=nope")).toBe(0);
-    expect(chapterFromQuery("?other=1")).toBeUndefined();
+describe("stepFromQuery", () => {
+  it("names a step, or the first for a bare flag or an unknown one, and nothing without one", () => {
+    expect(stepFromQuery("?welcome=glass")).toBe("glass");
+    expect(stepFromQuery("?welcome")).toBe("hello");
+    expect(stepFromQuery("?welcome=nope")).toBe("hello");
+    expect(stepFromQuery("?other=1")).toBeUndefined();
   });
 });
 
@@ -78,14 +82,6 @@ describe("welcomeKey", () => {
 });
 
 describe("harnessReadiness", () => {
-  const installed = (auth: Extract<HarnessStatus, { _tag: "HarnessInstalled" }>["auth"]): HarnessStatus => ({
-    _tag: "HarnessInstalled",
-    provider: "claude",
-    executablePath: "/usr/bin/claude",
-    version: "2.1.0",
-    auth,
-  });
-
   it("is ready signed in, needs the user signed out or before setup, and is missing uninstalled", () => {
     expect(harnessReadiness(installed({ _tag: "LoggedIn", method: "claude.ai" }))).toBe("ready");
     expect(harnessReadiness(installed({ _tag: "LoggedOut" }))).toBe("attention");
@@ -101,58 +97,16 @@ describe("harnessReadiness", () => {
         },
       } as HarnessStatus),
     ).toBe("attention");
-    expect(
-      harnessReadiness({ _tag: "HarnessMissing", provider: "codex", installHint: "npm i -g codex" }),
-    ).toBe("missing");
+    expect(harnessReadiness(missing)).toBe("missing");
     expect(harnessReadiness(undefined)).toBe("unknown");
   });
 });
 
-describe("readinessSummary", () => {
-  it("counts what's ready, what needs the user and what's missing", () => {
-    expect(readinessSummary(["ready", "attention", "missing", "missing", "ready"])).toBe(
-      "2 ready · 1 to set up · 2 not installed",
-    );
-    expect(readinessSummary(["ready", "ready"])).toBe("2 ready");
-  });
-
-  it("says when nothing is known yet, and when nothing is installed", () => {
-    expect(readinessSummary(["unknown", "unknown"])).toBe("Looking for your harnesses…");
-    expect(readinessSummary(["missing", "missing"])).toBe("None installed yet");
-  });
-});
-
-describe("the welcome's sample run", () => {
-  const run = DEMO_RUNS[0]!;
-
-  it("types the message, sends it, hands it out, and answers once every agent is done", () => {
-    const times = demoTimes(run);
-    expect(demoAt(run, 0)).toMatchObject({ typed: 0, sent: false, lead: "idle", answered: false });
-    expect(demoAt(run, times.sent - 1).typed).toBe(run.prompt.length);
-    expect(demoAt(run, times.sent)).toMatchObject({ sent: true, lead: "reading" });
-    const working = demoAt(run, times.agents[0]!.starts);
-    expect(working.lead).toBe("delegating");
-    expect(working.agents[0]?.phase).toBe("working");
-    expect(working.agents.at(-1)?.phase).toBe("waiting");
-    const allDone = demoAt(run, Math.max(...times.agents.map((agent) => agent.ends)));
-    expect(allDone.agents.every((agent) => agent.phase === "done")).toBe(true);
-    expect(allDone.lead).toBe("answering");
-    expect(demoAt(run, times.answered)).toMatchObject({ lead: "done", answered: true, finished: true });
-  });
-
-  it("says what the lead is doing", () => {
-    const times = demoTimes(run);
-    expect(leadStatus(demoAt(run, 0))).toBe("Waiting for you");
-    expect(leadStatus(demoAt(run, times.agents[0]!.starts))).toBe("Handing off 3 parts");
-    expect(leadStatus(demoAt(run, times.agents.at(-1)!.starts))).toBe("Waiting on 3 agents");
-    expect(leadStatus(demoAt(run, times.answered))).toBe("Done");
-  });
-
-  it("lists each run's agents in the harnesses' order, so no two beams cross", () => {
-    const order = ["claude", "codex", "muse", "cursor", "opencode"];
-    for (const each of DEMO_RUNS) {
-      const indices = each.agents.map((agent) => order.indexOf(agent.provider));
-      expect(indices).toEqual([...indices].sort((a, b) => a - b));
-    }
+describe("needsHarness", () => {
+  it("asks for a harness once they're known and none can run, and not before", () => {
+    expect(needsHarness(undefined)).toBe(false);
+    expect(needsHarness([missing, installed({ _tag: "LoggedOut" })])).toBe(true);
+    expect(needsHarness([missing, installed({ _tag: "LoggedIn" })])).toBe(false);
+    expect(needsHarness([])).toBe(true);
   });
 });
