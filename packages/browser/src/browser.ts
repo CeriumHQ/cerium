@@ -62,6 +62,12 @@ const listTargets = async (origin: string): Promise<ReadonlyArray<PageTarget & {
   return (await response.json()) as ReadonlyArray<PageTarget & { type: string }>;
 };
 
+const hasPage = (origin: string): Promise<boolean> =>
+  listTargets(origin).then(
+    (targets) => targets.some((target) => target.type === "page"),
+    () => false,
+  );
+
 /**
  * A page target at `origin`: the one with id `id` if it is still there, else one whose URL contains
  * `match`, else the first. DevTools' own pages never count.
@@ -271,16 +277,21 @@ export const launchBrowser = async (options: {
       const [port, path] = written.split("\n").map((line) => line.trim());
       if (port) {
         browserSocket = path ? `ws://127.0.0.1:${port}${path}` : undefined;
-        if (options.outlive === true) {
-          child.stderr?.destroy();
-          child.unref();
+        const origin = `http://127.0.0.1:${port}`;
+        // The browser lists its first page a moment after it opens the port, longer on a busy
+        // machine, and a caller's `pickPage` before then finds no page to drive.
+        if (await hasPage(origin)) {
+          if (options.outlive === true) {
+            child.stderr?.destroy();
+            child.unref();
+          }
+          return {
+            origin,
+            process: child,
+            handle: { socket: browserSocket, profile },
+            close,
+          };
         }
-        return {
-          origin: `http://127.0.0.1:${port}`,
-          process: child,
-          handle: { socket: browserSocket, profile },
-          close,
-        };
       }
     }
     await sleep(100);
