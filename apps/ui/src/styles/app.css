@@ -47,24 +47,20 @@ body {
 
 /*
  * The browser preview and Linux have no system glass behind the page, so they stand in a flat,
- * neutral desktop. On Windows and macOS, Cerium's body stays transparent and the system provides the
- * real backdrop (`data-acrylic`): Acrylic on Windows, Vibrancy on macOS. Both take their tint from
- * the system, not the theme, so every other theme paints its own backdrop and is opaque, drawn as in
- * the browser preview.
+ * neutral desktop. On Windows and macOS the body stays transparent in every theme and the system
+ * provides the real backdrop (`data-acrylic`): Acrylic on Windows, Vibrancy on macOS.
  */
 /* Real Acrylic and Vibrancy already tint and blur the desktop, so the window tint can be lighter. */
-html[data-acrylic][data-palette="cerium"][data-theme="dark"] {
+html[data-acrylic][data-theme="dark"] {
   --window-alpha: 0.45;
 }
 
-html:not([data-acrylic]) body,
-html[data-acrylic][data-palette]:not([data-palette="cerium"]) body {
+html:not([data-acrylic]) body {
   background: var(--backdrop);
 }
 
 /* Acrylic's grain, which keeps large translucent areas from looking flat. */
-html:not([data-acrylic]) #root::before,
-html[data-acrylic][data-palette]:not([data-palette="cerium"]) #root::before {
+html:not([data-acrylic]) #root::before {
   content: "";
   position: fixed;
   inset: 0;
