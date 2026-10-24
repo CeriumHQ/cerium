@@ -17,6 +17,8 @@ const QUESTIONS = {
 
 /** The question's font, which the glass waits on so it never draws a fallback's shapes. */
 const QUESTION_FONT = '200 expanded 64px "Anybody Variable"';
+/** How long the pane's size keeps still before the glass is drawn again for it. */
+const SETTLE_MS = 150;
 
 /**
  * Where a new thread starts, behind the message box: frosted glass over the window, the question
@@ -56,19 +58,33 @@ export function EmptyThread({
 
     // The glass follows the page: its size, the window's scale and zoom, the theme, and the font.
     let frame = 0;
+    let settling: ReturnType<typeof setTimeout> | undefined;
+    let shown: { readonly width: number; readonly height: number } | undefined;
     const measure = () => {
       cancelAnimationFrame(frame);
+      clearTimeout(settling);
       frame = requestAnimationFrame(() => {
         if (!document.fonts.check(QUESTION_FONT)) {
           void document.fonts.load(QUESTION_FONT).then(measure, () => undefined);
           return;
         }
         const scene = readScene(surface, heading);
-        if (scene !== undefined) pane.show(scene);
+        if (scene === undefined) return;
+        pane.show(scene);
+        shown = scene;
       });
     };
     measure();
-    const sized = new ResizeObserver(measure);
+    // Drawing the glass takes longer than a frame, so while the pane is resized its last drawing holds,
+    // and the glass is drawn again once the size settles.
+    const sized = new ResizeObserver(() => {
+      if (shown === undefined) return measure();
+      const box = surface.getBoundingClientRect();
+      if (box.width === shown.width && box.height === shown.height) return;
+      pane.hold();
+      clearTimeout(settling);
+      settling = setTimeout(measure, SETTLE_MS);
+    });
     sized.observe(surface);
     const themed = new MutationObserver(measure);
     themed.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
@@ -98,6 +114,7 @@ export function EmptyThread({
 
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(settling);
       clearTimeout(greeting);
       sized.disconnect();
       themed.disconnect();

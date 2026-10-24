@@ -260,6 +260,8 @@ export class Frost {
       this.#canvas.width = width;
       this.#canvas.height = height;
     }
+    const held = this.#canvas.style;
+    held.width = held.height = held.left = held.top = "";
     if (resized) {
       this.#rubbed = new PolishGrid(scene.width, scene.height);
       this.#typed = new PolishGrid(scene.width, scene.height);
@@ -273,6 +275,21 @@ export class Frost {
     this.#changed = true;
     this.#paint();
     this.#wake();
+  }
+
+  /**
+   * The glass is being resized away from the size it was drawn for. Drawing it takes longer than a
+   * frame, so until it's shown again its drawing holds at its own size, centred, as the page keeps the
+   * question; what the pane gains at its edges is clear glass anyway.
+   */
+  hold(): void {
+    const scene = this.#drawn?.scene;
+    if (scene === undefined) return;
+    const held = this.#canvas.style;
+    held.width = `${scene.width}px`;
+    held.height = `${scene.height}px`;
+    held.left = `calc(50% - ${scene.width / 2}px)`;
+    held.top = `calc(50% - ${scene.height / 2}px)`;
   }
 
   /**
