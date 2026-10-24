@@ -24,11 +24,14 @@ export const moreRoom = "max-md:pr-12 pointer-coarse:pr-12";
 export function RowFrame({
   label,
   menu,
+  firstLine = false,
   children,
 }: {
   /** What the button's actions are for, such as the thread's title. */
   label: string;
   menu: ReactNode;
+  /** Puts the button by a two-line row's first line rather than its middle. */
+  firstLine?: boolean;
   children: ReactElement;
 }) {
   return (
@@ -38,7 +41,13 @@ export function RowFrame({
         <MenuTrigger>
           <Button
             aria-label={`More actions for “${label}”`}
-            className="absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 data-popup-open:bg-surface-active data-popup-open:text-fg-primary data-popup-open:opacity-100 md:group-hover/row:opacity-100 max-md:size-9 max-md:right-1.5 max-md:opacity-100 pointer-coarse:opacity-100"
+            className={`absolute grid place-items-center rounded-md ${
+              firstLine
+                ? "top-1.5 right-1.5 size-5.5 max-md:top-2"
+                : "top-1/2 right-1 size-6 -translate-y-1/2"
+            } text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 data-popup-open:bg-surface-active data-popup-open:text-fg-primary data-popup-open:opacity-100 md:group-hover/row:opacity-100 max-md:right-1.5 max-md:opacity-100 pointer-coarse:opacity-100 ${
+              firstLine ? "max-md:size-8" : "max-md:size-9"
+            }`}
           >
             <Ellipsis size={15} strokeWidth={1.75} />
           </Button>

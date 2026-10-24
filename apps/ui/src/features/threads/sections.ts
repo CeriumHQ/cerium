@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "./model.ts";
+import { inboxAt, needsYou, type ThreadSummary } from "./model.ts";
 
 export interface ThreadSection {
   readonly key: string;
@@ -33,21 +33,22 @@ const statusSections = [
  * seen), agents still working, finished since the user last looked, or history.
  */
 const inboxKey = (thread: ThreadSummary, now: number): string => {
-  if (thread.status === "awaitingApproval" || (thread.status === "failed" && thread.unread)) {
-    return "needsYou";
-  }
+  if (needsYou(thread)) return "needsYou";
   if (thread.status === "running") return "working";
   if (thread.unread) return "unread";
-  return recency(thread.updatedAt, now);
+  return recency(inboxAt(thread, now), now);
 };
 
-/** Work threads across every project, ordered by what needs the user first; newest first within each. */
+/**
+ * Work threads across every project, ordered by what needs the user first; within each, the newest
+ * first, where a thread back from Later counts from its return.
+ */
 export const inboxSections = (
   threads: ReadonlyArray<ThreadSummary>,
   now = Date.now(),
 ): ReadonlyArray<ThreadSection> => {
   const byKey = new Map<string, Array<ThreadSummary>>();
-  for (const thread of newestFirst(threads)) {
+  for (const thread of [...threads].sort((a, b) => inboxAt(b, now) - inboxAt(a, now))) {
     const key = inboxKey(thread, now);
     byKey.set(key, [...(byKey.get(key) ?? []), thread]);
   }

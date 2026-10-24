@@ -80,6 +80,11 @@ export const ThreadInfo = Schema.Struct({
   updatedAt: EpochMillis,
   /** When the user archived it; archived threads leave the sidebar until restored. */
   archivedAt: Schema.optionalKey(EpochMillis),
+  /**
+   * When a thread the user put off for later comes back to their inbox. Until then the inbox lists it
+   * apart, unless it needs them sooner.
+   */
+  laterUntil: Schema.optionalKey(EpochMillis),
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
 

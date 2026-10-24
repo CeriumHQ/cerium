@@ -404,6 +404,7 @@ export const stopThread = Backend.runtime.fn<{ readonly payload: { readonly thre
 );
 export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
+export const setThreadLater = Backend.mutation("SetThreadLater");
 export const deleteThread = Backend.mutation("DeleteThread");
 export const updateSettings = Backend.mutation("UpdateSettings");
 export const removeEffortRouterKey = Backend.mutation("RemoveEffortRouterKey");

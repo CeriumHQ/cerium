@@ -10,6 +10,7 @@ export const threads = sqliteTable("threads", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   archivedAt: integer("archived_at"),
+  laterUntil: integer("later_until"),
 });
 
 export const agents = sqliteTable(

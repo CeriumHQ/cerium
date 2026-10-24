@@ -54,6 +54,10 @@ interface SidebarProps {
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
   readonly onRestore: (threadId: string) => void;
+  /** Puts a work thread off until then, or brings it back; absent where the machine can't. */
+  readonly onLater?: (threadId: string, until: number | undefined) => void;
+  /** The threads open in tabs. */
+  readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
   readonly onDelete: (threadId: string) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
@@ -89,6 +93,8 @@ export function Sidebar({
   onRename,
   onArchive,
   onRestore,
+  onLater,
+  open = [],
   onDelete,
   harnesses,
   onOpenSettings,
@@ -150,6 +156,7 @@ export function Sidebar({
           drafts={drafts}
           draftActions={draftActions}
           archived={archivedWork(threads)}
+          open={open}
           selectedId={selectedId}
           onSelect={onSelect}
           onMarkRead={onMarkRead}
@@ -158,6 +165,7 @@ export function Sidebar({
           onRename={onRename}
           onArchive={onArchive}
           onRestore={onRestore}
+          onLater={onLater}
           onDelete={onDelete}
         />
       ) : (

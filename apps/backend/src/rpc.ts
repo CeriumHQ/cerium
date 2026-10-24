@@ -260,6 +260,8 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator
           .setThreadArchived(threadId, archived, discardWork === undefined ? {} : { discardWork })
           .pipe(Effect.mapError(refuse)),
+      SetThreadLater: ({ threadId, until }) =>
+        orchestrator.setThreadLater(threadId, until).pipe(Effect.mapError(refuse)),
       // A deleted thread's terminals end with it.
       DeleteThread: ({ threadId, discardWork }) =>
         orchestrator.deleteThread(threadId, discardWork === undefined ? {} : { discardWork }).pipe(

@@ -36,21 +36,36 @@ function DraftMark({ mark }: { mark: RowMark }) {
   );
 }
 
-/** A draft's row in the inbox or the chat list: a line, with a menu that offers to throw it away. */
+/**
+ * A draft's row: a line in the chat list, or in the inbox a card like its threads', saying where it
+ * will start. Its menu offers to throw it away.
+ */
 export function DraftRow({
   draft,
   mark,
+  card = false,
   selectedId,
   onSelectDraft,
   onDiscardDraft,
   draftMachine,
-}: { draft: NewThreadDraft; mark: RowMark } & DraftActions) {
+}: { draft: NewThreadDraft; mark: RowMark; card?: boolean } & DraftActions) {
   const selected = draft.key === selectedId;
   const machine = draftMachine(draft.machine);
   const place = [machine?.name, draft.folder ? baseName(draft.folder) : undefined].filter(Boolean);
+  const attachments =
+    draft.attachments > 0 ? (
+      <span
+        className={`flex shrink-0 items-center gap-0.5 text-2xs text-fg-tertiary tabular-nums ${yieldsToMore}`}
+        title={`${draft.attachments} attached file${draft.attachments === 1 ? "" : "s"}`}
+      >
+        <Paperclip size={10} strokeWidth={2} aria-hidden />
+        {draft.attachments}
+      </span>
+    ) : null;
   return (
     <RowFrame
       label={draft.title}
+      firstLine={card}
       menu={
         <MenuItem icon={Trash2} tone="danger" onClick={() => onDiscardDraft(draft.key)}>
           Discard draft
@@ -75,33 +90,46 @@ export function DraftRow({
 ${place.join(" · ")}`
             : draft.title
         }
-        className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${moreRoom} ${
-          selected
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
+        className={
+          card
+            ? `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${moreRoom} ${
+                selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"
+              }`
+            : `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${moreRoom} ${
+                selected
+                  ? "bg-surface-selected text-fg-primary"
+                  : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+              }`
+        }
       >
-        <span className="grid shrink-0 place-items-center">
-          <DraftMark mark={mark} />
-        </span>
-        <span className={`min-w-0 flex-1 truncate ${draft.untitled ? "italic" : ""}`}>{draft.title}</span>
-        {machine ? (
-          <span
-            title={`On ${machine.name}`}
-            className={`shrink-0 text-fg-tertiary ${machine.online ? "" : "opacity-60"}`}
-          >
-            <Monitor size={11} strokeWidth={2} aria-label={`On ${machine.name}`} />
-          </span>
-        ) : null}
-        {draft.attachments > 0 ? (
-          <span
-            className={`flex shrink-0 items-center gap-0.5 text-2xs text-fg-tertiary tabular-nums ${yieldsToMore}`}
-            title={`${draft.attachments} attached file${draft.attachments === 1 ? "" : "s"}`}
-          >
-            <Paperclip size={10} strokeWidth={2} aria-hidden />
-            {draft.attachments}
-          </span>
-        ) : null}
+        {card ? (
+          <>
+            <span className="row-span-2 self-start pt-px max-md:pt-0.5">
+              <DraftMark mark="badge" />
+            </span>
+            <span className={`min-w-0 truncate ${draft.untitled ? "italic" : ""}`}>{draft.title}</span>
+            <span className="flex min-w-7 justify-end">{attachments}</span>
+            <span className="col-start-2 col-end-4 truncate text-xs text-fg-tertiary max-md:text-[13px]">
+              {place.length > 0 ? place.join(" · ") : "No project yet"}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="grid shrink-0 place-items-center">
+              <DraftMark mark={mark} />
+            </span>
+            <span className={`min-w-0 flex-1 truncate ${draft.untitled ? "italic" : ""}`}>{draft.title}</span>
+            {machine ? (
+              <span
+                title={`On ${machine.name}`}
+                className={`shrink-0 text-fg-tertiary ${machine.online ? "" : "opacity-60"}`}
+              >
+                <Monitor size={11} strokeWidth={2} aria-label={`On ${machine.name}`} />
+              </span>
+            ) : null}
+            {attachments}
+          </>
+        )}
       </Button>
     </RowFrame>
   );

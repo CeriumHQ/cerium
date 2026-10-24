@@ -75,7 +75,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 23;
+export const RPC_VERSION = 24;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -315,6 +315,15 @@ export const MachineRpcs = RpcGroup.make(
       archived: Schema.Boolean,
       discardWork: Schema.optionalKey(Schema.Boolean),
     },
+    success: ThreadInfo,
+    error: CeriumError,
+  }),
+  /**
+   * Puts a thread off until `until`, when it comes back to the inbox; without `until` it comes back
+   * now. Archiving a thread ends its wait. Since `RPC_VERSION` 24.
+   */
+  Rpc.make("SetThreadLater", {
+    payload: { threadId: ThreadId, until: Schema.optionalKey(EpochMillis) },
     success: ThreadInfo,
     error: CeriumError,
   }),

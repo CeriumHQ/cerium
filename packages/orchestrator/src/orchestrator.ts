@@ -372,6 +372,14 @@ export class Orchestrator extends Context.Service<
       options?: PutAwayOptions,
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
+     * Puts a thread off until `until`, when it comes back to the user's inbox; `undefined` brings it
+     * back now. Archiving a thread ends its wait.
+     */
+    setThreadLater(
+      threadId: ThreadId,
+      until: number | undefined,
+    ): Effect.Effect<ThreadInfo, OrchestratorError>;
+    /**
      * Deletes a thread for good: its agents' sessions end and its agents and events are removed, and
      * its worktree with them. Refused while its agents work or wait on the user, like archiving.
      */
@@ -2607,8 +2615,14 @@ export class Orchestrator extends Context.Service<
               ? removeWorktree(thread.id, thread.worktree, options)
               : worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
           }
-          return yield* updateThread(threadId, { archivedAt: archived ? yield* now : null });
+          return yield* updateThread(
+            threadId,
+            archived ? { archivedAt: yield* now, laterUntil: null } : { archivedAt: null },
+          );
         }),
+
+        setThreadLater: (threadId: ThreadId, until: number | undefined) =>
+          updateThread(threadId, { laterUntil: until ?? null }),
 
         deleteThread: Effect.fn("Orchestrator.deleteThread")(function* (
           threadId: ThreadId,

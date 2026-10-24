@@ -692,6 +692,25 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("puts threads off until later, and archiving one ends its wait", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* startWorkThread;
+      const later = yield* orchestrator.setThreadLater(thread.id, 1_900_000_000_000);
+      assert.strictEqual(later.laterUntil, 1_900_000_000_000);
+      assert.strictEqual((yield* orchestrator.listThreads)[0]?.laterUntil, 1_900_000_000_000);
+      const back = yield* orchestrator.setThreadLater(thread.id, undefined);
+      assert.isUndefined(back.laterUntil);
+
+      yield* orchestrator.setThreadLater(thread.id, 1_900_000_000_000);
+      const archived = yield* orchestrator.setThreadArchived(thread.id, true);
+      assert.isUndefined(archived.laterUntil);
+      const missing = yield* Effect.flip(orchestrator.setThreadLater("thr_missing" as ThreadId, undefined));
+      assert.strictEqual(missing.reason, "notFound");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("deletes threads for good, but not while they wait on the user", () => {
     const fake = makeFakeAdapter("claude", { askPermission: true });
     return Effect.gen(function* () {

@@ -47,10 +47,11 @@ export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "providerSe
   readonly updatedAt: number;
 };
 
-/** `archivedAt: null` restores an archived thread. */
+/** `archivedAt: null` restores an archived thread; `laterUntil: null` brings one put off back now. */
 export interface ThreadPatch {
   readonly title?: string;
   readonly archivedAt?: number | null;
+  readonly laterUntil?: number | null;
 }
 
 export interface StoredProject {
@@ -250,6 +251,7 @@ export class Store extends Context.Service<
                 cwd: thread.cwd ?? null,
                 worktree: thread.worktree ?? null,
                 archivedAt: thread.archivedAt ?? null,
+                laterUntil: thread.laterUntil ?? null,
               }),
             ),
           getThread: (id) =>
