@@ -62,6 +62,7 @@ try {
   failed = true;
   console.error(error instanceof Error ? error.message : String(error));
 } finally {
-  browser.close();
+  // Waited for: exiting first would leave the browser running.
+  await browser.close();
 }
 process.exit(failed ? 1 : 0);

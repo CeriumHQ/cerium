@@ -1,5 +1,6 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -90,7 +91,11 @@ export interface LaunchedBrowser {
   readonly process: ChildProcess;
   /** What `closeBrowser` needs to close it from another process. */
   readonly handle: BrowserHandle;
-  close(): void;
+  /**
+   * Closes the browser, settling once it has been told to or killed, and never rejecting. Its
+   * profile goes a moment later, which this doesn't wait for.
+   */
+  close(): Promise<void>;
 }
 
 /** The browser's own debugging socket and its profile folder. */
@@ -101,11 +106,21 @@ export interface BrowserHandle {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Runs a command to its end, however that goes. Never synchronously: the backend previews artifacts
+ * in its own process, where a wait would hold up every agent and request it serves, and PowerShell
+ * alone takes a second or more to start.
+ */
+const run = (command: string, args: ReadonlyArray<string>) =>
+  new Promise<void>((resolve) => {
+    execFile(command, args, { windowsHide: true }, () => resolve());
+  });
+
 /** Stops a process and everything it started; browsers spawn helper processes of their own. */
-const killTree = (child: ChildProcess) => {
+const killTree = async (child: ChildProcess) => {
   if (child.pid === undefined || child.exitCode !== null) return;
   if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+    await run("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
   } else {
     child.kill("SIGKILL");
   }
@@ -115,19 +130,43 @@ const killTree = (child: ChildProcess) => {
 const killProfile = (profile: string) => {
   if (process.platform === "win32") {
     const filter = `$_.CommandLine -like '*${profile.replaceAll("'", "''")}*'`;
-    spawnSync(
-      "powershell",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" | Where-Object { ${filter} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
-      ],
-      { stdio: "ignore", windowsHide: true },
-    );
-  } else {
-    spawnSync("pkill", ["-9", "-f", profile], { stdio: "ignore" });
+    return run("powershell", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `Get-CimInstance Win32_Process -Filter "Name='msedge.exe' or Name='chrome.exe'" | Where-Object { ${filter} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ]);
   }
+  return run("pkill", ["-9", "-f", profile]);
+};
+
+/**
+ * Tells a browser `launchBrowser` started to close, through its own debugging endpoint; only when
+ * that fails, kills whatever still runs on its profile, and `child`, the process that started it,
+ * when this process has it. A browser told to close goes by itself, even if this process exits first.
+ */
+const shut = async (handle: BrowserHandle, child?: ChildProcess) => {
+  const closed =
+    handle.socket !== undefined &&
+    (await Cdp.connect(handle.socket, 3_000).then(
+      // A browser that goes before it answers ends the connection, which may say closed or failed.
+      (cdp) =>
+        cdp.send("Browser.close", {}, 3_000).then(
+          () => true,
+          () => cdp.closed,
+        ),
+      () => false,
+    ));
+  if (!closed) {
+    if (child !== undefined) await killTree(child);
+    await killProfile(handle.profile);
+  }
+};
+
+/** Removes a closed browser's profile, which stays locked for a moment after the browser goes. */
+const removeProfile = async (profile: string) => {
+  await sleep(1_000);
+  await rm(profile, { recursive: true, force: true, maxRetries: 5 });
 };
 
 /**
@@ -135,15 +174,8 @@ const killProfile = (profile: string) => {
  * runs on its profile, and removes the profile.
  */
 export const closeBrowser = async (handle: BrowserHandle): Promise<void> => {
-  const closed =
-    handle.socket !== undefined &&
-    (await Cdp.connect(handle.socket, 3_000)
-      .then((cdp) => cdp.send("Browser.close", {}, 3_000).then(() => true))
-      .catch((error: unknown) => error instanceof Error && /closed/.test(error.message)));
-  if (!closed) killProfile(handle.profile);
-  // The profile stays locked for a moment after the browser goes.
-  await sleep(1_000);
-  rmSync(handle.profile, { recursive: true, force: true, maxRetries: 5 });
+  await shut(handle);
+  await removeProfile(handle.profile);
 };
 
 /**
@@ -223,10 +255,11 @@ export const launchBrowser = async (options: {
   }
   // The process started may only hand off to the real browser and exit (Edge on Windows does), so
   // closing goes through the browser's own debugging endpoint, then whatever still runs on the profile.
+  // A browser asked first closes cleanly, sparing the kills, which on Windows take seconds.
   let browserSocket: string | undefined;
-  const close = () => {
-    killTree(child);
-    void closeBrowser({ socket: browserSocket, profile }).catch(() => undefined);
+  const close = async () => {
+    await shut({ socket: browserSocket, profile }, child).catch(() => undefined);
+    void removeProfile(profile).catch(() => undefined);
   };
   const portFile = join(profile, "DevToolsActivePort");
   // Edge's first start on a loaded two-core CI runner takes up to 20 s, so the wait leaves room.
@@ -252,7 +285,8 @@ export const launchBrowser = async (options: {
     }
     await sleep(100);
   }
-  close();
+  // Waited for, so a caller that exits on the error leaves no browser behind.
+  await close();
   const said = output.trim();
   throw new Error(`${options.executable} did not start a debugging port.${said === "" ? "" : `\n${said}`}`);
 };

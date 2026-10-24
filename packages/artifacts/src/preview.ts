@@ -172,7 +172,7 @@ export const previewArtifact = async (input: {
     };
   } finally {
     page?.close();
-    browser.close();
+    await browser.close();
     rmSync(folder, { recursive: true, force: true });
   }
 };

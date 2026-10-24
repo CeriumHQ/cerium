@@ -1,8 +1,10 @@
-import { assert, describe, it } from "@effect/vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { assert, describe, it, vi } from "@effect/vitest";
+import type { ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { findBrowser, launchBrowser, pickPage, type LaunchedBrowser } from "../src/browser.ts";
+import { closeBrowser, findBrowser, launchBrowser, pickPage, type LaunchedBrowser } from "../src/browser.ts";
 import { Page, parseKeys } from "../src/page.ts";
 
 describe("key presses", () => {
@@ -43,9 +45,33 @@ const driving = async (name: string, test: (launched: LaunchedBrowser) => Promis
     }
     throw error;
   } finally {
-    launched.close();
+    await launched.close();
   }
 };
+
+/** Once `child` has exited. */
+const exited = async (child: ChildProcess) => {
+  if (child.exitCode === null && child.signalCode === null) await once(child, "exit");
+};
+
+describe.skipIf(browser === undefined)("closing a launched browser", () => {
+  it("asks the browser to close rather than killing it, then removes its profile", async () => {
+    const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
+    await launched.close();
+    await exited(launched.process);
+    // A kill would have ended it on a signal; Windows has none to tell by.
+    if (process.platform !== "win32") assert.isNull(launched.process.signalCode);
+    await vi.waitFor(() => assert.isFalse(existsSync(launched.handle.profile)), { timeout: 10_000 });
+  });
+
+  it("kills the browser when its debugging socket can't close it, and still removes its profile", async () => {
+    const launched = await launchBrowser({ executable: browser!, visible: false, width: 800, height: 600 });
+    await closeBrowser({ socket: undefined, profile: launched.handle.profile });
+    assert.isFalse(existsSync(launched.handle.profile));
+    await exited(launched.process);
+    if (process.platform !== "win32") assert.strictEqual(launched.process.signalCode, "SIGKILL");
+  });
+});
 
 const FIXTURE = `<!doctype html><title>Fixture</title>
 <button aria-label="Close dialog">x</button>
