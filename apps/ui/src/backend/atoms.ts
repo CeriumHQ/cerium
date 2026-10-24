@@ -11,8 +11,8 @@ import {
   type ThreadId,
   type ThreadNotification,
 } from "@cerium/protocol";
-import { Effect, Option, PubSub, Schedule, Schema, Stream } from "effect";
-import { Atom } from "effect/reactivity";
+import { Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
 import { Backend, BackendUnreachable, connectionAtom, LocalBackend } from "./client.ts";
@@ -79,6 +79,17 @@ const subscribeLive = (get: Atom.AtomContext) => Effect.flatMap(get.result(liveF
 /** Anything but streamed text, and each new subscription, after which what was read is stale. */
 const isActivity = (live: Live) => live._tag === "Subscribed" || !isStreamDelta(live.event.payload._tag);
 
+/**
+ * Whether two reads of an atom hold the same: in the same state, with values `same` finds equal. An
+ * atom whose new read is the same keeps its old one and wakes none of its readers.
+ */
+const sameRead =
+  <A>(same: (a: A, b: A) => boolean) =>
+  (a: AsyncResult.AsyncResult<A, unknown>, b: AsyncResult.AsyncResult<A, unknown>): boolean =>
+    a._tag === b._tag &&
+    a.waiting === b.waiting &&
+    (AsyncResult.isSuccess(a) && AsyncResult.isSuccess(b) ? same(a.value, b.value) : a === b);
+
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
 export const activityAtom = Backend.runtime.atom((get) =>
   Stream.unwrap(
@@ -99,27 +110,30 @@ export const activityAtom = Backend.runtime.atom((get) =>
  * after every change but streamed text and each time the live feed subscribes again. One read runs
  * at a time and changes during it make one more after it, so a busy machine can't keep cancelling
  * reads, and the list always ends on the latest state. While disconnected it fails, keeping the
- * last list it read.
+ * last list it read. A read that finds the list as it was (most events, a tool call say, change no
+ * thread's overview) wakes nothing: re-rendering the inbox's rows for each took 55 ms.
  */
-export const threadsAtom = Backend.runtime.atom((get) => {
-  get.mount(liveFeedAtom);
-  if (get(connectionAtom) !== "connected") {
-    return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
-  }
-  const listThreads = Backend.use((client) => client("ListThreads", undefined));
-  return Stream.unwrap(
-    Effect.map(subscribeLive(get), (live) =>
-      Stream.concat(
-        Stream.succeed(subscribed),
-        Stream.fromSubscription(live).pipe(Stream.filter(isActivity)),
+export const threadsAtom = Backend.runtime
+  .atom((get) => {
+    get.mount(liveFeedAtom);
+    if (get(connectionAtom) !== "connected") {
+      return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
+    }
+    const listThreads = Backend.use((client) => client("ListThreads", undefined));
+    return Stream.unwrap(
+      Effect.map(subscribeLive(get), (live) =>
+        Stream.concat(
+          Stream.succeed(subscribed),
+          Stream.fromSubscription(live).pipe(Stream.filter(isActivity)),
+        ),
       ),
-    ),
-  ).pipe(
-    Stream.buffer({ capacity: 1, strategy: "sliding" }),
-    Stream.mapEffect(() => listThreads),
-    resubscribe,
-  );
-});
+    ).pipe(
+      Stream.buffer({ capacity: 1, strategy: "sliding" }),
+      Stream.mapEffect(() => listThreads),
+      resubscribe,
+    );
+  })
+  .pipe(Atom.withEquality(sameRead(Equal.equals)));
 
 export const harnessesAtom = Backend.runtime.atom((get) => {
   get(connectionAtom);
@@ -337,6 +351,23 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
       );
     })
     .pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
+);
+
+const sameEvents = (a: ReadonlyArray<AgentEvent>, b: ReadonlyArray<AgentEvent>) =>
+  a.length === b.length && a.every((event, index) => event === b[index]);
+
+/**
+ * A thread's events but streamed text, for what the window works out around the conversation (its
+ * agents, artifacts and changed files), none of which streamed text changes. It changes only when
+ * another event arrives, so the window around the transcript doesn't render again for every
+ * streamed word, which took 60 ms in a window listing 140 threads.
+ */
+export const settledEventsAtom = Atom.family((threadId: ThreadId) =>
+  Atom.make((get) =>
+    AsyncResult.map(get(threadEventsAtom(threadId)), (events) =>
+      events.filter((event) => !isStreamDelta(event.payload._tag)),
+    ),
+  ).pipe(Atom.withEquality(sameRead(sameEvents))),
 );
 
 export const createThread = Backend.mutation("CreateThread");

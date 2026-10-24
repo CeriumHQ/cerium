@@ -66,10 +66,10 @@ import {
   answerQuestion,
   sendMessage,
   setThreadArchived,
+  settledEventsAtom,
   stopAgent,
   stopThread,
   switchModel,
-  threadEventsAtom,
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
@@ -287,7 +287,9 @@ function Workspace() {
   const driven = useAtomValue(machineAtom);
   /** Where this tab was before a reload; it comes back once the window drives the same machine. */
   const [session] = useState(restoredSession);
-  const resumed = session?.machine === driven?.id ? session : undefined;
+  // Compared on its own line: the React Compiler skips a component whose ternary tests an optional chain.
+  const sameMachine = session?.machine === driven?.id;
+  const resumed = sameMachine ? session : undefined;
   const [resumePending, setResumePending] = useState(() => session !== undefined && resumed === undefined);
   const [mode, setMode] = useState<AppMode>(() => session?.mode ?? "work");
   /**
@@ -541,8 +543,9 @@ function Workspace() {
   });
   useEffect(() => markSeen(), [selectedSummary?.id, selectedSummary?.updatedAt]);
   // The open thread's events: live from the driven machine, or the cloud copy of another machine's.
+  // Without streamed text, which nothing here reads: its pane renders that, and the window doesn't.
   const eventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
-    ? threadEventsAtom(selected.thread.id)
+    ? settledEventsAtom(selected.thread.id)
     : cloudSelected
       ? cloudEventsAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
       : noEvents;

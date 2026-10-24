@@ -35,7 +35,7 @@
     "streamdown": "2.7.0"
   },
   "devDependencies": {
-    "@babel/core": "8.0.7",
+    "@babel/core": "7.29.7",
     "@effect/vitest": "4.0.5",
     "@iconify-json/material-icon-theme": "1.2.72",
     "@rolldown/plugin-babel": "0.2.4",

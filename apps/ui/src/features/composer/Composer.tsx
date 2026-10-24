@@ -92,6 +92,13 @@ const isDictationKey = (event: KeyboardEvent<HTMLDivElement>) =>
 const providers = OFFERED_PROVIDERS;
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
 
+/**
+ * Whether two mention triggers are one: the same character at the same place, with the same query.
+ * Out here because the React Compiler skips a component whose condition chains optional comparisons.
+ */
+const sameTrigger = (a: Trigger | undefined, b: Trigger | undefined) =>
+  a?.char === b?.char && a?.start === b?.start && a?.query === b?.query;
+
 /** A message as the box sends it: its text, which names each mention by its token. */
 export interface OutgoingMessage {
   readonly text: string;
@@ -907,13 +914,7 @@ export function Composer({
             placeholder={placeholder}
             onChange={(segments) => updateDraft(draftKey, (current) => ({ ...current, segments }))}
             onTrigger={(next) => {
-              if (
-                next?.char !== trigger?.char ||
-                next?.start !== trigger?.start ||
-                next?.query !== trigger?.query
-              ) {
-                setActive(0);
-              }
+              if (!sameTrigger(next, trigger)) setActive(0);
               setTrigger(next);
             }}
             onKeyDown={onKeyDown}
