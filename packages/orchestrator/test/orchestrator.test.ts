@@ -711,6 +711,25 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("keeps the run a thread was started in with others", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* orchestrator.createThread({
+        title: "Test",
+        mode: "work",
+        cwd: ".",
+        runId: "run-1",
+        lead: { provider: "claude", model: "opus", access: "ask" },
+      });
+      assert.strictEqual(thread.runId, "run-1");
+      const alone = yield* startWorkThread;
+      const listed = yield* orchestrator.listThreads;
+      assert.strictEqual(listed.find(({ id }) => id === thread.id)?.runId, "run-1");
+      assert.isUndefined(listed.find(({ id }) => id === alone.thread.id)?.runId);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("deletes threads for good, but not while they wait on the user", () => {
     const fake = makeFakeAdapter("claude", { askPermission: true });
     return Effect.gen(function* () {

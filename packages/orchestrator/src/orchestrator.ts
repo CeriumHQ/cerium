@@ -91,6 +91,8 @@ export interface CreateThreadInput {
   readonly cwd?: string;
   /** A work thread runs in a git worktree of `cwd`'s repository of its own instead of `cwd` itself. */
   readonly worktree?: boolean;
+  /** Shared by the threads one message starts together (multi agent). */
+  readonly runId?: string;
   readonly lead: {
     readonly provider: ProviderId;
     readonly model: string;
@@ -2213,6 +2215,7 @@ export class Orchestrator extends Context.Service<
           mode: input.mode,
           ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
           ...(isolated ? { worktree: isolated.worktree } : {}),
+          ...(input.runId ? { runId: input.runId } : {}),
           createdAt,
           updatedAt: createdAt,
         };

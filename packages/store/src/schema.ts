@@ -11,6 +11,8 @@ export const threads = sqliteTable("threads", {
   updatedAt: integer("updated_at").notNull(),
   archivedAt: integer("archived_at"),
   laterUntil: integer("later_until"),
+  /** Shared by the threads one message started together (multi agent). */
+  runId: text("run_id"),
 });
 
 export const agents = sqliteTable(

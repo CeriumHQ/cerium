@@ -42,16 +42,20 @@ import {
   canArchive,
   canDelete,
   boxOf,
+  groupRuns,
   isPutOff,
   type InboxBox,
   laterTime,
   laterWork,
+  needsYou,
   overflow,
+  runSummary,
   type ThreadSummary,
 } from "./model.ts";
 import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 import { type RenameThread } from "./Rename.tsx";
+import { RunScoreboard } from "./RunScoreboard.tsx";
 import type { RowControls } from "./ThreadRow.tsx";
 
 const SCOPE_KEY = "cerium:inboxScope";
@@ -237,11 +241,7 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
           )
         }
       >
-        {listed.map((thread) => (
-          <li key={thread.id}>
-            <InboxRow thread={thread} box="inbox" now={now} {...rowProps} />
-          </li>
-        ))}
+        <Entries threads={listed} box="inbox" now={now} {...rowProps} />
       </BoxPanel>
       {box === "inbox" && note ? (
         <div className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-xs text-fg-tertiary max-md:text-[13px]">
@@ -264,11 +264,7 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
       </BoxPanel>
 
       <BoxPanel value="later" label="Later" empty={later.length === 0 ? "Nothing put off." : undefined}>
-        {later.map((thread) => (
-          <li key={thread.id}>
-            <InboxRow thread={thread} box="later" now={now} {...rowProps} />
-          </li>
-        ))}
+        <Entries threads={later} box="later" now={now} {...rowProps} />
       </BoxPanel>
 
       <BoxPanel
@@ -276,11 +272,7 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
         label="Archive"
         empty={archive.length === 0 ? "Nothing archived yet." : undefined}
       >
-        {archive.map((thread) => (
-          <li key={thread.id}>
-            <InboxRow thread={thread} box="archive" now={now} {...rowProps} />
-          </li>
-        ))}
+        <Entries threads={archive} box="archive" now={now} {...rowProps} />
       </BoxPanel>
     </Tabs.Root>
   );
@@ -388,6 +380,175 @@ type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archiv
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
 };
+
+/** A list's threads, each multi-agent run's in one card. */
+function Entries({
+  threads,
+  box,
+  now,
+  ...rowProps
+}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
+  return groupRuns(threads).map((entry) =>
+    entry.kind === "thread" ? (
+      <li key={entry.thread.id}>
+        <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
+      </li>
+    ) : (
+      <li key={entry.id}>
+        <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
+      </li>
+    ),
+  );
+}
+
+/**
+ * A multi-agent run: one card for the message its threads were started with, a tally of where they
+ * are, and, folded out, how each one did. It opens by itself while one of them needs the user or is
+ * open; its actions take every thread in it along.
+ */
+function InboxRun({
+  threads,
+  box,
+  now,
+  selectedId,
+  onSelect,
+  onMarkRead,
+  onMarkUnread,
+  onNewThreadIn,
+  onRename,
+  onArchive,
+  onRestore,
+  onLater,
+  scope,
+  onScope,
+}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
+  const run = runSummary(threads);
+  const holdsSelected = threads.some((thread) => thread.id === selectedId);
+  const [toggled, setToggled] = useState<boolean>();
+  const open = toggled ?? (threads.some(needsYou) || holdsSelected);
+  const { folder, project } = run;
+  const here = threads.every((thread) => thread.elsewhere === undefined);
+  const archivable = threads.every(canArchive);
+  const each = (act: (threadId: string) => void) => () => {
+    for (const thread of threads) act(thread.id);
+  };
+  const putOff =
+    onLater && here && archivable
+      ? () => {
+          const until = laterTime(Date.now());
+          for (const thread of threads) onLater(thread.id, until);
+        }
+      : undefined;
+  const back =
+    box === "later" && onLater
+      ? each((threadId) => onLater(threadId, undefined))
+      : box === "archive"
+        ? each(onRestore)
+        : undefined;
+
+  const quick: Array<CardAction> = [];
+  if (box === "inbox" && here && archivable) {
+    if (putOff) quick.push({ icon: Clock, label: "Later", key: "h", run: putOff });
+    quick.push({ icon: Archive, label: "Archive", key: "e", run: each(onArchive) });
+  }
+  if (back && here) quick.push({ icon: Undo2, label: "Back to Inbox", key: "u", run: back });
+
+  const count = (status: ThreadSummary["status"]) =>
+    threads.filter((thread) => thread.status === status).length;
+  const tally = [
+    { count: count("running"), label: "working", tone: "text-running" },
+    { count: count("failed"), label: "failed", tone: "text-error" },
+    { count: count("idle"), label: "done", tone: "" },
+  ].filter((part) => part.count > 0);
+
+  const menu = () => (
+    <>
+      {box === "inbox" ? (
+        run.unread ? (
+          <MenuItem icon={MailOpen} onClick={() => onMarkRead(threads.filter((thread) => thread.unread))}>
+            Mark as read
+          </MenuItem>
+        ) : (
+          <MenuItem icon={Mail} onClick={each(onMarkUnread)}>
+            Mark as unread
+          </MenuItem>
+        )
+      ) : null}
+      {folder && project ? (
+        <>
+          {here ? (
+            <MenuItem icon={SquarePen} onClick={() => onNewThreadIn(folder)}>
+              <span className="max-w-64 truncate">New thread in {project}</span>
+            </MenuItem>
+          ) : null}
+          {scope === folder ? (
+            <MenuItem icon={ListFilter} onClick={() => onScope("")}>
+              Show all projects
+            </MenuItem>
+          ) : (
+            <MenuItem icon={ListFilter} onClick={() => onScope(folder)}>
+              <span className="max-w-64 truncate">Show only {project}</span>
+            </MenuItem>
+          )}
+        </>
+      ) : null}
+      {here ? (
+        <>
+          <MenuSeparator />
+          {box === "inbox" && putOff ? (
+            <MenuItem icon={Clock} onClick={putOff}>
+              Later
+            </MenuItem>
+          ) : null}
+          {back ? (
+            <MenuItem icon={box === "archive" ? ArchiveRestore : Undo2} onClick={back}>
+              Back to Inbox
+            </MenuItem>
+          ) : null}
+          {box === "archive" ? null : (
+            <MenuItem icon={Archive} disabled={!archivable} onClick={each(onArchive)}>
+              Archive all {threads.length}
+            </MenuItem>
+          )}
+        </>
+      ) : null}
+    </>
+  );
+  const laterUntil = Math.max(...threads.map((thread) => thread.laterUntil ?? 0));
+  return (
+    <>
+      <InboxCard
+        thread={run}
+        selected={holdsSelected && !open}
+        pinned={false}
+        {...(box === "later" && laterUntil > 0 ? { when: backLabel(laterUntil, now) } : {})}
+        actions={quick}
+        onSelect={onSelect}
+        onRename={onRename}
+        menu={menu}
+        group={{
+          count: threads.length,
+          open,
+          onToggle: () => setToggled(!open),
+          tally: tally.map((part, index) => (
+            <span key={part.label} className={part.tone}>
+              {index > 0 ? " · " : ""}
+              {part.count} {part.label}
+            </span>
+          )),
+        }}
+      />
+      {open ? (
+        <RunScoreboard
+          threads={threads}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onArchive={box === "archive" ? undefined : onArchive}
+        />
+      ) : null}
+    </>
+  );
+}
 
 function InboxRow({
   thread,

@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `run_id` text;

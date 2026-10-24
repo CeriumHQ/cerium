@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
+import { ChevronDown, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { ContextMenuArea, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
@@ -34,6 +34,16 @@ export interface InboxCardProps {
   /** The menu's items; none when the thread has no actions here. */
   readonly menu?: (controls: RowControls) => ReactNode;
   readonly onDelete?: (threadId: string) => void;
+  /**
+   * Makes it a multi-agent run's card, `thread` summing up its threads: a click folds out the
+   * comparison of them below it rather than opening one, and the meta line ends in `tally`.
+   */
+  readonly group?: {
+    readonly count: number;
+    readonly open: boolean;
+    readonly onToggle: () => void;
+    readonly tally: ReactNode;
+  };
 }
 
 const asks = { awaitingApproval: "Needs you", failed: "Failed" } as const;
@@ -52,6 +62,7 @@ export function InboxCard({
   onRename,
   menu,
   onDelete,
+  group,
 }: InboxCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -82,7 +93,7 @@ export function InboxCard({
   const content = (
     <>
       <span className="row-span-2 self-start pt-px max-md:pt-0.5">
-        <ThreadMark thread={thread} unread={unread} />
+        <ThreadMark thread={thread} unread={unread} {...(group ? { count: group.count } : {})} />
       </span>
       {editing ? (
         <TitleField title={thread.title} onDone={finish} className={`-mx-1 h-5.5 ${titleClass}`} />
@@ -116,6 +127,7 @@ export function InboxCard({
               <span className="font-mono text-[11px] max-md:text-xs">{thread.worktree.branch}</span>
             </>
           ) : null}
+          {group ? <> · {group.tally}</> : null}
         </span>
         {pinned ? <Pin size={11} strokeWidth={2} aria-label="Pinned" className="shrink-0" /> : null}
         {thread.machine ? (
@@ -127,7 +139,16 @@ export function InboxCard({
           </span>
         ) : null}
         {/* The lead's harness is on the mark; the rest only when they differ from it. */}
-        {new Set(thread.providers).size > 1 ? <ProviderStack providers={thread.providers} /> : null}
+        {group ? (
+          <ChevronDown
+            size={13}
+            strokeWidth={1.75}
+            aria-hidden
+            className={`shrink-0 transition-transform duration-150 ${group.open ? "rotate-180" : ""}`}
+          />
+        ) : new Set(thread.providers).size > 1 ? (
+          <ProviderStack providers={thread.providers} />
+        ) : null}
       </span>
     </>
   );
@@ -137,12 +158,12 @@ export function InboxCard({
     <Button
       ref={row}
       // Ctrl or the middle button opens it in a tab of its own.
-      onClick={(event) => onSelect(thread.id, event.ctrlKey || event.metaKey)}
+      onClick={(event) => (group ? group.onToggle() : onSelect(thread.id, event.ctrlKey || event.metaKey))}
       onMouseDown={(event) => {
         if (event.button === 1) event.preventDefault();
       }}
       onAuxClick={(event) => {
-        if (event.button === 1) onSelect(thread.id, true);
+        if (event.button === 1 && group === undefined) onSelect(thread.id, true);
       }}
       onKeyDown={(event) => {
         if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
@@ -153,9 +174,10 @@ export function InboxCard({
       }}
       data-thread={thread.id}
       aria-current={selected ? "page" : undefined}
+      aria-expanded={group?.open}
       aria-label={[status ? asks[status] : undefined, title, thread.project].filter(Boolean).join(", ")}
       // Dragged onto the conversation, it opens beside it, or in its place.
-      draggable
+      draggable={group === undefined}
       onDragStart={(event) => {
         event.dataTransfer.setData(THREAD_DRAG_TYPE, thread.id);
         event.dataTransfer.effectAllowed = "move";

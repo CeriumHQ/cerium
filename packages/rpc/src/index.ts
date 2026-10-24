@@ -75,7 +75,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 24;
+export const RPC_VERSION = 25;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -112,6 +112,11 @@ export const CreateThreadPayload = Schema.Struct({
   cwd: Schema.optionalKey(Schema.NonEmptyString),
   /** A work thread runs in a git worktree of its own. Since `RPC_VERSION` 7. */
   worktree: Schema.optionalKey(Schema.Boolean),
+  /**
+   * The same for each thread one message starts with several models (multi agent), which the
+   * sidebar shows as one run. Since `RPC_VERSION` 25; an older backend leaves the threads apart.
+   */
+  runId: Schema.optionalKey(Schema.NonEmptyString),
   lead: Schema.Struct({
     provider: ProviderId,
     model: Schema.NonEmptyString,

@@ -1377,6 +1377,8 @@ function Workspace() {
     newFolder: string | undefined,
   ) => {
     const title = (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80);
+    // The threads of one multi-agent run share an id, so the sidebar shows them as one.
+    const runId = setups.length > 1 ? crypto.randomUUID() : undefined;
     const created = await settleInTurn(setups, ({ worktree, ...lead }) =>
       create({
         payload: {
@@ -1384,6 +1386,7 @@ function Workspace() {
           mode,
           ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
           ...(worktree ? { worktree } : {}),
+          ...(runId ? { runId } : {}),
           lead,
         },
       }),

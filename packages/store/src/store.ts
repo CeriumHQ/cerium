@@ -252,6 +252,7 @@ export class Store extends Context.Service<
                 worktree: thread.worktree ?? null,
                 archivedAt: thread.archivedAt ?? null,
                 laterUntil: thread.laterUntil ?? null,
+                runId: thread.runId ?? null,
               }),
             ),
           getThread: (id) =>

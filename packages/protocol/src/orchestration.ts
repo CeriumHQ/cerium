@@ -85,6 +85,11 @@ export const ThreadInfo = Schema.Struct({
    * apart, unless it needs them sooner.
    */
   laterUntil: Schema.optionalKey(EpochMillis),
+  /**
+   * Shared by the threads one message started together, a thread with each model it was sent to
+   * (multi agent), so the sidebar can show them as one run.
+   */
+  runId: Schema.optionalKey(Schema.NonEmptyString),
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
 

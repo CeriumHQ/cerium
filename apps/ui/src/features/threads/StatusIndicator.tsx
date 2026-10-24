@@ -48,17 +48,20 @@ export function ThreadMark({
   thread,
   unread,
   size = "medium",
+  count,
 }: {
   thread: Pick<ThreadSummary, "status" | "project" | "folder" | "providers" | "elsewhere">;
   unread: boolean;
   size?: keyof typeof markSizes;
+  /** A multi-agent run's mark: how many threads it holds, on the corner in place of a harness. */
+  count?: number;
 }) {
   const { tile, logo, logoOut, dot, dotOut, gap } = markSizes[size];
   const { status } = thread;
   const provider = thread.providers[0];
   const project = thread.folder !== undefined && thread.project !== undefined;
   const signal = status !== "idle" || unread;
-  const corner = project && provider !== undefined;
+  const corner = (project && provider !== undefined) || count !== undefined;
   const holes = [
     ...(corner ? [hole(logo, logoOut, gap, "bottom")] : []),
     ...(signal ? [hole(dot, dotOut, gap, "top")] : []),
@@ -83,13 +86,21 @@ export function ThreadMark({
           <span className="size-full rounded-[5px] border border-line-subtle bg-surface-raised" />
         )}
       </span>
-      {corner ? (
+      {count !== undefined ? (
+        <span
+          className="absolute grid place-items-center rounded-full bg-fg-secondary text-[7.5px] leading-none font-bold text-background tabular-nums"
+          style={{ right: -logoOut, bottom: -logoOut, width: logo, height: logo }}
+        >
+          <span className="sr-only">{count} threads, </span>
+          {count}
+        </span>
+      ) : corner ? (
         <span
           className="absolute grid place-items-center text-fg-secondary"
           style={{ right: -logoOut, bottom: -logoOut, width: logo, height: logo }}
         >
-          <span className="sr-only">{providerName[provider]}</span>
-          <ProviderLogo provider={provider} size={logo} />
+          <span className="sr-only">{providerName[provider!]}</span>
+          <ProviderLogo provider={provider!} size={logo} />
         </span>
       ) : null}
       {signal ? (

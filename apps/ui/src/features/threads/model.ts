@@ -30,7 +30,60 @@ export interface ThreadSummary {
    * comes from the cloud copy, and acting on it means going to that machine.
    */
   readonly elsewhere?: { readonly machine: string; readonly online: boolean };
+  /** The lead agent and the model it runs: what tells apart the threads of a multi-agent run. */
+  readonly lead?: { readonly id: string; readonly model: string };
+  /** Shared by the threads one message started with several models (multi agent). */
+  readonly runId?: string;
 }
+
+/** What a list shows: a thread on its own, or the threads of one multi-agent run in one card. */
+export type InboxEntry =
+  | { readonly kind: "thread"; readonly thread: ThreadSummary }
+  | { readonly kind: "run"; readonly id: string; readonly threads: ReadonlyArray<ThreadSummary> };
+
+/**
+ * A list's threads as it shows them: each run's threads together where the first of them is, in the
+ * order they were started, and a run with one thread left in the list as that thread alone.
+ */
+export const groupRuns = (threads: ReadonlyArray<ThreadSummary>): ReadonlyArray<InboxEntry> => {
+  const runs = Map.groupBy(
+    threads.filter((thread) => thread.runId !== undefined),
+    (thread) => thread.runId!,
+  );
+  const placed = new Set<string>();
+  return threads.flatMap((thread): ReadonlyArray<InboxEntry> => {
+    const run = thread.runId === undefined ? undefined : runs.get(thread.runId);
+    if (run === undefined || run.length < 2) return [{ kind: "thread", thread }];
+    if (placed.has(thread.runId!)) return [];
+    placed.add(thread.runId!);
+    const started = [...run].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    return [{ kind: "run", id: thread.runId!, threads: started }];
+  });
+};
+
+/** An entry's threads. */
+export const entryThreads = (entry: InboxEntry): ReadonlyArray<ThreadSummary> =>
+  entry.kind === "thread" ? [entry.thread] : entry.threads;
+
+const statusRank = { awaitingApproval: 3, running: 2, failed: 1, idle: 0 } as const;
+
+/**
+ * A run as one thread for what the card shows of it: the status that asks most of the user, unread
+ * when any of its threads is, its latest activity, and each thread's harness, in the order started.
+ */
+export const runSummary = (threads: ReadonlyArray<ThreadSummary>): ThreadSummary => {
+  const [first, ...rest] = threads as readonly [ThreadSummary, ...Array<ThreadSummary>];
+  return {
+    ...first,
+    status: rest.reduce(
+      (status, thread) => (statusRank[thread.status] > statusRank[status] ? thread.status : status),
+      first.status,
+    ),
+    unread: threads.some((thread) => thread.unread),
+    providers: threads.flatMap((thread) => thread.providers.slice(0, 1)),
+    updatedAt: Math.max(...threads.map((thread) => thread.updatedAt)),
+  };
+};
 
 /** Archived threads leave the sidebar, except while they wait on the user: a request is never out of sight. */
 export const isListed = (thread: ThreadSummary): boolean =>
@@ -118,9 +171,10 @@ export const laterWork = (threads: ReadonlyArray<ThreadSummary>, now: number): R
 export const INBOX_CAP = 8;
 
 /**
- * What the inbox lets go when it holds more than `cap`: the oldest threads that are finished and read,
- * and that the user doesn't keep (pinned or open). One in a worktree is left alone, since archiving
- * removes its worktree, and so is one on another machine, which is archived there.
+ * What the inbox lets go when it holds more than `cap` cards, a multi-agent run counting as one: the
+ * oldest that are finished and read, and that the user doesn't keep (pinned or open). One in a
+ * worktree is left alone, since archiving removes its worktree, and so is one on another machine,
+ * which is archived there. A run goes only as a whole.
  */
 export const overflow = (
   inbox: ReadonlyArray<ThreadSummary>,
@@ -128,19 +182,22 @@ export const overflow = (
   now: number,
   cap = INBOX_CAP,
 ): ReadonlyArray<ThreadSummary> => {
-  const excess = inbox.length - cap;
+  const entries = groupRuns(inbox);
+  const excess = entries.length - cap;
   if (excess <= 0) return [];
-  return inbox
-    .filter(
-      (thread) =>
-        thread.status === "idle" &&
-        !thread.unread &&
-        thread.worktree === undefined &&
-        thread.elsewhere === undefined &&
-        !keep(thread),
-    )
-    .sort((a, b) => inboxAt(a, now) - inboxAt(b, now))
-    .slice(0, excess);
+  const quiet = (thread: ThreadSummary) =>
+    thread.status === "idle" &&
+    !thread.unread &&
+    thread.worktree === undefined &&
+    thread.elsewhere === undefined &&
+    !keep(thread);
+  const latest = (entry: InboxEntry) =>
+    Math.max(...entryThreads(entry).map((thread) => inboxAt(thread, now)));
+  return entries
+    .filter((entry) => entryThreads(entry).every(quiet))
+    .sort((a, b) => latest(a) - latest(b))
+    .slice(0, excess)
+    .flatMap(entryThreads);
 };
 
 export const providerName: Record<ProviderId, string> = {
