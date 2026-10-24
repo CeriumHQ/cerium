@@ -470,6 +470,13 @@ export const toolMenuPlan = (tool: ToolBlock): ToolMenuPlan => {
   }
 };
 
+/**
+ * Whether a tool row has a menu, which is whether `toolMenuPlan` offers anything: it copies the input
+ * whenever there is one, so only a call without any has its output laid out to tell.
+ */
+export const hasToolMenu = (tool: ToolBlock): boolean =>
+  tool.input !== undefined || (tool.output !== undefined && outputText(tool.output) !== "");
+
 /** What an opened tool row shows of the call's input, by the kind of tool. */
 export type ToolInputView =
   /** A file edit, as a diff. */

@@ -24,6 +24,7 @@ import {
   describeTool,
   exitCodeOf,
   failureLine,
+  hasToolMenu,
   outputText,
   summarizeTools,
   toolImages,
@@ -165,39 +166,8 @@ function ToolRow({
 }) {
   const [open, setOpen] = useState(false);
   const { icon: Icon, verb, detail, mono } = describeTool(tool);
-  const plan = toolMenuPlan(tool);
-  const folder = useContext(WorkspaceFolder);
-  const reveal = shellBridge()?.revealPath;
-  const location = plan.path ? resolvePath(plan.path, folder) : undefined;
   // A failed call says why on its row, so a folded run opens onto what went wrong.
   const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
-  const menu = (
-    <>
-      {plan.copy ? (
-        <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(location ?? plan.copy!.text)}>
-          {plan.copy.label}
-        </MenuItem>
-      ) : null}
-      {reveal && location ? (
-        <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
-          Show in File Explorer
-        </MenuItem>
-      ) : null}
-      {plan.url ? (
-        <MenuItem icon={ExternalLink} onClick={() => window.open(plan.url, "_blank", "noopener,noreferrer")}>
-          Open in browser
-        </MenuItem>
-      ) : null}
-      {plan.output !== undefined ? (
-        <>
-          {plan.copy ? <MenuSeparator /> : null}
-          <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(plan.output!)}>
-            Copy output
-          </MenuItem>
-        </>
-      ) : null}
-    </>
-  );
   const header = (
     <Collapsible.Trigger className="group block w-full text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
       <span className="flex h-7 items-center gap-2 px-2.5 max-md:h-9">
@@ -232,8 +202,8 @@ function ToolRow({
       onOpenChange={setOpen}
       className={divider ? "border-t border-line-subtle" : ""}
     >
-      {plan.copy || plan.output !== undefined ? (
-        <ContextMenuArea menu={menu}>{header}</ContextMenuArea>
+      {hasToolMenu(tool) ? (
+        <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
       ) : (
         header
       )}
@@ -241,6 +211,44 @@ function ToolRow({
         <ToolBody tool={tool} />
       </Collapsible.Panel>
     </Collapsible.Root>
+  );
+}
+
+/**
+ * A tool row's right-click menu. It renders only while open: what it copies includes the output laid
+ * out for reading, which took most of a live run's time when every row worked it out on each update.
+ */
+function ToolMenu({ tool }: { tool: ToolBlock }) {
+  const plan = toolMenuPlan(tool);
+  const folder = useContext(WorkspaceFolder);
+  const reveal = shellBridge()?.revealPath;
+  const location = plan.path ? resolvePath(plan.path, folder) : undefined;
+  return (
+    <>
+      {plan.copy ? (
+        <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(location ?? plan.copy!.text)}>
+          {plan.copy.label}
+        </MenuItem>
+      ) : null}
+      {reveal && location ? (
+        <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
+          Show in File Explorer
+        </MenuItem>
+      ) : null}
+      {plan.url ? (
+        <MenuItem icon={ExternalLink} onClick={() => window.open(plan.url, "_blank", "noopener,noreferrer")}>
+          Open in browser
+        </MenuItem>
+      ) : null}
+      {plan.output !== undefined ? (
+        <>
+          {plan.copy ? <MenuSeparator /> : null}
+          <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(plan.output!)}>
+            Copy output
+          </MenuItem>
+        </>
+      ) : null}
+    </>
   );
 }
 

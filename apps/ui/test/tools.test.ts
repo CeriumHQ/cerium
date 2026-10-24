@@ -4,6 +4,7 @@ import {
   describeTool,
   exitCodeOf,
   failureLine,
+  hasToolMenu,
   outputText,
   summarizeTools,
   toolImages,
@@ -183,6 +184,31 @@ describe("toolMenuPlan", () => {
       text: JSON.stringify({ role: "x" }, null, 2),
     });
     expect(plan("sleep", undefined)).toEqual({});
+  });
+
+  it("is offered whenever it has something, which a row tells without laying the output out", () => {
+    const image = [{ type: "image", source: { media_type: "image/png", data: "iVBORw0K" } }];
+    const calls: ReadonlyArray<ToolBlock> = [
+      ["Bash", { command: "ls" }, "total 0"],
+      ["Read", { file_path: "a.ts" }],
+      ["sleep", undefined],
+      ["sleep", undefined, "done"],
+      ["sleep", undefined, image],
+    ].map(([toolName, input, output]) => ({
+      kind: "tool",
+      id: "tool:1",
+      toolName: toolName as string,
+      input,
+      output,
+      status: "done",
+      changedFiles: [],
+    }));
+    const offered = calls.map((call) => {
+      const { copy, output } = toolMenuPlan(call);
+      return copy !== undefined || output !== undefined;
+    });
+    expect(offered).toEqual([true, true, false, true, false]);
+    expect(calls.map(hasToolMenu)).toEqual(offered);
   });
 
   it("copies the output as the panel shows it, with blobs elided, and not when images replace it", () => {
