@@ -116,10 +116,14 @@ export function ImageThumb({
           aria-label={`Enlarge ${name}`}
           className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-accent data-popup-open:brightness-110 ${className}`}
         >
+          {/* A screenshot is decoded whole for its thumbnail: off the main thread, and only once a
+              transcript scrolls near it. */}
           <img
             src={url}
             alt={name}
             draggable={false}
+            decoding="async"
+            loading="lazy"
             className={`object-cover transition-[filter] duration-150 group-hover/thumb:brightness-110 ${
               fit === "natural" ? "h-full w-auto max-w-full" : "size-full"
             }`}
