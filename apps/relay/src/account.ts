@@ -22,8 +22,6 @@ import {
   type RelayMessage,
   type SyncMessage,
   type ThreadId,
-  type ThreadOverview,
-  type AccountThread,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
 import { and, asc, eq, isNull, lt, sql, type SQL } from "drizzle-orm";
@@ -45,7 +43,7 @@ import {
   type PushRow,
 } from "./notify.ts";
 import * as tables from "./schema.ts";
-import { appendBatch } from "./sync.ts";
+import { accountDraftsJson, accountThreadsJson, appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
 
@@ -74,9 +72,12 @@ const GONE_DRAFTS_KEPT_MS = 30 * 24 * 60 * 60 * 1000;
 
 const decodeDeviceMessage = Schema.decodeUnknownOption(Schema.fromJsonString(DeviceMessage));
 
-const send = (socket: WebSocket, message: RelayMessage) => {
+const send = (socket: WebSocket, message: RelayMessage) => sendJson(socket, JSON.stringify(message));
+
+/** A `RelayMessage` written as JSON already. */
+const sendJson = (socket: WebSocket, json: string) => {
   try {
-    socket.send(JSON.stringify(message));
+    socket.send(json);
   } catch {
     // The socket is closing; its close handler tells the others.
   }
@@ -617,15 +618,15 @@ export class Account extends DurableObject<Env> {
         ),
       });
     }
-    send(socket, {
-      _tag: "AccountThreads",
-      threads: threads.map((row): AccountThread => ({
-        machine: row.machine as DeviceId,
-        overview: JSON.parse(row.overview) as ThreadOverview,
-      })),
-      read: read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seenAt })),
-    });
-    send(socket, { _tag: "AccountDrafts", drafts: this.draftRows() });
+    // Every overview and draft of the account goes out as it's stored, without parsing each to send it.
+    sendJson(
+      socket,
+      accountThreadsJson(
+        threads,
+        read.map((row): ReadEntry => ({ threadId: row.thread as ThreadId, seenAt: row.seenAt })),
+      ),
+    );
+    sendJson(socket, accountDraftsJson(this.db.select().from(tables.drafts).all()));
   }
 
   /** Sends every device's sockets a message, but for the connection it came from. */
