@@ -208,9 +208,9 @@ export function SplitView({
           label={label(leaf)}
           still={resizing !== undefined || drag !== undefined}
           renderPane={renderPane}
-          onFocus={() => onFocus(leaf.id)}
-          onClose={() => onClose(leaf.id)}
-          onSplit={(side) => onSplit(leaf.id, side)}
+          onFocus={onFocus}
+          onClose={onClose}
+          onSplit={onSplit}
         />
       ))}
       {edges.map((edge) => (
@@ -284,20 +284,24 @@ function Pane({
   /** Something is being dragged: the pane follows at once rather than easing after it. */
   still: boolean;
   renderPane: (leaf: PaneLeaf, focused: boolean, chrome: PaneChrome | undefined) => ReactNode;
-  onFocus: () => void;
-  onClose: () => void;
-  onSplit: (side: Side) => void;
+  onFocus: (id: string) => void;
+  onClose: (id: string) => void;
+  onSplit: (id: string, side: Side) => void;
 }) {
+  // Bound to the pane here, so they stay the same while it does: a pane that wears its own header is
+  // handed them, and new ones would render what it shows again on every move of a drag beside it.
+  const focus = () => onFocus(leaf.id);
+  const close = () => onClose(leaf.id);
   const menu = (
     <>
-      <MenuItem icon={Columns2} shortcut="Ctrl \" onClick={() => onSplit("right")}>
+      <MenuItem icon={Columns2} shortcut="Ctrl \" onClick={() => onSplit(leaf.id, "right")}>
         New thread to the right
       </MenuItem>
-      <MenuItem icon={Rows2} shortcut="Ctrl Shift \" onClick={() => onSplit("bottom")}>
+      <MenuItem icon={Rows2} shortcut="Ctrl Shift \" onClick={() => onSplit(leaf.id, "bottom")}>
         New thread below
       </MenuItem>
       <MenuSeparator />
-      <MenuItem icon={X} onClick={onClose}>
+      <MenuItem icon={X} onClick={close}>
         Close pane
       </MenuItem>
     </>
@@ -306,15 +310,15 @@ function Pane({
   return (
     <section
       aria-label={split ? label.title : undefined}
-      onPointerDownCapture={onFocus}
-      onFocusCapture={onFocus}
+      onPointerDownCapture={focus}
+      onFocusCapture={focus}
       style={placed(box)}
       className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-panel shadow-raised ${
         still ? "" : "transition-[left,top,width,height] duration-200 ease-out-soft"
       } motion-reduce:transition-none ${split && focused ? "border-line-strong" : "border-line-subtle"}`}
     >
       {chrome && !label.ownHeader ? (
-        <PaneHeader label={label} focused={focused} chrome={chrome} onClose={onClose} />
+        <PaneHeader label={label} focused={focused} chrome={chrome} onClose={close} />
       ) : null}
       <div className="relative min-h-0 flex-1">
         {renderPane(leaf, focused, label.ownHeader ? chrome : undefined)}
