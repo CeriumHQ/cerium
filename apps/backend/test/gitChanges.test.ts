@@ -6,7 +6,14 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { PickedHunk } from "@cerium/rpc";
 
 import { Git } from "../src/git.ts";
-import { GitChanges, linePatch, parentFolders, parseStatusV2, rawHunks } from "../src/gitChanges.ts";
+import {
+  GitChanges,
+  leadingFields,
+  linePatch,
+  parentFolders,
+  parseStatusV2,
+  rawHunks,
+} from "../src/gitChanges.ts";
 import { madeOnce, sameFolder } from "./repositories.ts";
 
 describe("git status", () => {
@@ -35,6 +42,13 @@ describe("git status", () => {
       { path: "src/both changed.ts", state: "modified" },
     ]);
     expect(conflicted).toEqual([{ path: "fight.ts", state: "conflicted" }]);
+  });
+
+  it("reads a status's first fields and says when there are more", () => {
+    expect(leadingFields("a\0b\0c\0", 3)).toEqual({ text: "a\0b\0c\0", more: false });
+    expect(leadingFields("a\0b\0c\0", 5)).toEqual({ text: "a\0b\0c\0", more: false });
+    expect(leadingFields("a\0b\0c\0", 2)).toEqual({ text: "a\0b\0", more: true });
+    expect(leadingFields("", 2)).toEqual({ text: "", more: false });
   });
 
   it("names the folders a path is in, nearest first", () => {

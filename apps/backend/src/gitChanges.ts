@@ -21,6 +21,11 @@ import { explainGit, Git, gitComplaint, GitError, gitFailure } from "./git.ts";
 
 /** Changed files listed at once; past it the status says it was cut. */
 const MAX_CHANGES = 5_000;
+/**
+ * Fields of `git status -z` read at most. A file takes one and a rename two, so a status with more
+ * holds more files than are listed: the rest isn't parsed and sorted only to be dropped.
+ */
+const MAX_STATUS_FIELDS = 2 * MAX_CHANGES;
 /** How long a commit may take, its hooks included, before it is stopped. */
 const COMMIT_TIMEOUT = "10 minutes";
 
@@ -52,6 +57,20 @@ export const parentFolders = (path: string): ReadonlyArray<string> => {
   for (let at = path.lastIndexOf("/"); at > 0; at = path.lastIndexOf("/", at - 1))
     folders.push(path.slice(0, at));
   return folders;
+};
+
+/** `output`'s first `most` NUL-ended fields, and whether it holds more. */
+export const leadingFields = (
+  output: string,
+  most: number,
+): { readonly text: string; readonly more: boolean } => {
+  let end = 0;
+  for (let count = 0; count < most; count++) {
+    const at = output.indexOf("\0", end);
+    if (at === -1) return { text: output, more: false };
+    end = at + 1;
+  }
+  return { text: output.slice(0, end), more: end < output.length };
 };
 
 /** The fields of a `git status --porcelain=v2` line before its path, by the line's kind. */
@@ -344,7 +363,8 @@ export class GitChanges extends Context.Service<
         );
         if (result.code !== 0 && !result.truncated)
           return yield* gitFailure(result, "Git couldn't say what changed.");
-        const { staged, unstaged, conflicted } = parseStatusV2(result.stdout);
+        const { text, more } = leadingFields(result.stdout, MAX_STATUS_FIELDS);
+        const { staged, unstaged, conflicted } = parseStatusV2(text);
         const total = staged.length + unstaged.length + conflicted.length;
         const keep = (list: Array<GitFileChange>, room: number) => list.slice(0, Math.max(0, room));
         const keptConflicted = keep(conflicted, MAX_CHANGES);
@@ -356,7 +376,7 @@ export class GitChanges extends Context.Service<
           staged: keptStaged,
           unstaged: keptUnstaged,
           conflicted: keptConflicted,
-          ...(result.truncated || total > MAX_CHANGES ? { truncated: true as const } : {}),
+          ...(result.truncated || more || total > MAX_CHANGES ? { truncated: true as const } : {}),
         } satisfies GitStatus;
       });
 
