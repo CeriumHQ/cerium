@@ -101,6 +101,75 @@ type Flow =
   | { readonly action: HarnessCommand; readonly started: Promise<CommandTerminal> }
   | undefined;
 
+/** Where a missing harness is installed from: the first link in its install hint. */
+export const installUrl = (status: Extract<HarnessStatus, { _tag: "HarnessMissing" }>): string | undefined =>
+  /https:\/\/[^\s,]+/.exec(status.installHint)?.[0].replace(/[.;:)]+$/u, "");
+
+/**
+ * What an installed harness offers to do about itself, signing in, its one-time setup and updating,
+ * and the dialogs those open. Settings → Harnesses and the welcome lay them out each their own way.
+ */
+export function useHarnessFlows(status: Installed, onChanged: () => void) {
+  const { provider, auth, setup } = status;
+  const [flow, setFlow] = useState<Flow>();
+  const startCommand = useStartCommand(provider);
+  const run = (action: HarnessCommand) => setFlow({ action, started: startCommand(action) });
+  const running = (action: HarnessCommand) =>
+    typeof flow === "object" && flow.action === action ? flow.started : undefined;
+  const name = harnessName[provider];
+  const newer = status.latestVersion;
+  const close = (open: boolean) => {
+    if (!open) setFlow(undefined);
+  };
+  return {
+    signIn: () =>
+      auth._tag === "LoggedOut" && auth.browserLogin === true ? setFlow("browserSignIn") : run("login"),
+    setUp: () => setFlow("setup"),
+    update: () => run("update"),
+    dialogs: (
+      <>
+        {auth._tag === "LoggedOut" && auth.browserLogin ? (
+          <BrowserSignInDialog
+            open={flow === "browserSignIn"}
+            onOpenChange={close}
+            provider={provider}
+            onSignedIn={() => {
+              setFlow(undefined);
+              onChanged();
+            }}
+          />
+        ) : (
+          <CommandDialog
+            started={running("login")}
+            onClose={() => setFlow(undefined)}
+            title={`Sign in to ${name}`}
+            description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never reads it.`}
+            command={auth._tag === "LoggedOut" ? auth.loginCommand : undefined}
+            onFinished={onChanged}
+          />
+        )}
+        {status.updateCommand === undefined ? null : (
+          <CommandDialog
+            started={running("update")}
+            onClose={() => setFlow(undefined)}
+            title={`Update ${name}`}
+            description={
+              newer === undefined
+                ? `${name} updates itself below.`
+                : `${name} updates itself to ${newer} below.`
+            }
+            command={status.updateCommand}
+            onFinished={onChanged}
+          />
+        )}
+        {setup === undefined ? null : (
+          <SetupDialog open={flow === "setup"} onOpenChange={close} status={status} setup={setup} />
+        )}
+      </>
+    ),
+  };
+}
+
 function HarnessRow({
   provider,
   status,
@@ -118,11 +187,6 @@ function HarnessRow({
   /** The machine hasn't answered yet, so nothing is known. */
   unknown?: boolean;
 }) {
-  const [flow, setFlow] = useState<Flow>();
-  const startCommand = useStartCommand(provider);
-  const run = (action: HarnessCommand) => setFlow({ action, started: startCommand(action) });
-  const running = (action: HarnessCommand) =>
-    typeof flow === "object" && flow.action === action ? flow.started : undefined;
   const name = harnessName[provider];
   const mark = <ProviderLogo provider={provider} size={16} />;
 
@@ -130,7 +194,7 @@ function HarnessRow({
     return <ToolRow mark={mark} name={name} dim detail={unknown ? "Checking…" : "Not supported yet"} />;
   }
   if (status._tag === "HarnessMissing") {
-    const url = /https:\/\/[^\s,]+/.exec(status.installHint)?.[0].replace(/[.;:)]+$/u, "");
+    const url = installUrl(status);
     return (
       <ToolRow
         mark={mark}
@@ -148,38 +212,42 @@ function HarnessRow({
       />
     );
   }
+  return <InstalledRow status={status} local={local} onChanged={onChanged} />;
+}
 
+function InstalledRow({
+  status,
+  local,
+  onChanged,
+}: {
+  status: Installed;
+  local: boolean;
+  onChanged: () => void;
+}) {
   const { auth, setup } = status;
+  const flows = useHarnessFlows(status, onChanged);
   const newer = status.latestVersion;
   const signedOut = auth._tag === "LoggedOut";
-  const update =
-    newer !== undefined && status.updateCommand !== undefined ? (
-      <RowButton onClick={() => run("update")}>Update</RowButton>
-    ) : null;
-  const close = (open: boolean) => {
-    if (!open) setFlow(undefined);
-  };
   return (
     <>
       <ToolRow
-        mark={mark}
-        name={name}
+        mark={<ProviderLogo provider={status.provider} size={16} />}
+        name={harnessName[status.provider]}
         dim={signedOut}
         newer={newer}
         tone={signedOut || setup ? "attention" : "quiet"}
         detail={signedOut ? "Not signed in" : setup ? "Needs setup" : accountLabel(auth)}
         action={
           <>
-            {update}
+            {newer !== undefined && status.updateCommand !== undefined ? (
+              <RowButton onClick={flows.update}>Update</RowButton>
+            ) : null}
             {signedOut ? (
-              <RowButton
-                tone="primary"
-                onClick={() => (auth.browserLogin === true ? setFlow("browserSignIn") : run("login"))}
-              >
+              <RowButton tone="primary" onClick={flows.signIn}>
                 Sign in
               </RowButton>
             ) : setup ? (
-              <RowButton tone="primary" onClick={() => setFlow("setup")}>
+              <RowButton tone="primary" onClick={flows.setUp}>
                 Set up
               </RowButton>
             ) : null}
@@ -189,43 +257,7 @@ function HarnessRow({
           <InstalledMenu version={status.version} newer={newer} path={status.executablePath} local={local} />
         }
       />
-      {auth._tag === "LoggedOut" && auth.browserLogin ? (
-        <BrowserSignInDialog
-          open={flow === "browserSignIn"}
-          onOpenChange={close}
-          provider={provider}
-          onSignedIn={() => {
-            setFlow(undefined);
-            onChanged();
-          }}
-        />
-      ) : (
-        <CommandDialog
-          started={running("login")}
-          onClose={() => setFlow(undefined)}
-          title={`Sign in to ${name}`}
-          description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never reads it.`}
-          command={auth._tag === "LoggedOut" ? auth.loginCommand : undefined}
-          onFinished={onChanged}
-        />
-      )}
-      {status.updateCommand === undefined ? null : (
-        <CommandDialog
-          started={running("update")}
-          onClose={() => setFlow(undefined)}
-          title={`Update ${name}`}
-          description={
-            newer === undefined
-              ? `${name} updates itself below.`
-              : `${name} updates itself to ${newer} below.`
-          }
-          command={status.updateCommand}
-          onFinished={onChanged}
-        />
-      )}
-      {setup === undefined ? null : (
-        <SetupDialog open={flow === "setup"} onOpenChange={close} status={status} setup={setup} />
-      )}
+      {flows.dialogs}
     </>
   );
 }

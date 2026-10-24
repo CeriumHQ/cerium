@@ -23,6 +23,7 @@ import {
   ArchiveRestore,
   Bot,
   Columns2,
+  Compass,
   FolderTree,
   GitBranch,
   GitPullRequestArrow,
@@ -165,6 +166,7 @@ import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
+import { welcomeOpenAtom } from "../features/onboarding/state.ts";
 import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
 import type { DragSource } from "../features/split/drag.ts";
 import {
@@ -650,6 +652,7 @@ function Workspace() {
   );
 
   const openWhatsNew = useAtomSet(whatsNewOpenAtom);
+  const openWelcome = useAtomSet(welcomeOpenAtom);
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const edit = useAtomSet(editMessage, { mode: "promise" });
@@ -1232,6 +1235,16 @@ function Workspace() {
       icon: ScrollText,
       keywords: "changelog release notes updates",
       run: () => openWhatsNew(true),
+    },
+    {
+      id: "welcome",
+      group: "Actions",
+      label: "Welcome tour",
+      icon: Compass,
+      keywords: "onboarding introduction hello start themes harnesses",
+      // The web client opens no welcome: it signs in to a desktop that had one.
+      when: !WEB,
+      run: () => openWelcome(true),
     },
     ...settingsPages.map(({ id, label, icon }): PaletteCommand => ({
       id: `settings-${id}`,

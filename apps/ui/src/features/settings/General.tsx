@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { accountAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
+import { WEB } from "../../backend/target.ts";
 import {
   onMac,
   onWindows,
@@ -16,6 +17,7 @@ import {
   type Updates,
 } from "../../backend/shell.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import { welcomeOpenAtom } from "../onboarding/state.ts";
 import { speechLanguages, speechModel, speechModels, type SpeechModelId } from "../dictation/model.ts";
 import { dictationLanguageAtom, dictationModelAtom, downloadedModelsAtom } from "../dictation/preferences.ts";
 import {
@@ -37,8 +39,22 @@ import { useSetting } from "./useSetting.ts";
 
 export function GeneralSettings() {
   const updates = useUpdates();
+  const openWelcome = useAtomSet(welcomeOpenAtom);
   return (
-    <SettingsPage title="General">
+    <SettingsPage
+      title="General"
+      action={
+        // The welcome a desktop opens with on its first run, again: its themes, harnesses and account.
+        WEB ? undefined : (
+          <Button
+            onClick={() => openWelcome(true)}
+            className="flex h-7 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          >
+            Welcome tour
+          </Button>
+        )
+      }
+    >
       <ThisComputerSection />
       <DictationSection />
       {updates ? <UpdatesSection updates={updates} /> : null}

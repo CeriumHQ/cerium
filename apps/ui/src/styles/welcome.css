@@ -1,0 +1,246 @@
+/*
+ * The welcome (features/onboarding): its chapters come in a part at a time and go together. A headline's
+ * letters stretch out from narrow as they sharpen, on the display face's width axis; the chapter's
+ * other parts rise after it; the chapter going lifts away, blurring, the way the next one came.
+ */
+
+[data-welcome] {
+  /* The welcome's margin, which its chapters and its foot line up on. */
+  --welcome-gutter: clamp(28px, 6.4vw, 112px);
+}
+
+[data-welcome] [data-letter] {
+  display: inline-block;
+}
+
+[data-welcome] [data-state="enter"] [data-letter] {
+  animation: welcome-letter 1150ms var(--ease-out-soft) calc(var(--i) * 26ms + 60ms + var(--after, 0ms)) both;
+}
+
+[data-welcome] [data-state="enter"] [data-reveal] {
+  animation: welcome-rise 900ms var(--ease-out-soft) calc(var(--d) * 90ms + 220ms + var(--after, 0ms)) both;
+}
+
+/* A chapter coming in as another goes waits for it to have mostly gone. */
+[data-welcome] [data-state="enter"][data-after] {
+  --after: 300ms;
+}
+
+[data-welcome] [data-state="leave"] {
+  pointer-events: none;
+  animation: welcome-leave 420ms cubic-bezier(0.55, 0, 0.6, 0.2) both;
+}
+
+[data-welcome][data-direction="back"] [data-state="leave"] {
+  animation-name: welcome-leave-back;
+}
+
+@keyframes welcome-letter {
+  from {
+    opacity: 0;
+    font-stretch: 50%;
+    filter: blur(10px);
+    translate: 0 0.14em;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes welcome-rise {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    translate: 0 16px;
+  }
+}
+
+@keyframes welcome-leave {
+  to {
+    opacity: 0;
+    filter: blur(10px);
+    translate: 0 -28px;
+  }
+}
+
+@keyframes welcome-leave-back {
+  to {
+    opacity: 0;
+    filter: blur(10px);
+    translate: 0 28px;
+  }
+}
+
+/* Without motion, every part simply fades in and out. */
+@media (prefers-reduced-motion: reduce) {
+  [data-welcome] [data-state="enter"] :is([data-letter], [data-reveal]) {
+    animation: launch-fade 300ms ease-out both;
+  }
+
+  [data-welcome] [data-state="leave"] {
+    animation: welcome-fade-out 200ms ease-in both;
+  }
+}
+
+@keyframes welcome-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * The light behind the welcome (features/onboarding/prism.ts): the beam coming in, tinted by the
+ * theme's accent as light through coloured glass is, and the five it splits into, a spectrum's worth.
+ */
+[data-welcome] {
+  --welcome-light: color-mix(in oklab, var(--accent) 60%, white);
+  --welcome-beam-1: oklch(0.8 0.11 32);
+  --welcome-beam-2: oklch(0.86 0.1 84);
+  --welcome-beam-3: oklch(0.84 0.1 155);
+  --welcome-beam-4: oklch(0.79 0.1 238);
+  --welcome-beam-5: oklch(0.76 0.11 300);
+}
+
+[data-theme="light"] [data-welcome],
+[data-theme="light"][data-welcome] {
+  --welcome-light: var(--accent);
+  --welcome-beam-1: oklch(0.66 0.15 32);
+  --welcome-beam-2: oklch(0.74 0.14 78);
+  --welcome-beam-3: oklch(0.66 0.13 155);
+  --welcome-beam-4: oklch(0.6 0.14 245);
+  --welcome-beam-5: oklch(0.58 0.15 300);
+}
+
+/*
+ * A pane of each glass (chapters/Glass.tsx), in its own theme's tokens: tinted by its accent, blurring
+ * the light behind it. The panes turn to face the pointer, fanned towards the middle while it's away,
+ * and a sheen slides across each as it turns.
+ */
+.welcome-pane {
+  --turn: calc((var(--tilt-x, 0) - var(--px)) * 1);
+  background: linear-gradient(
+    165deg,
+    color-mix(in oklab, var(--accent) 24%, transparent),
+    color-mix(in oklab, var(--accent) 5%, transparent) 55%,
+    color-mix(in oklab, var(--accent) 12%, transparent)
+  );
+  backdrop-filter: blur(14px) saturate(1.7);
+  box-shadow:
+    inset 1px 1px 0 oklch(1 0 0 / 0.14),
+    inset -1px -1px 0 oklch(0 0 0 / 0.2),
+    0 32px 60px -32px oklch(0 0 0 / 0.65);
+  transform: perspective(900px) rotateY(calc(var(--turn) * 11deg)) rotateX(calc(var(--tilt-y, 0) * -4deg));
+  transition:
+    transform 700ms var(--ease-out-soft),
+    translate 500ms var(--ease-out-soft),
+    border-color 300ms ease-out;
+}
+
+.welcome-pane-sheen {
+  background: linear-gradient(105deg, transparent 32%, oklch(1 0 0 / 0.13) 46%, transparent 60%) 0 0 / 260%
+    100%;
+  background-position-x: calc(50% + var(--turn) * 38%);
+  transition: background-position 700ms var(--ease-out-soft);
+}
+
+.welcome-pane-glow {
+  background: radial-gradient(
+    90% 70% at 50% 105%,
+    color-mix(in oklab, var(--accent) 42%, transparent),
+    transparent 72%
+  );
+  opacity: 0.55;
+  transition: opacity 500ms ease-out;
+}
+
+:is([data-checked], :hover) > .welcome-pane .welcome-pane-glow {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-pane {
+    transform: none;
+  }
+}
+
+/* Picking a glass: the new one spreads over the welcome from the pane that was picked. */
+html:active-view-transition-type(glass)::view-transition-old(root) {
+  animation: none;
+}
+
+html:active-view-transition-type(glass)::view-transition-new(root) {
+  animation: welcome-wipe 820ms var(--ease-out-soft) both;
+}
+
+@keyframes welcome-wipe {
+  from {
+    clip-path: circle(0 at var(--wipe-x) var(--wipe-y));
+  }
+  to {
+    clip-path: circle(var(--wipe-r) at var(--wipe-x) var(--wipe-y));
+  }
+}
+
+/* The phone in the account chapter (chapters/Everywhere.tsx): its glass, and notifications dropping in. */
+.welcome-phone-sheen {
+  background: linear-gradient(
+    125deg,
+    oklch(1 0 0 / 0.07) 0%,
+    transparent 28%,
+    transparent 62%,
+    oklch(1 0 0 / 0.04) 100%
+  );
+}
+
+.welcome-notice {
+  opacity: 0;
+  translate: 0 -18px;
+  scale: 0.96;
+  filter: blur(4px);
+  transition:
+    opacity 500ms ease-out,
+    translate 700ms cubic-bezier(0.2, 1.3, 0.4, 1),
+    scale 700ms cubic-bezier(0.2, 1.3, 0.4, 1),
+    filter 500ms ease-out;
+}
+
+.welcome-notice[data-arrived] {
+  opacity: 1;
+  translate: none;
+  scale: none;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-notice {
+    translate: none;
+    scale: none;
+    filter: none;
+  }
+}
+
+/* Closing: the chapter and the foot fade as the light gathers into the corner's mark. */
+[data-welcome][data-closing] :is(main, footer) {
+  pointer-events: none;
+  animation: welcome-close 360ms ease-in both;
+}
+
+@keyframes welcome-close {
+  to {
+    opacity: 0;
+    filter: blur(6px);
+    scale: 0.985;
+  }
+}
+
+/* Handing the window over: the corner's mark flies to the window's, and the window fades in under it. */
+html:active-view-transition-type(welcome)::view-transition-group(cerium-mark) {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.6, 0, 0.1, 1);
+}
+
+html:active-view-transition-type(welcome)::view-transition-old(root),
+html:active-view-transition-type(welcome)::view-transition-new(root) {
+  animation-duration: 520ms;
+  animation-timing-function: ease-in-out;
+}
