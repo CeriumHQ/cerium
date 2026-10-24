@@ -1,7 +1,7 @@
 import { TITLE_MODELS, type ModelChoice, type TitleSettings } from "@cerium/protocol";
 import { Adapters, Catalog, OrchestratorConfig, UserSettings, type CatalogEntry } from "@cerium/orchestrator";
 import { GitHubError, MAX_ISSUE_BODY, MAX_ISSUE_TITLE } from "@cerium/rpc";
-import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
 
 import { Git, GitError } from "./git.ts";
 
@@ -380,6 +380,12 @@ export const parseDraft = (reply: string): { readonly title: string; readonly bo
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /** What a diff or log is read up to before it is cut to its limit. */
 const READ_LIMIT = 512 * 1024;
+/**
+ * What is kept of a file a prompt reads, and the bytes read for it: enough for that many characters
+ * and one more, however many bytes each takes.
+ */
+const FILE_CHARS = 64 * 1024;
+const FILE_BYTES = 3 * FILE_CHARS + 4;
 /** New files a commit's prompt shows the start of, and how much of each. */
 const NEW_FILES_SHOWN = 6;
 const NEW_FILE_LIMIT = 1_200;
@@ -430,10 +436,14 @@ export class Drafts extends Context.Service<
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
 
-      /** A file of the repository, or anywhere when `name` is absolute; nothing when it isn't there. */
+      /**
+       * A file of the repository, or anywhere when `name` is absolute; nothing when it isn't there. Only
+       * as much of its start as is kept is read, so a huge new file costs no more than a small one.
+       */
       const readFile = (top: string, name: string) =>
-        fs.readFileString(path.resolve(top, name)).pipe(
-          Effect.map((text) => capped(text, 64 * 1024)),
+        fs.stream(path.resolve(top, name), { bytesToRead: FILE_BYTES }).pipe(
+          Stream.runCollect,
+          Effect.map((chunks) => capped(new TextDecoder().decode(Buffer.concat(chunks)), FILE_CHARS)),
           Effect.option,
           Effect.map(Option.getOrUndefined),
         );

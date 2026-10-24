@@ -207,11 +207,14 @@ describe("Drafts", () => {
       const { root, write } = yield* repository;
       yield* write("README.md", "# Changed\n");
       yield* write("notes.txt", "remember the milk\n");
+      // Far longer than what's read of it, in characters of two bytes each.
+      yield* write("wide.txt", `${"ü".repeat(2_000_000)}\n`);
 
       assert.strictEqual(yield* drafts.commitMessage(root, {}), "Add notes\n\nAnd change the title.");
       const prompt = writer.asked[0]?.prompt ?? "";
       assert.include(prompt, "+# Changed");
       assert.include(prompt, "New file notes.txt:\nremember the milk");
+      assert.include(prompt, `New file wide.txt:\n${"ü".repeat(1_200)}\n… (cut here)`);
     }).pipe(Effect.scoped, Effect.provide(testLayer(writer.layer)));
   });
 
