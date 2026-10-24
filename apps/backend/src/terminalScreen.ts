@@ -13,7 +13,10 @@ export interface Screen {
   /** Feeds output to the screen; `done` runs once it has been read. */
   write(data: string, done?: () => void): void;
   resize(cols: number, rows: number): void;
-  /** The screen after everything written before this call, as output that draws it again. */
+  /**
+   * The screen after everything written before this call, as output that draws it again; the same
+   * one until the screen is written to, resized or reset.
+   */
   snapshot(): Promise<string>;
   /** Clears the screen and its scrollback, as for a shell that starts over. */
   reset(): void;
@@ -50,16 +53,28 @@ export const openScreen = async (options: ScreenOptions): Promise<Screen> => {
   });
   const serializer = new serialize.SerializeAddon();
   terminal.loadAddon(serializer as unknown as ITerminalAddon);
+  // Serializing a long scrollback holds the backend up for a while, so viewers that ask before the
+  // screen changes again share the last one.
+  let last: Promise<string> | undefined;
   return {
-    write: (data, done) => terminal.write(data, done),
-    resize: (cols, rows) => terminal.resize(cols, rows),
+    write: (data, done) => {
+      last = undefined;
+      terminal.write(data, done);
+    },
+    resize: (cols, rows) => {
+      last = undefined;
+      terminal.resize(cols, rows);
+    },
     // The callback runs once the terminal has read every write before this one, and nothing after
     // it has been read yet, so the serialized screen is exactly that point in the output.
     snapshot: () =>
-      new Promise((resolve) => {
+      (last ??= new Promise((resolve) => {
         terminal.write("", () => resolve(serializer.serialize()));
-      }),
-    reset: () => terminal.reset(),
+      })),
+    reset: () => {
+      last = undefined;
+      terminal.reset();
+    },
     dispose: () => terminal.dispose(),
   };
 };

@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 
 import { MAX_PER_THREAD, Terminals } from "../src/terminal.ts";
 import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
+import { openScreen } from "../src/terminalScreen.ts";
 
 // The Terminals service over a pseudoterminal that is a puppet, so what the shell prints and when it
 // ends is up to the test. The screen is the real emulator.
@@ -339,6 +340,27 @@ describe("Terminals.attach", () => {
         assert.notInclude(text(seen.slice(resynced + 1)), "line 20");
       }),
     );
+  });
+
+  it("draws a screen once for every viewer that asks before it changes", async () => {
+    const screen = await openScreen(size);
+    screen.write("one\r\n");
+    const first = screen.snapshot();
+    assert.strictEqual(screen.snapshot(), first);
+    assert.include(await first, "one");
+    assert.strictEqual(screen.snapshot(), first);
+    screen.write("two\r\n");
+    const second = screen.snapshot();
+    assert.notStrictEqual(second, first);
+    assert.include(await second, "two");
+    screen.resize(100, 30);
+    const third = screen.snapshot();
+    assert.notStrictEqual(third, second);
+    await third;
+    screen.reset();
+    assert.notStrictEqual(screen.snapshot(), third);
+    assert.notInclude(await screen.snapshot(), "two");
+    screen.dispose();
   });
 
   it.live("resizes the terminal to the viewer's size", () => {
