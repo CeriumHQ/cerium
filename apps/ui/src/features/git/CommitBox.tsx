@@ -100,44 +100,43 @@ export function CommitBox({
     setWriting(true);
     setFailure(undefined);
     setMade(undefined);
+    // The payload before the `try` and the end after it, not in a `finally`: the React Compiler skips
+    // a component whose `try` holds a conditional, or that has a `finally`. The catch takes every
+    // failure, so the writing ends either way.
+    const payload = {
+      root: top,
+      ...(draft.amend ? { amend: true } : {}),
+      ...(message === "" ? {} : { draft: message }),
+    };
     try {
-      const written = await draftMessage({
-        payload: {
-          root: top,
-          ...(draft.amend ? { amend: true } : {}),
-          ...(message === "" ? {} : { draft: message }),
-        },
-      });
+      const written = await draftMessage({ payload });
       setDraft({ ...splitMessage(written.message), amend: draft.amend });
     } catch (error) {
       setFailure(failureOf(error));
-    } finally {
-      setWriting(false);
     }
+    setWriting(false);
   };
 
   const submit = async () => {
     if (!ready) return;
     setBusy(true);
     setFailure(undefined);
+    const payload = {
+      root: top,
+      message,
+      ...(draft.amend ? { amend: true } : {}),
+      ...(all ? { all: true } : {}),
+    };
     try {
-      const result = await commit({
-        payload: {
-          root: top,
-          message,
-          ...(draft.amend ? { amend: true } : {}),
-          ...(all ? { all: true } : {}),
-        },
-      });
+      const result = await commit({ payload });
       setDraft({ subject: "", body: "", amend: false });
       setFilled(undefined);
       setMade(result);
     } catch (error) {
       setFailure(failureOf(error));
-    } finally {
-      setBusy(false);
-      onCommitted();
     }
+    setBusy(false);
+    onCommitted();
   };
 
   const onKeyDown = (event: KeyboardEvent) => {

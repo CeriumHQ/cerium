@@ -115,18 +115,20 @@ export function useBranchControls(root: string): BranchControls {
     if (registry.get(branchBusyAtom(root)) !== undefined) return undefined;
     registry.set(branchBusyAtom(root), name);
     registry.set(branchMessageAtom(root), undefined);
+    let done: { readonly value: A } | undefined;
     try {
       const result = await work();
       say(report(result));
-      return { value: result };
+      done = { value: result };
     } catch (error) {
       say({ tone: "error", text: messageOf(error) });
-      return undefined;
-    } finally {
-      registry.set(branchBusyAtom(root), undefined);
-      refreshBranches(registry, root);
-      refreshGitStatus(registry, root);
     }
+    // Not a `finally`: the React Compiler skips a hook that has one. The catch takes every failure,
+    // so this runs either way.
+    registry.set(branchBusyAtom(root), undefined);
+    refreshBranches(registry, root);
+    refreshGitStatus(registry, root);
+    return done;
   };
 
   const info = (text: string): BranchMessage => ({ tone: "info", text });

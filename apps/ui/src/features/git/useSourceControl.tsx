@@ -145,9 +145,10 @@ function SourceControl({
       await work();
     } catch (error) {
       setFailure(reasonOf(error, fallback));
-    } finally {
-      refreshGitStatus(registry, root);
     }
+    // Not a `finally`: the React Compiler skips a component that has one. The catch takes every
+    // failure, so this runs either way.
+    refreshGitStatus(registry, root);
   };
   /** Makes the thread's folder a repository, then reads it and its branches as the new repository. */
   const initialize = () =>
