@@ -45,6 +45,7 @@ export function SceneProvider({
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const glowCanvas = useRef<HTMLCanvasElement>(null);
   const [scene] = useState(() => {
     let prism: Prism | undefined;
     let posing: Posing | undefined;
@@ -70,8 +71,9 @@ export function SceneProvider({
   useLayoutEffect(() => {
     const element = stage.current;
     const target = canvas.current;
-    if (element === null || target === null) return;
-    const prism = new Prism(target, matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const glow = glowCanvas.current;
+    if (element === null || target === null || glow === null) return;
+    const prism = new Prism(target, glow, matchMedia("(prefers-reduced-motion: reduce)").matches);
     const size = () => {
       prism.resize(element.clientWidth, element.clientHeight, Math.min(2, window.devicePixelRatio || 1));
       scene.apply();
@@ -118,6 +120,11 @@ export function SceneProvider({
   return (
     <SceneContext value={scene}>
       <div ref={stage} className={`absolute inset-0 ${className}`}>
+        <canvas
+          ref={glowCanvas}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 size-full forced-colors:hidden"
+        />
         <canvas
           ref={canvas}
           aria-hidden="true"

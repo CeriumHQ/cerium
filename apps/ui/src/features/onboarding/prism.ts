@@ -6,8 +6,9 @@
  * next, so the welcome never cuts. The pointer steers the light a little, dust drifts through it, and
  * a pulse can run down the beam and split with it.
  *
- * One canvas draws it all. The light's glow is drawn at half size and blurred onto it; the beams' bright
- * cores and the glass are drawn sharp on top.
+ * Two canvases draw it. The light's glow is drawn on one a quarter the stage's size, which the page
+ * stretches over it and so softens for next to nothing; the beams' bright cores, the dust and the glass
+ * are drawn sharp on the other, over it.
  */
 
 export interface Point {
@@ -75,6 +76,10 @@ const EXIT_SPREAD = 1.1;
 const BEAM_START_WIDTH = 4;
 const BEAM_END_WIDTH = 64;
 const INCOMING_WIDTH = 22;
+
+/** How big the glow's canvas is against the stage, and how much it blurs there, in its own pixels. */
+const GLOW_SCALE = 0.25;
+const GLOW_BLUR = 2.5;
 
 /** How much dust drifts through the stage. */
 const MOTES = 240;
@@ -207,9 +212,9 @@ interface Mote {
 export class Prism {
   readonly #canvas: HTMLCanvasElement;
   readonly #context: CanvasRenderingContext2D;
-  /** The light's glow, drawn at half size and blurred onto the canvas. */
-  readonly #glow = new OffscreenCanvas(1, 1);
-  readonly #glowContext: OffscreenCanvasRenderingContext2D;
+  /** The light's glow, a quarter the stage's size. */
+  readonly #glow: HTMLCanvasElement;
+  readonly #glowContext: CanvasRenderingContext2D;
   readonly #reduceMotion: boolean;
   readonly #motes: ReadonlyArray<Mote>;
   #palette: Palette | undefined;
@@ -224,12 +229,13 @@ export class Prism {
   #moving = true;
   #hidden = false;
 
-  constructor(canvas: HTMLCanvasElement, reduceMotion: boolean) {
+  constructor(canvas: HTMLCanvasElement, glowCanvas: HTMLCanvasElement, reduceMotion: boolean) {
     const context = canvas.getContext("2d");
-    const glow = this.#glow.getContext("2d");
+    const glow = glowCanvas.getContext("2d");
     if (context === null || glow === null) throw new Error("The welcome's light needs a 2D canvas");
     this.#canvas = canvas;
     this.#context = context;
+    this.#glow = glowCanvas;
     this.#glowContext = glow;
     this.#reduceMotion = reduceMotion;
     let seed = 0x9e3779b9;
@@ -252,8 +258,8 @@ export class Prism {
     const pixels = (value: number) => Math.max(1, Math.round(value * scale));
     this.#canvas.width = pixels(width);
     this.#canvas.height = pixels(height);
-    this.#glow.width = Math.max(1, Math.round(width / 2));
-    this.#glow.height = Math.max(1, Math.round(height / 2));
+    this.#glow.width = Math.max(1, Math.ceil(width * GLOW_SCALE));
+    this.#glow.height = Math.max(1, Math.ceil(height * GLOW_SCALE));
     this.#wake();
   }
 
@@ -367,9 +373,12 @@ export class Prism {
   #draw(now: number) {
     const palette = this.#palette;
     const context = this.#context;
-    const { width, height, scale } = this.#size;
+    const { width, scale } = this.#size;
+    const glow = this.#glowContext;
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, this.#canvas.width, this.#canvas.height);
+    glow.setTransform(1, 0, 0, 1, 0, 0);
+    glow.clearRect(0, 0, this.#glow.width, this.#glow.height);
     if (palette === undefined || this.#springs === undefined || width === 0) return;
     const scene = this.#current();
     const unit = scene.mark.size / 48;
@@ -391,12 +400,10 @@ export class Prism {
       };
     });
 
-    // The glow, at half size: the light coming in, each beam, and the dust caught in them.
-    const glow = this.#glowContext;
-    glow.setTransform(0.5, 0, 0, 0.5, 0, 0);
-    glow.globalCompositeOperation = "source-over";
-    glow.clearRect(0, 0, width, height);
+    // The glow: the light coming in and each beam, soft.
+    glow.setTransform(GLOW_SCALE, 0, 0, GLOW_SCALE, 0, 0);
     glow.globalCompositeOperation = palette.dark ? "lighter" : "source-over";
+    glow.filter = `blur(${GLOW_BLUR}px)`;
     // On light glass, colour shows by darkening it: the white light's haze would read as smoke there.
     const strength = palette.dark ? 1 : 0.85;
     if (scene.incoming > 0) {
@@ -413,11 +420,10 @@ export class Prism {
       ]);
     }
 
+    glow.filter = "none";
+
     context.setTransform(scale, 0, 0, scale, 0, 0);
     context.globalCompositeOperation = palette.dark ? "lighter" : "source-over";
-    context.filter = "blur(10px)";
-    context.drawImage(this.#glow, 0, 0, width, height);
-    context.filter = "none";
 
     // The cores: a hairline of light down the middle of each beam.
     if (scene.incoming > 0) {
@@ -538,7 +544,7 @@ const litBy = (point: Point, a: Point, b: Point, width: number): number => {
   return clamp01(1 - distance / (width * (0.3 + 0.7 * t)));
 };
 
-type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+type Context2D = CanvasRenderingContext2D;
 
 /** A beam's glow: a band from `a` to `b` widening as it goes, fading from one alpha to the other. */
 const wedge = (
