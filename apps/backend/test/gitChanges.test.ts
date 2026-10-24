@@ -288,6 +288,26 @@ describe("GitChanges", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
+  it.effect("discards the files and folders it names, and only those", () =>
+    Effect.gen(function* () {
+      const changes = yield* GitChanges;
+      const { root, write, read, fs, path } = yield* repository;
+      yield* write("src/app.ts", "changed\n");
+      yield* write("README.md", "# Changed\n");
+      yield* write("docs/a.md", "a\n");
+      yield* write("notes/b.md", "b\n");
+      yield* changes.discard(root, ["README.md", "docs"]);
+      assert.strictEqual(yield* read("README.md"), "# Title\n");
+      assert.isFalse(yield* fs.exists(path.join(root, "docs")));
+      assert.strictEqual(yield* read("src/app.ts"), "changed\n");
+      assert.isTrue(yield* fs.exists(path.join(root, "notes/b.md")));
+      assert.deepStrictEqual(
+        (yield* changes.status(root)).unstaged.map((change) => change.path),
+        ["notes/b.md", "src/app.ts"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
   it.effect("unstages before the first commit", () =>
     Effect.gen(function* () {
       const changes = yield* GitChanges;

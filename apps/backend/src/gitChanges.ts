@@ -26,6 +26,11 @@ const MAX_CHANGES = 5_000;
  * holds more files than are listed: the rest isn't parsed and sorted only to be dropped.
  */
 const MAX_STATUS_FIELDS = 2 * MAX_CHANGES;
+/**
+ * Paths a discard names to git when it asks what changed. A few narrow its look to them; more could
+ * outgrow Windows' command line, so then it looks at everything and the list is filtered here.
+ */
+const MAX_NAMED_PATHS = 100;
 /** How long a commit may take, its hooks included, before it is stopped. */
 const COMMIT_TIMEOUT = "10 minutes";
 
@@ -467,9 +472,12 @@ export class GitChanges extends Context.Service<
         const specs = yield* pathspecs(paths);
         const under = (path: string) =>
           specs.some((spec) => spec === "." || path === spec || path.startsWith(`${spec}/`));
-        const listed = yield* git.run(top, ["status", "--porcelain=v2", "-z", "--untracked-files=all"], {
-          look: true,
-        });
+        const named = specs.length <= MAX_NAMED_PATHS ? ["--", ...specs] : [];
+        const listed = yield* git.run(
+          top,
+          ["status", "--porcelain=v2", "-z", "--untracked-files=all", ...named],
+          { look: true },
+        );
         if (listed.code !== 0) return yield* gitFailure(listed, "Git couldn't say what changed.");
         const changed = parseStatusV2(listed.stdout).unstaged.filter((change) => under(change.path));
         const tracked = changed.filter((change) => change.state !== "untracked").map((change) => change.path);
