@@ -4,7 +4,7 @@ import { useHighlight, type Line } from "./highlight.ts";
 import type { Piece } from "./model.ts";
 
 /** Lines drawn together; the browser skips painting the ones scrolled far out of view. */
-const CHUNK = 100;
+export const CHUNK = 100;
 /** A line's height: 12.5px text, 1.6 apart. */
 const LINE_HEIGHT = 20;
 
@@ -13,7 +13,7 @@ const LINE_HEIGHT = 20;
  * that many unwrapped lines until it has. Only its height is guessed: a guessed width would widen a
  * view that is as wide as its longest line.
  */
-const chunkStyle = (lines: number): CSSProperties => ({
+export const chunkStyle = (lines: number): CSSProperties => ({
   contentVisibility: "auto",
   containIntrinsicSize: `auto none auto ${lines * LINE_HEIGHT}px`,
 });

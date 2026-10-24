@@ -2,7 +2,7 @@ import type { DiffHunk } from "@cerium/rpc";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 
-import { Run } from "./CodeView.tsx";
+import { CHUNK, chunkStyle, Run } from "./CodeView.tsx";
 import { useHighlight } from "./highlight.ts";
 import {
   changedWords,
@@ -105,6 +105,18 @@ const NoPick = () => <span className="w-6 shrink-0" aria-hidden="true" />;
 
 /** A picked line's mark down its left edge. */
 const pickedEdge = "shadow-[inset_2px_0_0_var(--color-accent)]";
+
+/**
+ * A hunk's rows in chunks the browser lays out and paints only near the view, each with where it
+ * starts. Unwrapped, as one column scrolling sideways draws them, a row is one line high, so a chunk
+ * out of view takes the height it will have; a side by side diff's rows can wrap and grow once drawn.
+ */
+function chunksOf<Row>(rows: ReadonlyArray<Row>) {
+  return Array.from({ length: Math.ceil(rows.length / CHUNK) }, (_, index) => ({
+    first: index * CHUNK,
+    rows: rows.slice(index * CHUNK, (index + 1) * CHUNK),
+  }));
+}
 
 /** The words each changed line lost or gained against the line it replaced, by index in the hunk. */
 const rangesOf = (lines: ReadonlyArray<NumberedLine>) => {
@@ -257,64 +269,81 @@ export function DiffView({
                 <div className="h-3" />
               ) : null}
               {layout === "unified"
-                ? hunk.lines.map((line, index) => (
-                    <Fragment key={index}>
-                      <div className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)}`}>
-                        {pickOf(hunkIndex, index, line)}
-                        <span style={{ width: gutter }} className={number} aria-hidden="true">
-                          {line.old}
-                        </span>
-                        <Cell
-                          line={line}
-                          number={line.new}
-                          ranges={changed.get(index) ?? []}
-                          tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
-                          gutter={gutter}
-                          wrap={!scroll}
-                        />
-                      </div>
-                      {after?.(line)}
-                    </Fragment>
+                ? chunksOf(hunk.lines).map(({ first, rows }) => (
+                    <div key={first} style={chunkStyle(rows.length)}>
+                      {rows.map((line, offset) => {
+                        const index = first + offset;
+                        return (
+                          <Fragment key={index}>
+                            <div
+                              className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)}`}
+                            >
+                              {pickOf(hunkIndex, index, line)}
+                              <span style={{ width: gutter }} className={number} aria-hidden="true">
+                                {line.old}
+                              </span>
+                              <Cell
+                                line={line}
+                                number={line.new}
+                                ranges={changed.get(index) ?? []}
+                                tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
+                                gutter={gutter}
+                                wrap={!scroll}
+                              />
+                            </div>
+                            {after?.(line)}
+                          </Fragment>
+                        );
+                      })}
+                    </div>
                   ))
-                : splitRows(hunk.lines).map((row, index) => (
-                    <Fragment key={index}>
-                      <div className="grid grid-cols-2 divide-x divide-line-subtle">
-                        <div
-                          className={`flex min-w-0 ${row.left ? edgeOf(hunkIndex, indexOf.get(row.left)!, row.left) : ""}`}
-                        >
-                          <Cell
-                            line={row.left}
-                            number={row.left?.old}
-                            ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
-                            tokens={tokensOf(row.left, "old")}
-                            gutter={gutter}
-                            wrap
-                            pick={row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined}
-                          />
-                        </div>
-                        <div
-                          className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? edgeOf(hunkIndex, indexOf.get(row.right)!, row.right) : ""}`}
-                        >
-                          <Cell
-                            wrap
-                            line={row.right}
-                            number={row.right?.new}
-                            ranges={
-                              row.right && row.right.kind !== "context"
-                                ? (changed.get(indexOf.get(row.right)!) ?? [])
-                                : []
-                            }
-                            tokens={tokensOf(row.right, "new")}
-                            gutter={gutter}
-                            pick={
-                              row.right ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right) : undefined
-                            }
-                          />
-                        </div>
-                      </div>
-                      {row.left ? after?.(row.left) : null}
-                      {row.right && row.right !== row.left ? after?.(row.right) : null}
-                    </Fragment>
+                : chunksOf(splitRows(hunk.lines)).map(({ first, rows }) => (
+                    <div key={first} style={chunkStyle(rows.length)}>
+                      {rows.map((row, offset) => (
+                        <Fragment key={first + offset}>
+                          <div className="grid grid-cols-2 divide-x divide-line-subtle">
+                            <div
+                              className={`flex min-w-0 ${row.left ? edgeOf(hunkIndex, indexOf.get(row.left)!, row.left) : ""}`}
+                            >
+                              <Cell
+                                line={row.left}
+                                number={row.left?.old}
+                                ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
+                                tokens={tokensOf(row.left, "old")}
+                                gutter={gutter}
+                                wrap
+                                pick={
+                                  row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined
+                                }
+                              />
+                            </div>
+                            <div
+                              className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? edgeOf(hunkIndex, indexOf.get(row.right)!, row.right) : ""}`}
+                            >
+                              <Cell
+                                wrap
+                                line={row.right}
+                                number={row.right?.new}
+                                ranges={
+                                  row.right && row.right.kind !== "context"
+                                    ? (changed.get(indexOf.get(row.right)!) ?? [])
+                                    : []
+                                }
+                                tokens={tokensOf(row.right, "new")}
+                                gutter={gutter}
+                                pick={
+                                  row.right
+                                    ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
+                                    : undefined
+                                }
+                              />
+                            </div>
+                          </div>
+                          {row.left ? after?.(row.left) : null}
+                          {row.right && row.right !== row.left ? after?.(row.right) : null}
+                        </Fragment>
+                      ))}
+                    </div>
                   ))}
             </Fragment>
           );
