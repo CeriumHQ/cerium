@@ -20,6 +20,7 @@ import {
   dropZoneAt,
   layoutOf,
   moveEdge,
+  resizeSplit,
   type Box,
   type DropZone,
   type Edge,
@@ -126,11 +127,16 @@ export function SplitView({
   onDrop: (source: DragSource, target: string, zone: DropZone) => void;
 }) {
   const area = useRef<HTMLDivElement>(null);
-  const { panes: placedPanes, edges } = layoutOf(panes.root);
+  /**
+   * An edge being dragged, and the sizes it has given its split so far: the panes follow it at once
+   * rather than easing after it. The window takes the sizes once the drag ends; laying the whole
+   * window out again, and saving it, for every move of the pointer made the drag stutter.
+   */
+  const [resizing, setResizing] = useState<Resizing>();
+  const root = resizing ? resizeSplit(panes, resizing.path, resizing.sizes).root : panes.root;
+  const { panes: placedPanes, edges } = layoutOf(root);
   const split = placedPanes.length > 1;
   const drag = usePaneDrag();
-  /** An edge being dragged: the panes follow it at once rather than easing after it. */
-  const [resizing, setResizing] = useState(false);
 
   /** Where the area is in the window, measured afresh as a drag starts and as the area resizes. */
   const [rect, setRect] = useState<DOMRect>();
@@ -200,7 +206,7 @@ export function SplitView({
           focused={leaf.id === panes.focused}
           split={split}
           label={label(leaf)}
-          still={resizing || drag !== undefined}
+          still={resizing !== undefined || drag !== undefined}
           renderPane={renderPane}
           onFocus={() => onFocus(leaf.id)}
           onClose={() => onClose(leaf.id)}
@@ -213,7 +219,7 @@ export function SplitView({
           edge={edge}
           area={area}
           onResize={onResize}
-          onDragChange={setResizing}
+          onDrag={setResizing}
         />
       ))}
       {hover ? (
@@ -366,24 +372,38 @@ function PaneHeader({
 const STEP = 0.02;
 const BIG_STEP = 0.08;
 
-/** The gap between two panes, to drag (or nudge with the arrow keys) to share their room differently. */
+/** The split an edge is being dragged across, and the sizes the drag has given it so far. */
+interface Resizing {
+  readonly path: SplitPath;
+  readonly sizes: ReadonlyArray<number>;
+}
+
+/**
+ * The gap between two panes, to drag (or nudge with the arrow keys) to share their room differently.
+ * A drag shows through `onDrag` as it goes and reaches `onResize` once, as it ends; a nudge at once.
+ */
 function EdgeHandle({
   edge,
   area,
   onResize,
-  onDragChange,
+  onDrag,
 }: {
   edge: Edge;
   area: RefObject<HTMLDivElement | null>;
   onResize: (path: SplitPath, sizes: ReadonlyArray<number>) => void;
-  onDragChange: (dragging: boolean) => void;
+  onDrag: (resizing: Resizing | undefined) => void;
 }) {
   const row = edge.axis === "row";
+  // The split's length is measured as the drag starts, not on every move, which made the browser lay
+  // the window out again each time.
   const [drag, setDrag] = useState<{
     readonly from: number;
     readonly length: number;
+    readonly min: number;
     readonly sizes: ReadonlyArray<number>;
   }>();
+  /** Where the drag has taken the split, which the window keeps as it ends. */
+  const reached = useRef<ReadonlyArray<number>>(undefined);
   /** The split's length along its axis, in pixels, and the least share each pane keeps of it. */
   const measure = () => {
     const rect = area.current?.getBoundingClientRect();
@@ -410,6 +430,14 @@ function EdgeHandle({
     const b = edge.sizes[edge.index + 1] ?? 0;
     nudge((a + b) / 2 - a);
   };
+  /** The drag ends, lifted or cut off, and the window keeps the sizes it reached. */
+  const end = () => {
+    const sizes = reached.current;
+    reached.current = undefined;
+    setDrag(undefined);
+    onDrag(undefined);
+    if (sizes !== undefined) onResize(edge.path, sizes);
+  };
   const before = edge.sizes.slice(0, edge.index + 1).reduce((sum, size) => sum + size, 0);
   return (
     <div
@@ -426,23 +454,19 @@ function EdgeHandle({
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
-        setDrag({ from: row ? event.clientX : event.clientY, length: measure().length, sizes: edge.sizes });
-        onDragChange(true);
+        setDrag({ from: row ? event.clientX : event.clientY, ...measure(), sizes: edge.sizes });
+        reached.current = undefined;
+        onDrag({ path: edge.path, sizes: edge.sizes });
       }}
       onPointerMove={(event) => {
         if (!drag || drag.length === 0) return;
         const moved = ((row ? event.clientX : event.clientY) - drag.from) / drag.length;
-        const { min } = measure();
-        onResize(edge.path, moveEdge(drag.sizes, edge.index, moved, min));
+        reached.current = moveEdge(drag.sizes, edge.index, moved, drag.min);
+        onDrag({ path: edge.path, sizes: reached.current });
       }}
-      onPointerUp={() => {
-        setDrag(undefined);
-        onDragChange(false);
-      }}
-      onPointerCancel={() => {
-        setDrag(undefined);
-        onDragChange(false);
-      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
       onDoubleClick={evenOut}
       onKeyDown={onKeyDown}
       style={
