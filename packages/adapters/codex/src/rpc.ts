@@ -72,6 +72,8 @@ export interface AppServer {
   readonly incoming: Stream.Stream<Incoming>;
   /** Resolves once the process has exited. */
   readonly exited: Effect.Effect<void>;
+  /** The server's `$CODEX_HOME`, as its handshake reported it. */
+  readonly codexHome: string;
 }
 
 const failure = (message: string) => (cause: unknown) =>
@@ -211,18 +213,18 @@ export const connect = Effect.fn("CodexAdapter.connect")(function* (executablePa
       return (yield* Deferred.await(response)) as Methods[M][1];
     });
 
+  const { codexHome } = yield* request("initialize", {
+    clientInfo: { name: "cerium", title: "Cerium", version: "0.0.0" },
+    capabilities: { experimentalApi: false, requestAttestation: false, optOutNotificationMethods: OPTED_OUT },
+  }).pipe(Effect.mapError(failure("The Codex app-server did not initialize")));
+  yield* send({ method: "initialized" });
   const server: AppServer = {
     request,
     respond: (id, result) => send({ id, result }),
     respondError: (id, code, message) => send({ id, error: { code, message } }),
     incoming: Stream.fromQueue(incoming),
     exited: Deferred.await(exited),
+    codexHome,
   };
-
-  yield* request("initialize", {
-    clientInfo: { name: "cerium", title: "Cerium", version: "0.0.0" },
-    capabilities: { experimentalApi: false, requestAttestation: false, optOutNotificationMethods: OPTED_OUT },
-  }).pipe(Effect.mapError(failure("The Codex app-server did not initialize")));
-  yield* send({ method: "initialized" });
   return server;
 });

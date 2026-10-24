@@ -10,8 +10,8 @@ export const codexManifest: CapabilityManifest = {
   // `thread/resume` reopens a thread by id; `thread/fork` copies one through a turn.
   session: { resume: true, fork: true },
   // `turn/start` takes `model` and `effort` overrides that apply from that turn on. An effort switch
-  // keeps the prompt cache on GPT-6 models only (`CACHE_SAFE_EFFORT` in models.ts, and
-  // `reasoning_effort_override` in `threadConfig`).
+  // keeps the prompt cache on the models OpenAI's catalog marks for it (`cacheSafeFromCatalog` in
+  // models.ts, and `reasoning_effort_override` in `threadConfig`).
   switching: { model: true, effort: true, cacheSafeEffort: true },
   // `turn/start` accepts image and local-image inputs, and the listed models take images.
   input: { images: true },
