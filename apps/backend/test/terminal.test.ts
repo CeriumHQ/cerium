@@ -58,7 +58,7 @@ const puppets = () => {
 const size: TerminalSize = { cols: 80, rows: 24 };
 const shell = { file: "puppet", args: ["-x"], name: "Puppet" };
 
-const withTerminals = (options: { readonly backlog?: number } = {}) => {
+const withTerminals = (options: { readonly backlog?: number; readonly redrawMs?: number } = {}) => {
   const { spawned, layer } = puppets();
   return {
     spawned,
@@ -361,6 +361,46 @@ describe("Terminals.attach", () => {
     assert.notStrictEqual(screen.snapshot(), third);
     assert.notInclude(await screen.snapshot(), "two");
     screen.dispose();
+  });
+
+  it.live("draws the screen again for a viewer that keeps falling behind no oftener than it is told", () => {
+    const { spawned, provide } = withTerminals({ backlog: 4, redrawMs: 400 });
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        // The viewer holds up on each screen it is drawn until that screen's gate opens.
+        const gates = [yield* Deferred.make<void>(), yield* Deferred.make<void>()];
+        const screens: Array<{ readonly data: string; readonly at: number }> = [];
+        const fiber = yield* terminals.attach(id, size).pipe(
+          Stream.mapEffect((output) => {
+            if (output._tag !== "Screen") return Effect.void;
+            screens.push({ data: output.data, at: performance.now() });
+            const gate = gates[screens.length - 1];
+            return gate === undefined ? Effect.void : Deferred.await(gate);
+          }),
+          Stream.runDrain,
+          Effect.forkChild,
+        );
+        yield* settle;
+        for (let line = 1; line <= 20; line++) spawned[0]?.print(`first ${line}\r\n`);
+        yield* settle;
+        yield* Deferred.succeed(gates[0]!, undefined);
+        yield* settle;
+        for (let line = 1; line <= 20; line++) spawned[0]?.print(`second ${line}\r\n`);
+        yield* settle;
+        yield* Deferred.succeed(gates[1]!, undefined);
+        yield* Effect.sleep("600 millis");
+        spawned[0]?.end(0);
+        yield* Fiber.join(fiber);
+
+        assert.lengthOf(screens, 3);
+        assert.include(screens[1]!.data, "first 20");
+        assert.include(screens[2]!.data, "second 20");
+        assert.isAtLeast(screens[2]!.at - screens[1]!.at, 380);
+      }),
+    );
   });
 
   it.live("resizes the terminal to the viewer's size", () => {

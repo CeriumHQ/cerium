@@ -46,6 +46,11 @@ const PAUSE_ABOVE = 4_000_000;
 const RESUME_BELOW = 1_000_000;
 /** How many pieces of output a viewer may lag behind before it is given the screen again. */
 const BACKLOG_PIECES = 512;
+/**
+ * How long a viewer that keeps falling behind waits after one redraw before the next: drawing a long
+ * scrollback holds the backend up, and one that can't keep up would have it drawn over and over.
+ */
+const REDRAW_MS = 1_000;
 
 /** What goes to the viewers of a terminal, numbered so that a viewer can tell when it missed some. */
 type Piece =
@@ -142,14 +147,16 @@ export class Terminals extends Context.Service<
 >()("cerium/backend/Terminals") {
   /**
    * Requires `Store`, `FileSystem`, `Path` and `Ptys`. `shell` replaces the machine's default; `version`
-   * is the build, which shells see as `TERM_PROGRAM_VERSION`. `batchMs` and `backlog` replace how long
-   * output is gathered and how many pieces a viewer may lag by, for tests.
+   * is the build, which shells see as `TERM_PROGRAM_VERSION`. `batchMs`, `backlog` and `redrawMs`
+   * replace how long output is gathered, how many pieces a viewer may lag by and how often it is
+   * drawn the screen again, for tests.
    */
   static readonly layer = (options: {
     readonly version: string;
     readonly shell?: ShellChoice;
     readonly batchMs?: number;
     readonly backlog?: number;
+    readonly redrawMs?: number;
   }) =>
     Layer.effect(
       Terminals,
@@ -416,9 +423,13 @@ export class Terminals extends Context.Service<
           } satisfies CommandTerminal;
         });
 
-        /** What a viewer follows the output with: pieces in order, or the screen again once it missed any. */
+        /**
+         * What a viewer follows the output with: pieces in order, or the screen again once it missed
+         * any. `viewer` is when it was last drawn the screen again.
+         */
         const follow = (
           entry: Entry,
+          viewer: { redrawnAt: number },
           expected: number,
           piece: Piece,
         ): Effect.Effect<readonly [number, ReadonlyArray<TerminalOutput>], TerminalError> =>
@@ -429,9 +440,13 @@ export class Terminals extends Context.Service<
                 ? ([expected + 1, [{ _tag: "Data", data: piece.data }]] as const)
                 : ([expected + 1, [exitOf(piece.code)]] as const);
             }
-            // It fell behind: draw the screen again from here.
+            // It fell behind: draw the screen again from here, once it has waited out the last redraw.
+            // What it misses meanwhile, the screen shows.
+            const wait = viewer.redrawnAt + (options.redrawMs ?? REDRAW_MS) - performance.now();
+            if (wait > 0) yield* Effect.sleep(wait);
             if (entry.closed) return [expected, [exitOf(undefined)]] as const;
             const fresh = yield* snapshot(entry);
+            viewer.redrawnAt = performance.now();
             const screen: TerminalOutput = { _tag: "Screen", data: fresh.data };
             const over = entry.endedAt !== undefined && entry.endedAt <= fresh.seq;
             return [fresh.seq + 1, over ? [screen, exitOf(entry.exitCode)] : [screen]] as const;
@@ -448,12 +463,13 @@ export class Terminals extends Context.Service<
               if (entry.endedAt !== undefined && entry.endedAt <= first.seq) {
                 return Stream.make(screen, exitOf(entry.exitCode));
               }
+              const viewer = { redrawnAt: Number.NEGATIVE_INFINITY };
               const live: Stream.Stream<TerminalOutput, TerminalError> = Stream.fromSubscription(
                 subscription,
               ).pipe(
                 Stream.mapAccumEffect(
                   () => first.seq + 1,
-                  (expected, piece) => follow(entry, expected, piece),
+                  (expected, piece) => follow(entry, viewer, expected, piece),
                 ),
                 Stream.takeUntil((output) => output._tag === "Exit"),
               );
