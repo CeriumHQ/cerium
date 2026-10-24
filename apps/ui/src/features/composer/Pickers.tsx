@@ -46,13 +46,11 @@ export function ModelWell({ model, effort }: { readonly model: ReactNode; readon
   );
 }
 
-/** The effort heat's colour `at` (0 to 1) along its gradient, cool to hot (styles/tokens.css). */
-const heat = (at: number): string =>
-  at <= 0.5
-    ? `color-mix(in oklab, var(--effort-warm) ${at * 200}%, var(--effort-cool))`
-    : `color-mix(in oklab, var(--effort-hot) ${(at - 0.5) * 200}%, var(--effort-warm))`;
+/** The effort ramp's colour `at` (0 to 1) along it, faint to full (styles/tokens.css). */
+const ramp = (at: number): string =>
+  `color-mix(in oklab, var(--effort-full) ${at * 100}%, var(--effort-faint))`;
 
-/** A bar for each effort the model offers, rising and warming, lit up to the one it runs at. */
+/** A bar for each effort the model offers, rising and strengthening, lit up to the one it runs at. */
 export function EffortMeter({
   efforts,
   level,
@@ -70,7 +68,7 @@ export function EffortMeter({
           className="w-[3px] rounded-[1px] transition-[background-color] duration-150"
           style={{
             height: `${4 + (8 * index) / rises}px`,
-            backgroundColor: index <= level ? heat(index / rises) : "var(--line-strong)",
+            backgroundColor: index <= level ? ramp(index / rises) : "var(--line-strong)",
           }}
         />
       ))}
@@ -88,6 +86,7 @@ const THUMB = 18;
  * Picks among the efforts the model, or the models, offer: a meter that opens a slider with a stop
  * for each of them. A model with one effort has nothing to pick, and shows it. With `auto`, the
  * effort router is on and a switch under the slider hands it the pick; picking a level takes it back.
+ * On Auto no level is shown as chosen: the router picks one each turn, shown on that response.
  */
 export function EffortPicker({
   efforts,
@@ -120,11 +119,15 @@ export function EffortPicker({
       }}
     >
       <Popover.Trigger
-        aria-label={automatic ? `Reasoning effort: Auto, ${label} now` : `Reasoning effort: ${label}`}
+        aria-label={`Reasoning effort: ${automatic ? "Auto" : label}`}
         className={`${triggerClass} gap-2`}
       >
-        <EffortMeter efforts={efforts} level={index} />
-        <span className="text-[12px]">{automatic ? `Auto · ${label}` : label}</span>
+        {automatic ? (
+          <Route size={12} strokeWidth={2} className="text-fg-tertiary" />
+        ) : (
+          <EffortMeter efforts={efforts} level={index} />
+        )}
+        <span className="text-[12px]">{automatic ? "Auto" : label}</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50 outline-none">
@@ -137,9 +140,12 @@ export function EffortPicker({
                 Reasoning effort
               </Popover.Title>
               <span className="flex items-center gap-2 text-[13px] font-semibold">
-                <EffortMeter efforts={efforts} level={index} />
-                {automatic ? <span className="font-normal text-fg-tertiary">Auto ·</span> : null}
-                {label}
+                {automatic ? (
+                  <Route size={13} strokeWidth={2} className="text-fg-tertiary" />
+                ) : (
+                  <EffortMeter efforts={efforts} level={index} />
+                )}
+                {automatic ? "Auto" : label}
               </span>
             </div>
             <Slider.Root
@@ -158,24 +164,21 @@ export function EffortPicker({
             >
               <Slider.Control className="flex h-6 w-full cursor-pointer touch-none items-center select-none">
                 <Slider.Track className="relative h-2 w-full rounded-full bg-surface-active">
-                  {/* The whole heat, shown up to the thumb, so the fill warms as it grows; it glows in
-                      the colour it reaches. */}
+                  {/* The whole ramp, shown up to the thumb, so the fill strengthens as it grows; on
+                      Auto it's empty, as no level is chosen. */}
                   <span
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 transition-[filter] duration-150"
-                    style={{ filter: `drop-shadow(0 0 5px ${heat(index / last)})` }}
-                  >
-                    <span
-                      className={`absolute inset-0 rounded-full bg-(image:--effort-heat) ${held === undefined ? "transition-[clip-path] duration-200 ease-out-soft" : ""}`}
-                      style={{ clipPath: `inset(0 calc(100% - ${at(index)}) 0 0 round 9999px)` }}
-                    />
-                  </span>
+                    className={`pointer-events-none absolute inset-0 rounded-full bg-(image:--effort-ramp) ${held === undefined ? "transition-[clip-path] duration-200 ease-out-soft" : ""}`}
+                    style={{
+                      clipPath: `inset(0 calc(100% - ${automatic ? "0px" : at(index)}) 0 0 round 9999px)`,
+                    }}
+                  />
                   {efforts.map((level, stop) => (
                     <span
                       key={level}
                       aria-hidden
                       className={`pointer-events-none absolute top-1/2 size-1 -translate-1/2 rounded-full ${
-                        stop <= index ? "bg-surface-overlay/70" : "bg-fg-disabled"
+                        stop <= index && !automatic ? "bg-surface-overlay/70" : "bg-fg-disabled"
                       }`}
                       style={{ left: at(stop) }}
                     />
@@ -184,8 +187,11 @@ export function EffortPicker({
                     inputRef={thumb}
                     aria-label="Reasoning effort"
                     getAriaValueText={(_, stop) => effortLabel[efforts[stop] ?? value]}
-                    className="size-4.5 rounded-full border-[3px] bg-fg-primary shadow-[0_0_0_2px_var(--surface-overlay)] transition-[scale,border-color] duration-150 has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus-ring data-dragging:scale-110"
-                    style={{ borderColor: heat(index / last) }}
+                    // Hollow on Auto: where a pick by hand would start, not a level chosen.
+                    className={`size-4.5 rounded-full border-[3px] shadow-[0_0_0_2px_var(--surface-overlay)] transition-[scale,border-color,background-color] duration-150 has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus-ring data-dragging:scale-110 ${
+                      automatic ? "bg-surface-overlay" : "bg-fg-primary"
+                    }`}
+                    style={{ borderColor: automatic ? "var(--fg-tertiary)" : ramp(index / last) }}
                   />
                 </Slider.Track>
               </Slider.Control>
@@ -202,7 +208,7 @@ export function EffortPicker({
                     if (level !== value || auto?.on) onPick(level);
                   }}
                   className={`absolute top-0 -translate-x-1/2 text-2xs whitespace-nowrap transition-colors first:translate-x-0 last:-translate-x-full ${
-                    stop === index
+                    stop === index && !automatic
                       ? "font-medium text-fg-primary"
                       : "text-fg-tertiary hover:text-fg-secondary"
                   }`}

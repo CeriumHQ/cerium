@@ -26,7 +26,7 @@ const HELP = `bun run ui <command> [options]
     --attach=9222       drive an app already listening for a debugger instead (bun run dev's shell: 9222)
     --match=text        with --attach, the page whose URL contains this
     --width=1280 --height=800 --scale=1 --mobile
-    --dark | --light    the colour scheme the page sees
+    --dark | --light    the colour scheme the page sees; Cerium's own theme too, unless --attach
     --visible           show the window; default headless
     --browser=edge|chrome
   act <step>...       run steps in order; the first that fails stops the rest
@@ -140,6 +140,28 @@ const ensureShown = async (page: Page) => {
   }
 };
 
+/**
+ * Puts Cerium's stored theme (`cerium:theme`, apps/ui settings/preferences.ts) on `scheme`, which the
+ * emulated scheme alone doesn't reach: the app follows the system only while its theme is "system",
+ * and a fresh profile starts it on dark. True when it changed, so the page reloads to show it. Pages
+ * that aren't Cerium, whose root has no `data-theme`, are left alone.
+ */
+const matchTheme = (page: Page, scheme: "light" | "dark") =>
+  page
+    .evaluate<boolean>(
+      `(() => {
+        if (document.documentElement.dataset.theme === undefined) return false;
+        try {
+          if (localStorage.getItem("cerium:theme") === ${JSON.stringify(scheme)}) return false;
+          localStorage.setItem("cerium:theme", ${JSON.stringify(scheme)});
+          return true;
+        } catch {
+          return false;
+        }
+      })()`,
+    )
+    .catch(() => false);
+
 const location = (page: Page) =>
   page
     .evaluate<{ url: string; title: string }>("({ url: location.href, title: document.title })")
@@ -239,6 +261,10 @@ const open = async (): Promise<Record<string, unknown>> => {
   try {
     if (url !== undefined) await page.navigate(url);
     else await page.settle();
+    // Only in a browser of this tool's own: an attached app's theme is the user's.
+    if (state.browser !== undefined && colorScheme !== undefined && (await matchTheme(page, colorScheme))) {
+      await page.reload();
+    }
     return { ...(await location(page)), ...(await shoot(page, state)), console: page.drainConsole() };
   } finally {
     page.close();

@@ -184,12 +184,14 @@
   --shiki-token-changed: var(--status-attention);
 }
 
-/* Reasoning effort's heat, cool to hot, along the effort meter and slider (composer/Pickers.tsx). */
+/*
+ * Reasoning effort, faint to full in the accent, along the effort meter and slider (composer/Pickers.tsx):
+ * a level is an amount, not a status, so it takes no status hue.
+ */
 :root {
-  --effort-cool: var(--status-running);
-  --effort-warm: var(--status-merged);
-  --effort-hot: var(--status-error);
-  --effort-heat: linear-gradient(90deg, var(--effort-cool), var(--effort-warm), var(--effort-hot));
+  --effort-faint: color-mix(in oklab, var(--accent) 38%, transparent);
+  --effort-full: var(--accent);
+  --effort-ramp: linear-gradient(90deg, var(--effort-faint), var(--effort-full));
 }
 
 @theme inline {
