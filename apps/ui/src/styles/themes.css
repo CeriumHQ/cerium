@@ -1,7 +1,8 @@
 /*
  * The themes Cerium ships, each a kind of glass, as the window is (and as ceria is the compound glass
  * is polished with). Cerium itself is the clear default and lives in tokens.css; each one below tints
- * the neutral ramp, then gives the accent, the code colours and any status hue its accent would be
+ * the neutral ramp, colours the glass itself (`--glass-c`) strongly enough to hold its own over any
+ * wallpaper, then gives the accent, the code colours and any status hue its accent would be
  * mistaken for, once for dark and once for light. features/settings/palettes.ts lists them for Settings.
  *
  * Accents take their own foreground: a pale accent carries dark text, a deep one light text.
@@ -13,7 +14,10 @@
 }
 
 [data-palette="amber"][data-theme="dark"] {
+  /* Rust this dark, so the dark glass turns towards honey. */
+  --tint-h: 68;
   --tint-c: 0.024;
+  --glass-c: 0.065;
 
   --accent: oklch(0.8 0.13 70);
   --accent-strong: oklch(0.86 0.12 74);
@@ -32,6 +36,7 @@
   /* Peach at this lightness, so the light glass turns towards parchment. */
   --tint-h: 78;
   --tint-c: 0.028;
+  --glass-c: 0.05;
 
   --accent: oklch(0.55 0.14 50);
   --accent-strong: oklch(0.47 0.13 47);
@@ -53,6 +58,7 @@
 
 [data-palette="uranium"][data-theme="dark"] {
   --tint-c: 0.022;
+  --glass-c: 0.07;
 
   --accent: oklch(0.89 0.19 123);
   --accent-strong: oklch(0.94 0.2 123);
@@ -69,6 +75,7 @@
 
 [data-palette="uranium"][data-theme="light"] {
   --tint-c: 0.026;
+  --glass-c: 0.05;
 
   --accent: oklch(0.52 0.14 128);
   --accent-strong: oklch(0.44 0.12 128);
@@ -90,6 +97,7 @@
 
 [data-palette="seaglass"][data-theme="dark"] {
   --tint-c: 0.026;
+  --glass-c: 0.06;
   --lift: 0.04;
 
   --fg-primary: oklch(0.94 0.01 192);
@@ -107,6 +115,7 @@
 
 [data-palette="seaglass"][data-theme="light"] {
   --tint-c: 0.022;
+  --glass-c: 0.04;
   --lift: 0.02;
 
   --accent: oklch(0.55 0.09 198);
@@ -127,6 +136,7 @@
 
 [data-palette="cobalt"][data-theme="dark"] {
   --tint-c: 0.05;
+  --glass-c: 0.09;
   --lift: -0.01;
 
   --accent: oklch(0.62 0.2 264);
@@ -147,6 +157,7 @@
 
 [data-palette="cobalt"][data-theme="light"] {
   --tint-c: 0.03;
+  --glass-c: 0.05;
 
   --accent: oklch(0.5 0.2 264);
   --accent-strong: oklch(0.43 0.19 264);
@@ -170,6 +181,7 @@
 
 [data-palette="cranberry"][data-theme="dark"] {
   --tint-c: 0.03;
+  --glass-c: 0.08;
 
   --accent: oklch(0.77 0.13 356);
   --accent-strong: oklch(0.83 0.11 356);
@@ -186,6 +198,7 @@
 
 [data-palette="cranberry"][data-theme="light"] {
   --tint-c: 0.016;
+  --glass-c: 0.035;
 
   --accent: oklch(0.5 0.17 2);
   --accent-strong: oklch(0.42 0.16 2);

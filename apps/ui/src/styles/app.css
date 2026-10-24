@@ -56,6 +56,15 @@ html[data-acrylic][data-theme="dark"] {
   --window-alpha: 0.45;
 }
 
+/* A coloured theme holds more of the glass, so its hue rather than the wallpaper's sets the window. */
+html[data-acrylic][data-theme="dark"]:not([data-palette="cerium"]) {
+  --window-alpha: 0.68;
+}
+
+html[data-acrylic][data-theme="light"]:not([data-palette="cerium"]) {
+  --window-alpha: 0.74;
+}
+
 html:not([data-acrylic]) body {
   background: var(--backdrop);
 }

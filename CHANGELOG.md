@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - The message box is glass in the conversation's own tone instead of a lighter card. A new thread's project and worktree sit in a small capsule above it. Model, effort and access share one outlined pill whose segments each open their menu as before. Send shows as an outlined ring until there's something to send, and stop is solid, with a ring turning around it while the turn runs.
+- Amber, Uranium, Sea glass, Cobalt and Cranberry colour the window's glass itself, strongly enough to hold their own over the desktop: over Windows Acrylic they hold more of the glass, so the theme's hue rather than the wallpaper's sets the window. Before, a faint tint drowned in the wallpaper and every theme looked alike. Amber's dark glass turns towards honey rather than rust.
 - While a turn runs, a capsule above the message box names the step the agent is on ("Edit Pickers.tsx", "Thinking") next to the turn's running time.
 - Messages you send while the lead works wait in a numbered list inside the message box instead of in the transcript, with "Send now" to hand them over at once. Each can be taken back: Edit puts its text, mentions and attachments back in your draft, Remove drops it, and neither works once the agent has taken it. A stopped lead's waiting messages can be taken back the same way before your next message carries them. New `MessageWithdrawn` event and `WithdrawMessage` call (`RPC_VERSION` 26), and the orchestrator `withdrawMessage`.
 
