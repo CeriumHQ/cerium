@@ -1,7 +1,9 @@
 import { CheckpointError, Checkpoints, type SnapshotChange, type SnapshotLines } from "@cerium/orchestrator";
-import { Deferred, Effect, FileSystem, Layer, Path, Scope, Stream } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { createHash, randomUUID } from "node:crypto";
+
+import { DIFF_BYTES } from "./files.ts";
 
 // Snapshots of work threads' folders, kept in a bare git repository of Cerium's own per folder: git's
 // index makes a snapshot of an unchanged tree cheap, and its object store keeps each version of a file
@@ -89,7 +91,18 @@ export const parseNumstat = (output: string): ReadonlyArray<SnapshotLines> => {
 interface GitResult {
   readonly stdout: string;
   readonly stderr: string;
+  /** -1 when the output was cut at `limit`. */
   readonly code: number;
+  /** Stdout went past the limit and was cut, and git was stopped. */
+  readonly truncated: boolean;
+}
+
+interface GitOptions {
+  readonly stdin?: string;
+  /** The index file git uses, for commands that read or write one. */
+  readonly index?: string;
+  /** At most this many bytes of stdout are read; unlimited unless given. */
+  readonly limit?: number;
 }
 
 /**
@@ -119,16 +132,8 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         return path.join(options.directory, createHash("sha256").update(key).digest("hex").slice(0, 20));
       };
 
-      /**
-       * Runs git on `store` with `folder` as its work tree; `init` makes the store, so it has neither.
-       * `index` is the index file it uses, for commands that read or write one.
-       */
-      const git = (
-        store: string,
-        folder: string,
-        args: ReadonlyArray<string>,
-        options: { readonly stdin?: string; readonly index?: string } = {},
-      ) =>
+      /** Runs git on `store` with `folder` as its work tree; `init` makes the store, so it has neither. */
+      const git = (store: string, folder: string, args: ReadonlyArray<string>, options: GitOptions = {}) =>
         Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(
@@ -153,14 +158,19 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
                 },
               ),
             );
-            const [stdout, stderr] = yield* Effect.all(
-              [
-                Stream.mkString(Stream.decodeText(handle.stdout)),
-                Stream.mkString(Stream.decodeText(handle.stderr)),
-              ],
-              { concurrency: 2 },
+            // Stderr is read beside stdout; a git cut off mid-output never finishes it, and leaving the
+            // scope stops both.
+            const stderr = yield* Effect.forkScoped(Stream.mkString(Stream.decodeText(handle.stderr)));
+            const limit = options.limit ?? Number.POSITIVE_INFINITY;
+            let size = 0;
+            const chunks = yield* handle.stdout.pipe(
+              Stream.takeUntil((chunk) => (size += chunk.length) >= limit),
+              Stream.runCollect,
             );
-            return { stdout, stderr, code: Number(yield* handle.exitCode) } satisfies GitResult;
+            const stdout = Buffer.concat(chunks).toString("utf8");
+            if (size >= limit) return { stdout, stderr: "", code: -1, truncated: true } satisfies GitResult;
+            const code = Number(yield* handle.exitCode);
+            return { stdout, stderr: yield* Fiber.join(stderr), code, truncated: false } satisfies GitResult;
           }),
         ).pipe(
           Effect.mapError(
@@ -169,20 +179,26 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
           ),
         );
 
+      /**
+       * Git's output, failing with `message` when it exits with an error. Output cut at `limit` ends
+       * at its last whole line.
+       */
       const gitOk = (
         store: string,
         folder: string,
         args: ReadonlyArray<string>,
         message: string,
-        options: { readonly stdin?: string; readonly index?: string } = {},
+        options: GitOptions = {},
       ) =>
         git(store, folder, args, options).pipe(
           Effect.flatMap((result) =>
             result.code === 0
               ? Effect.succeed(result.stdout)
-              : Effect.logWarning(`git ${args[0]} failed in ${store}: ${result.stderr.trim()}`).pipe(
-                  Effect.andThen(Effect.fail(new CheckpointError({ message }))),
-                ),
+              : result.truncated
+                ? Effect.succeed(result.stdout.slice(0, result.stdout.lastIndexOf("\n") + 1))
+                : Effect.logWarning(`git ${args[0]} failed in ${store}: ${result.stderr.trim()}`).pipe(
+                    Effect.andThen(Effect.fail(new CheckpointError({ message }))),
+                  ),
           ),
         );
 
@@ -369,6 +385,8 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
             file,
           ],
           "Couldn't compare the file's snapshots.",
+          // No more than the viewer is sent of a diff is read, so a huge file's isn't held whole.
+          { limit: DIFF_BYTES },
         );
       });
 

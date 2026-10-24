@@ -5,6 +5,7 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { checkpointsLayer, parseNameStatus, parseNumstat } from "../src/checkpoints.ts";
+import { DIFF_BYTES } from "../src/files.ts";
 
 describe("parseNameStatus", () => {
   it("reads each file's change from git's NUL-separated list", () => {
@@ -104,6 +105,20 @@ describe("Checkpoints", () => {
       assert.strictEqual(yield* read("other.ts"), "someone else's\n");
       assert.strictEqual(yield* read("secret.txt"), "changed too\n");
       assert.strictEqual(yield* read("node_modules/dep/index.js"), "upgraded\n");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("reads no more of a huge file's diff than the viewer is sent, cut at a whole line", () =>
+    Effect.gen(function* () {
+      const { folder, write, checkpoints } = yield* setup;
+      const before = yield* checkpoints.save(folder);
+      const line = "x".repeat(1_000);
+      yield* write("big.txt", `${line}\n`.repeat(12_000));
+      const after = yield* checkpoints.save(folder);
+      const diff = yield* checkpoints.diff(folder, before, after, "big.txt", 3);
+      assert.isAtLeast(diff.length, DIFF_BYTES / 2);
+      assert.isBelow(diff.length, 2 * DIFF_BYTES);
+      assert.isTrue(diff.endsWith(`+${line}\n`));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
