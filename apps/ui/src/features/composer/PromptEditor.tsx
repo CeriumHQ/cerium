@@ -350,6 +350,8 @@ export function PromptEditor({
         // A <textarea> can't hold the mention chips this editable box does.
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="textbox"
+        // The message glides from where it starts on one line to where it starts in the open box.
+        data-morph="message"
         tabIndex={0}
         aria-multiline
         aria-label="Message"

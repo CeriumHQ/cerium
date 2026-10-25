@@ -178,6 +178,75 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+@keyframes write-in {
+  from {
+    clip-path: inset(-4px 100% -4px -4px);
+    opacity: 0.2;
+    filter: blur(2px);
+    translate: -4px 0;
+  }
+  to {
+    clip-path: inset(-4px -4px -4px -4px);
+  }
+}
+
+@keyframes unroll {
+  from {
+    clip-path: inset(-8px -8px 100% -8px);
+    opacity: 0.3;
+    translate: 0 -4px;
+  }
+  to {
+    clip-path: inset(-8px -8px -8px -8px);
+  }
+}
+
+@keyframes asks {
+  from {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  to {
+    outline: 2px solid transparent;
+    outline-offset: 8px;
+  }
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    scale: 0.4;
+    rotate: -12deg;
+    filter: blur(2px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * A word an agent just wrote (Streamdown's `animated`, as `sd-ink`): it comes out of a blur, lit for a
+ * moment as it lands, and cools to the text's own colour, so the edge where the agent is writing glows
+ * faintly as it moves along.
+ */
+@keyframes sd-ink {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+  }
+  35% {
+    opacity: 1;
+    filter: blur(0);
+    text-shadow: 0 0 10px color-mix(in oklab, var(--fg-primary) 45%, transparent);
+  }
+  to {
+    text-shadow: 0 0 10px transparent;
+  }
+}
+
 /* An artifact the artifacts panel brought into view, ringed for a moment so the eye finds it. */
 [data-artifact][data-found] {
   border-radius: 0.625rem;
@@ -346,6 +415,79 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
       scale: 0.6;
       filter: blur(2px);
     }
+  }
+
+  /*
+   * A line that writes itself out in reading order as it arrives: uncovered from its start to its
+   * end, each part sharpening as the edge passes it. `--write-delay` holds it back behind what leads it.
+   */
+  .write-in {
+    animation: write-in 420ms var(--ease-out-soft) var(--write-delay, 0ms) backwards;
+  }
+
+  /*
+   * A card, or a message come whole, laid down from its top edge as it arrives, while the
+   * conversation glides up to make room for it.
+   */
+  .unroll {
+    animation: unroll 460ms var(--ease-out-soft) backwards;
+  }
+
+  /* A card that waits on the user rings once as it settles, so the eye goes to it. */
+  .unroll.asks > * {
+    animation: asks 1.4s ease-out 380ms backwards;
+  }
+
+  /*
+   * A response begins: the harness's mark is stamped down, and the model's name writes itself out
+   * from beside it.
+   */
+  .arrive-header [data-header-mark] {
+    animation: stamp 420ms var(--ease-pop) backwards;
+  }
+
+  .arrive-header [data-header-name] {
+    animation: write-in 380ms var(--ease-out-soft) 110ms backwards;
+  }
+
+  /* The effort the router picked follows the name. */
+  .arrive-header [data-header-name] ~ * {
+    animation: write-in 340ms var(--ease-out-soft) 240ms backwards;
+  }
+
+  /* Shown only once the wait outlasts a moment, so a quick response doesn't flash it. */
+  .arrive-late {
+    animation: fade-in 320ms ease-out 260ms backwards;
+  }
+
+  /* Agents started together join one after another, each popping into its place. */
+  .arrive-spawns > * > * {
+    animation: stamp 380ms var(--ease-pop) backwards;
+  }
+
+  .arrive-spawns > * > :nth-child(2) {
+    animation-delay: 70ms;
+  }
+
+  .arrive-spawns > * > :nth-child(3) {
+    animation-delay: 140ms;
+  }
+
+  .arrive-spawns > * > :nth-child(n + 4) {
+    animation-delay: 210ms;
+  }
+
+  /* The end of a response trails in after it, part by part: copy, then what the turn used. */
+  .trail > * > * {
+    animation: write-in 360ms var(--ease-out-soft) 120ms backwards;
+  }
+
+  .trail > * > :nth-child(2) {
+    animation-delay: 190ms;
+  }
+
+  .trail > * > :nth-child(n + 3) {
+    animation-delay: 260ms;
   }
 
   /* A tile among others, which scales in and out where it stands. */

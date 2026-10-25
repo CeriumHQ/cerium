@@ -117,6 +117,51 @@ const quietFooter = (item: Extract<Item, { kind: "turnEnd" }>, latest: string | 
     ? ""
     : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 [:focus-within+&]:opacity-100 [:hover+&]:opacity-100 [:hover+*+&]:opacity-100";
 
+/**
+ * How an item comes in while the thread is open, by what it is: a line writes itself out in reading
+ * order, a card or a whole message unrolls downward, and the footer trails in last. Decided by the
+ * item's kind alone, which never changes for its id, so an item keeps its entrance as it updates and
+ * plays it only as it first mounts.
+ */
+const entrance = (item: Item): string => {
+  switch (item.kind) {
+    case "input":
+      return "arrive";
+    // A response's header takes the place of the one shown while it was awaited, which already came in.
+    case "header":
+    // A run writes in its own line, and brings in each of its steps as they come.
+    case "run":
+    case "replaced":
+      return "";
+    case "tools":
+      return "unroll";
+    case "spawns":
+      return "arrive-spawns";
+    case "turnEnd":
+      return "trail";
+    case "routed":
+    case "switch":
+    case "spawnAsk":
+      return "write-in";
+    case "block":
+      switch (item.block.kind) {
+        case "message":
+          return "unroll";
+        case "permission":
+        case "question":
+          return "unroll asks";
+        default:
+          return "write-in";
+      }
+  }
+};
+
+/** Every item's id, and those of the steps inside runs, which come in one by one as a run grows. */
+const arrivalKeys = (items: ReadonlyArray<Item>) =>
+  items.flatMap((item) =>
+    item.kind === "run" ? [item.id, ...item.steps.map((step) => step.id)] : [item.id],
+  );
+
 export function Transcript({
   blocks,
   queued,
@@ -153,7 +198,7 @@ export function Transcript({
   );
   const items = layout(shown);
   // What comes in while the thread is open rises into place; what it opened with stays still.
-  const arrived = useArrivals(items.map((item) => item.id));
+  const arrived = useArrivals(arrivalKeys(items));
   const last = items.at(-1);
   const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
@@ -198,14 +243,15 @@ export function Transcript({
       <Fragment key={item.id}>
         {/* The files the turn changed stay in view, above the footer that hides until hovered. */}
         {item.kind === "turnEnd" && item.block.changes !== undefined ? (
-          <TurnChangesItem changes={item.block.changes} replaced={replaced} />
+          <div className={!replaced && arrived(item.id) ? "unroll" : ""}>
+            <TurnChangesItem changes={item.block.changes} replaced={replaced} />
+          </div>
         ) : null}
         <div
-          // A message sent rises out of the message box. A response's header takes the place of the
-          // one shown while it was awaited, which already rose, so it doesn't rise again.
+          // A message sent rises out of the message box, its text flying there from where it was written.
           {...(item.kind === "input" ? { "data-from-box": "" } : {})}
           className={`${item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : ""} ${
-            !replaced && item.kind !== "header" && arrived(item.id) ? "arrive" : ""
+            !replaced && arrived(item.id) ? entrance(item) : ""
           }`}
         >
           <TranscriptItem
@@ -215,6 +261,11 @@ export function Transcript({
             provider={agent.provider}
             model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
             replaced={replaced}
+            fresh={
+              !replaced && item.kind === "run"
+                ? [item.id, ...item.steps.map((step) => step.id)].filter(arrived).join(" ")
+                : ""
+            }
           />
         </div>
       </Fragment>
@@ -246,7 +297,7 @@ export function Transcript({
                 true height, and the content jumped under the scroll position. */}
             {items.map((item) => renderItem(item, false))}
             {working && !responding ? (
-              <div className="arrive">
+              <div className="arrive-header">
                 <ResponseHeader
                   agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
                   routed={pendingRouted(shown)}
@@ -254,7 +305,7 @@ export function Transcript({
               </div>
             ) : null}
             {working ? (
-              <div className="arrive">
+              <div className="arrive-late">
                 <Working />
               </div>
             ) : null}
@@ -357,6 +408,8 @@ interface ItemProps {
   readonly model: string;
   /** The item belongs to a version a rewind replaced. */
   readonly replaced: boolean;
+  /** For a run, the ids of it and its steps that came in while the thread was open, space-separated. */
+  readonly fresh: string;
 }
 
 /**
@@ -365,7 +418,8 @@ interface ItemProps {
  * a long thread's updates three times as slow (scratch transcript benchmark, 1,900 events).
  */
 const TranscriptItem = memo(
-  function TranscriptItem({ item, last, activity, provider, model, replaced }: ItemProps) {
+  function TranscriptItem({ item, last, activity, provider, model, replaced, fresh }: ItemProps) {
+    const arrived = new Set(fresh.split(" "));
     const render = (each: Item): ReactNode => {
       switch (each.kind) {
         case "input":
@@ -402,8 +456,13 @@ const TranscriptItem = memo(
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               live={last && activity === "running"}
               activity={activity}
+              arrived={arrived.has(each.id)}
             >
-              {each.steps.map(render)}
+              {each.steps.map((step) => (
+                <div key={step.id} className={arrived.has(step.id) ? entrance(step) : ""}>
+                  {render(step)}
+                </div>
+              ))}
             </ToolRun>
           );
         case "tools":
@@ -429,6 +488,7 @@ const TranscriptItem = memo(
     before.provider === after.provider &&
     before.model === after.model &&
     before.replaced === after.replaced &&
+    before.fresh === after.fresh &&
     same(before.item, after.item),
 );
 
@@ -469,10 +529,15 @@ export function ResponseHeader({
 }) {
   return (
     <div className="flex items-center gap-2 pt-2 text-xs text-fg-tertiary">
-      <span className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">
+      <span
+        data-header-mark
+        className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary"
+      >
         <ProviderLogo provider={agent.provider} size={11} />
       </span>
-      <span className="font-medium text-fg-secondary">{agent.model}</span>
+      <span data-header-name className="font-medium text-fg-secondary">
+        {agent.model}
+      </span>
       {routed?.effort === undefined ? null : <RoutedEffort routed={routed} />}
     </div>
   );

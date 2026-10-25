@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 /** Waits no longer than this for motion to end: a hidden window's animations may never be painted. */
 const SETTLE_LIMIT_MS = 1_000;
@@ -149,6 +149,109 @@ export function useGlide(): (key: string) => (element: HTMLElement | null) => ()
   useLayoutEffect(() => glide.settle());
   useEffect(() => () => glide.disconnect(), [glide]);
   return glide.ref;
+}
+
+/** A morphing box as it last stood: its height and corners, and where each of its marked parts starts. */
+interface MorphFrame {
+  readonly height: number;
+  readonly radius: string;
+  readonly parts: ReadonlyMap<string, { readonly x: number; readonly y: number }>;
+}
+
+/** Where a part's own content starts inside the box: past its border and padding, as text sits. */
+const morphFrame = (box: HTMLElement): MorphFrame => {
+  const origin = box.getBoundingClientRect();
+  const parts = new Map<string, { x: number; y: number }>();
+  for (const part of box.querySelectorAll<HTMLElement>("[data-morph]")) {
+    const rect = part.getBoundingClientRect();
+    const style = getComputedStyle(part);
+    parts.set(part.dataset.morph!, {
+      x: rect.left - origin.left + part.clientLeft + parseFloat(style.paddingLeft),
+      y: rect.top - origin.top + part.clientTop + parseFloat(style.paddingTop),
+    });
+  }
+  return { height: box.offsetHeight, radius: getComputedStyle(box).borderRadius, parts };
+};
+
+/** Whether any of the animations is still under way, held paused or not. */
+const moving = (animations: ReadonlyArray<Animation>) =>
+  animations.some((animation) => animation.playState === "running" || animation.playState === "paused");
+
+/**
+ * Morphs a box between two shapes instead of jumping when `shape` changes. Its height and corners
+ * ease from the old shape's to the new one's, clipped on the way, with its foot standing still, as a
+ * box anchored to the bottom of the window grows and shrinks from its top. Each part marked
+ * `data-morph="name"` glides from where its content started to where it starts now, and the box's
+ * other children hold to the foot as the box changes height around them, so a row of controls stays
+ * on the line it was on. What shows when the box first mounts is simply there.
+ */
+export function useMorph(
+  ref: RefObject<HTMLElement | null>,
+  shape: string,
+  { duration = 340, easing = "cubic-bezier(0.32, 0.72, 0, 1)" }: { duration?: number; easing?: string } = {},
+) {
+  const morph = useRef<{ shape: string; frame?: MorphFrame; running: ReadonlyArray<Animation> }>({
+    shape,
+    running: [],
+  });
+
+  useLayoutEffect(() => {
+    const box = ref.current;
+    const current = morph.current;
+    if (!box) return;
+    const changed = current.shape !== shape;
+    const busy = moving(current.running);
+    // While it moves the box isn't where it stands; the frame it moves to stays the one to start from.
+    if (!changed && busy) return;
+    for (const animation of current.running) animation.cancel();
+    const before = current.frame;
+    const after = morphFrame(box);
+    current.shape = shape;
+    current.frame = after;
+    if (!changed || before === undefined) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timing = { duration, easing };
+    const held = before.height - after.height;
+    const running = [
+      box.animate(
+        [
+          { height: `${before.height}px`, borderRadius: before.radius, overflow: "clip" },
+          { height: `${after.height}px`, borderRadius: after.radius, overflow: "clip" },
+        ],
+        timing,
+      ),
+    ];
+    for (const part of box.querySelectorAll<HTMLElement>("[data-morph]")) {
+      const from = before.parts.get(part.dataset.morph!);
+      const to = after.parts.get(part.dataset.morph!);
+      if (!from || !to || (from.x === to.x && from.y === to.y)) continue;
+      running.push(
+        part.animate([{ translate: `${from.x - to.x}px ${from.y - to.y}px` }, { translate: "0 0" }], timing),
+      );
+    }
+    if (held !== 0) {
+      for (const child of box.children) {
+        if (child.matches("[data-morph]") || child.querySelector("[data-morph]")) continue;
+        running.push(child.animate([{ translate: `0 ${held}px` }, { translate: "0 0" }], timing));
+      }
+    }
+    current.running = running;
+  });
+
+  // The box changes size without rendering (the window narrowing, a line wrapping), so the frame a
+  // morph starts from is kept current as it does.
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    const observer = new ResizeObserver(() => {
+      const current = morph.current;
+      if (!moving(current.running)) {
+        current.frame = morphFrame(box);
+      }
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [ref]);
 }
 
 /** More new items than this at once are a load, such as a thread's history, rather than arrivals. */

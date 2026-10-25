@@ -31,7 +31,8 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { useChanged } from "../../lib/motion.ts";
+import { useChanged, useMorph } from "../../lib/motion.ts";
+import { launch } from "./flight.ts";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
 import { WEB } from "../../backend/target.ts";
@@ -515,6 +516,11 @@ export function Composer({
     !needsFolder &&
     !projectsOpen;
   const inline = oneLine || compact || rests;
+  // The glass morphs between its one line and its open shape: it grows up from its foot as the message
+  // lifts onto a line of its own, and the controls stay on the bottom line.
+  const glass = useRef<HTMLDivElement>(null);
+  useMorph(glass, inline ? "line" : "open");
+  const unfolded = useChanged(inline);
 
   // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
   // client is a phone's, whose keyboard has a microphone of its own.
@@ -601,13 +607,17 @@ export function Composer({
     if (!canSend || first === undefined) return;
     const key = draftKey;
     const sent = draft;
+    const message = withComments(text, comments);
+    // Its text stays where it was written until the transcript shows it and flies it there. One sent
+    // behind a running turn waits in the box instead.
+    if (!running && input.current) launch(input.current, message);
     setDrafts((current) => withoutDraft(current, key));
     setEpoch((current) => current + 1);
     setTrigger(undefined);
-    void onSend(
-      { text: withComments(text, comments), attachments: ready, mentions: draftMentions(draft.segments) },
-      [setupOf(first), ...rest.map(setupOf)],
-    ).then((delivered) => {
+    void onSend({ text: message, attachments: ready, mentions: draftMentions(draft.segments) }, [
+      setupOf(first),
+      ...rest.map(setupOf),
+    ]).then((delivered) => {
       if (delivered) {
         for (const attachment of sent.attachments) {
           if (attachment.preview) URL.revokeObjectURL(attachment.preview);
@@ -866,7 +876,7 @@ export function Composer({
   // Where a new work thread runs, as a path (project / branch or new worktree), leading the setup row.
   const newPlace =
     target.kind === "new" && target.mode === "work" ? (
-      <div className="flex min-w-0 items-center">
+      <div className={`flex min-w-0 items-center ${unfolded ? "write-in [--write-delay:90ms]" : ""}`}>
         <ProjectPicker
           folder={target.folder}
           open={projectsOpen}
@@ -931,6 +941,7 @@ export function Composer({
         {/* Glass in the transcript's own tone: the box stands apart by its edge and the blur of what
             scrolls under it, not by being lighter or darker than the conversation. */}
         <div
+          ref={glass}
           className={`pointer-events-auto relative border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
           } ${inline ? "flex flex-wrap items-end rounded-[24px] p-1" : "rounded-[18px]"}`}
@@ -1006,9 +1017,10 @@ export function Composer({
           {inline ? (
             actions
           ) : (
-            <div className="flex items-end gap-1 px-2 pt-1 pb-2 transition-[opacity,translate] duration-200 ease-out-soft starting:-translate-y-1 starting:opacity-0 motion-reduce:transition-none">
+            <div className="flex items-end gap-1 px-2 pt-1 pb-2">
               {/* The row's choices wrap among themselves on a narrow screen, so send keeps its
-                  corner instead of dropping onto a row of its own. */}
+                  corner instead of dropping onto a row of its own. Unfolding, where the thread will
+                  run writes itself out after the paperclip. */}
               <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
                 {attachButton}
                 {newPlace}

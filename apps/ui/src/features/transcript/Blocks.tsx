@@ -15,7 +15,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -26,6 +26,7 @@ import { PermissionPrompt } from "../agents/ApprovalParts.tsx";
 import { accessLabel, type AgentSummary } from "../agents/model.ts";
 import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
+import { takeLaunch } from "../composer/flight.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { effortLabel } from "../composer/models.ts";
 import { CopyButton } from "./CopyButton.tsx";
@@ -60,6 +61,12 @@ export function UserMessage({
   const editable = onEdit !== undefined && block.delivered === true;
   // A message the agent never got began nothing to go back on.
   const restorable = onRestore !== undefined && block.delivered === true;
+  // The message just sent from the box flies from there into this bubble as it first shows.
+  const bubble = useRef<HTMLDivElement>(null);
+  const land = useEffectEvent(() => {
+    if (bubble.current) takeLaunch(bubble.current, block.text);
+  });
+  useLayoutEffect(() => land(), []);
   if (editing && editable) {
     return <MessageEditor block={block} onSend={onEdit} onCancel={() => setEditing(false)} />;
   }
@@ -124,7 +131,10 @@ export function UserMessage({
         </div>
       ) : null}
       {block.text.trim() === "" ? null : (
-        <div className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text">
+        <div
+          ref={bubble}
+          className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text"
+        >
           <FoldedText text={block.text}>
             <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
           </FoldedText>

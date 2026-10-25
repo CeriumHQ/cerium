@@ -15,6 +15,7 @@ import { memo, useContext, useState, type ReactNode } from "react";
 import { shellBridge } from "../../backend/shell.ts";
 import { FileImageThumb, ImageThumb, ToolOutputImageThumb } from "../../components/ImageThumb.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { useArrivals, useChanged } from "../../lib/motion.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { EditDiff } from "./EditDiff.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
@@ -95,11 +96,14 @@ export function ToolRun({
   tools,
   live,
   activity,
+  arrived = false,
   children,
 }: {
   tools: ReadonlyArray<ToolBlock>;
   live: boolean;
   activity: AgentActivity;
+  /** The run came in while the thread was open, so its line writes itself in. */
+  arrived?: boolean;
   children: ReactNode;
 }) {
   const [toggled, setToggled] = useState<boolean>();
@@ -110,7 +114,9 @@ export function ToolRun({
   const previewed = images.length <= PREVIEWED ? images : images.slice(0, PREVIEWED - 1);
   return (
     <Collapsible.Root open={open} onOpenChange={setToggled}>
-      <Collapsible.Trigger className="group flex max-w-full min-w-0 items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1">
+      <Collapsible.Trigger
+        className={`group flex max-w-full min-w-0 items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+      >
         <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
         <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
         {failed > 0 ? <span className="shrink-0 text-error">· {failed} failed</span> : null}
@@ -152,10 +158,18 @@ export function ToolRun({
  */
 export const ToolGroup = memo(
   function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
+    // A call made while the card is in view writes its row in under the ones before it.
+    const arrived = useArrivals(tools.map((tool) => tool.id));
     return (
       <div className="overflow-hidden rounded-lg border border-line-subtle">
         {tools.map((tool, index) => (
-          <ToolRow key={tool.id} tool={tool} divider={index > 0} activity={activity} />
+          <ToolRow
+            key={tool.id}
+            tool={tool}
+            divider={index > 0}
+            activity={activity}
+            arrived={arrived(tool.id)}
+          />
         ))}
       </div>
     );
@@ -171,10 +185,12 @@ const ToolRow = memo(
     tool,
     divider,
     activity,
+    arrived,
   }: {
     tool: ToolBlock;
     divider: boolean;
     activity: AgentActivity;
+    arrived: boolean;
   }) {
     const [open, setOpen] = useState(false);
     const { icon: Icon, verb, detail, mono } = describeTool(tool);
@@ -212,7 +228,7 @@ const ToolRow = memo(
       <Collapsible.Root
         open={open}
         onOpenChange={setOpen}
-        className={divider ? "border-t border-line-subtle" : ""}
+        className={`${divider ? "border-t border-line-subtle" : ""} ${arrived ? "write-in" : ""}`}
       >
         {hasToolMenu(tool) ? (
           <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
@@ -228,6 +244,7 @@ const ToolRow = memo(
   (before, after) =>
     before.divider === after.divider &&
     before.activity === after.activity &&
+    before.arrived === after.arrived &&
     sameTool(before.tool, after.tool),
 );
 
@@ -270,6 +287,9 @@ function ToolMenu({ tool }: { tool: ToolBlock }) {
 }
 
 function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activity: AgentActivity }) {
+  // A call seen finishing ticks itself off: its check draws in, or its cross pops in, where the
+  // spinner turned. One that had finished before it showed is simply marked.
+  const finished = useChanged(status);
   // A call still open after its agent's turn ended was cut off, not slow.
   if (status === "running" && activity !== "running") {
     return (
@@ -280,8 +300,9 @@ function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activit
     );
   }
   if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running" />;
-  if (status === "error") return <X size={13} strokeWidth={2.25} className="text-error" />;
-  return <Check size={13} strokeWidth={2.25} className="text-success/80" />;
+  if (status === "error")
+    return <X size={13} strokeWidth={2.25} className={`text-error ${finished ? "swap-in" : ""}`} />;
+  return <Check size={13} strokeWidth={2.25} className={`text-success/80 ${finished ? "draw-check" : ""}`} />;
 }
 
 /** What an opened row shows: what the call was given, then what came back. */

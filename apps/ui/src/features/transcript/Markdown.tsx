@@ -21,6 +21,12 @@ const controls = {
   image: { download: false },
 } as const;
 
+/**
+ * While a reply streams, each word comes in as ink (`sd-ink` in app.css), in the order it was
+ * written; what's already shown stays still. A reply that isn't streaming renders plain.
+ */
+const ink = { animation: "ink", duration: 620, easing: "cubic-bezier(0.22, 0.8, 0.24, 1)", stagger: 22 };
+
 /** Agents' HTML visuals arrive as code fences in this language. */
 const plugins = { renderers: [{ language: ARTIFACT_LANGUAGE, component: Artifact }] };
 
@@ -208,6 +214,7 @@ export function Markdown({
       <Streamdown
         mode={byBlock ? "streaming" : "static"}
         isAnimating={streaming}
+        animated={ink}
         parseIncompleteMarkdown={streaming}
         controls={controls}
         plugins={plugins}
