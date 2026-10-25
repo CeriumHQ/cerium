@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 
 import type { AppMode } from "../../app/ModeSwitch.tsx";
-import { isNewDraftKey, newDraftKey, newThreadDraftsAtom } from "../composer/drafts.ts";
+import { isNewDraftKey, newDraftKey, newThreadDraftTabsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { githubOfKey } from "../github/model.ts";
 import { githubTitlesAtom } from "../github/tabs.ts";
@@ -69,7 +69,7 @@ export function useThreadTabs({
   const [strips, setStrips] = useState<TabStrips>(() => initial ?? {});
   /** How the next thread shown opens, when it isn't the preview. */
   const [opening, setOpening] = useState<{ readonly key: string; readonly as: OpenAs }>();
-  const drafts = useAtomValue(newThreadDraftsAtom);
+  const drafts = useAtomValue(newThreadDraftTabsAtom);
   const githubTitles = useAtomValue(githubTitlesAtom);
   const strip = strips[machine]?.[mode] ?? emptyStrip;
   const update = (change: (strip: TabStrip) => TabStrip) =>
@@ -153,8 +153,9 @@ export function useThreadTabs({
     const draft = drafts.find((candidate) => candidate.key === key);
     return {
       key,
-      // A thread the list hasn't brought yet says nothing rather than something wrong.
-      title: draft?.title ?? (isNewDraftKey(key) ? newTitle : ""),
+      // A thread the list hasn't brought yet says nothing rather than something wrong. A draft's own
+      // title is read where it shows (`newThreadDraftTitleAtom`), so typing doesn't render the window.
+      title: isNewDraftKey(key) ? newTitle : "",
       draft: isNewDraftKey(key),
       preview,
       ...(draft?.folder ? { project: baseName(draft.folder) } : {}),

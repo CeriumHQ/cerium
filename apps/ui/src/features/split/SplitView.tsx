@@ -1,4 +1,5 @@
 import { Button } from "@base-ui/react/button";
+import { useAtomValue } from "@effect/atom-react";
 import { Columns2, Rows2, X } from "lucide-react";
 import {
   useEffect,
@@ -15,6 +16,7 @@ import {
 
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { newThreadDraftTitleAtom } from "../composer/drafts.ts";
 import { paneDrag, THREAD_DRAG_TYPE, usePaneDrag, type DragSource, type PaneDrag } from "./drag.ts";
 import {
   dropZoneAt,
@@ -268,7 +270,7 @@ function Pane({
   box,
   focused,
   split,
-  label,
+  label: given,
   still,
   renderPane,
   onFocus,
@@ -288,6 +290,9 @@ function Pane({
   onClose: (id: string) => void;
   onSplit: (id: string, side: Side) => void;
 }) {
+  // A thread not started yet is called what its draft says, read here so typing renders only this.
+  const draftTitle = useAtomValue(newThreadDraftTitleAtom(leaf.key));
+  const label = draftTitle === undefined ? given : { ...given, title: draftTitle };
   // Bound to the pane here, so they stay the same while it does: a pane that wears its own header is
   // handed them, and new ones would render what it shows again on every move of a drag beside it.
   const focus = () => onFocus(leaf.id);

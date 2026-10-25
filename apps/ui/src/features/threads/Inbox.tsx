@@ -95,7 +95,23 @@ interface InboxProps {
  * `INBOX_CAP` threads by archiving the oldest quiet one as a new one starts; Drafts, threads not sent
  * yet; Later, what the user put off until tomorrow; and Archive. Each can be scoped to one folder.
  */
-export function Inbox({ threads, drafts, draftActions, archived, open, ...actions }: InboxProps) {
+export function Inbox({
+  threads,
+  drafts,
+  draftActions,
+  archived,
+  open,
+  selectedId,
+  onSelect,
+  onMarkRead,
+  onMarkUnread,
+  onNewThreadIn,
+  onRename,
+  onArchive,
+  onRestore,
+  onLater,
+  onDelete,
+}: InboxProps) {
   const now = useNowPast(threads.map((thread) => thread.laterUntil));
   // The list chosen is remembered, so it stays put when the sidebar mounts again, as it does across
   // window sizes.
@@ -110,7 +126,6 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
   // The list follows what opens: a draft shows Drafts, a new thread the inbox, and a thread opened
   // from the palette the list it's in. Only a different one counts: the selection drops out for a
   // moment while a file or settings shows.
-  const { selectedId } = actions;
   const [followed, setFollowed] = useState(selectedId);
   if (selectedId !== undefined && followed !== selectedId) {
     setFollowed(selectedId);
@@ -153,9 +168,29 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
   );
   const unread = listed.filter((thread) => thread.unread);
 
-  const note = useCap(inbox, (thread) => pins.includes(thread.id) || open.includes(thread.id), actions);
+  const note = useCap(inbox, (thread) => pins.includes(thread.id) || open.includes(thread.id), {
+    selectedId,
+    onArchive,
+    onRestore,
+  });
 
-  const rowProps = { ...actions, scope: project?.folder, onScope: chooseScope };
+  // Built from each prop rather than the rest of them, so it keeps its identity while only the drafts
+  // change, as they do with every key typed into a new thread's first line: the lists' rows, all of
+  // the Archive's among them, then don't render again.
+  const rowProps: RowProps = {
+    selectedId,
+    onSelect,
+    onMarkRead,
+    onMarkUnread,
+    onNewThreadIn,
+    onRename,
+    onArchive,
+    onRestore,
+    onLater,
+    onDelete,
+    scope: project?.folder,
+    onScope: chooseScope,
+  };
 
   return (
     <Tabs.Root
@@ -196,7 +231,7 @@ export function Inbox({ threads, drafts, draftActions, archived, open, ...action
             </Tooltip>
             <MenuPopup align="end">
               {unread.length > 0 ? (
-                <MenuItem icon={CheckCheck} onClick={() => actions.onMarkRead(unread)}>
+                <MenuItem icon={CheckCheck} onClick={() => onMarkRead(unread)}>
                   Mark all as read
                 </MenuItem>
               ) : null}
@@ -388,16 +423,22 @@ function Entries({
   now,
   ...rowProps
 }: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
-  return groupRuns(threads).map((entry) =>
-    entry.kind === "thread" ? (
-      <li key={entry.thread.id}>
-        <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
-      </li>
-    ) : (
-      <li key={entry.id}>
-        <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
-      </li>
-    ),
+  // A fragment, not the bare array: the React Compiler takes a function for a component, and memoizes
+  // its rows, only when it returns JSX itself.
+  return (
+    <>
+      {groupRuns(threads).map((entry) =>
+        entry.kind === "thread" ? (
+          <li key={entry.thread.id}>
+            <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
+          </li>
+        ) : (
+          <li key={entry.id}>
+            <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
+          </li>
+        ),
+      )}
+    </>
   );
 }
 

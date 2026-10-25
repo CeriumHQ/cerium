@@ -281,6 +281,24 @@ export const newThreadDraftsAtom = Atom.make((get) => newThreadDrafts(get(drafts
   Atom.withEquality(sameDrafts),
 );
 
+/**
+ * The threads not started yet as the window's tabs hold them, without the titles that change with
+ * every key typed into a first line: the window renders with these, and the tabs and pane headers that
+ * name a draft read its title from `newThreadDraftTitleAtom` themselves.
+ */
+export const newThreadDraftTabsAtom = Atom.make((get) =>
+  get(newThreadDraftsAtom).map(({ key, folder }) => (folder === undefined ? { key } : { key, folder })),
+).pipe(
+  Atom.withEquality<ReadonlyArray<{ readonly key: string; readonly folder?: string }>>(
+    (a, b) => JSON.stringify(a) === JSON.stringify(b),
+  ),
+);
+
+/** What the thread not started yet `key` would be called; undefined for any other key. */
+export const newThreadDraftTitleAtom = Atom.family((key: string) =>
+  Atom.make((get) => get(newThreadDraftsAtom).find((draft) => draft.key === key)?.title),
+);
+
 /** One draft, which changes only when it does: another changes with every key typed into its box. */
 export const draftAtom = Atom.family((key: string) => Atom.make((get) => get(draftsAtom)[key]));
 

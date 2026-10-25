@@ -14,12 +14,14 @@ import {
   X,
   XSquare,
 } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { newThreadDraftTitleAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { paneDrag } from "../split/drag.ts";
 import { ThreadMark } from "../threads/StatusIndicator.tsx";
@@ -29,6 +31,7 @@ import type { FileTab } from "../viewer/model.ts";
 /** What a tab shows of the thread, or the thread not started yet, it holds. */
 export interface TabView {
   readonly key: string;
+  /** A thread not started yet's is "New thread": its tab reads the draft's own title as it changes. */
   readonly title: string;
   /** A thread not started yet: there's nothing running, only a draft. */
   readonly draft: boolean;
@@ -288,6 +291,7 @@ function ThreadTab({
   onSplit?: (side: "right" | "bottom") => void;
 }) {
   const unread = tab.unread === true && !active;
+  const title = useAtomValue(newThreadDraftTitleAtom(tab.key)) ?? tab.title;
   return (
     <ContextMenuArea
       menu={
@@ -346,7 +350,7 @@ function ThreadTab({
         <Tabs.Tab
           value={tab.key}
           // The full title, and where it is, for a tab too narrow to say.
-          title={tab.project ? `${tab.title}\n${tab.project}` : tab.title}
+          title={tab.project ? `${title}\n${tab.project}` : title}
           className={`flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-7 pl-2.5 text-left text-[12.5px] outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
             active
               ? "text-fg-primary"
@@ -386,12 +390,12 @@ function ThreadTab({
               unread ? "font-medium text-fg-primary" : ""
             }`}
           >
-            {tab.title}
+            {title}
           </span>
         </Tabs.Tab>
         <Button
           data-tab-close
-          aria-label={`Close “${tab.title}”`}
+          aria-label={`Close “${title}”`}
           tabIndex={-1}
           onClick={onClose}
           className={`absolute top-1/2 right-1 grid size-5 -translate-y-1/2 place-items-center rounded-md text-fg-tertiary transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary ${
