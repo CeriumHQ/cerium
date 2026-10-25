@@ -1,5 +1,5 @@
 import type { ProviderId } from "@cerium/protocol";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { providerName, type ThreadSummary } from "./model.ts";
@@ -61,6 +61,7 @@ export function ThreadMark({
   const provider = thread.providers[0];
   const project = thread.folder !== undefined && thread.project !== undefined;
   const signal = status !== "idle" || unread;
+  const changed = useChanged(`${status}:${unread}`);
   const corner = (project && provider !== undefined) || count !== undefined;
   const holes = [
     ...(corner ? [hole(logo, logoOut, gap, "bottom")] : []),
@@ -112,11 +113,25 @@ export function ThreadMark({
           {status === "running" ? (
             <span className="absolute size-full animate-ping rounded-full bg-running/50" />
           ) : null}
-          <span className={`size-full rounded-full ${statusTone[status]}`} />
+          {/* A new status lands: the dot pops in at its colour. What the mark first showed is just there. */}
+          <span
+            key={`${status}:${unread}`}
+            className={`size-full rounded-full ${statusTone[status]} ${
+              changed ? "transition-[scale] duration-300 ease-pop starting:scale-0" : ""
+            }`}
+          />
         </span>
       ) : null}
     </span>
   );
+}
+
+/** Whether the value has changed since the component mounted. */
+function useChanged(value: string): boolean {
+  const [first] = useState(value);
+  const [changed, setChanged] = useState(false);
+  if (!changed && value !== first) setChanged(true);
+  return changed;
 }
 
 /** The logos of the harnesses a thread's agents use. */
