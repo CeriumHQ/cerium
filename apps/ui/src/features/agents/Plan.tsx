@@ -2,6 +2,7 @@ import type { TodoItem } from "@cerium/protocol";
 import { Check, Circle, X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useChanged } from "../../lib/motion.ts";
 import { planProgress } from "./planProgress.ts";
 
 /**
@@ -59,6 +60,9 @@ function Step({
   children: ReactNode;
 }) {
   const active = item.status === "inProgress";
+  // A step that moves on marks it: a check draws itself in as it's done, and any other mark pops in.
+  // The steps a plan shows when it opens are just there.
+  const changed = useChanged(item.status);
   return (
     <li className={`relative grid grid-cols-[14px_minmax(0,1fr)] gap-x-2.5 ${last ? "" : "pb-2.5"}`}>
       {/* The rail runs from under this step's mark to the top of the next one's. */}
@@ -68,9 +72,14 @@ function Step({
           className="absolute top-[19px] -bottom-[3px] left-[6.5px] w-px bg-line-strong max-md:top-5 max-md:-bottom-1"
         />
       )}
-      <span className="mt-[3px] grid size-3.5 place-items-center max-md:mt-1">
+      <span
+        key={item.status}
+        className={`mt-[3px] grid size-3.5 place-items-center max-md:mt-1 ${
+          changed && item.status !== "completed" ? "swap-in" : ""
+        }`}
+      >
         {item.status === "completed" ? (
-          <Check size={13} strokeWidth={2.5} className="text-success" />
+          <Check size={13} strokeWidth={2.5} className={`text-success ${changed ? "draw-check" : ""}`} />
         ) : item.status === "cancelled" ? (
           <X size={12} strokeWidth={2} className="text-fg-disabled" />
         ) : active ? (
@@ -86,7 +95,7 @@ function Step({
       </span>
       <div className="min-w-0">
         <p
-          className={`text-[12.5px] leading-[1.45] break-words select-text max-md:text-[14px] ${
+          className={`text-[12.5px] leading-[1.45] break-words transition-colors duration-300 select-text max-md:text-[14px] ${
             active
               ? "font-medium text-fg-primary"
               : item.status === "completed"

@@ -159,6 +159,25 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/*
+ * A check that draws itself in, short stroke first, as a plan's step is done. Lucide's check is one
+ * path about 23 units long, drawn from its long stroke's top: revealed from its end, the short
+ * stroke comes first.
+ */
+.draw-check path {
+  stroke-dasharray: 23;
+  animation: draw-check 420ms var(--ease-out-soft) both;
+}
+
+@keyframes draw-check {
+  from {
+    stroke-dashoffset: -23;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* An artifact the artifacts panel brought into view, ringed for a moment so the eye finds it. */
 [data-artifact][data-found] {
   border-radius: 0.625rem;
