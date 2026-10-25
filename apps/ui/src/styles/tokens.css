@@ -241,5 +241,12 @@
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
 
+  /*
+   * Motion. What arrives eases out (150ms for a control's own state, 200ms for something that moves
+   * or grows, 300ms for a panel); what leaves eases in a little faster; a small mark that lands, such
+   * as a check or a status dot, overshoots a touch.
+   */
   --ease-out-soft: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-soft: cubic-bezier(0.45, 0, 0.75, 0.3);
+  --ease-pop: cubic-bezier(0.3, 1.45, 0.6, 1);
 }

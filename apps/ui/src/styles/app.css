@@ -250,6 +250,61 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
   animation-timing-function: ease-in-out;
 }
 
+/*
+ * Content that grows into place as it arrives and folds away before it goes (components/Reveal.tsx):
+ * its row opens from nothing, so what sits below moves aside smoothly instead of jumping.
+ */
+@layer components {
+  .reveal {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition:
+      grid-template-rows 220ms var(--ease-out-soft),
+      opacity 180ms var(--ease-out-soft),
+      translate 220ms var(--ease-out-soft);
+  }
+
+  .reveal > * {
+    min-height: 0;
+  }
+
+  /* Clipped only while it moves, so a settled card keeps its shadow and focus rings. */
+  .reveal:not([data-phase="shown"]) > * {
+    overflow: clip;
+  }
+
+  .reveal[data-phase="leaving"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    translate: 0 var(--reveal-shift, 4px);
+    transition-duration: 180ms, 120ms, 180ms;
+    transition-timing-function: var(--ease-in-soft);
+  }
+
+  @starting-style {
+    .reveal[data-phase="entering"] {
+      grid-template-rows: 0fr;
+      opacity: 0;
+      translate: 0 var(--reveal-shift, 4px);
+    }
+  }
+}
+
+/*
+ * Motion the system asks to reduce stops: transitions and animations jump to where they end. An
+ * element that says what it does under reduced motion (a `motion-reduce:` class) keeps that, and a
+ * spinner keeps turning, since it's the only sign that work goes on.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :not(.animate-spin, [class*="motion-reduce:"]),
+  :not(.animate-spin, [class*="motion-reduce:"])::before,
+  :not(.animate-spin, [class*="motion-reduce:"])::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* In the base layer so a component with its own focus style can opt out with `outline-none`. */
 @layer base {
   :focus-visible {

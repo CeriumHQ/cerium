@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type ReactNode,
   type RefObject,
@@ -12,6 +13,7 @@ import {
 import { onMac } from "../backend/shell.ts";
 import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
+import { usePresence, useRetained } from "../lib/motion.ts";
 import { useKeyboardOpen } from "../web/viewport.ts";
 import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
@@ -125,6 +127,15 @@ function useWidthOf(ref: RefObject<HTMLElement | null>) {
   return width;
 }
 
+/** A side panel's content, which fades in when another panel takes the place. */
+function SideContent({ panel, children }: { panel: SidePanelId | undefined; children: ReactNode }) {
+  return (
+    <div key={panel} className="h-full transition-opacity duration-200 ease-out-soft starting:opacity-0">
+      {children}
+    </div>
+  );
+}
+
 function DesktopFrame({
   thread,
   mode,
@@ -150,14 +161,18 @@ function DesktopFrame({
   const bare = view === "page" && page?.list === undefined;
   const showSidebar = !bare && (sidebarOpen || covered);
   const showInspector = side !== undefined && !covered;
-  const sideSpec = SIDE_PANELS[side?.panel ?? "agents"];
+  // A closing panel keeps what it showed while it slides away.
+  const inspector = useRef<HTMLDivElement>(null);
+  const inspectorPhase = usePresence(showInspector, inspector);
+  const shownSide = useRetained(side, showInspector);
+  const sideSpec = SIDE_PANELS[shownSide?.panel ?? "agents"];
 
   const body = useRef<HTMLDivElement>(null);
   const floatingInspector = useRef<HTMLElement>(null);
   const bodyWidth = useWidthOf(body);
   const [savedSidebar, setSavedSidebar, rememberSidebar] = usePanelWidth(SIDEBAR.key, SIDEBAR.fallback);
   /** The panel beside the transcript's own width, as the user left it. */
-  const [savedSide, setSavedSide, rememberSide] = usePanelWidths(SIDE_PANELS, side?.panel ?? "agents");
+  const [savedSide, setSavedSide, rememberSide] = usePanelWidths(SIDE_PANELS, shownSide?.panel ?? "agents");
   /** Which panel is being dragged, if any: it follows the pointer rather than easing toward it. */
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
 
@@ -278,37 +293,62 @@ function DesktopFrame({
               ]}
             />
           </main>
-          {showInspector ? (
+          {inspectorPhase !== "gone" ? (
             floating ? (
               <>
                 {/* On the gutter left of the floating panel. */}
+                {showInspector ? (
+                  <div
+                    className="absolute top-0 bottom-1.5 z-30 w-0"
+                    style={{ right: inspectorWidth + GUTTER * 2 }}
+                  >
+                    {inspectorHandle}
+                  </div>
+                ) : null}
+                {/* Slides in from the window's edge over the transcript, and back out. The panel
+                    fades itself: fading what holds it would drop its blur until the fade ends. */}
                 <div
-                  className="absolute top-0 bottom-1.5 z-30 w-0"
-                  style={{ right: inspectorWidth + GUTTER * 2 }}
-                >
-                  {inspectorHandle}
-                </div>
-                <aside
-                  ref={floatingInspector}
+                  ref={inspector}
+                  data-phase={inspectorPhase}
+                  inert={!showInspector}
                   style={{ width: inspectorWidth }}
-                  className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
+                  className="group/side absolute top-0 right-1.5 bottom-1.5 z-20 transition-[translate] duration-300 ease-out-soft data-[phase=entering]:starting:translate-x-6 data-[phase=leaving]:translate-x-6 data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft"
                 >
-                  <SidePanelContext value={{ floating: true, close: onCloseSide }}>
-                    {side?.content}
-                  </SidePanelContext>
-                </aside>
+                  <aside
+                    ref={floatingInspector}
+                    className="h-full overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-opacity duration-300 ease-out-soft group-data-[phase=entering]/side:starting:opacity-0 group-data-[phase=leaving]/side:opacity-0 group-data-[phase=leaving]/side:duration-200 group-data-[phase=leaving]/side:ease-in-soft"
+                  >
+                    <SidePanelContext value={{ floating: true, close: onCloseSide }}>
+                      <SideContent panel={shownSide?.panel}>{shownSide?.content}</SideContent>
+                    </SidePanelContext>
+                  </aside>
+                </div>
               </>
             ) : (
               <>
-                <div className="relative w-0 shrink-0">{inspectorHandle}</div>
-                <aside
-                  style={{ width: inspectorWidth }}
-                  className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                {showInspector ? <div className="relative w-0 shrink-0">{inspectorHandle}</div> : null}
+                {/* Slides out from under the window's edge as the transcript gives way, and back
+                    under it; the panel keeps its width meanwhile, so its rows don't reflow. */}
+                <div
+                  ref={inspector}
+                  data-phase={inspectorPhase}
+                  inert={!showInspector}
+                  style={{ "--side": `${inspectorWidth + GUTTER}px` } as CSSProperties}
+                  className={`flex w-(--side) shrink-0 overflow-clip pl-1.5 data-[phase=shown]:overflow-visible data-[phase=entering]:starting:w-0 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:w-0 data-[phase=leaving]:opacity-0 ${
+                    dragging === "inspector"
+                      ? ""
+                      : "transition-[width,opacity] duration-300 ease-out-soft data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft"
+                  }`}
                 >
-                  <SidePanelContext value={{ floating: false, close: onCloseSide }}>
-                    {side?.content}
-                  </SidePanelContext>
-                </aside>
+                  <aside
+                    style={{ width: inspectorWidth }}
+                    className="shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                  >
+                    <SidePanelContext value={{ floating: false, close: onCloseSide }}>
+                      <SideContent panel={shownSide?.panel}>{shownSide?.content}</SideContent>
+                    </SidePanelContext>
+                  </aside>
+                </div>
               </>
             )
           ) : null}
