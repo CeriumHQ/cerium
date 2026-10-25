@@ -289,6 +289,27 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     }
   }
 
+  /*
+   * Something that arrives in a list while it's in view, such as a reply in the transcript, rising
+   * into place; a message sent from the message box rises further, out of the box.
+   */
+  .arrive {
+    transition:
+      opacity 260ms var(--ease-out-soft),
+      translate 320ms var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .arrive {
+      opacity: 0;
+      translate: 0 6px;
+    }
+
+    .arrive[data-from-box] {
+      translate: 0 18px;
+    }
+  }
+
   /* A tile among others, which scales in and out where it stands. */
   .pop {
     transition:

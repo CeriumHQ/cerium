@@ -57,6 +57,7 @@ import { SelectionReply } from "./SelectionReply.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
+import { useArrivals } from "../../lib/motion.ts";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
@@ -151,6 +152,8 @@ export function Transcript({
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
   const items = layout(shown);
+  // What comes in while the thread is open rises into place; what it opened with stays still.
+  const arrived = useArrivals(items.map((item) => item.id));
   const last = items.at(-1);
   const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
@@ -198,9 +201,12 @@ export function Transcript({
           <TurnChangesItem changes={item.block.changes} replaced={replaced} />
         ) : null}
         <div
-          className={
-            item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : undefined
-          }
+          // A message sent rises out of the message box. A response's header takes the place of the
+          // one shown while it was awaited, which already rose, so it doesn't rise again.
+          {...(item.kind === "input" ? { "data-from-box": "" } : {})}
+          className={`${item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : ""} ${
+            !replaced && item.kind !== "header" && arrived(item.id) ? "arrive" : ""
+          }`}
         >
           <TranscriptItem
             item={item}
@@ -240,12 +246,18 @@ export function Transcript({
                 true height, and the content jumped under the scroll position. */}
             {items.map((item) => renderItem(item, false))}
             {working && !responding ? (
-              <ResponseHeader
-                agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
-                routed={pendingRouted(shown)}
-              />
+              <div className="arrive">
+                <ResponseHeader
+                  agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
+                  routed={pendingRouted(shown)}
+                />
+              </div>
             ) : null}
-            {working ? <Working /> : null}
+            {working ? (
+              <div className="arrive">
+                <Working />
+              </div>
+            ) : null}
           </div>
         </ScrollArea>
         <SelectionReply within={column} />

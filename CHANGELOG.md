@@ -245,6 +245,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - The side panels (agents, files, Source control, GitHub, artifacts) slide in and out instead of popping. Beside the transcript, a panel slides out from under the window's edge as the transcript gives way, keeping its width so its rows don't reflow, and slides back under it on close; floating over a narrow window, it slides in from the edge and fades, keeping its blur throughout. Switching panels fades the new one in.
+- What arrives in an open thread rises into place: a message you send lifts up out of the message box, and the response's header, its steps, its text and its footer each fade up as they come. Opening a thread, or its history loading, moves nothing.
 - The message box grows and shrinks smoothly as its trays come and go: queued messages, comments on passages and attachments each open into the box and fold out of it. A queued message folds out of the list as the agent takes it or you take it back, a comment as it's removed, and an attached file pops in and out where it stands.
 - The terminal drawer rises from the foot of the thread as it opens and drops back as it closes, instead of popping in; on a phone, its pane rises over the thread and drops away.
 - Requests waiting for you rise out of the message box as the first one comes, instead of appearing over it, and sink back into it once the last is answered, moving the transcript's end smoothly both ways. Answering one brings the next up into its place, and a request joining the line below fades in.

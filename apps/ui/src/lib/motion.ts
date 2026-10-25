@@ -74,6 +74,26 @@ export function usePresence(
   return phase;
 }
 
+/** More new items than this at once are a load, such as a thread's history, rather than arrivals. */
+const ARRIVAL_BATCH = 4;
+
+/**
+ * Which of a list's items arrived while it was in view, by key: those it had when it first had any,
+ * and any that came in a batch too large to be arrivals, were already there. An arrival can rise
+ * into place; what was there stays still.
+ */
+export function useArrivals(keys: ReadonlyArray<string>): (key: string) => boolean {
+  const [state, setState] = useState(() => ({ seen: new Set(keys), still: new Set(keys) }));
+  let { seen, still } = state;
+  const fresh = keys.filter((key) => !seen.has(key));
+  if (fresh.length > 0) {
+    seen = new Set([...seen, ...fresh]);
+    if (state.seen.size === 0 || fresh.length > ARRIVAL_BATCH) still = new Set([...still, ...fresh]);
+    setState({ seen, still });
+  }
+  return (key) => !still.has(key);
+}
+
 /** An item of a list as it shows: still in the list, or just gone from it and on its way out. */
 export interface Lingering<T> {
   readonly key: string;
