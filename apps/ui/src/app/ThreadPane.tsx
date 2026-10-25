@@ -14,6 +14,7 @@ import {
 
 import { cloudEventsAtom, queueEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
+import { Reveal } from "../components/Reveal.tsx";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
   ApprovalTray,
@@ -237,7 +238,7 @@ export function ThreadPane({
 
   return (
     // The terminal drawer docks under the conversation, which keeps its message box floating above it.
-    <div className="relative flex h-full flex-col">
+    <div data-drawer-column="" className="relative flex h-full flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">
         {notices}
         <div className="relative min-h-0 flex-1">
@@ -379,7 +380,10 @@ export function ThreadPane({
           />
         )}
       </div>
-      {drawer}
+      {/* Rises from the pane's foot as it opens, and drops back into it. */}
+      <Reveal shift={0} className="shrink-0">
+        {drawer}
+      </Reveal>
     </div>
   );
 }

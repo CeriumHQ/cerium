@@ -65,7 +65,8 @@ export function TerminalDrawer({
   const section = useRef<HTMLElement>(null);
   const [columnHeight, setColumnHeight] = useState(0);
   useLayoutEffect(() => {
-    const column = section.current?.parentElement;
+    // The pane it docks in, past what holds it as it opens and closes.
+    const column = section.current?.closest("[data-drawer-column]") ?? section.current?.parentElement;
     if (column == null) return;
     const measure = () => setColumnHeight(column.clientHeight);
     measure();
@@ -119,7 +120,8 @@ export function TerminalDrawer({
       style={compact ? undefined : { height: layout.height }}
       className={
         compact
-          ? "absolute inset-0 z-20 flex flex-col bg-surface-panel backdrop-blur-2xl"
+          ? // A pane over the thread, which rises into place and drops away as it closes.
+            "absolute inset-0 z-20 flex flex-col bg-surface-panel backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-4 starting:opacity-0 in-data-[phase=leaving]:translate-y-4 in-data-[phase=leaving]:opacity-0 in-data-[phase=leaving]:duration-150 in-data-[phase=leaving]:ease-in-soft"
           : "relative z-10 flex shrink-0 flex-col border-t border-line-subtle bg-surface-window"
       }
     >
