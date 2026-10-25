@@ -36,4 +36,14 @@ describe("lingerIn", () => {
     const before = lingerIn(lingerIn([], ["a", "b"], keyOf), ["b"], keyOf);
     expect(shown(lingerIn(before, ["c", "b"], keyOf))).toBe("(a) c b");
   });
+
+  it("lets an item that just left go at once when it isn't to linger", () => {
+    const before = lingerIn([], ["a", "b"], keyOf);
+    expect(shown(lingerIn(before, ["c", "b"], keyOf, false))).toBe("c b");
+  });
+
+  it("keeps an item already leaving when the next change isn't to linger", () => {
+    const before = lingerIn(lingerIn([], ["a", "b", "c"], keyOf), ["a", "c"], keyOf);
+    expect(shown(lingerIn(before, ["a", "d", "c"], keyOf, false))).toBe("a (b) d c");
+  });
 });

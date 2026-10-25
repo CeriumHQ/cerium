@@ -15,9 +15,18 @@ import {
   XSquare,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type WheelEvent,
+} from "react";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
+import { settled, useArrivals, useLingering } from "../../lib/motion.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -64,6 +73,8 @@ export interface TabActions {
   readonly onSplit?: (key: string, side: "right" | "bottom") => void;
 }
 
+const tabKey = (tab: TabView) => tab.key;
+
 /** How far the pointer travels before pressing a tab becomes dragging it. */
 const DRAG_THRESHOLD = 4;
 /** How far below the strip a dragged tab goes before it's carried to the panes instead. */
@@ -105,6 +116,13 @@ export function ThreadTabs({
     carried: boolean;
   }>(undefined);
   const [dragging, setDragging] = useState<string>();
+  // Tabs opened and closed move; one taking another's place (a preview replaced, a draft started)
+  // just changes.
+  const [shown, release] = useLingering(tabs, tabKey, (before, after) => after.length < before.length);
+  const arrived = useArrivals(
+    tabs.map((tab) => tab.key),
+    { replacements: false },
+  );
   /** Which ends of the strip hide tabs past them, to fade so the hidden tabs show they're there. */
   const [hidden, setHidden] = useState({ start: false, end: false });
   const measure = () => {
@@ -208,39 +226,48 @@ export function ThreadTabs({
           }}
           className="relative z-0 flex h-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [app-region:no-drag]"
         >
-          {tabs.map((tab) => (
-            <ThreadTab
-              key={tab.key}
-              tab={tab}
-              active={tab.key === active}
-              dragging={dragging === tab.key}
-              node={(element) => {
-                if (element) nodes.current.set(tab.key, element);
-                else nodes.current.delete(tab.key);
-              }}
-              others={tabs.length > 1}
-              hasRight={tabs.at(-1)?.key !== tab.key}
-              onPointerDown={(event) => onPointerDown(event, tab.key)}
-              onPointerMove={onPointerMove}
-              onPointerEnd={endPress}
-              onClose={() => onClose([tab.key])}
-              onCloseOthers={() =>
-                onClose(tabs.filter((each) => each.key !== tab.key).map((each) => each.key))
-              }
-              onCloseRight={() =>
-                onClose(
-                  tabs.slice(tabs.findIndex((each) => each.key === tab.key) + 1).map((each) => each.key),
-                )
-              }
-              onKeep={() => onKeep(tab.key)}
-              {...(onReopen ? { onReopen } : {})}
-              // The focused pane's own tab has nowhere beside itself to go.
-              {...(onSplit && tab.key !== active
-                ? { onSplit: (side: "right" | "bottom") => onSplit(tab.key, side) }
-                : {})}
-            />
-          ))}
-          <Tabs.Indicator className="absolute top-1/2 left-0 -z-10 h-7 w-(--active-tab-width) translate-x-(--active-tab-left) -translate-y-1/2 rounded-lg border border-line-subtle bg-surface-selected shadow-raised transition-[translate,width] duration-200 ease-out-soft motion-reduce:transition-none" />
+          {shown.map(({ key, item: tab, present }) =>
+            present ? (
+              <ThreadTab
+                key={key}
+                tab={tab}
+                active={tab.key === active}
+                arriving={arrived(tab.key)}
+                dragging={dragging === tab.key}
+                node={(element) => {
+                  if (element) nodes.current.set(tab.key, element);
+                  else nodes.current.delete(tab.key);
+                }}
+                others={tabs.length > 1}
+                hasRight={tabs.at(-1)?.key !== tab.key}
+                onPointerDown={(event) => onPointerDown(event, tab.key)}
+                onPointerMove={onPointerMove}
+                onPointerEnd={endPress}
+                onClose={() => onClose([tab.key])}
+                onCloseOthers={() =>
+                  onClose(tabs.filter((each) => each.key !== tab.key).map((each) => each.key))
+                }
+                onCloseRight={() =>
+                  onClose(
+                    tabs.slice(tabs.findIndex((each) => each.key === tab.key) + 1).map((each) => each.key),
+                  )
+                }
+                onKeep={() => onKeep(tab.key)}
+                {...(onReopen ? { onReopen } : {})}
+                // The focused pane's own tab has nowhere beside itself to go.
+                {...(onSplit && tab.key !== active
+                  ? { onSplit: (side: "right" | "bottom") => onSplit(tab.key, side) }
+                  : {})}
+              />
+            ) : (
+              <ClosingTab key={key} tab={tab} onGone={() => release(key)} />
+            ),
+          )}
+          {/* Placed again as a closed tab goes, which can move the active one without resizing it. */}
+          <Tabs.Indicator
+            data-tabs={shown.length}
+            className="absolute top-1/2 left-0 -z-10 h-7 w-(--active-tab-width) translate-x-(--active-tab-left) -translate-y-1/2 rounded-lg border border-line-subtle bg-surface-selected shadow-raised transition-[translate,width] duration-200 ease-out-soft motion-reduce:transition-none"
+          />
         </Tabs.List>
       </Tabs.Root>
       <Tooltip label={newLabel} shortcut="Ctrl T">
@@ -256,9 +283,93 @@ export function ThreadTabs({
   );
 }
 
+/** A tab just closed, shrinking away so the tabs after it close the gap. */
+function ClosingTab({ tab, onGone }: { tab: TabView; onGone: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const title = useAtomValue(newThreadDraftTitleAtom(tab.key)) ?? tab.title;
+  const gone = useEffectEvent(onGone);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    // Its face keeps the width the tab had, and is cut off rather than squeezed as the tab narrows.
+    element.style.setProperty("--closing-width", `${element.offsetWidth}px`);
+    let live = true;
+    void settled(element).then(() => {
+      if (live) gone();
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      inert
+      className="flex h-7 max-w-0 min-w-0 basis-0 items-center overflow-hidden opacity-0 transition-[flex-basis,min-width,max-width,opacity] duration-[220ms,220ms,220ms,120ms] ease-out-soft starting:max-w-52 starting:min-w-28 starting:basis-52 starting:opacity-100"
+    >
+      <span className="flex h-full w-(--closing-width) shrink-0 items-center gap-2 pr-7 pl-2.5 text-[12.5px] text-fg-tertiary">
+        <TabFace tab={tab} title={title} active={false} unread={false} />
+      </span>
+    </div>
+  );
+}
+
+/** A tab's mark and title. */
+function TabFace({
+  tab,
+  title,
+  active,
+  unread,
+}: {
+  tab: TabView;
+  title: string;
+  active: boolean;
+  unread: boolean;
+}) {
+  return (
+    <>
+      <span className="grid size-3.5 shrink-0 place-items-center">
+        {tab.file ? (
+          <FileIcon path={tab.file.path} className={`size-3.5 ${active ? "" : "opacity-80"}`} />
+        ) : tab.github ? (
+          tab.github.kind === "pr" ? (
+            <GitPullRequestArrow size={13} strokeWidth={2} aria-hidden />
+          ) : (
+            <CircleDot size={13} strokeWidth={2} aria-hidden />
+          )
+        ) : tab.draft ? (
+          <span
+            aria-hidden
+            className="grid size-3.5 place-items-center rounded-[4px] border border-dashed border-current opacity-70"
+          >
+            <PenLine size={8} strokeWidth={2.25} />
+          </span>
+        ) : tab.thread ? (
+          <span className={active || unread || tab.thread.status !== "idle" ? "" : "opacity-80"}>
+            <ThreadMark thread={tab.thread} unread={unread} size="small" />
+          </span>
+        ) : tab.provider ? (
+          <span className={active ? "" : "opacity-70 grayscale-[0.4]"}>
+            <ProviderLogo provider={tab.provider} size={12} />
+          </span>
+        ) : null}
+      </span>
+      <span
+        className={`min-w-0 flex-1 truncate ${tab.preview ? "italic" : ""} ${
+          unread ? "font-medium text-fg-primary" : ""
+        }`}
+      >
+        {title}
+      </span>
+    </>
+  );
+}
+
 function ThreadTab({
   tab,
   active,
+  arriving,
   dragging,
   node,
   others,
@@ -275,6 +386,8 @@ function ThreadTab({
 }: {
   tab: TabView;
   active: boolean;
+  /** It was opened while the strip was in view, rather than there when the window opened. */
+  arriving: boolean;
   dragging: boolean;
   node: (element: HTMLElement | null) => void;
   /** Other tabs are open, which "Close others" would close. */
@@ -343,9 +456,12 @@ function ThreadTab({
           if (event.button === 1) onClose();
         }}
         onDoubleClick={tab.preview ? onKeep : undefined}
-        className={`group/tab relative flex h-7 max-w-52 min-w-28 basis-52 items-center rounded-lg transition-[background-color,opacity] duration-150 ${
-          dragging ? "z-10 cursor-grabbing" : ""
-        } ${active ? "" : "hover:bg-surface-hover"}`}
+        className={`group/tab relative flex h-7 max-w-52 min-w-28 basis-52 items-center rounded-lg transition-[background-color,opacity,flex-basis,min-width,max-width] ${
+          // A tab opened grows out of the strip from nothing, pushing those after it along.
+          arriving
+            ? "overflow-hidden duration-[150ms,200ms,240ms,240ms,240ms] ease-out-soft starting:max-w-0 starting:min-w-0 starting:basis-0 starting:opacity-0"
+            : "duration-150"
+        } ${dragging ? "z-10 cursor-grabbing" : ""} ${active ? "" : "hover:bg-surface-hover"}`}
       >
         <Tabs.Tab
           value={tab.key}
@@ -359,39 +475,7 @@ function ThreadTab({
                 : "text-fg-tertiary group-hover/tab:text-fg-secondary"
           }`}
         >
-          <span className="grid size-3.5 shrink-0 place-items-center">
-            {tab.file ? (
-              <FileIcon path={tab.file.path} className={`size-3.5 ${active ? "" : "opacity-80"}`} />
-            ) : tab.github ? (
-              tab.github.kind === "pr" ? (
-                <GitPullRequestArrow size={13} strokeWidth={2} aria-hidden />
-              ) : (
-                <CircleDot size={13} strokeWidth={2} aria-hidden />
-              )
-            ) : tab.draft ? (
-              <span
-                aria-hidden
-                className="grid size-3.5 place-items-center rounded-[4px] border border-dashed border-current opacity-70"
-              >
-                <PenLine size={8} strokeWidth={2.25} />
-              </span>
-            ) : tab.thread ? (
-              <span className={active || unread || tab.thread.status !== "idle" ? "" : "opacity-80"}>
-                <ThreadMark thread={tab.thread} unread={unread} size="small" />
-              </span>
-            ) : tab.provider ? (
-              <span className={active ? "" : "opacity-70 grayscale-[0.4]"}>
-                <ProviderLogo provider={tab.provider} size={12} />
-              </span>
-            ) : null}
-          </span>
-          <span
-            className={`min-w-0 flex-1 truncate ${tab.preview ? "italic" : ""} ${
-              unread ? "font-medium text-fg-primary" : ""
-            }`}
-          >
-            {title}
-          </span>
+          <TabFace tab={tab} title={title} active={active} unread={unread} />
         </Tabs.Tab>
         <Button
           data-tab-close

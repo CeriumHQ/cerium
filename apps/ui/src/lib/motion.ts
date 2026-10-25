@@ -157,16 +157,26 @@ const ARRIVAL_BATCH = 4;
 /**
  * Which of a list's items arrived while it was in view, by key: those it had when it first had any,
  * and any that came in a batch too large to be arrivals, were already there. An arrival can rise
- * into place; what was there stays still.
+ * into place; what was there stays still. With `replacements: false`, keys that came as others left,
+ * the list growing by fewer than came, took their places rather than arrived.
  */
-export function useArrivals(keys: ReadonlyArray<string>): (key: string) => boolean {
-  const [state, setState] = useState(() => ({ seen: new Set(keys), still: new Set(keys) }));
+export function useArrivals(
+  keys: ReadonlyArray<string>,
+  { replacements = true }: { replacements?: boolean } = {},
+): (key: string) => boolean {
+  const [state, setState] = useState(() => ({
+    seen: new Set(keys),
+    still: new Set(keys),
+    count: keys.length,
+  }));
   let { seen, still } = state;
   const fresh = keys.filter((key) => !seen.has(key));
-  if (fresh.length > 0) {
+  if (fresh.length > 0 || keys.length !== state.count) {
     seen = new Set([...seen, ...fresh]);
-    if (state.seen.size === 0 || fresh.length > ARRIVAL_BATCH) still = new Set([...still, ...fresh]);
-    setState({ seen, still });
+    const replaced = !replacements && keys.length - state.count < fresh.length;
+    if (state.seen.size === 0 || fresh.length > ARRIVAL_BATCH || replaced)
+      still = new Set([...still, ...fresh]);
+    setState({ seen, still, count: keys.length });
   }
   return (key) => !still.has(key);
 }
@@ -178,16 +188,20 @@ export interface Lingering<T> {
   readonly present: boolean;
 }
 
-/** The list's items, with those that left `previous` put back after the item they followed there. */
+/**
+ * The list's items, with those that left `previous` put back after the item they followed there.
+ * Unless `linger`, those that just left go at once, and only those already on their way out stay.
+ */
 export const lingerIn = <T>(
   previous: ReadonlyArray<Lingering<T>>,
   items: ReadonlyArray<T>,
   keyOf: (item: T) => string,
+  linger = true,
 ): ReadonlyArray<Lingering<T>> => {
   const next: Array<Lingering<T>> = items.map((item) => ({ key: keyOf(item), item, present: true }));
   const current = new Set(next.map((entry) => entry.key));
   previous.forEach((entry, index) => {
-    if (current.has(entry.key)) return;
+    if (current.has(entry.key) || (!linger && entry.present)) return;
     const before = previous[index - 1]?.key;
     const at = before === undefined ? -1 : next.findIndex((each) => each.key === before);
     next.splice(at + 1, 0, { ...entry, present: false });
@@ -197,13 +211,18 @@ export const lingerIn = <T>(
 
 /**
  * A list's items, and the ones that just left it where they last stood, so each can play out its
- * exit (a `Reveal` whose children go) before `release` lets it go for good.
+ * exit (a `Reveal` whose children go) before `release` lets it go for good. `linger` says whether
+ * the ones leaving as the list goes from `before` to `after` stay to play out.
  */
-export function useLingering<T>(items: ReadonlyArray<T>, keyOf: (item: T) => string) {
+export function useLingering<T>(
+  items: ReadonlyArray<T>,
+  keyOf: (item: T) => string,
+  linger?: (before: ReadonlyArray<T>, after: ReadonlyArray<T>) => boolean,
+) {
   const [state, setState] = useState(() => ({ items, shown: lingerIn([], items, keyOf) }));
   let shown = state.shown;
   if (state.items !== items) {
-    shown = lingerIn(state.shown, items, keyOf);
+    shown = lingerIn(state.shown, items, keyOf, linger?.(state.items, items) ?? true);
     setState({ items, shown });
   }
   const release = (key: string) =>
