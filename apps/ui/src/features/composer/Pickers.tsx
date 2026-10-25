@@ -1,18 +1,45 @@
 import { Button } from "@base-ui/react/button";
-import { Popover } from "@base-ui/react/popover";
-import { Select as BaseSelect } from "@base-ui/react/select";
-import { Slider } from "@base-ui/react/slider";
-import { Switch } from "@base-ui/react/switch";
+import { Menu } from "@base-ui/react/menu";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { AccessMode, HarnessLimit, ReasoningEffort } from "@cerium/protocol";
-import { Eye, FilePen, Route, ShieldCheck, ShieldOff, ShieldQuestion, type LucideIcon } from "lucide-react";
-import { useId, useRef, useState, type ReactNode } from "react";
+import {
+  Ellipsis,
+  Eye,
+  FilePen,
+  Route,
+  ShieldCheck,
+  ShieldOff,
+  ShieldQuestion,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
 
-import { SelectItem, SelectPopup, SelectRoot, triggerClass } from "../../components/ui/Select.tsx";
+import {
+  MenuCheckboxItem,
+  MenuGroupLabel,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+} from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { accessOptions, effortLabel } from "./models.ts";
+import { accessOptions, effortHint, effortLabel, MAX_AGENTS } from "./models.ts";
 
-// The pickers in the message box's toolbar beside the model menu (ModelPicker.tsx). A new thread
-// picks all of them; an open thread's lead can pick its effort again, when its harness allows it.
+// The message box's own controls beside the model menu (ModelPicker.tsx): the effort row inside that
+// menu, and the menu of what's seldom changed (access, several models at once).
+
+/** A control in the box's rows, without its colours: a pill, the box itself being one. */
+const chipShape =
+  "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap transition-colors select-none";
+
+/** A control in the box's rows: a quiet pill. */
+export const chipClass = `${chipShape} text-fg-secondary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`;
+
+/** Access the agents run with, on the chip that stands for it once it isn't Auto. */
+const accessChipTone: Partial<Record<AccessMode, string>> = {
+  fullAccess: "bg-attention/12 text-attention hover:bg-attention/20 data-popup-open:bg-attention/20",
+};
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
@@ -22,286 +49,167 @@ const accessIcon: Record<AccessMode, LucideIcon> = {
   fullAccess: ShieldOff,
 };
 
-/** How much each mode lets agents do unasked, coloured on the access pill's shield. */
-const accessTone: Record<AccessMode, string> = {
-  readOnly: "text-fg-tertiary",
-  ask: "text-fg-tertiary",
-  acceptEdits: "text-fg-tertiary",
-  auto: "text-success",
-  fullAccess: "text-attention",
+/** The effort a chip names: short enough to sit after the model's name. */
+export const chipEffortLabel: Record<ReasoningEffort | "auto", string> = {
+  ...effortLabel,
+  xhigh: "X-high",
+  auto: "Auto",
 };
 
+/** The effort row's labels, short enough for Auto and six levels to sit side by side. */
+const segmentLabel: Record<ReasoningEffort | "auto", string> = {
+  auto: "Auto",
+  minimal: "Min",
+  low: "Low",
+  medium: "Med",
+  high: "High",
+  xhigh: "X-high",
+  max: "Max",
+};
+
+/** One pick of how hard a model thinks: a level it offers, or Auto for the effort router to pick. */
+export type EffortPick = ReasoningEffort | "auto";
+
+/** What the model menu offers for the picked model's effort. */
+export interface EffortChoice {
+  /** The levels on offer, weakest first. */
+  readonly levels: ReadonlyArray<ReasoningEffort>;
+  readonly value: EffortPick;
+  /** The effort router is on, so Auto leads the levels. */
+  readonly auto: boolean;
+  readonly onPick: (effort: EffortPick) => void;
+}
+
+/** Every pick the row offers, in order: Auto first when the router is on. */
+export const effortSteps = (choice: EffortChoice): ReadonlyArray<EffortPick> =>
+  choice.auto ? ["auto", ...choice.levels] : choice.levels;
+
+/** Whether there's anything to pick: one level and no router leaves nothing. */
+export const offersChoice = (choice: EffortChoice | undefined): choice is EffortChoice =>
+  choice !== undefined && effortSteps(choice).length > 1;
+
 /**
- * The thread's setup as one outlined pill: the model, its effort and, for a new thread, its access,
- * each a segment that opens its own menu. The effort is absent for models without one.
+ * The model menu's foot: how hard the picked model thinks, one segment per level and Auto first, so
+ * the model and its effort are one decision in one menu.
  */
-export function ModelWell({
-  model,
-  effort,
-  access,
-  flat = false,
-}: {
-  readonly model: ReactNode;
-  readonly effort?: ReactNode;
-  readonly access?: ReactNode;
-  /** Bare segments side by side, for the row under an open thread's box. */
-  readonly flat?: boolean;
-}) {
+export function EffortRow({ choice, model }: { readonly choice: EffortChoice; readonly model: string }) {
   return (
-    <div
-      className={
-        flat
-          ? "flex h-7 min-w-0 shrink-0 items-center gap-0.5"
-          : "flex h-8 min-w-0 shrink-0 items-stretch divide-x divide-line-subtle overflow-hidden rounded-[10px] border border-line-subtle [&>*]:h-full [&>*]:rounded-none [&>*]:px-2.5"
-      }
-    >
-      {model}
-      {effort}
-      {access}
+    <div className="shrink-0 border-t border-line-subtle px-2.5 pt-2 pb-2.5">
+      <div className="flex items-baseline justify-between gap-3 px-0.5 pb-1.5 text-2xs">
+        <span className="truncate text-fg-tertiary">Effort for {model}</span>
+        <span className="shrink-0 text-fg-secondary">{effortHint[choice.value]}</span>
+      </div>
+      <ToggleGroup
+        value={[choice.value]}
+        onValueChange={(value) => {
+          const next = value[0] as EffortPick | undefined;
+          if (next !== undefined) choice.onPick(next);
+        }}
+        aria-label={`Effort for ${model}`}
+        className="flex gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+      >
+        {effortSteps(choice).map((step) => (
+          <Toggle
+            key={step}
+            value={step}
+            aria-label={chipEffortLabel[step]}
+            // The menu's search keeps focus, so typing and the arrow keys carry on after a click.
+            onMouseDown={(event) => event.preventDefault()}
+            className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-[7px] text-[12px] whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
+          >
+            {step === "auto" ? <Route size={11} strokeWidth={2} /> : null}
+            {segmentLabel[step]}
+          </Toggle>
+        ))}
+      </ToggleGroup>
     </div>
   );
 }
 
-/** The effort ramp's colour `at` (0 to 1) along it, faint to full (styles/tokens.css). */
-const ramp = (at: number): string =>
-  `color-mix(in oklab, var(--effort-full) ${at * 100}%, var(--effort-faint))`;
-
-/** A bar for each effort the model offers, rising and strengthening, lit up to the one it runs at. */
-export function EffortMeter({
-  efforts,
-  level,
-}: {
-  readonly efforts: ReadonlyArray<ReasoningEffort>;
-  /** The lit bar's index in `efforts`. */
-  readonly level: number;
-}) {
-  const rises = Math.max(1, efforts.length - 1);
-  return (
-    <span aria-hidden className="flex h-3 shrink-0 items-end gap-0.5">
-      {efforts.map((effort, index) => (
-        <span
-          key={effort}
-          className="w-[3px] rounded-[1px] transition-[background-color] duration-150"
-          style={{
-            height: `${4 + (8 * index) / rises}px`,
-            backgroundColor: index <= level ? ramp(index / rises) : "var(--line-strong)",
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
-/** The efforts named under the slider's stops, short enough for six of them to sit side by side. */
-const shortEffortLabel: Record<ReasoningEffort, string> = { ...effortLabel, xhigh: "X-high" };
-
-/** The slider's thumb, in pixels: its stops sit where the thumb's centre lands. */
-const THUMB = 18;
-
 /**
- * Picks among the efforts the model, or the models, offer: a meter that opens a slider with a stop
- * for each of them. A model with one effort has nothing to pick, and shows it. With `auto`, the
- * effort router is on and a switch under the slider hands it the pick; picking a level takes it back.
- * On Auto no level is shown as chosen: the router picks one each turn, shown on that response.
+ * What's seldom changed, behind one button: what the agents may do unasked, and starting several
+ * models at once. Access other than Auto shows on the button itself, so a choice that differs from
+ * the safe default is never out of sight.
  */
-export function EffortPicker({
-  efforts,
-  value,
-  onPick,
-  auto,
+export function MoreMenu({
+  access,
+  several,
 }: {
-  readonly efforts: ReadonlyArray<ReasoningEffort>;
-  readonly value: ReasoningEffort;
-  readonly onPick: (effort: ReasoningEffort) => void;
-  readonly auto?: { readonly on: boolean; readonly onChange: (on: boolean) => void } | undefined;
+  readonly access?: {
+    readonly value: AccessMode;
+    readonly onPick: (access: AccessMode) => void;
+    /** Modes a starting model's harness can't run here: offered disabled, with its reason. */
+    readonly limit?: HarnessLimit | undefined;
+  };
+  readonly several?: { readonly on: boolean; readonly onChange: (on: boolean) => void };
 }) {
-  /** The stop a drag is on, shown at once and picked only as the drag ends. */
-  const [held, setHeld] = useState<number>();
-  const thumb = useRef<HTMLInputElement>(null);
-  const autoLabel = useId();
-  const last = efforts.length - 1;
-  const index = held ?? Math.max(0, efforts.indexOf(value));
-  const label = effortLabel[efforts[index] ?? value];
-  const automatic = auto?.on === true && held === undefined;
-  /** Where a stop sits along the track: where the thumb's centre lands on it. */
-  const at = (stop: number) => `calc(${THUMB / 2}px + ${stop / last} * (100% - ${THUMB}px))`;
-  if (last < 1) {
-    return <span className="flex h-7 shrink-0 items-center px-2 text-[12px] text-fg-tertiary">{label}</span>;
-  }
+  if (access === undefined && several === undefined) return null;
+  const shown = access !== undefined && access.value !== "auto" ? access.value : undefined;
+  const Icon = shown ? accessIcon[shown] : Ellipsis;
+  const label = shown ? accessOptions.find((option) => option.value === shown)?.label : undefined;
   return (
-    <Popover.Root
-      onOpenChange={(open) => {
-        if (!open) setHeld(undefined);
-      }}
-    >
-      <Popover.Trigger
-        aria-label={`Reasoning effort: ${automatic ? "Auto" : label}`}
-        className={`${triggerClass} gap-2`}
-      >
-        {automatic ? (
-          <Route size={12} strokeWidth={2} className="text-fg-tertiary" />
-        ) : (
-          <EffortMeter efforts={efforts} level={index} />
-        )}
-        <span className="text-[12px]">{automatic ? "Auto" : label}</span>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50 outline-none">
-          <Popover.Popup
-            initialFocus={thumb}
-            className="w-68 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay px-3.5 pt-3 pb-2.5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
-          >
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <Popover.Title className="text-[12px] font-normal text-fg-tertiary">
-                Reasoning effort
-              </Popover.Title>
-              <span className="flex items-center gap-2 text-[13px] font-semibold">
-                {automatic ? (
-                  <Route size={13} strokeWidth={2} className="text-fg-tertiary" />
-                ) : (
-                  <EffortMeter efforts={efforts} level={index} />
-                )}
-                {automatic ? "Auto" : label}
-              </span>
-            </div>
-            <Slider.Root
-              value={index}
-              min={0}
-              max={last}
-              largeStep={1}
-              thumbAlignment="edge"
-              onValueChange={(next) => setHeld(next)}
-              onValueCommitted={(next) => {
-                setHeld(undefined);
-                const picked = efforts[next];
-                // On Auto, picking even the level it's at takes the pick back.
-                if (picked !== undefined && (picked !== value || auto?.on)) onPick(picked);
-              }}
-            >
-              <Slider.Control className="flex h-6 w-full cursor-pointer touch-none items-center select-none">
-                <Slider.Track className="relative h-2 w-full rounded-full bg-surface-active">
-                  {/* The whole ramp, shown up to the thumb, so the fill strengthens as it grows; on
-                      Auto it's empty, as no level is chosen. */}
-                  <span
-                    aria-hidden
-                    className={`pointer-events-none absolute inset-0 rounded-full bg-(image:--effort-ramp) ${held === undefined ? "transition-[clip-path] duration-200 ease-out-soft" : ""}`}
-                    style={{
-                      clipPath: `inset(0 calc(100% - ${automatic ? "0px" : at(index)}) 0 0 round 9999px)`,
-                    }}
-                  />
-                  {efforts.map((level, stop) => (
-                    <span
-                      key={level}
-                      aria-hidden
-                      className={`pointer-events-none absolute top-1/2 size-1 -translate-1/2 rounded-full ${
-                        stop <= index && !automatic ? "bg-surface-overlay/70" : "bg-fg-disabled"
-                      }`}
-                      style={{ left: at(stop) }}
-                    />
-                  ))}
-                  <Slider.Thumb
-                    inputRef={thumb}
-                    aria-label="Reasoning effort"
-                    getAriaValueText={(_, stop) => effortLabel[efforts[stop] ?? value]}
-                    // Hollow on Auto: where a pick by hand would start, not a level chosen.
-                    className={`size-4.5 rounded-full border-[3px] shadow-[0_0_0_2px_var(--surface-overlay)] transition-[scale,border-color,background-color] duration-150 has-focus-visible:outline-2 has-focus-visible:outline-offset-3 has-focus-visible:outline-focus-ring data-dragging:scale-110 ${
-                      automatic ? "bg-surface-overlay" : "bg-fg-primary"
-                    }`}
-                    style={{ borderColor: automatic ? "var(--fg-tertiary)" : ramp(index / last) }}
-                  />
-                </Slider.Track>
-              </Slider.Control>
-            </Slider.Root>
-            {/* Every stop by name, under its place on the track; a click picks it. */}
-            <div className="relative mt-1.5 h-4">
-              {efforts.map((level, stop) => (
-                <button
-                  key={level}
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => {
-                    setHeld(undefined);
-                    if (level !== value || auto?.on) onPick(level);
-                  }}
-                  className={`absolute top-0 -translate-x-1/2 text-2xs whitespace-nowrap transition-colors first:translate-x-0 last:-translate-x-full ${
-                    stop === index && !automatic
-                      ? "font-medium text-fg-primary"
-                      : "text-fg-tertiary hover:text-fg-secondary"
-                  }`}
-                  style={{
-                    left: stop === 0 ? 0 : stop === last ? "100%" : at(stop),
-                  }}
+    <Menu.Root>
+      <Tooltip label={access ? "Access, several at once" : "Several at once"}>
+        <Menu.Trigger
+          aria-label={label ? `Access: ${label}` : "More options"}
+          className={
+            shown
+              ? `${chipShape} ${accessChipTone[shown] ?? "bg-surface-hover text-fg-primary hover:bg-surface-active data-popup-open:bg-surface-active"}`
+              : `${chipShape} w-8 justify-center px-0 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`
+          }
+        >
+          <Icon size={shown ? 13 : 16} strokeWidth={1.75} />
+          {label}
+        </Menu.Trigger>
+      </Tooltip>
+      <Menu.Portal>
+        <Menu.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
+          <Menu.Popup className="w-[25rem] max-w-(--available-width) origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+            {access ? (
+              <Menu.Group>
+                <MenuGroupLabel>What agents may do without asking</MenuGroupLabel>
+                <MenuRadioGroup
+                  value={access.value}
+                  onValueChange={(value: AccessMode) => access.onPick(value)}
                 >
-                  {shortEffortLabel[level]}
-                </button>
-              ))}
-            </div>
-            {auto ? (
-              <div className="-mx-3.5 mt-2.5 flex items-center gap-3 border-t border-line-subtle px-3.5 pt-2.5">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span id={autoLabel} className="flex items-center gap-1.5 text-[12.5px] font-medium">
-                    <Route size={12} strokeWidth={2} className="text-fg-tertiary" />
-                    Auto
-                  </span>
-                  <span className="text-2xs text-fg-tertiary">Picks the level for each turn</span>
-                </span>
-                <Switch.Root
-                  checked={auto.on}
-                  onCheckedChange={auto.onChange}
-                  aria-labelledby={autoLabel}
-                  className="relative flex h-4.5 w-8 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-accent"
-                >
-                  <Switch.Thumb className="size-3.5 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3.5 data-checked:bg-accent-fg" />
-                </Switch.Root>
-              </div>
+                  {accessOptions.map((option) => {
+                    const blocked = access.limit?.blocks.includes(option.value) === true;
+                    const OptionIcon = accessIcon[option.value];
+                    return (
+                      <MenuRadioItem key={option.value} value={option.value} disabled={blocked}>
+                        <OptionIcon
+                          size={14}
+                          strokeWidth={1.75}
+                          className={`mt-0.5 shrink-0 self-start ${option.value === "fullAccess" ? "text-attention" : ""}`}
+                        />
+                        <span className="flex min-w-0 flex-col">
+                          <span>{option.label}</span>
+                          <span className="text-2xs text-fg-tertiary">
+                            {blocked ? access.limit?.reason : option.description}
+                          </span>
+                        </span>
+                      </MenuRadioItem>
+                    );
+                  })}
+                </MenuRadioGroup>
+              </Menu.Group>
             ) : null}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-/** What agents may do without asking; fixed once the thread starts. */
-export function AccessPicker({
-  value,
-  onPick,
-  limit,
-}: {
-  readonly value: AccessMode;
-  readonly onPick: (access: AccessMode) => void;
-  /** Modes a starting model's harness can't run here: offered disabled, with its reason. */
-  readonly limit?: HarnessLimit | undefined;
-}) {
-  const Icon = accessIcon[value];
-  return (
-    <SelectRoot
-      value={value}
-      onValueChange={(access: AccessMode | null) => {
-        if (access !== null) onPick(access);
-      }}
-    >
-      <BaseSelect.Trigger aria-label="Access" className={triggerClass}>
-        <Icon size={12} strokeWidth={2} className={accessTone[value]} />
-        {accessOptions.find((option) => option.value === value)?.label}
-      </BaseSelect.Trigger>
-      <SelectPopup>
-        {accessOptions.map((option) => {
-          const blocked = limit?.blocks.includes(option.value) === true;
-          return (
-            <SelectItem
-              key={option.value}
-              value={option.value}
-              icon={accessIcon[option.value]}
-              description={blocked ? limit?.reason : option.description}
-              disabled={blocked}
-            >
-              {option.label}
-            </SelectItem>
-          );
-        })}
-      </SelectPopup>
-    </SelectRoot>
+            {access && several ? <MenuSeparator /> : null}
+            {several ? (
+              <MenuCheckboxItem checked={several.on} onCheckedChange={several.onChange} closeOnClick>
+                <Users size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 self-start" />
+                <span className="flex min-w-0 flex-col">
+                  <span>Several at once</span>
+                  <span className="text-2xs text-fg-tertiary">
+                    A thread each, for up to {MAX_AGENTS} models
+                  </span>
+                </span>
+              </MenuCheckboxItem>
+            ) : null}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
 
@@ -320,7 +228,7 @@ export function FixedChip({
       <Button
         disabled
         focusableWhenDisabled
-        className="flex h-7 shrink-0 cursor-default items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap text-fg-tertiary"
+        className="flex h-8 shrink-0 cursor-default items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap text-fg-tertiary"
       >
         {children}
       </Button>

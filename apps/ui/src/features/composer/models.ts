@@ -134,6 +134,17 @@ export const effortLabel: Record<ReasoningEffort, string> = {
   max: "Max",
 };
 
+/** What each effort trades, said beside the model menu's efforts. */
+export const effortHint: Record<ReasoningEffort | "auto", string> = {
+  auto: "Picks a level each turn",
+  minimal: "Fastest, barely reasons",
+  low: "Quick answers",
+  medium: "Balanced",
+  high: "Thorough",
+  xhigh: "Slower, more thorough",
+  max: "Slowest, most thorough",
+};
+
 /**
  * The access modes a person picks from. `ask` and `acceptEdits` stay in the protocol for threads and
  * agents that already run with them, but aren't offered.

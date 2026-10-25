@@ -90,10 +90,19 @@ export function MenuGroupLabel({ children }: { children: ReactNode }) {
 }
 
 /** One choice of a `BaseMenu.RadioGroup`, ticked while it's the group's value. */
-export function MenuRadioItem({ value, children }: { value: string; children: ReactNode }) {
+export function MenuRadioItem({
+  value,
+  disabled,
+  children,
+}: {
+  value: string;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
   return (
     <BaseMenu.RadioItem
       value={value}
+      {...(disabled ? { disabled } : {})}
       closeOnClick
       className={`${itemClass} relative pr-7 text-fg-secondary data-checked:text-fg-primary data-highlighted:text-fg-primary`}
     >

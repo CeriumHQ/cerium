@@ -6,6 +6,7 @@ import {
   useRef,
   type ClipboardEvent,
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
   type RefObject,
 } from "react";
@@ -57,6 +58,8 @@ interface PromptEditorProps {
   readonly activeOption?: string | undefined;
   /** Sits on one row between the box's buttons, as while a phone's keyboard is up. */
   readonly inline?: boolean;
+  /** Shown in place of the placeholder while the editor is empty, such as what a running turn is doing. */
+  readonly cover?: ReactNode;
 }
 
 const MENTION = "mention";
@@ -185,6 +188,7 @@ export function PromptEditor({
   onFiles,
   activeOption,
   inline = false,
+  cover,
 }: PromptEditorProps) {
   const root = useRef<HTMLDivElement>(null);
   /** Where the caret was last inside the editor, for chips added while the user is elsewhere. */
@@ -382,7 +386,12 @@ export function PromptEditor({
             : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
         }`}
       />
-      {segments.length === 0 ? (
+      {segments.length === 0 && cover ? (
+        // A click passes through to the editor, which takes the cover's place with its placeholder.
+        <div className="pointer-events-none absolute inset-y-0 inset-x-1 flex min-w-0 items-center">
+          {cover}
+        </div>
+      ) : segments.length === 0 ? (
         <span
           aria-hidden
           className={`pointer-events-none absolute text-[14px] leading-[1.6] text-fg-tertiary select-none max-md:text-base ${

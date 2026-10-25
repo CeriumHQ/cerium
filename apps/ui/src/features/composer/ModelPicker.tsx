@@ -1,5 +1,4 @@
 import { Combobox } from "@base-ui/react/combobox";
-import { Switch } from "@base-ui/react/switch";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ModelInfo, ProviderId } from "@cerium/protocol";
@@ -9,16 +8,25 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { triggerClass } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
 import { providerName } from "../threads/model.ts";
 import { favoriteModelsAtom, toggleFavorite } from "./favorites.ts";
 import { findModels, modelKey } from "./models.ts";
+import {
+  chipClass,
+  chipEffortLabel,
+  EffortRow,
+  effortSteps,
+  offersChoice,
+  type EffortChoice,
+  type EffortPick,
+} from "./Pickers.tsx";
 
 // The model menu in the message box: a rail down its side holds the starred models and a tab per
 // harness, a search spans every harness's models, and Ctrl and a digit picks one of the first ten
-// rows. It picks one model, or several for multi agent.
+// rows. Its foot picks the model's effort, so the model and how hard it thinks are one control. It
+// picks one model, or several for multi agent.
 
 /** What the model picker's trigger shows: the model in use, which the list may not offer any more. */
 export interface ShownModel {
@@ -45,6 +53,10 @@ interface MenuProps {
   readonly available: ReadonlySet<ProviderId>;
   /** Said above the menu's foot. */
   readonly note?: string;
+  /** The effort the menu's foot picks; absent where there's none to pick. */
+  readonly effort?: EffortChoice | undefined;
+  /** The effort the trigger names after the model, whether it's picked here or not. */
+  readonly effortShown?: EffortPick | undefined;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -117,22 +129,26 @@ function useBrowse(
 
 type Browse = ReturnType<typeof useBrowse>;
 
-/** Picks one model. `onMulti` offers multi agent at the menu's foot. */
+/**
+ * Picks one model. A pick keeps the menu open on its effort row, for the model's effort next; picking
+ * the effort, or the model in use again, closes it.
+ */
 export function ModelPicker({
   shown,
   onPick,
-  onMulti,
   ...menu
 }: MenuProps & {
   /** Undefined while no harness has listed a model yet. */
   readonly shown: ShownModel | undefined;
   readonly onPick: (model: ModelInfo) => void;
-  readonly onMulti?: () => void;
 }) {
   const browse = useBrowse(menu, shown);
   const pick = (key: string | null) => {
     const picked = key === null ? undefined : browse.byKey.get(key);
-    if (picked !== undefined) onPick(picked);
+    if (picked === undefined) return;
+    // The model in use again, or one without efforts to pick from, ends the choice.
+    if (key === shown?.key || !offersChoice(menu.effort) || picked.efforts.length < 2) browse.setOpen(false);
+    if (key !== shown?.key) onPick(picked);
   };
   return (
     <Combobox.Root<string, false, ModelGroup>
@@ -146,17 +162,25 @@ export function ModelPicker({
         if (!details.isItemPress) browse.setQuery(value);
       }}
       open={browse.open}
-      onOpenChange={browse.setOpen}
+      onOpenChange={(open, details) => {
+        // The pick itself says whether the menu stays open for the effort (`pick`).
+        if (!open && details.reason === "item-press") details.cancel();
+        else browse.setOpen(open);
+      }}
       onOpenChangeComplete={(open) => {
         if (!open) browse.reset();
       }}
       autoHighlight
     >
-      <Combobox.Trigger aria-label="Model" className={triggerClass}>
+      <Combobox.Trigger
+        aria-label={shown ? `Model: ${shown.label}` : "Model"}
+        className={`${chipClass} min-w-0`}
+      >
         {shown ? (
           <>
             <ProviderLogo provider={shown.provider} size={13} />
-            <span className="font-medium text-fg-primary">{shown.label}</span>
+            <span className="truncate font-medium text-fg-primary">{shown.label}</span>
+            <EffortTrail effort={menu.effortShown} />
           </>
         ) : (
           <span className="text-fg-tertiary">Finding models…</span>
@@ -165,11 +189,11 @@ export function ModelPicker({
       <MenuPopup
         {...menu}
         browse={browse}
+        label={shown?.label}
         onShortcut={(key) => {
           pick(key);
           browse.setOpen(false);
         }}
-        footer={onMulti ? <SeveralSwitch on={false} onChange={onMulti} /> : undefined}
       />
     </Combobox.Root>
   );
@@ -190,7 +214,7 @@ export function ModelsPicker({
   readonly chosen: ReadonlyArray<ModelInfo>;
   readonly max: number;
   readonly onPick: (keys: ReadonlyArray<string>) => void;
-  /** Turns multi agent off, back to one model. */
+  /** Turns multi agent off, back to the first model picked. */
   readonly onSingle: () => void;
 }) {
   const keys = chosen.map(modelKey);
@@ -224,7 +248,7 @@ export function ModelsPicker({
       }}
       autoHighlight
     >
-      <Combobox.Trigger aria-label="Models" className={triggerClass}>
+      <Combobox.Trigger aria-label="Models" className={`${chipClass} min-w-0`}>
         {chosen.length > 0 ? (
           // Each harness among them once.
           <span className="flex items-center gap-1">
@@ -233,46 +257,66 @@ export function ModelsPicker({
             ))}
           </span>
         ) : null}
-        <span className="font-medium text-fg-primary">{label}</span>
+        <span className="truncate font-medium text-fg-primary">{label}</span>
+        <EffortTrail effort={menu.effortShown} />
       </Combobox.Trigger>
       <MenuPopup
         {...menu}
         browse={browse}
+        label={chosen.length === 1 ? chosen[0]!.label : "each"}
         multiple
         full={keys.length >= max}
         chosen={keys}
         onShortcut={(key) => pick(keys.includes(key) ? keys.filter((each) => each !== key) : [...keys, key])}
-        footer={
-          <SeveralSwitch on onChange={onSingle}>
-            <span className="text-fg-tertiary tabular-nums">
-              {keys.length} of {max}
+        count={
+          <>
+            <span className="tabular-nums">
+              {keys.length} of {max}, a thread each
             </span>
-          </SeveralSwitch>
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onSingle}
+              className="-my-0.5 ml-auto rounded-md px-1.5 py-0.5 text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            >
+              Just one
+            </button>
+          </>
         }
       />
     </Combobox.Root>
   );
 }
 
+/** The effort the trigger names after the model. */
+function EffortTrail({ effort }: { readonly effort: EffortPick | undefined }) {
+  return effort ? <span className="shrink-0 text-fg-tertiary">{chipEffortLabel[effort]}</span> : null;
+}
+
 function MenuPopup({
   providers,
   available,
   note,
+  effort,
+  label,
   browse,
   multiple = false,
   full = false,
   chosen,
   onShortcut,
-  footer,
+  count,
 }: MenuProps & {
   readonly browse: Browse;
+  /** The model the effort row names. */
+  readonly label?: string | undefined;
   readonly multiple?: boolean;
   /** No more can be chosen: the rows not chosen yet wait. */
   readonly full?: boolean;
   readonly chosen?: ReadonlyArray<string>;
   /** Picks, or in multi agent flips, the row a Ctrl digit names. */
   readonly onShortcut: (key: string) => void;
-  readonly footer?: ReactNode;
+  /** Multi agent's count, at the menu's foot. */
+  readonly count?: ReactNode;
 }) {
   const tabs: ReadonlyArray<Tab> = ["favorites", ...providers];
   const waits = (key: string) => full && chosen?.includes(key) !== true;
@@ -284,6 +328,15 @@ function MenuPopup({
       event.stopPropagation();
       const key = browse.order[digit === "0" ? 9 : Number(digit) - 1];
       if (key !== undefined && !waits(key)) onShortcut(key);
+      return;
+    }
+    // Alt and left or right steps the effort, wherever the search's caret is.
+    if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight") && offersChoice(effort)) {
+      event.preventDefault();
+      const steps = effortSteps(effort);
+      const at = steps.indexOf(effort.value) + (event.key === "ArrowLeft" ? -1 : 1);
+      const next = steps[Math.max(0, Math.min(steps.length - 1, at))];
+      if (next !== undefined && next !== effort.value) effort.onPick(next);
       return;
     }
     // Left and right in an empty search move along the rail.
@@ -355,7 +408,24 @@ function MenuPopup({
             {note ? (
               <p className="border-t border-line-subtle px-2.5 py-1.5 text-2xs text-fg-tertiary">{note}</p>
             ) : null}
-            {footer}
+            {count ? (
+              <div className="flex items-center gap-2 border-t border-line-subtle px-2.5 py-1.5 text-2xs text-fg-tertiary">
+                {count}
+              </div>
+            ) : null}
+            {offersChoice(effort) ? (
+              <EffortRow
+                choice={{
+                  ...effort,
+                  // An effort picked here finishes the choice the model began.
+                  onPick: (next) => {
+                    effort.onPick(next);
+                    if (!multiple) browse.setOpen(false);
+                  },
+                }}
+                model={label ?? "it"}
+              />
+            ) : null}
           </div>
         </Combobox.Popup>
       </Combobox.Positioner>
@@ -451,8 +521,9 @@ function ModelRow({
             <Check size={13} strokeWidth={2.25} />
           </Combobox.ItemIndicator>
         )}
+        {/* Only the row the keyboard or pointer is on names its shortcut, so the list stays quiet. */}
         {shortcut ? (
-          <kbd className="shrink-0 rounded-[5px] bg-surface-sunken px-1.5 py-0.5 font-sans text-2xs text-fg-tertiary tabular-nums max-md:hidden">
+          <kbd className="hidden shrink-0 rounded-[5px] bg-surface-sunken px-1.5 py-0.5 font-sans text-2xs text-fg-tertiary tabular-nums md:group-data-highlighted/item:inline">
             {keyLabel(shortcut)}
           </kbd>
         ) : null}
@@ -464,38 +535,11 @@ function ModelRow({
         aria-pressed={starred}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => browse.toggleFavorite(key)}
-        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-colors hover:bg-surface-active max-md:size-8 ${starred ? "text-attention" : "text-fg-disabled hover:text-fg-secondary"}`}
+        // An unstarred row's star waits for the pointer or keyboard, so the list stays quiet.
+        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-surface-active max-md:size-8 ${starred ? "text-attention" : "text-fg-disabled opacity-0 group-hover/row:opacity-100 group-has-data-highlighted/row:opacity-100 hover:text-fg-secondary max-md:opacity-100"}`}
       >
         <Star size={13} strokeWidth={1.75} className={starred ? "fill-current" : ""} />
       </button>
-    </div>
-  );
-}
-
-/** The menu's foot: multi agent on or off, with what goes beside it. */
-function SeveralSwitch({
-  on,
-  onChange,
-  children,
-}: {
-  readonly on: boolean;
-  readonly onChange: () => void;
-  readonly children?: ReactNode;
-}) {
-  return (
-    <div className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-2.5 text-[12.5px] max-md:h-11">
-      {/* The whole row is the switch, so its words name it and a click on them flips it. */}
-      <Switch.Root
-        checked={on}
-        onCheckedChange={onChange}
-        className="group/switch flex cursor-default items-center gap-2 rounded-md text-fg-secondary outline-none select-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring"
-      >
-        <span className="flex h-4 w-7 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft group-data-checked/switch:bg-accent">
-          <Switch.Thumb className="size-3 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3 data-checked:bg-accent-fg" />
-        </span>
-        Several at once
-      </Switch.Root>
-      <span className="ml-auto">{children}</span>
     </div>
   );
 }

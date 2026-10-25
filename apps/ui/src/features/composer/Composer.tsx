@@ -66,7 +66,6 @@ import {
   accessLimit,
   allowedAccess,
   effortFor,
-  effortLabel,
   effortsOf,
   MAX_AGENTS,
   modelKey,
@@ -77,11 +76,11 @@ import {
   type ModelSwitch,
 } from "./models.ts";
 import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
-import { AccessPicker, EffortMeter, EffortPicker, FixedChip, ModelWell } from "./Pickers.tsx";
+import { chipEffortLabel, FixedChip, MoreMenu, type EffortChoice, type EffortPick } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
-import { WorktreeChip, WorktreePicker } from "./WorktreePicker.tsx";
+import { WorktreePicker } from "./WorktreePicker.tsx";
 import { QueueTray, type Queue } from "./QueueTray.tsx";
 
 /**
@@ -186,7 +185,7 @@ interface ComposerProps {
   readonly onHeight?: (height: number) => void;
   /** Opening a thread puts the cursor in the box; not in a pane beside the focused one. */
   readonly takesFocus?: boolean;
-  /** The step the lead's running turn is on, shown over the box's corner while it runs. */
+  /** The step the lead's running turn is on, written in the empty box's line while it runs. */
   readonly activity?: ReactNode;
   /** The user's messages waiting for the lead, listed at the top of the box. */
   readonly queue?: Queue | undefined;
@@ -223,6 +222,13 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  /**
+   * Writing in the box, or using what it opened, which unfolds a new thread's setup row. Focus that
+   * moves among the box's controls and their menus (portalled, but still under the box in React's
+   * tree) keeps it; focus that leaves for good folds it, a frame later.
+   */
+  const [focused, setFocused] = useState(takesFocus);
+  const focusMoves = useRef(0);
   const save = useAtomSet(saveAttachment, { mode: "promise" });
   const draft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
   // New threads start with the model and effort the last one was given, which are also the defaults
@@ -493,10 +499,20 @@ export function Composer({
 
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
-  // An open thread's box is one line, attach and send either side of the message, with the lead's
-  // setup under it; a new thread's keeps its toolbar for the choices that start it.
+  // An open thread's box is one line: attach, the message, then the lead's model and send. A new
+  // thread's rests on that line too until the user writes, then unfolds a row for the choices that
+  // start it. A touch screen keeps the row out, as the keyboard covers the box while writing.
   const compact = thread !== undefined && !oneLine;
-  const inline = oneLine || compact;
+  const rests =
+    isNew &&
+    !oneLine &&
+    !touch &&
+    !focused &&
+    !written &&
+    draft.attachments.length === 0 &&
+    !needsFolder &&
+    !projectsOpen;
+  const inline = oneLine || compact || rests;
 
   // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
   // client is a phone's, whose keyboard has a microphone of its own.
@@ -646,12 +662,12 @@ export function Composer({
       icon={Paperclip}
       label="Attach files"
       onClick={() => filePicker.current?.click()}
-      {...(oneLine ? { className: "size-10" } : compact ? { className: "m-1 size-8" } : {})}
+      className={oneLine ? "size-10" : inline ? "m-1 size-8 rounded-full" : "size-8 rounded-full"}
     />
   );
   // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
   const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
-  const discSize = oneLine ? "m-0.5 size-9" : compact ? "m-1 size-8" : "size-8";
+  const discSize = oneLine ? "m-0.5 size-9" : inline ? "m-1 size-8" : "size-8";
   const stopButton = (
     <Tooltip label="Stop" shortcut="Esc">
       {/* A ring turns around it while the turn runs, so the one control that ends it stands out. */}
@@ -683,15 +699,6 @@ export function Composer({
       </Button>
     </Tooltip>
   );
-  // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop.
-  const actions = (
-    <div className="flex shrink-0 items-center gap-1">
-      {dictates ? <DictationControl dictation={dictation} /> : null}
-      {running ? stopButton : null}
-      {running && !written ? null : sendButton}
-    </div>
-  );
-
   /** What the model picker shows for an open thread: the model it runs, or the name the transcript gives it. */
   const threadShown: ShownModel | undefined = thread
     ? {
@@ -703,153 +710,158 @@ export function Composer({
 
   const placeholder = listening
     ? "Listening…"
-    : resumes
-      ? thread?.ended === "failed"
-        ? "Send a message to try again"
-        : "Send a message to pick this thread back up"
-      : isNew
-        ? starting.length > 1
-          ? `Message ${starting.length} models at once`
-          : target.mode === "chat"
-            ? "Ask anything"
-            : "Describe the task"
-        : `Message ${threadShown?.label}`;
+    : running
+      ? "Queue a follow-up"
+      : resumes
+        ? thread?.ended === "failed"
+          ? "Send a message to try again"
+          : "Send a message to pick this thread back up"
+        : isNew
+          ? starting.length > 1
+            ? `Message ${starting.length} models at once`
+            : target.mode === "chat"
+              ? "Ask anything"
+              : "Describe the task"
+          : `Message ${threadShown?.label}`;
 
-  // Under the box, the thread's worktree at the start and its lead's model at the end.
-  const threadSetup =
-    compact && thread && threadShown ? (
-      <div className="pointer-events-none mt-1 flex min-w-0 flex-wrap items-center gap-1 px-1 [&>*]:pointer-events-auto [&>:last-child]:ml-auto">
-        {thread.worktree ? <WorktreeChip {...thread.worktree} /> : null}
-        <ModelWell
-          flat
-          model={
-            switching?.model ? (
-              <ModelPicker
-                models={models}
-                shown={threadShown}
-                providers={[thread.provider]}
-                available={new Set([thread.provider])}
-                onPick={(picked) => switchLead(switchTo(picked, threadEffort, switching.effort, threadAuto))}
-                {...(running ? { note: "Applies from the next turn" } : {})}
-              />
-            ) : (
-              <FixedChip
-                tip={
-                  AsyncResult.isFailure(manifests)
-                    ? "Update Cerium on that computer to switch models"
-                    : switching
-                      ? `${providerName[thread.provider]} can't switch models mid-thread`
-                      : "The model this thread started with"
-                }
-              >
-                <ProviderLogo provider={thread.provider} size={13} />
-                <span className="font-medium text-fg-primary">{threadShown.label}</span>
-              </FixedChip>
-            )
-          }
-          effort={
-            threadModel && threadEffort ? (
-              switching?.effort ? (
-                <EffortPicker
-                  efforts={threadModel.efforts}
-                  value={threadEffort}
-                  onPick={(next) => switchLead({ model: threadModel.id, effort: next })}
-                  auto={
-                    routerOn
-                      ? {
-                          on: threadAuto,
-                          onChange: (on) =>
-                            switchLead(
-                              on
-                                ? { model: threadModel.id, autoEffort: true }
-                                : { model: threadModel.id, effort: threadEffort, autoEffort: false },
-                            ),
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <FixedChip tip="The effort this thread started with">
-                  {threadModel.efforts.length > 1 ? (
-                    <EffortMeter
-                      efforts={threadModel.efforts}
-                      level={threadModel.efforts.indexOf(threadEffort)}
-                    />
-                  ) : null}
-                  <span className="text-[12px]">{effortLabel[threadEffort]}</span>
-                </FixedChip>
-              )
-            ) : undefined
-          }
+  // The lead's model and effort as one chip in the box's line. It opens the harness's models, with the
+  // effort under them, as far as the harness can switch either mid-thread.
+  const switchesModel = switching?.model === true;
+  const switchesEffort = switching?.effort === true;
+  const threadEffortShown: EffortPick | undefined = threadEffort
+    ? threadAuto
+      ? "auto"
+      : threadEffort
+    : undefined;
+  const threadEffortChoice: EffortChoice | undefined =
+    threadModel && threadEffort && switchesEffort
+      ? {
+          levels: threadModel.efforts,
+          value: threadAuto ? "auto" : threadEffort,
+          auto: routerOn,
+          onPick: (next) =>
+            switchLead(
+              next === "auto"
+                ? { model: threadModel.id, autoEffort: true }
+                : { model: threadModel.id, effort: next, ...(threadAuto ? { autoEffort: false } : {}) },
+            ),
+        }
+      : undefined;
+  const threadChip =
+    thread && threadShown ? (
+      switchesModel || threadEffortChoice ? (
+        <ModelPicker
+          models={switchesModel ? models : threadModel ? [threadModel] : []}
+          shown={threadShown}
+          providers={[thread.provider]}
+          available={new Set([thread.provider])}
+          effort={threadEffortChoice}
+          effortShown={threadEffortShown}
+          onPick={(picked) => switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto))}
+          {...(running
+            ? { note: "Applies from the next turn" }
+            : switchesModel
+              ? {}
+              : { note: `${providerName[thread.provider]} can't switch models mid-thread` })}
         />
-      </div>
+      ) : (
+        <FixedChip
+          tip={
+            AsyncResult.isFailure(manifests)
+              ? "Update Cerium on that computer to switch models"
+              : switching
+                ? `${providerName[thread.provider]} can't switch models mid-thread`
+                : "The model this thread started with"
+          }
+        >
+          <ProviderLogo provider={thread.provider} size={13} />
+          <span className="max-w-40 truncate font-medium text-fg-primary">{threadShown.label}</span>
+          {threadEffortShown ? <span>{chipEffortLabel[threadEffortShown]}</span> : null}
+        </FixedChip>
+      )
     ) : null;
 
-  // A new thread's setup splits in two: what runs sits in the box's toolbar, beside the message;
-  // where it runs and what it may do head the box, so the toolbar stays uncrowded.
-  const newSetup =
+  // A new thread's model and effort, the same chip; a level picked by hand takes it off Auto.
+  const newEffortShown: EffortPick | undefined = activeEffort
+    ? autoEffort
+      ? "auto"
+      : activeEffort
+    : undefined;
+  const newEffortChoice: EffortChoice | undefined = activeEffort
+    ? {
+        levels: efforts,
+        value: autoEffort ? "auto" : activeEffort,
+        auto: routerOn,
+        onPick: (next) => (next === "auto" ? pickForDraft({ autoEffort: true }) : setEffort(next)),
+      }
+    : undefined;
+  const newChip =
     target.kind === "new" ? (
-      <ModelWell
-        model={
-          multi ? (
-            <ModelsPicker
-              models={models}
-              chosen={starting}
-              providers={providers}
-              available={target.available}
-              max={MAX_AGENTS}
-              open={modelsOpen}
-              onOpenChange={setModelsOpen}
-              onPick={(keys) => pickForDraft({ models: keys })}
-              onSingle={() => setMulti(false)}
-              // Agents that may edit share the one folder, where they can undo each other's work.
-              {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
-                ? { note: "They share the folder, so their edits can collide" }
-                : {})}
-            />
-          ) : (
-            <ModelPicker
-              models={models}
-              shown={
-                model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined
-              }
-              providers={providers}
-              available={target.available}
-              // Shared with multi agent's menu, so switching between them keeps the menu open.
-              open={modelsOpen}
-              onOpenChange={setModelsOpen}
-              onPick={(picked) => setModelId(modelKey(picked))}
-              {...(models.filter((each) => target.available.has(each.provider)).length > 1
-                ? { onMulti: () => setMulti(true) }
-                : {})}
-            />
-          )
-        }
-        effort={
-          activeEffort ? (
-            <EffortPicker
-              efforts={efforts}
-              value={activeEffort}
-              onPick={setEffort}
-              auto={
-                routerOn ? { on: autoEffort, onChange: (on) => pickForDraft({ autoEffort: on }) } : undefined
-              }
-            />
-          ) : undefined
-        }
-        access={
-          target.mode === "work" ? (
-            <AccessPicker value={access} onPick={setAccess} limit={limit} />
-          ) : undefined
-        }
+      multi ? (
+        <ModelsPicker
+          models={models}
+          chosen={starting}
+          providers={providers}
+          available={target.available}
+          max={MAX_AGENTS}
+          open={modelsOpen}
+          onOpenChange={setModelsOpen}
+          effort={newEffortChoice}
+          effortShown={newEffortShown}
+          onPick={(keys) => pickForDraft({ models: keys })}
+          onSingle={() => setMulti(false)}
+          // Agents that may edit share the one folder, where they can undo each other's work.
+          {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
+            ? { note: "They share the folder, so their edits can collide" }
+            : {})}
+        />
+      ) : (
+        <ModelPicker
+          models={models}
+          shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
+          providers={providers}
+          available={target.available}
+          // Shared with multi agent's menu, so switching between them keeps the menu open.
+          open={modelsOpen}
+          onOpenChange={setModelsOpen}
+          effort={newEffortChoice}
+          effortShown={newEffortShown}
+          onPick={(picked) => setModelId(modelKey(picked))}
+        />
+      )
+    ) : null;
+
+  // What's seldom changed waits behind one button: access, shown on it once it isn't Auto, and
+  // several models at once.
+  const moreMenu =
+    target.kind === "new" ? (
+      <MoreMenu
+        {...(target.mode === "work" ? { access: { value: access, onPick: setAccess, limit } } : {})}
+        {...(models.filter((each) => target.available.has(each.provider)).length > 1
+          ? { several: { on: multi, onChange: setMulti } }
+          : {})}
       />
     ) : null;
 
-  // Where a new work thread runs, as a path (project / folder or worktree), in a glass capsule over
-  // the box's corner: it says where the message goes, so it stays out of the message itself.
+  /** Access other than Auto stays in sight while the box rests and its setup row is folded away. */
+  const restingAccess = rests && target.kind === "new" && target.mode === "work" && access !== "auto";
+
+  // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop. The
+  // model chip sits by send: what the message goes to, beside what sends it.
+  const actions = (
+    <div className="flex min-w-0 shrink-0 items-center gap-1">
+      {restingAccess ? moreMenu : null}
+      {dictates ? <DictationControl dictation={dictation} /> : null}
+      {oneLine ? null : thread ? threadChip : newChip}
+      {running ? stopButton : null}
+      {running && !written ? null : sendButton}
+    </div>
+  );
+
+  // Where a new work thread runs, as a path (project / branch or new worktree), leading the setup row.
   const newPlace =
     target.kind === "new" && target.mode === "work" ? (
-      <div className="pointer-events-auto mb-2 ml-1.5 inline-flex max-w-full min-w-0 items-center gap-px rounded-[10px] border border-line-subtle bg-surface-panel p-0.5 backdrop-blur-2xl [&>button]:h-6">
+      <div className="flex min-w-0 items-center">
         <ProjectPicker
           folder={target.folder}
           open={projectsOpen}
@@ -888,7 +900,19 @@ export function Composer({
     >
       {above}
       {/* The list sits beside the box, not in it: inside the box's own blur it couldn't blur what's behind. */}
-      <div className="relative mx-auto max-w-[46.2rem]">
+      <div
+        className="relative mx-auto max-w-[46.2rem]"
+        onFocus={(event) => {
+          focusMoves.current += 1;
+          if (event.target === input.current) setFocused(true);
+        }}
+        onBlur={() => {
+          const moves = focusMoves.current;
+          requestAnimationFrame(() => {
+            if (focusMoves.current === moves) setFocused(false);
+          });
+        }}
+      >
         {menuOpen ? (
           <MentionMenu
             trigger={menuTrigger}
@@ -899,14 +923,12 @@ export function Composer({
             onPick={pick}
           />
         ) : null}
-        {oneLine ? null : newPlace}
-        {!oneLine && running ? activity : null}
         {/* Glass in the transcript's own tone: the box stands apart by its edge and the blur of what
             scrolls under it, not by being lighter or darker than the conversation. */}
         <div
-          className={`pointer-events-auto relative rounded-[18px] border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
+          className={`pointer-events-auto relative border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
-          } ${inline ? "flex flex-wrap items-end p-1" : ""}`}
+          } ${inline ? "flex flex-wrap items-end rounded-[24px] p-1" : "rounded-[18px]"}`}
         >
           {dragging ? (
             <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-[13px] text-fg-secondary backdrop-blur-xl">
@@ -960,6 +982,8 @@ export function Composer({
             activeOption={
               menuOpen && results.options.length > 0 ? `mention-option-${activeIndex}` : undefined
             }
+            // While the lead works and nothing is written, the line says what it's doing.
+            cover={compact && running ? activity : undefined}
           />
           <input
             ref={filePicker}
@@ -971,22 +995,22 @@ export function Composer({
               event.target.value = "";
             }}
           />
-          {/* One line, the setup under the box or, while a phone's keyboard is up, waiting below it. */}
+          {/* One line, or a new thread's setup row under the message once the user writes. */}
           {inline ? (
             actions
           ) : (
-            <div className="flex items-end gap-1 px-2.5 pt-1 pb-2.5">
-              {/* The pickers wrap among themselves on a narrow screen, so send keeps its corner
-                  instead of dropping onto a row of its own. */}
-              <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-1">
+            <div className="flex items-end gap-1 px-2 pt-1 pb-2 transition-[opacity,translate] duration-200 ease-out-soft starting:-translate-y-1 starting:opacity-0 motion-reduce:transition-none">
+              {/* The row's choices wrap among themselves on a narrow screen, so send keeps its
+                  corner instead of dropping onto a row of its own. */}
+              <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
                 {attachButton}
-                {newSetup}
+                {newPlace}
+                {moreMenu}
               </div>
               {actions}
             </div>
           )}
         </div>
-        {threadSetup}
       </div>
     </div>
   );

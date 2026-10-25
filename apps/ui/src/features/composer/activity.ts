@@ -3,7 +3,7 @@ import type { AgentEvent } from "@cerium/protocol";
 import type { TranscriptBlock } from "../transcript/model.ts";
 import { describeTool } from "../transcript/tools.ts";
 
-/** What the lead is doing right now, in a few words, shown over the message box while a turn runs. */
+/** What the lead is doing right now, in a few words, written in the empty message box while a turn runs. */
 export interface LiveActivity {
   readonly verb: string;
   /** The file, command or query it acts on, when the step names one. */

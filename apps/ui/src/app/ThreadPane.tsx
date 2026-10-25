@@ -29,7 +29,7 @@ import { useModels } from "../features/composer/models.ts";
 import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
-import { ActivityCapsule } from "../features/composer/ActivityCapsule.tsx";
+import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
 import type { Queue } from "../features/composer/QueueTray.tsx";
 import { buildTranscript, holdsQueue, queuedMessages } from "../features/transcript/model.ts";
@@ -412,7 +412,7 @@ function LeadTranscript({
 }
 
 /**
- * The step the lead's running turn is on, over the message box. It reads every event, as the
+ * The step the lead's running turn is on, in the message box. It reads every event, as the
  * conversation does, so only it renders again as the turn's words and tool calls stream in.
  */
 function LeadActivity({
@@ -434,5 +434,5 @@ function LeadActivity({
     ),
   );
   const activity = liveActivity(buildTranscript(turn, sameModel), turn);
-  return activity ? <ActivityCapsule activity={activity} /> : null;
+  return activity ? <ActivityLine activity={activity} /> : null;
 }

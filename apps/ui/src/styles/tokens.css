@@ -46,7 +46,7 @@
   --surface-hover: oklch(1 0 0 / 0.05);
   --surface-active: oklch(1 0 0 / 0.085);
   --surface-selected: oklch(1 0 0 / 0.09);
-  /* Set into a surface rather than raised from it: the message box's model and effort. */
+  /* Set into a surface rather than raised from it: the model menu's effort row, a code block. */
   --surface-sunken: oklch(0 0 0 / 0.22);
 
   --line-subtle: oklch(1 0 0 / 0.07);
@@ -187,16 +187,6 @@
   --shiki-token-inserted: var(--status-success);
   --shiki-token-deleted: var(--status-error);
   --shiki-token-changed: var(--status-attention);
-}
-
-/*
- * Reasoning effort, faint to full in the accent, along the effort meter and slider (composer/Pickers.tsx):
- * a level is an amount, not a status, so it takes no status hue.
- */
-:root {
-  --effort-faint: color-mix(in oklab, var(--accent) 38%, transparent);
-  --effort-full: var(--accent);
-  --effort-ramp: linear-gradient(90deg, var(--effort-faint), var(--effort-full));
 }
 
 @theme inline {
