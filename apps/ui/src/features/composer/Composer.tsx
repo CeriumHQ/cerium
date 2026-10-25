@@ -8,10 +8,11 @@ import {
   type ProviderId,
   type ReasoningEffort,
 } from "@cerium/protocol";
-import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowUp, Paperclip, Square } from "lucide-react";
 import {
+  useContext,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
@@ -239,7 +240,7 @@ export function Composer({
    */
   const [focused, setFocused] = useState(takesFocus);
   const focusMoves = useRef(0);
-  const save = useAtomSet(saveAttachment, { mode: "promise" });
+  const registry = useContext(RegistryContext);
   const draft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
   // New threads start with the model and effort the last one was given, which are also the defaults
   // in settings. Access always starts from the settings default. A pick here stays with the draft.
@@ -471,7 +472,7 @@ export function Composer({
           },
         ],
       }));
-      prepareAttachment(file, (payload) => save({ payload })).then(
+      prepareAttachment(file, (payload) => saveAttachment(registry, id, payload)).then(
         (attachment) => setAttachment(key, id, { _tag: "Ready", attachment }),
         (error: unknown) =>
           setAttachment(key, id, {

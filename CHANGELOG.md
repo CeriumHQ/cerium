@@ -373,6 +373,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Several images attached at once without a file of their own (pasted, dropped from a browser, or picked on a phone or the web client) each arrive as themselves: they saved together through one call, which cut each save short with the next and gave every image the last one's file.
 - In an open thread, a long message stayed squeezed into the strip of the single-line message box left of the model chip and send. Once what you write wraps, the box now opens: the message takes the full width with the controls on a line under it. It stays open until you clear the message or send it.
 - On a phone, a swipe back to the thread list showed the thread picked before for a moment, before the list caught up. The browser's swipe back shows the last picture it painted of the list, which predated the new selection, so the history entry now waits until the list has painted it.
 - Queued messages too long for the message box no longer run past its right edge: a fold's content can shrink to its card's width, so the text truncates there as it should.

@@ -1,7 +1,7 @@
 import { dataFileUrl } from "@cerium/artifacts";
 import type { ProviderId, ToolImageRef } from "@cerium/protocol";
 import { Effect, Schedule } from "effect";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import { Backend, connectionEpochAtom } from "./client.ts";
 
@@ -109,7 +109,26 @@ export const skillsAtom = Atom.family((key: string) => {
 
 export const skillsKey = (provider: ProviderId, cwd: string | undefined) => `${provider}\n${cwd ?? ""}`;
 
-export const saveAttachment = Backend.mutation("SaveAttachment");
+/**
+ * Saving one attached file's bytes, an atom for each file: files attached together save at once, and
+ * one shared mutation would interrupt each save with the next and answer every file with the last.
+ */
+const saveAttachmentAtom = Atom.family((_file: string) =>
+  Backend.runtime.fn<{ readonly name: string; readonly mediaType: string; readonly data: string }>()(
+    (payload) => Backend.use((client) => client("SaveAttachment", payload)),
+  ),
+);
+
+/** Saves the bytes of the attached file `file` (any key of its own) and resolves to where they went. */
+export const saveAttachment = (
+  registry: AtomRegistry.AtomRegistry,
+  file: string,
+  payload: { readonly name: string; readonly mediaType: string; readonly data: string },
+) => {
+  const atom = saveAttachmentAtom(file);
+  registry.set(atom, payload);
+  return Effect.runPromise(AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true }));
+};
 
 /** The artifacts drawn in a project's threads, newest first; read again when refreshed or reconnected. */
 export const projectArtifactsAtom = Atom.family((folder: string) =>
