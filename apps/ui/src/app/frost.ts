@@ -635,12 +635,13 @@ const draw = (scene: FrostScene, grid: PolishGrid, seed: number): Drawn => {
   glass.drawImage(shape, 0, 0, grid.cols * grid.cell, grid.rows * grid.cell);
   glass.globalCompositeOperation = "source-over";
 
-  // The question through the frost: a wide glow of it, and nearer, its shapes softened.
+  // The question through the frost: a faint wide glow of it, and nearer, its shapes softened. The glow
+  // stays faint: it's white, and over a coloured desktop a strong one reads as a grey smudge.
   setFont(glass, scene);
   glass.fillStyle = colors.blur;
   const baselines = scene.lines.map((line) => baselineOf(glass, line));
   for (const [blur, alpha] of [
-    [size * 0.17, 0.42],
+    [size * 0.17, 0.12],
     [size * 0.06, 0.82],
   ] as const) {
     glass.filter = `blur(${blur}px)`;

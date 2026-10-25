@@ -188,6 +188,8 @@ export function ThreadPane({
   }, [paneKey, onHandles]);
   /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
   const [composerHeight, setComposerHeight] = useState(0);
+  /** Where a new thread's question seats the message box under it, in the window. */
+  const [seat, setSeat] = useState<number>();
 
   const viewed = selected ?? cloud?.overview;
   const cloudEvents = cloud ? cloudEventsAtom(`${cloud.machine}:${cloud.overview.thread.id}`) : noEvents;
@@ -307,6 +309,7 @@ export function ThreadPane({
               mode={mode}
               draftKey={draftKey}
               {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
+              onSeat={setSeat}
             />
           )}
         </div>
@@ -319,6 +322,7 @@ export function ThreadPane({
             connecting={cloud !== undefined}
             inputRef={input}
             messageBox={boxRef}
+            seat={seat}
             // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
             takesFocus={focused}
             target={

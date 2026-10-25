@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, type CSSProperties } from "react";
 
 import { draftLengthAtom } from "../features/composer/drafts.ts";
 import { Frost, readScene } from "./frost.ts";
@@ -19,6 +19,10 @@ const QUESTIONS = {
 const QUESTION_FONT = '200 expanded 64px "Anybody Variable"';
 /** How long the pane's size keeps still before the glass is drawn again for it. */
 const SETTLE_MS = 150;
+/** The space between the question and the message box seated under it. */
+const SEAT_GAP = 28;
+/** The width from which the box sits under the question; a phone keeps it at the foot, over the keyboard. */
+const SEATED = "(min-width: 48rem)";
 
 /**
  * Where a new thread starts, behind the message box: frosted glass over the window, the question
@@ -31,12 +35,18 @@ export function EmptyThread({
   mode,
   draftKey,
   onSetUp,
+  onSeat,
 }: {
   mode: "work" | "chat";
   /** The draft the message box writes, whose typing wipes the question. */
   draftKey: string;
   /** No harness can run a thread yet: opens where one is set up. */
   onSetUp?: () => void;
+  /**
+   * Where the message box sits, in the window's coordinates: under the question, so the two read as
+   * one. Undefined on a phone, and once the question goes, which drops the box to the pane's foot.
+   */
+  onSeat?: (seat: number | undefined) => void;
 }) {
   const question = onSetUp ? QUESTIONS.setUp : QUESTIONS[mode];
   const typed = useAtomValue(draftLengthAtom(draftKey));
@@ -46,6 +56,29 @@ export function EmptyThread({
   const cloth = useRef<HTMLDivElement>(null);
   const frost = useRef<Frost | null>(null);
   const asked = question.lines.join("\n");
+
+  // The box's seat follows the question's foot as the page lays it out, before it's painted, so the box
+  // never shows at the pane's foot first.
+  const said = useRef<HTMLDivElement>(null);
+  const seat = useEffectEvent((seated: boolean) => {
+    const block = said.current;
+    onSeat?.(seated && block !== null ? block.getBoundingClientRect().bottom + SEAT_GAP : undefined);
+  });
+  useLayoutEffect(() => {
+    const surface = glass.current;
+    const block = said.current;
+    if (surface === null || block === null) return;
+    const wide = matchMedia(SEATED);
+    const place = () => seat(wide.matches);
+    place();
+    const moved = new ResizeObserver(place);
+    moved.observe(surface);
+    moved.observe(block);
+    return () => {
+      moved.disconnect();
+      seat(false);
+    };
+  }, []);
 
   useEffect(() => {
     const surface = glass.current;
@@ -144,7 +177,7 @@ export function EmptyThread({
         className="pointer-events-none absolute top-0 left-0 rounded-full border border-line-subtle opacity-0 transition-opacity duration-500 data-[on]:opacity-(--fog) data-[on]:duration-150"
       />
       <div className="relative flex h-full flex-col items-center justify-center px-6 pb-32">
-        <div className="flex max-w-full flex-col items-start">
+        <div ref={said} className="flex max-w-full flex-col items-start">
           {/* Laid out by the page and drawn by the glass; screen readers and high contrast read it here.
               Its longest line spans most of a phone and less of a wide pane, and never crowds a short one. */}
           <h1

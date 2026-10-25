@@ -15,6 +15,7 @@ import {
   useEffect,
   useEffectEvent,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -192,6 +193,11 @@ interface ComposerProps {
   readonly activity?: ReactNode;
   /** The user's messages waiting for the lead, listed at the top of the box. */
   readonly queue?: Queue | undefined;
+  /**
+   * Where a new thread's box sits in the window, under the question (app/EmptyThread.tsx). Without
+   * one, or where the box wouldn't fit there, it floats at the pane's foot, and drops there from its seat.
+   */
+  readonly seat?: number | undefined;
 }
 
 /** The message box, floating over the bottom of the transcript. */
@@ -209,6 +215,7 @@ export function Composer({
   takesFocus = true,
   activity,
   queue,
+  seat,
 }: ComposerProps) {
   const setDrafts = useAtomSet(draftsAtom);
   const machine = useAtomValue(machineAtom);
@@ -323,6 +330,25 @@ export function Composer({
       onHeight(0);
     };
   }, [onHeight]);
+
+  // Seated, the box hangs from its seat, so it unfolds downwards, away from the question. Leaving the
+  // seat as the thread starts, it drops to the pane's foot rather than jumping there.
+  useLayoutEffect(() => {
+    const element = box.current;
+    const pane = element?.offsetParent;
+    if (!element || !(pane instanceof HTMLElement)) return;
+    const from = element.getBoundingClientRect().top;
+    const top = seat === undefined ? undefined : seat - pane.getBoundingClientRect().top;
+    const fits = top !== undefined && top + element.offsetHeight <= pane.clientHeight;
+    element.style.top = fits ? `${top}px` : "";
+    element.style.bottom = fits ? "auto" : "";
+    const drop = from - element.getBoundingClientRect().top;
+    if (fits || drop === 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    element.animate([{ translate: `0 ${drop}px` }, { translate: "0 0" }], {
+      duration: 360,
+      easing: "cubic-bezier(0.22, 0.8, 0.24, 1)",
+    });
+  }, [seat]);
 
   // Opening a thread, or a new one, puts the cursor where the next message goes.
   const focusOnOpen = useEffectEvent(() => {
@@ -502,10 +528,30 @@ export function Composer({
 
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
-  // An open thread's box is one line: attach, the message, then the lead's model and send. A new
-  // thread's rests on that line too until the user writes, then unfolds a row for the choices that
-  // start it. A touch screen keeps the row out, as the keyboard covers the box while writing.
-  const compact = thread !== undefined && !oneLine;
+  // A message that wraps on the one line opens the box, so it isn't squeezed into the space left
+  // beside the controls; it stays open, though the wider line may fit it again, until it's cleared.
+  const [grownFor, setGrownFor] = useState<string>();
+  const blank = text.trim() === "";
+  if (grownFor !== undefined && blank) setGrownFor(undefined);
+  const grown = grownFor === draftKey;
+  // An open thread's box is one line: attach, the message, then the lead's model and send, until the
+  // message outgrows it. A new thread's rests on that line too until the user writes, then unfolds a
+  // row for the choices that start it. A touch screen keeps the row out, as the keyboard covers the
+  // box while writing.
+  const compact = thread !== undefined && !oneLine && !grown;
+  useLayoutEffect(() => {
+    const element = input.current;
+    if (!compact || element === null) return;
+    const check = () => {
+      const style = getComputedStyle(element);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      if (element.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5) setGrownFor(draftKey);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact, draftKey, input]);
   const rests =
     isNew &&
     !oneLine &&
@@ -938,11 +984,11 @@ export function Composer({
             onPick={pick}
           />
         ) : null}
-        {/* Glass in the transcript's own tone: the box stands apart by its edge and the blur of what
-            scrolls under it, not by being lighter or darker than the conversation. */}
+        {/* A film a step above the conversation's own: the box stands apart by that, its edge and the
+            blur of what scrolls under it, never as a dark slab over the glass. */}
         <div
           ref={glass}
-          className={`pointer-events-auto relative border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
+          className={`pointer-events-auto relative border bg-surface-film shadow-film backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
           } ${inline ? "flex flex-wrap items-end rounded-[24px] p-1" : "rounded-[18px]"}`}
         >
