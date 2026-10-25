@@ -2,6 +2,7 @@ import {
   AccessMode,
   AccountDrafts,
   AccountState,
+  AccountTasks,
   AccountThreads,
   AgentId,
   AgentInfo,
@@ -31,6 +32,7 @@ import {
   SkillInfo,
   SpendEdges,
   SpendReport,
+  TaskEntry,
   ThreadId,
   ThreadInfo,
   ThreadMode,
@@ -631,6 +633,10 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("WatchAccountDrafts", { success: AccountDrafts, stream: true }),
   /** Shares drafts written, sent or discarded here with the account's other devices. */
   Rpc.make("SaveDrafts", { payload: { drafts: Schema.Array(DraftEntry) }, error: CeriumError }),
+  /** The account's tasks, now and after every change. Empty, and not ready, while signed out. */
+  Rpc.make("WatchAccountTasks", { success: AccountTasks, stream: true }),
+  /** Shares tasks added, changed or deleted here with the account's other devices. */
+  Rpc.make("SaveTasks", { payload: { tasks: Schema.Array(TaskEntry) }, error: CeriumError }),
   /**
    * Whether this device's own agents are working, now and after every change; always false for a
    * browser. The shell keeps a desktop awake for them while its window drives another machine.

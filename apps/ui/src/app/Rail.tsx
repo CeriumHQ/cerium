@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId, UsageSnapshot } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { GitPullRequest, House, MessagesSquare, Settings, type LucideIcon } from "lucide-react";
+import { CircleCheck, GitPullRequest, House, MessagesSquare, Settings, type LucideIcon } from "lucide-react";
 import { usageAtom } from "../backend/usage.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
@@ -12,12 +12,16 @@ import type { HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { useMinute } from "../lib/useMinute.ts";
 import { usageRings, type UsageRing } from "./railModel.ts";
 
-/** Where the rail goes: the work inbox, the chats, GitHub's pull requests and issues, or settings. */
-export type RailView = "home" | "chat" | "github" | "settings";
+/**
+ * Where the rail goes: the work inbox, the chats, the user's own tasks, GitHub's pull requests and
+ * issues, or settings.
+ */
+export type RailView = "home" | "chat" | "tasks" | "github" | "settings";
 
 const views: ReadonlyArray<{ view: RailView; label: string; icon: LucideIcon; shortcut: string }> = [
   { view: "home", label: "Home", icon: House, shortcut: "Ctrl Shift 1" },
   { view: "chat", label: "Chat", icon: MessagesSquare, shortcut: "Ctrl Shift 2" },
+  { view: "tasks", label: "Tasks", icon: CircleCheck, shortcut: "Ctrl Shift 3" },
   { view: "github", label: "GitHub", icon: GitPullRequest, shortcut: "Ctrl Shift 4" },
   { view: "settings", label: "Settings", icon: Settings, shortcut: "Ctrl ," },
 ];

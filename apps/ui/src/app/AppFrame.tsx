@@ -74,7 +74,8 @@ interface AppFrameProps {
    */
   readonly page?: {
     readonly title: string;
-    readonly list: ReactNode;
+    /** None on a wide window for a page that lays out its own list: the sidebar folds away. */
+    readonly list?: ReactNode;
     readonly main: ReactNode;
     /** The narrow window shows the list, or what was picked in it. */
     readonly pane: "list" | "main";
@@ -146,7 +147,8 @@ function DesktopFrame({
 }: AppFrameProps) {
   const view = settings.open ? "settings" : page ? "page" : "threads";
   const covered = view !== "threads";
-  const showSidebar = sidebarOpen || covered;
+  const bare = view === "page" && page?.list === undefined;
+  const showSidebar = !bare && (sidebarOpen || covered);
   const showInspector = side !== undefined && !covered;
   const sideSpec = SIDE_PANELS[side?.panel ?? "agents"];
 
@@ -187,6 +189,7 @@ function DesktopFrame({
       <Titlebar
         {...(thread ? { thread } : {})}
         {...(settings.open ? { page: "Settings" } : page ? { page: page.title } : {})}
+        bare={bare}
         mode={mode}
         sidebarOpen={sidebarOpen}
         sidebarWidth={sidebarWidth}

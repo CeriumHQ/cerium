@@ -1,8 +1,10 @@
 import {
   UiEvents,
   type AccountDrafts,
+  type AccountTasks,
   type AccountThreads,
   type DraftEntry,
+  type TaskEntry,
   type UiEvent,
   type DeviceId,
   type ReadEntry,
@@ -18,6 +20,7 @@ import { Account, AccountError, type RelayEvent } from "./account.ts";
 
 const empty: AccountThreads = { threads: [], read: [] };
 const noDrafts: AccountDrafts = { ready: false, drafts: [] };
+const noTasks: AccountTasks = { ready: false, tasks: [] };
 
 const decodeEvents = Schema.decodeUnknownEffect(UiEvents);
 
@@ -77,6 +80,33 @@ export const applyDraftNotice = (current: AccountDrafts, event: RelayEvent): Acc
   }
 };
 
+/** Each id's most recent task of `current` and `changed`. */
+export const latestTasks = (
+  current: ReadonlyArray<TaskEntry>,
+  changed: ReadonlyArray<TaskEntry>,
+): ReadonlyArray<TaskEntry> => {
+  const byId = new Map(current.map((entry) => [entry.id, entry]));
+  for (const entry of changed) {
+    const known = byId.get(entry.id);
+    if (known === undefined || entry.updatedAt > known.updatedAt) byId.set(entry.id, entry);
+  }
+  return [...byId.values()];
+};
+
+/** The account's tasks after a notice from the relay. */
+export const applyTaskNotice = (current: AccountTasks, event: RelayEvent): AccountTasks => {
+  switch (event._tag) {
+    case "AccountTasks":
+      return { ready: true, tasks: latestTasks(current.tasks, event.tasks) };
+    case "TasksChanged":
+      return { ...current, tasks: latestTasks(current.tasks, event.tasks) };
+    case "RelayLost":
+      return { ...current, ready: false };
+    default:
+      return current;
+  }
+};
+
 export class CloudThreads extends Context.Service<
   CloudThreads,
   {
@@ -90,6 +120,10 @@ export class CloudThreads extends Context.Service<
     readonly accountDrafts: Stream.Stream<AccountDrafts>;
     /** Shares drafts written, sent or discarded here with the account's other devices. */
     saveDrafts(drafts: ReadonlyArray<DraftEntry>): Effect.Effect<void, AccountError>;
+    /** The account's tasks, now and after every change. */
+    readonly accountTasks: Stream.Stream<AccountTasks>;
+    /** Shares tasks added, changed or deleted here with the account's other devices. */
+    saveTasks(tasks: ReadonlyArray<TaskEntry>): Effect.Effect<void, AccountError>;
   }
 >()("cerium/account/CloudThreads") {
   /** Requires `Account`. */
@@ -99,6 +133,7 @@ export class CloudThreads extends Context.Service<
       const account = yield* Account;
       const threads = yield* SubscriptionRef.make<AccountThreads>(empty);
       const drafts = yield* SubscriptionRef.make<AccountDrafts>(noDrafts);
+      const tasks = yield* SubscriptionRef.make<AccountTasks>(noTasks);
 
       // Most of what the relay says (an upload accepted, a tunnel's frame) changes neither, and every
       // value set goes whole to every window watching, so only a changed one is set.
@@ -113,15 +148,22 @@ export class CloudThreads extends Context.Service<
           yield* SubscriptionRef.updateSome(drafts, (current) =>
             changedFrom(current, applyDraftNotice(current, event)),
           );
+          yield* SubscriptionRef.updateSome(tasks, (current) =>
+            changedFrom(current, applyTaskNotice(current, event)),
+          );
         }
       }).pipe(Effect.scoped, Effect.forkScoped);
 
-      // Signed out, this device knows no account's threads or drafts.
+      // Signed out, this device knows no account's threads, drafts or tasks.
       yield* account.changes.pipe(
         Stream.runForEach((state) =>
           state._tag === "SignedIn"
             ? Effect.void
-            : Effect.andThen(SubscriptionRef.set(threads, empty), SubscriptionRef.set(drafts, noDrafts)),
+            : Effect.all([
+                SubscriptionRef.set(threads, empty),
+                SubscriptionRef.set(drafts, noDrafts),
+                SubscriptionRef.set(tasks, noTasks),
+              ]),
         ),
         Effect.forkScoped,
       );
@@ -149,6 +191,18 @@ export class CloudThreads extends Context.Service<
                   SubscriptionRef.update(drafts, (current) => ({
                     ...current,
                     drafts: latestDrafts(current.drafts, entries),
+                  })),
+                ),
+              ),
+        accountTasks: SubscriptionRef.changes(tasks),
+        saveTasks: (entries) =>
+          entries.length === 0
+            ? Effect.void
+            : account.send({ _tag: "SaveTasks", tasks: entries }).pipe(
+                Effect.andThen(
+                  SubscriptionRef.update(tasks, (current) => ({
+                    ...current,
+                    tasks: latestTasks(current.tasks, entries),
                   })),
                 ),
               ),

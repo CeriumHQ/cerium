@@ -3,13 +3,14 @@ import {
   type AgentId,
   type DeviceId,
   type DraftEntry,
+  type TaskEntry,
   type ThreadId,
   type ThreadOverview,
 } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
 
-import { accountDraftsJson, accountThreadsJson, appendBatch } from "../src/sync.ts";
+import { accountDraftsJson, accountTasksJson, accountThreadsJson, appendBatch } from "../src/sync.ts";
 
 describe("appending a batch to the cloud copy", () => {
   it("keeps a batch that follows on from what the cloud has", () => {
@@ -94,5 +95,22 @@ describe("what a device is sent on connecting", () => {
     expect(accountDraftsJson(drafts)).toBe(JSON.stringify(message));
     expect(decode(accountDraftsJson(drafts))).toEqual(message);
     expect(accountDraftsJson([])).toBe(JSON.stringify({ _tag: "AccountDrafts", drafts: [] }));
+  });
+
+  it("sends the stored tasks likewise, leaving out the content of deleted ones", () => {
+    const tasks = [
+      { id: "t1", updatedAt: 3, task: JSON.stringify({ title: 'Ship "it"', done: false }) },
+      { id: "t2", updatedAt: 4, task: null },
+    ];
+    const message = {
+      _tag: "AccountTasks",
+      tasks: tasks.map((row): TaskEntry => ({
+        id: row.id,
+        updatedAt: row.updatedAt,
+        ...(row.task === null ? {} : { task: JSON.parse(row.task) as Exclude<TaskEntry["task"], undefined> }),
+      })),
+    } satisfies RelayMessage;
+    expect(accountTasksJson(tasks)).toBe(JSON.stringify(message));
+    expect(decode(accountTasksJson(tasks))).toEqual(message);
   });
 });

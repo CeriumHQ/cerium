@@ -78,6 +78,17 @@ export const drafts = sqliteTable("drafts", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+/**
+ * The user's own tasks (the rail's Tasks); a deleted one keeps its row (task NULL) a while, so a
+ * device that was offline doesn't bring it back.
+ */
+export const tasks = sqliteTable("tasks", {
+  id: text("id").primaryKey(),
+  /** JSON task. */
+  task: text("task"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 /** Browsers' push subscriptions, one per browser, with the kinds of notification each wants. */
 export const push = sqliteTable("push", {
   device: text("device").primaryKey(),

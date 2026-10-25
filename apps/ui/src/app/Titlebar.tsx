@@ -35,6 +35,8 @@ interface TitlebarProps {
   readonly thread?: { readonly title: string; readonly project?: string };
   /** A page that covers the threads (Settings, GitHub), by its title: it replaces the thread's title and controls. */
   readonly page?: string;
+  /** The page lays out its own list, so the sidebar's place, and the controls over it, fold away. */
+  readonly bare?: boolean;
   readonly mode: AppMode;
   readonly sidebarOpen: boolean;
   /** The sidebar's width while it shows, so the controls above it end where it does. */
@@ -60,6 +62,7 @@ interface TitlebarProps {
 export function Titlebar({
   thread,
   page,
+  bare = false,
   mode,
   sidebarOpen,
   sidebarWidth,
@@ -74,7 +77,7 @@ export function Titlebar({
   tabs,
 }: TitlebarProps) {
   const covered = page !== undefined;
-  const showSidebar = sidebarOpen || covered;
+  const showSidebar = !bare && (sidebarOpen || covered);
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-(--titlebar-inset) [app-region:drag]">
       {/*

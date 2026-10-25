@@ -4,6 +4,7 @@ import {
   DeviceMessage,
   hashSecret,
   MAX_DRAFT_BYTES,
+  MAX_TASK_BYTES,
   randomToken,
   RELAY_PROTOCOL,
   type AccountId,
@@ -21,6 +22,7 @@ import {
   type ReadEntry,
   type RelayMessage,
   type SyncMessage,
+  type TaskEntry,
   type ThreadId,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
@@ -43,7 +45,7 @@ import {
   type PushRow,
 } from "./notify.ts";
 import * as tables from "./schema.ts";
-import { accountDraftsJson, accountThreadsJson, appendBatch } from "./sync.ts";
+import { accountDraftsJson, accountTasksJson, accountThreadsJson, appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
 
@@ -484,7 +486,54 @@ export class Account extends DurableObject<Env> {
         if (accepted.length > 0) this.toDevices({ _tag: "DraftsChanged", drafts: accepted }, self.connection);
         return;
       }
+      case "SaveTasks": {
+        const { tasks } = tables;
+        const accepted: Array<TaskEntry> = [];
+        const lost: Array<TaskEntry> = [];
+        for (const entry of message.tasks) {
+          const task = entry.task === undefined ? null : JSON.stringify(entry.task);
+          if (task !== null && task.length > MAX_TASK_BYTES) continue;
+          const saved = { task, updatedAt: entry.updatedAt };
+          const written = this.db
+            .insert(tasks)
+            .values({ id: entry.id, ...saved })
+            .onConflictDoUpdate({
+              target: tasks.id,
+              set: saved,
+              setWhere: sql`excluded.updated_at > ${tasks.updatedAt}`,
+            })
+            .run().rowsWritten;
+          if (written > 0) {
+            accepted.push(entry);
+            continue;
+          }
+          const newer = this.taskRows(eq(tasks.id, entry.id))[0];
+          if (newer !== undefined && newer.updatedAt > entry.updatedAt) lost.push(newer);
+        }
+        this.db
+          .delete(tasks)
+          .where(and(isNull(tasks.task), lt(tasks.updatedAt, now - GONE_DRAFTS_KEPT_MS)))
+          .run();
+        // As with drafts: the sender hears only of the edits its own lost to.
+        if (lost.length > 0) send(socket, { _tag: "TasksChanged", tasks: lost });
+        if (accepted.length > 0) this.toDevices({ _tag: "TasksChanged", tasks: accepted }, self.connection);
+        return;
+      }
     }
+  }
+
+  /** Tasks as devices see them, those `where` picks. */
+  private taskRows(where?: SQL): Array<TaskEntry> {
+    return this.db
+      .select()
+      .from(tables.tasks)
+      .where(where)
+      .all()
+      .map((row) => ({
+        id: row.id,
+        updatedAt: row.updatedAt,
+        ...(row.task === null ? {} : { task: JSON.parse(row.task) as Exclude<TaskEntry["task"], undefined> }),
+      }));
   }
 
   /** Drafts as devices see them, those `where` picks. */
@@ -627,6 +676,7 @@ export class Account extends DurableObject<Env> {
       ),
     );
     sendJson(socket, accountDraftsJson(this.db.select().from(tables.drafts).all()));
+    sendJson(socket, accountTasksJson(this.db.select().from(tables.tasks).all()));
   }
 
   /** Sends every device's sockets a message, but for the connection it came from. */

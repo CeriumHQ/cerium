@@ -47,3 +47,14 @@ export const accountDraftsJson = (
   );
   return `{"_tag":"AccountDrafts","drafts":[${list.join(",")}]}`;
 };
+
+/** `AccountTasks` from the stored rows, each task's JSON as it was stored. */
+export const accountTasksJson = (
+  tasks: ReadonlyArray<{ readonly id: string; readonly updatedAt: number; readonly task: string | null }>,
+): string => {
+  const list = tasks.map(
+    ({ id, updatedAt, task }) =>
+      `{"id":${JSON.stringify(id)},"updatedAt":${JSON.stringify(updatedAt)}${task === null ? "" : `,"task":${task}`}}`,
+  );
+  return `{"_tag":"AccountTasks","tasks":[${list.join(",")}]}`;
+};

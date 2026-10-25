@@ -123,6 +123,9 @@ import type { MessageBox } from "../features/composer/messageBox.ts";
 import { useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
+import { ScrollArea } from "../components/ui/ScrollArea.tsx";
+import { TaskSync } from "../features/tasks/TaskSync.ts";
+import { TaskDetail, TaskList, TasksPage, type HandOff } from "../features/tasks/TasksPage.tsx";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
@@ -347,8 +350,12 @@ function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** The rail's place besides the threads that shows, if any: GitHub's pull requests and issues. */
-  const [place, setPlace] = useState<"github">();
+  /** The rail's place besides the threads that shows, if any: the user's tasks, or GitHub's items. */
+  const [place, setPlace] = useState<"tasks" | "github">();
+  /** The task the Tasks page shows beside its list. */
+  const [taskPick, setTaskPick] = useState<string>();
+  /** The narrow window's Tasks pane: the list, or the task picked in it. */
+  const [tasksPane, setTasksPane] = useState<"list" | "main">("list");
   /** The pull request or issue the GitHub page shows. */
   const [githubPick, setGithubPick] = useState<GitHubTab>();
   /** The narrow window's GitHub pane: the list, or what was picked in it. */
@@ -881,7 +888,8 @@ function Workspace() {
     text,
     worktree,
   }: {
-    folder: string;
+    /** None leaves the project to the message box's own choice. */
+    folder: string | undefined;
     text: string;
     /** Runs in a worktree of its own; left to the message box's own choice when absent. */
     worktree?: boolean;
@@ -894,7 +902,7 @@ function Workspace() {
         attachments: [],
         start: startedNow({
           mode: "work",
-          folder: projectOf(folder),
+          ...(folder === undefined ? {} : { folder: projectOf(folder) }),
           ...(driven ? { machine: driven.id } : {}),
           ...(worktree === undefined || !worktreesOk ? {} : { worktree }),
         }),
@@ -1353,6 +1361,9 @@ function Workspace() {
       if (event.code === "Digit1" || event.code === "Digit2") {
         showThreads();
         setMode(event.code === "Digit1" ? "work" : "chat");
+      } else if (event.code === "Digit3") {
+        setSettingsOpen(false);
+        setPlace("tasks");
       } else if (event.code === "Digit4" && githubOk) {
         setSettingsOpen(false);
         setPlace("github");
@@ -1607,6 +1618,55 @@ function Workspace() {
     );
   };
 
+  /** Hands a task to an agent: a new work thread with the task in its message box. */
+  const handOff: HandOff = (task) =>
+    startThreadFrom({ folder: task.folder, text: task.note ? `${task.title}\n\n${task.note}` : task.title });
+  const taskList = (
+    <TaskList
+      selected={taskPick}
+      onSelect={(id) => {
+        setTaskPick(id);
+        setTasksPane("main");
+      }}
+      onHandOff={handOff}
+    />
+  );
+  /**
+   * The Tasks page lays out its own list and the picked task on a wide window; a narrow one shows
+   * them a pane at a time.
+   */
+  const tasksPage = compact
+    ? {
+        title: "Tasks",
+        list: <ScrollArea className="h-full">{taskList}</ScrollArea>,
+        main:
+          taskPick === undefined ? null : (
+            <TaskDetail id={taskPick} onDeleted={() => setTasksPane("list")} onHandOff={handOff} />
+          ),
+        pane: tasksPane,
+        onBackToList: () => setTasksPane("list"),
+      }
+    : {
+        title: "Tasks",
+        main: (
+          <TasksPage
+            list={taskList}
+            detail={
+              taskPick === undefined ? null : (
+                <TaskDetail
+                  id={taskPick}
+                  onClose={() => setTaskPick(undefined)}
+                  onDeleted={() => setTaskPick(undefined)}
+                  onHandOff={handOff}
+                />
+              )
+            }
+          />
+        ),
+        pane: "main" as const,
+        onBackToList: () => setTaskPick(undefined),
+      };
+
   /** The GitHub page's main area: the pull request or issue picked in its list, in a card of its own. */
   const githubPageMain =
     githubPick === undefined ? (
@@ -1786,7 +1846,9 @@ function Workspace() {
               onBackToList: () => setGithubPane("list"),
             },
           }
-        : {})}
+        : place === "tasks"
+          ? { page: tasksPage }
+          : {})}
       rail={(orientation) => (
         <Rail
           view={settingsOpen ? "settings" : (place ?? (mode === "work" ? "home" : "chat"))}
@@ -1794,9 +1856,9 @@ function Workspace() {
             if (view === "settings") {
               if (settingsOpen) setSettingsOpen(false);
               else openSettings();
-            } else if (view === "github") {
+            } else if (view === "github" || view === "tasks") {
               setSettingsOpen(false);
-              setPlace("github");
+              setPlace(view);
             } else {
               showThreads();
               setMode(view === "home" ? "work" : "chat");
@@ -2016,6 +2078,7 @@ function Workspace() {
         </div>
       )}
       <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
+      <TaskSync signedIn={account._tag === "SignedIn"} />
       {selected ? (
         <StopAllDialog
           scope={stopScope}

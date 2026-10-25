@@ -74,6 +74,28 @@ export type AccountDrafts = typeof AccountDrafts.Type;
 /** The relay keeps a draft only while its content stays under this size. */
 export const MAX_DRAFT_BYTES = 256_000;
 
+/**
+ * One of the user's own tasks (the rail's Tasks), as the account's devices share it: keyed by an id
+ * its device made, and gone (`task` absent) once deleted. The most recent edit wins. Like a draft's,
+ * its content is the UI's to read, so the relay keeps whatever a newer version writes into it.
+ */
+export const TaskEntry = Schema.Struct({
+  id: Schema.NonEmptyString.check(Schema.isMaxLength(64)),
+  updatedAt: EpochMillis,
+  task: Schema.optionalKey(Schema.Json),
+});
+export type TaskEntry = typeof TaskEntry.Type;
+
+/**
+ * The account's tasks as a device knows them: `ready` once the relay sent them since this device
+ * last connected, before which the list may be missing some.
+ */
+export const AccountTasks = Schema.Struct({ ready: Schema.Boolean, tasks: Schema.Array(TaskEntry) });
+export type AccountTasks = typeof AccountTasks.Type;
+
+/** The relay keeps a task only while its content stays under this size. */
+export const MAX_TASK_BYTES = 32_000;
+
 /** Streamed text isn't kept in the cloud copy: each stream ends in a completed event that holds it all. */
 export const isStreamDelta = (tag: string) => tag === "MessageDelta" || tag === "ReasoningDelta";
 
@@ -97,6 +119,8 @@ export const SyncMessage = Schema.Union([
   Schema.TaggedStruct("MarkRead", { entries: Schema.Array(ReadEntry) }),
   /** Drafts written, sent or discarded on this device. */
   Schema.TaggedStruct("SaveDrafts", { drafts: Schema.Array(DraftEntry) }),
+  /** Tasks added, changed or deleted on this device. A relay before tasks drops it unread. */
+  Schema.TaggedStruct("SaveTasks", { tasks: Schema.Array(TaskEntry) }),
 ]);
 export type SyncMessage = typeof SyncMessage.Type;
 
@@ -125,6 +149,13 @@ export const SyncNotice = Schema.Union([
    * edits lost to.
    */
   Schema.TaggedStruct("DraftsChanged", { drafts: Schema.Array(DraftEntry) }),
+  /** On connecting: every task of the account, deleted ones included for a while. */
+  Schema.TaggedStruct("AccountTasks", { tasks: Schema.Array(TaskEntry) }),
+  /**
+   * Tasks changed on another connection; or, to the one that sent them, the newer tasks its edits
+   * lost to.
+   */
+  Schema.TaggedStruct("TasksChanged", { tasks: Schema.Array(TaskEntry) }),
 ]);
 export type SyncNotice = typeof SyncNotice.Type;
 
