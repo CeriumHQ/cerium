@@ -2,23 +2,23 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderId, UsageSnapshot } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { House, MessagesSquare, Settings, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-
+import { GitPullRequest, House, MessagesSquare, Settings, type LucideIcon } from "lucide-react";
 import { usageAtom } from "../backend/usage.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { harnessName } from "../features/settings/Harnesses.tsx";
 import { leftLabel, planName, resetLabel } from "../features/settings/usageModel.ts";
 import type { HarnessIndicator } from "../features/threads/Sidebar.tsx";
+import { useMinute } from "../lib/useMinute.ts";
 import { usageRings, type UsageRing } from "./railModel.ts";
 
-/** Where the rail goes: the work inbox, the chats, or settings. */
-export type RailView = "home" | "chat" | "settings";
+/** Where the rail goes: the work inbox, the chats, GitHub's pull requests and issues, or settings. */
+export type RailView = "home" | "chat" | "github" | "settings";
 
 const views: ReadonlyArray<{ view: RailView; label: string; icon: LucideIcon; shortcut: string }> = [
   { view: "home", label: "Home", icon: House, shortcut: "Ctrl Shift 1" },
   { view: "chat", label: "Chat", icon: MessagesSquare, shortcut: "Ctrl Shift 2" },
+  { view: "github", label: "GitHub", icon: GitPullRequest, shortcut: "Ctrl Shift 4" },
   { view: "settings", label: "Settings", icon: Settings, shortcut: "Ctrl ," },
 ];
 
@@ -28,6 +28,8 @@ interface RailProps {
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   /** Settings → Usage, where a ring's limits are laid out in full. */
   readonly onOpenUsage: () => void;
+  /** The places the driven machine can't serve, left off the rail. */
+  readonly hidden?: ReadonlyArray<RailView>;
   /** A column down the window's edge, or a row along a phone's foot. */
   readonly orientation?: "vertical" | "horizontal";
 }
@@ -36,7 +38,14 @@ interface RailProps {
  * The window's places, as icons down its left edge, over a ring per subscribed harness showing what's
  * left of its tightest limit. Settings carries a dot while a harness waits to be signed in or set up.
  */
-export function Rail({ view, onSelect, harnesses, onOpenUsage, orientation = "vertical" }: RailProps) {
+export function Rail({
+  view,
+  onSelect,
+  harnesses,
+  onOpenUsage,
+  hidden = [],
+  orientation = "vertical",
+}: RailProps) {
   const vertical = orientation === "vertical";
   // The backend reports every adapter it has, so all "unsupported" is the list before its first answer.
   const checking = harnesses.every(({ state }) => state === "unsupported");
@@ -52,41 +61,34 @@ export function Rail({ view, onSelect, harnesses, onOpenUsage, orientation = "ve
       }
     >
       <nav aria-label="Places" className={vertical ? "flex flex-col gap-1" : "flex flex-1 justify-around"}>
-        {views.map(({ view: id, label, icon: Icon, shortcut }) => {
-          const active = id === view;
-          return (
-            <Tooltip key={id} label={label} shortcut={shortcut} side={vertical ? "right" : "top"}>
-              <Button
-                aria-label={label}
-                aria-current={active ? "page" : undefined}
-                onClick={() => onSelect(id)}
-                className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
-                  active
-                    ? "bg-surface-selected text-fg-primary"
-                    : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
-                }`}
-              >
-                <Icon size={18} strokeWidth={1.75} />
-                {id === "settings" && waiting ? (
-                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
-                ) : null}
-              </Button>
-            </Tooltip>
-          );
-        })}
+        {views
+          .filter(({ view: id }) => !hidden.includes(id))
+          .map(({ view: id, label, icon: Icon, shortcut }) => {
+            const active = id === view;
+            return (
+              <Tooltip key={id} label={label} shortcut={shortcut} side={vertical ? "right" : "top"}>
+                <Button
+                  aria-label={label}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => onSelect(id)}
+                  className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
+                    active
+                      ? "bg-surface-selected text-fg-primary"
+                      : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
+                  }`}
+                >
+                  <Icon size={18} strokeWidth={1.75} />
+                  {id === "settings" && waiting ? (
+                    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
+                  ) : null}
+                </Button>
+              </Tooltip>
+            );
+          })}
       </nav>
       <UsageRings ready={ready} vertical={vertical} onOpen={onOpenUsage} />
     </div>
   );
-}
-
-function useMinute() {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
 }
 
 function UsageRings({

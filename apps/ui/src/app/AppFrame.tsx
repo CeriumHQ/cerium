@@ -67,6 +67,19 @@ interface AppFrameProps {
     readonly onBackToNav: () => void;
     readonly onClose: () => void;
   };
+  /**
+   * One of the rail's places besides the threads (GitHub, Tasks): its list takes the sidebar's place
+   * and what's picked in it the main panel's. The thread views stay mounted underneath, and settings
+   * cover it.
+   */
+  readonly page?: {
+    readonly title: string;
+    readonly list: ReactNode;
+    readonly main: ReactNode;
+    /** The narrow window shows the list, or what was picked in it. */
+    readonly pane: "list" | "main";
+    readonly onBackToList: () => void;
+  };
   /** The narrow window shows one pane at a time: the threads, or the open (or new) thread. */
   readonly pane: "list" | "main";
   /** From the open thread back to the threads. */
@@ -87,9 +100,9 @@ interface AppFrameProps {
  */
 export function AppFrame(props: AppFrameProps) {
   const compact = useCompact();
-  const { thread, settings } = props;
+  const { thread, settings, page } = props;
   // The tab's and the taskbar's name for the window says where the user is.
-  const title = settings.open ? "Settings" : thread?.title;
+  const title = settings.open ? "Settings" : page ? page.title : thread?.title;
   useEffect(() => {
     document.title = title ? `${title} · Cerium` : "Cerium";
   }, [title]);
@@ -126,13 +139,15 @@ function DesktopFrame({
   onCloseSide,
   terminal,
   settings,
+  page,
   machinePicker,
   tabs,
   children,
 }: AppFrameProps) {
-  const view = settings.open ? "settings" : "threads";
-  const showSidebar = sidebarOpen || settings.open;
-  const showInspector = side !== undefined && !settings.open;
+  const view = settings.open ? "settings" : page ? "page" : "threads";
+  const covered = view !== "threads";
+  const showSidebar = sidebarOpen || covered;
+  const showInspector = side !== undefined && !covered;
   const sideSpec = SIDE_PANELS[side?.panel ?? "agents"];
 
   const body = useRef<HTMLDivElement>(null);
@@ -171,7 +186,7 @@ function DesktopFrame({
     <div className="flex h-full flex-col bg-surface-window">
       <Titlebar
         {...(thread ? { thread } : {})}
-        settingsOpen={settings.open}
+        {...(settings.open ? { page: "Settings" } : page ? { page: page.title } : {})}
         mode={mode}
         sidebarOpen={sidebarOpen}
         sidebarWidth={sidebarWidth}
@@ -206,6 +221,7 @@ function DesktopFrame({
                 active={view}
                 views={[
                   ["threads", sidebar],
+                  ["page", page?.list],
                   ["settings", settings.nav],
                 ]}
               />
@@ -246,6 +262,7 @@ function DesktopFrame({
               active={view}
               views={[
                 ["threads", children],
+                ["page", page?.main],
                 [
                   "settings",
                   <div
@@ -315,6 +332,7 @@ function CompactFrame({
   onCloseSide,
   terminal,
   settings,
+  page,
   machinePicker,
   closeDialog,
   pane,
@@ -323,10 +341,19 @@ function CompactFrame({
 }: AppFrameProps) {
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
-  const view = settings.open ? (settings.pane === "nav" ? "settings" : "category") : pane;
-  const inspecting = side !== undefined && !settings.open && pane === "main";
+  const view = settings.open
+    ? settings.pane === "nav"
+      ? "settings"
+      : "category"
+    : page
+      ? page.pane === "list"
+        ? "pageList"
+        : "pageMain"
+      : pane;
+  const threadShown = !settings.open && page === undefined && pane === "main";
+  const inspecting = side !== undefined && threadShown;
   // The terminal is a pane over the thread, and the agents or files a pane over that.
-  const terminalOpen = terminal?.open === true && !settings.open && pane === "main";
+  const terminalOpen = terminal?.open === true && threadShown;
   const inspectDepth = 2 + (terminalOpen ? 1 : 0);
   // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
   // button takes it up one.
@@ -335,19 +362,24 @@ function CompactFrame({
       ? settings.pane === "nav"
         ? 1
         : 2
-      : pane === "main"
-        ? inspecting
-          ? inspectDepth
-          : terminalOpen
-            ? 2
-            : 1
-        : 0) + (closeDialog ? 1 : 0),
+      : page
+        ? page.pane === "main"
+          ? 1
+          : 0
+        : pane === "main"
+          ? inspecting
+            ? inspectDepth
+            : terminalOpen
+              ? 2
+              : 1
+          : 0) + (closeDialog ? 1 : 0),
     () => {
       if (closeDialog) closeDialog();
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
-      } else if (inspecting) onCloseSide();
+      } else if (page) page.onBackToList();
+      else if (inspecting) onCloseSide();
       else if (terminalOpen) terminal.onToggle();
       else onBack();
     },
@@ -394,6 +426,28 @@ function CompactFrame({
                   : {})}
               />
               <main className="relative min-h-0 flex-1 overflow-hidden">{children}</main>
+            </div>,
+          ],
+          [
+            "pageList",
+            <div key="pageList" className="flex h-full flex-col">
+              <CompactBar
+                leading={
+                  <div className="pl-3">
+                    <CeriumBrand />
+                  </div>
+                }
+                trailing={machinePicker}
+              />
+              <div className="min-h-0 flex-1">{page?.list}</div>
+              <div className="pb-[max(env(safe-area-inset-bottom),6px)]">{rail("horizontal")}</div>
+            </div>,
+          ],
+          [
+            "pageMain",
+            <div key="pageMain" className="flex h-full flex-col">
+              <CompactBar back={{ label: page?.title ?? "", onBack: () => page?.onBackToList() }} />
+              <div className="relative min-h-0 flex-1 overflow-hidden">{page?.main}</div>
             </div>,
           ],
           [

@@ -33,8 +33,8 @@ const CAPTION_BUTTON_WIDTH = 46;
 interface TitlebarProps {
   /** The selected thread, if any. */
   readonly thread?: { readonly title: string; readonly project?: string };
-  /** Settings replace the thread's title and controls. */
-  readonly settingsOpen: boolean;
+  /** A page that covers the threads (Settings, GitHub), by its title: it replaces the thread's title and controls. */
+  readonly page?: string;
   readonly mode: AppMode;
   readonly sidebarOpen: boolean;
   /** The sidebar's width while it shows, so the controls above it end where it does. */
@@ -59,7 +59,7 @@ interface TitlebarProps {
 
 export function Titlebar({
   thread,
-  settingsOpen,
+  page,
   mode,
   sidebarOpen,
   sidebarWidth,
@@ -73,7 +73,8 @@ export function Titlebar({
   machinePicker,
   tabs,
 }: TitlebarProps) {
-  const showSidebar = sidebarOpen || settingsOpen;
+  const covered = page !== undefined;
+  const showSidebar = sidebarOpen || covered;
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-(--titlebar-inset) [app-region:drag]">
       {/*
@@ -94,8 +95,8 @@ export function Titlebar({
           <CeriumBrand nameClassName="max-lg:hidden" />
         </span>
         <div
-          inert={settingsOpen}
-          className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}
+          inert={covered}
+          className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${covered ? "opacity-0" : ""}`}
         >
           <IconButton
             icon={PanelLeft}
@@ -123,17 +124,17 @@ export function Titlebar({
        */}
       <div
         className={`h-full min-w-0 flex-1 items-center ${
-          tabs && !settingsOpen ? "flex gap-2" : "grid grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)]"
+          tabs && !covered ? "flex gap-2" : "grid grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)]"
         }`}
       >
-        {tabs && !settingsOpen ? (
+        {tabs && !covered ? (
           <div className="flex h-full min-w-0 flex-1 items-center">{tabs}</div>
         ) : (
           <>
             <div />
             {/* Plain text until the thread has actions to offer, so it also drags the window. */}
-            {settingsOpen ? (
-              <p className="px-2.5 text-[13px] font-medium text-fg-primary">Settings</p>
+            {covered ? (
+              <p className="px-2.5 text-[13px] font-medium text-fg-primary">{page}</p>
             ) : thread ? (
               <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
                 <span className="truncate font-medium text-fg-primary">{thread.title}</span>
@@ -145,12 +146,8 @@ export function Titlebar({
           </>
         )}
         <div className="flex h-full shrink-0 items-center justify-end">
-          {terminal && !settingsOpen ? (
-            <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} />
-          ) : null}
-          {settingsOpen ? null : (
-            <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />
-          )}
+          {terminal && !covered ? <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} /> : null}
+          {covered ? null : <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />}
           {machinePicker}
           <CaptionButtons />
         </div>

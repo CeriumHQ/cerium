@@ -129,6 +129,7 @@ import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
 import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
+import { GitHubPageEmpty, GitHubPageList } from "../features/github/GitHubPage.tsx";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
 import {
   GITHUB_VERSION,
@@ -346,6 +347,17 @@ function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The rail's place besides the threads that shows, if any: GitHub's pull requests and issues. */
+  const [place, setPlace] = useState<"github">();
+  /** The pull request or issue the GitHub page shows. */
+  const [githubPick, setGithubPick] = useState<GitHubTab>();
+  /** The narrow window's GitHub pane: the list, or what was picked in it. */
+  const [githubPane, setGithubPane] = useState<"list" | "main">("list");
+  /** Back to the threads, from settings or another of the rail's places. */
+  const showThreads = () => {
+    setSettingsOpen(false);
+    setPlace(undefined);
+  };
   const [searchOpen, setSearchOpen] = useState(false);
   const compact = useCompact();
   /** Its settings pane: the categories, or the open category's page. */
@@ -573,7 +585,7 @@ function Workspace() {
   };
   /** Opens a thread of the inbox: another machine's there when it can, else here (read-only when it's another's). */
   const openSummary = (summary: ThreadSummary) => {
-    setSettingsOpen(false);
+    showThreads();
     setHeldUnread(summary.unread ? summary.id : undefined);
     const home = summary.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
     if (home && home.id !== drivenId && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
@@ -596,12 +608,12 @@ function Workspace() {
         if (summary) openSummary(summary);
         return;
       }
-      setSettingsOpen(false);
+      showThreads();
       setOpenThread((current) => ({ ...current, [mode]: key }));
       setPane("main");
     },
     onFresh: (key) => {
-      setSettingsOpen(false);
+      showThreads();
       setBlank((current) => ({ ...current, [mode]: key }));
       setOpenThread((current) => ({ ...current, [mode]: undefined }));
       setPane("main");
@@ -637,7 +649,7 @@ function Workspace() {
   useNotificationOpens(
     (threadId) => summaries.find((summary) => summary.id === threadId),
     (summary) => {
-      setSettingsOpen(false);
+      showThreads();
       setMode(summary.mode);
       openSummary(summary);
     },
@@ -766,7 +778,7 @@ function Workspace() {
       // is only being read.
       tabs.openAs(key, "tab");
       tabs.keep(key);
-      setSettingsOpen(false);
+      showThreads();
       setOpenThread((open) => ({ ...open, [mode]: key }));
       setPane("main");
       // The narrow window shows one pane: the file takes the panel's place.
@@ -779,7 +791,7 @@ function Workspace() {
       const key = commitFileKey(root, sha, file.path, file.from);
       tabs.openAs(key, "tab");
       tabs.keep(key);
-      setSettingsOpen(false);
+      showThreads();
       setOpenThread((open) => ({ ...open, [mode]: key }));
       setPane("main");
       if (compact) setSidePanel(undefined);
@@ -789,7 +801,7 @@ function Workspace() {
     const key = turnFileKey(tab);
     tabs.openAs(key, "tab");
     tabs.keep(key);
-    setSettingsOpen(false);
+    showThreads();
     setOpenThread((open) => ({ ...open, [mode]: key }));
     setPane("main");
     if (compact) setSidePanel(undefined);
@@ -841,6 +853,8 @@ function Workspace() {
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GITHUB_VERSION
       ? undefined
       : (filesRoot ?? openGitHub?.root);
+  /** The machine has the GitHub calls the rail's GitHub page reads. */
+  const githubOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= GITHUB_VERSION;
   /** The machine has the issue calls; an older one has the pull requests alone. */
   const issuesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ISSUES_VERSION;
   const toggleGitHub = () => togglePanel("github");
@@ -850,7 +864,7 @@ function Workspace() {
     if (title !== undefined) nameGitHubTab(registry, key, title);
     tabs.openAs(key, "tab");
     tabs.keep(key);
-    setSettingsOpen(false);
+    showThreads();
     setOpenThread((open) => ({ ...open, [mode]: key }));
     setPane("main");
     if (compact) setSidePanel(undefined);
@@ -886,7 +900,7 @@ function Workspace() {
         }),
       })),
     );
-    setSettingsOpen(false);
+    showThreads();
     setMode("work");
     tabs.openAs(key, "tab");
     setOpenThread((open) => ({ ...open, work: key }));
@@ -964,14 +978,14 @@ function Workspace() {
    * a tab already holds an empty one. One the user wrote in stays in the sidebar as a draft.
    */
   const startNew = () => {
-    setSettingsOpen(false);
+    showThreads();
     tabs.newTab();
     focusComposer();
   };
 
   /** Opens a thread not started yet, on the machine it starts on. */
   const openNewDraft = (draft: NewThreadDraft) => {
-    setSettingsOpen(false);
+    showThreads();
     setPane("main");
     const home = draft.machine === thisComputer ? undefined : draft.machine;
     if (home !== driven?.id) {
@@ -1024,7 +1038,7 @@ function Workspace() {
     if (shown === current) return;
     tabs.keep(current);
     tabs.openAs(shown, "tab");
-    setSettingsOpen(false);
+    showThreads();
     setOpenThread((open) => ({ ...open, [mode]: shown }));
     setPane("main");
   };
@@ -1174,7 +1188,7 @@ function Workspace() {
       icon: MessagesSquare,
       keys: mode === "work" ? "Ctrl Shift 2" : "Ctrl Shift 1",
       run: () => {
-        setSettingsOpen(false);
+        showThreads();
         setMode(mode === "work" ? "chat" : "work");
       },
     },
@@ -1337,8 +1351,11 @@ function Workspace() {
     if (event.shiftKey) {
       // Ctrl and a digit alone opens a sidebar row, which the sidebar listens for.
       if (event.code === "Digit1" || event.code === "Digit2") {
-        setSettingsOpen(false);
+        showThreads();
         setMode(event.code === "Digit1" ? "work" : "chat");
+      } else if (event.code === "Digit4" && githubOk) {
+        setSettingsOpen(false);
+        setPlace("github");
       } else if (event.key.toLowerCase() === "e" && !settingsOpen && filesRoot !== undefined) {
         toggleFiles();
       } else if (event.key.toLowerCase() === "g" && !settingsOpen && gitRoot !== undefined) {
@@ -1590,6 +1607,38 @@ function Workspace() {
     );
   };
 
+  /** The GitHub page's main area: the pull request or issue picked in its list, in a card of its own. */
+  const githubPageMain =
+    githubPick === undefined ? (
+      <GitHubPageEmpty />
+    ) : (
+      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised max-md:rounded-none max-md:border-0">
+        <GitHubTabView
+          key={githubKey(githubPick.root, githubPick.kind, githubPick.number)}
+          tab={githubPick}
+          worktrees={worktreesOk}
+          onStartThread={({ text, worktree }) => startThreadFrom({ folder: githubPick.root, text, worktree })}
+          {...(issuesOk
+            ? {
+                issue: (tab: GitHubTab) => (
+                  <IssueViewer
+                    cwd={tab.root}
+                    number={tab.number}
+                    onClose={() => setGithubPick(undefined)}
+                    onStartThread={(text) => startThreadFrom({ folder: tab.root, text })}
+                    onOpenPull={(number) => setGithubPick({ root: tab.root, kind: "pr", number })}
+                  />
+                ),
+              }
+            : {})}
+          onClose={() => {
+            setGithubPick(undefined);
+            setGithubPane("list");
+          }}
+        />
+      </div>
+    );
+
   /** A pane showing the tab `key`: a file, read-only, or a thread. */
   const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
     const github = githubOfKey(key);
@@ -1714,20 +1763,48 @@ function Workspace() {
       onNewThread={newThread}
       pane={pane}
       onBack={() => setPane("list")}
+      {...(place === "github"
+        ? {
+            page: {
+              title: "GitHub",
+              list: (
+                <GitHubPageList
+                  selected={
+                    githubPick === undefined
+                      ? undefined
+                      : githubKey(githubPick.root, githubPick.kind, githubPick.number)
+                  }
+                  onOpen={(tab) => {
+                    setGithubPick(tab);
+                    setGithubPane("main");
+                  }}
+                  issues={issuesOk}
+                />
+              ),
+              main: githubPageMain,
+              pane: githubPane,
+              onBackToList: () => setGithubPane("list"),
+            },
+          }
+        : {})}
       rail={(orientation) => (
         <Rail
-          view={settingsOpen ? "settings" : mode === "work" ? "home" : "chat"}
+          view={settingsOpen ? "settings" : (place ?? (mode === "work" ? "home" : "chat"))}
           onSelect={(view) => {
             if (view === "settings") {
               if (settingsOpen) setSettingsOpen(false);
               else openSettings();
-              return;
+            } else if (view === "github") {
+              setSettingsOpen(false);
+              setPlace("github");
+            } else {
+              showThreads();
+              setMode(view === "home" ? "work" : "chat");
             }
-            setSettingsOpen(false);
-            setMode(view === "home" ? "work" : "chat");
           }}
           harnesses={indicators}
           onOpenUsage={() => openSettings("usage")}
+          hidden={githubOk ? [] : ["github"]}
           orientation={orientation}
         />
       )}

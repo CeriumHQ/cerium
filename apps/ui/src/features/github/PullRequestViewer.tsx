@@ -204,14 +204,15 @@ function Header({
   return (
     <header
       {...pane?.grip}
-      className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
+      // A phone puts the title on a line of its own, over the tabs and buttons, which scroll when they don't fit.
+      className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-auto max-md:flex-wrap max-md:gap-y-0 max-md:pt-2.5 ${pane ? "select-none" : ""}`}
     >
       {pull ? <PullStateIcon state={pullStateOf(pull)} size={15} /> : null}
       <span className="flex min-w-0 items-baseline gap-1.5 text-[13px] max-md:text-[15px]">
         <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
         <span className="min-w-0 truncate font-medium text-fg-primary">{pull?.title ?? ""}</span>
       </span>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center gap-1 max-md:ml-0 max-md:w-full max-md:overflow-x-auto max-md:py-1 max-md:[scrollbar-width:none]">
         {tab === "files" ? (
           <ToggleGroup
             value={[layout]}
