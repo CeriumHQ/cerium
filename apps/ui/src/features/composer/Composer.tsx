@@ -28,6 +28,7 @@ import { harnessesAtom, manifestsAtom, settingsAtom } from "../../backend/atoms.
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
@@ -942,9 +943,10 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
-          {/* min-w-0: a tray's truncated lines would otherwise widen it past the one-line box. */}
-          {queue ? (
-            <div className={inline ? "min-w-0 basis-full" : undefined}>
+          {/* Each tray grows the box as it comes and folds away as it goes. min-w-0: a tray's
+              truncated lines would otherwise widen it past the one-line box. */}
+          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
+            {queue ? (
               <QueueTray
                 queue={queue}
                 onEdit={(message) =>
@@ -954,18 +956,18 @@ export function Composer({
                   })
                 }
               />
-            </div>
-          ) : null}
-          {comments.length > 0 ? (
-            <div className={inline ? "min-w-0 basis-full" : undefined}>
+            ) : null}
+          </Reveal>
+          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
+            {comments.length > 0 ? (
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
-            </div>
-          ) : null}
-          {draft.attachments.length > 0 ? (
-            <div className={inline ? "min-w-0 basis-full" : undefined}>
+            ) : null}
+          </Reveal>
+          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
+            {draft.attachments.length > 0 ? (
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
-            </div>
-          ) : null}
+            ) : null}
+          </Reveal>
           {inline ? attachButton : null}
           <PromptEditor
             inline={inline}

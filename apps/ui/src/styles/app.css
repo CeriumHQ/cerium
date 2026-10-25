@@ -288,6 +288,27 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
       translate: 0 var(--reveal-shift, 4px);
     }
   }
+
+  /* A tile among others, which scales in and out where it stands. */
+  .pop {
+    transition:
+      opacity 160ms var(--ease-out-soft),
+      scale 220ms var(--ease-pop);
+  }
+
+  .pop[data-phase="leaving"] {
+    opacity: 0;
+    scale: 0.85;
+    transition-duration: 140ms;
+    transition-timing-function: var(--ease-in-soft);
+  }
+
+  @starting-style {
+    .pop[data-phase="entering"] {
+      opacity: 0;
+      scale: 0.85;
+    }
+  }
 }
 
 /*
