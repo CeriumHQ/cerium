@@ -37,10 +37,17 @@ export function useBackNavigation(depth: number, back: () => void) {
 
   useEffect(() => {
     if (depth > pushed.current) {
-      for (let level = pushed.current + 1; level <= depth; level += 1) {
-        history.pushState({ [KEY]: level }, "");
-      }
+      // A swipe back shows the picture the browser last painted of the pane it leaves, so the pane has
+      // to paint its selection before the entry is made: the first frame paints it, the second is past it.
+      const from = pushed.current;
       pushed.current = depth;
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          for (let level = from + 1; level <= depth; level += 1) {
+            history.pushState({ [KEY]: level }, "");
+          }
+        }),
+      );
     } else if (depth < pushed.current) {
       // The window stepped back by its own buttons: drop the entries it no longer needs.
       const extra = pushed.current - depth;
