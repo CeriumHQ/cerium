@@ -41,6 +41,11 @@
   --window-alpha: 0.62;
   --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
   --surface-panel: oklch(calc(0.2 + var(--lift)) var(--glass-c) var(--tint-h) / 0.66);
+  /*
+   * The cards the work sits on (a thread, a page, a side panel), raised off the glass by lightening it:
+   * another dark layer over the glass would sink them below the sidebar and grey the desktop out.
+   */
+  --surface-pane: oklch(0.97 var(--glass-c) var(--tint-h) / 0.045);
   --surface-raised: oklch(calc(0.255 + var(--lift)) var(--glass-c) var(--tint-h) / 0.78);
   --surface-overlay: oklch(calc(0.22 + var(--lift)) var(--glass-c) var(--tint-h) / 0.94);
   --surface-hover: oklch(1 0 0 / 0.05);
@@ -117,6 +122,7 @@
   --window-alpha: 0.62;
   --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
   --surface-panel: oklch(0.985 calc(var(--glass-c) * 0.6) var(--tint-h) / 0.7);
+  --surface-pane: var(--surface-panel);
   --surface-raised: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.82);
   --surface-overlay: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.95);
   --surface-hover: oklch(0 0 0 / 0.04);
@@ -193,6 +199,7 @@
   --color-backdrop: var(--backdrop);
   --color-surface-window: var(--surface-window);
   --color-surface-panel: var(--surface-panel);
+  --color-surface-pane: var(--surface-pane);
   --color-surface-raised: var(--surface-raised);
   --color-surface-overlay: var(--surface-overlay);
   --color-surface-hover: var(--surface-hover);

@@ -1677,7 +1677,7 @@ function Workspace() {
     githubPick === undefined ? (
       <GitHubPageEmpty />
     ) : (
-      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised max-md:rounded-none max-md:border-0">
+      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised max-md:rounded-none max-md:border-0">
         <GitHubTabView
           key={githubKey(githubPick.root, githubPick.kind, githubPick.number)}
           tab={githubPick}

@@ -318,7 +318,7 @@ function Pane({
       onPointerDownCapture={focus}
       onFocusCapture={focus}
       style={placed(box)}
-      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-panel shadow-raised ${
+      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-pane shadow-raised ${
         still ? "" : "transition-[left,top,width,height] duration-200 ease-out-soft"
       } motion-reduce:transition-none ${split && focused ? "border-line-strong" : "border-line-subtle"}`}
     >

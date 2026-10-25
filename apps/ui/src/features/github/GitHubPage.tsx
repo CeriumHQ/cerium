@@ -311,7 +311,7 @@ function Notice({ title, body, children }: { title: string; body: string; childr
 /** The page's main area while nothing is picked. */
 export function GitHubPageEmpty() {
   return (
-    <div className="grid h-full place-items-center rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
+    <div className="grid h-full place-items-center rounded-xl border border-line-subtle bg-surface-pane shadow-raised">
       <div className="flex flex-col items-center gap-2 text-fg-tertiary">
         <GitPullRequest size={22} strokeWidth={1.5} />
         <p className="text-body">Pick a pull request or an issue</p>

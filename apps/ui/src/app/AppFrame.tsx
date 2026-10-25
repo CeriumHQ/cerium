@@ -285,7 +285,7 @@ function DesktopFrame({
                   "settings",
                   <div
                     key="settings"
-                    className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                    className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
                   >
                     {settings.page}
                   </div>,
@@ -342,7 +342,7 @@ function DesktopFrame({
                 >
                   <aside
                     style={{ width: inspectorWidth }}
-                    className="shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                    className="shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
                   >
                     <SidePanelContext value={{ floating: false, close: onCloseSide }}>
                       <SideContent panel={shownSide?.panel}>{shownSide?.content}</SideContent>
