@@ -1,7 +1,7 @@
 import { Effect, Schema, Struct } from "effect";
 
 import { ReasoningEffort } from "./capabilities.ts";
-import { withFallback } from "./compat.ts";
+import { LenientArray, withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
 
 /**
@@ -80,6 +80,29 @@ export type EffortRouterSettings = typeof EffortRouterSettings.Type;
 
 const defaultEffortRouter: EffortRouterSettings = { enabled: false, children: "router" };
 
+/** A model on the roster, with what a lead should use it for. */
+export const RosterModel = Schema.Struct({
+  provider: ProviderId,
+  model: Schema.NonEmptyString,
+  /** In the user's words; absent, Cerium's line for the model or its harness's description (`rosterUse`). */
+  use: Schema.optionalKey(Schema.String),
+});
+export type RosterModel = typeof RosterModel.Type;
+
+/**
+ * The roster: the models a lead starts without asking the user, and what it uses each for. A harness
+ * the user has changed the roster of is in `edited` and offers the `models` listed for it, in their
+ * order; any other offers Cerium's starting picks (`starterRoster`), so a harness signed in later
+ * joins with them.
+ */
+export const RosterSettings = Schema.Struct({
+  models: LenientArray(RosterModel),
+  edited: LenientArray(ProviderId),
+});
+export type RosterSettings = typeof RosterSettings.Type;
+
+const defaultRoster: RosterSettings = { models: [], edited: [] };
+
 /**
  * The user's settings the backend applies. Preferences that only change the window (theme, text
  * size, keys) stay in the UI.
@@ -95,6 +118,8 @@ export const Settings = Schema.Struct({
   discord: DiscordSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultDiscord))),
   /** Read as its default from a backend that predates it. */
   effortRouter: EffortRouterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultEffortRouter))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 27). */
+  roster: RosterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultRoster))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -108,4 +133,5 @@ export const defaultSettings: Settings = {
   titles: defaultTitles,
   discord: defaultDiscord,
   effortRouter: defaultEffortRouter,
+  roster: defaultRoster,
 };

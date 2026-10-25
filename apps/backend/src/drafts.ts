@@ -1,5 +1,5 @@
 import { TITLE_MODELS, type ModelChoice, type TitleSettings } from "@cerium/protocol";
-import { Adapters, Catalog, OrchestratorConfig, UserSettings, type CatalogEntry } from "@cerium/orchestrator";
+import { Adapters, Catalog, offeredModels, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
 import { GitHubError, MAX_ISSUE_BODY, MAX_ISSUE_TITLE } from "@cerium/rpc";
 import { Context, Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
 
@@ -25,12 +25,12 @@ const same = (a: ModelChoice, b: ModelChoice) => a.provider === b.provider && a.
  */
 export const draftModels = (
   settings: TitleSettings,
-  entries: ReadonlyArray<CatalogEntry>,
+  models: ReadonlyArray<ModelChoice>,
 ): ReadonlyArray<ModelChoice> => {
   if (settings.model !== undefined) return [settings.model];
-  const offered = (choice: ModelChoice) => entries.some((entry) => same(entry, choice));
+  const offered = (choice: ModelChoice) => models.some((model) => same(model, choice));
   const preferred = TITLE_MODELS.filter(offered);
-  const first = entries[0];
+  const first = models[0];
   return preferred.length > 0 || first === undefined
     ? preferred
     : [{ provider: first.provider, model: first.model }];
@@ -71,7 +71,7 @@ export class QuickWriter extends Context.Service<
         write: Effect.fn("QuickWriter.write")(function* (instructions: string, prompt: string) {
           const { titles } = yield* settings.get;
           yield* fs.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
-          for (const choice of draftModels(titles, yield* catalog.entries)) {
+          for (const choice of draftModels(titles, yield* offeredModels(catalog))) {
             const reply = yield* ask(choice, instructions, prompt);
             if (reply !== undefined) return Option.some(reply);
           }

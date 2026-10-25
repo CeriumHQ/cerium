@@ -52,7 +52,7 @@ export const testLayer = (
     Layer.provide(
       Layer.succeed(Catalog, {
         entries: Effect.succeed(options.catalog ?? []),
-        models: Effect.succeed(options.models ?? []),
+        ...(options.models === undefined ? {} : { models: Effect.succeed(options.models) }),
       }),
     ),
     Layer.provide(

@@ -14,7 +14,6 @@
 // which receives { url, token } over its parent port and sends "stop" there to shut it down. It
 // also keeps this machine's sign-in there, encrypted (src/vault.ts).
 
-import type { CatalogEntry } from "@cerium/orchestrator";
 import type { Channel } from "@cerium/protocol";
 import { NodeRuntime } from "@effect/platform-node";
 import { Effect, FileSystem, Layer, Path } from "effect";
@@ -52,14 +51,6 @@ shell?.on("message", ({ data }) => {
   if (isSetPath(data)) process.env["PATH"] = data.path;
 });
 
-// Until onboarding builds the catalog with the user, these lead it, followed by every model the
-// logged-in harnesses offer (`catalogFrom`).
-const catalog: ReadonlyArray<CatalogEntry> = [
-  { alias: "opus", provider: "claude", model: "opus", description: "Hard problems, design and review" },
-  { alias: "sonnet", provider: "claude", model: "sonnet", description: "Everyday coding" },
-  { alias: "haiku", provider: "claude", model: "haiku", description: "Quick lookups and simple tasks" },
-];
-
 /** Tells the UI where to connect once the server is listening. */
 const Announce = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -78,7 +69,6 @@ const Announce = Layer.effectDiscard(
 
 const options = {
   dataDirectory,
-  catalog,
   token,
   ...(migrationsFolder === undefined ? {} : { migrationsFolder }),
   account: {

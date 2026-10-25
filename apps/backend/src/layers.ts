@@ -4,18 +4,10 @@ import { CursorAdapter } from "@cerium/adapter-cursor";
 import { MuseAdapter } from "@cerium/adapter-muse";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
 import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
-import {
-  Adapters,
-  Catalog,
-  Orchestrator,
-  OrchestratorConfig,
-  UserSettings,
-  type CatalogEntry,
-} from "@cerium/orchestrator";
+import { Adapters, Orchestrator, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import { Account, CloudThreads, DEFAULT_RELAY_URL, type AccountOptions, type Vault } from "@cerium/account";
-import type { ModelInfo } from "@cerium/protocol";
-import { Deferred, Effect, Layer, type FileSystem, type Path } from "effect";
+import { Effect, Layer, type FileSystem, type Path } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/http";
 import { Socket } from "effect/socket";
 import { homedir } from "node:os";
@@ -23,6 +15,7 @@ import { join } from "node:path";
 
 import { Releases } from "./releases.ts";
 import { Repositories } from "./clone.ts";
+import { CatalogLive, OfferedModels } from "./catalog.ts";
 import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
 import { discordPresence } from "./discord.ts";
@@ -51,8 +44,6 @@ import { worktreesLayer } from "./worktree.ts";
 export interface BackendOptions {
   /** Where Cerium keeps its database and chat-thread folders (the app's user-data directory). */
   readonly dataDirectory: string;
-  /** Hand-picked catalog entries; until onboarding builds the catalog, they lead it (see `CatalogLive`). */
-  readonly catalog: ReadonlyArray<CatalogEntry>;
   /** This launch's secret; the UI must present it to use the RPC endpoint. */
   readonly token: string;
   /** The store's migrations, when they don't sit beside `@cerium/store` (a bundled backend). */
@@ -94,66 +85,6 @@ export const AdaptersLive = Layer.effect(
     ),
   ),
 );
-
-/**
- * Until onboarding builds the catalog with the user, every model a logged-in harness
- * offers can be spawned without asking. Hand-picked entries come first and keep their aliases and
- * descriptions; the rest are known by their id, or `provider/id` where ids collide.
- */
-export const catalogFrom = (
-  curated: ReadonlyArray<CatalogEntry>,
-  offered: ReadonlyArray<ModelInfo>,
-): ReadonlyArray<CatalogEntry> => {
-  const fresh = offered.filter(
-    (model) => !curated.some((entry) => entry.provider === model.provider && entry.model === model.id),
-  );
-  const aliases = new Set(curated.map((entry) => entry.alias));
-  const collides = (model: ModelInfo) =>
-    aliases.has(model.id) || fresh.some((other) => other !== model && other.id === model.id);
-  return [
-    ...curated,
-    ...fresh.map((model): CatalogEntry => ({
-      alias: collides(model) ? `${model.provider}/${model.id}` : model.id,
-      provider: model.provider,
-      model: model.id,
-      description: model.description ?? model.label,
-    })),
-  ];
-};
-
-/** How long each harness may take to list its models while the backend starts. */
-const MODEL_LIST_TIMEOUT = "20 seconds";
-
-/**
- * The catalog, read once at startup: a harness logged in later joins it after a restart. The harnesses
- * take seconds to list their models, so the backend serves meanwhile and only a spawn waits for them.
- */
-const CatalogLive = (curated: ReadonlyArray<CatalogEntry>) =>
-  Layer.effect(
-    Catalog,
-    Effect.gen(function* () {
-      const adapters = yield* Adapters;
-      const known = yield* Deferred.make<ReadonlyArray<CatalogEntry>>();
-      const models = yield* Deferred.make<ReadonlyArray<ModelInfo>>();
-      yield* Effect.forEach(
-        [...adapters.values()],
-        (adapter) =>
-          adapter.listModels.pipe(
-            Effect.timeout(MODEL_LIST_TIMEOUT),
-            Effect.orElseSucceed((): ReadonlyArray<ModelInfo> => []),
-          ),
-        { concurrency: "unbounded" },
-      ).pipe(
-        Effect.flatMap((offered) =>
-          Deferred.succeed(models, offered.flat()).pipe(
-            Effect.andThen(Deferred.succeed(known, catalogFrom(curated, offered.flat()))),
-          ),
-        ),
-        Effect.forkScoped,
-      );
-      return { entries: Deferred.await(known), models: Deferred.await(models) };
-    }),
-  ).pipe(Layer.provide(AdaptersLive));
 
 /**
  * The whole backend: store, orchestrator and harness adapters, with the MCP bus and the UI's RPC
@@ -236,7 +167,8 @@ export const backendLayer = (options: BackendOptions) =>
         Layer.provide(Socket.layerWebSocketConstructorGlobal),
       ),
     ),
-    Layer.provideMerge(BusRegistryLive),
+    // With the catalog: the roster in the user's settings, applied to what the harnesses offer.
+    Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive)),
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(
       Layer.mergeAll(
@@ -244,8 +176,7 @@ export const backendLayer = (options: BackendOptions) =>
           filename: join(options.dataDirectory, "cerium.db"),
           ...(options.migrationsFolder === undefined ? {} : { migrationsFolder: options.migrationsFolder }),
         }),
-        AdaptersLive,
-        CatalogLive(options.catalog),
+        OfferedModels.layer.pipe(Layer.provideMerge(AdaptersLive)),
         OrchestratorConfig.layer({
           chatDirectory: join(options.dataDirectory, "chats"),
           titleDirectory: join(options.dataDirectory, "titles"),

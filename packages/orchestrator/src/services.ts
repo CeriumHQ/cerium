@@ -1,6 +1,7 @@
 import type { HarnessAdapter, McpServerSpec } from "@cerium/harness";
 import type {
   AgentId,
+  ModelChoice,
   ModelInfo,
   ProviderId,
   ReasoningEffort,
@@ -29,16 +30,16 @@ export interface CatalogEntry {
 }
 
 /**
- * Models the lead may spawn without asking the user. `entries` waits for the catalog to be known, which
- * the backend learns from the harnesses after it starts serving.
+ * Models the lead may spawn without asking the user: the user's roster. `entries` waits for the
+ * catalog to be known, which the backend learns from the harnesses after it starts serving.
  */
 export class Catalog extends Context.Service<
   Catalog,
   {
     readonly entries: Effect.Effect<ReadonlyArray<CatalogEntry>>;
     /**
-     * Every model the harnesses offered when the backend started, with their efforts, for the effort
-     * router; absent where nothing listed them.
+     * Every model the harnesses offer, on the roster or not, with their efforts, for the effort router
+     * and the quick models; absent where nothing listed them.
      */
     readonly models?: Effect.Effect<ReadonlyArray<ModelInfo>>;
   }
@@ -46,6 +47,15 @@ export class Catalog extends Context.Service<
   static fromEntries = (entries: ReadonlyArray<CatalogEntry>) =>
     Layer.succeed(Catalog, { entries: Effect.succeed(entries) });
 }
+
+/**
+ * The models the harnesses offer, on the roster or not, as harness and id: the catalog's entries where
+ * it doesn't list them all.
+ */
+export const offeredModels = (catalog: Catalog["Service"]): Effect.Effect<ReadonlyArray<ModelChoice>> =>
+  catalog.models === undefined
+    ? Effect.map(catalog.entries, (entries) => entries.map(({ provider, model }) => ({ provider, model })))
+    : Effect.map(catalog.models, (models) => models.map(({ provider, id }) => ({ provider, model: id })));
 
 /** How a session reaches Cerium's MCP bus. Implemented by the bus; each agent gets its own credentials. */
 export class BusEndpoint extends Context.Service<

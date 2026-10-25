@@ -65,7 +65,7 @@ const program = Effect.gen(function* () {
 
   yield* orchestrator.sendUserMessage(
     lead.id,
-    "Use the cerium spawn_agent tool to spawn one child with model 'scout' and role 'geographer'," +
+    "Use the cerium spawn_agent tool to spawn one child with model 'haiku' and role 'geographer'," +
       " asking it: 'What is the capital of France? Answer in one word.' Then end your turn." +
       " When the child's answer arrives, reply to me with just that answer.",
   );
@@ -82,7 +82,6 @@ const program = Effect.gen(function* () {
     backendLayer({
       dataDirectory,
       token: "live-spawn",
-      catalog: [{ alias: "scout", provider: "claude", model: "haiku", description: "Fast, cheap lookups" }],
     }),
   ),
 );

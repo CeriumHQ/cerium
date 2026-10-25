@@ -25,6 +25,7 @@ export {
   Catalog,
   CheckpointError,
   Checkpoints,
+  offeredModels,
   OrchestratorConfig,
   WorktreeError,
   Worktrees,

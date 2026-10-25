@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import type { AccessMode, ModelInfo, ReasoningEffort } from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import {
   ChevronRight,
   Eye,
@@ -12,7 +13,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { modelsAtom } from "../../backend/atoms.ts";
+import { accountAtom, modelsAtom } from "../../backend/atoms.ts";
+import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "../composer/models.ts";
@@ -21,6 +23,7 @@ import { EffortRouterSetting } from "./EffortRouter.tsx";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
 import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
 import { accessAtom, effortAtom, modelAtom } from "./preferences.ts";
+import { RosterSection } from "./Roster.tsx";
 import { TitleRows } from "./Titles.tsx";
 import { AdvisorRows, McpServersRow } from "./Tools.tsx";
 
@@ -32,6 +35,9 @@ const effortHint: Record<ReasoningEffort, string> = {
   xhigh: "Takes its time on hard problems",
   max: "As long as the model allows: slowest and costliest",
 };
+
+/** The first backend that keeps a roster; an older one leads from every model its harnesses offer. */
+const ROSTER_VERSION = 27;
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
   readOnly: Eye,
@@ -61,6 +67,13 @@ export function AgentSettings({
   // Like the composer, a level the model lacks reads as its default or strongest one.
   const activeEffort = model ? effortFor(model, effort) : undefined;
   const accessOption = accessOptions.find((option) => option.value === access);
+  const driven = useAtomValue(machineAtom);
+  const account = AsyncResult.getOrElse(useAtomValue(accountAtom), () => undefined);
+  const drivenVersion =
+    driven === undefined || account?._tag !== "SignedIn"
+      ? undefined
+      : (account.devices.find((device) => device.id === driven.id)?.rpcVersion ?? 0);
+  const rosterOk = drivenVersion === undefined || drivenVersion >= ROSTER_VERSION;
 
   return (
     <SettingsPage perMachine title="Agents">
@@ -128,6 +141,8 @@ export function AgentSettings({
           <TitleRows models={models} harnesses={harnesses} />
         </SettingsList>
       </SettingsSection>
+
+      {rosterOk ? <RosterSection models={models} harnesses={harnesses} /> : null}
 
       <SettingsSection title="Tools" description="A change applies to agents started after it.">
         <SettingsList>

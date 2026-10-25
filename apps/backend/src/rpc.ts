@@ -35,6 +35,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
 import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
@@ -132,6 +133,7 @@ export const Handlers = MachineRpcs.toLayer(
     const usage = yield* SubscriptionUsage;
     const releases = yield* Releases;
     const effortRouter = yield* EffortRouter;
+    const offered = yield* OfferedModels;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -276,7 +278,19 @@ export const Handlers = MachineRpcs.toLayer(
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(described(adapter)), {
           concurrency: "unbounded",
-        }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+        }).pipe(
+          Effect.map((statuses) => statuses.flatMap(Option.toArray)),
+          // A harness found signed in that offered no models, signed in since, joins the catalog.
+          Effect.tap((statuses) =>
+            offered.relistEmpty(
+              statuses.flatMap((status) =>
+                status._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn"
+                  ? [status.provider]
+                  : [],
+              ),
+            ),
+          ),
+        ),
       // Viewers before `RPC_VERSION` 20 read a tested range, which no version falls outside.
       HarnessManifests: () =>
         Effect.succeed(
@@ -341,6 +355,7 @@ export const Handlers = MachineRpcs.toLayer(
         Effect.fromNullishOr(adapters.get(provider)).pipe(
           Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),
           Effect.flatMap((adapter) => adapter.listModels),
+          Effect.tap((models) => offered.offer(provider, models)),
           Effect.mapError((error) => new CeriumError({ message: error.message })),
         ),
       SearchWorkspace: ({ cwd, query }) =>

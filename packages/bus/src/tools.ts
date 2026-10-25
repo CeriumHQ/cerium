@@ -27,7 +27,10 @@ const AgentSummary = Schema.Struct({
 });
 
 export const ListModels = Tool.make("list_models", {
-  description: "List the models you may spawn without asking the user, with what each is for.",
+  description:
+    "List the user's roster: the models you may spawn without asking the user, with what the user wants" +
+    " each used for. Pick by that. For a model not on it, call spawn_agent with its id and `provider`:" +
+    " Cerium asks the user to approve it.",
   success: Schema.Struct({ models: Schema.Array(ModelSummary) }),
   failure: OrchestratorError,
 });
