@@ -1,18 +1,17 @@
-import { Dialog } from "@base-ui/react/dialog";
 import { useAtomValue } from "@effect/atom-react";
-import { Copy, Download, FolderOpen, ImageOff, X } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import type { ToolImageRef } from "@cerium/protocol";
-import type { ReactElement } from "react";
+import { useState } from "react";
 
 import { imageAtom, toolImageAtom } from "../backend/files.ts";
-import { drivenMachine } from "../backend/machine.ts";
-import { shellBridge } from "../backend/shell.ts";
-import { ContextMenuArea, MenuItem, MenuSeparator } from "./ui/Menu.tsx";
+import { ImageViewer, useGallery, WithImageMenu } from "./ImageViewer.tsx";
 
 interface ThumbProps {
   /** What the image is, for its alt text and the enlarged view's caption. */
   readonly name: string;
+  /** The image's key in the gallery around it, which opens the viewer among the gallery's images. */
+  readonly galleryKey?: string;
   /** Size and shape of the thumbnail, such as `h-28 max-w-60` or `size-6`. */
   readonly className: string;
   /**
@@ -22,84 +21,10 @@ interface ThumbProps {
   readonly fit?: "crop" | "natural";
 }
 
-/** The image as a PNG on the clipboard: drawn on a canvas, so any format the page can show works. */
-const copyImage = async (url: string) => {
-  const image = new Image();
-  image.src = url;
-  await image.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  canvas.getContext("2d")?.drawImage(image, 0, 0);
-  const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (png) await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-};
-
-/** `name` with an extension, taken from the data URL's type when the name has none. */
-const fileNameFor = (name: string, url: string) => {
-  if (/\.[a-z\d]{2,5}$/i.test(name)) return name;
-  const type = /^data:image\/([a-z\d.+-]+)/i.exec(url)?.[1]?.toLowerCase();
-  const extension = type === "jpeg" ? "jpg" : type === "svg+xml" ? "svg" : (type ?? "png");
-  return `${name}.${extension}`;
-};
-
-/** What a right-click on an image offers: copy it, find its file, or save a copy. */
-function ImageMenu({ url, name, path }: { url: string; name: string; path: string | undefined }) {
-  const bridge = shellBridge();
-  const reveal = path ? bridge?.revealPath : undefined;
-  const save = bridge?.saveImage;
-  return (
-    <>
-      <MenuItem icon={Copy} onClick={() => void copyImage(url).catch(() => undefined)}>
-        Copy image
-      </MenuItem>
-      {reveal || save ? <MenuSeparator /> : null}
-      {reveal && path ? (
-        <MenuItem icon={FolderOpen} onClick={() => void reveal(path)}>
-          Show in File Explorer
-        </MenuItem>
-      ) : null}
-      {save ? (
-        <MenuItem
-          icon={Download}
-          // A path on another machine means nothing here; the image's bytes are already in the page.
-          onClick={() =>
-            void save(drivenMachine() === undefined ? (path ?? url) : url, fileNameFor(name, url)).catch(
-              () => undefined,
-            )
-          }
-        >
-          Save image as…
-        </MenuItem>
-      ) : null}
-    </>
-  );
-}
-
-/** Adds the image menu to `children` (one element) when the image has one. */
-function WithImageMenu({
-  menu,
-  url,
-  name,
-  path,
-  children,
-}: {
-  menu: boolean;
-  url: string;
-  name: string;
-  path: string | undefined;
-  children: ReactElement;
-}) {
-  return menu ? (
-    <ContextMenuArea menu={<ImageMenu url={url} name={name} path={path} />}>{children}</ContextMenuArea>
-  ) : (
-    children
-  );
-}
-
 /**
- * An image shown small; clicking opens it at full size over the window. `menu` adds a right-click
- * menu (the composer's attachment tiles go without); `path` is the file behind the image, if any.
+ * An image shown small; clicking opens it over the whole window, among the rest of its gallery's
+ * images when `galleryKey` names it in one. `menu` adds a right-click menu (the composer's attachment
+ * tiles go without); `path` is the file behind the image, if any.
  */
 export function ImageThumb({
   url,
@@ -108,13 +33,19 @@ export function ImageThumb({
   fit = "crop",
   path,
   menu = false,
+  galleryKey,
 }: ThumbProps & { url: string; path?: string; menu?: boolean }) {
+  const gallery = useGallery();
+  const [open, setOpen] = useState<boolean>();
+  const image = { key: galleryKey ?? "image", name, url, ...(path === undefined ? {} : { path }) };
   return (
-    <Dialog.Root>
+    <>
       <WithImageMenu menu={menu} url={url} name={name} path={path}>
-        <Dialog.Trigger
+        <button
+          type="button"
           aria-label={`Enlarge ${name}`}
-          className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-accent data-popup-open:brightness-110 ${className}`}
+          onClick={() => (gallery && galleryKey !== undefined ? gallery.show(image) : setOpen(true))}
+          className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
         >
           {/* A screenshot is decoded whole for its thumbnail: off the main thread, and only once a
               transcript scrolls near it. */}
@@ -128,28 +59,21 @@ export function ImageThumb({
               fit === "natural" ? "h-full w-auto max-w-full" : "size-full"
             }`}
           />
-        </Dialog.Trigger>
+        </button>
       </WithImageMenu>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 flex max-w-[calc(100vw-4rem)] -translate-1/2 flex-col items-center gap-2.5 transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
-          <WithImageMenu menu={menu} url={url} name={name} path={path}>
-            <img
-              src={url}
-              alt={name}
-              className="max-h-[calc(100vh-8rem)] max-w-full rounded-xl border border-line-subtle object-contain shadow-overlay"
-            />
-          </WithImageMenu>
-          <Dialog.Title className="max-w-full truncate text-meta text-fg-secondary">{name}</Dialog.Title>
-          <Dialog.Close
-            aria-label="Close"
-            className="absolute -top-3 -right-3 grid size-7 place-items-center rounded-full border border-line-subtle bg-surface-overlay text-fg-secondary shadow-overlay backdrop-blur-xl transition-colors hover:text-fg-primary"
-          >
-            <X size={14} strokeWidth={2} />
-          </Dialog.Close>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+      {/* Mounted from the first click until it has closed, rather than a dialog per thumbnail. */}
+      {open === undefined ? null : (
+        <ImageViewer
+          images={[image]}
+          current={image.key}
+          open={open}
+          menu={menu}
+          onCurrentChange={() => undefined}
+          onOpenChange={setOpen}
+          onClosed={() => setOpen(undefined)}
+        />
+      )}
+    </>
   );
 }
 
@@ -191,6 +115,7 @@ function LoadedImageThumb({
   name,
   className,
   fit,
+  galleryKey,
   quiet,
 }: ThumbProps & { result: AsyncResult.AsyncResult<string, unknown>; path?: string; quiet: boolean }) {
   if (AsyncResult.isSuccess(result)) {
@@ -201,6 +126,7 @@ function LoadedImageThumb({
         className={className}
         {...(fit ? { fit } : {})}
         {...(path === undefined ? {} : { path })}
+        {...(galleryKey === undefined ? {} : { galleryKey })}
         menu
       />
     );

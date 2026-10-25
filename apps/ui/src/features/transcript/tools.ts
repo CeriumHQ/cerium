@@ -590,6 +590,36 @@ export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
   return [];
 };
 
+/**
+ * The key of the `index`th image the user attached to a message, unique in the thread even when two
+ * of a message's images are the same file.
+ */
+export const attachmentImageKey = (messageId: string, index: number) => `${messageId}:image:${index}`;
+
+/**
+ * Every image in a thread in the order it reads, the ones the user sent and the ones the agents'
+ * tools looked at, earlier versions included: what the image viewer steps through.
+ */
+export const threadImages = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<ToolImage> =>
+  blocks.flatMap((block): ReadonlyArray<ToolImage> => {
+    switch (block.kind) {
+      case "user":
+        return block.attachments
+          .filter((attachment) => attachment.mediaType.startsWith("image/"))
+          .map((image, index) => ({
+            key: attachmentImageKey(block.id, index),
+            name: image.name,
+            path: image.path,
+          }));
+      case "tool":
+        return toolImages(block);
+      case "replaced":
+        return threadImages(block.blocks);
+      default:
+        return [];
+    }
+  });
+
 const count = (n: number, one: string, many: string, done = "") =>
   `${n} ${n === 1 ? one : many}${done ? ` ${done}` : ""}`;
 

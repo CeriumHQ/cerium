@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { ImageGallery } from "../../components/ImageViewer.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -55,6 +56,7 @@ import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { SelectionReply } from "./SelectionReply.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
+import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 import { useArrivals } from "../../lib/motion.ts";
@@ -273,60 +275,63 @@ export function Transcript({
 
   return (
     <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
-      <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
-        {/* Content fades out where the floating composer sits instead of showing through its glass. */}
-        <ScrollArea
-          viewportRef={viewport}
-          className={`h-full ${
-            oneLine
-              ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
-              : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
-          }`}
-        >
-          <div
-            ref={column}
-            className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
-            // The inset is in screen pixels; the column's zoom would scale it.
-            style={{
-              zoom: scale,
-              paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
-            }}
+      {/* An image opened from the conversation steps through all of the thread's others. */}
+      <ImageGallery images={() => threadImages(shown)}>
+        <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
+          {/* Content fades out where the floating composer sits instead of showing through its glass. */}
+          <ScrollArea
+            viewportRef={viewport}
+            className={`h-full ${
+              oneLine
+                ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
+                : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
+            }`}
           >
-            {/* Every item is laid out for real. `content-visibility: auto` skipped those out of view
+            <div
+              ref={column}
+              className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
+              // The inset is in screen pixels; the column's zoom would scale it.
+              style={{
+                zoom: scale,
+                paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
+              }}
+            >
+              {/* Every item is laid out for real. `content-visibility: auto` skipped those out of view
                 on a guessed height, so scrolling up through unseen items swapped each guess for its
                 true height, and the content jumped under the scroll position. */}
-            {items.map((item) => renderItem(item, false))}
-            {working && !responding ? (
-              <div className="arrive-header">
-                <ResponseHeader
-                  agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
-                  routed={pendingRouted(shown)}
-                />
-              </div>
-            ) : null}
-            {working ? (
-              <div className="arrive-late">
-                <Working />
-              </div>
-            ) : null}
-          </div>
-        </ScrollArea>
-        <SelectionReply within={column} />
-        {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
-        <Button
-          onClick={toEnd}
-          aria-label="Jump to latest"
-          inert={following}
-          style={{
-            bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
-          }}
-          className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
-            following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
-          }`}
-        >
-          <ArrowDown size={15} strokeWidth={2} />
-        </Button>
-      </div>
+              {items.map((item) => renderItem(item, false))}
+              {working && !responding ? (
+                <div className="arrive-header">
+                  <ResponseHeader
+                    agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
+                    routed={pendingRouted(shown)}
+                  />
+                </div>
+              ) : null}
+              {working ? (
+                <div className="arrive-late">
+                  <Working />
+                </div>
+              ) : null}
+            </div>
+          </ScrollArea>
+          <SelectionReply within={column} />
+          {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
+          <Button
+            onClick={toEnd}
+            aria-label="Jump to latest"
+            inert={following}
+            style={{
+              bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
+            }}
+            className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
+              following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
+            }`}
+          >
+            <ArrowDown size={15} strokeWidth={2} />
+          </Button>
+        </div>
+      </ImageGallery>
     </ThreadContext>
   );
 }

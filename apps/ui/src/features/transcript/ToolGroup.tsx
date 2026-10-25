@@ -50,6 +50,7 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
       <ImageThumb
         url={image.url}
         name={image.name}
+        galleryKey={image.key}
         className={className}
         fit={full ? "natural" : "crop"}
         menu
@@ -61,6 +62,7 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
       <ToolOutputImageThumb
         imageRef={image.ref}
         name={image.name}
+        galleryKey={image.key}
         className={className}
         fit={full ? "natural" : "crop"}
         quiet={!full}
@@ -73,6 +75,7 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
       <FileImageThumb
         path={image.path}
         name={image.name}
+        galleryKey={image.key}
         className={className}
         fit={full ? "natural" : "crop"}
         quiet={!full}

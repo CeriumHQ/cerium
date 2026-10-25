@@ -36,6 +36,7 @@ import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { RoutedDecision, TranscriptBlock } from "./model.ts";
+import { attachmentImageKey } from "./tools.ts";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
@@ -114,11 +115,12 @@ export function UserMessage({
       )}
       {block.attachments.length > 0 ? (
         <div className="flex flex-wrap justify-end gap-1.5">
-          {images.map((image) => (
+          {images.map((image, index) => (
             <FileImageThumb
-              key={image.path}
+              key={attachmentImageKey(block.id, index)}
               path={image.path}
               name={image.name}
+              galleryKey={attachmentImageKey(block.id, index)}
               className="h-32 max-w-full min-w-16"
               fit="natural"
             />
