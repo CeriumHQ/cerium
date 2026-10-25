@@ -1708,10 +1708,6 @@ function Workspace() {
           ? { thread: { title: baseName(openFile.path), project: baseName(openFile.root) } }
           : {})}
       mode={mode}
-      onModeChange={(next) => {
-        setSettingsOpen(false);
-        setMode(next);
-      }}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={toggleSidebar}
       onNewThread={newThread}
@@ -1720,6 +1716,10 @@ function Workspace() {
       sidebar={
         <Sidebar
           mode={mode}
+          onModeChange={(next) => {
+            setSettingsOpen(false);
+            setMode(next);
+          }}
           threads={summaries}
           selectedId={viewed?.thread.id ?? (openFile ? undefined : openDraft)}
           onSelectDraft={(draft, newTab) => {

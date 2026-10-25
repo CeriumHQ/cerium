@@ -10,13 +10,13 @@ import {
 } from "react";
 
 import { onMac } from "../backend/shell.ts";
-import { CeriumMark } from "../components/CeriumMark.tsx";
+import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
 import { useKeyboardOpen } from "../web/viewport.ts";
 import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
-import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
+import type { AppMode } from "./ModeSwitch.tsx";
 import { GUTTER, panelLayout, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
@@ -25,7 +25,6 @@ import { CompactPanelMenu, Titlebar } from "./Titlebar.tsx";
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
   readonly mode: AppMode;
-  readonly onModeChange: (mode: AppMode) => void;
   readonly sidebarOpen: boolean;
   readonly onToggleSidebar: () => void;
   readonly onNewThread: () => void;
@@ -113,7 +112,6 @@ function useWidthOf(ref: RefObject<HTMLElement | null>) {
 function DesktopFrame({
   thread,
   mode,
-  onModeChange,
   sidebarOpen,
   onToggleSidebar,
   onNewThread,
@@ -172,7 +170,6 @@ function DesktopFrame({
         {...(thread ? { thread } : {})}
         settingsOpen={settings.open}
         mode={mode}
-        onModeChange={onModeChange}
         sidebarOpen={sidebarOpen}
         sidebarWidth={sidebarWidth}
         resizing={dragging === "sidebar"}
@@ -298,7 +295,6 @@ function DesktopFrame({
 function CompactFrame({
   thread,
   mode,
-  onModeChange,
   sidebar,
   agents,
   side,
@@ -354,9 +350,8 @@ function CompactFrame({
             <div key="list" className="flex h-full flex-col">
               <CompactBar
                 leading={
-                  <div className="flex items-center gap-2 pl-2">
-                    <CeriumMark size={18} landing className="text-fg-primary" />
-                    <ModeSwitch mode={mode} onChange={onModeChange} />
+                  <div className="pl-3">
+                    <CeriumBrand />
                   </div>
                 }
                 trailing={machinePicker}

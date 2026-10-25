@@ -198,7 +198,7 @@ export function Inbox({
       onValueChange={(value) => chooseBox(value as InboxBox)}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex items-center gap-1 pr-2 pb-2 pl-2.5">
+      <div className="flex items-center gap-1 px-2 pb-2.5">
         <Tabs.List
           className="flex min-w-0 items-center overflow-x-auto [scrollbar-width:none]"
           aria-label="Threads"

@@ -15,13 +15,13 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { CeriumMark } from "../components/CeriumMark.tsx";
+import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
 import { MenuCheckboxItem, MenuPopup, MenuRoot, MenuTrigger } from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { WEB } from "../backend/target.ts";
-import { ModeSwitch, type AppMode } from "./ModeSwitch.tsx";
+import type { AppMode } from "./ModeSwitch.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
 
 /**
@@ -36,7 +36,6 @@ interface TitlebarProps {
   /** Settings replace the thread's title and controls. */
   readonly settingsOpen: boolean;
   readonly mode: AppMode;
-  readonly onModeChange: (mode: AppMode) => void;
   readonly sidebarOpen: boolean;
   /** The sidebar's width while it shows, so the controls above it end where it does. */
   readonly sidebarWidth: number;
@@ -62,7 +61,6 @@ export function Titlebar({
   thread,
   settingsOpen,
   mode,
-  onModeChange,
   sidebarOpen,
   sidebarWidth,
   resizing,
@@ -89,8 +87,9 @@ export function Titlebar({
           resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
       >
-        <CeriumMark size={16} landing className="ml-1.5 text-fg-primary" />
-        <ModeSwitch mode={mode} onChange={onModeChange} />
+        <span className="ml-2">
+          <CeriumBrand nameClassName="max-lg:hidden" />
+        </span>
         <div
           inert={settingsOpen}
           className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${settingsOpen ? "opacity-0" : ""}`}

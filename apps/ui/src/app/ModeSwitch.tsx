@@ -11,9 +11,9 @@ const modes = [
 ] as const;
 
 /**
- * Switches the whole window between work threads (agents on a folder) and chats. Deliberately quiet:
- * two labels, the active one brighter on a faint pill. The weight stays the same in both states, so
- * switching never nudges its neighbours.
+ * Switches the whole window between work threads (agents on a folder) and chats, at the top of the
+ * sidebar: two even halves of a sunken track, the active one raised like the button under it. The
+ * weight stays the same in both states, so switching never nudges the labels.
  */
 export function ModeSwitch({ mode, onChange }: { mode: AppMode; onChange: (mode: AppMode) => void }) {
   return (
@@ -24,13 +24,13 @@ export function ModeSwitch({ mode, onChange }: { mode: AppMode; onChange: (mode:
         if (next === "work" || next === "chat") onChange(next);
       }}
       aria-label="Mode"
-      className="flex items-center [app-region:no-drag]"
+      className="grid grid-cols-2 gap-0.5 rounded-lg border border-line-subtle p-0.5"
     >
       {modes.map(({ value, label, shortcut }) => (
         <Tooltip key={value} label={label} shortcut={shortcut}>
           <Toggle
             value={value}
-            className="rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]"
+            className="h-7 rounded-md text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-9 max-md:text-[15px]"
           >
             {label}
           </Toggle>

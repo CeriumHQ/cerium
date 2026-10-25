@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
+import { ModeSwitch } from "../../app/ModeSwitch.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -38,6 +39,7 @@ import { ThreadRow } from "./ThreadRow.tsx";
 interface SidebarProps {
   /** Only this mode's threads are listed. */
   readonly mode: "work" | "chat";
+  readonly onModeChange: (mode: "work" | "chat") => void;
   readonly threads: ReadonlyArray<ThreadSummary>;
   /** The open thread, or the open draft of a thread not started yet. */
   readonly selectedId: string | undefined;
@@ -80,6 +82,7 @@ export interface HarnessIndicator {
 
 export function Sidebar({
   mode,
+  onModeChange,
   threads,
   selectedId,
   onSelect,
@@ -130,7 +133,10 @@ export function Sidebar({
 
   return (
     <div ref={root} className="flex h-full flex-col">
-      <div className="flex items-center gap-1 px-2 pb-2">
+      <div className="px-2 pt-1 pb-2.5">
+        <ModeSwitch mode={mode} onChange={onModeChange} />
+      </div>
+      <div className="flex items-center gap-1 px-2 pb-3">
         <Button
           onClick={onNewThread}
           className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active max-md:h-10 max-md:gap-2.5 max-md:rounded-xl max-md:px-3 max-md:text-[15px]"
