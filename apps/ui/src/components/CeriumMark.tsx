@@ -3,15 +3,18 @@
  * to polish glass. Below 24px a heavier drawing keeps the stroke and facet legible.
  *
  * `landing` marks the one the launch screen's mark flies to when it hands the window over: the one at
- * the top of whatever the window shows first (app/LaunchScreen.tsx).
+ * the top of whatever the window shows first (app/LaunchScreen.tsx). `facetClassName` styles the
+ * facet on its own, as the launch screen does to turn it.
  */
 export function CeriumMark({
   size = 18,
   className,
+  facetClassName,
   landing = false,
 }: {
   size?: number;
   className?: string;
+  facetClassName?: string;
   landing?: boolean;
 }) {
   const small = size < 24;
@@ -34,6 +37,7 @@ export function CeriumMark({
       <path
         d={small ? "M36 18.5 41.5 24 36 29.5 30.5 24Z" : "M36 19.5 40.5 24 36 28.5 31.5 24Z"}
         fill="currentColor"
+        className={facetClassName}
       />
     </svg>
   );

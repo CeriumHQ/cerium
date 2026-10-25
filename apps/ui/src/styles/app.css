@@ -196,25 +196,49 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/* Each letter of the launch screen's name rises into place as it first shows. */
+@keyframes launch-letter {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
 /*
- * Handing the window over: the launch screen's mark flies to the window's own, which only takes the
- * name once the window shows, while the window fades in around it.
+ * The facet turns a quarter at a time while Cerium starts, like a stone on the polishing wheel; a
+ * square turned a quarter looks as it started, so each turn ends where the next begins.
+ */
+@keyframes launch-facet {
+  45%,
+  100% {
+    rotate: 90deg;
+  }
+}
+
+/*
+ * Handing the window over: the launch screen's mark and name fly to the window's own, which only take
+ * the names once the window shows, while the window fades in around them.
  */
 [data-launch-mark] {
   view-transition-name: cerium-mark;
 }
 
-[data-launching] [data-launch-mark] {
+[data-launch-name] {
+  view-transition-name: cerium-name;
+}
+
+[data-launching] :is([data-launch-mark], [data-launch-name]) {
   view-transition-name: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-launch-mark] {
+  :is([data-launch-mark], [data-launch-name]) {
     view-transition-name: none;
   }
 }
 
-html:active-view-transition-type(launch)::view-transition-group(cerium-mark) {
+html:active-view-transition-type(launch)::view-transition-group(cerium-mark),
+html:active-view-transition-type(launch)::view-transition-group(cerium-name) {
   animation-duration: 680ms;
   animation-timing-function: cubic-bezier(0.6, 0, 0.1, 1);
 }

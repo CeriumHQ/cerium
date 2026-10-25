@@ -1,6 +1,6 @@
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 
 import { accountAtom } from "../backend/atoms.ts";
@@ -14,7 +14,7 @@ import { threadCountAtom, welcomeOpenAtom, welcomeShownAtom } from "../features/
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
 import { remember, stored } from "../lib/storage.ts";
-import { launchedAtom, launchProgress, launchStatus, type LaunchState } from "./launch.ts";
+import { launchedAtom, launchProgress, launchStatus, letterShape, type LaunchState } from "./launch.ts";
 
 /** How long the mark takes to settle; the window is never handed over before it has. */
 const SETTLE_MS = 700;
@@ -28,12 +28,17 @@ const GIVE_UP_MS = 12_000;
 const CREEP = 0.7;
 const CREEP_MS = 4_000;
 const STEP_MS = 360;
+/** How many times larger than the titlebar's lockup the launch screen draws it. */
+const LOCKUP = 64 / 22;
+/** The name a letter at a time, each filling out on its own. */
+const NAME = ["c", "e", "r", "i", "u", "m"] as const;
 
 /**
  * The window while Cerium starts: its glass, the mark settling into focus as if polished (cerium oxide
- * polishes glass), and a line that fills as each step of starting finishes. The window underneath
- * loads all along, unseen; when it's ready the mark flies to its place at the top of it and the window
- * fades in around it.
+ * polishes glass) with its facet turning, and beside it the name, which fills out from thin and
+ * condensed to its own lettering as each step of starting finishes. The window underneath loads all
+ * along, unseen; when it's ready the mark and the name fly to their place at the top of it and the
+ * window fades in around them.
  *
  * On a computer's first run the mark flies to the welcome's instead (features/onboarding), and the
  * window waits under it until the welcome is finished or skipped; the command palette opens the
@@ -153,8 +158,15 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
     const creep = setTimeout(() => setCreepingFrom(target), STEP_MS);
     return () => clearTimeout(creep);
   }, [shown, target]);
+  const lockup = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!leaving) return;
+    // The facet finishes the turn it's in rather than snapping back mid-turn.
+    for (const animation of lockup.current?.getAnimations({ subtree: true }) ?? []) {
+      if (!(animation instanceof CSSAnimation) || animation.animationName !== "launch-facet") continue;
+      const turn = animation.effect?.getComputedTiming().currentIteration;
+      if (typeof turn === "number") animation.effect?.updateTiming({ iterations: turn + 1 });
+    }
     const timer = setTimeout(onReady, STEP_MS + FULL_MS);
     return () => clearTimeout(timer);
   }, [leaving, onReady]);
@@ -169,30 +181,55 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
       <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
       {shown ? (
         <>
-          <CeriumMark
-            size={64}
-            landing
-            className="animate-[launch-settle_700ms_var(--ease-out-soft)_both] text-fg-primary motion-reduce:animate-[launch-fade_300ms_ease-out_both]"
-          />
+          {/* Cerium's lockup (components/CeriumBrand.tsx) at LOCKUP times its size, so both fly to it. */}
           <div
-            // A <progress> can't ease its fill from one step to the next.
+            ref={lockup}
+            // The name is the progress: a <progress> can't be drawn as letters.
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="progressbar"
             aria-label="Starting Cerium"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(line.at * 100)}
-            className="mt-10 h-0.5 w-24 animate-[launch-fade_400ms_ease-out_200ms_both] overflow-hidden rounded-full bg-line-subtle"
+            style={{ gap: 8 * LOCKUP }}
+            className="flex items-center text-fg-primary"
           >
-            <div
-              style={{ scale: `${line.at} 1`, transitionDuration: `${line.ms}ms` }}
-              className="h-full origin-left rounded-full bg-accent transition-[scale] ease-out-soft motion-reduce:transition-none"
+            <CeriumMark
+              size={22 * LOCKUP}
+              landing
+              facetClassName="origin-center [transform-box:fill-box] animate-[launch-facet_700ms_ease-in-out_infinite] motion-reduce:animate-none"
+              className="animate-[launch-settle_700ms_var(--ease-out-soft)_both] motion-reduce:animate-[launch-fade_300ms_ease-out_both]"
             />
+            <span
+              data-launch-name=""
+              aria-hidden="true"
+              style={{ fontSize: 16 * LOCKUP }}
+              className="flex font-display leading-none tracking-[0.02em] [font-size-adjust:none]"
+            >
+              {NAME.map((letter, index) => {
+                const shape = letterShape(line.at, index);
+                return (
+                  <span
+                    key={index}
+                    style={{
+                      fontStretch: `${shape.stretch}%`,
+                      fontWeight: shape.weight,
+                      opacity: shape.opacity,
+                      transitionDuration: `${line.ms}ms`,
+                      animationDelay: `${120 + index * 70}ms`,
+                    }}
+                    className="animate-[launch-letter_380ms_var(--ease-out-soft)_backwards] transition-[font-stretch,font-weight,opacity] ease-out-soft motion-reduce:animate-[launch-fade_300ms_ease-out_both] motion-reduce:transition-none"
+                  >
+                    {letter}
+                  </span>
+                );
+              })}
+            </span>
           </div>
           {/* Said only once starting takes long enough to wonder about. */}
           <output
             key={talking ? status : "quiet"}
-            className={`mt-4 h-4 text-[12.5px] leading-4 text-fg-tertiary ${
+            className={`mt-12 h-4 text-[12.5px] leading-4 text-fg-tertiary ${
               talking ? "animate-[launch-fade_360ms_ease-out_both]" : "invisible"
             }`}
           >

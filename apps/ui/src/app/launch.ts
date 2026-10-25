@@ -53,6 +53,27 @@ export const launchProgress = (state: LaunchState): { readonly done: number; rea
   return { done: LOADED + share(done), next: share(steps[pending]![1]) };
 };
 
+/** How far behind the letter before it each letter of the name fills out, as a share of starting. */
+const LETTER_LAG = 0.03;
+
+/**
+ * How one letter of the launch screen's name looks at `progress` (0 to 1): thin and condensed at the
+ * start, the brand's semibold at its expanded width once starting is done, each letter a little behind
+ * the one before it. Width and weight are the display face's own axes.
+ */
+export const letterShape = (
+  progress: number,
+  index: number,
+): { readonly stretch: number; readonly weight: number; readonly opacity: number } => {
+  const share = Math.min(1, Math.max(0, (progress - index * LETTER_LAG) / (1 - 5 * LETTER_LAG)));
+  const formed = share ** 1.35;
+  return {
+    stretch: 50 + 75 * formed,
+    weight: Math.round(200 + 400 * formed),
+    opacity: 0.3 + 0.7 * formed,
+  };
+};
+
 /** What the launch screen says starting is waiting on, once it takes long enough to wonder. */
 export const launchStatus = (state: LaunchState, options: { web: boolean; machineName?: string }): string => {
   if (!state.backend) return "Starting Cerium";
