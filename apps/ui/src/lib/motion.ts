@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useState, type RefObject } from "react";
 
 /** Waits no longer than this for motion to end: a hidden window's animations may never be painted. */
 const SETTLE_LIMIT_MS = 1_000;
@@ -72,6 +72,72 @@ export function usePresence(
   }, [phase, ref]);
 
   return phase;
+}
+
+/**
+ * A list's elements by key, and where each stands. Where they stand is kept current as any of them
+ * changes size (one growing in or folding out, a card opening), which moves the rest without the
+ * list rendering, so a render's glide starts from where they really were. Positions are layout
+ * positions (`offsetTop`), so a glide under way doesn't skew the next.
+ */
+class Glide {
+  private readonly elements = new Map<string, HTMLElement>();
+  private readonly refs = new Map<string, (element: HTMLElement | null) => () => void>();
+  private tops = new Map<string, number>();
+  private readonly observer = new ResizeObserver(() => this.measure());
+
+  /** The ref of the element of `key`, the same one each render. */
+  readonly ref = (key: string) => {
+    let ref = this.refs.get(key);
+    if (ref === undefined) {
+      ref = (element) => {
+        if (element === null) return () => {};
+        this.elements.set(key, element);
+        this.observer.observe(element);
+        return () => {
+          this.observer.unobserve(element);
+          this.elements.delete(key);
+        };
+      };
+      this.refs.set(key, ref);
+    }
+    return ref;
+  };
+
+  private measure() {
+    this.tops = new Map([...this.elements].map(([key, element]) => [key, element.offsetTop]));
+  }
+
+  /** Glides each element that moved since it was last measured from there to where it stands. */
+  settle() {
+    const before = this.tops;
+    this.measure();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const [key, top] of this.tops) {
+      const was = before.get(key);
+      if (was === undefined || was === top) continue;
+      this.elements.get(key)?.animate([{ translate: `0 ${was - top}px` }, { translate: "0 0" }], {
+        duration: 300,
+        easing: "cubic-bezier(0.22, 0.8, 0.24, 1)",
+      });
+    }
+  }
+
+  disconnect() {
+    this.observer.disconnect();
+  }
+}
+
+/**
+ * Glides each of a list's elements from where it stood to where it stands whenever the list renders
+ * and it has moved: a reordered list rearranges itself instead of jumping. Gives each element's ref
+ * by its key.
+ */
+export function useGlide(): (key: string) => (element: HTMLElement | null) => () => void {
+  const [glide] = useState(() => new Glide());
+  useLayoutEffect(() => glide.settle());
+  useEffect(() => () => glide.disconnect(), [glide]);
+  return glide.ref;
 }
 
 /** More new items than this at once are a load, such as a thread's history, rather than arrivals. */

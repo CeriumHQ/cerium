@@ -29,8 +29,10 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../../components/ui/Menu.tsx";
+import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useArrivals, useGlide, useLingering } from "../../lib/motion.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections } from "./sections.ts";
@@ -45,6 +47,7 @@ import {
   groupRuns,
   isPutOff,
   type InboxBox,
+  type InboxEntry,
   laterTime,
   laterWork,
   needsYou,
@@ -423,24 +426,32 @@ function Entries({
   now,
   ...rowProps
 }: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
+  // A card that moves glides to its new place; one that comes grows into the list and one that goes
+  // (archived, put off) folds out of it, so the cards around it close up smoothly.
+  const entries = groupRuns(threads);
+  const [rows, release] = useLingering(entries, entryKey);
+  const arrived = useArrivals(entries.map(entryKey));
+  const glide = useGlide();
   // A fragment, not the bare array: the React Compiler takes a function for a component, and memoizes
   // its rows, only when it returns JSX itself.
   return (
     <>
-      {groupRuns(threads).map((entry) =>
-        entry.kind === "thread" ? (
-          <li key={entry.thread.id}>
-            <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
-          </li>
-        ) : (
-          <li key={entry.id}>
-            <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
-          </li>
-        ),
-      )}
+      {rows.map(({ key, item: entry, present }) => (
+        <li key={key} ref={glide(key)}>
+          <Reveal appear={arrived(key)} onGone={() => release(key)}>
+            {!present ? null : entry.kind === "thread" ? (
+              <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
+            ) : (
+              <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
+            )}
+          </Reveal>
+        </li>
+      ))}
     </>
   );
 }
+
+const entryKey = (entry: InboxEntry) => (entry.kind === "thread" ? entry.thread.id : entry.id);
 
 /**
  * A multi-agent run: one card for the message its threads were started with, a tally of where they
