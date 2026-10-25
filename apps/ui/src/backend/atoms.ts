@@ -341,7 +341,9 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
   Backend.runtime
     .atom((get) => {
       // Screenshots are most of a long thread's bytes: each is read when the transcript shows it.
-      const history = Backend.use((client) => client("ThreadEvents", { threadId, withoutImages: true })).pipe(
+      const history = Backend.use((client) =>
+        client("ThreadEvents", { threadId, withoutImages: true, streamed: true }),
+      ).pipe(
         Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
         // What the window holds stays; the next subscription reads again.
         Effect.option,

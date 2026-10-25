@@ -34,6 +34,39 @@ describe("buildTranscript", () => {
     expect(done).toEqual([{ kind: "message", id: "message:m", text: "Hello!", streaming: false }]);
   });
 
+  it("places deltas by their offset, so text read mid-reply and deltas already held don't repeat", () => {
+    const fence = "```artifact\n<style></style>\n```";
+    const message = (text: string) => [{ kind: "message", id: "message:m", text, streaming: true }];
+    // The window held the first delta, then read the thread: the text so far, then the next delta.
+    const joined = buildTranscript(
+      events(
+        { _tag: "MessageDelta", messageId: "m", text: "```artifact\n", offset: 0 },
+        { _tag: "MessageDelta", messageId: "m", text: "```artifact\n<style>", offset: 0 },
+        { _tag: "MessageDelta", messageId: "m", text: "<style>", offset: 12 },
+        { _tag: "MessageDelta", messageId: "m", text: "</style>\n```", offset: 19 },
+      ),
+    );
+    expect(joined).toEqual(message(fence));
+
+    // Deltas missed while the connection was down leave the text where it was until the read fills it.
+    const gap = buildTranscript(
+      events(
+        { _tag: "MessageDelta", messageId: "m", text: "```artifact\n", offset: 0 },
+        { _tag: "MessageDelta", messageId: "m", text: "</style>\n```", offset: 19 },
+      ),
+    );
+    expect(gap).toEqual(message("```artifact\n"));
+
+    // A machine too old to send offsets has its deltas appended.
+    const older = buildTranscript(
+      events(
+        { _tag: "MessageDelta", messageId: "m", text: "Hel" },
+        { _tag: "MessageDelta", messageId: "m", text: "lo" },
+      ),
+    );
+    expect(older).toEqual(message("Hello"));
+  });
+
   it("puts the files a turn changed on its footer, arriving after the next turn began, and their undo", () => {
     const changed: EventPayload = {
       _tag: "TurnFilesChanged",

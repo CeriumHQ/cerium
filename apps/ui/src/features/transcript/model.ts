@@ -152,6 +152,20 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
   ...(item.writtenBy ? { writtenIn: item.writtenBy.threadTitle } : {}),
 });
 
+/**
+ * A streamed block's text with a delta in it, or undefined when the delta adds nothing. A delta that
+ * says where it starts adds only what the text lacks, so the text streamed so far, which a thread
+ * read mid-reply starts with, and deltas already held overlap without repeating; one past the text's
+ * end, after deltas the window missed, waits for the read that follows a reconnect to fill the gap.
+ * A delta without an offset, from an older machine, is appended.
+ */
+const withDelta = (held: string | undefined, delta: { readonly text: string; readonly offset?: number }) => {
+  const text = held ?? "";
+  if (delta.offset === undefined) return text + delta.text;
+  if (delta.offset > text.length || delta.offset + delta.text.length <= text.length) return undefined;
+  return text.slice(0, delta.offset) + delta.text;
+};
+
 /** Whether the agent is mid-turn, waiting for input, or gone for good (stopped or failed). */
 export type AgentActivity = "running" | "idle" | "ended";
 
@@ -254,8 +268,8 @@ export const buildTranscript = (
         break;
       case "MessageDelta": {
         const key = `message:${payload.messageId}`;
-        const text = (existing(key, "message")?.text ?? "") + payload.text;
-        upsert(key, { kind: "message", id: key, text, streaming: true });
+        const text = withDelta(existing(key, "message")?.text, payload);
+        if (text !== undefined) upsert(key, { kind: "message", id: key, text, streaming: true });
         break;
       }
       case "MessageCompleted": {
@@ -265,8 +279,8 @@ export const buildTranscript = (
       }
       case "ReasoningDelta": {
         const key = `reasoning:${payload.messageId}`;
-        const text = (existing(key, "reasoning")?.text ?? "") + payload.text;
-        upsert(key, { kind: "reasoning", id: key, text, streaming: true });
+        const text = withDelta(existing(key, "reasoning")?.text, payload);
+        if (text !== undefined) upsert(key, { kind: "reasoning", id: key, text, streaming: true });
         break;
       }
       case "ReasoningCompleted": {

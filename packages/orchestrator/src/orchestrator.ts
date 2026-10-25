@@ -69,6 +69,7 @@ import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./qu
 import { planRestore, workSince } from "./restore.ts";
 import { commandOf, FolderActivity, turnFiles, type TurnWork } from "./turnFiles.ts";
 import { liveEvents, replayNotice, rewindPoint, startsAnew, undeliveredIds } from "./rewind.ts";
+import { StreamedText } from "./streamed.ts";
 import {
   Adapters,
   BusEndpoint,
@@ -459,8 +460,15 @@ export class Orchestrator extends Context.Service<
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
     /** Hands a live agent a Cerium notice, delivered like any message: as its next turn's input. */
     notify(agentId: AgentId, text: string): Effect.Effect<void>;
-    /** Every persisted event in a thread, in order. */
-    threadEvents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
+    /**
+     * Every persisted event in a thread, in order. With `streamed`, each block still streaming follows
+     * them as one delta holding its text so far, in its first delta's place: streamed text is never
+     * stored, and a reader joining mid-reply would otherwise start it partway through.
+     */
+    threadEvents(
+      threadId: ThreadId,
+      options?: { readonly streamed?: boolean },
+    ): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
     /**
      * Whether the thread waits for the user: its lead's permission request (a child's goes to the lead),
      * the lead's request to start an agent outside the catalog, or a question an agent asked.
@@ -583,10 +591,12 @@ export class Orchestrator extends Context.Service<
         }
       };
 
+      const streamed = new StreamedText();
+
       /** Stores (unless it's ephemeral) and publishes one of an agent's events, at `sequence`. */
       const record = (info: AgentInfo, sequence: number, payload: EventPayload, raw?: unknown) =>
         Effect.gen(function* () {
-          const event: AgentEvent = {
+          const event = streamed.note({
             id: `${info.id}:${sequence}` as EventId,
             threadId: info.threadId,
             agentId: info.id,
@@ -594,7 +604,7 @@ export class Orchestrator extends Context.Service<
             at: yield* Clock.currentTimeMillis,
             payload,
             ...(raw === undefined ? {} : { raw }),
-          };
+          });
           noteWork(info.id, event.at, payload);
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
           yield* PubSub.publish(feed, event);
@@ -2978,7 +2988,13 @@ export class Orchestrator extends Context.Service<
 
         notify: (agentId, text) => deliver(agentId, { _tag: "SystemNotice", text }),
 
-        threadEvents: (threadId) => store.listThreadEvents(threadId).pipe(Effect.mapError(unavailable)),
+        threadEvents: (threadId, options) =>
+          store.listThreadEvents(threadId).pipe(
+            Effect.map((events) =>
+              options?.streamed === true ? [...events, ...streamed.soFar(threadId)] : events,
+            ),
+            Effect.mapError(unavailable),
+          ),
 
         awaitingApproval: waitsOnUser,
       });

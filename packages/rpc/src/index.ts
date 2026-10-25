@@ -164,6 +164,12 @@ export const MachineRpcs = RpcGroup.make(
        * `withoutImages` in @cerium/protocol). Since `RPC_VERSION` 12; an older machine sends them.
        */
       withoutImages: Schema.optionalKey(Schema.Boolean),
+      /**
+       * Adds each reply still streaming as one delta holding its text so far, which a reader opening
+       * the thread mid-reply needs (see `threadEvents` in @cerium/orchestrator). An older machine
+       * leaves it out, and its deltas carry no `offset`.
+       */
+      streamed: Schema.optionalKey(Schema.Boolean),
     },
     success: UiEvents,
     error: CeriumError,

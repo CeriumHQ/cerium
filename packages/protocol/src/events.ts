@@ -17,9 +17,17 @@ export const SessionStarted = Schema.TaggedStruct("SessionStarted", {
   effort: Schema.optionalKey(ReasoningEffort),
 });
 
+/**
+ * Where a delta's text starts in its block's whole text so far. The orchestrator sets it on every
+ * delta it publishes (adapters leave it out), so a reader that missed some, joining mid-reply or
+ * across a reconnect, places each where it belongs instead of splicing the text.
+ */
+const DeltaOffset = Schema.optionalKey(NonNegativeInt);
+
 export const MessageDelta = Schema.TaggedStruct("MessageDelta", {
   messageId: Schema.NonEmptyString,
   text: Schema.String,
+  offset: DeltaOffset,
 });
 
 export const MessageCompleted = Schema.TaggedStruct("MessageCompleted", {
@@ -30,6 +38,7 @@ export const MessageCompleted = Schema.TaggedStruct("MessageCompleted", {
 export const ReasoningDelta = Schema.TaggedStruct("ReasoningDelta", {
   messageId: Schema.NonEmptyString,
   text: Schema.String,
+  offset: DeltaOffset,
 });
 
 export const ReasoningCompleted = Schema.TaggedStruct("ReasoningCompleted", {
