@@ -36,9 +36,13 @@ const chipShape =
 /** A control in the box's rows: a quiet pill. */
 export const chipClass = `${chipShape} text-fg-secondary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`;
 
-/** Access the agents run with, on the chip that stands for it once it isn't Auto. */
+/**
+ * Access the agents run with, on the chip that stands for it once it isn't Auto. Full access warns with
+ * a dot rather than an amber fill: it's often left on, and a fill would outshout send all day.
+ */
 const accessChipTone: Partial<Record<AccessMode, string>> = {
-  fullAccess: "bg-attention/12 text-attention hover:bg-attention/20 data-popup-open:bg-attention/20",
+  fullAccess:
+    "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary",
 };
 
 const accessIcon: Record<AccessMode, LucideIcon> = {
@@ -152,7 +156,7 @@ export function MoreMenu({
       <Tooltip label={label ? `Access: ${label}` : access ? "Access, several at once" : "Several at once"}>
         <Menu.Trigger
           aria-label={label ? `Access: ${label}` : "More options"}
-          className={`${chipShape} w-8 justify-center px-0 ${
+          className={`${chipShape} relative w-8 justify-center px-0 ${
             shown
               ? (accessChipTone[shown] ??
                 "bg-surface-hover text-fg-primary hover:bg-surface-active data-popup-open:bg-surface-active")
@@ -160,6 +164,9 @@ export function MoreMenu({
           }`}
         >
           <Icon size={shown ? 15 : 16} strokeWidth={1.75} />
+          {shown === "fullAccess" ? (
+            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-attention" />
+          ) : null}
         </Menu.Trigger>
       </Tooltip>
       <Menu.Portal>

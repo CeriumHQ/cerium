@@ -88,7 +88,7 @@ export function Rail({
                   className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
                     active
                       ? "text-fg-primary"
-                      : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
+                      : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
                   }`}
                 >
                   <Icon size={18} strokeWidth={1.75} />

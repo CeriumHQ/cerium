@@ -320,7 +320,7 @@ function BoxTab({ value, label, count = 0 }: { value: InboxBox; label: string; c
   return (
     <Tabs.Tab
       value={value}
-      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm"
+      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-secondary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm"
     >
       {label}
       {count > 0 ? <span className="font-normal text-fg-tertiary tabular-nums">{count}</span> : null}

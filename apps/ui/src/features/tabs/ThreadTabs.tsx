@@ -471,8 +471,8 @@ function ThreadTab({
             active
               ? "text-fg-primary"
               : tab.beside
-                ? "text-fg-secondary group-hover/tab:text-fg-primary"
-                : "text-fg-tertiary group-hover/tab:text-fg-secondary"
+                ? "text-fg-primary"
+                : "text-fg-secondary group-hover/tab:text-fg-primary"
           }`}
         >
           <TabFace tab={tab} title={title} active={active} unread={unread} />
