@@ -216,6 +216,7 @@ import { TurnFileView } from "../features/viewer/TurnFileView.tsx";
 import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
 import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
+import { Reveal } from "../components/Reveal.tsx";
 import { primaryHeld } from "../lib/keys.ts";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
@@ -1550,37 +1551,41 @@ function Workspace() {
     );
   };
 
-  /** The notices over the open thread's conversation. */
+  /** The notices over the open thread's conversation, each dropping in and folding back up. */
   const notices = (
     <>
-      {connection === "unreachable" && driven !== undefined ? (
-        <UnreachableNotice
-          machine={driven.name}
-          presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-          onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-        />
-      ) : connection === "unreachable" && !WEB ? (
-        <Notice tone="attention">
-          Reconnecting to Cerium's backend…
-          {import.meta.env.DEV ? (
-            <>
-              {" "}
-              Start it with <code>bun run dev</code>.
-            </>
-          ) : null}
-        </Notice>
-      ) : AsyncResult.isFailure(threadsResult) ? (
-        <Notice tone="error" clamp>
-          {messageOf(Cause.squash(threadsResult.cause))}
-        </Notice>
-      ) : null}
+      <Reveal shift={-6} className="shrink-0">
+        {connection === "unreachable" && driven !== undefined ? (
+          <UnreachableNotice
+            machine={driven.name}
+            presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+            onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+          />
+        ) : connection === "unreachable" && !WEB ? (
+          <Notice tone="attention">
+            Reconnecting to Cerium's backend…
+            {import.meta.env.DEV ? (
+              <>
+                {" "}
+                Start it with <code>bun run dev</code>.
+              </>
+            ) : null}
+          </Notice>
+        ) : AsyncResult.isFailure(threadsResult) ? (
+          <Notice tone="error" clamp>
+            {messageOf(Cause.squash(threadsResult.cause))}
+          </Notice>
+        ) : null}
+      </Reveal>
       {WEB ? null : <UpdateNotice />}
       <WhatsNewHost />
-      {actionError ? (
-        <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
-          {actionError}
-        </Notice>
-      ) : null}
+      <Reveal shift={-6} className="shrink-0">
+        {actionError ? (
+          <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
+            {actionError}
+          </Notice>
+        ) : null}
+      </Reveal>
     </>
   );
 
