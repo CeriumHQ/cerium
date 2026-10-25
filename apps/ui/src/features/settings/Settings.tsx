@@ -1,19 +1,6 @@
 import { Button } from "@base-ui/react/button";
-import {
-  ArrowLeft,
-  Bell,
-  Blocks,
-  Bot,
-  ChevronRight,
-  CircleUserRound,
-  Gauge,
-  GitBranch,
-  Keyboard,
-  Palette,
-  Settings2,
-  type LucideIcon,
-} from "lucide-react";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, type ComponentType } from "react";
 
 import { WEB } from "../../backend/target.ts";
 import { SlidingHighlight } from "../../components/SlidingHighlight.tsx";
@@ -25,6 +12,7 @@ import { GeneralSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
+import { settingsGlyphs, type GlyphProps } from "./glyphs.tsx";
 import { SourceControlSettings } from "./SourceControl.tsx";
 import { UsageSettings } from "./Usage.tsx";
 
@@ -42,21 +30,54 @@ export type SettingsCategory =
 const categories: ReadonlyArray<{
   readonly id: SettingsCategory;
   readonly label: string;
-  readonly icon: LucideIcon;
+  /** What the category holds, a phone's list shows under the name. */
+  readonly description: string;
+  readonly icon: ComponentType<GlyphProps>;
 }> = [
   // The desktop's own: starting at login, Discord, dictation and updates. A browser has none of them.
-  ...(WEB ? [] : [{ id: "general" as const, label: "General", icon: Settings2 }]),
-  { id: "account", label: "Account", icon: CircleUserRound },
+  ...(WEB
+    ? []
+    : [
+        {
+          id: "general" as const,
+          label: "General",
+          description: "Startup, dictation, updates",
+          icon: settingsGlyphs.general,
+        },
+      ]),
+  { id: "account", label: "Account", description: "Sign-in and your devices", icon: settingsGlyphs.account },
   // Push notifications in a browser; the desktop's own through its shell.
   ...(WEB || window.cerium?.notify
-    ? [{ id: "notifications" as const, label: "Notifications", icon: Bell }]
+    ? [
+        {
+          id: "notifications" as const,
+          label: "Notifications",
+          description: "Alerts on this computer",
+          icon: settingsGlyphs.notifications,
+        },
+      ]
     : []),
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "agents", label: "Agents", icon: Bot },
-  { id: "harnesses", label: "Harnesses", icon: Blocks },
-  { id: "sourceControl", label: "Source control", icon: GitBranch },
-  { id: "usage", label: "Usage", icon: Gauge },
-  { id: "keyboard", label: "Keyboard", icon: Keyboard },
+  {
+    id: "appearance",
+    label: "Appearance",
+    description: "Palette and light or dark",
+    icon: settingsGlyphs.appearance,
+  },
+  { id: "agents", label: "Agents", description: "Models, effort and defaults", icon: settingsGlyphs.agents },
+  {
+    id: "harnesses",
+    label: "Harnesses",
+    description: "Installed CLIs and sign-ins",
+    icon: settingsGlyphs.harnesses,
+  },
+  {
+    id: "sourceControl",
+    label: "Source control",
+    description: "Git and GitHub",
+    icon: settingsGlyphs.sourceControl,
+  },
+  { id: "usage", label: "Usage", description: "Limits and spend", icon: settingsGlyphs.usage },
+  { id: "keyboard", label: "Keyboard", description: "Shortcuts", icon: settingsGlyphs.keyboard },
 ];
 
 /** The categories this window offers, which the command palette lists as pages to jump to. */
@@ -119,14 +140,19 @@ export function SettingsNav({
         <div className="flex flex-col divide-y divide-line-subtle overflow-hidden rounded-xl border border-line-subtle bg-surface-raised">
           {categories
             .filter(({ id }) => id !== "keyboard")
-            .map(({ id, label, icon: Icon }) => (
+            .map(({ id, label, description, icon: Icon }) => (
               <Button
                 key={id}
                 onClick={() => onSelect(id)}
-                className="flex h-12 items-center gap-3 px-3.5 text-left text-reading text-fg-primary transition-colors active:bg-surface-active"
+                className="flex min-h-14 items-center gap-3.5 px-3 py-2 text-left transition-colors active:bg-surface-active"
               >
-                <Icon size={18} strokeWidth={1.75} className="text-fg-secondary" />
-                <span className="flex-1">{label}</span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-window text-fg-secondary">
+                  <Icon size={20} />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="text-reading text-fg-primary">{label}</span>
+                  <span className="truncate text-meta text-fg-tertiary">{description}</span>
+                </span>
                 <ChevronRight size={17} strokeWidth={1.75} className="text-fg-tertiary" />
               </Button>
             ))}
@@ -174,11 +200,7 @@ export function SettingsNav({
                 : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
             }`}
           >
-            <Icon
-              size={15}
-              strokeWidth={1.75}
-              className={id === category ? "text-fg-primary" : "text-fg-tertiary"}
-            />
+            <Icon size={16} className={id === category ? "text-fg-primary" : "text-fg-tertiary"} />
             {label}
           </Button>
         ))}

@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Settings' categories have glyphs of Cerium's own in place of stock icons: a slider, a person, a ping, a prism, a fan of agents, a frame, a branch, a gauge and keycaps, each with one facet in the accent colour, as the Prism C has its facet. A phone's list shows each in a tile with a line on what the category holds, and the command palette's settings pages use the same glyphs.
+
 ### Removed
 
 - The repository's `social-preview.png`: GitHub now reuses the website's `og.jpg`, the same share image `apps/site/index.html` points to, uploaded through Settings → Social preview.

@@ -1,5 +1,6 @@
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 
+import type { GlyphProps } from "../settings/glyphs.tsx";
 import { hasWords, queryWords, type SearchResult } from "../threads/threadSearch.ts";
 
 /**
@@ -10,7 +11,7 @@ export interface PaletteCommand {
   /** Unique in the list. */
   readonly id: string;
   readonly label: string;
-  readonly icon: LucideIcon;
+  readonly icon: ComponentType<GlyphProps>;
   /** Where it's listed: "Actions" are always offered, "Settings" pages only once something is typed. */
   readonly group: "Actions" | "Settings";
   /** The key it already has, as the shortcuts list spells it ("Ctrl Shift 1"). */
