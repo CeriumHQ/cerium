@@ -493,6 +493,10 @@ export function Composer({
 
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
+  // An open thread's box is one line, attach and send either side of the message, with the lead's
+  // setup under it; a new thread's keeps its toolbar for the choices that start it.
+  const compact = thread !== undefined && !oneLine;
+  const inline = oneLine || compact;
 
   // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
   // client is a phone's, whose keyboard has a microphone of its own.
@@ -642,12 +646,12 @@ export function Composer({
       icon={Paperclip}
       label="Attach files"
       onClick={() => filePicker.current?.click()}
-      {...(oneLine ? { className: "size-10" } : {})}
+      {...(oneLine ? { className: "size-10" } : compact ? { className: "m-1 size-8" } : {})}
     />
   );
   // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
   const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
-  const discSize = oneLine ? "m-0.5 size-9" : "size-8";
+  const discSize = oneLine ? "m-0.5 size-9" : compact ? "m-1 size-8" : "size-8";
   const stopButton = (
     <Tooltip label="Stop" shortcut="Esc">
       {/* A ring turns around it while the turn runs, so the one control that ends it stands out. */}
@@ -711,10 +715,13 @@ export function Composer({
             : "Describe the task"
         : `Message ${threadShown?.label}`;
 
+  // Under the box, the thread's worktree at the start and its lead's model at the end.
   const threadSetup =
-    thread && threadShown ? (
-      <>
+    compact && thread && threadShown ? (
+      <div className="pointer-events-none mt-1 flex min-w-0 flex-wrap items-center gap-1 px-1 [&>*]:pointer-events-auto [&>:last-child]:ml-auto">
+        {thread.worktree ? <WorktreeChip {...thread.worktree} /> : null}
         <ModelWell
+          flat
           model={
             switching?.model ? (
               <ModelPicker
@@ -775,8 +782,7 @@ export function Composer({
             ) : undefined
           }
         />
-        {thread.worktree ? <WorktreeChip {...thread.worktree} /> : null}
-      </>
+      </div>
     ) : null;
 
   // A new thread's setup splits in two: what runs sits in the box's toolbar, beside the message;
@@ -900,7 +906,7 @@ export function Composer({
         <div
           className={`pointer-events-auto relative rounded-[18px] border bg-surface-panel shadow-raised backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
-          } ${oneLine ? "flex flex-wrap items-end p-1" : ""}`}
+          } ${inline ? "flex flex-wrap items-end p-1" : ""}`}
         >
           {dragging ? (
             <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-[13px] text-fg-secondary backdrop-blur-xl">
@@ -914,7 +920,7 @@ export function Composer({
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
           {queue ? (
-            <div className={oneLine ? "basis-full" : undefined}>
+            <div className={inline ? "basis-full" : undefined}>
               <QueueTray
                 queue={queue}
                 onEdit={(message) =>
@@ -927,18 +933,18 @@ export function Composer({
             </div>
           ) : null}
           {comments.length > 0 ? (
-            <div className={oneLine ? "basis-full" : undefined}>
+            <div className={inline ? "basis-full" : undefined}>
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
             </div>
           ) : null}
           {draft.attachments.length > 0 ? (
-            <div className={oneLine ? "basis-full" : undefined}>
+            <div className={inline ? "basis-full" : undefined}>
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
             </div>
           ) : null}
-          {oneLine ? attachButton : null}
+          {inline ? attachButton : null}
           <PromptEditor
-            inline={oneLine}
+            inline={inline}
             ref={input}
             handle={editor}
             resetKey={`${draftKey}:${epoch}`}
@@ -965,8 +971,8 @@ export function Composer({
               event.target.value = "";
             }}
           />
-          {/* While a phone's keyboard is up the setup waits below it; the box is one line. */}
-          {oneLine ? (
+          {/* One line, the setup under the box or, while a phone's keyboard is up, waiting below it. */}
+          {inline ? (
             actions
           ) : (
             <div className="flex items-end gap-1 px-2.5 pt-1 pb-2.5">
@@ -974,12 +980,13 @@ export function Composer({
                   instead of dropping onto a row of its own. */}
               <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-1">
                 {attachButton}
-                {thread ? threadSetup : newSetup}
+                {newSetup}
               </div>
               {actions}
             </div>
           )}
         </div>
+        {threadSetup}
       </div>
     </div>
   );

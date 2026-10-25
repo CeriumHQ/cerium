@@ -39,13 +39,22 @@ export function ModelWell({
   model,
   effort,
   access,
+  flat = false,
 }: {
   readonly model: ReactNode;
   readonly effort?: ReactNode;
   readonly access?: ReactNode;
+  /** Bare segments side by side, for the row under an open thread's box. */
+  readonly flat?: boolean;
 }) {
   return (
-    <div className="flex h-8 min-w-0 shrink-0 items-stretch divide-x divide-line-subtle overflow-hidden rounded-[10px] border border-line-subtle [&>*]:h-full [&>*]:rounded-none [&>*]:px-2.5">
+    <div
+      className={
+        flat
+          ? "flex h-7 min-w-0 shrink-0 items-center gap-0.5"
+          : "flex h-8 min-w-0 shrink-0 items-stretch divide-x divide-line-subtle overflow-hidden rounded-[10px] border border-line-subtle [&>*]:h-full [&>*]:rounded-none [&>*]:px-2.5"
+      }
+    >
       {model}
       {effort}
       {access}

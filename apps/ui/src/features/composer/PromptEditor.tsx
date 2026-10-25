@@ -377,7 +377,9 @@ export function PromptEditor({
         }}
         onBlur={() => onTrigger(undefined)}
         className={`block w-full overflow-y-auto text-[14px] leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-base ${
-          inline ? "max-h-32 min-h-10 px-1 py-2" : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
+          inline
+            ? "max-h-32 min-h-10 px-1 py-2 md:max-h-60"
+            : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
         }`}
       />
       {segments.length === 0 ? (
