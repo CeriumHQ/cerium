@@ -8,21 +8,33 @@ import {
   type UsageMeter,
 } from "@cerium/protocol";
 
-/** What one of the rail's usage rings shows: a harness's tightest limit. */
+/** One arc of a usage ring: a limit and what's left of it. */
+export interface UsageArc {
+  readonly label: string;
+  /** What's left of the meter, from 0 to 100. */
+  readonly left: number;
+  readonly level: MeterLevel;
+}
+
+/** What one of the rail's usage rings shows: a harness's limits as concentric arcs. */
 export interface UsageRing {
   readonly provider: ProviderId;
   readonly plan?: string;
-  /** What's left of the meter closest to its limit, from 0 to 100. */
+  /** Outermost first, in the harness's order; at most `MAX_ARCS`. */
+  readonly arcs: ReadonlyArray<UsageArc>;
+  /** What's left of the limit that will stop the harness first, from 0 to 100. */
   readonly left: number;
-  readonly level: MeterLevel;
   /** Every limit, for the ring's tooltip. */
   readonly meters: ReadonlyArray<UsageMeter>;
 }
 
+/** As many arcs as fit between the ring's edge and the harness's mark. */
+export const MAX_ARCS = 3;
+
 /**
  * A ring per harness that can run threads and reports a subscription's limits, in the backend's
- * order. Each fills with what's left of the limit that will stop it first: a spending cap only
- * charges past the plan, so it counts only when the plan has nothing else.
+ * order, with an arc per limit. A spending cap only charges past the plan, so it gets an arc only
+ * when the plan has nothing else. Past `MAX_ARCS` limits, the last arc is the tightest of the rest.
  */
 export const usageRings = (
   usage: ReadonlyArray<ProviderUsage>,
@@ -33,22 +45,24 @@ export const usageRings = (
     if (each._tag !== "Subscribed" || !ready.has(each.provider) || each.meters.length === 0) return [];
     const limits = each.meters.filter((meter) => meter.spend === undefined);
     const candidates = limits.length > 0 ? limits : each.meters;
-    const tightest = candidates.reduce((tight, meter) =>
-      leftPercent(meter) < leftPercent(tight) ? meter : tight,
-    );
-    // The worst level of any limit, so one running fast colours the ring even when it isn't the tightest.
-    const level = candidates
-      .map((meter) => meterLevel(meter, paceOf(meter, now)))
-      .reduce((worst, next) => (rank[next] > rank[worst] ? next : worst), "normal");
+    const shown =
+      candidates.length <= MAX_ARCS
+        ? candidates
+        : [...candidates.slice(0, MAX_ARCS - 1), tightest(candidates.slice(MAX_ARCS - 1))];
     return [
       {
         provider: each.provider,
         ...(each.plan === undefined ? {} : { plan: each.plan }),
-        left: leftPercent(tightest),
-        level,
+        arcs: shown.map((meter) => ({
+          label: meter.label,
+          left: leftPercent(meter),
+          level: meterLevel(meter, paceOf(meter, now)),
+        })),
+        left: leftPercent(tightest(candidates)),
         meters: each.meters,
       },
     ];
   });
 
-const rank: Record<MeterLevel, number> = { normal: 0, warning: 1, critical: 2 };
+const tightest = (meters: ReadonlyArray<UsageMeter>): UsageMeter =>
+  meters.reduce((tight, meter) => (leftPercent(meter) < leftPercent(tight) ? meter : tight));

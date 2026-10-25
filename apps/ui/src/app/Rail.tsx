@@ -133,38 +133,49 @@ function UsageRings({
 }
 
 const SIZE = 30;
-const STROKE = 2.5;
-const RADIUS = (SIZE - STROKE) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const tone = { normal: "text-success", warning: "text-attention", critical: "text-error" } as const;
+/** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
+const bands = { 1: [2.5, 0], 2: [2.5, 1], 3: [2, 0.5] } as const;
 
-/** The harness's mark inside an arc that empties clockwise from the top as its limit runs down. */
+/**
+ * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
+ * as its limit runs down.
+ */
 function Ring({ ring }: { ring: UsageRing }) {
+  const [stroke, gap] = bands[Math.min(ring.arcs.length, 3) as 1 | 2 | 3];
   return (
     <span className="relative grid size-[30px] place-items-center">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0 -rotate-90">
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          strokeWidth={STROKE}
-          className="stroke-line-strong"
-        />
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={STROKE}
-          strokeLinecap="round"
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={CIRCUMFERENCE * (1 - ring.left / 100)}
-          className={`transition-[stroke-dashoffset] duration-700 ease-out-soft ${tone[ring.level]}`}
-        />
+        {ring.arcs.map((arc, index) => {
+          const radius = SIZE / 2 - stroke / 2 - index * (stroke + gap);
+          const circumference = 2 * Math.PI * radius;
+          return (
+            <g key={arc.label}>
+              <circle
+                cx={SIZE / 2}
+                cy={SIZE / 2}
+                r={radius}
+                fill="none"
+                strokeWidth={stroke}
+                className="stroke-line-strong"
+              />
+              <circle
+                cx={SIZE / 2}
+                cy={SIZE / 2}
+                r={radius}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={stroke}
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference * (1 - arc.left / 100)}
+                className={`transition-[stroke-dashoffset] duration-700 ease-out-soft ${tone[arc.level]}`}
+              />
+            </g>
+          );
+        })}
       </svg>
-      <ProviderLogo provider={ring.provider} size={14} />
+      <ProviderLogo provider={ring.provider} size={ring.arcs.length > 2 ? 12 : 14} />
     </span>
   );
 }
