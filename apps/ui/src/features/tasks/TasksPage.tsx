@@ -82,7 +82,7 @@ export function TaskList({
         <h1 className="font-display text-[22px] leading-tight font-semibold font-stretch-expanded [font-size-adjust:none] max-md:text-[20px]">
           Tasks
         </h1>
-        <p className="mt-0.5 text-[13px] text-fg-tertiary max-md:text-sm">
+        <p className="mt-0.5 text-body text-fg-tertiary max-md:text-sm">
           {open.length > 0 ? `${open.length} to do` : done.length > 0 ? "All done" : "Nothing to do yet"}
         </p>
       </header>
@@ -106,7 +106,7 @@ export function TaskList({
           placeholder={compact ? "Add a task" : "Add a task, or press Tab to hand it to an agent"}
           aria-label="Add a task"
           maxLength={500}
-          className="h-full min-w-0 flex-1 bg-transparent text-[13.5px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
+          className="h-full min-w-0 flex-1 bg-transparent text-reading text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
         />
       </label>
 
@@ -194,7 +194,7 @@ function TaskRow({
         className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 self-stretch py-2 pr-3 text-left outline-none"
       >
         <span
-          className={`min-w-0 flex-1 truncate text-[13.5px] max-md:text-[15px] ${
+          className={`min-w-0 flex-1 truncate text-reading max-md:text-[15px] ${
             done ? "text-fg-tertiary line-through decoration-fg-tertiary/60" : "text-fg-primary"
           } ${task.title.trim() === "" ? "text-fg-tertiary italic" : ""}`}
         >
@@ -202,7 +202,7 @@ function TaskRow({
         </span>
         {task.note ? <Text size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" /> : null}
         {task.folder ? (
-          <span className="max-w-32 shrink-0 truncate text-[12px] text-fg-tertiary">
+          <span className="max-w-32 shrink-0 truncate text-meta text-fg-tertiary">
             {projectName(task.folder)}
           </span>
         ) : null}
@@ -268,7 +268,7 @@ export function TaskDetail({
               aria-label="Title"
               rows={1}
               maxLength={500}
-              className={`min-w-0 flex-1 resize-none bg-transparent py-0.5 text-[15px] leading-snug font-medium outline-none [field-sizing:content] placeholder:text-fg-tertiary max-md:text-[17px] ${
+              className={`min-w-0 flex-1 resize-none bg-transparent py-0.5 text-reading leading-snug font-medium outline-none [field-sizing:content] placeholder:text-fg-tertiary max-md:text-[17px] ${
                 done ? "text-fg-tertiary line-through" : "text-fg-primary"
               }`}
             />
@@ -279,13 +279,11 @@ export function TaskDetail({
             placeholder="Add a note"
             aria-label="Note"
             maxLength={20_000}
-            className="mt-2 min-h-20 resize-none bg-transparent pl-[30px] text-[13px] leading-relaxed text-fg-secondary outline-none [field-sizing:content] placeholder:text-fg-tertiary max-md:pl-[42px] max-md:text-[15px]"
+            className="mt-2 min-h-20 resize-none bg-transparent pl-[30px] text-body leading-relaxed text-fg-secondary outline-none [field-sizing:content] placeholder:text-fg-tertiary max-md:pl-[42px] max-md:text-[15px]"
           />
 
           <section className="mt-6 flex flex-col gap-2.5 border-t border-line-subtle pt-4">
-            <h3 className="text-[12px] font-medium text-fg-tertiary max-md:text-[13px]">
-              Hand it to an agent
-            </h3>
+            <h3 className="text-meta font-medium text-fg-tertiary max-md:text-[13px]">Hand it to an agent</h3>
             <div className="flex items-center gap-2">
               <div className="-ml-2 min-w-0">
                 <ProjectPicker
@@ -297,7 +295,7 @@ export function TaskDetail({
               </div>
               <Button
                 onClick={() => onHandOff(task)}
-                className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 max-md:h-10 max-md:text-sm"
+                className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 max-md:h-10 max-md:text-sm"
               >
                 Start
                 <ArrowUpRight size={14} strokeWidth={2} />
@@ -305,7 +303,7 @@ export function TaskDetail({
             </div>
           </section>
 
-          <p className="mt-6 text-[12px] text-fg-tertiary">
+          <p className="mt-6 text-meta text-fg-tertiary">
             Added {ago(task.createdAt, now)}
             {task.doneAt === undefined ? null : ` · done ${ago(task.doneAt, now)}`}
           </p>

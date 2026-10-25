@@ -200,7 +200,7 @@ function BranchRow({
   if (branch?.branch === undefined) return null;
   const pull = branch.pullRequest;
   const heading = (
-    <h3 className="flex h-7 items-center gap-1.5 px-2 text-2xs font-medium text-fg-tertiary max-md:h-9 max-md:text-[12.5px]">
+    <h3 className="flex h-7 items-center gap-1.5 px-2 text-caption font-medium text-fg-tertiary max-md:h-9 max-md:text-[13px]">
       <GitBranch size={12} strokeWidth={2} className="shrink-0" />
       <span className="truncate">{branch.branch}</span>
     </h3>
@@ -219,7 +219,7 @@ function BranchRow({
       {heading}
       <Button
         onClick={onCreate}
-        className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-11 max-md:text-[14px]"
+        className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-11 max-md:text-[14px]"
       >
         <Plus size={14} strokeWidth={1.75} className="shrink-0" />
         Open a pull request from this branch
@@ -295,7 +295,7 @@ function Page({
   if (page === undefined) {
     if (AsyncResult.isFailure(result)) {
       return (
-        <li className="px-4 py-6 text-center text-[12.5px] text-error">
+        <li className="px-4 py-6 text-center text-meta text-error">
           {failureMessage(result.cause, "The pull requests couldn't be listed.")}
         </li>
       );
@@ -304,7 +304,7 @@ function Page({
   }
   if (after === undefined && page.pullRequests.length === 0) {
     return (
-      <li className="flex flex-col items-center gap-2 px-6 py-10 text-center text-[12.5px] text-fg-tertiary">
+      <li className="flex flex-col items-center gap-2 px-6 py-10 text-center text-meta text-fg-tertiary">
         {filtered ? "No pull requests match." : "No open pull requests."}
         {filtered ? (
           <Button
@@ -345,7 +345,7 @@ function ReadOn({ next, onMore }: { next: string; onMore: (next: string) => void
     return () => observer.disconnect();
   }, [next, onMore]);
   return (
-    <li ref={element} className="flex h-12 items-center justify-center text-[12px] text-fg-tertiary">
+    <li ref={element} className="flex h-12 items-center justify-center text-meta text-fg-tertiary">
       Loading more…
     </li>
   );

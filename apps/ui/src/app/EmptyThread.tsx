@@ -160,18 +160,18 @@ export function EmptyThread({
           </h1>
           {onSetUp ? (
             <>
-              <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-[13px] leading-relaxed text-fg-tertiary">
+              <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-body leading-relaxed text-fg-tertiary">
                 Set up Claude, Codex, Muse, Cursor or OpenCode to start.
               </p>
               <Button
                 onClick={onSetUp}
-                className="mt-3 flex h-8 items-center rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+                className="mt-3 flex h-8 items-center rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
               >
                 Set up a harness
               </Button>
             </>
           ) : mode === "chat" ? (
-            <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-[13px] leading-relaxed text-fg-tertiary">
+            <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-body leading-relaxed text-fg-tertiary">
               Chats read and search the web, and never change your files.
             </p>
           ) : null}

@@ -40,7 +40,7 @@ export function AppearanceSettings() {
               <span className="relative block aspect-[16/10] overflow-hidden rounded-xl ring-1 ring-line-strong transition-[box-shadow] duration-150 group-hover:ring-fg-tertiary group-focus-visible:ring-2 group-focus-visible:ring-focus-ring group-data-checked:ring-2 group-data-checked:ring-accent">
                 <WindowSample palette={option.id} theme={shown} />
               </span>
-              <span className="flex items-center gap-2 px-0.5 text-[13px] text-fg-secondary group-data-checked:font-medium group-data-checked:text-fg-primary">
+              <span className="flex items-center gap-2 px-0.5 text-body text-fg-secondary group-data-checked:font-medium group-data-checked:text-fg-primary">
                 <span className="grid size-3.5 place-items-center rounded-full border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
                   <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
                 </span>
@@ -79,7 +79,7 @@ function ModePicker() {
             value={option}
             nativeButton
             render={<button type="button" aria-label={label} />}
-            className="flex h-6.5 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-fg-tertiary outline-none transition-colors duration-150 hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-surface-raised data-checked:text-fg-primary data-checked:shadow-raised"
+            className="flex h-6.5 items-center gap-1.5 rounded-md px-2.5 text-meta text-fg-tertiary outline-none transition-colors duration-150 hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-surface-raised data-checked:text-fg-primary data-checked:shadow-raised"
           >
             <Icon size={13} strokeWidth={1.75} aria-hidden="true" />
             {label}

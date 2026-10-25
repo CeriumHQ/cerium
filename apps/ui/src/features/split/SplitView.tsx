@@ -348,7 +348,7 @@ function PaneHeader({
     <ContextMenuArea menu={chrome.menu}>
       <header
         {...chrome.grip}
-        className={`group/pane flex h-10 shrink-0 cursor-default items-center gap-2 border-b border-line-subtle pr-1 pl-3 text-[12.5px] select-none ${
+        className={`group/pane flex h-10 shrink-0 cursor-default items-center gap-2 border-b border-line-subtle pr-1 pl-3 text-meta select-none ${
           focused ? "text-fg-primary" : "text-fg-tertiary"
         }`}
       >

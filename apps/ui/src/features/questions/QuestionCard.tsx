@@ -40,16 +40,16 @@ function OptionText({ label, description }: { label: string; description: string
   const { name, recommended } = optionName(label);
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-[1.35] text-fg-primary max-md:text-[14px]">
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-body leading-[1.35] text-fg-primary max-md:text-[14px]">
         {name}
         {recommended ? (
-          <span className="rounded-sm bg-accent-soft px-1.5 text-2xs font-medium text-fg-secondary">
+          <span className="rounded-sm bg-accent-soft px-1.5 text-caption font-medium text-fg-secondary">
             Recommended
           </span>
         ) : null}
       </span>
       {description ? (
-        <span className="text-xs leading-[1.45] text-fg-tertiary max-md:text-[13px]">{description}</span>
+        <span className="text-meta leading-[1.45] text-fg-tertiary max-md:text-[13px]">{description}</span>
       ) : null}
     </span>
   );
@@ -82,7 +82,7 @@ function OwnWords({
         rows={2}
         aria-label="Your answer"
         placeholder="Your answer"
-        className="field-sizing-content max-h-40 min-h-16 w-full resize-none rounded-md border border-line-subtle bg-surface-window px-3 py-2 text-[13px] leading-[1.5] text-fg-primary outline-none placeholder:text-fg-tertiary focus:border-line-strong max-md:text-[14px]"
+        className="field-sizing-content max-h-40 min-h-16 w-full resize-none rounded-md border border-line-subtle bg-surface-window px-3 py-2 text-body leading-[1.5] text-fg-primary outline-none placeholder:text-fg-tertiary focus:border-line-strong max-md:text-[14px]"
       />
     );
   }
@@ -102,7 +102,7 @@ function OwnWords({
         onValueChange={onChange}
         onKeyDown={onKeyDown}
         placeholder={question.multiSelect ? "Add your own…" : "Something else…"}
-        className="h-6 min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:h-8 max-md:text-[14px]"
+        className="h-6 min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:h-8 max-md:text-[14px]"
       />
     </label>
   );
@@ -135,7 +135,7 @@ function QuestionBody({
   ) : null;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[14px] leading-[1.4] font-semibold break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
+      <p className="text-reading leading-[1.4] font-semibold break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
         {question.question}
         {question.multiSelect && question.options.length > 1 ? (
           <span className="font-normal text-fg-tertiary"> · pick any</span>
@@ -191,7 +191,7 @@ function QuestionBody({
 }
 
 const tab =
-  "flex h-6 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-fg-tertiary transition-colors outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-line-strong data-active:bg-surface-selected data-active:text-fg-primary max-md:h-8 max-md:px-2.5 max-md:text-[13px]";
+  "flex h-6 items-center gap-1 rounded-md px-2 text-meta font-medium text-fg-tertiary transition-colors outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-line-strong data-active:bg-surface-selected data-active:text-fg-primary max-md:h-8 max-md:px-2.5 max-md:text-[13px]";
 
 /** Ticks once a minute, so a card left open notices when its agent goes cold. */
 function useMinute() {
@@ -208,7 +208,7 @@ function ColdNote({ askedAt }: { askedAt: number }) {
   const idle = coldFor(askedAt, useMinute());
   if (idle === undefined) return null;
   return (
-    <span className="flex items-center gap-1 text-xs text-fg-tertiary">
+    <span className="flex items-center gap-1 text-meta text-fg-tertiary">
       Asked {idle} ago · cache likely cold
       <InfoTip label="About answering late">
         Answering wakes the agent, and after this long its next turn re-reads the whole conversation without
@@ -280,7 +280,7 @@ export function QuestionCard({
       }}
     >
       {from}
-      <div className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-secondary max-md:text-[13px]">
+      <div className="flex min-w-0 items-center gap-1.5 text-meta text-fg-secondary max-md:text-[13px]">
         <MessageCircleQuestionMark size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         {several ? (
           <Tabs.Root value={index} onValueChange={(value) => setIndex(Number(value))} className="min-w-0">
@@ -315,7 +315,7 @@ export function QuestionCard({
           {complete || !several ? "Send answer" : "Next"}
         </Button>
         {several ? (
-          <span className="px-1 text-xs text-fg-tertiary tabular-nums">
+          <span className="px-1 text-meta text-fg-tertiary tabular-nums">
             {answered.filter(Boolean).length} of {questions.length} answered
           </span>
         ) : null}
@@ -344,7 +344,7 @@ export function ClosedQuestions({
   if (outcome !== "answered") {
     const [first] = questions;
     return (
-      <div className="flex min-w-0 items-center gap-2 text-xs text-fg-tertiary">
+      <div className="flex min-w-0 items-center gap-2 text-meta text-fg-tertiary">
         {outcome === "dismissed" ? (
           <X size={12} strokeWidth={2.5} className="shrink-0" />
         ) : (
@@ -360,15 +360,15 @@ export function ClosedQuestions({
   }
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 text-xs text-fg-tertiary">
+      <div className="flex items-center gap-2 text-meta text-fg-tertiary">
         <MessageCircleQuestionMark size={12} strokeWidth={2} />
         {questions.length === 1 ? "You answered" : `You answered ${questions.length} questions`}
       </div>
       <dl className="ml-[5px] flex flex-col gap-2 border-l border-line-strong pl-3.5">
         {questions.map((question, at) => (
           <div key={at} className="flex flex-col gap-0.5">
-            <dt className="text-xs leading-[1.45] text-fg-tertiary select-text">{question.question}</dt>
-            <dd className="text-[13px] leading-[1.45] break-words whitespace-pre-wrap text-fg-primary select-text">
+            <dt className="text-meta leading-[1.45] text-fg-tertiary select-text">{question.question}</dt>
+            <dd className="text-body leading-[1.45] break-words whitespace-pre-wrap text-fg-primary select-text">
               {answerLine(resolution?.answers?.[at])}
             </dd>
           </div>

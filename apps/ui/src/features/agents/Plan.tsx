@@ -30,13 +30,13 @@ export function Plan({
   const settled = progress.completed + progress.cancelled;
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center text-2xs text-fg-tertiary max-md:text-xs">
+      <div className="flex items-center text-caption text-fg-tertiary max-md:text-xs">
         <span>Plan</span>
         <span className="ml-auto tabular-nums">
           {progress.finished ? "Done" : `${settled} of ${progress.total}`}
         </span>
       </div>
-      {explanation ? <p className="text-xs text-fg-tertiary max-md:text-[13px]">{explanation}</p> : null}
+      {explanation ? <p className="text-meta text-fg-tertiary max-md:text-[13px]">{explanation}</p> : null}
       <ol aria-label="Plan items" className="flex flex-col">
         {items.map((item, index) => (
           <Step key={item.id ?? index} item={item} working={working} last={index === items.length - 1}>
@@ -95,7 +95,7 @@ function Step({
       </span>
       <div className="min-w-0">
         <p
-          className={`text-[12.5px] leading-[1.45] break-words transition-colors duration-300 select-text max-md:text-[14px] ${
+          className={`text-meta leading-[1.45] break-words transition-colors duration-300 select-text max-md:text-[14px] ${
             active
               ? "font-medium text-fg-primary"
               : item.status === "completed"

@@ -238,8 +238,22 @@
   /* Set large and expanded, for the one question a new thread asks (app/EmptyThread.tsx). */
   --font-display: "Anybody Variable", var(--font-sans);
 
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1rem;
+  /*
+   * The type scale: five sizes a step apart that the eye can tell apart, so size and weight rank text
+   * before its colour has to. Hand-set sizes stay for glyph-sized marks and the few display heads.
+   * The phone layout (`max-md:`) sets its own, larger sizes for touch.
+   */
+  /* Timestamps, shortcuts, counts. */
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1rem;
+  /* What's said about a thing: paths, a model's name, a setting's description. */
+  --text-meta: 0.75rem;
+  /* The interface itself: rows, menus, buttons, fields. */
+  --text-body: 0.8125rem;
+  /* What's there to be read, and the headings of panels and sections. */
+  --text-reading: 0.875rem;
+  /* A page's or a dialog's title. */
+  --text-title: 1rem;
 
   /*
    * Motion. What arrives eases out (150ms for a control's own state, 200ms for something that moves

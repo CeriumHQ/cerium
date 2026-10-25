@@ -55,7 +55,7 @@ export function RunScoreboard({
               }}
               aria-current={thread.id === selectedId ? "page" : undefined}
               title={`${label}\n${thread.title}`}
-              className={`grid h-6.5 w-full grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1.5 text-left text-xs transition-colors duration-150 max-md:h-9 max-md:text-[13px] ${
+              className={`grid h-6.5 w-full grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1.5 text-left text-meta transition-colors duration-150 max-md:h-9 max-md:text-[13px] ${
                 thread.id === selectedId ? "bg-surface-selected" : "hover:bg-surface-hover"
               }`}
             >
@@ -70,7 +70,7 @@ export function RunScoreboard({
                 {label}
               </span>
               <span
-                className={`flex items-center gap-2 text-[11px] whitespace-nowrap text-fg-tertiary tabular-nums transition-opacity duration-150 max-md:text-xs ${
+                className={`flex items-center gap-2 text-caption whitespace-nowrap text-fg-tertiary tabular-nums transition-opacity duration-150 max-md:text-xs ${
                   archive ? "md:group-hover/line:opacity-0 md:group-has-[:focus-visible]/line:opacity-0" : ""
                 }`}
               >

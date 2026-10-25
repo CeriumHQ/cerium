@@ -18,7 +18,7 @@ import { projectArtifacts, type PanelArtifact } from "./model.ts";
 type Scope = "thread" | "project";
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
+  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * Every artifact of the open thread, or of its project's threads, beside the conversation: the
@@ -85,7 +85,7 @@ export function ArtifactsPanel({
     <div ref={element} className="flex h-full flex-col">
       <header className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle pr-1.5 pl-2 max-md:h-12 max-md:pl-3">
         {project === undefined ? (
-          <p className="px-2 text-[13px] font-medium text-fg-primary max-md:text-[15px]">Artifacts</p>
+          <p className="px-2 text-body font-medium text-fg-primary max-md:text-[15px]">Artifacts</p>
         ) : (
           <ToggleGroup
             value={[shown]}
@@ -178,7 +178,7 @@ function ProjectArtifacts({
 
 function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="px-6 py-8 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+    <p className="px-6 py-8 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
       {children}
     </p>
   );
@@ -248,10 +248,10 @@ function ArtifactCard({
           title={artifact.title}
           className="rounded-md border border-line-subtle"
         />
-        <span className="mt-1.5 block truncate px-0.5 text-[13px] font-medium text-fg-primary max-md:text-[14px]">
+        <span className="mt-1.5 block truncate px-0.5 text-body font-medium text-fg-primary max-md:text-[14px]">
           {title}
         </span>
-        <span className="block truncate px-0.5 text-[12px] text-fg-tertiary max-md:text-[13px]">
+        <span className="block truncate px-0.5 text-meta text-fg-tertiary max-md:text-[13px]">
           {thread ? `${thread} · ` : ""}
           {whenAgo(artifact.at)}
         </span>

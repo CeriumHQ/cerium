@@ -42,7 +42,7 @@ export function Connect({ number, titleId }: StepProps) {
           <Button
             onClick={check}
             disabled={result.waiting}
-            className="flex h-8 items-center gap-1.5 rounded-full border border-line-subtle px-3.5 text-[12.5px] text-fg-secondary transition-colors hover:border-line-strong hover:text-fg-primary disabled:text-fg-tertiary"
+            className="flex h-8 items-center gap-1.5 rounded-full border border-line-subtle px-3.5 text-meta text-fg-secondary transition-colors hover:border-line-strong hover:text-fg-primary disabled:text-fg-tertiary"
           >
             <RefreshCw size={12} strokeWidth={1.75} className={result.waiting ? "animate-spin" : ""} />
             {result.waiting ? "Checking…" : "Check again"}
@@ -95,7 +95,7 @@ function HarnessCard({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="flex h-7.5 items-center gap-1 rounded-full border border-line-subtle pr-2.5 pl-3 text-[12px] text-fg-secondary transition-colors hover:border-line-strong hover:text-fg-primary"
+              className="flex h-7.5 items-center gap-1 rounded-full border border-line-subtle pr-2.5 pl-3 text-meta text-fg-secondary transition-colors hover:border-line-strong hover:text-fg-primary"
             >
               Install
               <ArrowUpRight size={12} strokeWidth={1.75} />
@@ -119,7 +119,7 @@ function InstalledCard({
   const readiness = harnessReadiness(status);
   const { auth, setup } = status;
   const pill =
-    "flex h-7.5 items-center rounded-full bg-accent px-3.5 text-[12px] font-medium text-accent-fg transition-opacity hover:opacity-90";
+    "flex h-7.5 items-center rounded-full bg-accent px-3.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90";
   return (
     <>
       <Card
@@ -142,7 +142,7 @@ function InstalledCard({
               Set up
             </Button>
           ) : (
-            <span className="flex h-7.5 items-center gap-1.5 pr-1 text-[12px] text-success">
+            <span className="flex h-7.5 items-center gap-1.5 pr-1 text-meta text-success">
               <Check size={14} strokeWidth={2} />
               Ready
             </span>
@@ -175,13 +175,11 @@ function Card({
         <ProviderLogo provider={provider} size={15} className={ready ? "" : "opacity-45 grayscale"} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
-        <span
-          className={`truncate text-[13px] font-medium ${ready ? "text-fg-primary" : "text-fg-secondary"}`}
-        >
+        <span className={`truncate text-body font-medium ${ready ? "text-fg-primary" : "text-fg-secondary"}`}>
           {harnessName[provider]}
         </span>
         <span
-          className={`truncate text-[12px] ${readiness === "attention" ? "text-attention" : "text-fg-tertiary"}`}
+          className={`truncate text-meta ${readiness === "attention" ? "text-attention" : "text-fg-tertiary"}`}
         >
           {detail}
         </span>

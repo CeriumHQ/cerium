@@ -117,7 +117,7 @@ export function ProjectPicker({
       <Tooltip label={folder ?? "Choose the folder agents work in"}>
         <Combobox.Trigger
           aria-label="Project"
-          className={`flex h-8 max-w-52 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
+          className={`flex h-8 max-w-52 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
             folder ? "text-fg-primary" : needed ? "text-attention" : "text-fg-secondary"
           }`}
         >
@@ -152,7 +152,7 @@ export function ProjectPicker({
                   onOpenChange(false);
                   choose(first);
                 }}
-                className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary"
+                className="h-full min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary"
               />
             </label>
             {/* Under the search field, the list grows to 22rem or the room above the box. */}
@@ -201,10 +201,10 @@ function ProjectItem({ project, onRemove }: { project: ProjectInfo; onRemove: ()
         <ProjectBadge folder={project.path} name={name} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate text-[13px] ${project.missing ? "text-fg-disabled" : "text-fg-primary"}`}>
+        <span className={`truncate text-body ${project.missing ? "text-fg-disabled" : "text-fg-primary"}`}>
           {name}
         </span>
-        <span className="truncate text-2xs text-fg-tertiary">
+        <span className="truncate text-caption text-fg-tertiary">
           {project.missing ? "Folder not found" : projectPlace(project.path)}
         </span>
       </span>
@@ -237,7 +237,7 @@ function CloneItem() {
       <span className="grid size-4.5 shrink-0 place-items-center text-fg-secondary">
         <Download size={14} strokeWidth={1.75} />
       </span>
-      <span className="flex-1 text-[13px] text-fg-secondary group-data-highlighted/item:text-fg-primary">
+      <span className="flex-1 text-body text-fg-secondary group-data-highlighted/item:text-fg-primary">
         Clone a repository…
       </span>
     </Combobox.Item>
@@ -253,7 +253,7 @@ function AddFolderItem({ hint, elsewhere }: { hint: string | undefined; elsewher
     return (
       <>
         {hint ? (
-          <p className="px-2 pt-2 pb-1.5 text-[12.5px] leading-relaxed text-fg-tertiary">{hint}</p>
+          <p className="px-2 pt-2 pb-1.5 text-meta leading-relaxed text-fg-tertiary">{hint}</p>
         ) : (
           <Combobox.Separator className="mx-2 my-1 h-px bg-line-subtle" />
         )}
@@ -261,7 +261,7 @@ function AddFolderItem({ hint, elsewhere }: { hint: string | undefined; elsewher
           <span className="grid size-4.5 shrink-0 place-items-center text-fg-tertiary">
             <FolderPlus size={14} strokeWidth={1.75} />
           </span>
-          <span className="flex-1 text-[12.5px] leading-snug text-fg-tertiary">
+          <span className="flex-1 text-meta leading-snug text-fg-tertiary">
             Add folders in Cerium on {elsewhere}
           </span>
         </Combobox.Item>
@@ -271,7 +271,7 @@ function AddFolderItem({ hint, elsewhere }: { hint: string | undefined; elsewher
   return (
     <>
       {hint ? (
-        <p className="px-2 pt-2 pb-1.5 text-[12.5px] leading-relaxed text-fg-tertiary">{hint}</p>
+        <p className="px-2 pt-2 pb-1.5 text-meta leading-relaxed text-fg-tertiary">{hint}</p>
       ) : (
         <Combobox.Separator className="mx-2 my-1 h-px bg-line-subtle" />
       )}
@@ -279,7 +279,7 @@ function AddFolderItem({ hint, elsewhere }: { hint: string | undefined; elsewher
         <span className="grid size-4.5 shrink-0 place-items-center text-fg-secondary">
           <FolderPlus size={14} strokeWidth={1.75} />
         </span>
-        <span className="flex-1 text-[13px] text-fg-secondary group-data-highlighted/item:text-fg-primary">
+        <span className="flex-1 text-body text-fg-secondary group-data-highlighted/item:text-fg-primary">
           Add folder…
         </span>
       </Combobox.Item>

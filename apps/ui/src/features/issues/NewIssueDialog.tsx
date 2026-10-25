@@ -135,12 +135,12 @@ export function NewIssueDialog({
             readOnly={writing}
             placeholder="Add the details, or rough notes to generate from. Markdown works."
             spellCheck
-            className="max-h-64 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
+            className="max-h-64 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
           />
         </DialogField>
         {!mayLabel ? null : (
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] text-fg-secondary max-md:text-[13px]">Labels</span>
+            <span className="text-meta text-fg-secondary max-md:text-[13px]">Labels</span>
             <div className="overflow-hidden rounded-lg border border-line-strong">
               <LabelList
                 cwd={cwd}
@@ -159,7 +159,7 @@ export function NewIssueDialog({
           </div>
         )}
         {error === undefined ? null : (
-          <p role="alert" className="text-[12.5px] text-balance text-error max-md:text-[14px]">
+          <p role="alert" className="text-meta text-balance text-error max-md:text-[14px]">
             {error}
           </p>
         )}

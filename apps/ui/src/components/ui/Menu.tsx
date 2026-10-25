@@ -20,7 +20,7 @@ const popupClass =
 
 // Touch needs taller rows and bigger text, like the thread list's.
 const itemClass =
-  "flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover max-md:gap-2.5 max-md:py-2.5 max-md:text-[15px]";
+  "flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-body outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover max-md:gap-2.5 max-md:py-2.5 max-md:text-[15px]";
 
 export function MenuPopup({
   children,
@@ -69,7 +69,7 @@ export function MenuItem({
       {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
       {children}
       {shortcut ? (
-        <kbd className="ml-auto pl-6 font-sans text-2xs text-fg-tertiary max-md:hidden">
+        <kbd className="ml-auto pl-6 font-sans text-caption text-fg-tertiary max-md:hidden">
           {keyLabel(shortcut)}
         </kbd>
       ) : null}
@@ -83,7 +83,7 @@ export function MenuSeparator() {
 
 export function MenuGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <BaseMenu.GroupLabel className="px-2 pt-1.5 pb-1 text-2xs font-medium text-fg-tertiary select-none">
+    <BaseMenu.GroupLabel className="px-2 pt-1.5 pb-1 text-caption font-medium text-fg-tertiary select-none">
       {children}
     </BaseMenu.GroupLabel>
   );

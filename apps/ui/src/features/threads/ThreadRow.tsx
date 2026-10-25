@@ -54,7 +54,7 @@ export function ThreadRow({
   const [deleting, setDeleting] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const unread = thread.unread && !selected;
-  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${
+  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : quiet
@@ -87,7 +87,7 @@ export function ThreadRow({
           <Monitor size={11} strokeWidth={2} aria-label={`On ${thread.machine}`} />
         </span>
       ) : null}
-      <span className={`w-6 shrink-0 text-right text-2xs text-fg-tertiary tabular-nums ${yieldsToMore}`}>
+      <span className={`w-6 shrink-0 text-right text-caption text-fg-tertiary tabular-nums ${yieldsToMore}`}>
         {shortAgo(thread.updatedAt)}
       </span>
     </>

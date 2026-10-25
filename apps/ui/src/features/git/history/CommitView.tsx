@@ -34,7 +34,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
         <button
           type="button"
           onClick={onBack}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
           <ArrowLeft size={13} strokeWidth={1.75} />
           History
@@ -44,14 +44,14 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
         {AsyncResult.isFailure(result) ? (
           <Note>{messageOf(result.cause, "That commit couldn't be read.")}</Note>
         ) : detail === undefined ? (
-          <p className="px-4 py-3 text-[12px] text-fg-tertiary">Loading commit…</p>
+          <p className="px-4 py-3 text-meta text-fg-tertiary">Loading commit…</p>
         ) : (
           <div className="flex flex-col gap-4 py-3">
             <div className="flex flex-col gap-1.5 px-3">
-              <h2 className="text-[14px] leading-snug font-semibold text-pretty text-fg-primary max-md:text-[16px]">
+              <h2 className="text-reading leading-snug font-semibold text-pretty text-fg-primary max-md:text-[16px]">
                 {detail.commit.subject}
               </h2>
-              <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[12px] text-fg-tertiary max-md:text-[13px]">
+              <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-fg-tertiary max-md:text-[13px]">
                 <span className="truncate">{detail.commit.author}</span>
                 <span aria-hidden>·</span>
                 <time dateTime={new Date(detail.commit.at).toISOString()}>
@@ -63,7 +63,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
               </p>
               <div className="-ml-0.5 flex min-w-0 flex-wrap items-center gap-1">
                 <span className="flex shrink-0 items-center">
-                  <span title={detail.commit.sha} className="pl-0.5 font-mono text-[12px] text-fg-secondary">
+                  <span title={detail.commit.sha} className="pl-0.5 font-mono text-meta text-fg-secondary">
                     {detail.commit.short}
                   </span>
                   <CopyButton text={detail.commit.sha} label="Copy the full SHA" />
@@ -74,14 +74,14 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
               </div>
             </div>
             {detail.message !== detail.commit.subject ? (
-              <pre className="px-3 font-sans text-[12.5px] leading-relaxed whitespace-pre-wrap text-fg-secondary max-md:text-[14px]">
+              <pre className="px-3 font-sans text-meta leading-relaxed whitespace-pre-wrap text-fg-secondary max-md:text-[14px]">
                 {detail.message.startsWith(detail.commit.subject)
                   ? detail.message.slice(detail.commit.subject.length).replace(/^\s+/, "")
                   : detail.message}
               </pre>
             ) : null}
             <section aria-label="Files changed" className="flex flex-col px-1.5">
-              <h3 className="flex h-7 items-center px-1.5 text-2xs font-medium text-fg-tertiary max-md:h-9 max-md:text-[12.5px]">
+              <h3 className="flex h-7 items-center px-1.5 text-caption font-medium text-fg-tertiary max-md:h-9 max-md:text-[13px]">
                 {detail.files.length === 0
                   ? "No files changed here"
                   : detail.files.length === 1
@@ -97,7 +97,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
                     type="button"
                     onClick={() => onOpenFile(file)}
                     title={file.from === undefined ? file.path : `${file.path}, from ${file.from}`}
-                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]"
+                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-meta outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]"
                   >
                     <FileIcon path={file.path} className="size-4" />
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">

@@ -61,7 +61,7 @@ export function InfoTip({
         <Tooltip.Positioner side={side} sideOffset={6} collisionPadding={8} className="z-50">
           <Tooltip.Popup
             id={popupId}
-            className="max-w-[min(18rem,calc(100vw-1rem))] origin-(--transform-origin) rounded-lg border border-line-subtle bg-surface-overlay px-3 py-2 text-xs leading-relaxed text-fg-secondary shadow-overlay backdrop-blur-xl transition-[opacity,scale] duration-150 ease-out-soft select-text data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 max-md:text-[13px]"
+            className="max-w-[min(18rem,calc(100vw-1rem))] origin-(--transform-origin) rounded-lg border border-line-subtle bg-surface-overlay px-3 py-2 text-meta leading-relaxed text-fg-secondary shadow-overlay backdrop-blur-xl transition-[opacity,scale] duration-150 ease-out-soft select-text data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 max-md:text-[13px]"
           >
             {children}
           </Tooltip.Popup>

@@ -128,7 +128,7 @@ export function SelectionReply({ within }: { within: RefObject<HTMLElement | nul
           >
             {writing ? (
               <div className="flex w-80 flex-col gap-2 p-2.5">
-                <Popover.Title className="line-clamp-2 border-l-2 border-accent/60 pl-2 text-[12px] font-normal text-fg-tertiary">
+                <Popover.Title className="line-clamp-2 border-l-2 border-accent/60 pl-2 text-meta font-normal text-fg-tertiary">
                   {passage?.quote}
                 </Popover.Title>
                 <textarea
@@ -139,16 +139,16 @@ export function SelectionReply({ within }: { within: RefObject<HTMLElement | nul
                   placeholder="Comment on this"
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={onKeyDown}
-                  className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-[13px] outline-none [field-sizing:content] placeholder:text-fg-disabled focus:border-line-strong"
+                  className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-disabled focus:border-line-strong"
                 />
                 <div className="flex items-center justify-end gap-1">
-                  <Popover.Close className="h-7 rounded-md px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
+                  <Popover.Close className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
                     Cancel
                   </Popover.Close>
                   <Button
                     onClick={add}
                     disabled={text.trim() === ""}
-                    className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
+                    className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
                   >
                     Add comment
                   </Button>
@@ -159,7 +159,7 @@ export function SelectionReply({ within }: { within: RefObject<HTMLElement | nul
                 onClick={() => setWriting(true)}
                 // Pressing it would otherwise clear the selection before the click lands.
                 onPointerDown={(event) => event.preventDefault()}
-                className="flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-[12.5px] font-medium text-fg-secondary transition-colors hover:text-fg-primary"
+                className="flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:text-fg-primary"
               >
                 <MessageSquareReply size={13} strokeWidth={1.75} />
                 Reply

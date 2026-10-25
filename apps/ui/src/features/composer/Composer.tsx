@@ -890,7 +890,7 @@ export function Composer({
         />
         {gitFolder !== undefined && branch !== undefined ? (
           <>
-            <span aria-hidden className="text-[12px] text-fg-disabled">
+            <span aria-hidden className="text-meta text-fg-disabled">
               /
             </span>
             <WorktreePicker
@@ -947,7 +947,7 @@ export function Composer({
           } ${inline ? "flex flex-wrap items-end rounded-[24px] p-1" : "rounded-[18px]"}`}
         >
           {dragging ? (
-            <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-[13px] text-fg-secondary backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-body text-fg-secondary backdrop-blur-xl">
               <span className="flex items-center gap-2">
                 <Paperclip size={14} strokeWidth={1.75} />
                 Drop to attach

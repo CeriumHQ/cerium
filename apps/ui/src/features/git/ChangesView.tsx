@@ -66,13 +66,13 @@ export function ChangesView({
     return (
       <div className="flex flex-col items-center gap-3 pb-6">
         {children}
-        <p className="px-4 pt-6 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+        <p className="px-4 pt-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
           This folder isn't in a git repository.
         </p>
         {onInit === undefined ? null : (
           <Button
             onClick={onInit}
-            className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-[13px] font-medium text-fg-primary transition-colors hover:bg-surface-active max-md:h-10 max-md:px-4 max-md:text-[15px]"
+            className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-active max-md:h-10 max-md:px-4 max-md:text-[15px]"
           >
             Initialize repository
           </Button>
@@ -98,7 +98,7 @@ export function ChangesView({
         ),
       )}
       {status.truncated === true ? (
-        <p className="px-4 pt-2 text-[12px] text-fg-tertiary">More files changed than are listed here.</p>
+        <p className="px-4 pt-2 text-meta text-fg-tertiary">More files changed than are listed here.</p>
       ) : null}
     </div>
   );
@@ -188,7 +188,7 @@ function Group({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-[12px] font-medium text-fg-tertiary outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
+          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-meta font-medium text-fg-tertiary outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
         >
           <ChevronRight
             size={13}
@@ -247,7 +247,7 @@ function Row({
         aria-expanded={row.kind === "folder" ? !row.collapsed : undefined}
         onClick={onActivate}
         style={{ paddingLeft: 4 + row.depth * INDENT }}
-        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-1.5 rounded-md pr-1 text-left text-[12.5px] text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:text-[14px]"
+        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-1.5 rounded-md pr-1 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:text-[14px]"
       >
         <span className="grid size-4 shrink-0 place-items-center text-fg-tertiary">
           {row.kind === "folder" ? (
@@ -275,7 +275,7 @@ function Row({
       </button>
       <span className={actionsClass}>{actions}</span>
       {row.kind === "folder" ? (
-        <span className="min-w-4 shrink-0 text-right text-[11.5px] text-fg-tertiary tabular-nums">
+        <span className="min-w-4 shrink-0 text-right text-meta text-fg-tertiary tabular-nums">
           {row.count}
         </span>
       ) : (
@@ -288,7 +288,7 @@ function Row({
 }
 
 const Empty = ({ children }: { children: ReactNode }) => (
-  <p className="px-4 py-6 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+  <p className="px-4 py-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
     {children}
   </p>
 );

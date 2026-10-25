@@ -123,7 +123,7 @@ export function SettingsNav({
               <Button
                 key={id}
                 onClick={() => onSelect(id)}
-                className="flex h-12 items-center gap-3 px-3.5 text-left text-[15px] text-fg-primary transition-colors active:bg-surface-active"
+                className="flex h-12 items-center gap-3 px-3.5 text-left text-reading text-fg-primary transition-colors active:bg-surface-active"
               >
                 <Icon size={18} strokeWidth={1.75} className="text-fg-secondary" />
                 <span className="flex-1">{label}</span>
@@ -140,15 +140,15 @@ export function SettingsNav({
       <div className="flex px-2 pb-2">
         <Button
           onClick={onBack}
-          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active"
+          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active"
         >
           <ArrowLeft size={14} strokeWidth={1.75} className="text-fg-secondary" />
           {backLabel}
-          <kbd className="ml-auto font-sans text-2xs text-fg-tertiary">Esc</kbd>
+          <kbd className="ml-auto font-sans text-caption text-fg-tertiary">Esc</kbd>
         </Button>
       </div>
 
-      <p className="px-4 pt-2 pb-1.5 text-xs font-medium text-fg-secondary/80">Settings</p>
+      <p className="px-4 pt-2 pb-1.5 text-meta font-medium text-fg-secondary/80">Settings</p>
       <nav ref={nav} aria-label="Settings" className="relative isolate flex flex-col gap-px px-2">
         <SlidingHighlight within={nav} active={category} className="rounded-md bg-surface-selected" />
         {categories.map(({ id, label, icon: Icon }) => (
@@ -168,7 +168,7 @@ export function SettingsNav({
             aria-current={id === category ? "page" : undefined}
             // The ring is a hairline inside the row: the open page's row is already highlighted, and a
             // full ring around that read as a heavy white box when settings took focus on opening.
-            className={`flex h-8 items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-1 focus-visible:-outline-offset-1 ${
+            className={`flex h-8 items-center gap-2.5 rounded-md px-2 text-left text-body transition-colors duration-150 focus-visible:outline-1 focus-visible:-outline-offset-1 ${
               id === category
                 ? "font-medium text-fg-primary"
                 : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"

@@ -126,7 +126,7 @@ export function McpServersRow() {
       hint={
         <>
           The ones set up in each harness, like a project's{" "}
-          <code className="font-mono text-[11px] text-fg-secondary">.mcp.json</code>. Cerium's own tools are
+          <code className="font-mono text-caption text-fg-secondary">.mcp.json</code>. Cerium's own tools are
           always on.
         </>
       }

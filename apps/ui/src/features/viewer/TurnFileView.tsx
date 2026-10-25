@@ -41,15 +41,15 @@ export function TurnFileView({
       className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
     >
       <FileIcon path={path} className="size-4 shrink-0" />
-      <span className="flex min-w-0 items-baseline gap-2 text-[13px] max-md:text-[15px]">
+      <span className="flex min-w-0 items-baseline gap-2 text-body max-md:text-[15px]">
         <span className="shrink-0 font-medium text-fg-primary">{nameOf(path)}</span>
         {dir === "" ? null : (
-          <span className="min-w-0 truncate text-[12px] text-fg-tertiary" title={path}>
+          <span className="min-w-0 truncate text-meta text-fg-tertiary" title={path}>
             {dir}
           </span>
         )}
       </span>
-      <span className="ml-auto shrink-0 text-[12px] text-fg-tertiary">Agent's change</span>
+      <span className="ml-auto shrink-0 text-meta text-fg-tertiary">Agent's change</span>
       <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
     </header>
   );
@@ -68,7 +68,7 @@ export function TurnFileView({
           <DiffView hunks={diff.hunks} path={path} layout={layout} onExpand={undefined} />
         </div>
         {diff.truncated === true ? (
-          <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-xs text-fg-tertiary">
+          <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary">
             A long diff, cut short.
           </p>
         ) : null}

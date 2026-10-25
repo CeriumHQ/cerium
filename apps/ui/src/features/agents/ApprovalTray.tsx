@@ -47,7 +47,7 @@ function Asking({ agent, position }: { agent?: AgentSummary | undefined; positio
   const counted = position !== undefined && position.total > 1;
   if (agent === undefined && !counted) return null;
   return (
-    <div className="flex items-center gap-1.5 text-xs text-fg-tertiary max-md:text-[13px]">
+    <div className="flex items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[13px]">
       {agent ? (
         <>
           <ProviderLogo provider={agent.provider} size={12} className="text-fg-primary" />
@@ -124,7 +124,7 @@ export function SpawnRequestCard({
     <div className={approvalShell}>
       <Asking agent={named ? lead : undefined} position={position} />
       <RequestHeadline headline={`Start a new agent: ${role}`} />
-      <div className="flex min-w-0 items-center gap-1.5 text-xs text-fg-tertiary max-md:text-[13px]">
+      <div className="flex min-w-0 items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[13px]">
         <ProviderLogo provider={provider} size={13} className="shrink-0 text-fg-primary" />
         <span className="truncate">
           <span className="font-medium text-fg-primary">{model}</span>
@@ -376,7 +376,7 @@ export function ApprovalTray({
                 <Button
                   onClick={() => setPicked(item.key)}
                   aria-label={`Answer ${whoOf(item)}'s request next: ${askedOf(item)}`}
-                  className="flex h-8 w-full items-center gap-2 px-3 text-left text-[12.5px] transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
+                  className="flex h-8 w-full items-center gap-2 px-3 text-left text-meta transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
                 >
                   <ProviderLogo
                     provider={item.agent.provider}
@@ -385,7 +385,7 @@ export function ApprovalTray({
                   />
                   <span className="shrink-0 font-medium text-fg-primary">{whoOf(item)}</span>
                   <span className="min-w-0 flex-1 truncate text-fg-tertiary">{askedOf(item)}</span>
-                  <span className="shrink-0 text-2xs text-fg-tertiary">Review</span>
+                  <span className="shrink-0 text-caption text-fg-tertiary">Review</span>
                 </Button>
               </li>
             ))}

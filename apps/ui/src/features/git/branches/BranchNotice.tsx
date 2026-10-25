@@ -15,7 +15,7 @@ export function BranchNotice({ controls }: { readonly controls: BranchControls }
   return (
     <div
       role={message.tone === "error" ? "alert" : "status"}
-      className="flex items-start gap-2 border-b border-line-subtle bg-surface-sunken py-1.5 pr-1.5 pl-3 text-[12.5px] max-md:text-[14px]"
+      className="flex items-start gap-2 border-b border-line-subtle bg-surface-sunken py-1.5 pr-1.5 pl-3 text-meta max-md:text-[14px]"
     >
       <p className={`min-w-0 flex-1 leading-snug ${tones[message.tone]}`}>{message.text}</p>
       <button

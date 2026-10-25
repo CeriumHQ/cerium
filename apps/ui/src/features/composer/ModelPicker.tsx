@@ -369,7 +369,7 @@ function MenuPopup({
                 placeholder="Search models"
                 aria-label="Search models"
                 onKeyDown={onKeyDown}
-                className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
+                className="h-full min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
               />
             </div>
             {/* With a rail, the list keeps one height, so switching tab doesn't move the menu. */}
@@ -378,9 +378,7 @@ function MenuPopup({
               viewportClassName={`scroll-py-1 ${browse.railed ? "" : "max-h-[min(17rem,calc(var(--available-height)-4rem))]"}`}
             >
               <Combobox.Empty>
-                <p className="px-3 py-5 text-center text-[12.5px] leading-relaxed text-fg-tertiary">
-                  {empty}
-                </p>
+                <p className="px-3 py-5 text-center text-meta leading-relaxed text-fg-tertiary">{empty}</p>
               </Combobox.Empty>
               <Combobox.List className="p-1.5 empty:p-0">
                 {(group: ModelGroup) => (
@@ -406,10 +404,12 @@ function MenuPopup({
               </Combobox.List>
             </ScrollArea>
             {note ? (
-              <p className="border-t border-line-subtle px-2.5 py-1.5 text-2xs text-fg-tertiary">{note}</p>
+              <p className="border-t border-line-subtle px-2.5 py-1.5 text-caption text-fg-tertiary">
+                {note}
+              </p>
             ) : null}
             {count ? (
-              <div className="flex items-center gap-2 border-t border-line-subtle px-2.5 py-1.5 text-2xs text-fg-tertiary">
+              <div className="flex items-center gap-2 border-t border-line-subtle px-2.5 py-1.5 text-caption text-fg-tertiary">
                 {count}
               </div>
             ) : null}
@@ -505,7 +505,7 @@ function ModelRow({
       <Combobox.Item
         value={key}
         disabled={disabled}
-        className="group/item flex h-8 cursor-default items-center gap-2 rounded-md pr-9 pl-2 text-[13px] text-fg-secondary outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary max-md:h-11 max-md:text-[15px]"
+        className="group/item flex h-8 cursor-default items-center gap-2 rounded-md pr-9 pl-2 text-body text-fg-secondary outline-none select-none data-disabled:opacity-40 data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary max-md:h-11 max-md:text-[15px]"
       >
         {multiple ? (
           <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong text-accent-fg transition-colors group-data-selected/item:border-accent group-data-selected/item:bg-accent">
@@ -523,7 +523,7 @@ function ModelRow({
         )}
         {/* Only the row the keyboard or pointer is on names its shortcut, so the list stays quiet. */}
         {shortcut ? (
-          <kbd className="hidden shrink-0 rounded-[5px] bg-surface-sunken px-1.5 py-0.5 font-sans text-2xs text-fg-tertiary tabular-nums md:group-data-highlighted/item:inline">
+          <kbd className="hidden shrink-0 rounded-[5px] bg-surface-sunken px-1.5 py-0.5 font-sans text-caption text-fg-tertiary tabular-nums md:group-data-highlighted/item:inline">
             {keyLabel(shortcut)}
           </kbd>
         ) : null}

@@ -14,7 +14,7 @@ export function CeriumBrand({ nameClassName }: { nameClassName?: string }) {
       <CeriumMark size={22} landing />
       <span
         data-launch-name=""
-        className={`font-display text-[16px] leading-none font-semibold tracking-[0.02em] font-stretch-expanded [font-size-adjust:none] ${nameClassName ?? ""}`}
+        className={`font-display text-title leading-none font-semibold tracking-[0.02em] font-stretch-expanded [font-size-adjust:none] ${nameClassName ?? ""}`}
       >
         cerium
       </span>

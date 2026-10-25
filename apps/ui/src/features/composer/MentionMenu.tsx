@@ -151,7 +151,7 @@ export function MentionMenu({
 
   return (
     <div className="pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl">
-      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-2xs font-medium text-fg-tertiary">
+      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-caption font-medium text-fg-tertiary">
         {files ? "Files and folders" : `${harness} skills`}
         {results.state === "loading" ? <LoaderCircle size={11} className="animate-spin" /> : null}
       </div>
@@ -173,7 +173,7 @@ export function MentionMenu({
               onPick(option.mention);
             }}
             onMouseMove={() => onActive(index)}
-            className={`flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] ${
+            className={`flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-body ${
               index === active ? "bg-surface-active text-fg-primary" : "text-fg-secondary"
             }`}
           >
@@ -184,12 +184,12 @@ export function MentionMenu({
             )}
             <span className="shrink-0 font-medium text-fg-primary">{option.label}</span>
             {option.detail ? (
-              <span className="min-w-0 truncate text-xs text-fg-tertiary">{option.detail}</span>
+              <span className="min-w-0 truncate text-meta text-fg-tertiary">{option.detail}</span>
             ) : null}
           </div>
         ))}
         {results.options.length === 0 && empty ? (
-          <p className="px-2 py-1.5 text-[12.5px] text-fg-tertiary">{empty}</p>
+          <p className="px-2 py-1.5 text-meta text-fg-tertiary">{empty}</p>
         ) : null}
       </div>
     </div>

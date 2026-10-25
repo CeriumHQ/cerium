@@ -79,7 +79,7 @@ export function KeyboardSettings() {
       <SettingsSection title="Shortcuts">
         <SettingsCard className="divide-y divide-line-subtle">
           {shortcuts.map(([action, keys]) => (
-            <div key={action} className="flex h-10 items-center justify-between gap-4 px-4 text-[13px]">
+            <div key={action} className="flex h-10 items-center justify-between gap-4 px-4 text-body">
               <span className="text-fg-secondary">{action}</span>
               <Keys keys={keys} size="sm" />
             </div>

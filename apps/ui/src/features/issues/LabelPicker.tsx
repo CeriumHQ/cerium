@@ -38,7 +38,7 @@ export function LabelList({
     return (
       <output className="grid place-items-center py-6 text-fg-tertiary" aria-label="Reading labels">
         {AsyncResult.isFailure(result) ? (
-          <span className="text-[13px]">The labels couldn't be read.</span>
+          <span className="text-body">The labels couldn't be read.</span>
         ) : (
           <LoaderCircle size={16} className="animate-spin" />
         )}
@@ -46,9 +46,7 @@ export function LabelList({
     );
   }
   if (choices.labels.length === 0) {
-    return (
-      <p className="px-3 py-4 text-center text-[13px] text-fg-tertiary">This repository has no labels.</p>
-    );
+    return <p className="px-3 py-4 text-center text-body text-fg-tertiary">This repository has no labels.</p>;
   }
   const needle = search.trim().toLowerCase();
   const shown =
@@ -66,14 +64,14 @@ export function LabelList({
             placeholder="Filter labels"
             aria-label="Filter labels"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
+            className="min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
           />
         </label>
       )}
       <ScrollArea className="min-h-0 flex-1" viewportClassName={maxHeight}>
         <div className="p-1">
           {shown.length === 0 ? (
-            <p className="px-2 py-3 text-center text-[13px] text-fg-tertiary">No label matches.</p>
+            <p className="px-2 py-3 text-center text-body text-fg-tertiary">No label matches.</p>
           ) : (
             shown.map((label) => (
               <Row
@@ -104,7 +102,7 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <label className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-fg-primary select-none hover:bg-surface-hover aria-disabled:opacity-60 max-md:py-2.5">
+    <label className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-fg-primary select-none hover:bg-surface-hover aria-disabled:opacity-60 max-md:py-2.5">
       <Checkbox.Root
         checked={checked}
         disabled={disabled}

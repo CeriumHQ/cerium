@@ -17,7 +17,7 @@ export const stateTone: Readonly<Record<FileState, string>> = {
 export function StateLetter({ state }: { state: FileState }) {
   return (
     <span
-      className={`w-3 shrink-0 text-center text-[11px] leading-none font-semibold ${stateTone[state]}`}
+      className={`w-3 shrink-0 text-center text-caption leading-none font-semibold ${stateTone[state]}`}
       // A letter that stands for a word, which `img` can't hold.
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="img"

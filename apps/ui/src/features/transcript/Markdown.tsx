@@ -239,6 +239,8 @@ export function Markdown({
             }
           : {})}
         lineNumbers={false}
+        // Body and reading sizes, spelled in px: Streamdown runs its class through tailwind-merge, which
+        // takes a named size such as `text-reading` for a colour and drops it beside `text-fg-*`.
         className={`${compact ? "text-[13px] leading-[1.6] text-fg-secondary [&>*+*]:mt-2.5" : "text-[14px] leading-[1.65] text-fg-primary [&>*+*]:mt-3"} [&_code]:font-mono [&_strong]:font-semibold [&_strong]:text-fg-primary`}
       >
         {user ? markMentions(text, [...mentions.keys()]) : text}

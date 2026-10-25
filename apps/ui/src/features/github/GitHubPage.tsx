@@ -42,7 +42,7 @@ const scopeAtom = Atom.make<FeedScope>("open").pipe(Atom.keepAlive);
 const kindAtom = Atom.make<FeedKind>("all").pipe(Atom.keepAlive);
 
 const kindClass =
-  "flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-primary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm";
+  "flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-primary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm";
 
 /**
  * The rail's GitHub page, in the sidebar's place: the open pull requests and issues of every project's
@@ -89,7 +89,7 @@ export function GitHubPageList({
           href={status.installUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90"
+          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
         >
           <ExternalLink size={13} strokeWidth={2} />
           Get GitHub CLI
@@ -104,7 +104,7 @@ export function GitHubPageList({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pt-1 pb-2 pl-3.5">
-        <h2 className="text-[14px] font-semibold text-fg-primary max-md:text-base">GitHub</h2>
+        <h2 className="text-reading font-semibold text-fg-primary max-md:text-base">GitHub</h2>
         <span className="ml-auto" />
         <IconButton icon={RefreshCw} label="Refresh" onClick={refresh} className="max-md:size-10" />
       </div>
@@ -169,7 +169,7 @@ export function GitHubPageList({
             {link !== undefined ? (
               <div className="px-2">
                 {linkRoot === undefined ? (
-                  <p className="px-2 py-3 text-[12.5px] text-fg-tertiary">
+                  <p className="px-2 py-3 text-meta text-fg-tertiary">
                     {link.repo} isn't one of your projects' repositories.
                   </p>
                 ) : (
@@ -197,7 +197,7 @@ export function GitHubPageList({
             ) : feed.loading ? (
               <Skeleton />
             ) : (
-              <p className="px-4 py-6 text-center text-[12.5px] leading-relaxed text-pretty text-fg-tertiary">
+              <p className="px-4 py-6 text-center text-meta leading-relaxed text-pretty text-fg-tertiary">
                 {feed.roots.size === 0
                   ? "Projects whose folder is a GitHub repository show their pull requests and issues here."
                   : query.trim() !== ""
@@ -300,8 +300,8 @@ function Notice({ title, body, children }: { title: string; body: string; childr
   return (
     <div className="flex flex-col items-start gap-3 px-4 py-6">
       <div className="flex flex-col gap-1">
-        <h3 className="text-[13.5px] font-medium text-fg-primary">{title}</h3>
-        <p className="text-[12.5px] leading-relaxed text-pretty text-fg-secondary">{body}</p>
+        <h3 className="text-reading font-medium text-fg-primary">{title}</h3>
+        <p className="text-meta leading-relaxed text-pretty text-fg-secondary">{body}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
@@ -314,7 +314,7 @@ export function GitHubPageEmpty() {
     <div className="grid h-full place-items-center rounded-xl border border-line-subtle bg-surface-panel shadow-raised">
       <div className="flex flex-col items-center gap-2 text-fg-tertiary">
         <GitPullRequest size={22} strokeWidth={1.5} />
-        <p className="text-[13px]">Pick a pull request or an issue</p>
+        <p className="text-body">Pick a pull request or an issue</p>
       </div>
     </div>
   );

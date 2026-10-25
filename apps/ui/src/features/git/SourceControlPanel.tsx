@@ -9,7 +9,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 type Tab = "changes" | "history";
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
+  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * Source control, beside the conversation: the repository the open work thread's folder is in, what
@@ -62,7 +62,7 @@ export function SourceControlPanel({
       <header className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle pr-1.5 pl-2 max-md:h-12 max-md:pl-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {header ?? (
-            <h2 className="truncate px-1 text-[13px] font-medium text-fg-primary max-md:text-[15px]">
+            <h2 className="truncate px-1 text-body font-medium text-fg-primary max-md:text-[15px]">
               Source control
             </h2>
           )}

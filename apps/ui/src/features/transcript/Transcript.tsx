@@ -436,7 +436,7 @@ const TranscriptItem = memo(
           return <ResponseHeader key={each.id} agent={{ provider, model }} routed={each.routed} />;
         case "routed":
           return each.decision.effort === undefined ? null : (
-            <div key={each.id} className="flex text-xs text-fg-tertiary">
+            <div key={each.id} className="flex text-meta text-fg-tertiary">
               <RoutedEffort routed={each.decision} />
             </div>
           );
@@ -528,7 +528,7 @@ export function ResponseHeader({
   routed?: RoutedDecision | undefined;
 }) {
   return (
-    <div className="flex items-center gap-2 pt-2 text-xs text-fg-tertiary">
+    <div className="flex items-center gap-2 pt-2 text-meta text-fg-tertiary">
       <span
         data-header-mark
         className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary"
@@ -562,7 +562,7 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
     case "question":
       return <QuestionBlock block={block} expired={activity === "ended"} />;
     case "error":
-      return <p className="text-[13px] text-fg-secondary">{block.message}</p>;
+      return <p className="text-body text-fg-secondary">{block.message}</p>;
     default:
       return null;
   }

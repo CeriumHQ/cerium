@@ -37,7 +37,7 @@ export function Notice({
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
-      className={`flex shrink-0 items-start gap-2 border-b px-4 py-2 text-[12.5px] leading-[1.4] text-fg-secondary max-md:text-[13px] [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:font-mono [&_code]:text-[11.5px] [&_code]:text-fg-primary ${
+      className={`flex shrink-0 items-start gap-2 border-b px-4 py-2 text-meta leading-[1.4] text-fg-secondary max-md:text-[13px] [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:font-mono [&_code]:text-caption [&_code]:text-fg-primary ${
         tone === "error"
           ? "border-error/25 bg-error/6"
           : tone === "update"

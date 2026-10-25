@@ -175,10 +175,10 @@ function PushSettings({ noun }: { noun: string }) {
     <>
       <SettingsCard className="flex items-start gap-4 p-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span id={masterId} className="text-[13px] font-medium text-fg-primary max-md:text-[15px]">
+          <span id={masterId} className="text-body font-medium text-fg-primary max-md:text-[15px]">
             Allow notifications
           </span>
-          <p className="text-[12.5px] leading-relaxed text-fg-tertiary max-md:text-[13.5px]">
+          <p className="text-meta leading-relaxed text-fg-tertiary max-md:text-[14px]">
             {allowed === "denied"
               ? blockedText
               : online
@@ -189,12 +189,12 @@ function PushSettings({ noun }: { noun: string }) {
             <button
               type="button"
               onClick={sendTest}
-              className="mt-1 w-fit rounded-md px-2 py-1 -ml-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:text-[13.5px]"
+              className="mt-1 w-fit rounded-md px-2 py-1 -ml-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:text-[14px]"
             >
               {testSent ? "Sent" : "Send a test"}
             </button>
           ) : null}
-          {error ? <p className="text-[12.5px] text-error max-md:text-[13.5px]">{error}</p> : null}
+          {error ? <p className="text-meta text-error max-md:text-[14px]">{error}</p> : null}
         </div>
         <SettingsSwitch
           checked={shown !== undefined}
@@ -254,7 +254,7 @@ function DesktopNotificationSettings() {
           <button
             type="button"
             onClick={sendTest}
-            className="rounded-md px-2 py-1 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            className="rounded-md px-2 py-1 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
           >
             {testSent ? "Sent" : "Send a test"}
           </button>
@@ -365,16 +365,13 @@ function InstallSteps() {
   ];
   return (
     <SettingsCard className="flex flex-col gap-3 p-4">
-      <p className="text-[13px] leading-relaxed text-fg-secondary max-md:text-[15px]">
+      <p className="text-body leading-relaxed text-fg-secondary max-md:text-[15px]">
         This browser shows notifications only for apps on the Home Screen.
       </p>
       <ol className="flex flex-col gap-2.5">
         {steps.map((step, index) => (
-          <li
-            key={index}
-            className="flex items-baseline gap-3 text-[13px] text-fg-primary max-md:text-[15px]"
-          >
-            <span className="grid size-5 shrink-0 translate-y-[-1px] place-items-center rounded-full bg-surface-raised text-2xs font-medium text-fg-secondary tabular-nums">
+          <li key={index} className="flex items-baseline gap-3 text-body text-fg-primary max-md:text-[15px]">
+            <span className="grid size-5 shrink-0 translate-y-[-1px] place-items-center rounded-full bg-surface-raised text-caption font-medium text-fg-secondary tabular-nums">
               {index + 1}
             </span>
             <span className="leading-relaxed">{step}</span>
@@ -387,7 +384,7 @@ function InstallSteps() {
 
 function Note({ children }: { children: ReactNode }) {
   return (
-    <SettingsCard className="px-4 py-5 text-[13px] leading-relaxed text-fg-tertiary max-md:text-[15px]">
+    <SettingsCard className="px-4 py-5 text-body leading-relaxed text-fg-tertiary max-md:text-[15px]">
       {children}
     </SettingsCard>
   );

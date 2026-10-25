@@ -54,14 +54,14 @@ export function HarnessSettings() {
         <div className="flex items-center gap-3">
           {/* The last check, once finished, so a check that changed nothing still shows it ran. */}
           {checkedAt !== undefined && !checking && !failed ? (
-            <span className="text-xs text-fg-tertiary tabular-nums max-sm:hidden">
+            <span className="text-meta text-fg-tertiary tabular-nums max-sm:hidden">
               Checked {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </span>
           ) : null}
           <Button
             onClick={check}
             disabled={checking}
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
           >
             <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
             {checking ? "Checking…" : "Check again"}
@@ -70,7 +70,7 @@ export function HarnessSettings() {
       }
     >
       {failed ? (
-        <p className="rounded-xl border border-line-subtle px-4 py-3.5 text-[13px] text-error">
+        <p className="rounded-xl border border-line-subtle px-4 py-3.5 text-body text-error">
           {machine
             ? `Couldn't reach ${machine}. Check again once it's connected.`
             : "Couldn't check the harnesses. Try again in a moment."}
@@ -287,7 +287,7 @@ function SetupDialog({
       title={`Set up ${name}'s ${setup.name}`}
       description={`Agents in ${listed} can't run commands until it's set up.${fullAccessWorks ? " Full access works without it." : ""} ${name} reports: ${setup.reason}.`}
     >
-      <div className="flex flex-col gap-2 text-[12.5px]">
+      <div className="flex flex-col gap-2 text-meta">
         <p className="text-fg-secondary">
           Run this once{setup.elevated ? " in a terminal opened as administrator" : " in a terminal"}, then
           check again:
@@ -344,14 +344,14 @@ function SignInProgress({ provider, onSignedIn }: { provider: ProviderId; onSign
 
   if (AsyncResult.isFailure(result)) {
     return (
-      <div className="flex items-center gap-3 text-[12.5px]">
+      <div className="flex items-center gap-3 text-meta">
         <p className="min-w-0 flex-1 text-error">The sign-in didn't finish.</p>
         <RowButton onClick={retry}>Try again</RowButton>
       </div>
     );
   }
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-line-subtle bg-surface-window py-2 pr-2 pl-3 text-[12.5px]">
+    <div className="flex items-center gap-3 rounded-xl border border-line-subtle bg-surface-window py-2 pr-2 pl-3 text-meta">
       <RefreshCw size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-fg-secondary">
         {url === undefined

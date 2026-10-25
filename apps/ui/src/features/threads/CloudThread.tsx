@@ -30,7 +30,7 @@ export function CloudThreadBar({
     return (
       <Bar>
         <RefreshCw size={14} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
-        <p className="min-w-0 flex-1 py-1.5 text-[13px] text-fg-secondary max-md:py-0 max-md:text-[14px]">
+        <p className="min-w-0 flex-1 py-1.5 text-body text-fg-secondary max-md:py-0 max-md:text-[14px]">
           Connecting to {name}…
         </p>
       </Bar>
@@ -39,7 +39,7 @@ export function CloudThreadBar({
   return (
     <Bar>
       <Icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-      <p className="min-w-0 flex-1 text-[13px] text-fg-secondary max-md:text-[14px] max-md:leading-snug">
+      <p className="min-w-0 flex-1 text-body text-fg-secondary max-md:text-[14px] max-md:leading-snug">
         {reach.kind === "reachable" ? (
           <>{name} is back online.</>
         ) : reach.kind === "outdated" ? (
@@ -52,7 +52,7 @@ export function CloudThreadBar({
       </p>
       <Button
         onClick={reach.kind === "reachable" ? onOpen : onStartNew}
-        className="flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 max-md:h-10 max-md:w-full max-md:max-w-none max-md:justify-center max-md:text-[14px]"
+        className="flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 max-md:h-10 max-md:w-full max-md:max-w-none max-md:justify-center max-md:text-[14px]"
       >
         {reach.kind === "reachable" ? (
           <>
@@ -77,7 +77,7 @@ export function CloudThreadBar({
 export function ConnectingNote({ machine }: { machine: string }) {
   return (
     <div className="pointer-events-none mx-auto mb-2 flex max-w-[46.2rem] justify-center">
-      <p className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface-raised px-3 py-1 text-[12.5px] text-fg-secondary backdrop-blur-2xl max-md:text-[13px]">
+      <p className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface-raised px-3 py-1 text-meta text-fg-secondary backdrop-blur-2xl max-md:text-[13px]">
         <RefreshCw size={12} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
         <span>
           Connecting to <span className="font-medium text-fg-primary">{machine}</span>. Sending waits for it.
@@ -92,7 +92,7 @@ export function LoadingThreadBar() {
   return (
     <Bar>
       <RefreshCw size={14} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
-      <p className="min-w-0 flex-1 py-1.5 text-[13px] text-fg-secondary max-md:py-0 max-md:text-[14px]">
+      <p className="min-w-0 flex-1 py-1.5 text-body text-fg-secondary max-md:py-0 max-md:text-[14px]">
         Opening the thread…
       </p>
     </Bar>
@@ -118,7 +118,7 @@ export function NoComputerBar() {
   return (
     <Bar>
       <MonitorOff size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-      <p className="min-w-0 flex-1 py-1.5 text-[13px] text-fg-secondary max-md:py-0 max-md:text-[14px] max-md:leading-snug">
+      <p className="min-w-0 flex-1 py-1.5 text-body text-fg-secondary max-md:py-0 max-md:text-[14px] max-md:leading-snug">
         None of your computers is online. Their threads stay readable; open Cerium on one to continue.
       </p>
     </Bar>

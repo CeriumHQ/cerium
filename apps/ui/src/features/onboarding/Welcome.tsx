@@ -151,7 +151,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
       <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
         {/* The mark that flies to and from the window's: the glass one while hello shows, else this. */}
         <CeriumMark size={18} landing={step !== "hello"} className="text-fg-primary" />
-        <span className="text-[13px] font-medium tracking-tight text-fg-secondary">Cerium</span>
+        <span className="text-body font-medium tracking-tight text-fg-secondary">Cerium</span>
       </header>
 
       <main className="relative grid min-h-0 flex-1">
@@ -181,7 +181,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
           {last ? null : (
             <Button
               onClick={close}
-              className="mr-2 h-9 rounded-full px-3 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-primary"
+              className="mr-2 h-9 rounded-full px-3 text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
             >
               Skip
             </Button>
@@ -269,7 +269,7 @@ function ContinueButton({
       onClick={onClick}
       onPointerMove={lean}
       onPointerLeave={settle}
-      className="group flex h-10 items-center gap-2.5 rounded-full bg-accent pr-2 pl-5 text-[13px] font-medium text-accent-fg transition-[translate,opacity] duration-300 ease-out-soft hover:opacity-95 active:opacity-85 motion-reduce:transition-none"
+      className="group flex h-10 items-center gap-2.5 rounded-full bg-accent pr-2 pl-5 text-body font-medium text-accent-fg transition-[translate,opacity] duration-300 ease-out-soft hover:opacity-95 active:opacity-85 motion-reduce:transition-none"
     >
       {children}
       <span className="grid size-6.5 place-items-center rounded-full bg-accent-fg/12 transition-transform duration-300 ease-out-soft group-hover:translate-x-0.5">

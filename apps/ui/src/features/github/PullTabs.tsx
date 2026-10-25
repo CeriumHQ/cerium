@@ -43,11 +43,11 @@ import type { PullActions } from "./usePullRequest.ts";
 // review threads on their lines.
 
 function Waiting({ children }: { children: string }) {
-  return <p className="px-6 py-10 text-center text-[12.5px] text-fg-tertiary">{children}</p>;
+  return <p className="px-6 py-10 text-center text-meta text-fg-tertiary">{children}</p>;
 }
 
 function Failed({ children }: { children: string }) {
-  return <p className="px-6 py-10 text-center text-[12.5px] text-error">{children}</p>;
+  return <p className="px-6 py-10 text-center text-meta text-error">{children}</p>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -71,7 +71,7 @@ export function PullCommits({ cwd, pull }: { cwd: string; pull: PullRequestDetai
         ))}
       </ol>
       {page.next === undefined ? null : (
-        <p className="text-center text-[12px] text-fg-tertiary">
+        <p className="text-center text-meta text-fg-tertiary">
           The first {page.commits.length} of {pull.commitCount} commits.{" "}
           <GitHubLink href={`${pull.url}/commits`}>See them all on GitHub</GitHubLink>
         </p>
@@ -89,7 +89,7 @@ function CommitRow({ commit }: { commit: PullRequestCommit }) {
         <Avatar user={commit.author} size={20} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate text-[13px] text-fg-primary" title={commit.headline}>
+            <span className="min-w-0 truncate text-body text-fg-primary" title={commit.headline}>
               {commit.headline}
             </span>
             {body === "" ? null : (
@@ -103,20 +103,20 @@ function CommitRow({ commit }: { commit: PullRequestCommit }) {
               </Button>
             )}
           </span>
-          <span className="text-[11.5px] text-fg-tertiary">
+          <span className="text-meta text-fg-tertiary">
             {commit.author?.login ?? commit.authorName ?? "Someone"} · {shortAgo(commit.at)}
           </span>
         </div>
         {commit.checks === undefined ? null : <ChecksMark state={commit.checks} />}
         <GitHubLink
           href={commit.url}
-          className="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11.5px] text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          className="shrink-0 rounded-md px-1.5 py-0.5 font-mono text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
           {commit.oid.slice(0, 7)}
         </GitHubLink>
       </div>
       {open ? (
-        <pre className="mx-3.5 mb-3 ml-[2.875rem] font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-fg-secondary">
+        <pre className="mx-3.5 mb-3 ml-[2.875rem] font-mono text-meta leading-relaxed whitespace-pre-wrap text-fg-secondary">
           {body}
         </pre>
       ) : null}
@@ -161,7 +161,7 @@ export function PullChecks({ cwd, pull }: { cwd: string; pull: PullRequestDetail
   const passed = count(["success"]);
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[12.5px] text-fg-secondary">
+      <p className="text-meta text-fg-secondary">
         {[
           failed > 0 ? `${failed} failed` : undefined,
           running > 0 ? `${running} running` : undefined,
@@ -184,19 +184,19 @@ export function PullChecks({ cwd, pull }: { cwd: string; pull: PullRequestDetail
             >
               <Icon size={15} strokeWidth={2} aria-label={word} className={`shrink-0 ${tone}`} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="flex min-w-0 items-center gap-1.5 text-[13px]">
+                <span className="flex min-w-0 items-center gap-1.5 text-body">
                   {check.group === undefined ? null : (
                     <span className="shrink-0 text-fg-tertiary">{check.group} /</span>
                   )}
                   <span className="min-w-0 truncate text-fg-primary">{check.name}</span>
                   {check.required ? (
-                    <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-line-subtle px-1.5 text-[11px] text-fg-tertiary">
+                    <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-line-subtle px-1.5 text-caption text-fg-tertiary">
                       Required
                     </span>
                   ) : null}
                 </span>
                 {check.description === undefined && duration === undefined ? null : (
-                  <span className="min-w-0 truncate text-[11.5px] text-fg-tertiary">
+                  <span className="min-w-0 truncate text-meta text-fg-tertiary">
                     {[check.description, duration].filter((part) => part !== undefined).join(" · ")}
                   </span>
                 )}
@@ -204,7 +204,7 @@ export function PullChecks({ cwd, pull }: { cwd: string; pull: PullRequestDetail
               {check.url === undefined ? null : (
                 <GitHubLink
                   href={check.url}
-                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
                 >
                   Details
                   <ExternalLink size={11} strokeWidth={2} />
@@ -307,7 +307,7 @@ export function PullFiles({
         />
       ))}
       {files.truncated === true ? (
-        <p className="text-center text-[12px] text-fg-tertiary">
+        <p className="text-center text-meta text-fg-tertiary">
           GitHub sends the first {files.files.length} files of {pull.changedFiles}.{" "}
           <GitHubLink href={`${pull.url}/files`}>See them all on GitHub</GitHubLink>
         </p>
@@ -393,16 +393,16 @@ function FileDiff({
           className={`shrink-0 text-fg-tertiary transition-transform duration-200 ease-out-soft motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
         />
         <FileIcon path={file.path} className="size-4 shrink-0" />
-        <span className="flex min-w-0 items-baseline gap-0 font-mono text-[12px]">
+        <span className="flex min-w-0 items-baseline gap-0 font-mono text-meta">
           <span className="min-w-0 truncate text-fg-tertiary">{folder}</span>
           <span className="shrink-0 text-fg-primary">{name}</span>
         </span>
         {file.from === undefined ? null : (
-          <span className="min-w-0 truncate font-mono text-[11.5px] text-fg-tertiary" title={file.from}>
+          <span className="min-w-0 truncate font-mono text-meta text-fg-tertiary" title={file.from}>
             from {file.from}
           </span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px] tabular-nums">
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-meta tabular-nums">
           {threads.length > 0 ? (
             <span className="text-fg-tertiary">
               {threads.length === 1 ? "1 thread" : `${threads.length} threads`}
@@ -427,7 +427,7 @@ function FileDiff({
             </div>
           ) : null}
           {file.noDiff === true || file.hunks.length === 0 ? (
-            <p className="px-4 py-4 text-[12.5px] text-fg-tertiary">
+            <p className="px-4 py-4 text-meta text-fg-tertiary">
               {file.noDiff === true
                 ? "GitHub doesn't show this file's changes: it's binary, or too large."
                 : "No changes to show."}

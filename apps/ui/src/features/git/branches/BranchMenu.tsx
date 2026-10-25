@@ -65,14 +65,14 @@ export function BranchMenu({
       >
         <Popover.Trigger
           aria-label={`Branch: ${title.name}`}
-          className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-[13px] text-fg-primary transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active max-md:h-10 max-md:text-[15px] @max-[15rem]:gap-1 @max-[15rem]:px-1.5"
+          className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-body text-fg-primary transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active max-md:h-10 max-md:text-[15px] @max-[15rem]:gap-1 @max-[15rem]:px-1.5"
         >
           <Icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-secondary" />
-          <span className={`truncate font-medium ${title.detached ? "font-mono text-[12px]" : ""}`}>
+          <span className={`truncate font-medium ${title.detached ? "font-mono text-meta" : ""}`}>
             {title.name}
           </span>
           {title.detached ? (
-            <span className="shrink-0 text-2xs text-fg-tertiary @max-[15rem]:hidden">detached</span>
+            <span className="shrink-0 text-caption text-fg-tertiary @max-[15rem]:hidden">detached</span>
           ) : null}
           <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-fg-tertiary" />
         </Popover.Trigger>
@@ -184,15 +184,15 @@ function BranchList({
         aria-activedescendant={entries.length > 0 ? entryId(active) : undefined}
         spellCheck={false}
         autoComplete="off"
-        className="h-9 shrink-0 border-b border-line-subtle bg-transparent px-3 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:h-12 max-md:text-[15px]"
+        className="h-9 shrink-0 border-b border-line-subtle bg-transparent px-3 text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:h-12 max-md:text-[15px]"
       />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
         {list === undefined ? (
-          <p className="px-2 py-3 text-[12.5px] text-fg-tertiary">
+          <p className="px-2 py-3 text-meta text-fg-tertiary">
             {AsyncResult.isFailure(result) ? "Couldn't list the branches." : "Loading branches…"}
           </p>
         ) : entries.length === 0 ? (
-          <p className="px-2 py-3 text-[12.5px] text-fg-tertiary">No branch matches.</p>
+          <p className="px-2 py-3 text-meta text-fg-tertiary">No branch matches.</p>
         ) : null}
         {/* The rows take the same entries and handlers on every render, so moving the highlight
             draws again only the rows it leaves and reaches. */}
@@ -214,7 +214,7 @@ function BranchList({
           </Fragment>
         ))}
         {list?.truncated === true ? (
-          <p className="px-2 py-2 text-[12px] text-fg-tertiary">
+          <p className="px-2 py-2 text-meta text-fg-tertiary">
             More branches exist than are listed. Search to find them.
           </p>
         ) : null}
@@ -222,7 +222,7 @@ function BranchList({
       <button
         type="button"
         onClick={() => onAsk({ kind: "create" })}
-        className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-12 max-md:text-[15px]"
+        className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-body text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-12 max-md:text-[15px]"
       >
         <Plus size={14} strokeWidth={1.75} />
         New branch…
@@ -238,7 +238,7 @@ const sectionLabel: Readonly<Record<Entry["kind"], string>> = {
 };
 
 function Section({ label }: { readonly label: string }) {
-  return <p className="px-2 pt-2 pb-1 text-2xs font-medium text-fg-tertiary select-none">{label}</p>;
+  return <p className="px-2 pt-2 pb-1 text-caption font-medium text-fg-tertiary select-none">{label}</p>;
 }
 
 function Row({
@@ -264,7 +264,7 @@ function Row({
   const here = controls.state?.branch;
   const blocked = entry.kind === "local" ? switchBlocked(entry.branch) : undefined;
   const name = entry.kind === "create" ? entry.name : entry.branch.name;
-  const mainClass = `flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] outline-none max-md:py-2.5 max-md:text-[15px] ${
+  const mainClass = `flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-body outline-none max-md:py-2.5 max-md:text-[15px] ${
     blocked === undefined ? "text-fg-secondary" : "text-fg-tertiary"
   }`;
   const main = (
@@ -298,7 +298,7 @@ function Row({
           >
             {name}
           </span>
-          <span className="ml-auto flex shrink-0 items-center gap-2 text-2xs text-fg-tertiary tabular-nums">
+          <span className="ml-auto flex shrink-0 items-center gap-2 text-caption text-fg-tertiary tabular-nums">
             {blocked !== undefined ? (
               <span>In another worktree</span>
             ) : entry.kind === "local" ? (

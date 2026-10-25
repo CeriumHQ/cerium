@@ -53,7 +53,7 @@ export function StashMenu({
           >
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {stashes.length === 0 ? (
-                <p className="px-2 py-3 text-[12.5px] text-fg-tertiary">Nothing is stashed.</p>
+                <p className="px-2 py-3 text-meta text-fg-tertiary">Nothing is stashed.</p>
               ) : (
                 stashes.map((entry) => (
                   <Entry key={entry.commit} entry={entry} controls={controls} onAsk={onAsk} />
@@ -63,7 +63,7 @@ export function StashMenu({
             {changes === 0 ? null : (
               <Popover.Close
                 onClick={() => onAsk({ kind: "stash" })}
-                className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-12 max-md:text-[15px]"
+                className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-body text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-12 max-md:text-[15px]"
               >
                 <Archive size={14} strokeWidth={1.75} />
                 Stash changes…
@@ -89,8 +89,8 @@ function Entry({
   return (
     <div className="group flex items-center gap-1 rounded-lg px-2 py-1.5 hover:bg-surface-hover max-md:py-2">
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px] text-fg-primary max-md:text-[15px]">{entry.message}</span>
-        <span className="truncate text-2xs text-fg-tertiary">
+        <span className="truncate text-body text-fg-primary max-md:text-[15px]">{entry.message}</span>
+        <span className="truncate text-caption text-fg-tertiary">
           {entry.branch === undefined ? "" : `${entry.branch} · `}
           {shortAgo(entry.at * 1000)}
         </span>

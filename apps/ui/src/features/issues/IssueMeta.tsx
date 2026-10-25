@@ -81,7 +81,7 @@ export function IssueMeta({
             onClick={() =>
               void actions.update(assignedToMe ? { removeAssignees: [me] } : { addAssignees: [me] })
             }
-            className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[12px] text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary disabled:opacity-40 max-md:h-9 max-md:text-[13px]"
+            className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary disabled:opacity-40 max-md:h-9 max-md:text-[13px]"
           >
             {assignedToMe ? (
               <UserMinus size={13} strokeWidth={1.75} />
@@ -100,7 +100,7 @@ export function IssueMeta({
             <GitHubLink href={milestone.url}>{issue.milestone}</GitHubLink>
           )}
           {milestone?.dueOn === undefined ? null : (
-            <span className="text-[12px] text-fg-tertiary">due {dueDate(milestone.dueOn)}</span>
+            <span className="text-meta text-fg-tertiary">due {dueDate(milestone.dueOn)}</span>
           )}
         </Fact>
       )}
@@ -145,7 +145,7 @@ export function IssueMeta({
               className="inline-flex min-w-0 items-center gap-1.5"
             >
               <GitBranch size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-              <span className="truncate font-mono text-[12px]">{branch.name}</span>
+              <span className="truncate font-mono text-meta">{branch.name}</span>
             </span>
           ))}
         </Fact>

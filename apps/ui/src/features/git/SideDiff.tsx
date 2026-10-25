@@ -42,7 +42,7 @@ const sideLabel: Readonly<Record<GitSide, string>> = { unstaged: "Unstaged", sta
 const noPicks: ReadonlySet<string> = new Set();
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
 
 const reasonOf = (error: unknown, fallback: string) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
@@ -68,7 +68,7 @@ function ActionButton({
     <Button
       aria-label={quiet ? label : undefined}
       onClick={onClick}
-      className={`flex h-6 shrink-0 items-center gap-1 rounded-md text-[12px] font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-active hover:text-fg-primary max-md:h-9 max-md:text-[14px] ${quiet ? "w-6 justify-center" : "px-1.5"}`}
+      className={`flex h-6 shrink-0 items-center gap-1 rounded-md text-meta font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-active hover:text-fg-primary max-md:h-9 max-md:text-[14px] ${quiet ? "w-6 justify-center" : "px-1.5"}`}
     >
       <Icon size={13} strokeWidth={2} className="shrink-0" />
       {quiet ? null : label}
@@ -237,9 +237,7 @@ export function SideDiff({
   const pickActions =
     picked.size === 0 ? null : (
       <>
-        <span className="mr-1 text-[12px] text-fg-tertiary tabular-nums">
-          {linesWord(picked.size)} picked
-        </span>
+        <span className="mr-1 text-meta text-fg-tertiary tabular-nums">{linesWord(picked.size)} picked</span>
         <IconButton icon={X} label="Unpick" onClick={() => setPicks(undefined)} className="size-6" />
         {shown === "staged" ? (
           <ActionButton
@@ -343,10 +341,10 @@ export function SideDiff({
             ))}
           </ToggleGroup>
         ) : (
-          <span className="px-1 text-[12.5px] font-medium text-fg-secondary">{sideLabel[shown]}</span>
+          <span className="px-1 text-meta font-medium text-fg-secondary">{sideLabel[shown]}</span>
         )}
         {stats ? (
-          <span className="ml-1 shrink-0 font-mono text-[11.5px] tabular-nums">
+          <span className="ml-1 shrink-0 font-mono text-meta tabular-nums">
             <span className="text-success">+{stats.added}</span>{" "}
             <span className="text-error">−{stats.removed}</span>
           </span>
@@ -358,7 +356,7 @@ export function SideDiff({
           role="alert"
           className="flex shrink-0 items-start gap-1 border-b border-line-subtle bg-error/10 py-1 pr-1.5 pl-3"
         >
-          <p className="min-w-0 flex-1 py-0.5 text-[12.5px] text-error">{failure}</p>
+          <p className="min-w-0 flex-1 py-0.5 text-meta text-error">{failure}</p>
           <IconButton icon={X} label="Dismiss" onClick={() => setFailure(undefined)} className="size-6" />
         </div>
       )}
@@ -429,7 +427,7 @@ function Body({
         />
       </div>
       {diff.truncated === true ? (
-        <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-xs text-fg-tertiary">
+        <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary">
           A long diff, cut short. Stage it whole.
         </p>
       ) : null}

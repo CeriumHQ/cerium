@@ -28,7 +28,7 @@ export function SettingsPage({
   const driven = useAtomValue(machineAtom);
   const badge =
     perMachine && driven ? (
-      <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-[12px] font-medium text-fg-primary">
+      <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-meta font-medium text-fg-primary">
         <Monitor size={12} strokeWidth={1.75} className="shrink-0" />
         <span className="truncate">On {driven.name}</span>
       </span>
@@ -47,7 +47,7 @@ export function SettingsPage({
             {action ? <div className="ml-auto flex shrink-0 items-center">{action}</div> : null}
           </div>
           {description ? (
-            <p className="max-w-md text-[13px] leading-relaxed text-fg-tertiary">{description}</p>
+            <p className="max-w-md text-body leading-relaxed text-fg-tertiary">{description}</p>
           ) : null}
         </header>
         {children}
@@ -72,10 +72,8 @@ export function SettingsSection({
     <section className="flex flex-col gap-3">
       <div className="flex items-end gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="flex items-center gap-2 text-[13.5px] font-medium text-fg-primary">{title}</h2>
-          {description ? (
-            <p className="text-[12.5px] leading-relaxed text-fg-tertiary">{description}</p>
-          ) : null}
+          <h2 className="flex items-center gap-2 text-reading font-medium text-fg-primary">{title}</h2>
+          {description ? <p className="text-meta leading-relaxed text-fg-tertiary">{description}</p> : null}
         </div>
         {action}
       </div>
@@ -106,11 +104,11 @@ export function SettingsRow({
   return (
     <div className={`flex min-h-12 items-center gap-4 px-4 py-2.5 ${className ?? ""}`}>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span id={labelId} className="text-[13px] font-medium text-fg-primary">
+        <span id={labelId} className="text-body font-medium text-fg-primary">
           {label}
         </span>
-        {hint ? <span className="text-xs leading-relaxed text-fg-tertiary">{hint}</span> : null}
-        {error ? <span className="text-xs leading-relaxed text-error">{error}</span> : null}
+        {hint ? <span className="text-meta leading-relaxed text-fg-tertiary">{hint}</span> : null}
+        {error ? <span className="text-meta leading-relaxed text-error">{error}</span> : null}
       </div>
       {control(labelId)}
     </div>
@@ -125,7 +123,7 @@ export function SettingsList({ children }: { children: ReactNode }) {
 /** A small tag beside a heading, such as "Experimental". */
 export function SettingsTag({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full border border-line-subtle px-1.5 text-2xs font-normal text-fg-tertiary">
+    <span className="rounded-full border border-line-subtle px-1.5 text-caption font-normal text-fg-tertiary">
       {children}
     </span>
   );
@@ -177,7 +175,7 @@ export function Keys({
         <kbd
           key={key}
           className={`grid place-items-center rounded-md border font-sans font-medium transition-[translate,border-width,background-color,color] duration-100 ${
-            size === "sm" ? "h-5 min-w-5 px-1 text-2xs" : "h-6 min-w-6 px-1.5 text-xs"
+            size === "sm" ? "h-5 min-w-5 px-1 text-caption" : "h-6 min-w-6 px-1.5 text-meta"
           } ${
             pressed
               ? "translate-y-px border-b border-accent bg-accent text-accent-fg"

@@ -33,7 +33,7 @@ const plural = (count: number, one: string, many = `${one}s`) => `${count} ${cou
 function Lines({ added, removed }: { added: number | undefined; removed: number | undefined }) {
   if (added === undefined && removed === undefined) return null;
   return (
-    <span className="shrink-0 text-[12px] tabular-nums">
+    <span className="shrink-0 text-meta tabular-nums">
       {added ? <span className="text-success">+{added}</span> : null}
       {added && removed ? " " : null}
       {removed ? <span className="text-error">−{removed}</span> : null}
@@ -63,7 +63,7 @@ function Row({
         onClick={onOpen}
         disabled={onOpen === undefined}
         title={file.path}
-        className="flex h-8 w-full min-w-0 cursor-default items-center gap-2 px-3 text-left text-[13px] outline-none hover:bg-surface-hover focus-visible:bg-surface-hover disabled:hover:bg-transparent max-md:h-10"
+        className="flex h-8 w-full min-w-0 cursor-default items-center gap-2 px-3 text-left text-body outline-none hover:bg-surface-hover focus-visible:bg-surface-hover disabled:hover:bg-transparent max-md:h-10"
       >
         <FileIcon path={file.path} className={`size-4 shrink-0 ${undone && !kept ? "opacity-60" : ""}`} />
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -74,7 +74,7 @@ function Row({
           >
             {nameOf(file.path)}
           </span>
-          {dir === "" ? null : <span className="min-w-0 truncate text-[12px] text-fg-tertiary">{dir}</span>}
+          {dir === "" ? null : <span className="min-w-0 truncate text-meta text-fg-tertiary">{dir}</span>}
         </span>
         {file.via === "command" ? (
           <Tooltip label="Changed by a command" side="top">
@@ -133,9 +133,9 @@ export function TurnChanges({
       className="overflow-hidden rounded-lg border border-line-subtle text-fg-primary"
     >
       <header className="flex min-h-9 items-center gap-2.5 border-b border-line-subtle py-1 pr-1.5 pl-3">
-        <h3 className="text-[13px] font-medium">{plural(total, "file")} changed</h3>
+        <h3 className="text-body font-medium">{plural(total, "file")} changed</h3>
         <Lines added={added || undefined} removed={removed || undefined} />
-        {undone === undefined ? null : <span className="text-[12px] text-fg-tertiary">· undone</span>}
+        {undone === undefined ? null : <span className="text-meta text-fg-tertiary">· undone</span>}
         <span className="flex-1" />
         {actions === undefined ? null : (
           <Tooltip
@@ -149,7 +149,7 @@ export function TurnChanges({
             <Button
               onClick={revert}
               disabled={busy}
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-60 max-md:h-9"
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-60 max-md:h-9"
             >
               {undone === undefined ? (
                 <Undo2 size={13} strokeWidth={1.75} />
@@ -179,13 +179,13 @@ export function TurnChanges({
       {hidden > 0 ? (
         <Button
           onClick={() => setExpanded(true)}
-          className="flex h-8 w-full cursor-default items-center border-t border-line-subtle px-3 text-left text-[12px] text-fg-tertiary outline-none hover:bg-surface-hover hover:text-fg-secondary focus-visible:bg-surface-hover"
+          className="flex h-8 w-full cursor-default items-center border-t border-line-subtle px-3 text-left text-meta text-fg-tertiary outline-none hover:bg-surface-hover hover:text-fg-secondary focus-visible:bg-surface-hover"
         >
           {hidden} more
         </Button>
       ) : null}
       {more > 0 && hidden === 0 ? (
-        <p className="border-t border-line-subtle px-3 py-1.5 text-[12px] text-fg-tertiary">
+        <p className="border-t border-line-subtle px-3 py-1.5 text-meta text-fg-tertiary">
           {plural(more, "more file")} not listed
         </p>
       ) : null}

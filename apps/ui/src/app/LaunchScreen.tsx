@@ -229,7 +229,7 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
           {/* Said only once starting takes long enough to wonder about. */}
           <output
             key={talking ? status : "quiet"}
-            className={`mt-12 h-4 text-[12.5px] leading-4 text-fg-tertiary ${
+            className={`mt-12 h-4 text-meta leading-4 text-fg-tertiary ${
               talking ? "animate-[launch-fade_360ms_ease-out_both]" : "invisible"
             }`}
           >

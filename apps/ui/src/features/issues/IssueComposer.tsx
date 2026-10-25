@@ -33,7 +33,7 @@ export function IssueComposer({
 
   if (issue.locked && !triage) {
     return (
-      <p className="flex items-center gap-2 rounded-lg border border-line-subtle px-3 py-2.5 text-[13px] text-fg-tertiary max-md:text-[14px]">
+      <p className="flex items-center gap-2 rounded-lg border border-line-subtle px-3 py-2.5 text-body text-fg-tertiary max-md:text-[14px]">
         <Lock size={13} strokeWidth={1.75} className="shrink-0" />
         This conversation is locked. Only collaborators can comment.
       </p>

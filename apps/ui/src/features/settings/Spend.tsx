@@ -110,7 +110,7 @@ export function SpendSection({
             <Toggle
               key={id}
               value={id}
-              className="rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+              className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
             >
               {label}
             </Toggle>
@@ -119,7 +119,7 @@ export function SpendSection({
       }
     >
       {AsyncResult.isFailure(result) && report === undefined ? (
-        <SettingsCard className="px-4 py-3.5 text-[13px] text-error">
+        <SettingsCard className="px-4 py-3.5 text-body text-error">
           {driven
             ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
             : "Couldn't read the usage. Try again in a moment."}
@@ -132,7 +132,7 @@ export function SpendSection({
         <>
           <Summary report={report} range={range} />
           <div className="flex items-center gap-2 pt-2">
-            <span className="text-[12.5px] text-fg-tertiary">By</span>
+            <span className="text-meta text-fg-tertiary">By</span>
             <ToggleGroup
               value={[by]}
               onValueChange={(value) => {
@@ -146,7 +146,7 @@ export function SpendSection({
                 <Toggle
                   key={id}
                   value={id}
-                  className="rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+                  className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
                 >
                   {label}
                 </Toggle>
@@ -199,11 +199,11 @@ function Summary({ report, range }: { report: SpendReport; range: SpendRange }) 
 function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 px-4 py-3.5">
-      <span className="text-xs text-fg-tertiary">{label}</span>
+      <span className="text-meta text-fg-tertiary">{label}</span>
       <span className="text-[24px] leading-none font-semibold tracking-tight text-fg-primary tabular-nums">
         {value}
       </span>
-      {note ? <span className="text-xs leading-snug text-fg-tertiary tabular-nums">{note}</span> : null}
+      {note ? <span className="text-meta leading-snug text-fg-tertiary tabular-nums">{note}</span> : null}
     </div>
   );
 }
@@ -246,7 +246,7 @@ function Bars({ report, range }: { report: SpendReport; range: SpendRange }) {
         })}
       </div>
       {first && last ? (
-        <div className="flex justify-between text-2xs text-fg-tertiary tabular-nums">
+        <div className="flex justify-between text-caption text-fg-tertiary tabular-nums">
           <span>{bucketLabel(range, first.start)}</span>
           <span>{bucketLabel(range, last.start)}</span>
         </div>
@@ -280,9 +280,9 @@ function RowItem({ row, share }: { row: Row; share: number }) {
         ) : null}
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="flex min-w-0 items-baseline gap-2 max-md:flex-col max-md:gap-0">
-            <span className="truncate text-[13px] font-medium text-fg-primary">{row.name}</span>
+            <span className="truncate text-body font-medium text-fg-primary">{row.name}</span>
             {row.detail ? (
-              <span className="max-w-[45%] shrink-0 truncate text-xs text-fg-tertiary max-md:max-w-full">
+              <span className="max-w-[45%] shrink-0 truncate text-meta text-fg-tertiary max-md:max-w-full">
                 {row.detail}
               </span>
             ) : null}
@@ -294,9 +294,9 @@ function RowItem({ row, share }: { row: Row; share: number }) {
             />
           </span>
         </span>
-        <span className="flex w-20 shrink-0 flex-col items-end text-[13px] tabular-nums">
+        <span className="flex w-20 shrink-0 flex-col items-end text-body tabular-nums">
           <span className="text-fg-primary">{tokenLabel(tokensOf(totals))}</span>
-          <span className="text-xs text-fg-tertiary">{costLabel(totals)}</span>
+          <span className="text-meta text-fg-tertiary">{costLabel(totals)}</span>
         </span>
         <ChevronRight
           size={14}
@@ -305,7 +305,7 @@ function RowItem({ row, share }: { row: Row; share: number }) {
         />
       </Collapsible.Trigger>
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
-        <dl className="grid grid-cols-4 gap-3 px-4 pt-1 pb-3 text-xs tabular-nums">
+        <dl className="grid grid-cols-4 gap-3 px-4 pt-1 pb-3 text-meta tabular-nums">
           <Detail label="Input" value={tokenLabel(totals.inputTokens)} />
           <Detail label="Cached" value={tokenLabel(totals.cachedInputTokens)} />
           <Detail label="Output" value={tokenLabel(totals.outputTokens)} />
@@ -333,10 +333,10 @@ function Empty({ range }: { range: SpendRange }) {
         <CircleDollarSign size={17} strokeWidth={1.75} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-[13.5px] font-medium text-fg-primary">
+        <span className="text-reading font-medium text-fg-primary">
           Nothing used {range === "today" ? "today" : range === "week" ? "this week" : "this month"}
         </span>
-        <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
+        <p className="text-meta leading-relaxed text-fg-tertiary">
           Use shows up here once an agent finishes a turn.
         </p>
       </div>

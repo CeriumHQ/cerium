@@ -42,10 +42,10 @@ function RowContent({
 }
 
 const rowClass =
-  "flex h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-[12.5px] text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]";
+  "flex h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]";
 
 const Empty = ({ children }: { children: ReactNode }) => (
-  <p className="px-4 py-6 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+  <p className="px-4 py-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
     {children}
   </p>
 );
@@ -218,7 +218,7 @@ export function Filter({
             if (typed === "") onClose();
             else setTyped("");
           }}
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[14px]"
+          className="min-w-0 flex-1 bg-transparent text-meta text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[14px]"
         />
         <IconButton icon={X} label="Close filter" onClick={onClose} className="max-md:size-10" />
       </Autocomplete.InputGroup>

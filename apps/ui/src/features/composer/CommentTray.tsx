@@ -32,7 +32,7 @@ export function CommentTray({
                   <div className="group/comment relative rounded-lg border border-line-subtle bg-surface-hover py-1.5 pr-8 pl-2.5">
                     <p
                       title={comment.quote}
-                      className="truncate border-l-2 border-accent/60 pl-2 text-[12px] text-fg-tertiary"
+                      className="truncate border-l-2 border-accent/60 pl-2 text-meta text-fg-tertiary"
                     >
                       {comment.quote}
                     </p>
@@ -42,7 +42,7 @@ export function CommentTray({
                       rows={1}
                       placeholder="Add a comment"
                       onChange={(event) => onEdit(comment.id, event.target.value)}
-                      className="mt-1 block max-h-24 w-full resize-none bg-transparent text-[13px] text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-disabled"
+                      className="mt-1 block max-h-24 w-full resize-none bg-transparent text-body text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-disabled"
                     />
                     {/* Shown at rest on a touch screen, which has no hover to bring it out. */}
                     <button

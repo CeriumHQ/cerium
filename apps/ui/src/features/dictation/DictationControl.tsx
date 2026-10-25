@@ -81,7 +81,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
           onClick={dictation.toggle}
           onMouseDown={keepFocus}
           aria-label="Stop dictating"
-          className={`flex h-8 shrink-0 items-center gap-2 rounded-full border border-error/30 bg-error/10 pr-3 pl-2.5 text-[12.5px] text-fg-primary transition-[background-color,opacity,scale,filter] hover:bg-error/18 ${swap}`}
+          className={`flex h-8 shrink-0 items-center gap-2 rounded-full border border-error/30 bg-error/10 pr-3 pl-2.5 text-meta text-fg-primary transition-[background-color,opacity,scale,filter] hover:bg-error/18 ${swap}`}
         >
           <span className="grid size-4 place-items-center text-error">
             <Square size={10} fill="currentColor" strokeWidth={0} />
@@ -105,7 +105,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
   if (form === "writing") {
     return (
       <output
-        className={`flex h-8 shrink-0 items-center gap-2 rounded-full bg-surface-hover px-3 text-[12.5px] text-fg-secondary ${swap}`}
+        className={`flex h-8 shrink-0 items-center gap-2 rounded-full bg-surface-hover px-3 text-meta text-fg-secondary ${swap}`}
       >
         <LoaderCircle size={13} className="animate-spin" />
         {download === undefined ? "Writing…" : downloading}
@@ -142,7 +142,7 @@ export function DictationNotice({ dictation }: { dictation: Dictation }) {
   return (
     <div
       role="alert"
-      className={`mx-3 mt-3 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-[12.5px] ${
+      className={`mx-3 mt-3 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-meta ${
         quiet
           ? "border-line-subtle bg-surface-hover text-fg-secondary"
           : "border-error/25 bg-error/6 text-fg-primary"

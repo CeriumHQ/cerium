@@ -99,7 +99,7 @@ export const loginOf = (user: GitHubUser | undefined) => user?.login ?? "ghost";
 export function LabelChip({ label, fits = false }: { label: GitHubLabel; fits?: boolean }) {
   const chip = (
     <span
-      className={`inline-flex h-5 max-w-48 items-center gap-1.5 rounded-full border border-line-subtle px-2 text-[11.5px] text-fg-secondary ${fits ? "min-w-0 shrink" : "shrink-0"}`}
+      className={`inline-flex h-5 max-w-48 items-center gap-1.5 rounded-full border border-line-subtle px-2 text-meta text-fg-secondary ${fits ? "min-w-0 shrink" : "shrink-0"}`}
     >
       <span
         aria-hidden="true"
@@ -128,7 +128,7 @@ function LabelLine({ labels }: { labels: ReadonlyArray<GitHubLabel> }) {
         <LabelChip key={label.name} label={label} fits />
       ))}
       {hidden > 0 ? (
-        <span className="shrink-0 text-[11.5px] text-fg-tertiary tabular-nums">+{hidden}</span>
+        <span className="shrink-0 text-meta text-fg-tertiary tabular-nums">+{hidden}</span>
       ) : null}
     </span>
   );
@@ -170,10 +170,10 @@ export function ItemRow({
     >
       <span className="grid h-[18px] shrink-0 place-items-center max-md:h-5">{icon}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="line-clamp-2 text-[13px] leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
+        <span className="line-clamp-2 text-body leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
           {title}
         </span>
-        <span className="flex min-w-0 items-center gap-2 text-[12px] leading-4 text-fg-tertiary max-md:text-[13px]">
+        <span className="flex min-w-0 items-center gap-2 text-meta leading-4 text-fg-tertiary max-md:text-[13px]">
           <span className="flex min-w-0 items-center gap-1.5">{facts}</span>
           {marks === undefined ? null : (
             <span className="ml-auto flex shrink-0 items-center gap-2">{marks}</span>
@@ -200,7 +200,7 @@ export function CommentCount({ count }: { count: number }) {
 export function StatePill({ icon, label, tone }: { icon: ReactNode; label: string; tone: string }) {
   return (
     <span
-      className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-current/12 px-2.5 text-[12px] font-medium ${tone}`}
+      className={`inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-current/12 px-2.5 text-meta font-medium ${tone}`}
     >
       {icon}
       {label}
@@ -227,7 +227,7 @@ export function ViewerTitle({
       <h1 className="text-[20px] leading-snug font-semibold tracking-tight text-pretty text-fg-primary max-md:text-[19px]">
         {title} <span className="font-normal text-fg-tertiary tabular-nums">#{number}</span>
       </h1>
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px] leading-6 text-fg-tertiary max-md:text-[14px]">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-body leading-6 text-fg-tertiary max-md:text-[14px]">
         {children}
       </div>
     </div>
@@ -237,7 +237,7 @@ export function ViewerTitle({
 /** A branch or other name of git's in a viewer's line of text. */
 export function CodeName({ children }: { children: ReactNode }) {
   return (
-    <code className="rounded-md bg-surface-hover px-1.5 py-px font-mono text-[12px] text-fg-secondary">
+    <code className="rounded-md bg-surface-hover px-1.5 py-px font-mono text-meta text-fg-secondary">
       {children}
     </code>
   );
@@ -269,7 +269,7 @@ export function StartThreadButton({
           aria-label="Start thread"
           disabled={disabled}
           onClick={() => onStart(worktrees)}
-          className={`flex h-7 items-center gap-1.5 border border-line-strong px-2 text-[12.5px] font-medium text-fg-primary transition-colors hover:bg-surface-hover disabled:opacity-40 max-md:h-10 max-md:px-3 ${worktrees ? "rounded-l-md border-r-0" : "rounded-md"}`}
+          className={`flex h-7 items-center gap-1.5 border border-line-strong px-2 text-meta font-medium text-fg-primary transition-colors hover:bg-surface-hover disabled:opacity-40 max-md:h-10 max-md:px-3 ${worktrees ? "rounded-l-md border-r-0" : "rounded-md"}`}
         >
           <MessageSquarePlus size={13} strokeWidth={1.75} className="shrink-0 max-md:size-4" />
           <span className="max-md:hidden">Start thread</span>
@@ -340,12 +340,12 @@ export function CommentBox({
           aria-label="Comment"
           spellCheck
           disabled={disabled}
-          className="scroll-thin max-h-72 min-h-16 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary disabled:opacity-60 max-md:text-[15px]"
+          className="scroll-thin max-h-72 min-h-16 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary disabled:opacity-60 max-md:text-[15px]"
         />
         <div className="flex flex-wrap items-center justify-end gap-1.5 p-2">{children}</div>
       </div>
       {error === undefined ? null : (
-        <p role="alert" className="flex items-start gap-2 px-1 text-[12.5px] text-error max-md:text-[14px]">
+        <p role="alert" className="flex items-start gap-2 px-1 text-meta text-error max-md:text-[14px]">
           <span className="min-w-0 flex-1 text-balance">{error}</span>
           <Button
             aria-label="Dismiss"
@@ -385,7 +385,7 @@ export function MoreMenu({ children }: { children: ReactNode }) {
  * name where there's one.
  */
 export function Facts({ children }: { children: ReactNode }) {
-  return <dl className="flex flex-col gap-1.5 text-[12.5px] max-md:text-[14px]">{children}</dl>;
+  return <dl className="flex flex-col gap-1.5 text-meta max-md:text-[14px]">{children}</dl>;
 }
 
 export function Fact({ name, action, children }: { name: string; action?: ReactNode; children: ReactNode }) {
@@ -440,7 +440,7 @@ export function AssociationBadge({ association }: { association: GitHubAssociati
   const word = association === undefined ? undefined : associationWord[association];
   if (word === undefined) return null;
   return (
-    <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-line-subtle px-1.5 text-[11px] text-fg-tertiary">
+    <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-line-subtle px-1.5 text-caption text-fg-tertiary">
       {word}
     </span>
   );
@@ -477,13 +477,13 @@ export function Reactions({ reactions }: { reactions: ReadonlyArray<GitHubReacti
         <li
           key={reaction.kind}
           aria-label={`${reaction.count} ${reactionWord[reaction.kind]}${reaction.mine ? ", yours among them" : ""}`}
-          className={`flex h-6 items-center gap-1 rounded-full border px-2 text-[12px] tabular-nums ${
+          className={`flex h-6 items-center gap-1 rounded-full border px-2 text-meta tabular-nums ${
             reaction.mine
               ? "border-accent/40 bg-accent-soft text-fg-primary"
               : "border-line-subtle text-fg-secondary"
           }`}
         >
-          <span aria-hidden="true" className="text-[13px] leading-none">
+          <span aria-hidden="true" className="text-body leading-none">
             {reactionEmoji[reaction.kind]}
           </span>
           {reaction.count}

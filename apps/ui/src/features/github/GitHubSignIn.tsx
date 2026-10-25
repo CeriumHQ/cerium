@@ -36,7 +36,7 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
     <div className="flex items-center gap-2">
       <Button
         onClick={() => setAttempt(nextAttempt())}
-        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
       >
         <LogIn size={13} strokeWidth={2} />
         Sign in to GitHub
@@ -76,7 +76,7 @@ export function GitHubSignInSteps({
 
   if (AsyncResult.isFailure(result)) {
     return (
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta">
         <p className="min-w-0 flex-1 text-error">Sign-in didn't finish.</p>
         <QuietButton onClick={onRetry}>Try again</QuietButton>
         {onCancel === undefined ? null : <QuietButton onClick={onCancel}>Cancel</QuietButton>}
@@ -85,7 +85,7 @@ export function GitHubSignInSteps({
   }
   if (code === undefined) {
     return (
-      <div className="flex items-center gap-2.5 text-[12.5px] text-fg-secondary">
+      <div className="flex items-center gap-2.5 text-meta text-fg-secondary">
         <RefreshCw size={13} strokeWidth={1.75} className="animate-spin text-fg-tertiary" />
         {step?._tag === "SignedIn" ? "Signed in. Checking again…" : "Starting the sign-in…"}
       </div>
@@ -98,7 +98,7 @@ export function GitHubSignInSteps({
     });
   };
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line-subtle bg-surface-window p-3.5 text-[12.5px]">
+    <div className="flex flex-col gap-3 rounded-xl border border-line-subtle bg-surface-window p-3.5 text-meta">
       <p className="text-fg-secondary">Enter this code on GitHub's page:</p>
       <div className="flex items-center gap-2">
         <code className="font-mono text-[18px] font-medium tracking-[0.12em] text-fg-primary select-all">
@@ -139,7 +139,7 @@ function QuietButton({ onClick, children }: { onClick: () => void; children: str
   return (
     <Button
       onClick={onClick}
-      className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+      className="flex h-7 shrink-0 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
     >
       {children}
     </Button>

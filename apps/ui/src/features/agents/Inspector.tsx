@@ -143,11 +143,11 @@ export function Inspector({
   return (
     <div ref={root} className="flex h-full flex-col">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 max-md:pl-4">
-        <span className="text-[13px] font-medium text-fg-primary max-md:text-[15px] max-md:font-semibold">
+        <span className="text-body font-medium text-fg-primary max-md:text-[15px] max-md:font-semibold">
           {solo ? "Agent" : "Agents"}
         </span>
         {solo ? null : (
-          <span className="flex min-w-0 items-center gap-1.5 truncate text-xs tabular-nums max-md:text-[13px]">
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-meta tabular-nums max-md:text-[13px]">
             {counts.map(({ state, count }) => (
               <span key={state} className={statusTone[state]}>
                 {statusWords[state](count)}
@@ -226,7 +226,7 @@ function AgentRow({
         <Button
           aria-current={selected ? "true" : undefined}
           onClick={() => onSelect(agent.id)}
-          className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-[12.5px] transition-colors data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] ${
+          className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-meta transition-colors data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] ${
             branch ? "pl-7" : "pl-2"
           } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
         >
@@ -255,7 +255,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
   const finished = state === "idle" && agent.parentId !== undefined;
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-[12.5px] max-md:text-[14px]" : "text-2xs max-md:text-xs"} ${
+      className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-meta max-md:text-[14px]" : "text-caption max-md:text-xs"} ${
         state === "needsYou"
           ? "text-attention"
           : state === "failed"
@@ -289,7 +289,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
 }
 
 const actionButton =
-  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] transition-colors max-md:h-10 max-md:px-3.5 max-md:text-[14px]";
+  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-meta transition-colors max-md:h-10 max-md:px-3.5 max-md:text-[14px]";
 const quietAction = "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary";
 
 function AgentDetails({
@@ -335,7 +335,7 @@ function AgentDetails({
         <ProviderLogo provider={agent.provider} size={14} className="mt-[3px] max-md:mt-1" />
         <div className="flex min-w-0 flex-1 flex-col">
           <p
-            className="truncate text-[12.5px] font-medium text-fg-primary max-md:text-[14px]"
+            className="truncate text-meta font-medium text-fg-primary max-md:text-[14px]"
             title={agent.model}
           >
             {agent.model}
@@ -347,7 +347,7 @@ function AgentDetails({
               </span>
             ) : null}
           </p>
-          <p className="flex min-w-0 items-center gap-1 text-xs text-fg-tertiary max-md:text-[13px]">
+          <p className="flex min-w-0 items-center gap-1 text-meta text-fg-tertiary max-md:text-[13px]">
             <AccessIcon size={11} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">
               {accessLabel[agent.access]} ·{" "}
@@ -358,7 +358,7 @@ function AgentDetails({
           </p>
           {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
           {reported ? (
-            <p className="truncate text-xs text-fg-tertiary tabular-nums max-md:text-[13px]">
+            <p className="truncate text-meta text-fg-tertiary tabular-nums max-md:text-[13px]">
               {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
               {costUsd !== undefined ? ` · ${usd(costUsd)}` : ""}
             </p>
@@ -381,7 +381,7 @@ function AgentDetails({
         <AgentQuestion agent={agent} onAnswer={onAnswerQuestion} />
       ) : null}
       {asksInConversation ? (
-        <p className="flex items-center gap-1.5 text-[12.5px] text-attention max-md:text-[14px]">
+        <p className="flex items-center gap-1.5 text-meta text-attention max-md:text-[14px]">
           <ShieldQuestion size={13} strokeWidth={1.75} />
           Waiting for you in the conversation
         </p>
@@ -481,13 +481,15 @@ function Quote({
         : "border-l border-line-strong";
   return (
     <div className="flex flex-col gap-1">
-      {label === undefined ? null : <span className="text-2xs text-fg-tertiary max-md:text-xs">{label}</span>}
+      {label === undefined ? null : (
+        <span className="text-caption text-fg-tertiary max-md:text-xs">{label}</span>
+      )}
       <div className={`pl-2.5 ${rule} ${color}`}>
         {open ? (
           markdown !== undefined ? (
             <Markdown text={markdown} streaming={false} compact />
           ) : (
-            <p className="text-[12.5px] leading-[1.55] break-words whitespace-pre-wrap select-text max-md:text-[14px]">
+            <p className="text-meta leading-[1.55] break-words whitespace-pre-wrap select-text max-md:text-[14px]">
               {children}
             </p>
           )
@@ -496,7 +498,7 @@ function Quote({
             ref={(element) => {
               if (element) setClipped(element.scrollHeight > element.clientHeight + 1);
             }}
-            className="line-clamp-4 text-[12.5px] leading-[1.55] break-words select-text max-md:text-[14px]"
+            className="line-clamp-4 text-meta leading-[1.55] break-words select-text max-md:text-[14px]"
           >
             {children}
           </p>
@@ -505,7 +507,7 @@ function Quote({
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className="mt-1 -ml-0.5 rounded px-0.5 text-xs text-fg-tertiary transition-colors hover:text-fg-primary max-md:py-1.5 max-md:text-[13px]"
+            className="mt-1 -ml-0.5 rounded px-0.5 text-meta text-fg-tertiary transition-colors hover:text-fg-primary max-md:py-1.5 max-md:text-[13px]"
           >
             {open ? "Show less" : "Show more"}
           </button>
@@ -527,7 +529,7 @@ function ThreadUsage({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
       >
         <div className="flex flex-col gap-1.5">
           {providers.map(({ provider, inputTokens, outputTokens, costUsd }) => (
-            <div key={provider} className="flex items-center gap-2 text-[12.5px] max-md:text-[14px]">
+            <div key={provider} className="flex items-center gap-2 text-meta max-md:text-[14px]">
               <ProviderLogo provider={provider} size={12} />
               <span className="text-fg-secondary">{providerName[provider]}</span>
               <span className="ml-auto text-fg-tertiary tabular-nums">
@@ -539,7 +541,7 @@ function ThreadUsage({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
             </div>
           ))}
           {providers.length > 1 ? (
-            <div className="flex items-center gap-2 border-t border-line-subtle pt-1.5 text-[12.5px] max-md:text-[14px]">
+            <div className="flex items-center gap-2 border-t border-line-subtle pt-1.5 text-meta max-md:text-[14px]">
               <span className="text-fg-primary">Total</span>
               <span className="ml-auto text-fg-tertiary tabular-nums">
                 {compactTokens(providers.reduce((sum, each) => sum + each.inputTokens, 0))} in ·{" "}
@@ -551,7 +553,7 @@ function ThreadUsage({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
             </div>
           ) : null}
           {partial ? (
-            <p className="text-2xs text-fg-tertiary max-md:text-xs">
+            <p className="text-caption text-fg-tertiary max-md:text-xs">
               A dash means that harness reports no cost, so the total leaves it out.
             </p>
           ) : null}

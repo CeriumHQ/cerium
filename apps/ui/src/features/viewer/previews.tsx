@@ -30,7 +30,7 @@ export const messageOf = (cause: Cause.Cause<unknown>, fallback: string): string
 /** What fills the viewer when there is nothing to show: a line saying why, and what to do instead. */
 export function Note({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="grid h-full place-items-center px-6 text-center text-[13px] text-fg-tertiary max-md:text-[14px]">
+    <div className="grid h-full place-items-center px-6 text-center text-body text-fg-tertiary max-md:text-[14px]">
       <div className="flex max-w-80 flex-col items-center gap-3 text-pretty">
         <p>{children}</p>
         {action}
@@ -80,7 +80,7 @@ function ImageFrame({ src, name, footer }: { src: string; name: string; footer: 
           />
         </button>
       </div>
-      <p className="shrink-0 px-4 pb-3 text-center text-xs text-fg-tertiary tabular-nums">
+      <p className="shrink-0 px-4 pb-3 text-center text-meta text-fg-tertiary tabular-nums">
         {dimensions ? `${dimensions} · ` : ""}
         {footer}
       </p>
@@ -100,7 +100,7 @@ function Loading({ received, size }: { received: number; size: number }) {
             style={{ width: `${share * 100}%` }}
           />
         </span>
-        <span className="text-xs tabular-nums">
+        <span className="text-meta tabular-nums">
           {byteSize(received)} of {byteSize(size)}
         </span>
       </span>
@@ -141,8 +141,8 @@ export function MediaPreview({
         <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border border-line-subtle bg-surface-raised px-6 py-7 shadow-raised">
           <FileIcon path={path} className="size-10" />
           <div className="flex max-w-full flex-col items-center gap-0.5 text-center">
-            <span className="max-w-full truncate text-[13.5px] font-medium text-fg-primary">{name}</span>
-            <span className="text-xs text-fg-tertiary tabular-nums">{byteSize(size)}</span>
+            <span className="max-w-full truncate text-reading font-medium text-fg-primary">{name}</span>
+            <span className="text-meta text-fg-tertiary tabular-nums">{byteSize(size)}</span>
           </div>
           {/* The file has no captions to offer; it's the user's own recording or asset. */}
           {/* oxlint-disable-next-line jsx-a11y/media-has-caption */}
@@ -161,7 +161,9 @@ export function MediaPreview({
           className="max-h-full max-w-full rounded-md border border-line-subtle bg-scrim"
         />
       </div>
-      <p className="shrink-0 px-4 pb-3 text-center text-xs text-fg-tertiary tabular-nums">{byteSize(size)}</p>
+      <p className="shrink-0 px-4 pb-3 text-center text-meta text-fg-tertiary tabular-nums">
+        {byteSize(size)}
+      </p>
     </div>
   );
 }

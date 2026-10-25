@@ -37,13 +37,13 @@ function CloneRun({
 
   if (AsyncResult.isFailure(result)) {
     return (
-      <p role="alert" className="text-[12.5px] leading-relaxed text-error">
+      <p role="alert" className="text-meta leading-relaxed text-error">
         {messageOf(result.cause, "The clone didn't finish.")}
       </p>
     );
   }
   return (
-    <p className="truncate font-mono text-[12px] text-fg-tertiary" aria-live="polite">
+    <p className="truncate font-mono text-meta text-fg-tertiary" aria-live="polite">
       {latest?._tag === "Progress" ? latest.text : "Starting git…"}
     </p>
   );
@@ -82,30 +82,30 @@ export function CloneDialog({ open, onOpenChange, onCloned }: CloneDialogProps) 
         <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Popup className="fixed top-1/2 left-1/2 flex w-[26rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
           <div className="flex flex-col gap-1.5">
-            <Dialog.Title className="text-[14px] font-semibold tracking-tight max-md:text-[16px]">
+            <Dialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
               Clone a repository
             </Dialog.Title>
-            <Dialog.Description className="text-[13px] leading-relaxed text-fg-secondary max-md:text-[14px]">
+            <Dialog.Description className="text-body leading-relaxed text-fg-secondary max-md:text-[14px]">
               It's cloned into a folder of its own, named after the repository, and opened as a project.
             </Dialog.Description>
           </div>
           <form className="flex flex-col gap-3" onSubmit={start}>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] text-fg-secondary">Address</span>
+              <span className="text-meta text-fg-secondary">Address</span>
               <input
                 value={url}
                 onChange={(event) => setUrl(event.currentTarget.value)}
                 placeholder="https://github.com/owner/repository.git"
                 spellCheck={false}
-                className="h-8 rounded-lg border border-line-strong bg-transparent px-2.5 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary"
+                className="h-8 rounded-lg border border-line-strong bg-transparent px-2.5 text-body text-fg-primary outline-none placeholder:text-fg-tertiary"
               />
             </label>
             <div className="flex flex-col gap-1.5">
-              <span className="text-[12px] text-fg-secondary">Into</span>
+              <span className="text-meta text-fg-secondary">Into</span>
               <button
                 type="button"
                 onClick={browse}
-                className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line-strong px-2.5 text-left text-[13px] transition-colors hover:bg-surface-hover"
+                className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line-strong px-2.5 text-left text-body transition-colors hover:bg-surface-hover"
               >
                 <FolderOpen size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
                 <span className={`truncate ${folder === undefined ? "text-fg-tertiary" : "text-fg-primary"}`}>
@@ -115,13 +115,13 @@ export function CloneDialog({ open, onOpenChange, onCloned }: CloneDialogProps) 
             </div>
             {attempt !== undefined ? <CloneRun key={attempt} attempt={attempt} onCloned={onCloned} /> : null}
             <div className="flex justify-end gap-2">
-              <Dialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-[13px] font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
+              <Dialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
                 Cancel
               </Dialog.Close>
               <button
                 type="submit"
                 disabled={url.trim() === "" || folder === undefined}
-                className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-[13px] font-medium text-fg-primary transition-colors hover:bg-surface-active disabled:opacity-45 max-md:h-10 max-md:px-4 max-md:text-[15px]"
+                className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-active disabled:opacity-45 max-md:h-10 max-md:px-4 max-md:text-[15px]"
               >
                 Clone
               </button>

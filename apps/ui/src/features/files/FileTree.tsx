@@ -87,9 +87,9 @@ function TreeRow({
         side="left"
         label={
           <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-[11px] break-all">{row.path}</span>
+            <span className="font-mono text-caption break-all">{row.path}</span>
             {extra.map((note) => (
-              <span key={note} className="text-2xs text-fg-tertiary">
+              <span key={note} className="text-caption text-fg-tertiary">
                 {note}
               </span>
             ))}
@@ -115,7 +115,7 @@ function TreeRow({
           }}
           onFocus={() => onFocus(row.path)}
           style={{ paddingLeft: 4 + row.depth * INDENT }}
-          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-[12.5px] outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
+          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-meta outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
             changed || touch ? "text-fg-primary" : "text-fg-secondary"
           }`}
         >

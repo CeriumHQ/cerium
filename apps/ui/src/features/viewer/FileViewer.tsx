@@ -66,7 +66,7 @@ const CONTEXT = 3;
 const noDiff: Atom.Atom<AsyncResult.AsyncResult<FileDiff, unknown>> = Atom.make(AsyncResult.initial());
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
 
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
@@ -84,7 +84,7 @@ function OutAction({
   return (
     <Button
       onClick={onClick}
-      className="flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-[12.5px] text-fg-primary transition-colors hover:bg-surface-hover"
+      className="flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-meta text-fg-primary transition-colors hover:bg-surface-hover"
     >
       <Icon size={13} strokeWidth={1.75} />
       {label}
@@ -122,7 +122,7 @@ function FileBody({
       return (
         <Note action={outside}>
           <span className="block">This file isn't text or media Cerium can show.</span>
-          <span className="mt-1 block text-xs text-fg-disabled tabular-nums">{byteSize(preview.size)}</span>
+          <span className="mt-1 block text-meta text-fg-disabled tabular-nums">{byteSize(preview.size)}</span>
         </Note>
       );
     case "Media":
@@ -150,7 +150,7 @@ function FileBody({
         <div className="flex h-full flex-col">
           <div className="min-h-0 flex-1">{body}</div>
           {preview.truncated ? (
-            <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-xs text-fg-tertiary tabular-nums">
+            <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary tabular-nums">
               Showing the first {byteSize(preview.text.length)} of {byteSize(preview.size)}
             </p>
           ) : null}
@@ -197,7 +197,7 @@ function DiffBody({
         <DiffView hunks={hunks} path={path} layout={layout} onExpand={whole ? undefined : onWhole} />
       </div>
       {truncated === true ? (
-        <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-xs text-fg-tertiary">
+        <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary">
           A long diff, cut short.
         </p>
       ) : null}
@@ -307,14 +307,14 @@ export function FileViewer({
       className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
     >
       <FileIcon path={path} className="size-4 shrink-0" />
-      <span className="flex min-w-0 items-baseline gap-2 text-[13px] max-md:text-[15px]">
+      <span className="flex min-w-0 items-baseline gap-2 text-body max-md:text-[15px]">
         <span
           className={`shrink-0 font-medium ${gone ? "text-fg-tertiary line-through" : "text-fg-primary"}`}
         >
           {name}
         </span>
         {dir === "" ? null : (
-          <span className="min-w-0 truncate text-[12px] text-fg-tertiary" title={path}>
+          <span className="min-w-0 truncate text-meta text-fg-tertiary" title={path}>
             {dir}
           </span>
         )}
@@ -334,7 +334,7 @@ export function FileViewer({
         </Tooltip>
       ) : null}
       {stats && view === "diff" && side === undefined ? (
-        <span className="shrink-0 font-mono text-[11.5px] tabular-nums">
+        <span className="shrink-0 font-mono text-meta tabular-nums">
           <span className="text-success">+{stats.added}</span>{" "}
           <span className="text-error">−{stats.removed}</span>
         </span>

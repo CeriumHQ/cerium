@@ -37,7 +37,7 @@ export function CompactBar({
             <Button
               onClick={back.onBack}
               aria-label={`Back to ${back.label}`}
-              className="-ml-0.5 flex h-10 shrink-0 items-center gap-0.5 rounded-lg pr-2 pl-0.5 text-[15px] text-fg-secondary transition-colors active:bg-surface-active"
+              className="-ml-0.5 flex h-10 shrink-0 items-center gap-0.5 rounded-lg pr-2 pl-0.5 text-reading text-fg-secondary transition-colors active:bg-surface-active"
             >
               <ChevronLeft size={22} strokeWidth={1.75} />
               {title === undefined ? back.label : null}
@@ -46,11 +46,11 @@ export function CompactBar({
           {leading}
           {title !== undefined ? (
             <div className={`flex min-w-0 flex-1 flex-col ${back ? "" : "pl-2"}`}>
-              <span className="truncate text-[15px] leading-tight font-semibold text-fg-primary">
+              <span className="truncate text-reading leading-tight font-semibold text-fg-primary">
                 {title}
               </span>
               {subtitle ? (
-                <span className="truncate text-xs leading-tight text-fg-tertiary">{subtitle}</span>
+                <span className="truncate text-meta leading-tight text-fg-tertiary">{subtitle}</span>
               ) : null}
             </div>
           ) : (

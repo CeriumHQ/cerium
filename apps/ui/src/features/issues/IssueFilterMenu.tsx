@@ -17,13 +17,13 @@ import { LabelChip } from "../github/parts.tsx";
 import { filterCount, isFiltered, toggleLabel, withMilestone } from "./model.ts";
 
 const toggleClass =
-  "flex-1 rounded-md px-2 py-1 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary";
+  "flex-1 rounded-md px-2 py-1 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary";
 
 const rowClass =
-  "flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-fg-primary outline-none select-none hover:bg-surface-hover focus-visible:bg-surface-hover";
+  "flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-fg-primary outline-none select-none hover:bg-surface-hover focus-visible:bg-surface-hover";
 
 function Heading({ children }: { children: ReactNode }) {
-  return <h3 className="px-2 pt-2 pb-1 text-2xs font-medium text-fg-tertiary">{children}</h3>;
+  return <h3 className="px-2 pt-2 pb-1 text-caption font-medium text-fg-tertiary">{children}</h3>;
 }
 
 /** A line the user can tick: a check in a small box, then what it stands for. */

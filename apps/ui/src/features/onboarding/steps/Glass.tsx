@@ -101,7 +101,7 @@ export function Glass({ number, titleId }: StepProps) {
         <Reveal order={3} className="flex max-w-[22rem] flex-col items-start gap-5 pb-2">
           <p
             key={palette}
-            className="min-h-[3lh] animate-[launch-fade_500ms_ease-out_both] text-[14.5px] leading-relaxed text-fg-secondary"
+            className="min-h-[3lh] animate-[launch-fade_500ms_ease-out_both] text-reading leading-relaxed text-fg-secondary"
           >
             <span className="text-fg-primary">{palettes.find((each) => each.id === palette)?.label}.</span>{" "}
             {GLASSES[palette].light}
@@ -123,7 +123,7 @@ export function Glass({ number, titleId }: StepProps) {
                   nativeButton
                   onPointerDown={remember}
                   render={<button type="button" aria-label={label} />}
-                  className="flex h-7.5 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] text-fg-tertiary outline-none transition-colors duration-200 hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-surface-raised data-checked:text-fg-primary data-checked:shadow-raised"
+                  className="flex h-7.5 items-center gap-1.5 rounded-full px-3.5 text-meta text-fg-tertiary outline-none transition-colors duration-200 hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring data-checked:bg-surface-raised data-checked:text-fg-primary data-checked:shadow-raised"
                 >
                   <Icon size={13} strokeWidth={1.75} aria-hidden="true" />
                   {label}

@@ -56,7 +56,7 @@ export function PullRequestChip({ pull }: { pull: LinkedPullRequest }) {
   return (
     <span
       title={`${pull.title ?? "Pull request"} (${how})`}
-      className="inline-flex shrink-0 items-center gap-1 text-[12px] text-fg-tertiary"
+      className="inline-flex shrink-0 items-center gap-1 text-meta text-fg-tertiary"
     >
       <Icon size={13} strokeWidth={1.75} className={pull.state === "open" ? "text-success" : ""} />
       <span className="tabular-nums">#{pull.number}</span>

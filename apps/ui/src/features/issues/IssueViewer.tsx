@@ -90,7 +90,7 @@ export function IssueViewer({
       className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12 ${pane ? "select-none" : ""}`}
     >
       {issue === undefined ? null : <StateIcon issue={issue} size={15} />}
-      <span className="flex min-w-0 items-baseline gap-1.5 text-[13px] max-md:text-[15px]">
+      <span className="flex min-w-0 items-baseline gap-1.5 text-body max-md:text-[15px]">
         <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
         <span className="min-w-0 truncate font-medium text-fg-primary">{issue?.title ?? ""}</span>
       </span>
@@ -144,7 +144,7 @@ export function IssueViewer({
               <button
                 type="button"
                 onClick={() => refreshIssue(registry, id)}
-                className="rounded-md px-2 py-1 text-[13px] text-fg-primary hover:bg-surface-hover"
+                className="rounded-md px-2 py-1 text-body text-fg-primary hover:bg-surface-hover"
               >
                 Try again
               </button>
@@ -212,12 +212,12 @@ export function IssueViewer({
                   <button
                     type="button"
                     onClick={() => readOnIssue(registry, id, ITEMS_LIMIT)}
-                    className="self-center rounded-md px-2.5 py-1 text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                    className="self-center rounded-md px-2.5 py-1 text-body text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
                   >
                     Show more of the conversation
                   </button>
                 ) : (
-                  <p className="text-center text-[13px] text-fg-tertiary">
+                  <p className="text-center text-body text-fg-tertiary">
                     The rest of the conversation is{" "}
                     <GitHubLink href={issue.url} className="text-fg-secondary underline underline-offset-2">
                       on GitHub

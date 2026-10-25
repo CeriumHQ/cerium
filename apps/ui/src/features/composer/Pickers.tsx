@@ -31,7 +31,7 @@ import { accessOptions, effortHint, effortLabel, MAX_AGENTS } from "./models.ts"
 
 /** A control in the box's rows, without its colours: a pill, the box itself being one. */
 const chipShape =
-  "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap transition-colors select-none";
+  "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none";
 
 /** A control in the box's rows: a quiet pill. */
 export const chipClass = `${chipShape} text-fg-secondary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`;
@@ -95,7 +95,7 @@ export const offersChoice = (choice: EffortChoice | undefined): choice is Effort
 export function EffortRow({ choice, model }: { readonly choice: EffortChoice; readonly model: string }) {
   return (
     <div className="shrink-0 border-t border-line-subtle px-2.5 pt-2 pb-2.5">
-      <div className="flex items-baseline justify-between gap-3 px-0.5 pb-1.5 text-2xs">
+      <div className="flex items-baseline justify-between gap-3 px-0.5 pb-1.5 text-caption">
         <span className="truncate text-fg-tertiary">Effort for {model}</span>
         <span className="shrink-0 text-fg-secondary">{effortHint[choice.value]}</span>
       </div>
@@ -115,7 +115,7 @@ export function EffortRow({ choice, model }: { readonly choice: EffortChoice; re
             aria-label={chipEffortLabel[step]}
             // The menu's search keeps focus, so typing and the arrow keys carry on after a click.
             onMouseDown={(event) => event.preventDefault()}
-            className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-[7px] text-[12px] whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
+            className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-[7px] text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
           >
             {step === "auto" ? <Route size={11} strokeWidth={2} /> : null}
             {segmentLabel[step]}
@@ -184,7 +184,7 @@ export function MoreMenu({
                         />
                         <span className="flex min-w-0 flex-col">
                           <span>{option.label}</span>
-                          <span className="text-2xs text-fg-tertiary">
+                          <span className="text-caption text-fg-tertiary">
                             {blocked ? access.limit?.reason : option.description}
                           </span>
                         </span>
@@ -200,7 +200,7 @@ export function MoreMenu({
                 <Users size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 self-start" />
                 <span className="flex min-w-0 flex-col">
                   <span>Several at once</span>
-                  <span className="text-2xs text-fg-tertiary">
+                  <span className="text-caption text-fg-tertiary">
                     A thread each, for up to {MAX_AGENTS} models
                   </span>
                 </span>
@@ -228,7 +228,7 @@ export function FixedChip({
       <Button
         disabled
         focusableWhenDisabled
-        className="flex h-8 shrink-0 cursor-default items-center gap-1.5 rounded-full px-2.5 text-[12.5px] whitespace-nowrap text-fg-tertiary"
+        className="flex h-8 shrink-0 cursor-default items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap text-fg-tertiary"
       >
         {children}
       </Button>

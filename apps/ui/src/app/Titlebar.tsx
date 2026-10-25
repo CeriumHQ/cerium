@@ -137,9 +137,9 @@ export function Titlebar({
             <div />
             {/* Plain text until the thread has actions to offer, so it also drags the window. */}
             {covered ? (
-              <p className="px-2.5 text-[13px] font-medium text-fg-primary">{page}</p>
+              <p className="px-2.5 text-body font-medium text-fg-primary">{page}</p>
             ) : thread ? (
-              <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-[13px]">
+              <p className="flex min-w-0 items-baseline gap-2 px-2.5 text-body">
                 <span className="truncate font-medium text-fg-primary">{thread.title}</span>
                 {thread.project ? <span className="shrink-0 text-fg-tertiary">{thread.project}</span> : null}
               </p>
@@ -372,7 +372,7 @@ export function AgentsToggle({
       <Button
         onClick={onToggle}
         aria-pressed={open}
-        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] transition-colors [app-region:no-drag] ${
+        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-meta transition-colors [app-region:no-drag] ${
           open
             ? "bg-surface-selected text-fg-primary"
             : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"

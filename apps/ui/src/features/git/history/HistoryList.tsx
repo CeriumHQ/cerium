@@ -35,11 +35,11 @@ function CommitRow({ commit, now, onOpen }: { commit: Commit; now: number; onOpe
       onClick={() => onOpen(commit.sha)}
       className="flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:py-3"
     >
-      <span className="truncate text-[13px] leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
+      <span className="truncate text-body leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
         {commit.subject}
       </span>
-      <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-fg-tertiary max-md:text-[13px]">
-        <span className="shrink-0 font-mono text-[11.5px]">{commit.short}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-meta leading-4 text-fg-tertiary max-md:text-[13px]">
+        <span className="shrink-0 font-mono text-meta">{commit.short}</span>
         <span aria-hidden>·</span>
         <span className="min-w-0 truncate">{commit.author}</span>
         <span aria-hidden>·</span>
@@ -56,7 +56,7 @@ function CommitRow({ commit, now, onOpen }: { commit: Commit; now: number; onOpe
             ))}
             {hidden > 0 ? (
               <span
-                className="shrink-0 text-[11px] tabular-nums"
+                className="shrink-0 text-caption tabular-nums"
                 title={commit.refs.map((ref) => ref.name).join(", ")}
               >
                 +{hidden}
@@ -151,7 +151,7 @@ export function HistoryList({ root, onOpen }: HistoryListProps) {
           commits.map((commit) => <CommitRow key={commit.sha} commit={commit} now={now} onOpen={onOpen} />)
         )}
         <div ref={sentinel} className="h-px" />
-        {loading ? <p className="px-3 py-2 text-[12px] text-fg-tertiary">Loading commits…</p> : null}
+        {loading ? <p className="px-3 py-2 text-meta text-fg-tertiary">Loading commits…</p> : null}
       </div>
     </div>
   );

@@ -105,7 +105,7 @@ export function UserMessage({
         </div>
       ) : null}
       {block.writtenIn === undefined ? null : (
-        <p className="flex max-w-full min-w-0 items-center gap-1.5 text-[12px] text-fg-tertiary">
+        <p className="flex max-w-full min-w-0 items-center gap-1.5 text-meta text-fg-tertiary">
           <Split size={12} strokeWidth={1.75} className="shrink-0" />
           <span className="truncate">
             Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
@@ -124,7 +124,7 @@ export function UserMessage({
             />
           ))}
           {files.map((file) => (
-            <span key={file.path} className="text-[13px]">
+            <span key={file.path} className="text-body">
               <FileChip path={file.path} folder={false} />
             </span>
           ))}
@@ -161,7 +161,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   // A one-liner reads best as it is; anything longer folds behind its first line.
   if (preview === text) {
     return (
-      <MessageMenuArea text={text} className="flex gap-2 text-[12.5px] leading-[1.55]">
+      <MessageMenuArea text={text} className="flex gap-2 text-meta leading-[1.55]">
         <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
         <p className="min-w-0 text-fg-tertiary select-text">
           <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}
@@ -173,7 +173,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   return (
     <MessageMenuArea text={text}>
       <Collapsible.Root>
-        <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+        <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
           <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
           <span className="shrink-0">
             <span className="font-medium text-fg-secondary">{from}</span> {verb}
@@ -211,7 +211,7 @@ function previewLine(text: string) {
 /** Shown while the agent works with nothing on screen moving: before its first output, between steps. */
 export function Working() {
   return (
-    <output className="block text-[12.5px]">
+    <output className="block text-meta">
       <span className="text-shimmer">Working…</span>
     </output>
   );
@@ -229,7 +229,7 @@ export function ModelSwitch({
   change: "model" | "effort";
 }) {
   return (
-    <p className="flex items-center gap-2 text-[12.5px] text-fg-tertiary">
+    <p className="flex items-center gap-2 text-meta text-fg-tertiary">
       <ArrowRightLeft size={13} strokeWidth={1.75} className="shrink-0" />
       <span className="min-w-0 truncate">
         {change === "effort" ? (
@@ -248,7 +248,7 @@ export function ModelSwitch({
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   return (
     <Collapsible.Root>
-      <Collapsible.Trigger className="group flex items-center gap-1.5 text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary">
+      <Collapsible.Trigger className="group flex items-center gap-1.5 text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
         <Brain size={13} strokeWidth={1.75} />
         {block.streaming ? <span className="text-shimmer">Thinking…</span> : "Thought"}
         <ChevronRight
@@ -285,7 +285,7 @@ export function SpawnCard({
   const card = (
     <Button
       onClick={() => actions.onShow?.(block.childId)}
-      className="flex min-w-0 flex-[1_1_17rem] items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-[12.5px] transition-colors max-md:min-h-10 hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
+      className="flex min-w-0 flex-[1_1_17rem] items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-meta transition-colors max-md:min-h-10 hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
     >
       <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
       <span className="truncate font-medium text-fg-primary">{block.role}</span>
@@ -314,7 +314,7 @@ export function SpawnAsk({ call }: { call: Block<"tool"> }) {
   const role = typeof input["role"] === "string" ? input["role"] : "an agent";
   const model = typeof input["model"] === "string" ? input["model"] : undefined;
   return (
-    <p className="flex items-center gap-2 text-[12.5px] text-fg-tertiary">
+    <p className="flex items-center gap-2 text-meta text-fg-tertiary">
       <Workflow size={13} strokeWidth={1.75} className="shrink-0" />
       <span className="min-w-0 truncate">
         Asked to start <span className="font-medium text-fg-secondary">{role}</span>
@@ -327,7 +327,7 @@ export function SpawnAsk({ call }: { call: Block<"tool"> }) {
 function AgentState({ state }: { state: ChildState }) {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1 text-2xs ${state === "needsYou" ? "text-attention" : "text-fg-tertiary"}`}
+      className={`flex shrink-0 items-center gap-1 text-caption ${state === "needsYou" ? "text-attention" : "text-fg-tertiary"}`}
     >
       {state === "running" ? (
         <span className="relative grid size-2 place-items-center">
@@ -367,7 +367,7 @@ export function PermissionCard({
   if (block.resolution !== undefined || expired) {
     const { decision, scope } = block.resolution ?? {};
     return (
-      <div className="flex items-center gap-2 text-xs text-fg-tertiary">
+      <div className="flex items-center gap-2 text-meta text-fg-tertiary">
         {decision === "allow" ? (
           <Check size={12} strokeWidth={2.5} />
         ) : decision === "deny" ? (
@@ -461,7 +461,7 @@ export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: str
       : undefined;
   if (usage === undefined && text === "" && stopped === undefined) return null;
   return (
-    <div className="flex min-h-6 items-center gap-2.5 text-2xs text-fg-tertiary tabular-nums">
+    <div className="flex min-h-6 items-center gap-2.5 text-caption text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">

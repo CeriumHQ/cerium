@@ -352,8 +352,10 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
       translate 220ms var(--ease-out-soft);
   }
 
+  /* A grid item won't shrink below its content by default: a row of nowrap text would push a fold past its card. */
   .reveal > * {
     min-height: 0;
+    min-width: 0;
   }
 
   /* Clipped only while it moves, so a settled card keeps its shadow and focus rings. */

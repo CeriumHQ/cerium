@@ -144,7 +144,7 @@ export function MergeBox({
         ) : null
       ) : canMerge ? (
         <footer className="flex flex-wrap items-center gap-2 border-t border-line-subtle px-3.5 py-2.5">
-          <span className="min-w-0 flex-1 text-[12px] text-fg-tertiary">{methodLabel[method].note}</span>
+          <span className="min-w-0 flex-1 text-meta text-fg-tertiary">{methodLabel[method].note}</span>
           <div className="flex items-center">
             <DialogButton
               tone={conflicts ? "neutral" : "primary"}
@@ -200,13 +200,13 @@ export function MergeBox({
 /** One line of the merge box: an icon, and what it says, perhaps a link to more. */
 function Line({ icon, onClick, children }: { icon: ReactNode; onClick?: () => void; children: ReactNode }) {
   return (
-    <div className="flex min-h-10 items-center gap-2.5 px-3.5 py-2 text-[13px] text-fg-primary">
+    <div className="flex min-h-10 items-center gap-2.5 px-3.5 py-2 text-body text-fg-primary">
       <span className="shrink-0">{icon}</span>
       <span className="min-w-0 flex-1">{children}</span>
       {onClick ? (
         <Button
           onClick={onClick}
-          className="shrink-0 rounded-md px-1.5 py-0.5 text-[12px] text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          className="shrink-0 rounded-md px-1.5 py-0.5 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
           Details
         </Button>
@@ -245,8 +245,8 @@ function MergeDialog({
       title={`${methodLabel[method].button} #${pull.number}?`}
       description={
         <>
-          Into <code className="font-mono text-[12px]">{pull.base}</code> from{" "}
-          <code className="font-mono text-[12px]">{pull.head}</code>. {methodLabel[method].note}
+          Into <code className="font-mono text-meta">{pull.base}</code> from{" "}
+          <code className="font-mono text-meta">{pull.head}</code>. {methodLabel[method].note}
         </>
       }
       onSubmit={() => void merge()}
@@ -258,11 +258,11 @@ function MergeDialog({
     >
       {deleteBranch ? (
         <DialogCheck checked={remove} onCheckedChange={setRemove}>
-          Delete the branch <code className="font-mono text-[12px]">{pull.head}</code> after merging
+          Delete the branch <code className="font-mono text-meta">{pull.head}</code> after merging
         </DialogCheck>
       ) : null}
       {actions.error === undefined ? null : (
-        <p role="alert" className="text-[12.5px] text-error">
+        <p role="alert" className="text-meta text-error">
           {actions.error}
         </p>
       )}
@@ -271,7 +271,7 @@ function MergeDialog({
 }
 
 const textareaClass =
-  "max-h-72 min-h-20 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:text-[15px]";
+  "max-h-72 min-h-20 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:text-[15px]";
 
 /**
  * The box under a pull request's conversation: comment, review the changes, and close or reopen it.
@@ -422,7 +422,7 @@ function ReviewDialog({
           return (
             <label
               key={verdict.value}
-              className={`grid grid-cols-[auto_1fr] items-baseline gap-x-2.5 rounded-lg px-2 py-1.5 text-[13px] ${disabled ? "opacity-40" : "hover:bg-surface-hover"}`}
+              className={`grid grid-cols-[auto_1fr] items-baseline gap-x-2.5 rounded-lg px-2 py-1.5 text-body ${disabled ? "opacity-40" : "hover:bg-surface-hover"}`}
             >
               <input
                 type="radio"
@@ -434,7 +434,7 @@ function ReviewDialog({
                 className="translate-y-[2px] accent-(--accent)"
               />
               <span className="font-medium text-fg-primary">{verdict.label}</span>
-              <span className="col-start-2 text-[12px] text-fg-tertiary">
+              <span className="col-start-2 text-meta text-fg-tertiary">
                 {disabled ? "You can't approve or ask for changes on your own pull request." : verdict.note}
               </span>
             </label>
@@ -442,7 +442,7 @@ function ReviewDialog({
         })}
       </div>
       {actions.error === undefined ? null : (
-        <p role="alert" className="text-[12.5px] text-error">
+        <p role="alert" className="text-meta text-error">
           {actions.error}
         </p>
       )}

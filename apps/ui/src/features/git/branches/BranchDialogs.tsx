@@ -156,7 +156,7 @@ function CreateDialog({
             onChange={(event) => setName(event.currentTarget.value)}
             placeholder="feature/something"
           />
-          {problem === undefined ? null : <span className="text-[12px] text-error">{problem}</span>}
+          {problem === undefined ? null : <span className="text-meta text-error">{problem}</span>}
         </DialogField>
         <DialogField label="Start from">
           <DialogSelect value={from} onChange={(event) => setFrom(event.currentTarget.value)}>
@@ -227,7 +227,7 @@ function RenameDialog({ open, onClose, controls, branch }: DialogProps & { reado
     >
       <DialogField label="New name">
         <DialogInput value={name} onChange={(event) => setName(event.currentTarget.value)} />
-        {problem === undefined ? null : <span className="text-[12px] text-error">{problem}</span>}
+        {problem === undefined ? null : <span className="text-meta text-error">{problem}</span>}
       </DialogField>
     </FormDialog>
   );

@@ -7,7 +7,7 @@ import { canSkip, conflictNote, operationNote, operationTitle, sideHelp } from "
 import type { BranchControls } from "./useBranchControls.ts";
 
 const buttonClass =
-  "h-7 rounded-md px-2 text-[12.5px] font-medium text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-secondary max-md:h-9 max-md:px-3 max-md:text-[14px]";
+  "h-7 rounded-md px-2 text-meta font-medium text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-secondary max-md:h-9 max-md:px-3 max-md:text-[14px]";
 
 /**
  * What git stopped halfway through (a merge, rebase, cherry-pick or revert) and what it waits for:
@@ -36,10 +36,10 @@ export function OperationBanner({
       <div className="flex items-start gap-2">
         <GitMerge size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-attention" />
         <div className="flex min-w-0 flex-col">
-          <h3 className="text-[13px] font-medium text-fg-primary max-md:text-[15px]">
+          <h3 className="text-body font-medium text-fg-primary max-md:text-[15px]">
             {operationTitle(state)}
           </h3>
-          <p className="text-[12.5px] text-fg-tertiary max-md:text-[14px]">{operationNote(state)}</p>
+          <p className="text-meta text-fg-tertiary max-md:text-[14px]">{operationNote(state)}</p>
         </div>
       </div>
       {state.operation === undefined ? null : (
@@ -48,7 +48,7 @@ export function OperationBanner({
             type="button"
             disabled={busy || waiting}
             onClick={() => void controls.operation("continue")}
-            className="h-7 rounded-md bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40 max-md:h-9 max-md:px-3 max-md:text-[14px]"
+            className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40 max-md:h-9 max-md:px-3 max-md:text-[14px]"
           >
             Continue
           </button>
@@ -103,13 +103,13 @@ function Conflict({
     <li className="flex flex-col gap-1 px-2.5 py-2">
       <div className="flex min-w-0 items-baseline gap-2">
         <Tooltip label={file.path} side="top">
-          <span className="min-w-0 truncate text-[13px] text-fg-primary max-md:text-[15px]">
+          <span className="min-w-0 truncate text-body text-fg-primary max-md:text-[15px]">
             {name}
-            {folder === "" ? null : <span className="ml-1.5 text-[12px] text-fg-tertiary">{folder}</span>}
+            {folder === "" ? null : <span className="ml-1.5 text-meta text-fg-tertiary">{folder}</span>}
           </span>
         </Tooltip>
       </div>
-      <p className="text-[12px] text-fg-tertiary max-md:text-[13px]">{conflictNote(file)}</p>
+      <p className="text-meta text-fg-tertiary max-md:text-[13px]">{conflictNote(file)}</p>
       <div className="-ml-2 flex flex-wrap items-center gap-0.5">
         {onOpen === undefined ? null : (
           <button type="button" onClick={() => onOpen(file.path)} className={buttonClass}>

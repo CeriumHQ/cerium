@@ -56,7 +56,7 @@ function Gap({
   const band = lines === 0 ? "" : "border-y border-line-subtle bg-surface-hover";
   return (
     <div
-      className={`flex items-center text-[11.5px] text-fg-tertiary select-none ${band} ${children === undefined ? "h-7" : "h-8 pr-1.5"}`}
+      className={`flex items-center text-meta text-fg-tertiary select-none ${band} ${children === undefined ? "h-7" : "h-8 pr-1.5"}`}
     >
       {lines === 0 ? null : onExpand ? (
         <button
@@ -250,7 +250,7 @@ export function DiffView({
 
   return (
     <div
-      className={`font-mono text-[12.5px] leading-[1.6] select-text ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
+      className={`font-mono text-meta leading-[1.6] select-text ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
     >
       <div className={layout === "split" || !scroll ? "min-w-full" : "w-max min-w-full"}>
         {numbered.hunks.map((hunk, hunkIndex) => {

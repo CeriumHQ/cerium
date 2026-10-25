@@ -63,7 +63,7 @@ export function AccountSettings() {
       }
     >
       {account === undefined ? (
-        <SettingsCard className="px-4 py-6 text-[13px] text-fg-tertiary">Checking…</SettingsCard>
+        <SettingsCard className="px-4 py-6 text-body text-fg-tertiary">Checking…</SettingsCard>
       ) : account._tag === "SignedIn" ? (
         <AccountCard account={account} />
       ) : (
@@ -106,8 +106,8 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[13.5px] font-medium text-fg-primary">Connect this {selfNoun}</span>
-          <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
+          <span className="text-reading font-medium text-fg-primary">Connect this {selfNoun}</span>
+          <p className="text-meta leading-relaxed text-fg-tertiary">
             Reach it from your phone and your other computers, and get notified there when an agent needs you.
           </p>
         </div>
@@ -120,15 +120,15 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
             <Button
               onClick={begin}
               disabled={starting}
-              className="flex h-8 w-fit shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60"
+              className="flex h-8 w-fit shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60"
             >
               <LogIn size={13} strokeWidth={2} />
               {starting ? "Opening your browser…" : "Sign in"}
             </Button>
-            <p className="text-[12.5px] text-fg-tertiary">
+            <p className="text-meta text-fg-tertiary">
               Google, GitHub, X or email. Cerium never sees your password.
             </p>
-            {shownError ? <p className="w-full text-[12.5px] text-error">{shownError}</p> : null}
+            {shownError ? <p className="w-full text-meta text-error">{shownError}</p> : null}
           </div>
         )}
       </div>
@@ -139,7 +139,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
 /** Waiting on the browser, with the page one click away again. */
 function Progress({ url, onCancel, children }: { url: string; onCancel: () => void; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface-window py-1.5 pr-1.5 pl-3 text-[12.5px]">
+    <div className="flex items-center gap-3 rounded-lg border border-line-subtle bg-surface-window py-1.5 pr-1.5 pl-3 text-meta">
       <RefreshCw size={13} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-fg-secondary">{children}</p>
       <a
@@ -178,11 +178,11 @@ function AccountCard({ account }: { account: SignedIn }) {
       <div className="flex items-center gap-3.5 p-4 max-md:flex-wrap max-md:gap-y-2">
         <Avatar name={name} email={email} imageUrl={imageUrl} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[13.5px] font-medium text-fg-primary">
+          <span className="truncate text-reading font-medium text-fg-primary">
             {name ?? email ?? "Your account"}
           </span>
           {name !== undefined && email !== undefined ? (
-            <span className="truncate text-[12.5px] text-fg-tertiary">{email}</span>
+            <span className="truncate text-meta text-fg-tertiary">{email}</span>
           ) : null}
         </div>
         {/* A phone has the width for the name, or for these: they go under it. */}
@@ -191,9 +191,7 @@ function AccountCard({ account }: { account: SignedIn }) {
           <QuietButton onClick={() => setConfirming(true)}>Sign out</QuietButton>
         </div>
       </div>
-      {error ? (
-        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] text-error">{error}</p>
-      ) : null}
+      {error ? <p className="border-t border-line-subtle px-4 py-3 text-meta text-error">{error}</p> : null}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -228,7 +226,7 @@ function Avatar({
       className="size-9 shrink-0 rounded-full border border-line-subtle object-cover"
     />
   ) : (
-    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line-subtle bg-surface-raised text-[12.5px] font-medium text-fg-secondary">
+    <span className="grid size-9 shrink-0 place-items-center rounded-full border border-line-subtle bg-surface-raised text-meta font-medium text-fg-secondary">
       {initials(name, email)}
     </span>
   );
@@ -237,7 +235,7 @@ function Avatar({
 function ConnectionState({ connection }: { connection: SignedIn["connection"] }) {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 text-xs ${
+      className={`flex shrink-0 items-center gap-1.5 text-meta ${
         connection === "offline" ? "text-attention" : "text-fg-tertiary"
       }`}
     >
@@ -268,7 +266,7 @@ function QuietButton({
     <Button
       onClick={onClick}
       disabled={disabled}
-      className="flex h-7 shrink-0 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-7 shrink-0 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </Button>
@@ -355,21 +353,21 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
                 maxLength={MAX_DEVICE_NAME}
                 label="Device name"
                 onDone={(typed) => (typed === undefined ? setEditing(false) : saveName(typed))}
-                className="h-6 flex-1 text-[13px] font-medium"
+                className="h-6 flex-1 text-body font-medium"
               />
             ) : (
-              <span className="truncate text-[13px] font-medium text-fg-primary" title={device.name}>
+              <span className="truncate text-body font-medium text-fg-primary" title={device.name}>
                 {device.name}
               </span>
             )}
             {self && !editing ? (
-              <span className="shrink-0 rounded-full border border-line-subtle px-1.5 text-2xs leading-4 text-fg-tertiary">
+              <span className="shrink-0 rounded-full border border-line-subtle px-1.5 text-caption leading-4 text-fg-tertiary">
                 This {selfNoun}
               </span>
             ) : null}
           </div>
           {/* A phone has no room to cut the line short, so it wraps there. */}
-          <span className="text-xs text-fg-tertiary max-md:[overflow-wrap:anywhere] md:truncate">
+          <span className="text-meta text-fg-tertiary max-md:[overflow-wrap:anywhere] md:truncate">
             {deviceDetails(device)}
             {note === undefined ? null : (
               <>
@@ -400,7 +398,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
           </MenuPopup>
         </MenuRoot>
       </div>
-      {error ? <p className="pl-11.5 text-[12.5px] text-error">{error}</p> : null}
+      {error ? <p className="pl-11.5 text-meta text-error">{error}</p> : null}
       <ConfirmDialog
         open={removing}
         onOpenChange={setRemoving}

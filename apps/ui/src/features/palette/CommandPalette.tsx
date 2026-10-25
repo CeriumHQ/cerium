@@ -144,7 +144,7 @@ function PalettePanel({
         <Autocomplete.Input
           aria-label={mode === "work" ? "Search threads and commands" : "Search chats and commands"}
           placeholder={`Search ${noun}, settings and actions`}
-          className="h-12 min-w-0 flex-1 bg-transparent text-[14px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-base"
+          className="h-12 min-w-0 flex-1 bg-transparent text-reading text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-base"
         />
         <Dialog.Close
           aria-label="Close search"
@@ -155,7 +155,7 @@ function PalettePanel({
       </Autocomplete.InputGroup>
 
       {groups.length === 0 ? (
-        <output className="block px-4 py-8 text-center text-[13px] text-fg-tertiary max-md:text-[15px]">
+        <output className="block px-4 py-8 text-center text-body text-fg-tertiary max-md:text-[15px]">
           {query === "" ? `No ${noun} yet.` : (note ?? `Nothing matches.`)}
         </output>
       ) : (
@@ -166,7 +166,7 @@ function PalettePanel({
           <Autocomplete.List className="flex flex-col p-1.5 outline-none">
             {(group: PaletteGroup) => (
               <Autocomplete.Group key={group.value} items={group.items} className="flex flex-col gap-px">
-                <Autocomplete.GroupLabel className="px-2 pt-2 pb-0.5 text-xs font-medium text-fg-secondary/80 first:pt-1">
+                <Autocomplete.GroupLabel className="px-2 pt-2 pb-0.5 text-meta font-medium text-fg-secondary/80 first:pt-1">
                   {group.value}
                 </Autocomplete.GroupLabel>
                 <Autocomplete.Collection>
@@ -193,7 +193,7 @@ function PalettePanel({
         </ScrollArea>
       )}
       {groups.length > 0 && note !== undefined ? (
-        <output className="block shrink-0 border-t border-line-subtle px-4 py-2 text-xs text-fg-tertiary">
+        <output className="block shrink-0 border-t border-line-subtle px-4 py-2 text-meta text-fg-tertiary">
           {note}
         </output>
       ) : null}
@@ -205,11 +205,11 @@ function CommandRow({ command, words }: { command: PaletteCommand; words: Readon
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2.5">
       <command.icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-[13px] text-fg-secondary max-md:text-[15px]">
+      <span className="min-w-0 flex-1 truncate text-body text-fg-secondary max-md:text-[15px]">
         <Marked pieces={highlight(command.label, words)} />
       </span>
       {command.keys ? (
-        <kbd className="shrink-0 font-sans text-2xs text-fg-tertiary max-md:hidden">
+        <kbd className="shrink-0 font-sans text-caption text-fg-tertiary max-md:hidden">
           {keyLabel(command.keys)}
         </kbd>
       ) : null}
@@ -236,12 +236,12 @@ function ResultRow({
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2">
           <span
-            className={`min-w-0 flex-1 truncate text-[13px] max-md:text-[15px] ${thread.unread ? "font-medium text-fg-primary" : "text-fg-secondary"}`}
+            className={`min-w-0 flex-1 truncate text-body max-md:text-[15px] ${thread.unread ? "font-medium text-fg-primary" : "text-fg-secondary"}`}
           >
             <Marked pieces={highlight(thread.title, words)} />
           </span>
           {projects && thread.project ? (
-            <span className="max-w-[35%] shrink-0 truncate text-2xs text-fg-tertiary max-md:text-xs">
+            <span className="max-w-[35%] shrink-0 truncate text-caption text-fg-tertiary max-md:text-xs">
               {thread.project}
             </span>
           ) : null}
@@ -255,12 +255,12 @@ function ResultRow({
               <Archive size={11} strokeWidth={2} aria-label="Archived" />
             </span>
           )}
-          <span className="w-6 shrink-0 text-right text-2xs text-fg-tertiary tabular-nums max-md:text-xs">
+          <span className="w-6 shrink-0 text-right text-caption text-fg-tertiary tabular-nums max-md:text-xs">
             {shortAgo(thread.updatedAt)}
           </span>
         </span>
         {passage === undefined ? null : (
-          <span className="line-clamp-2 text-xs leading-relaxed text-fg-tertiary max-md:text-[13px]">
+          <span className="line-clamp-2 text-meta leading-relaxed text-fg-tertiary max-md:text-[13px]">
             <Marked pieces={passage} />
           </span>
         )}

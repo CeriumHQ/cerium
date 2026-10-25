@@ -19,7 +19,7 @@
   font-size: 16px;
 }
 [data-streamdown="heading-3"] {
-  font-size: 14.5px;
+  font-size: 14px;
 }
 [data-streamdown="heading-4"],
 [data-streamdown="heading-5"],
@@ -132,7 +132,7 @@
   border-radius: 0;
   background: transparent;
   padding: 0.625rem 0.875rem;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.6;
 }
 /* A fence with no language has nothing for a header to say: the copy button floats over its corner

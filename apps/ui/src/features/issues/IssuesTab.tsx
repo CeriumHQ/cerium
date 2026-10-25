@@ -23,7 +23,7 @@ const REFRESH_MS = 2 * 60_000;
 const RETURN_MS = 30_000;
 
 const Quiet = ({ children }: { children: ReactNode }) => (
-  <p className="px-4 py-6 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+  <p className="px-4 py-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
     {children}
   </p>
 );
@@ -76,13 +76,13 @@ function Page({
     if (AsyncResult.isFailure(result)) {
       return (
         <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
-          <p className="text-[13px] text-balance text-fg-secondary max-md:text-[14px]">
+          <p className="text-body text-balance text-fg-secondary max-md:text-[14px]">
             {messageOf(result.cause, "The issues couldn't be read.")}
           </p>
           <button
             type="button"
             onClick={() => refreshIssueList(registry, cwd)}
-            className="rounded-md px-2 py-1 text-[13px] text-fg-primary hover:bg-surface-hover"
+            className="rounded-md px-2 py-1 text-body text-fg-primary hover:bg-surface-hover"
           >
             Try again
           </button>

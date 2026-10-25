@@ -12,7 +12,7 @@ export function ActivityLine({ activity }: { readonly activity: LiveActivity }) 
   }, []);
   return (
     // Not a live region: its clock would be read out every second.
-    <span className="flex w-full min-w-0 items-center gap-2 text-[13px] text-fg-secondary">
+    <span className="flex w-full min-w-0 items-center gap-2 text-body text-fg-secondary">
       <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
       <span className="min-w-0 truncate">
         {activity.verb}

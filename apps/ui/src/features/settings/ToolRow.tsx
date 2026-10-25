@@ -46,9 +46,9 @@ export function ToolRow({
         )}
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13.5px] font-medium text-fg-primary">{name}</span>
+        <span className="truncate text-reading font-medium text-fg-primary">{name}</span>
         <span
-          className={`truncate text-[12.5px] ${tone === "attention" ? "text-attention" : "text-fg-tertiary"}`}
+          className={`truncate text-meta ${tone === "attention" ? "text-attention" : "text-fg-tertiary"}`}
         >
           {detail}
         </span>
@@ -86,7 +86,7 @@ export function RowButton({
   return (
     <Button
       onClick={onClick}
-      className={`flex h-7 items-center rounded-md px-3 text-[12.5px] font-medium transition-colors ${
+      className={`flex h-7 items-center rounded-md px-3 text-meta font-medium transition-colors ${
         tone === "primary"
           ? "bg-accent text-accent-fg hover:bg-accent-strong"
           : "border border-line-subtle text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -104,7 +104,7 @@ export function RowLink({ href, children }: { readonly href: string; readonly ch
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="flex h-7 items-center rounded-md border border-line-subtle px-3 text-[12.5px] font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+      className="flex h-7 items-center rounded-md border border-line-subtle px-3 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
     >
       {children}
     </a>
@@ -133,7 +133,7 @@ export function InstalledMenu({
   const reveal = local ? shellBridge()?.revealPath : undefined;
   return (
     <>
-      <div className="flex flex-col px-2 pt-1.5 pb-1 text-[12px] text-fg-tertiary select-none">
+      <div className="flex flex-col px-2 pt-1.5 pb-1 text-meta text-fg-tertiary select-none">
         <span>
           Version <span className="font-mono text-fg-secondary tabular-nums">{version}</span>
         </span>

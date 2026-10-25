@@ -67,7 +67,7 @@ export function Eyebrow({ number, children }: { readonly number: number; readonl
   return (
     <Reveal
       order={0}
-      className="mb-[clamp(14px,2.4vh,26px)] flex items-center gap-3 font-mono text-[11px] tracking-[0.18em] text-fg-tertiary uppercase"
+      className="mb-[clamp(14px,2.4vh,26px)] flex items-center gap-3 font-mono text-caption tracking-[0.18em] text-fg-tertiary uppercase"
     >
       <span className="text-fg-secondary tabular-nums">{String(number).padStart(2, "0")}</span>
       <span className="h-px w-8 bg-line-strong" />

@@ -43,10 +43,10 @@ export function ActionDialog({
           className={`fixed top-1/2 left-1/2 flex ${wide ? "w-[40rem]" : "w-[26rem]"} max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0`}
         >
           <div className="flex flex-col gap-1.5">
-            <Dialog.Title className="text-[14px] font-semibold tracking-tight max-md:text-[16px]">
+            <Dialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
               {title}
             </Dialog.Title>
-            <Dialog.Description className="text-[13px] leading-relaxed text-fg-secondary max-md:text-[14px]">
+            <Dialog.Description className="text-body leading-relaxed text-fg-secondary max-md:text-[14px]">
               {description}
             </Dialog.Description>
           </div>
@@ -149,7 +149,7 @@ function CommandRun({
 
   if (failure !== undefined) {
     return (
-      <div className="flex flex-col gap-2 text-[12.5px]">
+      <div className="flex flex-col gap-2 text-meta">
         <p className="text-error">{failure}</p>
         {command === undefined ? null : (
           <>
@@ -163,7 +163,7 @@ function CommandRun({
   return (
     <div className="h-72 overflow-hidden rounded-xl border border-line-subtle bg-surface-window max-md:h-[50dvh]">
       {terminal === undefined ? (
-        <p className="flex items-center gap-2 p-3 text-[12.5px] text-fg-tertiary">
+        <p className="flex items-center gap-2 p-3 text-meta text-fg-tertiary">
           <RefreshCw size={12} strokeWidth={1.75} className="animate-spin" />
           Starting…
         </p>
@@ -228,7 +228,7 @@ export function CopyableCommand({ text }: { readonly text: string }) {
   };
   return (
     <div className="flex items-center gap-2 rounded-lg border border-line-subtle bg-surface-window py-1 pr-1 pl-3">
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-primary select-text">{text}</code>
+      <code className="min-w-0 flex-1 truncate font-mono text-meta text-fg-primary select-text">{text}</code>
       <button
         type="button"
         onClick={copy}

@@ -43,7 +43,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
         render={
           <Button
             aria-label={`Computer: ${label}`}
-            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md border px-1.5 text-[12.5px] transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[13.5px] ${
+            className={`flex h-6 max-w-48 items-center gap-1.5 rounded-md border px-1.5 text-meta transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[14px] ${
               // Driving another computer gets a visible edge, so the window never looks like this one by mistake.
               elsewhere
                 ? "border-line-strong bg-surface-raised font-medium text-fg-primary hover:bg-surface-hover"
@@ -60,7 +60,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
         <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
           <Menu.Popup className="w-64 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
             <Menu.Group>
-              <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-2xs font-medium text-fg-tertiary select-none">
+              <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-caption font-medium text-fg-tertiary select-none">
                 Work on
               </Menu.GroupLabel>
               <Menu.RadioGroup value={driving} onValueChange={(id: string) => choose(id)}>
@@ -127,8 +127,8 @@ function MachineItem({
         ) : null}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-[13px] text-fg-primary group-data-disabled:opacity-50">{name}</span>
-        <span className={`truncate text-2xs ${attention ? "text-attention" : "text-fg-tertiary"}`}>
+        <span className="truncate text-body text-fg-primary group-data-disabled:opacity-50">{name}</span>
+        <span className={`truncate text-caption ${attention ? "text-attention" : "text-fg-tertiary"}`}>
           {reachable ? <span className="sr-only">Online, </span> : null}
           {detail}
         </span>

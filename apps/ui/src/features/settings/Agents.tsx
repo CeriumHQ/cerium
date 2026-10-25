@@ -161,7 +161,7 @@ function ModelSelect({
   const loading = useAtomValue(modelsAtom).waiting;
   const retry = useAtomRefresh(modelsAtom);
   const quiet =
-    "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary";
+    "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary";
 
   if (value !== undefined) {
     return (
@@ -183,11 +183,11 @@ function ModelSelect({
         <ChevronRight size={13} strokeWidth={1.75} className="text-fg-tertiary" />
       </Button>
     ) : (
-      <span className="shrink-0 pr-1 text-xs text-fg-tertiary">No harness can run</span>
+      <span className="shrink-0 pr-1 text-meta text-fg-tertiary">No harness can run</span>
     );
   }
   return loading ? (
-    <span className="shrink-0 pr-1 text-xs text-fg-tertiary">Loading models…</span>
+    <span className="shrink-0 pr-1 text-meta text-fg-tertiary">Loading models…</span>
   ) : (
     <Button onClick={retry} className={quiet}>
       <RefreshCw size={12} strokeWidth={1.75} />

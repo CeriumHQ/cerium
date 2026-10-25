@@ -126,7 +126,7 @@ export function EffortRouterSetting() {
           control={() =>
             key ? (
               <span className="flex shrink-0 items-center gap-3">
-                <span className="font-mono text-xs text-fg-tertiary">•••• {key.last4}</span>
+                <span className="font-mono text-meta text-fg-tertiary">•••• {key.last4}</span>
                 <RowButton onClick={forget}>Remove</RowButton>
               </span>
             ) : local ? (
@@ -140,12 +140,12 @@ export function EffortRouterSetting() {
                   spellCheck={false}
                   autoComplete="off"
                   disabled={busy || known === undefined}
-                  className="h-7 w-44 min-w-0 rounded-md border border-line-strong bg-transparent px-2 text-[12.5px] text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:w-32"
+                  className="h-7 w-44 min-w-0 rounded-md border border-line-strong bg-transparent px-2 text-meta text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:w-32"
                 />
                 <Button
                   type="submit"
                   disabled={busy || draft.trim() === ""}
-                  className="flex h-7 items-center rounded-md bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-50"
+                  className="flex h-7 items-center rounded-md bg-accent px-3 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-50"
                 >
                   {busy ? "Checking…" : "Save"}
                 </Button>
@@ -178,7 +178,7 @@ export function EffortRouterSetting() {
             )}
           />
         ) : null}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5 text-xs leading-relaxed text-fg-tertiary">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5 text-meta leading-relaxed text-fg-tertiary">
           <span className="max-w-sm">
             Each turn's message, the last two exchanges and how the last turn went go to OpenRouter, which
             runs TypeSafe's Jev 1.13.

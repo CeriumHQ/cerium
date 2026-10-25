@@ -50,7 +50,7 @@ export function GeneralSettings() {
         WEB ? undefined : (
           <Button
             onClick={() => openWelcome(true)}
-            className="flex h-7 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
           >
             Welcome tour
           </Button>
@@ -255,10 +255,10 @@ function UpdatesSection({ updates }: { updates: Updates }) {
           <div className="flex min-h-14 items-center gap-4 px-4 py-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="flex items-center gap-2" title={updates.version}>
-                <span className="text-[13px] font-medium text-fg-primary tabular-nums">
+                <span className="text-body font-medium text-fg-primary tabular-nums">
                   Cerium {installed.release}
                 </span>
-                <span className="rounded-md bg-surface-hover px-1.5 py-px text-[11.5px] font-medium text-fg-secondary tabular-nums">
+                <span className="rounded-md bg-surface-hover px-1.5 py-px text-meta font-medium text-fg-secondary tabular-nums">
                   {channelLabel[updates.buildChannel]}
                   {installed.build !== undefined ? ` ${installed.build}` : null}
                 </span>
@@ -266,7 +266,7 @@ function UpdatesSection({ updates }: { updates: Updates }) {
               {noticeVersion(status) === undefined ? (
                 <span
                   role={offline ? "alert" : "status"}
-                  className={`text-xs leading-relaxed ${offline ? "text-error" : "text-fg-tertiary"}`}
+                  className={`text-meta leading-relaxed ${offline ? "text-error" : "text-fg-tertiary"}`}
                 >
                   {statusText(updates)}
                   {at !== undefined ? (
@@ -278,7 +278,7 @@ function UpdatesSection({ updates }: { updates: Updates }) {
             <span className="flex shrink-0 items-center gap-1.5">
               <Button
                 onClick={() => openWhatsNew(true)}
-                className="flex h-7 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
               >
                 What's new
               </Button>
@@ -286,7 +286,7 @@ function UpdatesSection({ updates }: { updates: Updates }) {
                 <Button
                   onClick={() => void bridge?.checkForUpdates?.()}
                   disabled={status.kind === "checking"}
-                  className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
+                  className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
                 >
                   <RefreshCw
                     size={12}
@@ -348,7 +348,7 @@ function UpdateOffer({ updates }: { updates: Updates }) {
         <Icon size={14} strokeWidth={2} aria-hidden="true" />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-[13px] font-medium text-fg-primary" title={version}>
+        <span className="truncate text-body font-medium text-fg-primary" title={version}>
           {status.kind === "available"
             ? `${name} is available`
             : status.kind === "downloading"
@@ -363,11 +363,11 @@ function UpdateOffer({ updates }: { updates: Updates }) {
               <Progress.Track className="h-1 flex-1 overflow-hidden rounded-full bg-line-strong">
                 <Progress.Indicator className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out-soft" />
               </Progress.Track>
-              <Progress.Value className="w-8 text-right text-[11.5px] text-fg-tertiary tabular-nums" />
+              <Progress.Value className="w-8 text-right text-meta text-fg-tertiary tabular-nums" />
             </div>
           </Progress.Root>
         ) : (
-          <span className="truncate text-xs text-fg-tertiary">
+          <span className="truncate text-meta text-fg-tertiary">
             {status.kind === "ready" ? (
               "Installs when you restart or quit."
             ) : status.kind === "available" && updates.manual ? (

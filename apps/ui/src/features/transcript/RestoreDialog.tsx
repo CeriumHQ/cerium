@@ -38,7 +38,7 @@ function FileList({
     <Disclosure summary={summary}>
       <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto pr-1">
         {files.map((file) => (
-          <li key={file.path} className="flex items-baseline gap-2 text-[12.5px]">
+          <li key={file.path} className="flex items-baseline gap-2 text-meta">
             <span className="min-w-0 flex-1 truncate font-mono text-fg-secondary" title={file.path}>
               {file.path}
             </span>
@@ -53,7 +53,7 @@ function FileList({
 function Consequences({ preview, harness }: { preview: RestorePreview; harness: string }) {
   const { files } = preview;
   return (
-    <ul className="flex flex-col gap-2.5 text-[13px] leading-snug text-fg-primary">
+    <ul className="flex flex-col gap-2.5 text-body leading-snug text-fg-primary">
       <Line icon={MessageSquareX}>{messagesLine(preview.messages)}</Line>
       <Line icon={History}>{conversationLine(preview.conversation, harness)}</Line>
       {preview.agents.length > 0 ? <Line icon={Bot}>{agentsLine(preview.agents)}</Line> : null}
@@ -122,29 +122,29 @@ export function RestoreDialog({
         <AlertDialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <AlertDialog.Popup className="fixed top-1/2 left-1/2 flex w-[26rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
           <div className="flex flex-col gap-2">
-            <AlertDialog.Title className="text-[14px] font-semibold tracking-tight max-md:text-[16px]">
+            <AlertDialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
               Restore to before this message?
             </AlertDialog.Title>
-            <AlertDialog.Description className="line-clamp-2 border-l-2 border-line-strong pl-2.5 text-[13px] leading-relaxed text-fg-secondary">
+            <AlertDialog.Description className="line-clamp-2 border-l-2 border-line-strong pl-2.5 text-body leading-relaxed text-fg-secondary">
               {message.trim() === "" ? "(attachments only)" : message}
             </AlertDialog.Description>
           </div>
           {check.status === "loading" ? (
-            <p className="animate-pulse text-[13px] text-fg-tertiary">Checking what changed since…</p>
+            <p className="animate-pulse text-body text-fg-tertiary">Checking what changed since…</p>
           ) : check.status === "failed" ? (
-            <p className="text-[13px] text-error">{check.message}</p>
+            <p className="text-body text-error">{check.message}</p>
           ) : (
             <Consequences preview={check.preview} harness={harness} />
           )}
-          <p className="text-[12px] text-fg-tertiary">What's undone stays in the thread to look back on.</p>
+          <p className="text-meta text-fg-tertiary">What's undone stays in the thread to look back on.</p>
           <div className="flex justify-end gap-2">
-            <AlertDialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-[13px] font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
+            <AlertDialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
               Cancel
             </AlertDialog.Close>
             <Button
               disabled={check.status !== "ready" || restoring}
               onClick={restore}
-              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-[13px] font-medium text-error transition-colors hover:bg-error/25 disabled:opacity-50 disabled:hover:bg-error/15 max-md:h-10 max-md:px-4 max-md:text-[15px]"
+              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error transition-colors hover:bg-error/25 disabled:opacity-50 disabled:hover:bg-error/15 max-md:h-10 max-md:px-4 max-md:text-[15px]"
             >
               {restoring ? "Restoring…" : "Restore"}
             </Button>

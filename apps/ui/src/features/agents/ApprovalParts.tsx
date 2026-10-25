@@ -50,7 +50,7 @@ const textOf = (value: unknown): string | undefined => (typeof value === "string
 /** A path that breaks after its separators, so a long one wraps between folders, not mid-name. */
 function PathText({ path }: { path: string }) {
   return (
-    <span className="font-mono text-xs break-words text-fg-tertiary">
+    <span className="font-mono text-meta break-words text-fg-tertiary">
       {path.split(/(?<=[\\/])/).map((part, index) => (
         <span key={index}>
           {part}
@@ -62,7 +62,7 @@ function PathText({ path }: { path: string }) {
 }
 
 const detailBox =
-  "rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-[12px] leading-[1.55] text-fg-primary select-text";
+  "rounded-md border border-line-subtle bg-surface-window px-2.5 py-1.5 font-mono text-meta leading-[1.55] text-fg-primary select-text";
 
 /** Wraps rather than scrolls sideways: the whole command is what's being approved. */
 function Wrapped({ children }: { children: string }) {
@@ -86,7 +86,7 @@ function PatchDiff({ path, kind, diff }: { path: string; kind: string; diff: str
   return (
     <div className="flex flex-col gap-1">
       <PathText path={path} />
-      <div className="rounded-md border border-line-subtle bg-surface-window py-1.5 font-mono text-[12px] leading-[1.6] select-text">
+      <div className="rounded-md border border-line-subtle bg-surface-window py-1.5 font-mono text-meta leading-[1.6] select-text">
         <div className="grid w-max min-w-full">
           {lines.map((line, index) => (
             <div key={index} className={`px-2.5 whitespace-pre ${tone(line)}`}>
@@ -193,11 +193,11 @@ export function ApprovalText({ children }: { children: string }) {
 export function RequestHeadline({ headline, why }: { headline: ReactNode; why?: string | undefined }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <p className="line-clamp-3 text-[14px] leading-[1.4] font-semibold break-words text-fg-primary select-text max-md:text-[15px]">
+      <p className="line-clamp-3 text-reading leading-[1.4] font-semibold break-words text-fg-primary select-text max-md:text-[15px]">
         {headline}
       </p>
       {why ? (
-        <p className="line-clamp-3 text-[13px] leading-[1.5] break-words text-fg-secondary select-text max-md:text-[14px]">
+        <p className="line-clamp-3 text-body leading-[1.5] break-words text-fg-secondary select-text max-md:text-[14px]">
           {why}
         </p>
       ) : null}
@@ -225,7 +225,7 @@ const effectIcon: Record<EffectKind, LucideIcon> = {
 /** How risky a request is, as a meter of three bars and its name, then what it would change. */
 function RiskFacts({ risk, effects }: { risk: Risk; effects: ReadonlyArray<Effect> }) {
   return (
-    <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-fg-tertiary max-md:text-[13px]">
+    <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-meta text-fg-tertiary max-md:text-[13px]">
       <li
         className={`flex items-center gap-1.5 font-medium ${risk === "high" ? "text-error" : "text-fg-primary"}`}
       >
@@ -287,8 +287,7 @@ export function PermissionPrompt({
   );
 }
 
-const base =
-  "h-7 rounded-md px-2.5 text-[12.5px] transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
+const base = "h-7 rounded-md px-2.5 text-meta transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
 /** The answer buttons' looks: the answer most give, another one, and the one that turns it away. */
 export const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-40`;
 const outlined = `${base} border border-line-strong font-medium text-fg-primary hover:bg-surface-hover`;

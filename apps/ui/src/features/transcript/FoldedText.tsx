@@ -25,7 +25,7 @@ export function FoldedText({ text, children }: { text: string; children: ReactNo
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className="mt-1 -mb-0.5 rounded text-xs text-fg-tertiary transition-colors hover:text-fg-primary max-md:py-1.5"
+        className="mt-1 -mb-0.5 rounded text-meta text-fg-tertiary transition-colors hover:text-fg-primary max-md:py-1.5"
       >
         {open ? "Show less" : lines > 1 ? `Show all ${lines} lines` : "Show more"}
       </button>

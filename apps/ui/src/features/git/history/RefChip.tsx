@@ -24,7 +24,7 @@ export function RefChip({ marker }: { marker: CommitRef }) {
     <span
       title={label}
       aria-label={label}
-      className={`inline-flex h-[18px] max-w-36 min-w-0 shrink items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none ${
+      className={`inline-flex h-[18px] max-w-36 min-w-0 shrink items-center gap-1 rounded-full border px-1.5 text-caption leading-none ${
         marker.current === true ? "border-line-strong text-fg-primary" : "border-line-subtle text-fg-tertiary"
       }`}
     >

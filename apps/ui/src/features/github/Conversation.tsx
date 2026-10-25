@@ -137,10 +137,10 @@ function Entry({ entry }: { entry: ConversationEntry }) {
           >
             <ul className="flex flex-col gap-1">
               {entry.commits.map((commit) => (
-                <li key={commit.oid} className="flex min-w-0 items-baseline gap-2 text-[12.5px]">
+                <li key={commit.oid} className="flex min-w-0 items-baseline gap-2 text-meta">
                   <GitHubLink
                     href={commit.url}
-                    className="shrink-0 font-mono text-[11.5px] text-fg-tertiary hover:text-fg-primary"
+                    className="shrink-0 font-mono text-meta text-fg-tertiary hover:text-fg-primary"
                   >
                     {commit.oid.slice(0, 7)}
                   </GitHubLink>
@@ -202,7 +202,7 @@ export function CommentCard({
       <article className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line-subtle bg-surface-raised">
         {!avatar && hidden === undefined ? null : (
           <header
-            className={`flex min-h-9 flex-wrap items-center gap-x-1.5 gap-y-1 px-3.5 py-1.5 text-[12.5px] ${folded ? "" : "border-b border-line-subtle"}`}
+            className={`flex min-h-9 flex-wrap items-center gap-x-1.5 gap-y-1 px-3.5 py-1.5 text-meta ${folded ? "" : "border-b border-line-subtle"}`}
           >
             <span className="font-medium text-fg-primary">{loginOf(author)}</span>
             <span className="text-fg-tertiary">
@@ -222,7 +222,7 @@ export function CommentCard({
                 <button
                   type="button"
                   onClick={() => setShown((current) => !current)}
-                  className="rounded-md px-1.5 text-[12px] text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                  className="rounded-md px-1.5 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
                 >
                   {shown ? "Hide" : "Show"}
                 </button>
@@ -231,14 +231,14 @@ export function CommentCard({
           </header>
         )}
         {folded ? (
-          <p className="border-t border-line-subtle px-3.5 py-2 text-[12.5px] text-fg-tertiary">
+          <p className="border-t border-line-subtle px-3.5 py-2 text-meta text-fg-tertiary">
             Hidden as {hidden.toLowerCase()}.
           </p>
         ) : (
           <>
             <div className="min-w-0 px-3.5 py-3">
               {body.trim() === "" ? (
-                <p className="text-[13px] text-fg-tertiary italic">{empty}</p>
+                <p className="text-body text-fg-tertiary italic">{empty}</p>
               ) : (
                 <Markdown text={body} streaming={false} />
               )}
@@ -322,7 +322,7 @@ function EventRow({
   return (
     <div className="flex gap-3">
       <EventIcon icon={icon} {...(tone ? { tone } : {})} />
-      <p className="flex min-h-7 min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] leading-5 text-fg-secondary">
+      <p className="flex min-h-7 min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-meta leading-5 text-fg-secondary">
         <span className="inline-flex items-center gap-1.5">
           <Avatar user={actor} size={16} />
           <span className="font-medium text-fg-primary">{loginOf(actor)}</span>
@@ -350,7 +350,7 @@ function CommitList({ commits }: { commits: ReadonlyArray<ConversationCommit> })
       {commits.map((commit) => (
         <li
           key={commit.oid}
-          className="flex min-w-0 items-center gap-2 border-line-subtle px-3 py-1.5 text-[12.5px] not-first:border-t"
+          className="flex min-w-0 items-center gap-2 border-line-subtle px-3 py-1.5 text-meta not-first:border-t"
         >
           <Avatar user={commit.author} size={16} />
           <span className="min-w-0 flex-1 truncate text-fg-primary" title={commit.headline}>
@@ -358,7 +358,7 @@ function CommitList({ commits }: { commits: ReadonlyArray<ConversationCommit> })
           </span>
           <GitHubLink
             href={commit.url}
-            className="shrink-0 font-mono text-[11.5px] text-fg-tertiary hover:text-fg-primary"
+            className="shrink-0 font-mono text-meta text-fg-tertiary hover:text-fg-primary"
           >
             {commit.oid.slice(0, 7)}
           </GitHubLink>
@@ -378,7 +378,7 @@ function Reference({ reference }: { reference: GitHubReference }) {
 }
 
 const Code = ({ children }: { children: ReactNode }) => (
-  <code className="rounded bg-surface-hover px-1 font-mono text-[11.5px] text-fg-primary">{children}</code>
+  <code className="rounded bg-surface-hover px-1 font-mono text-meta text-fg-primary">{children}</code>
 );
 
 const names = (logins: ReadonlyArray<string>) => (
@@ -480,7 +480,7 @@ function Event({ item }: { item: EventItem }) {
         GitCommitHorizontal,
         <>
           referenced this in commit{" "}
-          <GitHubLink href={item.url} className="font-mono text-[11.5px] text-fg-primary hover:underline">
+          <GitHubLink href={item.url} className="font-mono text-meta text-fg-primary hover:underline">
             {item.oid.slice(0, 7)}
           </GitHubLink>
           <span className="min-w-0 truncate text-fg-tertiary">{item.headline}</span>
@@ -534,7 +534,7 @@ function Event({ item }: { item: EventItem }) {
         GitMerge,
         <>
           merged commit{" "}
-          <GitHubLink href={item.url} className="font-mono text-[11.5px] text-fg-primary hover:underline">
+          <GitHubLink href={item.url} className="font-mono text-meta text-fg-primary hover:underline">
             {item.oid.slice(0, 7)}
           </GitHubLink>{" "}
           into <Code>{item.base}</Code>

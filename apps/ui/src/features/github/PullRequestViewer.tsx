@@ -64,7 +64,7 @@ type PullTab = "conversation" | "commits" | "checks" | "files";
 const pullTabAtom = Atom.family((_id: string) => Atom.make<PullTab>("conversation").pipe(Atom.keepAlive));
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
 
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
@@ -208,7 +208,7 @@ function Header({
       className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-auto max-md:flex-wrap max-md:gap-y-0 max-md:pt-2.5 ${pane ? "select-none" : ""}`}
     >
       {pull ? <PullStateIcon state={pullStateOf(pull)} size={15} /> : null}
-      <span className="flex min-w-0 items-baseline gap-1.5 text-[13px] max-md:text-[15px]">
+      <span className="flex min-w-0 items-baseline gap-1.5 text-body max-md:text-[15px]">
         <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
         <span className="min-w-0 truncate font-medium text-fg-primary">{pull?.title ?? ""}</span>
       </span>
@@ -331,13 +331,13 @@ function CheckoutDialog({
         done === undefined ? (
           <>
             This folder switches to the pull request's branch,{" "}
-            <code className="font-mono text-[12px]">{pull.head}</code>, as{" "}
-            <code className="font-mono text-[12px]">gh pr checkout</code> does. Changes you haven't committed
+            <code className="font-mono text-meta">{pull.head}</code>, as{" "}
+            <code className="font-mono text-meta">gh pr checkout</code> does. Changes you haven't committed
             stay with you, unless they clash with the branch.
           </>
         ) : (
           <>
-            This folder is on <code className="font-mono text-[12px]">{done}</code> now.
+            This folder is on <code className="font-mono text-meta">{done}</code> now.
           </>
         )
       }
@@ -349,7 +349,7 @@ function CheckoutDialog({
       }
     >
       {actions.error === undefined || done !== undefined ? null : (
-        <p role="alert" className="text-[12.5px] text-error">
+        <p role="alert" className="text-meta text-error">
           {actions.error}
         </p>
       )}
@@ -383,7 +383,7 @@ function TitleBlock({ pull }: { pull: PullRequestDetail }) {
             <When at={pull.createdAt} />
           )}
           <span aria-hidden="true">·</span>
-          <span className="font-mono text-[12px] tabular-nums">
+          <span className="font-mono text-meta tabular-nums">
             <span className="text-success">+{pull.additions}</span>{" "}
             <span className="text-error">−{pull.deletions}</span>
           </span>
@@ -542,7 +542,7 @@ function MoreTimeline({
     return (
       <Button
         onClick={() => setShown(true)}
-        className="self-center rounded-lg border border-line-subtle px-3 py-1.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+        className="self-center rounded-lg border border-line-subtle px-3 py-1.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
       >
         Show more of the conversation
       </Button>
@@ -567,7 +567,7 @@ function TimelinePage({
   if (page === undefined) {
     return (
       <p
-        className={`text-center text-[12.5px] ${AsyncResult.isFailure(result) ? "text-error" : "text-fg-tertiary"}`}
+        className={`text-center text-meta ${AsyncResult.isFailure(result) ? "text-error" : "text-fg-tertiary"}`}
       >
         {AsyncResult.isFailure(result)
           ? failureMessage(result.cause, "More of the conversation couldn't be read.")

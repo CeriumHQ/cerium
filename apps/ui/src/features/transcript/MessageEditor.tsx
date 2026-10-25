@@ -59,22 +59,22 @@ export function MessageEditor({
             void send();
           }
         }}
-        className="field-sizing-content max-h-80 min-h-12 w-full resize-none bg-transparent px-2 py-1 text-[14px] leading-relaxed text-fg-primary outline-none placeholder:text-fg-tertiary"
+        className="field-sizing-content max-h-80 min-h-12 w-full resize-none bg-transparent px-2 py-1 text-reading leading-relaxed text-fg-primary outline-none placeholder:text-fg-tertiary"
       />
       <div className="flex items-center gap-2 pl-2">
-        <p className="min-w-0 flex-1 truncate text-2xs text-fg-tertiary">
+        <p className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">
           Later turns are kept as an earlier version
         </p>
         <Button
           onClick={onCancel}
-          className="h-7 rounded-md px-2.5 text-[13px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          className="h-7 rounded-md px-2.5 text-body text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
           Cancel
         </Button>
         <Button
           onClick={() => void send()}
           disabled={!sendable}
-          className="h-7 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30"
+          className="h-7 rounded-md bg-accent px-3 text-body font-medium text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30"
         >
           Send
         </Button>

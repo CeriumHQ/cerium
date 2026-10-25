@@ -83,7 +83,7 @@ export function InboxCard({
   // Room the quick actions and the menu button take at the right end on hover.
   const room = (actions.length + (menuItems === undefined ? 0 : 1)) * 24;
 
-  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-[13px] transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${
+  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${
     leaving ? "opacity-0" : ""
   } ${selected || editing ? "bg-surface-selected" : "hover:bg-surface-hover"}`;
   const titleClass = `min-w-0 truncate ${
@@ -102,7 +102,7 @@ export function InboxCard({
       )}
       <span
         style={{ "--room": `${room}px` } as CSSProperties}
-        className={`flex min-w-7 justify-end text-[11.5px] whitespace-nowrap text-fg-tertiary tabular-nums transition-[min-width] duration-150 md:group-hover/row:min-w-(--room) md:group-has-[:focus-visible]/row:min-w-(--room) md:group-has-[[data-popup-open]]/row:min-w-(--room) max-md:text-[13px] ${
+        className={`flex min-w-7 justify-end text-meta whitespace-nowrap text-fg-tertiary tabular-nums transition-[min-width] duration-150 md:group-hover/row:min-w-(--room) md:group-has-[:focus-visible]/row:min-w-(--room) md:group-has-[[data-popup-open]]/row:min-w-(--room) max-md:text-[13px] ${
           menuItems === undefined ? "" : "max-md:min-w-9 pointer-coarse:min-w-9"
         }`}
       >
@@ -110,7 +110,7 @@ export function InboxCard({
           {when ?? shortAgo(thread.updatedAt)}
         </span>
       </span>
-      <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs text-fg-tertiary max-md:text-[13px]">
+      <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[13px]">
         <span className="min-w-0 flex-1 truncate">
           {status ? (
             <>
@@ -124,7 +124,7 @@ export function InboxCard({
           {thread.worktree ? (
             <>
               {" · "}
-              <span className="font-mono text-[11px] max-md:text-xs">{thread.worktree.branch}</span>
+              <span className="font-mono text-caption max-md:text-xs">{thread.worktree.branch}</span>
             </>
           ) : null}
           {group ? <> · {group.tally}</> : null}

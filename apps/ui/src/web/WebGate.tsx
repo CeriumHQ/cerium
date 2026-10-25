@@ -34,7 +34,7 @@ export function WebGate({ children }: { children: ReactNode }) {
       <div className="flex w-full max-w-sm flex-col gap-7">
         <div className="flex items-center gap-2.5 text-fg-primary">
           <CeriumMark size={22} landing />
-          <span className="text-[17px] font-semibold tracking-tight">Cerium</span>
+          <span className="text-title font-semibold tracking-tight">Cerium</span>
         </div>
         {account === undefined ? null : account._tag === "SignedIn" ? (
           <Connecting connection={account.connection} />
@@ -52,15 +52,15 @@ function Heading({ title, children }: { title: string; children: ReactNode }) {
       <h1 className="text-[22px] leading-tight font-semibold tracking-tight text-balance text-fg-primary">
         {title}
       </h1>
-      <p className="text-[14px] leading-relaxed text-fg-secondary">{children}</p>
+      <p className="text-reading leading-relaxed text-fg-secondary">{children}</p>
     </div>
   );
 }
 
 const primary =
-  "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 text-[14px] font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60";
+  "flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 text-reading font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60";
 const quiet =
-  "flex h-10 w-full items-center justify-center rounded-xl px-4 text-[13.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary";
+  "flex h-10 w-full items-center justify-center rounded-xl px-4 text-reading text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary";
 
 /** Signed out, or waiting on Cerium's sign-in page. */
 function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "SignedIn" }> }) {
@@ -112,12 +112,12 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
           {starting ? "Opening the sign-in page…" : "Sign in"}
         </Button>
         {shownError ? (
-          <p role="alert" className="text-[13px] leading-relaxed text-error">
+          <p role="alert" className="text-body leading-relaxed text-error">
             {shownError}
           </p>
         ) : null}
       </div>
-      <p className="flex items-center justify-center gap-1.5 text-[12.5px] text-fg-tertiary">
+      <p className="flex items-center justify-center gap-1.5 text-meta text-fg-tertiary">
         Cerium never sees your password.
         <InfoTip label="Sign-in options">
           Google, GitHub, X or an email and password, on Cerium's sign-in page.
@@ -134,7 +134,7 @@ function Connecting({
   connection: Extract<AccountState, { _tag: "SignedIn" }>["connection"];
 }) {
   return (
-    <div className="flex items-center gap-2.5 text-[14px] text-fg-secondary">
+    <div className="flex items-center gap-2.5 text-reading text-fg-secondary">
       <RefreshCw size={15} strokeWidth={1.75} className="animate-spin text-fg-tertiary" />
       {connection === "offline"
         ? "Can't reach Cerium's cloud. Cerium keeps trying."

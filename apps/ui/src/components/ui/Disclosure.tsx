@@ -33,7 +33,7 @@ export function Disclosure({
       {...(onOpenChange ? { onOpenChange: (next: boolean) => onOpenChange(next) } : {})}
       {...(className ? { className } : {})}
     >
-      <Collapsible.Trigger className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md py-1 pr-1.5 pl-1 text-[13px] text-fg-secondary transition-colors select-none hover:text-fg-primary data-panel-open:text-fg-primary max-md:py-2">
+      <Collapsible.Trigger className="group -ml-1 flex max-w-full items-center gap-1.5 rounded-md py-1 pr-1.5 pl-1 text-body text-fg-secondary transition-colors select-none hover:text-fg-primary data-panel-open:text-fg-primary max-md:py-2">
         <ChevronRight
           size={14}
           strokeWidth={2}

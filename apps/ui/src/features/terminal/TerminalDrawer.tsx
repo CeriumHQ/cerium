@@ -152,7 +152,7 @@ export function TerminalDrawer({
               >
                 <Tabs.Tab
                   value={terminal.id}
-                  className={`h-7 rounded-md pr-1 pl-2.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-focus-ring data-active:text-fg-primary ${
+                  className={`h-7 rounded-md pr-1 pl-2.5 text-meta outline-none focus-visible:ring-2 focus-visible:ring-focus-ring data-active:text-fg-primary ${
                     terminal.exitCode === undefined ? "text-fg-tertiary" : "text-fg-disabled"
                   }`}
                 >

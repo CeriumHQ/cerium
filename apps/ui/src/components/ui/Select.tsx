@@ -9,7 +9,7 @@ export const SelectGroup = BaseSelect.Group;
 
 /** The toolbar trigger's look, for other primitives' triggers that sit beside it. */
 export const triggerClass =
-  "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary";
+  "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-meta whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary";
 
 /** A compact, quiet trigger for toolbars: content, then a small chevron. */
 export function SelectTrigger({ children, label }: { children: ReactNode; label: string }) {
@@ -44,7 +44,7 @@ export function SelectPopup({ children, footer }: { children: ReactNode; footer?
 
 export function SelectGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <BaseSelect.GroupLabel className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-2xs font-medium text-fg-tertiary">
+    <BaseSelect.GroupLabel className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-caption font-medium text-fg-tertiary">
       {children}
     </BaseSelect.GroupLabel>
   );
@@ -67,7 +67,7 @@ export function SelectItem({
     <BaseSelect.Item
       value={value}
       {...(disabled ? { disabled } : {})}
-      className={`grid cursor-default items-center gap-x-2 rounded-lg px-2 py-1.5 text-[13px] text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:text-fg-disabled max-md:py-2.5 max-md:text-[15px] ${
+      className={`grid cursor-default items-center gap-x-2 rounded-lg px-2 py-1.5 text-body text-fg-secondary outline-none select-none data-highlighted:bg-surface-hover data-highlighted:text-fg-primary data-selected:text-fg-primary data-disabled:text-fg-disabled max-md:py-2.5 max-md:text-[15px] ${
         Icon ? "grid-cols-[auto_1fr_auto]" : "grid-cols-[1fr_auto]"
       }`}
     >
@@ -76,7 +76,7 @@ export function SelectItem({
       ) : null}
       <span className="mr-4 flex min-w-0 flex-col">
         <BaseSelect.ItemText className="truncate">{children}</BaseSelect.ItemText>
-        {description ? <span className="truncate text-2xs text-fg-tertiary">{description}</span> : null}
+        {description ? <span className="truncate text-caption text-fg-tertiary">{description}</span> : null}
       </span>
       <BaseSelect.ItemIndicator>
         <Check size={13} strokeWidth={2.25} />

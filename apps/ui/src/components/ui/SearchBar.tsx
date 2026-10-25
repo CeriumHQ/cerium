@@ -53,7 +53,7 @@ export function SearchBar({
           placeholder={placeholder}
           aria-label={label}
           spellCheck={false}
-          className="h-full min-w-0 flex-1 bg-transparent text-[12.5px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[14px]"
+          className="h-full min-w-0 flex-1 bg-transparent text-meta text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[14px]"
         />
       </label>
       {value === "" ? null : (

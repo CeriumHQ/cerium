@@ -44,10 +44,10 @@ export function AttachmentTray({
                     <div className="flex h-14 max-w-52 items-center gap-2 rounded-lg border border-line-subtle bg-surface-hover pr-3 pl-2.5">
                       <FileIcon path={attachment.name} className="size-6" />
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-[12.5px] font-medium text-fg-primary">
+                        <span className="truncate text-meta font-medium text-fg-primary">
                           {attachment.name}
                         </span>
-                        <span className="text-2xs text-fg-tertiary uppercase">
+                        <span className="text-caption text-fg-tertiary uppercase">
                           {attachment.name.includes(".") ? attachment.name.split(".").at(-1) : "File"}
                         </span>
                       </div>
@@ -80,7 +80,7 @@ export function AttachmentTray({
         </div>
       </ScrollArea>
       {failures[0] === undefined ? null : (
-        <p className="px-4 pt-2 text-xs text-error">
+        <p className="px-4 pt-2 text-meta text-error">
           {failures[0]}
           {failures.length > 1 ? ` ${failures.length - 1} more failed too.` : ""}
         </p>

@@ -47,7 +47,7 @@ export function SyncButton({
           disabled={busy}
           aria-label={label}
           onClick={() => run(plan.primary)}
-          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] transition-colors select-none hover:bg-surface-hover disabled:opacity-60 max-md:h-10 max-md:px-3 max-md:text-[15px] @max-[15rem]:gap-1 @max-[15rem]:px-1.5 ${
+          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-body transition-colors select-none hover:bg-surface-hover disabled:opacity-60 max-md:h-10 max-md:px-3 max-md:text-[15px] @max-[15rem]:gap-1 @max-[15rem]:px-1.5 ${
             quiet ? "text-fg-tertiary hover:text-fg-secondary" : "text-fg-primary"
           }`}
         >
@@ -58,12 +58,12 @@ export function SyncButton({
           )}
           <span className="@max-[15rem]:hidden">{label}</span>
           {plan.diverged ? (
-            <span className="flex items-center gap-1 text-2xs text-fg-secondary tabular-nums">
+            <span className="flex items-center gap-1 text-caption text-fg-secondary tabular-nums">
               <span>↑{plan.ahead}</span>
               <span>↓{plan.behind}</span>
             </span>
           ) : plan.ahead + plan.behind > 0 ? (
-            <span className="text-2xs text-fg-secondary tabular-nums">{plan.ahead + plan.behind}</span>
+            <span className="text-caption text-fg-secondary tabular-nums">{plan.ahead + plan.behind}</span>
           ) : null}
         </button>
       </Tooltip>

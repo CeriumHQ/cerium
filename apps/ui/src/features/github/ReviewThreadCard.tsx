@@ -37,7 +37,7 @@ export function ReviewThreadCard({
       <Button
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        className="flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-surface-hover"
+        className="flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left text-meta transition-colors hover:bg-surface-hover"
       >
         <ChevronRight
           size={13}
@@ -46,7 +46,7 @@ export function ReviewThreadCard({
         />
         {snippet ? (
           <span
-            className="min-w-0 truncate font-mono text-[11.5px] text-fg-secondary [direction:rtl]"
+            className="min-w-0 truncate font-mono text-meta text-fg-secondary [direction:rtl]"
             title={thread.path}
           >
             {/* The right-to-left run keeps the file's name in view as the folders give way. */}
@@ -55,7 +55,7 @@ export function ReviewThreadCard({
         ) : null}
         {line === undefined ? null : (
           <span
-            className={`shrink-0 text-[12px] tabular-nums ${snippet ? "text-fg-tertiary" : "text-fg-secondary"}`}
+            className={`shrink-0 text-meta tabular-nums ${snippet ? "text-fg-tertiary" : "text-fg-secondary"}`}
           >
             {thread.startLine !== undefined && thread.startLine !== line
               ? `Lines ${thread.startLine}–${line}`
@@ -66,7 +66,7 @@ export function ReviewThreadCard({
           {thread.outdated ? <Badge>Outdated</Badge> : null}
           {thread.resolved ? <Badge>Resolved</Badge> : null}
           {open ? null : (
-            <span className="text-[11.5px] text-fg-tertiary tabular-nums">
+            <span className="text-meta text-fg-tertiary tabular-nums">
               {thread.comments.length === 1 ? "1 comment" : `${thread.comments.length} comments`}
             </span>
           )}
@@ -80,7 +80,7 @@ export function ReviewThreadCard({
               <li key={comment.id} className="flex gap-2.5 border-line-subtle px-3 py-2.5 not-first:border-t">
                 <Avatar user={comment.author} size={20} />
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px]">
+                  <p className="flex flex-wrap items-center gap-x-1.5 text-meta">
                     <span className="font-medium text-fg-primary">{loginOf(comment.author)}</span>
                     <When at={comment.at} className="text-fg-tertiary" />
                     {comment.edited === undefined ? null : <span className="text-fg-tertiary">· edited</span>}
@@ -88,7 +88,7 @@ export function ReviewThreadCard({
                   {comment.hidden === undefined ? (
                     <Markdown text={comment.body} streaming={false} compact />
                   ) : (
-                    <p className="text-[12.5px] text-fg-tertiary italic">
+                    <p className="text-meta text-fg-tertiary italic">
                       Hidden as {comment.hidden.toLowerCase()}.
                     </p>
                   )}
@@ -106,7 +106,7 @@ export function ReviewThreadCard({
 
 function Badge({ children }: { children: string }) {
   return (
-    <span className="inline-flex h-[18px] items-center rounded-full border border-line-subtle px-1.5 text-[11px] text-fg-tertiary">
+    <span className="inline-flex h-[18px] items-center rounded-full border border-line-subtle px-1.5 text-caption text-fg-tertiary">
       {children}
     </span>
   );
@@ -117,7 +117,7 @@ function Snippet({ hunk }: { hunk: DiffHunk }) {
   const lines = numberHunks([hunk]).hunks[0]?.lines.slice(-SNIPPET_LINES) ?? [];
   if (lines.length === 0) return null;
   return (
-    <div className="overflow-x-auto border-b border-line-subtle font-mono text-[12px] leading-[1.6]">
+    <div className="overflow-x-auto border-b border-line-subtle font-mono text-meta leading-[1.6]">
       {lines.map((line, index) => (
         <div key={index} className={`flex w-max min-w-full ${tint[line.kind]}`}>
           <span className="w-10 shrink-0 px-2 text-right text-fg-disabled tabular-nums select-none">
@@ -162,7 +162,7 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
       <div className="flex items-center gap-2 border-t border-line-subtle px-3 py-2">
         <Button
           onClick={() => setWriting(true)}
-          className="flex h-8 min-w-0 flex-1 items-center rounded-lg border border-line-subtle bg-surface-window px-2.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:border-line-strong"
+          className="flex h-8 min-w-0 flex-1 items-center rounded-lg border border-line-subtle bg-surface-window px-2.5 text-left text-meta text-fg-tertiary transition-colors hover:border-line-strong"
         >
           Reply…
         </Button>
@@ -190,10 +190,10 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
         aria-label="Reply"
         spellCheck
         disabled={actions.busy === "reply"}
-        className="max-h-60 min-h-16 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60"
+        className="max-h-60 min-h-16 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60"
       />
       {actions.error === undefined || actions.busy !== undefined ? null : (
-        <p role="alert" className="text-[12.5px] text-error">
+        <p role="alert" className="text-meta text-error">
           {actions.error}
         </p>
       )}

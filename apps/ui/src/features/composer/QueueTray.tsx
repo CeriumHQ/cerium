@@ -65,7 +65,7 @@ export function QueueTray({
     <Reveal>
       {shown.length === 0 ? null : (
         <div className="mx-2.5 mt-2.5 rounded-xl border border-line-subtle p-1">
-          <div className="flex items-center justify-between gap-2 px-2 pt-0.5 pb-1 text-2xs text-fg-tertiary">
+          <div className="flex items-center justify-between gap-2 px-2 pt-0.5 pb-1 text-caption text-fg-tertiary">
             <span>
               {steered
                 ? "Sending now…"
@@ -97,11 +97,11 @@ export function QueueTray({
                       <span className="grid size-4 shrink-0 place-items-center rounded-[5px] text-[10.5px] text-fg-tertiary tabular-nums ring-1 ring-line-strong ring-inset">
                         {shown.indexOf(message) + 1}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[13px] text-fg-primary">
+                      <span className="min-w-0 flex-1 truncate text-body text-fg-primary">
                         {message.text.trim() || message.attachments.map((file) => file.name).join(", ")}
                       </span>
                       {message.attachments.length > 0 && message.text.trim() !== "" ? (
-                        <span className="flex shrink-0 items-center gap-1 text-2xs text-fg-tertiary">
+                        <span className="flex shrink-0 items-center gap-1 text-caption text-fg-tertiary">
                           <Paperclip size={11} strokeWidth={1.75} />
                           {message.attachments.length}
                         </span>

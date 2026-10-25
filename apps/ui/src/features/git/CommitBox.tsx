@@ -26,7 +26,7 @@ const failureOf = (error: unknown): Failure => {
 };
 
 const fieldClass =
-  "w-full bg-transparent px-3 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]";
+  "w-full bg-transparent px-3 text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]";
 
 /**
  * The next commit's message and the button that makes it, above the lists: what's staged goes in, or
@@ -192,7 +192,7 @@ export function CommitBox({
           <Checkbox.Root
             checked={draft.amend}
             onCheckedChange={(checked) => void toggleAmend(checked)}
-            className="group flex cursor-default items-center gap-1.5 rounded-md text-left text-[12px] text-fg-tertiary outline-none select-none hover:text-fg-secondary data-checked:text-fg-secondary max-md:text-[14px]"
+            className="group flex cursor-default items-center gap-1.5 rounded-md text-left text-meta text-fg-tertiary outline-none select-none hover:text-fg-secondary data-checked:text-fg-secondary max-md:text-[14px]"
           >
             <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong transition-colors group-focus-visible:border-fg-secondary group-data-checked:border-accent group-data-checked:bg-accent">
               <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
@@ -227,7 +227,7 @@ export function CommitBox({
               onClick={() => void submit()}
               disabled={!ready}
               focusableWhenDisabled
-              className="flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
+              className="flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
             >
               <GitCommitHorizontal size={14} strokeWidth={1.75} className="shrink-0" />
               <span className="truncate">{label}</span>
@@ -237,20 +237,20 @@ export function CommitBox({
       </div>
       {failure ? (
         <div role="alert" className="flex flex-col gap-1">
-          <p className="text-[12.5px] text-error max-md:text-[14px]">{failure.message}</p>
+          <p className="text-meta text-error max-md:text-[14px]">{failure.message}</p>
           {failure.output === undefined ? null : (
             <Disclosure
               summary={/hook/.test(failure.message) ? "What the hook printed" : "What git printed"}
               defaultOpen={/hook/.test(failure.message)}
             >
-              <pre className="scroll-thin max-h-56 overflow-auto rounded-lg bg-surface-sunken p-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-fg-secondary">
+              <pre className="scroll-thin max-h-56 overflow-auto rounded-lg bg-surface-sunken p-2.5 font-mono text-meta leading-relaxed whitespace-pre-wrap text-fg-secondary">
                 {failure.output}
               </pre>
             </Disclosure>
           )}
         </div>
       ) : made ? (
-        <p className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg-tertiary max-md:text-[14px]">
+        <p className="flex min-w-0 items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[14px]">
           <Check size={13} strokeWidth={2} className="shrink-0 text-success" />
           <span className="shrink-0 font-mono">{made.commit}</span>
           <span className="min-w-0 truncate">{made.subject}</span>

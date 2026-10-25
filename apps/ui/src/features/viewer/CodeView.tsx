@@ -61,7 +61,7 @@ export function CodeView({ text, path, wrap }: { text: string; path: string; wra
   const gutter = `calc(${String(lines.length).length}ch + 2.25rem)`;
   const chunks = Array.from({ length: Math.ceil(lines.length / CHUNK) }, (_, index) => index * CHUNK);
   return (
-    <div className="scroll-thin h-full overflow-auto py-3 font-mono text-[12.5px] leading-[1.6] select-text">
+    <div className="scroll-thin h-full overflow-auto py-3 font-mono text-meta leading-[1.6] select-text">
       <div className={wrap ? "min-w-0" : "w-max min-w-full"}>
         {chunks.map((first) => {
           const shown = lines.slice(first, first + CHUNK);

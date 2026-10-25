@@ -85,7 +85,7 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
 /** How many images a folded run previews: all of them up to this many, otherwise one fewer and a count. */
 const PREVIEWED = 4;
 
-const LABEL = "text-2xs font-medium tracking-wide text-fg-tertiary uppercase";
+const LABEL = "text-caption font-medium tracking-wide text-fg-tertiary uppercase";
 
 /**
  * The steps between two of the agent's messages, folded to one line that counts what they did.
@@ -115,7 +115,7 @@ export function ToolRun({
   return (
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
-        className={`group flex max-w-full min-w-0 items-center gap-1.5 text-left text-[12.5px] text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+        className={`group flex max-w-full min-w-0 items-center gap-1.5 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
       >
         <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
         <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
@@ -137,7 +137,7 @@ export function ToolRun({
               type="button"
               onClick={() => setToggled(true)}
               aria-label={`Show all ${images.length} images`}
-              className={`${PREVIEW} grid shrink-0 place-items-center border border-line-subtle text-xs text-fg-secondary tabular-nums transition-colors hover:bg-surface-hover hover:text-fg-primary`}
+              className={`${PREVIEW} grid shrink-0 place-items-center border border-line-subtle text-meta text-fg-secondary tabular-nums transition-colors hover:bg-surface-hover hover:text-fg-primary`}
             >
               +{images.length - previewed.length}
             </button>
@@ -197,17 +197,17 @@ const ToolRow = memo(
     // A failed call says why on its row, so a folded run opens onto what went wrong.
     const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
     const header = (
-      <Collapsible.Trigger className="group block w-full text-left text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
+      <Collapsible.Trigger className="group block w-full text-left text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
         <span className="flex h-7 items-center gap-2 px-2.5 max-md:h-9">
           <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
           <span className="shrink-0 font-medium text-fg-primary">{verb}</span>
           {detail ? (
-            <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-[11.5px]" : ""}`}>
+            <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-meta" : ""}`}>
               {detail}
             </span>
           ) : null}
           {tool.changedFiles.length > 0 ? (
-            <span className="shrink-0 rounded border border-line-subtle px-1.5 text-2xs text-fg-secondary">
+            <span className="shrink-0 rounded border border-line-subtle px-1.5 text-caption text-fg-secondary">
               {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
             </span>
           ) : null}
@@ -220,7 +220,7 @@ const ToolRow = memo(
           </span>
         </span>
         {reason && !open ? (
-          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-[12px] text-error">{reason}</span>
+          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-meta text-error">{reason}</span>
         ) : null}
       </Collapsible.Trigger>
     );
@@ -293,7 +293,7 @@ function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activit
   // A call still open after its agent's turn ended was cut off, not slow.
   if (status === "running" && activity !== "running") {
     return (
-      <span className="flex items-center gap-1 text-2xs text-fg-tertiary">
+      <span className="flex items-center gap-1 text-caption text-fg-tertiary">
         <Ban size={11} strokeWidth={2} />
         Interrupted
       </span>
@@ -329,7 +329,7 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
           <Pane label={input.label} text={input.text} />
         )
       ) : input?.kind === "subject" ? (
-        <p className="font-mono text-[12px] leading-relaxed break-all text-fg-tertiary select-text">
+        <p className="font-mono text-meta leading-relaxed break-all text-fg-tertiary select-text">
           {input.text}
         </p>
       ) : null}
@@ -351,7 +351,7 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
           badge={exit === undefined ? undefined : `Exit ${exit}`}
         />
       ) : isCommand && tool.status === "done" && images.length === 0 ? (
-        <p className="text-xs text-fg-tertiary">No output</p>
+        <p className="text-meta text-fg-tertiary">No output</p>
       ) : null}
     </div>
   );
@@ -398,7 +398,7 @@ function Pane({
   );
   const bar = (
     <div
-      className={`flex items-center gap-3 border-line-subtle px-3 text-xs text-fg-tertiary ${failed ? "border-b" : "border-t"}`}
+      className={`flex items-center gap-3 border-line-subtle px-3 text-meta text-fg-tertiary ${failed ? "border-b" : "border-t"}`}
     >
       {folds ? (
         <button
@@ -421,7 +421,7 @@ function Pane({
         <span className={LABEL}>{label}</span>
         {badge ? (
           <span
-            className={`rounded px-1.5 text-2xs tabular-nums ${failed ? "bg-error/10 text-error" : "bg-surface-hover text-fg-secondary"}`}
+            className={`rounded px-1.5 text-caption tabular-nums ${failed ? "bg-error/10 text-error" : "bg-surface-hover text-fg-secondary"}`}
           >
             {badge}
           </span>
@@ -440,7 +440,7 @@ function Pane({
         >
           {failed && (folds || clipped) ? bar : null}
           <pre
-            className={`scroll-thin overflow-auto px-3 py-2 font-mono text-[12px] leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
+            className={`scroll-thin overflow-auto px-3 py-2 font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
           >
             {shown}
           </pre>

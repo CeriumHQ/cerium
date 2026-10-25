@@ -56,12 +56,12 @@ export function FileChip({
   );
   const label = (
     <span className="flex flex-col gap-0.5">
-      <span className="font-mono text-[11px]">
+      <span className="font-mono text-caption">
         {path}
         {suffix}
       </span>
       {reveal && location ? (
-        <span className="text-2xs text-fg-tertiary">Click to show in File Explorer</span>
+        <span className="text-caption text-fg-tertiary">Click to show in File Explorer</span>
       ) : null}
     </span>
   );

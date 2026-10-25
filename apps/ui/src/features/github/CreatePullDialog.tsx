@@ -99,7 +99,7 @@ export function CreatePullDialog({
       title="Open a pull request"
       description={
         <>
-          From <code className="font-mono text-[12px]">{name}</code>
+          From <code className="font-mono text-meta">{name}</code>
           {branch.pushed ? "" : ", which is pushed to GitHub first"}.
         </>
       }
@@ -143,7 +143,7 @@ export function CreatePullDialog({
             readOnly={writing}
             spellCheck
             placeholder={writing ? "Writing from the branch's commits…" : "What it changes, and why"}
-            className="max-h-72 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-[13px] leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
+            className="max-h-72 min-h-28 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:text-[15px]"
           />
         </DialogField>
         <DialogField label="Into">
@@ -153,7 +153,7 @@ export function CreatePullDialog({
           Open it as a draft
         </DialogCheck>
         {error === undefined ? null : (
-          <p role="alert" className="text-[12.5px] text-error">
+          <p role="alert" className="text-meta text-error">
             {error}
           </p>
         )}

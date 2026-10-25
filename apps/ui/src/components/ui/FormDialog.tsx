@@ -19,20 +19,20 @@ export function DialogButton({
   return (
     <button
       type={type}
-      className={`h-8 rounded-lg px-3 text-[13px] font-medium transition-colors disabled:opacity-40 max-md:h-10 max-md:px-4 max-md:text-[15px] ${toneClass[tone]} ${className ?? ""}`}
+      className={`h-8 rounded-lg px-3 text-body font-medium transition-colors disabled:opacity-40 max-md:h-10 max-md:px-4 max-md:text-[15px] ${toneClass[tone]} ${className ?? ""}`}
       {...props}
     />
   );
 }
 
 const fieldClass =
-  "h-8 w-full min-w-0 rounded-lg border border-line-strong bg-transparent px-2.5 text-[13px] text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:h-10 max-md:text-[15px]";
+  "h-8 w-full min-w-0 rounded-lg border border-line-strong bg-transparent px-2.5 text-body text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary max-md:h-10 max-md:text-[15px]";
 
 /** A labelled field of a form dialog. */
 export function DialogField({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[12px] text-fg-secondary max-md:text-[13px]">{label}</span>
+      <span className="text-meta text-fg-secondary max-md:text-[13px]">{label}</span>
       {children}
     </label>
   );
@@ -62,7 +62,7 @@ export function DialogCheck({
     <Checkbox.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
-      className="group flex cursor-default items-center gap-2 rounded-md text-left text-[13px] text-fg-secondary outline-none select-none max-md:text-[15px]"
+      className="group flex cursor-default items-center gap-2 rounded-md text-left text-body text-fg-secondary outline-none select-none max-md:text-[15px]"
     >
       <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent group-focus-visible:border-fg-secondary">
         <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
@@ -118,11 +118,11 @@ export function FormDialog({
             }}
           >
             <div className="flex flex-col gap-1.5">
-              <Dialog.Title className="text-[14px] font-semibold tracking-tight max-md:text-[16px]">
+              <Dialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
                 {title}
               </Dialog.Title>
               {description === undefined ? null : (
-                <Dialog.Description className="text-[13px] leading-relaxed text-fg-secondary max-md:text-[14px]">
+                <Dialog.Description className="text-body leading-relaxed text-fg-secondary max-md:text-[14px]">
                   {description}
                 </Dialog.Description>
               )}

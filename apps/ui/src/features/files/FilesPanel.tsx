@@ -19,7 +19,7 @@ import { ancestors, changedRows, type OpenFile, type Touched } from "./model.ts"
 type View = "files" | "changes";
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-[13px] font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
+  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * The thread's folder, beside the conversation: its files as a tree, or just what git says differs
@@ -129,11 +129,11 @@ export function FilesPanel({
         />
       </ScrollArea>
     ) : tree.error !== undefined ? (
-      <p className="px-4 py-6 text-center text-[13px] text-balance text-fg-tertiary max-md:text-[14px]">
+      <p className="px-4 py-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">
         {tree.error}
       </p>
     ) : tree.rows.length === 0 && !tree.loading ? (
-      <p className="px-4 py-6 text-center text-[13px] text-fg-tertiary max-md:text-[14px]">
+      <p className="px-4 py-6 text-center text-body text-fg-tertiary max-md:text-[14px]">
         This folder is empty.
       </p>
     ) : (
@@ -159,11 +159,11 @@ export function FilesPanel({
       <header className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle pr-1.5 pl-2 max-md:h-12 max-md:pl-3">
         {onShowChanges !== undefined ? (
           <div className="flex min-w-0 items-center gap-1">
-            <h2 className="px-1 text-[13px] font-medium text-fg-primary max-md:text-[15px]">Files</h2>
+            <h2 className="px-1 text-body font-medium text-fg-primary max-md:text-[15px]">Files</h2>
             {changed.length > 0 ? (
               <Button
                 onClick={onShowChanges}
-                className="rounded-md px-1.5 py-0.5 text-[12.5px] text-fg-tertiary tabular-nums transition-colors hover:bg-surface-hover hover:text-fg-secondary max-md:text-[14px]"
+                className="rounded-md px-1.5 py-0.5 text-meta text-fg-tertiary tabular-nums transition-colors hover:bg-surface-hover hover:text-fg-secondary max-md:text-[14px]"
               >
                 {changed.length === 1 ? "1 change" : `${changed.length} changes`}
               </Button>

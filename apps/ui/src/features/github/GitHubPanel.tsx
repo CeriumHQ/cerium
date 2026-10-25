@@ -26,7 +26,7 @@ type Tab = "pulls" | "issues";
 const tabAtom = Atom.make<Tab>("pulls").pipe(Atom.keepAlive);
 
 const toggleClass =
-  "shrink-0 rounded-md px-2 py-0.5 text-[13px] font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
+  "shrink-0 rounded-md px-2 py-0.5 text-body font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * GitHub, beside the conversation: the pull requests and issues of the repository the open work
@@ -87,7 +87,7 @@ export function GitHubPanel({
     <div ref={element} className="flex h-full flex-col">
       <header className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle pr-1.5 pl-2 max-md:h-12 max-md:pl-3">
         {issuesTab === undefined ? (
-          <h2 className="truncate px-1 text-[13px] font-medium text-fg-primary max-md:text-[15px]">
+          <h2 className="truncate px-1 text-body font-medium text-fg-primary max-md:text-[15px]">
             {repository ? "Pull requests" : "GitHub"}
           </h2>
         ) : (
@@ -136,7 +136,7 @@ export function GitHubPanel({
         ) : AsyncResult.isFailure(result) ? (
           <Gate cause={result.cause} onRetry={refresh} />
         ) : (
-          <p className="px-4 py-8 text-center text-[12.5px] text-fg-tertiary">Finding the repository…</p>
+          <p className="px-4 py-8 text-center text-meta text-fg-tertiary">Finding the repository…</p>
         )}
       </div>
       {repository && branch?.branch !== undefined ? (
@@ -163,7 +163,7 @@ function Gate({ cause, onRetry }: { cause: Parameters<typeof githubErrorOf>[0]; 
   const retry = (
     <Button
       onClick={onRetry}
-      className="flex h-8 items-center gap-1.5 rounded-lg border border-line-subtle px-3 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+      className="flex h-8 items-center gap-1.5 rounded-lg border border-line-subtle px-3 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
     >
       <RefreshCw size={13} strokeWidth={1.75} />
       Check again
@@ -180,7 +180,7 @@ function Gate({ cause, onRetry }: { cause: Parameters<typeof githubErrorOf>[0]; 
             href={GH_INSTALL_URL}
             target="_blank"
             rel="noreferrer"
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-opacity hover:opacity-90"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
           >
             <ExternalLink size={13} strokeWidth={2} />
             Get GitHub CLI
@@ -213,8 +213,8 @@ function Notice({ title, body, children }: { title: string; body: string; childr
   return (
     <div className="flex flex-col items-start gap-3 px-4 py-6">
       <div className="flex flex-col gap-1">
-        <h3 className="text-[13.5px] font-medium text-fg-primary">{title}</h3>
-        <p className="text-[12.5px] leading-relaxed text-pretty text-fg-secondary">{body}</p>
+        <h3 className="text-reading font-medium text-fg-primary">{title}</h3>
+        <p className="text-meta leading-relaxed text-pretty text-fg-secondary">{body}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>

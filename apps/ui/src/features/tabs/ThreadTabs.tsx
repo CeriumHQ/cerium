@@ -308,7 +308,7 @@ function ClosingTab({ tab, onGone }: { tab: TabView; onGone: () => void }) {
       inert
       className="flex h-7 max-w-0 min-w-0 basis-0 items-center overflow-hidden opacity-0 transition-[flex-basis,min-width,max-width,opacity] duration-[220ms,220ms,220ms,120ms] ease-out-soft starting:max-w-52 starting:min-w-28 starting:basis-52 starting:opacity-100"
     >
-      <span className="flex h-full w-(--closing-width) shrink-0 items-center gap-2 pr-7 pl-2.5 text-[12.5px] text-fg-tertiary">
+      <span className="flex h-full w-(--closing-width) shrink-0 items-center gap-2 pr-7 pl-2.5 text-meta text-fg-tertiary">
         <TabFace tab={tab} title={title} active={false} unread={false} />
       </span>
     </div>
@@ -467,7 +467,7 @@ function ThreadTab({
           value={tab.key}
           // The full title, and where it is, for a tab too narrow to say.
           title={tab.project ? `${title}\n${tab.project}` : title}
-          className={`flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-7 pl-2.5 text-left text-[12.5px] outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+          className={`flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg pr-7 pl-2.5 text-left text-meta outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
             active
               ? "text-fg-primary"
               : tab.beside

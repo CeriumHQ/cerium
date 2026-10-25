@@ -140,7 +140,7 @@ export function ImageThumb({
               className="max-h-[calc(100vh-8rem)] max-w-full rounded-xl border border-line-subtle object-contain shadow-overlay"
             />
           </WithImageMenu>
-          <Dialog.Title className="max-w-full truncate text-xs text-fg-secondary">{name}</Dialog.Title>
+          <Dialog.Title className="max-w-full truncate text-meta text-fg-secondary">{name}</Dialog.Title>
           <Dialog.Close
             aria-label="Close"
             className="absolute -top-3 -right-3 grid size-7 place-items-center rounded-full border border-line-subtle bg-surface-overlay text-fg-secondary shadow-overlay backdrop-blur-xl transition-colors hover:text-fg-primary"
@@ -210,7 +210,7 @@ function LoadedImageThumb({
     return (
       <span
         title={path ?? name}
-        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-xs text-fg-tertiary"
+        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-meta text-fg-tertiary"
       >
         <ImageOff size={13} strokeWidth={1.75} className="shrink-0" />
         <span className="min-w-0 truncate">{name} can't be shown</span>

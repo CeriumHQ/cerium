@@ -282,7 +282,7 @@ export function Inbox({
         <Entries threads={listed} box="inbox" now={now} {...rowProps} />
       </BoxPanel>
       {box === "inbox" && note ? (
-        <div className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-xs text-fg-tertiary max-md:text-[13px]">
+        <div className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-meta text-fg-tertiary max-md:text-[13px]">
           <output className="min-w-0 flex-1 truncate">{note.label}</output>
           <Button
             onClick={note.undo}
@@ -320,7 +320,7 @@ function BoxTab({ value, label, count = 0 }: { value: InboxBox; label: string; c
   return (
     <Tabs.Tab
       value={value}
-      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12.5px] font-medium text-fg-tertiary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm"
+      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm"
     >
       {label}
       {count > 0 ? <span className="font-normal text-fg-tertiary tabular-nums">{count}</span> : null}
@@ -346,7 +346,7 @@ function BoxPanel({
         <nav aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
           {typeof empty === "string" ? (
-            <p className="px-2 py-12 text-center text-[12.5px] text-fg-tertiary max-md:text-sm">{empty}</p>
+            <p className="px-2 py-12 text-center text-meta text-fg-tertiary max-md:text-sm">{empty}</p>
           ) : (
             empty
           )}

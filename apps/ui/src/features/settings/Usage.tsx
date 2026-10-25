@@ -73,14 +73,14 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
       action={
         <div className="flex items-center gap-3">
           {checkedAt ? (
-            <span className="text-xs text-fg-tertiary tabular-nums max-sm:hidden">
+            <span className="text-meta text-fg-tertiary tabular-nums max-sm:hidden">
               Updated {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </span>
           ) : null}
           <Button
             onClick={refresh}
             disabled={checking}
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
           >
             <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
             {checking ? "Checking…" : "Refresh"}
@@ -93,7 +93,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
         description="As each harness reports them. API keys have none, and Cursor and OpenCode don't report theirs yet."
       >
         {AsyncResult.isFailure(result) && snapshot === undefined ? (
-          <SettingsCard className="px-4 py-3.5 text-[13px] text-error">
+          <SettingsCard className="px-4 py-3.5 text-body text-error">
             {driven
               ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
               : "Couldn't read the usage. Try again in a moment."}
@@ -106,7 +106,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
           usage.map((each) => <ProviderCard key={each.provider} usage={each} now={now} />)
         )}
         {paced ? (
-          <p className="flex items-center gap-2 text-xs text-fg-tertiary">
+          <p className="flex items-center gap-2 text-meta text-fg-tertiary">
             <PaceMark />
             Where you'd be at an even pace. Stay right of it and the limit lasts until it resets.
           </p>
@@ -131,9 +131,9 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
     <SettingsCard className="@container">
       <div className="flex items-center gap-2.5 px-4 py-3">
         <ProviderLogo provider={usage.provider} size={15} className="shrink-0 text-fg-primary" />
-        <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-fg-primary">{name}</span>
+        <span className="min-w-0 flex-1 truncate text-reading font-medium text-fg-primary">{name}</span>
         {credits ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs text-fg-tertiary tabular-nums">
+          <span className="flex shrink-0 items-center gap-1.5 text-meta text-fg-tertiary tabular-nums">
             {credits} free reset{credits === 1 ? "" : "s"}
             <InfoTip label="About free resets">
               {name} grants these. Each one restores your limits once; use one from {name} when you hit a
@@ -142,17 +142,17 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
           </span>
         ) : null}
         {usage._tag === "Subscribed" && usage.plan ? (
-          <span className="shrink-0 rounded-full border border-line-subtle px-2 py-px text-[11px] font-medium text-fg-secondary">
+          <span className="shrink-0 rounded-full border border-line-subtle px-2 py-px text-caption font-medium text-fg-secondary">
             {planName(usage.plan)}
           </span>
         ) : null}
       </div>
       {usage._tag === "UsageUnreadable" ? (
-        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] leading-relaxed text-fg-tertiary">
+        <p className="border-t border-line-subtle px-4 py-3 text-meta leading-relaxed text-fg-tertiary">
           {usage.message}
         </p>
       ) : usage.meters.length === 0 ? (
-        <p className="border-t border-line-subtle px-4 py-3 text-[12.5px] text-fg-tertiary">
+        <p className="border-t border-line-subtle px-4 py-3 text-meta text-fg-tertiary">
           Your plan reports no limits right now.
         </p>
       ) : usage.meters.length === 1 ? (
@@ -177,7 +177,7 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
         </ul>
       )}
       {usage._tag === "Subscribed" && usage.refreshError ? (
-        <p className="flex items-start gap-2 border-t border-line-subtle px-4 py-2.5 text-xs leading-relaxed text-fg-tertiary">
+        <p className="flex items-start gap-2 border-t border-line-subtle px-4 py-2.5 text-meta leading-relaxed text-fg-tertiary">
           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-attention" />
           <span>
             Couldn't refresh: {usage.refreshError} These are from{" "}
@@ -255,7 +255,7 @@ function Meter({
 
   const headline = (
     <div className="flex min-w-0 flex-col gap-2">
-      <span className="truncate text-[12.5px] text-fg-tertiary">{meter.label}</span>
+      <span className="truncate text-meta text-fg-tertiary">{meter.label}</span>
       {reached ? (
         <span className={`text-[20px] leading-[30px] font-semibold tracking-tight ${textTone[level]}`}>
           {amount}
@@ -267,7 +267,7 @@ function Meter({
           >
             {amount}
           </span>
-          <span className="text-[12.5px] text-fg-tertiary">left</span>
+          <span className="text-meta text-fg-tertiary">left</span>
         </span>
       )}
     </div>
@@ -314,7 +314,7 @@ function Meter({
       {headline}
       <div className="flex min-w-0 flex-col gap-2">
         {bar}
-        <div className="flex items-center gap-3 text-xs text-fg-tertiary tabular-nums">
+        <div className="flex items-center gap-3 text-meta text-fg-tertiary tabular-nums">
           {reset}
           {statusLine ? <span className="ml-auto flex min-w-0 justify-end">{statusLine}</span> : null}
         </div>
@@ -325,7 +325,7 @@ function Meter({
       {headline}
       <div className="flex flex-col gap-2">
         {bar}
-        <div className="flex flex-col gap-0.5 text-xs text-fg-tertiary tabular-nums">
+        <div className="flex flex-col gap-0.5 text-meta text-fg-tertiary tabular-nums">
           {reset}
           {statusLine}
         </div>
@@ -365,8 +365,8 @@ function NoSubscriptions({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) 
         <Gauge size={17} strokeWidth={1.75} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-[13.5px] font-medium text-fg-primary">No subscriptions to show</span>
-        <p className="text-[12.5px] leading-relaxed text-fg-tertiary">
+        <span className="text-reading font-medium text-fg-primary">No subscriptions to show</span>
+        <p className="text-meta leading-relaxed text-fg-tertiary">
           Sign a harness in with a plan, like Claude Max or ChatGPT Plus, to see its limits here.
         </p>
         {onOpenHarnesses ? <LinkButton onClick={onOpenHarnesses}>Open Harnesses</LinkButton> : null}
@@ -379,7 +379,7 @@ function LinkButton({ onClick, children }: { onClick: () => void; children: Reac
   return (
     <Button
       onClick={onClick}
-      className="mt-1.5 flex h-7 w-fit items-center rounded-md border border-line-subtle px-2.5 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+      className="mt-1.5 flex h-7 w-fit items-center rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
     >
       {children}
     </Button>

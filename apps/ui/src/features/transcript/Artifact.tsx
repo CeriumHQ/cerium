@@ -116,7 +116,7 @@ function Drawing({
   return (
     <div
       style={{ height }}
-      className={`grid place-items-center rounded-[0.625rem] border border-line-subtle bg-surface-hover text-[12.5px] ${className}`}
+      className={`grid place-items-center rounded-[0.625rem] border border-line-subtle bg-surface-hover text-meta ${className}`}
     >
       <span className="text-shimmer">{title ? `Drawing ${title}…` : "Drawing…"}</span>
     </div>
@@ -220,7 +220,7 @@ export function ArtifactDialog({
         <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Popup className="fixed top-1/2 left-1/2 flex h-[calc(100dvh-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
           <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
-            <Dialog.Title className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-secondary">
+            <Dialog.Title className="min-w-0 flex-1 truncate text-body font-medium text-fg-secondary">
               {title ?? "Artifact"}
             </Dialog.Title>
             <CopyButton text={code} label="Copy HTML" />
