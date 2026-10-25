@@ -3,6 +3,7 @@ import type { QuestionResponse } from "@cerium/protocol";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Reveal } from "../../components/Reveal.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { QuestionCard } from "../questions/QuestionCard.tsx";
 import { PermissionCard } from "../transcript/Blocks.tsx";
@@ -322,61 +323,75 @@ export function ApprovalTray({
     return () => window.removeEventListener("keydown", listener, true);
   }, []);
 
-  if (front === undefined) return null;
+  // The tray rises out of the message box as the first request comes, and sinks back into it once
+  // the last is answered.
+  if (front === undefined) return <Reveal shift={10}>{null}</Reveal>;
   const position = { index: queue.indexOf(front) + 1, total: queue.length };
   return (
-    <section
-      ref={tray}
-      aria-label="Waiting for you"
-      className="pointer-events-auto mx-auto flex max-h-[60vh] max-w-[46.2rem] flex-col gap-1.5 overflow-y-auto pb-2"
-    >
-      <output className="sr-only">
-        {whoOf(front)} asks: {askedOf(front)}
-      </output>
-      {front.kind === "permission" ? (
-        <PermissionRequest
-          agent={front.agent}
-          request={front.request}
-          named
-          keys
-          position={position}
-          onAnswer={onAnswer}
-        />
-      ) : front.kind === "question" ? (
-        <QuestionRequest
-          agent={front.agent}
-          request={front.request}
-          named
-          position={position}
-          onAnswer={onAnswerQuestion}
-        />
-      ) : (
-        <SpawnRequestCard
-          lead={front.agent}
-          request={front.request}
-          keys
-          position={position}
-          onAnswer={onAnswerSpawn}
-        />
-      )}
-      {others.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-raised">
-          {others.map((item) => (
-            <li key={item.key}>
-              <Button
-                onClick={() => setPicked(item.key)}
-                aria-label={`Answer ${whoOf(item)}'s request next: ${askedOf(item)}`}
-                className="flex h-8 w-full items-center gap-2 px-3 text-left text-[12.5px] transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
-              >
-                <ProviderLogo provider={item.agent.provider} size={12} className="shrink-0 text-fg-primary" />
-                <span className="shrink-0 font-medium text-fg-primary">{whoOf(item)}</span>
-                <span className="min-w-0 flex-1 truncate text-fg-tertiary">{askedOf(item)}</span>
-                <span className="shrink-0 text-2xs text-fg-tertiary">Review</span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
+    <Reveal shift={10}>
+      <section
+        ref={tray}
+        aria-label="Waiting for you"
+        className="pointer-events-auto mx-auto flex max-h-[60vh] max-w-[46.2rem] flex-col gap-1.5 overflow-y-auto pb-2"
+      >
+        <output className="sr-only">
+          {whoOf(front)} asks: {askedOf(front)}
+        </output>
+        {/* The next request takes the front by rising into it. */}
+        <div
+          key={front.key}
+          className="transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-1.5 starting:opacity-0"
+        >
+          {front.kind === "permission" ? (
+            <PermissionRequest
+              agent={front.agent}
+              request={front.request}
+              named
+              keys
+              position={position}
+              onAnswer={onAnswer}
+            />
+          ) : front.kind === "question" ? (
+            <QuestionRequest
+              agent={front.agent}
+              request={front.request}
+              named
+              position={position}
+              onAnswer={onAnswerQuestion}
+            />
+          ) : (
+            <SpawnRequestCard
+              lead={front.agent}
+              request={front.request}
+              keys
+              position={position}
+              onAnswer={onAnswerSpawn}
+            />
+          )}
+        </div>
+        {others.length > 0 ? (
+          <ul className="flex flex-col divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-raised">
+            {others.map((item) => (
+              <li key={item.key} className="transition-opacity duration-200 ease-out-soft starting:opacity-0">
+                <Button
+                  onClick={() => setPicked(item.key)}
+                  aria-label={`Answer ${whoOf(item)}'s request next: ${askedOf(item)}`}
+                  className="flex h-8 w-full items-center gap-2 px-3 text-left text-[12.5px] transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
+                >
+                  <ProviderLogo
+                    provider={item.agent.provider}
+                    size={12}
+                    className="shrink-0 text-fg-primary"
+                  />
+                  <span className="shrink-0 font-medium text-fg-primary">{whoOf(item)}</span>
+                  <span className="min-w-0 flex-1 truncate text-fg-tertiary">{askedOf(item)}</span>
+                  <span className="shrink-0 text-2xs text-fg-tertiary">Review</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    </Reveal>
   );
 }
