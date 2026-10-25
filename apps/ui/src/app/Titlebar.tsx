@@ -21,8 +21,8 @@ import { IconButton } from "../components/ui/IconButton.tsx";
 import { MenuCheckboxItem, MenuPopup, MenuRoot, MenuTrigger } from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { WEB } from "../backend/target.ts";
-import type { AppMode } from "./ModeSwitch.tsx";
-import type { SidePanelId } from "./panelLayout.ts";
+import type { AppMode } from "./mode.ts";
+import { RAIL, type SidePanelId } from "./panelLayout.ts";
 
 /**
  * The system draws its minimize / maximize / close buttons here (Electron's titleBarOverlay), Windows
@@ -77,17 +77,20 @@ export function Titlebar({
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 pl-(--titlebar-inset) [app-region:drag]">
       {/*
-       * Spans the sidebar while it shows, so the toggle sits over the sidebar's own edge; shrinks to
-       * its contents, in step with the sidebar, once it folds. The sidebar's width, less the titlebar's
-       * left padding (past the traffic lights on a Mac) and the gutter beside it.
+       * Spans the rail and the sidebar while it shows, so the toggle sits over the sidebar's own edge;
+       * shrinks to its contents, in step with the sidebar, once it folds. Their width, less the
+       * titlebar's left padding (past the traffic lights on a Mac) and the gutter beside the sidebar.
+       * The mark sits centred over the rail.
        */}
       <div
-        style={{ width: showSidebar ? `calc(${sidebarWidth - 6}px - var(--titlebar-inset))` : "fit-content" }}
+        style={{
+          width: showSidebar ? `calc(${RAIL + sidebarWidth - 6}px - var(--titlebar-inset))` : "fit-content",
+        }}
         className={`flex shrink-0 items-center gap-2.5 pr-2 [interpolate-size:allow-keywords] ${
           resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
       >
-        <span className="ml-2">
+        <span style={{ paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))` }}>
           <CeriumBrand nameClassName="max-lg:hidden" />
         </span>
         <div

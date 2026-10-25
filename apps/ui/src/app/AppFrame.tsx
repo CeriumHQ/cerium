@@ -16,8 +16,8 @@ import { useKeyboardOpen } from "../web/viewport.ts";
 import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
-import type { AppMode } from "./ModeSwitch.tsx";
-import { GUTTER, panelLayout, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
+import type { AppMode } from "./mode.ts";
+import { GUTTER, panelLayout, RAIL, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
 import { CompactPanelMenu, Titlebar } from "./Titlebar.tsx";
@@ -28,6 +28,8 @@ interface AppFrameProps {
   readonly sidebarOpen: boolean;
   readonly onToggleSidebar: () => void;
   readonly onNewThread: () => void;
+  /** The places, down the window's left edge (app/Rail.tsx); a phone's thread list shows them along its foot. */
+  readonly rail: (orientation: "vertical" | "horizontal") => ReactNode;
   readonly sidebar: ReactNode;
   /** Providers of the selected thread's agents, lead first. */
   readonly agents: ReadonlyArray<ProviderId>;
@@ -115,6 +117,7 @@ function DesktopFrame({
   sidebarOpen,
   onToggleSidebar,
   onNewThread,
+  rail,
   sidebar,
   agents,
   side,
@@ -182,106 +185,114 @@ function DesktopFrame({
         machinePicker={machinePicker}
         tabs={tabs}
       />
-      <div ref={body} className="relative flex min-h-0 flex-1 pr-1.5 pb-1.5">
-        {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
-        <aside
-          inert={!showSidebar}
-          style={{ width: sidebarSpace }}
-          className={`shrink-0 overflow-hidden ${
-            dragging === "sidebar" ? "" : "transition-[width,opacity] duration-200 ease-out-soft"
-          } ${showSidebar ? "opacity-100" : "opacity-0"}`}
-        >
-          <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
+      <div className="flex min-h-0 flex-1">
+        {/* A sunken strip of its own, so the places read apart from the sidebar's list on the same glass. */}
+        <div style={{ width: RAIL }} className="shrink-0 pb-1.5 pl-1.5">
+          <div className="h-full rounded-xl border border-line-subtle bg-surface-sunken">
+            {rail("vertical")}
+          </div>
+        </div>
+        <div ref={body} className="relative flex min-w-0 flex-1 pr-1.5 pb-1.5">
+          {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
+          <aside
+            inert={!showSidebar}
+            style={{ width: sidebarSpace }}
+            className={`shrink-0 overflow-hidden ${
+              dragging === "sidebar" ? "" : "transition-[width,opacity] duration-200 ease-out-soft"
+            } ${showSidebar ? "opacity-100" : "opacity-0"}`}
+          >
+            <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
+              <ViewStack
+                active={view}
+                views={[
+                  ["threads", sidebar],
+                  ["settings", settings.nav],
+                ]}
+              />
+            </div>
+          </aside>
+          {showSidebar ? (
+            <div className="relative w-0 shrink-0">
+              <ResizeHandle
+                label="Resize sidebar"
+                edge="end"
+                width={sidebarWidth}
+                min={sidebarMin}
+                max={sidebarMax}
+                fallback={SIDEBAR.fallback}
+                onResize={setSavedSidebar}
+                onCommit={rememberSidebar}
+                onDragChange={(active) => setDragging(active ? "sidebar" : undefined)}
+              />
+            </div>
+          ) : null}
+          <main
+            // A floating inspector covers part of the transcript and the message box, so it gives way as
+            // soon as the user reaches for either: clicking it, or an action in the inspector moving
+            // focus there (Message). Focus coming back from a menu or another window leaves it open.
+            {...(showInspector && floating
+              ? {
+                  onPointerDownCapture: onCloseSide,
+                  onFocusCapture: (event: FocusEvent) => {
+                    const from = event.relatedTarget;
+                    if (from instanceof Node && floatingInspector.current?.contains(from)) onCloseSide();
+                  },
+                }
+              : {})}
+            // The thread views draw their own cards, one per pane of a split.
+            className="min-w-0 flex-1"
+          >
             <ViewStack
               active={view}
               views={[
-                ["threads", sidebar],
-                ["settings", settings.nav],
+                ["threads", children],
+                [
+                  "settings",
+                  <div
+                    key="settings"
+                    className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                  >
+                    {settings.page}
+                  </div>,
+                ],
               ]}
             />
-          </div>
-        </aside>
-        {showSidebar ? (
-          <div className="relative w-0 shrink-0">
-            <ResizeHandle
-              label="Resize sidebar"
-              edge="end"
-              width={sidebarWidth}
-              min={sidebarMin}
-              max={sidebarMax}
-              fallback={SIDEBAR.fallback}
-              onResize={setSavedSidebar}
-              onCommit={rememberSidebar}
-              onDragChange={(active) => setDragging(active ? "sidebar" : undefined)}
-            />
-          </div>
-        ) : null}
-        <main
-          // A floating inspector covers part of the transcript and the message box, so it gives way as
-          // soon as the user reaches for either: clicking it, or an action in the inspector moving
-          // focus there (Message). Focus coming back from a menu or another window leaves it open.
-          {...(showInspector && floating
-            ? {
-                onPointerDownCapture: onCloseSide,
-                onFocusCapture: (event: FocusEvent) => {
-                  const from = event.relatedTarget;
-                  if (from instanceof Node && floatingInspector.current?.contains(from)) onCloseSide();
-                },
-              }
-            : {})}
-          // The thread views draw their own cards, one per pane of a split.
-          className="min-w-0 flex-1"
-        >
-          <ViewStack
-            active={view}
-            views={[
-              ["threads", children],
-              [
-                "settings",
+          </main>
+          {showInspector ? (
+            floating ? (
+              <>
+                {/* On the gutter left of the floating panel. */}
                 <div
-                  key="settings"
-                  className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                  className="absolute top-0 bottom-1.5 z-30 w-0"
+                  style={{ right: inspectorWidth + GUTTER * 2 }}
                 >
-                  {settings.page}
-                </div>,
-              ],
-            ]}
-          />
-        </main>
-        {showInspector ? (
-          floating ? (
-            <>
-              {/* On the gutter left of the floating panel. */}
-              <div
-                className="absolute top-0 bottom-1.5 z-30 w-0"
-                style={{ right: inspectorWidth + GUTTER * 2 }}
-              >
-                {inspectorHandle}
-              </div>
-              <aside
-                ref={floatingInspector}
-                style={{ width: inspectorWidth }}
-                className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
-              >
-                <SidePanelContext value={{ floating: true, close: onCloseSide }}>
-                  {side?.content}
-                </SidePanelContext>
-              </aside>
-            </>
-          ) : (
-            <>
-              <div className="relative w-0 shrink-0">{inspectorHandle}</div>
-              <aside
-                style={{ width: inspectorWidth }}
-                className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
-              >
-                <SidePanelContext value={{ floating: false, close: onCloseSide }}>
-                  {side?.content}
-                </SidePanelContext>
-              </aside>
-            </>
-          )
-        ) : null}
+                  {inspectorHandle}
+                </div>
+                <aside
+                  ref={floatingInspector}
+                  style={{ width: inspectorWidth }}
+                  className="absolute top-0 right-1.5 bottom-1.5 z-20 overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl"
+                >
+                  <SidePanelContext value={{ floating: true, close: onCloseSide }}>
+                    {side?.content}
+                  </SidePanelContext>
+                </aside>
+              </>
+            ) : (
+              <>
+                <div className="relative w-0 shrink-0">{inspectorHandle}</div>
+                <aside
+                  style={{ width: inspectorWidth }}
+                  className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-panel shadow-raised"
+                >
+                  <SidePanelContext value={{ floating: false, close: onCloseSide }}>
+                    {side?.content}
+                  </SidePanelContext>
+                </aside>
+              </>
+            )
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -295,6 +306,7 @@ function DesktopFrame({
 function CompactFrame({
   thread,
   mode,
+  rail,
   sidebar,
   agents,
   side,
@@ -356,7 +368,8 @@ function CompactFrame({
                 }
                 trailing={machinePicker}
               />
-              <div className="min-h-0 flex-1 pb-[env(safe-area-inset-bottom)]">{sidebar}</div>
+              <div className="min-h-0 flex-1">{sidebar}</div>
+              <div className="pb-[max(env(safe-area-inset-bottom),6px)]">{rail("horizontal")}</div>
             </div>,
           ],
           [

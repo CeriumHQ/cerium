@@ -35,7 +35,7 @@ import type { Queue } from "../features/composer/QueueTray.tsx";
 import { buildTranscript, holdsQueue, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
-import type { AppMode } from "./ModeSwitch.tsx";
+import type { AppMode } from "./mode.ts";
 
 type EventsAtom = Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>>;
 

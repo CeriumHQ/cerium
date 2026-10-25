@@ -10,28 +10,23 @@ import {
   Pin,
   PinOff,
   Search,
-  Settings,
   SquarePen,
   Trash2,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
-import { ModeSwitch } from "../../app/ModeSwitch.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
 import type { PaletteCommand } from "../palette/palette.ts";
-import type { SettingsCategory } from "../settings/Settings.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, type ThreadSection } from "./sections.ts";
 import { EmptyList } from "./EmptyList.tsx";
 import { Inbox } from "./Inbox.tsx";
-import { archivedWork, canArchive, canDelete, isListed, providerName, type ThreadSummary } from "./model.ts";
+import { archivedWork, canArchive, canDelete, isListed, type ThreadSummary } from "./model.ts";
 import { type RenameThread } from "./Rename.tsx";
 import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ThreadRow } from "./ThreadRow.tsx";
@@ -39,7 +34,6 @@ import { ThreadRow } from "./ThreadRow.tsx";
 interface SidebarProps {
   /** Only this mode's threads are listed. */
   readonly mode: "work" | "chat";
-  readonly onModeChange: (mode: "work" | "chat") => void;
   readonly threads: ReadonlyArray<ThreadSummary>;
   /** The open thread, or the open draft of a thread not started yet. */
   readonly selectedId: string | undefined;
@@ -62,8 +56,6 @@ interface SidebarProps {
   readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
   readonly onDelete: (threadId: string) => void;
-  readonly harnesses: ReadonlyArray<HarnessIndicator>;
-  readonly onOpenSettings: (category?: SettingsCategory) => void;
   /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
   readonly searchOpen: boolean;
   readonly onSearchOpenChange: (open: boolean) => void;
@@ -82,7 +74,6 @@ export interface HarnessIndicator {
 
 export function Sidebar({
   mode,
-  onModeChange,
   threads,
   selectedId,
   onSelect,
@@ -99,8 +90,6 @@ export function Sidebar({
   onLater,
   open = [],
   onDelete,
-  harnesses,
-  onOpenSettings,
   searchOpen,
   onSearchOpenChange,
   commands,
@@ -133,10 +122,7 @@ export function Sidebar({
 
   return (
     <div ref={root} className="flex h-full flex-col">
-      <div className="px-2 pt-1 pb-2.5">
-        <ModeSwitch mode={mode} onChange={onModeChange} />
-      </div>
-      <div className="flex items-center gap-1 px-2 pb-3">
+      <div className="flex items-center gap-1 px-2 pt-1 pb-3">
         <Button
           onClick={onNewThread}
           className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-[13px] font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active max-md:h-10 max-md:gap-2.5 max-md:rounded-xl max-md:px-3 max-md:text-[15px]"
@@ -187,7 +173,6 @@ export function Sidebar({
         />
       )}
 
-      <SidebarFooter harnesses={harnesses} onOpenSettings={onOpenSettings} />
       <CommandPalette
         open={searchOpen}
         onOpenChange={onSearchOpenChange}
@@ -304,64 +289,5 @@ function ChatRow({
             ),
           })}
     />
-  );
-}
-
-const harnessState: Record<HarnessIndicator["state"], string> = {
-  ready: "ready",
-  loggedOut: "not logged in",
-  missing: "not installed",
-  unsupported: "not supported yet",
-};
-
-function SidebarFooter({
-  harnesses,
-  onOpenSettings,
-}: {
-  harnesses: ReadonlyArray<HarnessIndicator>;
-  onOpenSettings: SidebarProps["onOpenSettings"];
-}) {
-  // The backend reports every adapter it has, so a list of nothing but "unsupported" is the one the
-  // window shows before the first answer: the marks stay lit until it knows.
-  const checking = harnesses.every(({ state }) => state === "unsupported");
-  return (
-    <div className="flex items-center gap-1 border-t border-line-subtle px-2 pt-1.5 max-md:pb-1">
-      <IconButton
-        icon={Settings}
-        label="Settings"
-        shortcut="Ctrl ,"
-        onClick={() => onOpenSettings()}
-        className="max-md:size-10"
-      />
-      <div className="ml-auto flex items-center gap-0.5" aria-label="Harnesses">
-        {harnesses.map(({ provider, state, needsSetup = false }) => {
-          const status = checking
-            ? "checking"
-            : needsSetup
-              ? "needs a one-time setup to run commands"
-              : harnessState[state];
-          const label = `${providerName[provider]}: ${status}`;
-          return (
-            <Tooltip key={provider} side="top" label={label}>
-              <Button
-                onClick={() => onOpenSettings("harnesses")}
-                aria-label={label}
-                className="relative grid size-7 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover max-md:size-10"
-              >
-                {/* Colour marks dim the same way as single-colour ones when the harness can't run. */}
-                <ProviderLogo
-                  provider={provider}
-                  size={14}
-                  {...(checking || state === "ready" ? {} : { className: "opacity-35 grayscale" })}
-                />
-                {!checking && (state === "loggedOut" || needsSetup) ? (
-                  <span className="absolute right-1 bottom-1 size-1.5 rounded-full border border-surface-window bg-attention" />
-                ) : null}
-              </Button>
-            </Tooltip>
-          );
-        })}
-      </div>
-    </div>
   );
 }

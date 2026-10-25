@@ -46,6 +46,8 @@ export const SIDE_PANELS: Readonly<
 };
 /** The gap between panels, and around the window's edge. */
 export const GUTTER = 6;
+/** The rail of places down the window's left edge, beside the sidebar (app/Rail.tsx). */
+export const RAIL = 52;
 /** Below this the transcript is too narrow for its message box, so the inspector floats over it instead. */
 export const MIN_TRANSCRIPT = 480;
 

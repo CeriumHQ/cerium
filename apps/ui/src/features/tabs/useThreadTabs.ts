@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 
-import type { AppMode } from "../../app/ModeSwitch.tsx";
+import type { AppMode } from "../../app/mode.ts";
 import { isNewDraftKey, newDraftKey, newThreadDraftTabsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { githubOfKey } from "../github/model.ts";

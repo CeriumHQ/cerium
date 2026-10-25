@@ -222,9 +222,10 @@ import { AppFrame } from "./AppFrame.tsx";
 import { useLaunched } from "./launch.ts";
 import { Launch } from "./LaunchScreen.tsx";
 import { useCompact } from "./compact.ts";
-import type { AppMode } from "./ModeSwitch.tsx";
+import type { AppMode } from "./mode.ts";
 import { Notice } from "./Notice.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
+import { Rail } from "./Rail.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 import { ThreadPane, type PaneHandles, type ThreadPaneActions } from "./ThreadPane.tsx";
@@ -1713,13 +1714,26 @@ function Workspace() {
       onNewThread={newThread}
       pane={pane}
       onBack={() => setPane("list")}
+      rail={(orientation) => (
+        <Rail
+          view={settingsOpen ? "settings" : mode === "work" ? "home" : "chat"}
+          onSelect={(view) => {
+            if (view === "settings") {
+              if (settingsOpen) setSettingsOpen(false);
+              else openSettings();
+              return;
+            }
+            setSettingsOpen(false);
+            setMode(view === "home" ? "work" : "chat");
+          }}
+          harnesses={indicators}
+          onOpenUsage={() => openSettings("usage")}
+          orientation={orientation}
+        />
+      )}
       sidebar={
         <Sidebar
           mode={mode}
-          onModeChange={(next) => {
-            setSettingsOpen(false);
-            setMode(next);
-          }}
           threads={summaries}
           selectedId={viewed?.thread.id ?? (openFile ? undefined : openDraft)}
           onSelectDraft={(draft, newTab) => {
@@ -1802,8 +1816,6 @@ function Workspace() {
               }
             : {})}
           open={tabs.tabs.map((tab) => tab.key)}
-          harnesses={indicators}
-          onOpenSettings={openSettings}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
           commands={paletteCommands}

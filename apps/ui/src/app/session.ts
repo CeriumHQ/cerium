@@ -3,7 +3,7 @@ import { Option, Schema } from "effect";
 import { newDraftKey } from "../features/composer/drafts.ts";
 import type { PaneNode as PaneNodeType } from "../features/split/model.ts";
 import { rememberForTab, storedForTab } from "../lib/storage.ts";
-import type { AppMode } from "./ModeSwitch.tsx";
+import type { AppMode } from "./mode.ts";
 
 // Where the window is, kept for the tab, so a reload (or the web client moving to another build)
 // comes back to the same thread or draft rather than to a blank new thread.
