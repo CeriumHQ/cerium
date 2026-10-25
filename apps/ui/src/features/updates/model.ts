@@ -5,8 +5,20 @@ import type { UpdateChannel, Updates, UpdateStatus } from "../../backend/shell.t
 
 export const channelLabel: Record<UpdateChannel, string> = { stable: "Stable", nightly: "Nightly" };
 
-/** "0.4.0" or "0.4.1-nightly.n000012", as Cerium names its builds. */
-export const versionLabel = (version: string) => `Cerium ${version}`;
+/** "0.4.0", or "0.4.1-nightly.n000012" split into its release and build number. */
+export const versionParts = (version: string): { release: string; build?: number } => {
+  const match = /^(\d+\.\d+\.\d+)-nightly\.n?(\d+)$/.exec(version);
+  return match ? { release: match[1]!, build: Number(match[2]) } : { release: version };
+};
+
+/** "0.4.0" or "0.4.1 nightly 12": a build's version as people read it. */
+export const shortVersion = (version: string) => {
+  const { release, build } = versionParts(version);
+  return build === undefined ? release : `${release} nightly ${build}`;
+};
+
+/** "Cerium 0.4.0" or "Cerium 0.4.1 nightly 12". */
+export const versionLabel = (version: string) => `Cerium ${shortVersion(version)}`;
 
 /** A nightly newer than stable's latest that now follows stable: it waits for stable to pass it. */
 const waitsForStable = (updates: Updates) =>
@@ -22,7 +34,7 @@ export const statusText = (updates: Updates): string => {
       return "Checking for updates…";
     case "current":
       return waitsForStable(updates)
-        ? `Ahead of the latest stable release. Cerium moves to stable once one passes ${updates.version}.`
+        ? `Ahead of the latest stable release. Cerium moves to stable once one passes ${shortVersion(updates.version)}.`
         : `You're on the latest ${channelLabel[updates.channel].toLowerCase()} release.`;
     case "available":
       return updates.manual

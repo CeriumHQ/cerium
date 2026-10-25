@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Progress } from "@base-ui/react/progress";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ExternalLink } from "lucide-react";
+import { ArrowDown, ArrowUpRight, CircleAlert, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { accountAtom } from "../../backend/atoms.ts";
@@ -25,9 +25,11 @@ import {
   channelLocked,
   checkedAt,
   checkedLabel,
+  noticeVersion,
   releaseNotesUrl,
   statusText,
   versionLabel,
+  versionParts,
 } from "../updates/model.ts";
 import { useUpdates } from "../updates/useUpdates.ts";
 import { whatsNewOpenAtom } from "../whatsnew/state.ts";
@@ -242,88 +244,62 @@ function UpdatesSection({ updates }: { updates: Updates }) {
   const bridge = shellBridge();
   const at = checkedAt(status);
   const locked = channelLocked(status);
-  // Releases nobody can read yet just mean updates are off; a network or download problem is an error.
-  const failed = status.kind === "failed" || (status.kind === "unreachable" && status.reason === "offline");
-  // A release on offer, or being installed, has its notes a click away.
-  const offered =
-    status.kind === "available" ||
-    status.kind === "downloading" ||
-    status.kind === "ready" ||
-    status.kind === "failed"
-      ? status.version
-      : undefined;
+  const installed = versionParts(updates.version);
+  // Releases nobody can read yet just mean updates are off; a network problem is an error.
+  const offline = status.kind === "unreachable" && status.reason === "offline";
 
   return (
     <SettingsSection title="Updates">
       <SettingsList>
-        <div className="flex flex-col gap-2.5 px-4 py-3">
-          <div className="flex items-center gap-4">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="flex items-center gap-2 text-[13px] font-medium text-fg-primary">
-                {versionLabel(updates.version)}
-                <span className="rounded-md bg-surface-hover px-1.5 py-px text-[11.5px] font-medium text-fg-secondary">
+        <div className="flex flex-col">
+          <div className="flex min-h-14 items-center gap-4 px-4 py-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="flex items-center gap-2" title={updates.version}>
+                <span className="text-[13px] font-medium text-fg-primary tabular-nums">
+                  Cerium {installed.release}
+                </span>
+                <span className="rounded-md bg-surface-hover px-1.5 py-px text-[11.5px] font-medium text-fg-secondary tabular-nums">
                   {channelLabel[updates.buildChannel]}
+                  {installed.build !== undefined ? ` ${installed.build}` : null}
                 </span>
               </span>
-              <span
-                role={failed ? "alert" : "status"}
-                className={`text-xs leading-relaxed ${failed ? "text-error" : "text-fg-tertiary"}`}
-              >
-                {statusText(updates)}
-                {at !== undefined ? (
-                  <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span>
-                ) : null}
-              </span>
+              {noticeVersion(status) === undefined ? (
+                <span
+                  role={offline ? "alert" : "status"}
+                  className={`text-xs leading-relaxed ${offline ? "text-error" : "text-fg-tertiary"}`}
+                >
+                  {statusText(updates)}
+                  {at !== undefined ? (
+                    <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span>
+                  ) : null}
+                </span>
+              ) : null}
             </div>
             <span className="flex shrink-0 items-center gap-1.5">
-              {offered !== undefined ? (
-                <a
-                  href={releaseNotesUrl(offered)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-                >
-                  <ExternalLink size={12} strokeWidth={1.75} />
-                  What's new in {offered}
-                </a>
-              ) : (
+              <Button
+                onClick={() => openWhatsNew(true)}
+                className="flex h-7 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+              >
+                What's new
+              </Button>
+              {status.kind === "current" || status.kind === "unreachable" || status.kind === "checking" ? (
                 <Button
-                  onClick={() => openWhatsNew(true)}
-                  className="flex h-7 items-center rounded-md px-2 text-[12.5px] text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                  onClick={() => void bridge?.checkForUpdates?.()}
+                  disabled={status.kind === "checking"}
+                  className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-[12.5px] font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
                 >
-                  What's new
+                  <RefreshCw
+                    size={12}
+                    strokeWidth={2}
+                    aria-hidden="true"
+                    className={status.kind === "checking" ? "animate-spin" : undefined}
+                  />
+                  {status.kind === "checking" ? "Checking" : "Check now"}
                 </Button>
-              )}
-              {status.kind === "available" || status.kind === "failed" ? (
-                <RowButton tone="primary" onClick={() => void bridge?.downloadUpdate?.()}>
-                  {status.kind === "failed"
-                    ? "Try again"
-                    : `${updates.manual ? "Download" : "Update to"} ${status.version}`}
-                </RowButton>
-              ) : status.kind === "ready" ? (
-                <RowButton tone="primary" onClick={() => void bridge?.installUpdate?.()}>
-                  Restart to update
-                </RowButton>
-              ) : status.kind === "downloading" || status.kind === "unsupported" ? null : (
-                <RowButton onClick={() => void bridge?.checkForUpdates?.()}>
-                  {status.kind === "checking" ? "Checking…" : "Check for updates"}
-                </RowButton>
-              )}
+              ) : null}
             </span>
           </div>
-          {status.kind === "downloading" ? (
-            <Progress.Root
-              value={Math.floor(status.percent)}
-              aria-label={`Downloading ${versionLabel(status.version)}`}
-            >
-              <div className="flex items-center gap-3">
-                <Progress.Track className="h-1 flex-1 overflow-hidden rounded-full bg-line-strong">
-                  <Progress.Indicator className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out-soft" />
-                </Progress.Track>
-                <Progress.Value className="w-9 text-right text-[12px] text-fg-tertiary tabular-nums" />
-              </div>
-            </Progress.Root>
-          ) : null}
+          <UpdateOffer updates={updates} />
         </div>
         <SettingsRow
           label="Channel"
@@ -348,5 +324,79 @@ function UpdatesSection({ updates }: { updates: Updates }) {
         />
       </SettingsList>
     </SettingsSection>
+  );
+}
+
+/** The release on offer, from download to restart, in a tinted panel under the installed version. */
+function UpdateOffer({ updates }: { updates: Updates }) {
+  const { status } = updates;
+  const bridge = shellBridge();
+  const version = noticeVersion(status);
+  if (version === undefined) return null;
+  const failed = status.kind === "failed";
+  const name = versionLabel(version);
+  const Icon = failed ? CircleAlert : status.kind === "ready" ? RotateCw : ArrowDown;
+
+  return (
+    <div
+      role={failed ? "alert" : "status"}
+      className={`mx-2 mb-2 flex items-center gap-3 rounded-lg py-2.5 pr-2.5 pl-3 ${failed ? "bg-error/6" : "bg-accent-soft"}`}
+    >
+      <span
+        className={`grid size-7 shrink-0 place-items-center rounded-full ${failed ? "bg-error/15 text-error" : "bg-accent text-accent-fg"}`}
+      >
+        <Icon size={14} strokeWidth={2} aria-hidden="true" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-[13px] font-medium text-fg-primary" title={version}>
+          {status.kind === "available"
+            ? `${name} is available`
+            : status.kind === "downloading"
+              ? `Downloading ${name}`
+              : status.kind === "ready"
+                ? `${name} is ready`
+                : `Couldn't download ${name}`}
+        </span>
+        {status.kind === "downloading" ? (
+          <Progress.Root value={Math.floor(status.percent)} aria-label={`Downloading ${name}`}>
+            <div className="flex h-4 items-center gap-2.5">
+              <Progress.Track className="h-1 flex-1 overflow-hidden rounded-full bg-line-strong">
+                <Progress.Indicator className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out-soft" />
+              </Progress.Track>
+              <Progress.Value className="w-8 text-right text-[11.5px] text-fg-tertiary tabular-nums" />
+            </div>
+          </Progress.Root>
+        ) : (
+          <span className="truncate text-xs text-fg-tertiary">
+            {status.kind === "ready" ? (
+              "Installs when you restart or quit."
+            ) : status.kind === "available" && updates.manual ? (
+              "Downloads in your browser; drag it into Applications."
+            ) : failed ? (
+              "Check your connection and try again."
+            ) : (
+              <a
+                href={releaseNotesUrl(version)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 transition-colors hover:text-fg-primary"
+              >
+                Release notes
+                <ArrowUpRight size={11} strokeWidth={2} aria-hidden="true" />
+              </a>
+            )}
+          </span>
+        )}
+      </div>
+      {status.kind === "available" || failed ? (
+        <RowButton tone="primary" onClick={() => void bridge?.downloadUpdate?.()}>
+          {failed ? "Try again" : updates.manual ? "Download" : "Update"}
+        </RowButton>
+      ) : status.kind === "ready" ? (
+        <RowButton tone="primary" onClick={() => void bridge?.installUpdate?.()}>
+          Restart to update
+        </RowButton>
+      ) : null}
+    </div>
   );
 }

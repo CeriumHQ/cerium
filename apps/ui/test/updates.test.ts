@@ -7,6 +7,7 @@ import {
   noticeVersion,
   releaseNotesUrl,
   statusText,
+  versionParts,
 } from "../src/features/updates/model.ts";
 
 const updates = (status: UpdateStatus, extra: Partial<Updates> = {}): Updates => ({
@@ -40,7 +41,21 @@ describe("statusText", () => {
       { kind: "current", checkedAt: 0 },
       { version: "0.5.0-nightly.3", buildChannel: "nightly" },
     );
-    expect(statusText(waiting)).toContain("once one passes 0.5.0-nightly.3");
+    expect(statusText(waiting)).toContain("once one passes 0.5.0 nightly 3");
+  });
+
+  it("names a nightly on offer by its release and build", () => {
+    expect(statusText(updates({ kind: "available", version: "0.8.0-nightly.n000006" }))).toBe(
+      "Cerium 0.8.0 nightly 6 is available.",
+    );
+  });
+});
+
+describe("versionParts", () => {
+  it("splits a nightly into its release and build, and leaves a stable whole", () => {
+    expect(versionParts("0.8.0-nightly.n000006")).toEqual({ release: "0.8.0", build: 6 });
+    expect(versionParts("0.5.0-nightly.3")).toEqual({ release: "0.5.0", build: 3 });
+    expect(versionParts("0.8.0")).toEqual({ release: "0.8.0" });
   });
 
   it("tells unreadable releases from a network problem", () => {
