@@ -847,12 +847,13 @@ export function Composer({
   const restingAccess = rests && target.kind === "new" && target.mode === "work" && access !== "auto";
 
   // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop. The
-  // model chip sits by send: what the message goes to, beside what sends it.
+  // model chip leads the right-hand group with access after it, what the message goes to and how it
+  // may act; dictation sits by send, both being how the message is written and sent.
   const actions = (
     <div className="flex min-w-0 shrink-0 items-center gap-1">
-      {restingAccess ? moreMenu : null}
-      {dictates ? <DictationControl dictation={dictation} /> : null}
       {oneLine ? null : thread ? threadChip : newChip}
+      {!inline || restingAccess ? moreMenu : null}
+      {dictates ? <DictationControl dictation={dictation} /> : null}
       {running ? stopButton : null}
       {running && !written ? null : sendButton}
     </div>
@@ -941,8 +942,9 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
+          {/* min-w-0: a tray's truncated lines would otherwise widen it past the one-line box. */}
           {queue ? (
-            <div className={inline ? "basis-full" : undefined}>
+            <div className={inline ? "min-w-0 basis-full" : undefined}>
               <QueueTray
                 queue={queue}
                 onEdit={(message) =>
@@ -955,12 +957,12 @@ export function Composer({
             </div>
           ) : null}
           {comments.length > 0 ? (
-            <div className={inline ? "basis-full" : undefined}>
+            <div className={inline ? "min-w-0 basis-full" : undefined}>
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
             </div>
           ) : null}
           {draft.attachments.length > 0 ? (
-            <div className={inline ? "basis-full" : undefined}>
+            <div className={inline ? "min-w-0 basis-full" : undefined}>
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
             </div>
           ) : null}
@@ -1005,7 +1007,6 @@ export function Composer({
               <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
                 {attachButton}
                 {newPlace}
-                {moreMenu}
               </div>
               {actions}
             </div>

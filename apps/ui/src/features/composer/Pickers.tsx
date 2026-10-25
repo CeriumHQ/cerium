@@ -128,7 +128,7 @@ export function EffortRow({ choice, model }: { readonly choice: EffortChoice; re
 
 /**
  * What's seldom changed, behind one button: what the agents may do unasked, and starting several
- * models at once. Access other than Auto shows on the button itself, so a choice that differs from
+ * models at once. Access other than Auto shows as the button's icon, so a choice that differs from
  * the safe default is never out of sight.
  */
 export function MoreMenu({
@@ -149,21 +149,21 @@ export function MoreMenu({
   const label = shown ? accessOptions.find((option) => option.value === shown)?.label : undefined;
   return (
     <Menu.Root>
-      <Tooltip label={access ? "Access, several at once" : "Several at once"}>
+      <Tooltip label={label ? `Access: ${label}` : access ? "Access, several at once" : "Several at once"}>
         <Menu.Trigger
           aria-label={label ? `Access: ${label}` : "More options"}
-          className={
+          className={`${chipShape} w-8 justify-center px-0 ${
             shown
-              ? `${chipShape} ${accessChipTone[shown] ?? "bg-surface-hover text-fg-primary hover:bg-surface-active data-popup-open:bg-surface-active"}`
-              : `${chipShape} w-8 justify-center px-0 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`
-          }
+              ? (accessChipTone[shown] ??
+                "bg-surface-hover text-fg-primary hover:bg-surface-active data-popup-open:bg-surface-active")
+              : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
+          }`}
         >
-          <Icon size={shown ? 13 : 16} strokeWidth={1.75} />
-          {label}
+          <Icon size={shown ? 15 : 16} strokeWidth={1.75} />
         </Menu.Trigger>
       </Tooltip>
       <Menu.Portal>
-        <Menu.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
+        <Menu.Positioner side="top" align="end" sideOffset={6} className="z-50 outline-none">
           <Menu.Popup className="w-[25rem] max-w-(--available-width) origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
             {access ? (
               <Menu.Group>

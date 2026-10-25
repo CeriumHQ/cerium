@@ -334,8 +334,13 @@ export function PromptEditor({
     document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
   };
 
+  // Clearing an editable box can leave a bare line break behind; that still counts as empty.
+  const empty = segments.every(
+    (segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "",
+  );
+
   return (
-    <div className={inline ? "relative min-w-0 flex-1" : "relative"}>
+    <div className={`group/editor ${inline ? "relative min-w-0 flex-1" : "relative"}`}>
       <div
         ref={(element) => {
           root.current = element;
@@ -386,17 +391,19 @@ export function PromptEditor({
             : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
         }`}
       />
-      {segments.length === 0 && cover ? (
-        // A click passes through to the editor, which takes the cover's place with its placeholder.
-        <div className="pointer-events-none absolute inset-y-0 inset-x-1 flex min-w-0 items-center">
+      {empty && cover ? (
+        // Pointing at the line or writing in it trades the cover for the placeholder, so the box says
+        // it takes a message even while it shows something else.
+        <div className="pointer-events-none absolute inset-y-0 inset-x-1 flex min-w-0 items-center transition-opacity duration-150 group-hover/editor:opacity-0 group-focus-within/editor:opacity-0">
           {cover}
         </div>
-      ) : segments.length === 0 ? (
+      ) : null}
+      {empty ? (
         <span
           aria-hidden
           className={`pointer-events-none absolute text-[14px] leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
             inline ? "inset-x-1 top-2 truncate" : "top-3 left-4"
-          }`}
+          } ${cover ? "opacity-0 transition-opacity duration-150 group-hover/editor:opacity-100 group-focus-within/editor:opacity-100" : ""}`}
         >
           {placeholder}
         </span>
