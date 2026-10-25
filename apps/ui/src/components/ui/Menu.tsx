@@ -81,6 +81,8 @@ export function MenuSeparator() {
   return <BaseMenu.Separator className="mx-2 my-1 h-px bg-line-subtle" />;
 }
 
+export const MenuGroup = BaseMenu.Group;
+
 export function MenuGroupLabel({ children }: { children: ReactNode }) {
   return (
     <BaseMenu.GroupLabel className="px-2 pt-1.5 pb-1 text-caption font-medium text-fg-tertiary select-none">

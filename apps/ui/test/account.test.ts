@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   deviceDetails,
+  deviceVersion,
   initials,
   orderedDevices,
   presenceLabel,
@@ -31,14 +32,20 @@ const signedIn = (self: string, devices: ReadonlyArray<DeviceInfo>): AccountStat
 });
 
 describe("device details", () => {
-  it("name the platform, a channel other than stable, and the version", () => {
-    expect(deviceDetails(device("a"))).toBe("Windows · 0.4.0");
+  it("name a desktop's platform and a channel other than stable, and nothing for a browser", () => {
+    expect(deviceDetails(device("a"))).toBe("Windows");
     expect(deviceDetails(device("a", { channel: "nightly", version: "0.5.0-nightly.12" }))).toBe(
-      "Windows · Nightly · 0.5.0-nightly.12",
+      "Windows · Nightly",
     );
     expect(deviceDetails(device("a", { channel: "dev", version: "dev", platform: "darwin" }))).toBe(
       "macOS · Development build",
     );
+    expect(deviceDetails(device("a", { kind: "browser", platform: "ios", channel: "nightly" }))).toBe("");
+  });
+
+  it("puts the version in words, and leaves a development build without one", () => {
+    expect(deviceVersion(device("a"))).toBe("Version 0.4.0");
+    expect(deviceVersion(device("a", { version: "dev" }))).toBeUndefined();
   });
 });
 

@@ -27,9 +27,18 @@ import {
 import { openSignIn, signInHref } from "../../backend/signIn.ts";
 import { WEB } from "../../backend/target.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
-import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
+import {
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger,
+} from "../../components/ui/Menu.tsx";
 import {
   deviceDetails,
+  deviceVersion,
   initials,
   orderedDevices,
   presenceLabel,
@@ -56,7 +65,7 @@ export function AccountSettings() {
       title="Account"
       description={
         WEB
-          ? "Your Cerium account and its devices."
+          ? "Sign in to the same account here and on your computer to use its agents from this device."
           : account?._tag === "SignedIn"
             ? "Your other devices reach this computer through your account."
             : "Optional. Signed out, nothing leaves this computer."
@@ -282,7 +291,7 @@ function DevicesSection({ account }: { account: SignedIn }) {
       title="Devices"
       description={
         live
-          ? "A device joins when you sign in to your account on it."
+          ? "Everywhere you're signed in. To add a device, sign in to this account on it."
           : "As this computer last saw them. They update when it's back online."
       }
     >
@@ -304,6 +313,9 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string>();
   const deviceId = device.id as DeviceId;
+  // The build number is for telling builds apart when something's wrong: it waits in the menu.
+  const version = deviceVersion(device);
+  const details = deviceDetails(device);
   const Icon =
     device.kind === "desktop"
       ? Monitor
@@ -367,15 +379,17 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
             ) : null}
           </div>
           {/* A phone has no room to cut the line short, so it wraps there. */}
-          <span className="text-meta text-fg-tertiary max-md:[overflow-wrap:anywhere] md:truncate">
-            {deviceDetails(device)}
-            {note === undefined ? null : (
-              <>
-                {" · "}
-                <span className={outdated ? "text-attention" : undefined}>{note}</span>
-              </>
-            )}
-          </span>
+          {details === "" && note === undefined ? null : (
+            <span className="text-meta text-fg-tertiary max-md:[overflow-wrap:anywhere] md:truncate">
+              {details}
+              {note === undefined ? null : (
+                <>
+                  {details === "" ? null : " · "}
+                  <span className={outdated ? "text-attention" : undefined}>{note}</span>
+                </>
+              )}
+            </span>
+          )}
         </div>
         <MenuRoot>
           <MenuTrigger>
@@ -387,6 +401,11 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
             </Button>
           </MenuTrigger>
           <MenuPopup>
+            {version === undefined ? null : (
+              <MenuGroup>
+                <MenuGroupLabel>{version}</MenuGroupLabel>
+              </MenuGroup>
+            )}
             <MenuItem icon={Pencil} onClick={() => setEditing(true)} disabled={!live}>
               Rename…
             </MenuItem>

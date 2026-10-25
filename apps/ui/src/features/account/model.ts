@@ -19,17 +19,27 @@ const PLATFORMS: Readonly<Record<string, string>> = {
 export const platformLabel = (platform: string) => PLATFORMS[platform] ?? platform;
 
 /**
- * "Windows · Nightly · 0.4.0": enough to tell a device apart; development builds say so. A browser's
- * icon already says it is one, so its name does too.
+ * "Windows · Nightly": a desktop's platform, and its channel when it isn't stable, since a nightly
+ * keeps its own data and is a machine of its own. A browser's name ("Edge on Windows", "iPhone")
+ * already says where it runs, so it gets nothing.
  */
 export const deviceDetails = (device: DeviceInfo): string =>
   [
-    platformLabel(device.platform),
-    device.channel === "nightly" ? "Nightly" : device.channel === "dev" ? "Development build" : undefined,
-    device.version === "dev" ? undefined : device.version,
+    device.kind === "desktop" ? platformLabel(device.platform) : undefined,
+    device.kind !== "desktop"
+      ? undefined
+      : device.channel === "nightly"
+        ? "Nightly"
+        : device.channel === "dev"
+          ? "Development build"
+          : undefined,
   ]
     .filter((part) => part !== undefined)
     .join(" · ");
+
+/** "Version 0.4.0", for the device's menu; a development build has no number. */
+export const deviceVersion = (device: DeviceInfo): string | undefined =>
+  device.version === "dev" ? undefined : `Version ${device.version}`;
 
 /** What the UI calls the device it runs on: a desktop's UI runs on a computer, the web client doesn't. */
 export const selfNoun = WEB ? "device" : "computer";
