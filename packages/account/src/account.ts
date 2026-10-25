@@ -149,18 +149,26 @@ const PING_EVERY = "15 seconds";
 const SILENT_FOR = "40 seconds";
 /**
  * How long a check waits for the relay's answer. A suspended page or a sleeping machine often finds
- * its socket still open but dead, which only an unanswered ping tells.
+ * its socket still open but dead, which only an unanswered ping tells. The relay answers pings at
+ * its edge within a fraction of a second, and every moment waited here is a phone coming back to
+ * the app that can't show anything new yet.
  */
-const CHECK_WITHIN = "4 seconds";
+const CHECK_WITHIN = "1500 millis";
 /** A timer running this late means the device slept or its page was suspended. */
 const ASLEEP_AFTER_MS = 15_000;
 const TICK = "5 seconds";
 /** How soon a device that has its code asks again when the relay couldn't be reached. */
 const CLAIM_EVERY = "2 seconds";
+/** A connection that stayed up this long dropped for a reason of its own, not the relay refusing it. */
+const STEADY_FOR_MS = 10_000;
 
-/** Reconnecting backs off from one second to thirty, jittered so devices don't stampede. */
+/**
+ * Reconnecting after a steady connection drops goes again at once, within a quarter second's
+ * jitter; then it backs off from one second to thirty, jittered so devices don't stampede.
+ */
 const reconnectDelay = (failures: number) => {
-  const base = Math.min(30_000, 1000 * 2 ** Math.max(0, failures - 1));
+  if (failures === 0) return Math.round(Math.random() * 250);
+  const base = Math.min(30_000, 1000 * 2 ** (failures - 1));
   return Math.round(base * (0.8 + Math.random() * 0.4));
 };
 
@@ -440,6 +448,7 @@ export class Account extends Context.Service<
                 Effect.map((current) => current._tag === "SignedIn" && current.connection === "online"),
               );
               if (!online) yield* setConnection("connecting");
+              const began = Date.now();
               const ended = yield* connectOnce(credential, linked).pipe(
                 Effect.as(undefined),
                 Effect.catchTag("SignedOff", Effect.succeed),
@@ -448,7 +457,8 @@ export class Account extends Context.Service<
               const wasOnline = yield* SubscriptionRef.get(state).pipe(
                 Effect.map((current) => current._tag === "SignedIn" && current.connection === "online"),
               );
-              failures = wasOnline ? 1 : failures + 1;
+              // One that keeps dropping as soon as it's up waits a moment each time.
+              failures = wasOnline ? (Date.now() - began >= STEADY_FOR_MS ? 0 : 1) : failures + 1;
               yield* setConnection("offline");
               // A check meanwhile, such as the page shown again, tries again at once.
               yield* Effect.raceFirst(Effect.sleep(reconnectDelay(failures)), Queue.take(checks));

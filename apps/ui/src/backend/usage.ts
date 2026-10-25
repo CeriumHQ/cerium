@@ -1,7 +1,7 @@
 import { Effect, Stream } from "effect";
 import { Atom } from "effect/reactivity";
 
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 /**
  * The driven machine's subscribed harnesses and their usage meters: the last reading, then each
@@ -10,7 +10,7 @@ import { Backend, connectionAtom } from "./client.ts";
  */
 export const usageAtom = Backend.runtime
   .atom((get) => {
-    get(connectionAtom);
+    get(connectionEpochAtom);
     return Stream.unwrap(
       Backend.use((client) => Effect.succeed(client("WatchSubscriptionUsage", undefined))),
     );

@@ -1,7 +1,7 @@
 import type { GitSide } from "@cerium/rpc";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 import { refreshHistory } from "./history.ts";
 
 // Source control's reads of the driven machine's repositories. Each is an atom keyed by the folder it
@@ -14,7 +14,7 @@ const versionAtoms = Atom.family((_key: string) => Atom.make(0));
 export const gitStatusAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(`status\n${root}`));
       return Backend.use((client) => client("GitStatus", { root }));
     })
@@ -49,7 +49,7 @@ export const gitDiffAtom = Atom.family((key: string) => {
   const [root = "", path = "", side = "unstaged", from = "", context = "3"] = key.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(`diffs\n${root}`));
       return Backend.use((client) =>
         client("GitDiff", {

@@ -17,7 +17,7 @@ import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
-import { Backend, BackendUnreachable, connectionAtom, LocalBackend } from "./client.ts";
+import { Backend, BackendUnreachable, connectionAtom, connectionEpochAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
 import { byTime, ThreadLog } from "./threadLog.ts";
 
@@ -40,10 +40,11 @@ const LIVE_BUFFER = 4096;
  * The driven machine's live events, streamed text included, on one subscription the whole window
  * shares; events of kinds this version doesn't know are skipped. It subscribes again when the
  * connection comes back, and marks each subscription once its request is on its way: what happened
- * while the connection was down never arrives, so readers read again what they hold.
+ * while the connection was down never arrives, so readers read again what they hold. A line that's
+ * coming back is subscribed to again at once, since the request waits for it.
  */
 const liveFeedAtom = Backend.runtime
-  .atom(
+  .atom(({ registry }) =>
     Effect.gen(function* () {
       const feed = yield* PubSub.unbounded<Live>();
       const subscribe = Effect.gen(function* () {
@@ -66,7 +67,11 @@ const liveFeedAtom = Backend.runtime
       }).pipe(Effect.scoped);
       yield* subscribe.pipe(
         Effect.ignoreCause,
-        Effect.andThen(Effect.sleep("1 second")),
+        Effect.andThen(
+          Effect.suspend(() =>
+            registry.get(connectionAtom) === "reconnecting" ? Effect.void : Effect.sleep("1 second"),
+          ),
+        ),
         Effect.forever,
         Effect.forkScoped,
       );
@@ -115,13 +120,16 @@ export const activityAtom = Backend.runtime.atom((get) =>
  * after every change but streamed text and each time the live feed subscribes again. One read runs
  * at a time and changes during it make one more after it, so a busy machine can't keep cancelling
  * reads, and the list always ends on the latest state. While disconnected it fails, keeping the
- * last list it read. A read that finds the list as it was (most events, a tool call say, change no
- * thread's overview) wakes nothing: re-rendering the inbox's rows for each took 55 ms.
+ * last list it read; while the line comes back it stays as it was, then reads again. A read that
+ * finds the list as it was (most events, a tool call say, change no thread's overview) wakes
+ * nothing: re-rendering the inbox's rows for each took 55 ms.
  */
 export const threadsAtom = Backend.runtime
   .atom((get) => {
     get.mount(liveFeedAtom);
-    if (get(connectionAtom) !== "connected") {
+    get(connectionEpochAtom);
+    const connection = get.once(connectionAtom);
+    if (connection === "connecting" || connection === "unreachable") {
       return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
     }
     const listThreads = Backend.use((client) => client("ListThreads", undefined));
@@ -150,13 +158,13 @@ export const threadsAtom = Backend.runtime
   .pipe(Atom.withEquality(sameRead(Equal.equals)));
 
 export const harnessesAtom = Backend.runtime.atom((get) => {
-  get(connectionAtom);
+  get(connectionEpochAtom);
   return Backend.use((client) => client("HarnessStatuses", undefined));
 });
 
 /** What each harness can do. A machine too old to say fails it, and offers nothing that needs it. */
 export const manifestsAtom = Backend.runtime.atom((get) => {
-  get(connectionAtom);
+  get(connectionEpochAtom);
   return Backend.use((client) => client("HarnessManifests", undefined));
 });
 
@@ -179,7 +187,7 @@ const cachedModels = (machine: DrivenMachine | undefined): ReadonlyArray<ModelIn
  */
 export const modelsAtom = Backend.runtime.atom(
   (get) => {
-    get(connectionAtom);
+    get(connectionEpochAtom);
     const machine = get(machineAtom);
     return Stream.unwrap(
       Backend.use((client) =>
@@ -315,7 +323,7 @@ export const localWorkingAtom = LocalBackend.runtime.atom((get) => {
 
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {
-  get(connectionAtom);
+  get(connectionEpochAtom);
   return Backend.use((client) => client("Settings", undefined));
 });
 
@@ -324,7 +332,7 @@ export const settingsAtom = Backend.runtime.atom((get) => {
  * cost. Re-read after a reconnect; a machine too old for the router fails it.
  */
 export const effortRouterStatusAtom = Backend.runtime.atom((get) => {
-  get(connectionAtom);
+  get(connectionEpochAtom);
   return Backend.use((client) => client("EffortRouterStatus", undefined));
 });
 

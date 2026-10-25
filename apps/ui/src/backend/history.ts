@@ -1,6 +1,6 @@
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // The History tab's reads of a work thread's git history on the machine that runs it. Each read is an
 // atom keyed by the folder it reads and what it asks for, so a page is read again when the folder's
@@ -23,7 +23,7 @@ export const commitPageAtom = Atom.family((id: string) => {
   const [root = "", query = "", offset = "0"] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(historyVersionAtom(root));
       return Backend.use((client) =>
         client("CommitHistory", {
@@ -41,7 +41,7 @@ export const commitDetailAtom = Atom.family((id: string) => {
   const [root = "", sha = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(historyVersionAtom(root));
       return Backend.use((client) => client("CommitDetail", { root, sha }));
     })
@@ -64,7 +64,7 @@ export const commitDiffAtom = Atom.family((id: string) => {
   const [root = "", sha = "", path = "", from = "", context = "3"] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       return Backend.use((client) =>
         client("CommitDiffFile", {
           root,

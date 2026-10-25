@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { pullFiltersOfKey } from "../features/github/model.ts";
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // The GitHub panel's and the pull request viewer's reads, through the machine that runs the thread
 // and the user's own `gh` there. Each read is an atom keyed by the folder (`cwd`, the work thread's)
@@ -17,7 +17,7 @@ const key = (...parts: ReadonlyArray<string>) => parts.join("\n");
 /** The GitHub CLI on the driven machine, and who it's signed in as. */
 export const githubStatusAtom = Backend.runtime
   .atom((get) => {
-    get(connectionAtom);
+    get(connectionEpochAtom);
     return Backend.use((client) => client("GitHubStatus", undefined));
   })
   .pipe(Atom.setIdleTTL("1 minute"));
@@ -40,7 +40,7 @@ const repositoryVersionAtom = Atom.family((_cwd: string) => Atom.make(0).pipe(At
 export const githubRepositoryAtom = Atom.family((cwd: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(repositoryVersionAtom(cwd));
       return Backend.use((client) => client("GitHubRepository", { cwd }));
     })
@@ -64,7 +64,7 @@ export const pullPageAtom = Atom.family((id: string) => {
   const [cwd = "", filters = "{}", after = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(pullListVersionAtom(cwd));
       return Backend.use((client) =>
         client("ListPullRequests", {
@@ -81,7 +81,7 @@ export const pullPageAtom = Atom.family((id: string) => {
 export const branchPullAtom = Atom.family((cwd: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(pullListVersionAtom(cwd));
       return Backend.use((client) => client("BranchPullRequest", { cwd }));
     })
@@ -110,7 +110,7 @@ export const pullAtom = Atom.family((id: string) => {
   const { cwd, number } = parsePullKey(id);
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(pullVersionAtom(id));
       return Backend.use((client) => client("PullRequest", { cwd, number }));
     })
@@ -125,7 +125,7 @@ export const pullTimelineAtom = Atom.family((pageKey: string) => {
   const id = pullKey(cwd, number);
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(pullVersionAtom(id));
       return Backend.use((client) => client("PullRequestTimeline", { cwd, number, after: rest.join("\n") }));
     })
@@ -137,7 +137,7 @@ export const pullChecksAtom = Atom.family((id: string) => {
   const { cwd, number } = parsePullKey(id);
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(pullVersionAtom(id));
       return Backend.use((client) => client("PullRequestChecks", { cwd, number }));
     })
@@ -154,7 +154,7 @@ export const pullCommitsAtom = Atom.family((headKey: string) => {
   const { cwd, number } = parsePullKey(headKey);
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       return Backend.use((client) => client("PullRequestCommits", { cwd, number }));
     })
     .pipe(Atom.setIdleTTL("1 minute"));
@@ -164,7 +164,7 @@ export const pullFilesAtom = Atom.family((headKey: string) => {
   const { cwd, number } = parsePullKey(headKey);
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       return Backend.use((client) => client("PullRequestFiles", { cwd, number }));
     })
     .pipe(Atom.setIdleTTL("1 minute"));

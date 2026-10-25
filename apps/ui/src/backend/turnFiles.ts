@@ -1,6 +1,6 @@
 import { Atom } from "effect/reactivity";
 
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // The files an agent's turn changed, as the summary under its response opens them: one file's diff
 // between the folder's snapshots from before and after the turn, and putting the turn's files back.
@@ -17,7 +17,7 @@ export const turnDiffAtom = Atom.family((id: string) => {
   const [root = "", before = "", after = "", path = "", context = "3"] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       return Backend.use((client) =>
         client("TurnDiffFile", { root, before, after, path, context: Number(context) }),
       );

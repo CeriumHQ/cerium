@@ -1,6 +1,6 @@
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // Source control's reads and changes of a repository's branches, its sync with the remote, its stash
 // and the merge in progress. Each read is an atom keyed by the folder it asks about (a thread's), and
@@ -13,7 +13,7 @@ const versionAtoms = Atom.family((_key: string) => Atom.make(0));
 export const branchStateAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(`state\n${root}`));
       return Backend.use((client) => client("GitBranchState", { root }));
     })
@@ -24,7 +24,7 @@ export const branchStateAtom = Atom.family((root: string) =>
 export const branchListAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(`branches\n${root}`));
       return Backend.use((client) => client("GitBranches", { root }));
     })
@@ -35,7 +35,7 @@ export const branchListAtom = Atom.family((root: string) =>
 export const stashListAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(`stashes\n${root}`));
       return Backend.use((client) => client("GitStashes", { root }));
     })

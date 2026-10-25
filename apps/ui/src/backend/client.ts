@@ -1,11 +1,12 @@
 import { Account, deviceHandlers, openTunnel, refuseEffortRouterKey } from "@cerium/account";
 import { DeviceRpcs, MachineRpcs, TUNNEL_HELLO } from "@cerium/rpc";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schedule, Schema, Stream } from "effect";
 import { Atom, AtomRpc, type AtomRegistry } from "effect/reactivity";
 import { RpcClient, RpcSerialization, RpcTest } from "effect/rpc";
 import { Socket } from "effect/socket";
 
 import { WebDevice } from "../web/device.ts";
+import { liveness, type ConnectionState, type Liveness } from "./liveness.ts";
 import { drivenMachine, onMachineChange } from "./machine.ts";
 import { shellBridge, type BackendConnection } from "./shell.ts";
 import { WEB } from "./target.ts";
@@ -29,10 +30,17 @@ const connection = Effect.tryPromise({
       : new BackendUnreachable({ message: `Couldn't reach the Cerium backend: ${String(cause)}` }),
 });
 
-export type ConnectionState = "connecting" | "connected" | "unreachable";
+export type { ConnectionState };
 
 /** Whether the UI is connected to the machine it drives right now. */
 export const connectionAtom = Atom.make<ConnectionState>("connecting").pipe(Atom.keepAlive);
+
+/**
+ * Which connection to the driven machine reads belong to. It moves on with every change of
+ * `connectionAtom` but a line dropping, so a read made again when it moves keeps its value while the
+ * line comes back, then reads afresh what changed meanwhile, which never arrives.
+ */
+export const connectionEpochAtom = Atom.make(0).pipe(Atom.keepAlive);
 
 /**
  * Whether the UI is connected to this device's own side right now: a desktop's backend, or for the
@@ -79,45 +87,10 @@ const openTunnelSocket = Effect.gen(function* () {
 /** Closed to switch machines; the client then reopens on the new one. */
 const SWITCHING = 4000;
 /**
- * How long a connection may stay lost, or a switch take, before the machine counts as unreachable.
- * Reconnecting after a dropped line, or a phone coming back to the app, usually takes a moment that
- * says nothing about the machine.
- */
-const UNREACHABLE_AFTER_MS = 8_000;
-/**
  * How long the driven machine may stay silent before the connection counts as lost. Another machine
  * answers through the relay, where a moment's stall on either computer is no reason to give up.
  */
 const DRIVEN_PING_TIMEOUT = "15 seconds";
-
-/** A connection's state, which only turns unreachable once it has stayed lost for a while. */
-const liveness = (registry: AtomRegistry.AtomRegistry, state: Atom.Writable<ConnectionState>) => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const lost = () => {
-    if (timer !== undefined || registry.get(state) === "unreachable") return;
-    registry.set(state, "connecting");
-    timer = setTimeout(() => {
-      timer = undefined;
-      registry.set(state, "unreachable");
-    }, UNREACHABLE_AFTER_MS);
-  };
-  return {
-    connected: () => {
-      clearTimeout(timer);
-      timer = undefined;
-      registry.set(state, "connected");
-    },
-    lost,
-    /** Starts over, as for a machine just switched to. */
-    restart: () => {
-      clearTimeout(timer);
-      timer = undefined;
-      registry.set(state, "connecting");
-      lost();
-    },
-  };
-};
-type Liveness = ReturnType<typeof liveness>;
 
 const backendSocket = <R>(
   open: Effect.Effect<Socket.WebSocketLike, Socket.SocketError, R>,
@@ -154,10 +127,33 @@ const socketLayer = (target: Target, live: Liveness) =>
         Layer.provide(Socket.layerWebSocketConstructorGlobal),
       );
 
+/**
+ * A call made while the line comes back waits for it, rather than failing on the connection that
+ * dropped: a message sent the moment a phone is back in the app goes once the machine answers.
+ */
+const waitingOutReconnects = (live: Liveness) =>
+  Layer.effect(
+    RpcClient.Protocol,
+    Effect.gen(function* () {
+      const protocol = yield* RpcClient.Protocol;
+      return RpcClient.Protocol.of({
+        ...protocol,
+        send: (clientId, request, transferables) =>
+          request._tag === "Request"
+            ? Effect.andThen(live.settled, protocol.send(clientId, request, transferables))
+            : protocol.send(clientId, request, transferables),
+      });
+    }),
+  );
+
 const protocol = (target: Target, registry: AtomRegistry.AtomRegistry) => {
-  const live = liveness(registry, target === "local" ? localConnectionAtom : connectionAtom);
+  const live =
+    target === "local"
+      ? liveness(registry, localConnectionAtom)
+      : liveness(registry, connectionAtom, connectionEpochAtom);
   return RpcClient.layerProtocolSocket({
     retryTransientErrors: true,
+    retryPolicy: Schedule.forever.pipe(Schedule.modifyDelay(() => Effect.sync(live.nextRetry))),
     ...(target === "driven" ? { pingTimeout: DRIVEN_PING_TIMEOUT } : {}),
   }).pipe(
     Layer.provide(socketLayer(target, live)),
@@ -168,6 +164,7 @@ const protocol = (target: Target, registry: AtomRegistry.AtomRegistry) => {
         onDisconnect: Effect.sync(live.lost),
       }),
     ),
+    (socket) => waitingOutReconnects(live).pipe(Layer.provide(socket)),
   );
 };
 

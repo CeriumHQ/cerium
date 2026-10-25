@@ -2,7 +2,7 @@ import type { IssueFilters } from "@cerium/rpc";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { ITEMS_STEP, NO_FILTERS, filtersOfKey } from "../features/issues/model.ts";
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // The Issues tab's and the issue viewer's reads of a repository's issues, through the machine that
 // runs the thread. Each read is an atom keyed by the folder (`cwd`, the work thread's) and what it
@@ -30,7 +30,7 @@ export const issuePageAtom = Atom.family((id: string) => {
   const [cwd = "", filters = "{}", after = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(issueListVersionAtom(cwd));
       return Backend.use((client) =>
         client("ListIssues", { cwd, filters: filtersOfKey(filters), ...(after === "" ? {} : { after }) }),
@@ -43,7 +43,7 @@ export const issuePageAtom = Atom.family((id: string) => {
 export const issueChoicesAtom = Atom.family((cwd: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       return Backend.use((client) => client("IssueChoices", { cwd }));
     })
     .pipe(Atom.setIdleTTL("5 minutes")),
@@ -69,7 +69,7 @@ export const issueAtom = Atom.family((id: string) => {
   const [cwd = "", number = "0"] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(issueVersionAtom(id));
       const items = get(issueItemsAtom(id));
       return Backend.use((client) => client("Issue", { cwd, number: Number(number), items }));

@@ -10,7 +10,7 @@ import {
   type Listed,
   type Row,
 } from "../features/files/model.ts";
-import { Backend, connectionAtom } from "./client.ts";
+import { Backend, connectionEpochAtom } from "./client.ts";
 
 // The file explorer's reads of the driven machine's disk. Each is an atom keyed by the folder it reads
 // (`root`, the thread's folder, then the path in it, on separate lines), and each starts over when
@@ -28,7 +28,7 @@ export const listingAtom = Atom.family((id: string) => {
   const [root = "", dir = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(key("dir", id)));
       return Backend.use((client) => client("ListFiles", { root, dir }));
     })
@@ -39,7 +39,7 @@ export const listingAtom = Atom.family((id: string) => {
 export const statusAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(key("status", root)));
       return Backend.use((client) => client("FileStatuses", { root }));
     })
@@ -53,7 +53,7 @@ export const previewAtom = Atom.family((id: string) => {
   const [root = "", path = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(key("file", id)));
       return Backend.use((client) => client("ReadFile", { root, path }));
     })
@@ -71,7 +71,7 @@ export const diffAtom = Atom.family((id: string) => {
   const [root = "", path = "", from = "", context = "3"] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(key("file", key(root, path))));
       return Backend.use((client) =>
         client("DiffFile", { root, path, context: Number(context), ...(from === "" ? {} : { from }) }),
@@ -100,7 +100,7 @@ export const mediaAtom = Atom.family((id: string) => {
   const [root = "", path = "", type = ""] = id.split("\n");
   return Backend.runtime
     .atom((get) => {
-      get(connectionAtom);
+      get(connectionEpochAtom);
       get(versionAtoms(key("file", key(root, path))));
       const parts: Array<Uint8Array<ArrayBuffer>> = [];
       let received = 0;
@@ -135,7 +135,7 @@ export const mediaAtom = Atom.family((id: string) => {
  */
 export const watchAtom = Atom.family((root: string) =>
   Backend.runtime.atom((get) => {
-    get(connectionAtom);
+    get(connectionEpochAtom);
     return Stream.unwrap(Backend.use((client) => Effect.succeed(client("WatchFiles", { root })))).pipe(
       Stream.retry(Schedule.spaced("5 seconds")),
     );
