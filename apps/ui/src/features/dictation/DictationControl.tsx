@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState, type MouseEvent } from "re
 
 import { shellBridge } from "../../backend/shell.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useChanged } from "../../lib/motion.ts";
 import { elapsed, problemText } from "./model.ts";
 import type { Dictation } from "./useDictation.ts";
 
@@ -60,19 +61,27 @@ function Elapsed({ since }: { since: number }) {
  */
 export function DictationControl({ dictation }: { dictation: Dictation }) {
   const { state, download } = dictation;
+  // Each of the microphone, the recording pill and the writing pill pops in as it takes the place.
+  const form =
+    state.phase === "recording" || state.phase === "starting"
+      ? "recording"
+      : state.phase === "finishing"
+        ? "writing"
+        : "idle";
+  const swap = useChanged(form) ? "swap-in" : "";
   const downloading =
     download === undefined ? null : (
       <span className="text-fg-tertiary tabular-nums">Model {Math.round(download * 100)}%</span>
     );
 
-  if (state.phase === "recording" || state.phase === "starting") {
+  if (form === "recording") {
     return (
       <Tooltip label="Stop dictating" shortcut={DICTATION_SHORTCUT}>
         <Button
           onClick={dictation.toggle}
           onMouseDown={keepFocus}
           aria-label="Stop dictating"
-          className="flex h-8 shrink-0 items-center gap-2 rounded-full border border-error/30 bg-error/10 pr-3 pl-2.5 text-[12.5px] text-fg-primary transition-colors hover:bg-error/18"
+          className={`flex h-8 shrink-0 items-center gap-2 rounded-full border border-error/30 bg-error/10 pr-3 pl-2.5 text-[12.5px] text-fg-primary transition-[background-color,opacity,scale,filter] hover:bg-error/18 ${swap}`}
         >
           <span className="grid size-4 place-items-center text-error">
             <Square size={10} fill="currentColor" strokeWidth={0} />
@@ -93,9 +102,11 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
     );
   }
 
-  if (state.phase === "finishing") {
+  if (form === "writing") {
     return (
-      <output className="flex h-8 shrink-0 items-center gap-2 rounded-full bg-surface-hover px-3 text-[12.5px] text-fg-secondary">
+      <output
+        className={`flex h-8 shrink-0 items-center gap-2 rounded-full bg-surface-hover px-3 text-[12.5px] text-fg-secondary ${swap}`}
+      >
         <LoaderCircle size={13} className="animate-spin" />
         {download === undefined ? "Writing…" : downloading}
       </output>
@@ -108,7 +119,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
         onClick={dictation.toggle}
         onMouseDown={keepFocus}
         aria-label="Dictate"
-        className="grid size-8 shrink-0 place-items-center rounded-full text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active"
+        className={`grid size-8 shrink-0 place-items-center rounded-full text-fg-tertiary transition-[color,background-color,opacity,scale,filter] hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active ${swap}`}
       >
         <Mic size={15} strokeWidth={1.75} />
       </Button>

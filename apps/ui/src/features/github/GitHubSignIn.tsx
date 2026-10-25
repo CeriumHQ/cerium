@@ -5,6 +5,7 @@ import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { githubLoginAtom } from "../../backend/github.ts";
+import { Swap } from "../../components/Swap.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 
 let attempts = 0;
@@ -108,7 +109,9 @@ export function GitHubSignInSteps({
           aria-label={copied ? "Copied" : "Copy code"}
           className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
-          {copied ? <Check size={14} strokeWidth={2.25} /> : <Copy size={14} strokeWidth={1.75} />}
+          <Swap which={copied ? "copied" : "copy"}>
+            {copied ? <Check size={14} strokeWidth={2.25} /> : <Copy size={14} strokeWidth={1.75} />}
+          </Swap>
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">

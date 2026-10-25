@@ -25,6 +25,17 @@ export const settled = (element: Element): Promise<void> => {
 };
 
 /**
+ * Whether the value has changed since the component mounted: what a component first shows is just
+ * there, and only a change after that moves.
+ */
+export function useChanged(value: string | boolean): boolean {
+  const [first] = useState(value);
+  const [changed, setChanged] = useState(false);
+  if (!changed && value !== first) setChanged(true);
+  return changed;
+}
+
+/**
  * The value as it is while `live`, and as it last was while live once it no longer is: what a
  * leaving element keeps showing as it plays out, after its owner has already let it go.
  */

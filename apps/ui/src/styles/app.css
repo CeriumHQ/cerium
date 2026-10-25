@@ -310,6 +310,25 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     }
   }
 
+  /*
+   * A control or icon that takes another's place pops in: copy turning into a check, send into stop.
+   * Something with transitions of its own lists `scale`, `opacity` and `filter` among them.
+   */
+  .swap-in {
+    transition:
+      opacity 160ms var(--ease-out-soft),
+      scale 260ms var(--ease-pop),
+      filter 200ms var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .swap-in {
+      opacity: 0;
+      scale: 0.6;
+      filter: blur(2px);
+    }
+  }
+
   /* A tile among others, which scales in and out where it stands. */
   .pop {
     transition:

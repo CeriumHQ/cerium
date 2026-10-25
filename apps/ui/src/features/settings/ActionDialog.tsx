@@ -7,6 +7,7 @@ import { Check, Copy, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { closeTerminal, commandSessionAtom, runHarnessCommand } from "../../backend/terminals.ts";
+import { Swap } from "../../components/Swap.tsx";
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
 import { messageOf } from "../terminal/model.ts";
 import { fittedSize } from "../terminal/session.ts";
@@ -234,7 +235,9 @@ export function CopyableCommand({ text }: { readonly text: string }) {
         aria-label={copied ? "Copied" : "Copy command"}
         className="grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
       >
-        {copied ? <Check size={13} strokeWidth={2.25} /> : <Copy size={13} strokeWidth={1.75} />}
+        <Swap which={copied ? "copied" : "copy"}>
+          {copied ? <Check size={13} strokeWidth={2.25} /> : <Copy size={13} strokeWidth={1.75} />}
+        </Swap>
       </button>
     </div>
   );

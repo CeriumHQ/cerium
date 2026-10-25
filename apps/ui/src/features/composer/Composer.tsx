@@ -31,6 +31,7 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useChanged } from "../../lib/motion.ts";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
 import { WEB } from "../../backend/target.ts";
@@ -669,6 +670,8 @@ export function Composer({
   // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
   const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
   const discSize = oneLine ? "m-0.5 size-9" : inline ? "m-1 size-8" : "size-8";
+  // Stop pops in as a turn starts, and send as it ends, once the box has seen one change.
+  const turned = useChanged(running);
   const stopButton = (
     <Tooltip label="Stop" shortcut="Esc">
       {/* A ring turns around it while the turn runs, so the one control that ends it stands out. */}
@@ -676,7 +679,7 @@ export function Composer({
         onClick={onStop}
         onMouseDown={keepFocus}
         aria-label="Stop"
-        className={`relative grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform] before:absolute before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary hover:opacity-90 active:scale-95 motion-reduce:before:animate-none ${discSize}`}
+        className={`relative grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary hover:opacity-90 active:scale-95 motion-reduce:before:animate-none ${discSize}`}
       >
         <Square size={11} fill="currentColor" strokeWidth={0} />
       </Button>
@@ -694,7 +697,7 @@ export function Composer({
         disabled={!canSend && !asksForProject}
         aria-label={sendLabel}
         // With nothing to send it's an outlined ring rather than a faded disc, which read as broken.
-        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,transform,background-color] hover:opacity-90 active:scale-95 disabled:bg-transparent disabled:text-fg-tertiary disabled:opacity-100 disabled:ring-1 disabled:ring-line-strong disabled:ring-inset ${discSize}`}
+        className={`grid shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,scale,filter,background-color] hover:opacity-90 ${turned ? "swap-in" : ""} active:scale-95 disabled:bg-transparent disabled:text-fg-tertiary disabled:opacity-100 disabled:ring-1 disabled:ring-line-strong disabled:ring-inset ${discSize}`}
       >
         <ArrowUp size={16} strokeWidth={2.25} />
       </Button>

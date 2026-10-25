@@ -1,7 +1,8 @@
 import type { ProviderId } from "@cerium/protocol";
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { useChanged } from "../../lib/motion.ts";
 import { providerName, type ThreadSummary } from "./model.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 
@@ -124,14 +125,6 @@ export function ThreadMark({
       ) : null}
     </span>
   );
-}
-
-/** Whether the value has changed since the component mounted. */
-function useChanged(value: string): boolean {
-  const [first] = useState(value);
-  const [changed, setChanged] = useState(false);
-  if (!changed && value !== first) setChanged(true);
-  return changed;
 }
 
 /** The logos of the harnesses a thread's agents use. */
