@@ -106,7 +106,7 @@ function UsageRings({
 }) {
   const now = useMinute();
   const snapshot = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
-  const rings = usageRings(snapshot?.usage ?? [], ready, now);
+  const rings = usageRings(snapshot?.usage ?? [], ready);
   if (rings.length === 0) return null;
   return (
     <div
@@ -133,9 +133,14 @@ function UsageRings({
 }
 
 const SIZE = 30;
-const tone = { normal: "text-success", warning: "text-attention", critical: "text-error" } as const;
 /** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
 const bands = { 1: [2.5, 0], 2: [2.5, 1], 3: [2, 0.5] } as const;
+
+/** Green while a limit is full, through amber at half, to red once it's spent. */
+const arcColor = (left: number) =>
+  left >= 50
+    ? `color-mix(in oklch, var(--color-success) ${(left - 50) * 2}%, var(--color-attention))`
+    : `color-mix(in oklch, var(--color-attention) ${left * 2}%, var(--color-error))`;
 
 /**
  * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
@@ -164,12 +169,12 @@ function Ring({ ring }: { ring: UsageRing }) {
                 cy={SIZE / 2}
                 r={radius}
                 fill="none"
-                stroke="currentColor"
+                stroke={arcColor(arc.left)}
                 strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference * (1 - arc.left / 100)}
-                className={`transition-[stroke-dashoffset] duration-700 ease-out-soft ${tone[arc.level]}`}
+                className="transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft"
               />
             </g>
           );

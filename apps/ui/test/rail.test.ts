@@ -26,18 +26,18 @@ const codex: ProviderUsage = {
 
 describe("usageRings", () => {
   it("gives each limit an arc in the harness's order, leaving a spending cap out", () => {
-    const [ring] = usageRings([claude], new Set(["claude"]), now);
+    const [ring] = usageRings([claude], new Set(["claude"]));
     expect(ring?.arcs).toEqual([
-      { label: "Current session", left: 60, level: "normal" },
-      { label: "Weekly", left: 30, level: "normal" },
+      { label: "Current session", left: 60 },
+      { label: "Weekly", left: 30 },
     ]);
     expect(ring?.left).toBe(30);
     expect(ring?.plan).toBe("max");
     expect(ring?.meters).toHaveLength(3);
   });
 
-  it("grades each arc by its own limit", () => {
-    expect(usageRings([codex], new Set(["codex"]), now)[0]?.arcs[0]?.level).toBe("critical");
+  it("fills each arc with what's left of its own limit", () => {
+    expect(usageRings([codex], new Set(["codex"]))[0]?.arcs[0]?.left).toBe(8);
   });
 
   it("keeps the tightest of the rest as the last arc past three limits", () => {
@@ -52,13 +52,13 @@ describe("usageRings", () => {
       ],
       checkedAt: now,
     };
-    const labels = usageRings([many], new Set(["claude"]), now)[0]?.arcs.map((arc) => arc.label);
+    const labels = usageRings([many], new Set(["claude"]))[0]?.arcs.map((arc) => arc.label);
     expect(labels).toEqual(["Current session", "Weekly · All models", "Weekly · Sonnet"]);
   });
 
   it("shows only harnesses that can run threads, and none that couldn't be read", () => {
     const unreadable: ProviderUsage = { _tag: "UsageUnreadable", provider: "codex", message: "Offline" };
-    expect(usageRings([claude, unreadable], new Set(["codex"]), now)).toEqual([]);
+    expect(usageRings([claude, unreadable], new Set(["codex"]))).toEqual([]);
   });
 
   it("counts a spending cap when it's the plan's only meter", () => {
@@ -68,6 +68,6 @@ describe("usageRings", () => {
       meters: [{ label: "Monthly", usedPercent: 25, spend: { used: 5, limit: 20, currency: "USD" } }],
       checkedAt: now,
     };
-    expect(usageRings([capped], new Set(["cursor"]), now)[0]?.left).toBe(75);
+    expect(usageRings([capped], new Set(["cursor"]))[0]?.left).toBe(75);
   });
 });

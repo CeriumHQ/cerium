@@ -1,19 +1,10 @@
-import {
-  leftPercent,
-  meterLevel,
-  paceOf,
-  type MeterLevel,
-  type ProviderId,
-  type ProviderUsage,
-  type UsageMeter,
-} from "@cerium/protocol";
+import { leftPercent, type ProviderId, type ProviderUsage, type UsageMeter } from "@cerium/protocol";
 
 /** One arc of a usage ring: a limit and what's left of it. */
 export interface UsageArc {
   readonly label: string;
   /** What's left of the meter, from 0 to 100. */
   readonly left: number;
-  readonly level: MeterLevel;
 }
 
 /** What one of the rail's usage rings shows: a harness's limits as concentric arcs. */
@@ -39,7 +30,6 @@ export const MAX_ARCS = 3;
 export const usageRings = (
   usage: ReadonlyArray<ProviderUsage>,
   ready: ReadonlySet<ProviderId>,
-  now: number,
 ): ReadonlyArray<UsageRing> =>
   usage.flatMap((each) => {
     if (each._tag !== "Subscribed" || !ready.has(each.provider) || each.meters.length === 0) return [];
@@ -56,7 +46,6 @@ export const usageRings = (
         arcs: shown.map((meter) => ({
           label: meter.label,
           left: leftPercent(meter),
-          level: meterLevel(meter, paceOf(meter, now)),
         })),
         left: leftPercent(tightest(candidates)),
         meters: each.meters,
