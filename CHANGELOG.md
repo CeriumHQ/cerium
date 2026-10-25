@@ -245,6 +245,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - The side panels (agents, files, Source control, GitHub, artifacts) slide in and out instead of popping. Beside the transcript, a panel slides out from under the window's edge as the transcript gives way, keeping its width so its rows don't reflow, and slides back under it on close; floating over a narrow window, it slides in from the edge and fades, keeping its blur throughout. Switching panels fades the new one in.
+- The rail's selected place and Settings' selected category slide their highlight from the one that was open to the one that is, as the thread tabs' does, instead of jumping.
 - Controls that swap pop into place instead of switching: a copy button's icon turns into its check, the message box's send turns into stop as a turn starts and back as it ends, and dictation's microphone, recording pill and writing pill each pop in as they take over.
 - A thread's status dot lands when its status changes (it starts working, needs you, fails or has news), popping in at its new colour with a small overshoot, instead of switching colour. Lists that open show their dots as they are.
 - The work sidebar's cards move instead of jumping: a card whose place changes (it needs you, it's pinned or unpinned, it has news) glides there, a new thread grows into the list, and one archived or put off folds out of it as the cards around it close up. The lists still open and switch tabs without motion.

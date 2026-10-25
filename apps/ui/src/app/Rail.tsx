@@ -3,8 +3,10 @@ import type { ProviderId, UsageSnapshot } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { CircleCheck, GitPullRequest, House, MessagesSquare, Settings, type LucideIcon } from "lucide-react";
+import { useRef } from "react";
 import { usageAtom } from "../backend/usage.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
+import { SlidingHighlight } from "../components/SlidingHighlight.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { harnessName } from "../features/settings/Harnesses.tsx";
 import { leftLabel, planName, resetLabel } from "../features/settings/usageModel.ts";
@@ -51,6 +53,7 @@ export function Rail({
   orientation = "vertical",
 }: RailProps) {
   const vertical = orientation === "vertical";
+  const places = useRef<HTMLElement>(null);
   // The backend reports every adapter it has, so all "unsupported" is the list before its first answer.
   const checking = harnesses.every(({ state }) => state === "unsupported");
   const waiting =
@@ -64,7 +67,13 @@ export function Rail({
           : "flex w-full items-center gap-1 border-t border-line-subtle px-3 pt-1.5"
       }
     >
-      <nav aria-label="Places" className={vertical ? "flex flex-col gap-1" : "flex flex-1 justify-around"}>
+      <nav
+        ref={places}
+        aria-label="Places"
+        className={`relative isolate ${vertical ? "flex flex-col gap-1" : "flex flex-1 justify-around"}`}
+      >
+        {/* Slides from the place that was open to the one that is. */}
+        <SlidingHighlight within={places} active={view} className="rounded-lg bg-surface-selected" />
         {views
           .filter(({ view: id }) => !hidden.includes(id))
           .map(({ view: id, label, icon: Icon, shortcut }) => {
@@ -74,10 +83,11 @@ export function Rail({
                 <Button
                   aria-label={label}
                   aria-current={active ? "page" : undefined}
+                  {...(active ? { "data-highlight-active": "" } : {})}
                   onClick={() => onSelect(id)}
                   className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
                     active
-                      ? "bg-surface-selected text-fg-primary"
+                      ? "text-fg-primary"
                       : "text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
                   }`}
                 >

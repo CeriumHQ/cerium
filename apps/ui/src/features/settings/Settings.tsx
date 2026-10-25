@@ -16,6 +16,7 @@ import {
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { WEB } from "../../backend/target.ts";
+import { SlidingHighlight } from "../../components/SlidingHighlight.tsx";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
@@ -148,11 +149,13 @@ export function SettingsNav({
       </div>
 
       <p className="px-4 pt-2 pb-1.5 text-xs font-medium text-fg-secondary/80">Settings</p>
-      <nav ref={nav} aria-label="Settings" className="flex flex-col gap-px px-2">
+      <nav ref={nav} aria-label="Settings" className="relative isolate flex flex-col gap-px px-2">
+        <SlidingHighlight within={nav} active={category} className="rounded-md bg-surface-selected" />
         {categories.map(({ id, label, icon: Icon }) => (
           <Button
             key={id}
             ref={id === category ? current : undefined}
+            {...(id === category ? { "data-highlight-active": "" } : {})}
             onClick={() => onSelect(id)}
             onKeyDown={(event) => {
               const next = categories[target[event.key] ?? -1];
@@ -167,7 +170,7 @@ export function SettingsNav({
             // full ring around that read as a heavy white box when settings took focus on opening.
             className={`flex h-8 items-center gap-2.5 rounded-md px-2 text-left text-[13px] transition-colors duration-150 focus-visible:outline-1 focus-visible:-outline-offset-1 ${
               id === category
-                ? "bg-surface-selected font-medium text-fg-primary"
+                ? "font-medium text-fg-primary"
                 : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
             }`}
           >
