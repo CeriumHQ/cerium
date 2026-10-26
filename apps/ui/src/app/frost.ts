@@ -261,7 +261,7 @@ export class Frost {
       this.#canvas.height = height;
     }
     const held = this.#canvas.style;
-    held.width = held.height = held.left = held.top = "";
+    held.width = held.height = held.left = held.top = held.transform = held.transformOrigin = "";
     if (resized) {
       this.#rubbed = new PolishGrid(scene.width, scene.height);
       this.#typed = new PolishGrid(scene.width, scene.height);
@@ -279,17 +279,28 @@ export class Frost {
 
   /**
    * The glass is being resized away from the size it was drawn for. Drawing it takes longer than a
-   * frame, so until it's shown again its drawing holds at its own size, centred, as the page keeps the
-   * question; what the pane gains at its edges is clear glass anyway.
+   * frame, so until it's shown again its drawing is scaled and moved onto the question as `headline`
+   * now lays it out, and the question resizes with the pane instead of jumping once it settles; what
+   * the pane gains at its edges is clear glass anyway.
    */
-  hold(): void {
+  hold(headline: HTMLElement): void {
     const scene = this.#drawn?.scene;
-    if (scene === undefined) return;
+    const drawn = scene?.lines[0];
+    const line = headline.firstElementChild;
+    if (scene === undefined || drawn === undefined || line === null) return;
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    const now = range.getBoundingClientRect();
+    const box = this.#glass.getBoundingClientRect();
+    const scale = Number.parseFloat(getComputedStyle(headline).fontSize) / scene.size;
+    const x = now.left - box.left - drawn.left * scale;
+    const y = now.top - box.top - drawn.top * scale;
     const held = this.#canvas.style;
     held.width = `${scene.width}px`;
     held.height = `${scene.height}px`;
-    held.left = `calc(50% - ${scene.width / 2}px)`;
-    held.top = `calc(50% - ${scene.height / 2}px)`;
+    held.left = held.top = "0px";
+    held.transformOrigin = "0 0";
+    held.transform = `translate(${x}px, ${y}px) scale(${scale})`;
   }
 
   /**

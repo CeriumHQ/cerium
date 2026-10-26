@@ -456,7 +456,7 @@ function Rail({
       }}
       orientation="vertical"
       aria-label="Harness"
-      className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-line-subtle bg-surface-sunken/40 py-1.5 max-md:w-13"
+      className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto border-r border-line-subtle bg-surface-sunken/40 py-1.5 max-md:w-13"
     >
       {tabs.map((tab) => (
         <Tooltip key={tab} label={tab === "favorites" ? "Favorites" : providerName[tab]} side="right">

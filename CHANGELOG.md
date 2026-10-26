@@ -376,6 +376,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- The model picker's column of harnesses no longer shows a horizontal scrollbar at its foot: the active harness's marker overhung the column by half a pixel.
+- A new thread's question resizes with the pane as a side panel opens or the window is resized, where it slid at its old size and then shrank in one jump once the size settled.
 - Several images attached at once without a file of their own (pasted, dropped from a browser, or picked on a phone or the web client) each arrive as themselves: they saved together through one call, which cut each save short with the next and gave every image the last one's file.
 - In an open thread, a long message stayed squeezed into the strip of the single-line message box left of the model chip and send. Once what you write wraps, the box now opens: the message takes the full width with the controls on a line under it. It stays open until you clear the message or send it.
 - On a phone, a swipe back to the thread list showed the thread picked before for a moment, before the list caught up. The browser's swipe back shows the last picture it painted of the list, which predated the new selection, so the history entry now waits until the list has painted it.

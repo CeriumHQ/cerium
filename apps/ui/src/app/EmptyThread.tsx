@@ -114,7 +114,7 @@ export function EmptyThread({
       if (shown === undefined) return measure();
       const box = surface.getBoundingClientRect();
       if (box.width === shown.width && box.height === shown.height) return;
-      pane.hold();
+      pane.hold(heading);
       clearTimeout(settling);
       settling = setTimeout(measure, SETTLE_MS);
     });
