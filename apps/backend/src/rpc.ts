@@ -54,6 +54,7 @@ import { History, type HistoryError } from "./history.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Pushes } from "./pushes.ts";
+import { Reviews } from "./reviews.ts";
 import { newerRelease, Releases } from "./releases.ts";
 import { spendReport } from "./spend.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
@@ -147,6 +148,7 @@ export const Handlers = MachineRpcs.toLayer(
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
     const pushes = yield* Pushes;
+    const reviews = yield* Reviews;
     const automations = yield* Automations;
 
     /**
@@ -523,6 +525,17 @@ export const Handlers = MachineRpcs.toLayer(
         pushes
           .act(pushId, action)
           .pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
+      WatchReviews: ({ threadId }) => reviews.watch(threadId),
+      StartReview: ({ threadId, target, reviewer }) =>
+        reviews
+          .start(threadId, target, reviewer)
+          .pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
+      ResolveReviewFinding: ({ reviewId, findingId, state }) =>
+        reviews
+          .resolve(reviewId, findingId, state)
+          .pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
+      StopReview: ({ reviewId }) =>
+        reviews.stop(reviewId).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       ...gitBranchHandlers(gitBranches),
       ...gitChangesHandlers(gitChanges, drafts),
       ...githubHandlers(github, drafts),

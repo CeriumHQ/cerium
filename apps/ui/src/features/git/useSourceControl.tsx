@@ -1,3 +1,4 @@
+import type { ThreadId } from "@cerium/protocol";
 import type { GitFileChange } from "@cerium/rpc";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause, Option } from "effect";
@@ -17,7 +18,9 @@ import {
 import { initRepository } from "../../backend/repositories.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import type { OpenFile } from "../files/model.ts";
+import { useReviewsOffered } from "../review/hooks.ts";
 import { fileKey } from "../viewer/model.ts";
 import { useBranchPanel } from "./branches/useBranchPanel.tsx";
 import { ChangesView, type ChangeActions } from "./ChangesView.tsx";
@@ -57,10 +60,16 @@ export function useSourceControl({
   openIn,
   openCommitFile,
   activeFile,
+  review,
   onClose,
 }: {
   /** The thread's folder; none where there is no repository to show. */
   root: string | undefined;
+  /**
+   * The thread whose agents made the changes, which Commit's review reports to, and its message box,
+   * which takes the findings sent to them; none for a thread not started yet.
+   */
+  review?: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
   /** The panel is shown. */
   open: boolean;
   /** Opens a file of the folder `top` in the viewer; absent where the machine can't serve one. */
@@ -78,6 +87,7 @@ export function useSourceControl({
       openIn={openIn}
       openCommitFile={openCommitFile}
       activeFile={activeFile}
+      review={review}
       onClose={onClose}
     />
   ) : undefined;
@@ -88,14 +98,17 @@ function SourceControl({
   openIn,
   openCommitFile,
   activeFile,
+  review,
   onClose,
 }: {
   root: string;
   openIn: ((top: string) => OpenFile) | undefined;
   openCommitFile: OpenCommitFile;
   activeFile: { readonly root: string; readonly path: string } | undefined;
+  review: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
   onClose: () => void;
 }) {
+  const reviewsOffered = useReviewsOffered();
   const registry = useContext(RegistryContext);
   const result = useAtomValue(gitStatusAtom(root));
   const status = Option.getOrUndefined(AsyncResult.value(result));
@@ -209,16 +222,19 @@ function SourceControl({
               onInit={initialize}
             >
               {top === undefined || status === undefined ? null : (
-                <CommitBox
-                  top={top}
-                  staged={status.staged.length}
-                  changed={status.unstaged.length}
-                  conflicted={status.conflicted.length}
-                  onCommitted={() => {
-                    refreshGitStatus(registry, root);
-                    refreshBranches(registry, root);
-                  }}
-                />
+                <MessageBoxContext value={review?.messageBox}>
+                  <CommitBox
+                    top={top}
+                    staged={status.staged.length}
+                    changed={status.unstaged.length}
+                    conflicted={status.conflicted.length}
+                    threadId={reviewsOffered ? review?.threadId : undefined}
+                    onCommitted={() => {
+                      refreshGitStatus(registry, root);
+                      refreshBranches(registry, root);
+                    }}
+                  />
+                </MessageBoxContext>
               )}
               {failure === undefined ? null : (
                 <div

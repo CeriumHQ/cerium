@@ -140,6 +140,8 @@ const linesBetween = (hunks: ReadonlyArray<DiffHunk>, from: string, to: string):
 export interface DiffCommenting {
   /** Line numbers that a comment waiting in the draft covers, at the number each line anchors. */
   readonly marked: ReadonlySet<number>;
+  /** What hangs under a line besides the run's box: a review's findings whose last line it is. */
+  readonly under?: ((line: NumberedLine) => ReactNode) | undefined;
   /** Adds the run's comment, with the file, its lines and the remark under them. */
   readonly onAdd: (comment: {
     readonly quote: string;
@@ -528,6 +530,7 @@ export function DiffView({
                                 />
                               </div>
                               {after?.(line)}
+                              {commenting?.under?.(line)}
                               {boxOf(hunkIndex, index)}
                             </Fragment>
                           );
@@ -586,6 +589,8 @@ export function DiffView({
                             </div>
                             {row.left ? after?.(row.left) : null}
                             {row.right && row.right !== row.left ? after?.(row.right) : null}
+                            {row.left ? commenting?.under?.(row.left) : null}
+                            {row.right && row.right !== row.left ? commenting?.under?.(row.right) : null}
                             {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
                             {row.right && row.right !== row.left
                               ? boxOf(hunkIndex, indexOf.get(row.right)!)

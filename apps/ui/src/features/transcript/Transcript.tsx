@@ -25,6 +25,7 @@ import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
 import { MessageBoxContext, useMessageBox, type MessageBox } from "../composer/messageBox.ts";
 import { ClosedQuestions, QuestionCard } from "../questions/QuestionCard.tsx";
+import { useReviewsOffered } from "../review/hooks.ts";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import {
@@ -528,9 +529,23 @@ const TranscriptItem = memo(
 /** The files a turn changed; renders again when they or what became of them changes. */
 const TurnChangesItem = memo(
   function TurnChangesItem({ changes, replaced }: { changes: TurnChangesModel; replaced: boolean }) {
-    const { turnFiles } = use(Actions);
-    // A version the conversation replaced only lists its files: its turn's undo belongs to the past.
-    return <TurnChanges changes={changes} actions={replaced ? undefined : turnFiles} />;
+    const { turnFiles, threadId } = use(Actions);
+    const folder = use(WorkspaceFolder);
+    const reviewsOffered = useReviewsOffered();
+    // A version the conversation replaced only lists its files: its turn's undo belongs to the past,
+    // and so does a review of them.
+    const live = !replaced && turnFiles !== undefined;
+    return (
+      <TurnChanges
+        changes={changes}
+        actions={replaced ? undefined : turnFiles}
+        review={
+          live && reviewsOffered && threadId !== undefined && folder !== undefined
+            ? { threadId: threadId as ThreadId, root: folder }
+            : undefined
+        }
+      />
+    );
   },
   (before, after) => before.replaced === after.replaced && same(before.changes, after.changes),
 );

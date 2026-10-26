@@ -42,6 +42,7 @@ import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { projectScriptsLayer } from "./projectScripts.ts";
 import { Pushes } from "./pushes.ts";
+import { Reviews } from "./reviews.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
@@ -124,7 +125,12 @@ export const backendLayer = (options: BackendOptions) => {
     Layer.provideMerge(
       Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
         Layer.provideMerge(
-          Layer.mergeAll(limitWarnings, Pushes.layer({ file: join(options.dataDirectory, "pushes.json") })),
+          Layer.mergeAll(
+            limitWarnings,
+            Pushes.layer({ file: join(options.dataDirectory, "pushes.json") }),
+            // The reviews of a diff by another harness each thread holds.
+            Reviews.layer({ file: join(options.dataDirectory, "reviews.json") }),
+          ),
         ),
       ),
     ),

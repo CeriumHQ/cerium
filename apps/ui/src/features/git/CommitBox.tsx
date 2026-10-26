@@ -1,3 +1,4 @@
+import type { ThreadId } from "@cerium/protocol";
 import type { MadeCommit } from "@cerium/rpc";
 import { Button } from "@base-ui/react/button";
 import { Checkbox } from "@base-ui/react/checkbox";
@@ -9,6 +10,8 @@ import { commitChanges, draftCommitMessage, lastCommitMessage } from "../../back
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { ReviewButton } from "../review/ReviewButton.tsx";
+import { ReviewCard } from "../review/ReviewCard.tsx";
 import { commitDraftAtom, commitMessage, splitMessage } from "./model.ts";
 
 /** A failure as the box shows it: git's reason, and what it or a hook printed. */
@@ -38,6 +41,7 @@ export function CommitBox({
   staged,
   changed,
   conflicted,
+  threadId,
   onCommitted,
 }: {
   /** The repository's top. */
@@ -46,9 +50,16 @@ export function CommitBox({
   staged: number;
   changed: number;
   conflicted: number;
+  /**
+   * The thread whose agents made the changes, which a review of what the commit takes reports to;
+   * none where the machine can't review.
+   */
+  threadId?: ThreadId | undefined;
   /** Has what the panel shows read again. */
   onCommitted: () => void;
 }) {
+  const [reviewError, setReviewError] = useState<string>();
+  const reviewTarget = { _tag: "Changes", root: top } as const;
   const [draft, setDraft] = useAtom(commitDraftAtom(top));
   const commit = useAtomSet(commitChanges, { mode: "promise" });
   const readLast = useAtomSet(lastCommitMessage, { mode: "promise" });
@@ -212,6 +223,15 @@ export function CommitBox({
             onClick={() => void write()}
             className="ml-auto"
           />
+          {threadId === undefined ? null : (
+            <ReviewButton
+              threadId={threadId}
+              target={reviewTarget}
+              disabled={busy || draft.amend || blocked !== undefined}
+              compact
+              onError={setReviewError}
+            />
+          )}
           <Tooltip
             label={
               blocked ??
@@ -256,6 +276,12 @@ export function CommitBox({
           <span className="min-w-0 truncate">{made.subject}</span>
         </p>
       ) : null}
+      {reviewError === undefined ? null : (
+        <p role="alert" className="text-meta text-error max-md:text-[14px]">
+          {reviewError}
+        </p>
+      )}
+      {threadId === undefined ? null : <ReviewCard threadId={threadId} target={reviewTarget} />}
     </div>
   );
 }

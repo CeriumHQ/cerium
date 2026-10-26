@@ -1,11 +1,13 @@
 import { Button } from "@base-ui/react/button";
-import type { TurnFile } from "@cerium/protocol";
+import type { ThreadId, TurnFile } from "@cerium/protocol";
 import { Redo2, SquareTerminal, Undo2 } from "lucide-react";
 import { useState } from "react";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { dirOf, nameOf } from "../files/model.ts";
+import { ReviewButton } from "../review/ReviewButton.tsx";
+import { ReviewCard } from "../review/ReviewCard.tsx";
 import type { TurnChanges as Changes } from "./model.ts";
 
 // The files a turn changed, under its response: what changed and by how much, each opening its diff
@@ -103,13 +105,28 @@ function Row({
 export function TurnChanges({
   changes,
   actions,
+  review,
 }: {
   changes: Changes;
   /** Without them (a version the conversation replaced, a thread read from the cloud), it only lists. */
   actions: TurnFileActions | undefined;
+  /** The thread and its folder, for a review of the turn's files by another harness; none offers none. */
+  review?: { readonly threadId: ThreadId; readonly root: string } | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reviewError, setReviewError] = useState<string>();
+  const reviewTarget =
+    review === undefined
+      ? undefined
+      : ({
+          _tag: "Turn",
+          root: review.root,
+          turnId: changes.turnId,
+          before: changes.before,
+          after: changes.after,
+          paths: changes.files.map((file) => file.path),
+        } as const);
   const { files, more, undone } = changes;
   const total = files.length + more;
   const added = files.reduce((sum, file) => sum + (file.added ?? 0), 0);
@@ -137,6 +154,9 @@ export function TurnChanges({
         <Lines added={added || undefined} removed={removed || undefined} />
         {undone === undefined ? null : <span className="text-meta text-fg-tertiary">· undone</span>}
         <span className="flex-1" />
+        {review === undefined || reviewTarget === undefined || undone !== undefined ? null : (
+          <ReviewButton threadId={review.threadId} target={reviewTarget} onError={setReviewError} />
+        )}
         {actions === undefined ? null : (
           <Tooltip
             label={
@@ -189,6 +209,14 @@ export function TurnChanges({
           {plural(more, "more file")} not listed
         </p>
       ) : null}
+      {reviewError === undefined ? null : (
+        <p role="alert" className="border-t border-line-subtle px-3 py-1.5 text-meta text-error">
+          {reviewError}
+        </p>
+      )}
+      {review === undefined || reviewTarget === undefined ? null : (
+        <ReviewCard threadId={review.threadId} target={reviewTarget} framed={false} />
+      )}
     </section>
   );
 }

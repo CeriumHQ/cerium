@@ -1,3 +1,4 @@
+import type { ThreadId } from "@cerium/protocol";
 import type { BranchPullRequest, GitHubRepository } from "@cerium/rpc";
 import { RegistryContext, useAtomSet } from "@effect/atom-react";
 import { useContext, useRef, useState } from "react";
@@ -11,6 +12,9 @@ import {
   FormDialog,
 } from "../../components/ui/FormDialog.tsx";
 import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
+import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
+import { ReviewButton } from "../review/ReviewButton.tsx";
+import { ReviewCard } from "../review/ReviewCard.tsx";
 import { titleOfBranch } from "./model.ts";
 
 /** GitHub's search takes a few seconds to list a new pull request; the list is read once more after it. */
@@ -32,6 +36,7 @@ export function CreatePullDialog({
   open,
   onOpenChange,
   onCreated,
+  review,
 }: {
   cwd: string;
   repository: GitHubRepository;
@@ -39,7 +44,13 @@ export function CreatePullDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (number: number, title: string) => void;
+  /**
+   * The thread whose agents made the branch's commits, which a review before opening reports to, and
+   * its message box, which takes the findings sent to them; none where the machine can't review.
+   */
+  review?: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
 }) {
+  const [reviewError, setReviewError] = useState<string>();
   const registry = useContext(RegistryContext);
   const create = useAtomSet(createPull, { mode: "promise" });
   const name = branch.branch ?? "";
@@ -105,15 +116,24 @@ export function CreatePullDialog({
       }
       onSubmit={() => void submit()}
       aside={
-        <GenerateButton
-          label="Write the title and description from the branch's commits"
-          busy={writing}
-          disabled={busy || base.trim() === ""}
-          onClick={() => void write()}
-          className="-ml-2.5"
-        >
-          Generate
-        </GenerateButton>
+        <div className="-ml-2.5 flex items-center gap-1">
+          <GenerateButton
+            label="Write the title and description from the branch's commits"
+            busy={writing}
+            disabled={busy || base.trim() === ""}
+            onClick={() => void write()}
+          >
+            Generate
+          </GenerateButton>
+          {review === undefined || base.trim() === "" ? null : (
+            <ReviewButton
+              threadId={review.threadId}
+              target={{ _tag: "Branch", cwd, base: base.trim() }}
+              disabled={busy}
+              onError={setReviewError}
+            />
+          )}
+        </div>
       }
       actions={
         <DialogButton
@@ -156,6 +176,19 @@ export function CreatePullDialog({
           <p role="alert" className="text-meta text-error">
             {error}
           </p>
+        )}
+        {reviewError === undefined ? null : (
+          <p role="alert" className="text-meta text-error">
+            {reviewError}
+          </p>
+        )}
+        {review === undefined || base.trim() === "" ? null : (
+          <MessageBoxContext value={review.messageBox}>
+            {/* Kept short, so its findings never push the dialog's buttons out of sight. */}
+            <div className="scroll-thin max-h-40 overflow-y-auto rounded-lg">
+              <ReviewCard threadId={review.threadId} target={{ _tag: "Branch", cwd, base: base.trim() }} />
+            </div>
+          </MessageBoxContext>
         )}
       </div>
     </FormDialog>
