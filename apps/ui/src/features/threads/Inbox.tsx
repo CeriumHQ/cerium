@@ -42,7 +42,7 @@ import {
 import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { BulkBar, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
+import { BulkBar, BulkNote, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { useArrivals, useGlide, useLingering } from "../../lib/motion.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
@@ -253,10 +253,14 @@ export function Inbox({
     return () => clearTimeout(timer);
   }, [bulkNote]);
   const bulkBar = (forBox: InboxBox) =>
-    forBox !== box || pickedHere.length === 0 ? null : (
+    forBox !== box ? null : pickedHere.length === 0 ? (
+      <BulkNote note={bulkNote} />
+    ) : (
       <BulkBar
         box={forBox}
         threads={pickedHere}
+        total={ordered.length}
+        onSelectAll={() => setPicked(ordered, true)}
         onArchive={actions.onArchive}
         onRestore={actions.onRestore}
         onLater={forBox === "inbox" ? actions.onLater : undefined}
@@ -350,14 +354,6 @@ export function Inbox({
           </MenuRoot>
         ) : null}
       </div>
-
-      {bulkNote === undefined ? null : (
-        <div className="px-4 pt-0 pb-2 text-meta text-fg-tertiary max-md:text-[13px]">
-          <output className="block truncate" title={bulkNote}>
-            {bulkNote}
-          </output>
-        </div>
-      )}
 
       <BoxPanel
         value="inbox"
@@ -465,13 +461,12 @@ function BoxPanel({
   value: InboxBox;
   label: string;
   empty: ReactNode;
-  /** The bulk-action bar, while threads of this list are picked. */
+  /** The bulk-action bar at the list's foot while threads of this list are picked, or its note after. */
   bar?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Tabs.Panel value={value} className="flex min-h-0 flex-1 flex-col pt-0 outline-none">
-      {bar}
       <ScrollArea className="flex-1">
         <nav aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
@@ -482,6 +477,7 @@ function BoxPanel({
           )}
         </nav>
       </ScrollArea>
+      {bar}
     </Tabs.Panel>
   );
 }

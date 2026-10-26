@@ -32,7 +32,7 @@ import { usePaging } from "../../lib/paging.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
 import type { PaletteCommand } from "../palette/palette.ts";
-import { BulkBar, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
+import { BulkBar, BulkNote, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, firstOf, type ThreadSection } from "./sections.ts";
 import { EmptyList } from "./EmptyList.tsx";
@@ -278,26 +278,6 @@ function ChatList({
   }, []);
   return (
     <>
-      {pickedHere.length > 0 ? (
-        <BulkBar
-          box="chat"
-          threads={pickedHere}
-          onArchive={actions.onArchive}
-          onRestore={undefined}
-          onLater={undefined}
-          onMarkRead={onMarkRead}
-          onDelete={actions.onDelete}
-          onSettled={(taken) => setPicked(taken, false)}
-          onNote={setNote}
-        />
-      ) : null}
-      {note === undefined ? null : (
-        <div className="px-4 pt-0 pb-2 text-meta text-fg-tertiary max-md:text-[13px]">
-          <output className="block truncate" title={note}>
-            {note}
-          </output>
-        </div>
-      )}
       <ScrollArea className="flex-1">
         <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
           <DraftSection drafts={drafts} list="chat" mark="dot" {...draftActions} />
@@ -316,6 +296,24 @@ function ChatList({
           ) : null}
         </nav>
       </ScrollArea>
+      {/* At the list's foot, so ticking a chat never moves the chats under the pointer. */}
+      {pickedHere.length > 0 ? (
+        <BulkBar
+          box="chat"
+          threads={pickedHere}
+          total={orderIds.length}
+          onSelectAll={() => setPicked(orderIds, true)}
+          onArchive={actions.onArchive}
+          onRestore={undefined}
+          onLater={undefined}
+          onMarkRead={onMarkRead}
+          onDelete={actions.onDelete}
+          onSettled={(taken) => setPicked(taken, false)}
+          onNote={setNote}
+        />
+      ) : (
+        <BulkNote note={note} />
+      )}
     </>
   );
 }

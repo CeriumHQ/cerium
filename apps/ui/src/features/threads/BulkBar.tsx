@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, Check, Clock, MailOpen, Minus, Pin, PinOff, Tr
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { pinnedAtom, togglePin } from "./pins.ts";
 import {
   planBulk,
@@ -115,14 +116,31 @@ export function SelectBox({
 }
 
 /**
+ * What a bulk action said it did, in the bulk bar's place at the list's foot once the pick is gone.
+ */
+export function BulkNote({ note }: { readonly note: string | undefined }) {
+  if (note === undefined) return null;
+  return (
+    <div className="mx-2 mb-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-meta text-fg-secondary shadow-raised max-md:text-[13px]">
+      <output className="line-clamp-2" title={note}>
+        {note}
+      </output>
+    </div>
+  );
+}
+
+/**
  * What the sidebar offers while threads are picked: Archive, Later, Pin or Unpin, Mark read,
  * Back to Inbox (in Archive) and Delete, each running thread by thread through its row's own
  * action. Each action reports whether its threads went; whatever didn't, with why, is named in
- * the note. Delete asks first.
+ * the note. Delete asks first. It sits at the list's foot, so ticking a row never moves the rows
+ * under the pointer.
  */
 export function BulkBar({
   box,
   threads,
+  total,
+  onSelectAll,
   onArchive,
   onRestore,
   onLater,
@@ -135,6 +153,10 @@ export function BulkBar({
   readonly box: InboxBox | "chat";
   /** The picked threads of this list, in its order. */
   readonly threads: ReadonlyArray<ThreadSummary>;
+  /** How many threads the list holds, for Select all. */
+  readonly total: number;
+  /** Picks every thread of the list. */
+  readonly onSelectAll: () => void;
   /** Each resolves whether the thread went. */
   readonly onArchive: (threadId: string) => Promise<boolean>;
   /** Brings threads back; shown only in Archive. */
@@ -237,48 +259,70 @@ export function BulkBar({
       : []),
   ].flatMap((button) => (button === undefined ? [] : [button]));
 
+  const all = threads.length === total;
   return (
-    <div className="mx-2 mb-2 flex flex-col gap-0.5 rounded-lg border border-line-subtle bg-surface-raised px-1.5 py-1">
+    <div className="mx-2 mb-2 flex flex-col gap-1 rounded-lg border border-line-subtle bg-surface-raised p-1 shadow-raised">
       <div className="flex items-center gap-1">
-        <output className="min-w-0 flex-1 truncate px-1 text-meta font-medium text-fg-secondary">
-          {threads.length === 1 ? "1 selected" : `${threads.length} selected`}
+        {/* Ticks the whole list while some of it is picked, and clears the pick once it all is. */}
+        <Checkbox.Root
+          checked={all}
+          indeterminate={!all}
+          onCheckedChange={() => (all ? onSettled(ids) : onSelectAll())}
+          aria-label={all ? "Clear selection" : `Select all ${total}`}
+          title={all ? "Clear selection" : `Select all ${total}`}
+          className="group/all grid size-7 shrink-0 cursor-default place-items-center rounded-md outline-none select-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring max-md:size-8"
+        >
+          <span className="grid size-4 place-items-center rounded-[4px] border border-accent bg-accent text-accent-fg">
+            {all ? <Check size={10} strokeWidth={3} /> : <Minus size={10} strokeWidth={3} />}
+          </span>
+        </Checkbox.Root>
+        <output className="min-w-0 flex-1 truncate text-meta font-medium text-fg-primary tabular-nums">
+          {all && total > 1 ? `All ${total} selected` : `${threads.length} selected`}
         </output>
-        <button
-          type="button"
-          onClick={() => onSettled(ids)}
-          aria-label="Clear selection"
-          title="Clear selection (Esc)"
-          className="grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-        >
-          <X size={13} strokeWidth={2} />
-        </button>
-      </div>
-      <div className="flex flex-wrap items-center gap-px" role="toolbar" aria-label="Bulk actions">
-        {buttons.map((button) => (
+        <Tooltip label="Clear selection" shortcut="Esc">
           <button
-            key={button.label}
             type="button"
-            onClick={button.run}
-            className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-8"
+            onClick={() => onSettled(ids)}
+            aria-label="Clear selection"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:size-8"
           >
-            <button.icon size={13} strokeWidth={1.75} />
-            {button.label}
+            <X size={13} strokeWidth={2} />
           </button>
+        </Tooltip>
+      </div>
+      <div
+        className="flex items-center gap-0.5 border-t border-line-subtle pt-1"
+        role="toolbar"
+        aria-label="Bulk actions"
+      >
+        {buttons.map((button) => (
+          <Tooltip key={button.label} label={button.label}>
+            <button
+              type="button"
+              onClick={button.run}
+              aria-label={button.label}
+              className="grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:size-8"
+            >
+              <button.icon size={14} strokeWidth={1.75} />
+            </button>
+          </Tooltip>
         ))}
-        <button
-          type="button"
-          onClick={() => {
-            if (planBulk(byId, ids, "delete").act.length === 0) {
-              onNote(summarizeBulk("delete", planBulk(byId, ids, "delete")));
-            } else {
-              setConfirming(true);
-            }
-          }}
-          className="flex h-7 items-center gap-1.5 rounded-md px-1.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-error max-md:h-8"
-        >
-          <Trash2 size={13} strokeWidth={1.75} />
-          Delete
-        </button>
+        <Tooltip label="Delete">
+          <button
+            type="button"
+            aria-label="Delete"
+            onClick={() => {
+              if (planBulk(byId, ids, "delete").act.length === 0) {
+                onNote(summarizeBulk("delete", planBulk(byId, ids, "delete")));
+              } else {
+                setConfirming(true);
+              }
+            }}
+            className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-error/10 hover:text-error max-md:size-8"
+          >
+            <Trash2 size={14} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
       </div>
       <ConfirmDialog
         open={confirming}

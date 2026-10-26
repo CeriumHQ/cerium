@@ -1,6 +1,6 @@
 import { ContextMenu } from "@base-ui/react/context-menu";
 import { Menu as BaseMenu } from "@base-ui/react/menu";
-import { Check, type LucideIcon } from "lucide-react";
+import { Check, ChevronRight, type LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
 import { keyLabel } from "../../lib/keys.ts";
@@ -74,6 +74,34 @@ export function MenuItem({
         </kbd>
       ) : null}
     </BaseMenu.Item>
+  );
+}
+
+/** An item that opens `children` in a menu beside it, for a set of choices the menu keeps folded. */
+export function MenuSubmenu({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon?: LucideIcon;
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <BaseMenu.SubmenuRoot>
+      <BaseMenu.SubmenuTrigger
+        className={`${itemClass} text-fg-secondary data-highlighted:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary`}
+      >
+        {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
+        {label}
+        <ChevronRight size={13} strokeWidth={1.75} className="ml-auto -mr-0.5 text-fg-tertiary" />
+      </BaseMenu.SubmenuTrigger>
+      <BaseMenu.Portal>
+        <BaseMenu.Positioner sideOffset={2} alignOffset={-4} className="z-50 outline-none">
+          <BaseMenu.Popup className={popupClass}>{children}</BaseMenu.Popup>
+        </BaseMenu.Positioner>
+      </BaseMenu.Portal>
+    </BaseMenu.SubmenuRoot>
   );
 }
 
