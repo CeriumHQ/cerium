@@ -9,7 +9,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
 // or off. Updates come through here too: the shell checks, downloads and installs them. The page
 // asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
-// Dictation opens Windows' or macOS's microphone privacy settings when they block it.
+// Dictation opens Windows' or macOS's microphone privacy settings when they block it. The Preview
+// pane's pages are the shell's; the page says where its pane is and passes on the agents' calls.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
@@ -69,6 +70,34 @@ contextBridge.exposeInMainWorld("cerium", {
     };
     ipcRenderer.on("cerium:open-thread", forward);
     return () => ipcRenderer.off("cerium:open-thread", forward);
+  },
+  // The Preview pane's pages, which the shell lays over the window where the pane says, and the
+  // agents' calls on them, which the page hands on from its backend.
+  preview: {
+    run: (threadId: string, command: unknown): Promise<unknown> =>
+      ipcRenderer.invoke("cerium:preview-run", threadId, command),
+    place: (threadId: string, bounds: { x: number; y: number; width: number; height: number } | null): void =>
+      ipcRenderer.send("cerium:preview-place", threadId, bounds),
+    navigate: (threadId: string, input: string): Promise<boolean> =>
+      ipcRenderer.invoke("cerium:preview-navigate", threadId, input),
+    go: (threadId: string, go: "back" | "forward" | "reload" | "stop"): void =>
+      ipcRenderer.send("cerium:preview-go", threadId, go),
+    close: (threadId: string): void => ipcRenderer.send("cerium:preview-close", threadId),
+    still: (threadId: string): Promise<string | undefined> =>
+      ipcRenderer.invoke("cerium:preview-still", threadId),
+    states: (): Promise<unknown> => ipcRenderer.invoke("cerium:preview-states"),
+    onState: (listener: (state: unknown) => void): (() => void) => {
+      const forward = (_event: unknown, state: unknown) => listener(state);
+      ipcRenderer.on("cerium:preview-state", forward);
+      return () => ipcRenderer.off("cerium:preview-state", forward);
+    },
+    onClosed: (listener: (threadId: string) => void): (() => void) => {
+      const forward = (_event: unknown, threadId: unknown) => {
+        if (typeof threadId === "string") listener(threadId);
+      };
+      ipcRenderer.on("cerium:preview-closed", forward);
+      return () => ipcRenderer.off("cerium:preview-closed", forward);
+    },
   },
   microphoneAccess: (): Promise<string> => ipcRenderer.invoke("cerium:microphone-access"),
   // Linux has no microphone privacy page to open.

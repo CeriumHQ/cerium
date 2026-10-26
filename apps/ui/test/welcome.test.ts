@@ -37,6 +37,11 @@ describe("stepsFor", () => {
     expect(stepsFor(false)).toEqual(["hello", "glass"]);
     expect(stepsFor(true)).toEqual(["hello", "glass", "connect"]);
   });
+
+  it("offers to bring sessions in last, only when there are some", () => {
+    expect(stepsFor(false, true)).toEqual(["hello", "glass", "import"]);
+    expect(stepsFor(true, true)).toEqual(["hello", "glass", "connect", "import"]);
+  });
 });
 
 describe("stepFromQuery", () => {

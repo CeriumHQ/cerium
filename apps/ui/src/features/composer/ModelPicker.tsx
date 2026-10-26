@@ -7,6 +7,8 @@ import { Check, Search, Star } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { ContextBar, contextLabel, ContextRing } from "../agents/ContextMeter.tsx";
+import type { AgentContext } from "../agents/model.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
@@ -136,18 +138,33 @@ type Browse = ReturnType<typeof useBrowse>;
 export function ModelPicker({
   shown,
   onPick,
+  leaves,
+  context,
+  onCompact,
   ...menu
 }: MenuProps & {
   /** Undefined while no harness has listed a model yet. */
   readonly shown: ShownModel | undefined;
   readonly onPick: (model: ModelInfo) => void;
+  /** A pick that goes on elsewhere, such as a dialog that confirms it, which closes the menu. */
+  readonly leaves?: (model: ModelInfo) => boolean;
+  /** An open thread's lead's context, as its harness last measured it. */
+  readonly context?: AgentContext | undefined;
+  /** Asks the lead's harness to compact its conversation; absent where it can't now. */
+  readonly onCompact?: (() => void) | undefined;
 }) {
   const browse = useBrowse(menu, shown);
   const pick = (key: string | null) => {
     const picked = key === null ? undefined : browse.byKey.get(key);
     if (picked === undefined) return;
     // The model in use again, or one without efforts to pick from, ends the choice.
-    if (key === shown?.key || !offersChoice(menu.effort) || picked.efforts.length < 2) browse.setOpen(false);
+    if (
+      key === shown?.key ||
+      !offersChoice(menu.effort) ||
+      picked.efforts.length < 2 ||
+      leaves?.(picked) === true
+    )
+      browse.setOpen(false);
     if (key !== shown?.key) onPick(picked);
   };
   return (
@@ -172,20 +189,24 @@ export function ModelPicker({
       }}
       autoHighlight
     >
-      <Combobox.Trigger
-        aria-label={shown ? `Model: ${shown.label}` : "Model"}
-        className={`${chipClass} min-w-0`}
-      >
-        {shown ? (
-          <>
-            <ProviderLogo provider={shown.provider} size={13} />
-            <span className="truncate font-medium text-fg-primary">{shown.label}</span>
-            <EffortTrail effort={menu.effortShown} />
-          </>
-        ) : (
-          <span className="text-fg-tertiary">Finding models…</span>
-        )}
-      </Combobox.Trigger>
+      {/* The same tree with or without a reading, so the menu keeps its anchor as one arrives. */}
+      <Tooltip label={context ? contextLabel(context) : ""} side="top" disabled={!context || browse.open}>
+        <Combobox.Trigger
+          aria-label={shown ? `Model: ${shown.label}` : "Model"}
+          className={`${chipClass} min-w-0`}
+        >
+          {shown ? (
+            <>
+              <ProviderLogo provider={shown.provider} size={13} />
+              <span className="truncate font-medium text-fg-primary">{shown.label}</span>
+              <EffortTrail effort={menu.effortShown} />
+              <ContextRing context={context} />
+            </>
+          ) : (
+            <span className="text-fg-tertiary">Finding models…</span>
+          )}
+        </Combobox.Trigger>
+      </Tooltip>
       <MenuPopup
         {...menu}
         browse={browse}
@@ -194,6 +215,26 @@ export function ModelPicker({
           pick(key);
           browse.setOpen(false);
         }}
+        count={
+          context || onCompact ? (
+            <>
+              {context ? <ContextBar context={context} /> : null}
+              {onCompact ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    browse.setOpen(false);
+                    onCompact();
+                  }}
+                  className="-my-0.5 ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                >
+                  Compact
+                </button>
+              ) : null}
+            </>
+          ) : undefined
+        }
       />
     </Combobox.Root>
   );

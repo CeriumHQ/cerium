@@ -1,14 +1,17 @@
 import { Button } from "@base-ui/react/button";
+import type { PastSession } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
-import { harnessesAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, pastSessionsAtom } from "../../backend/atoms.ts";
 import { CeriumMark } from "../../components/CeriumMark.tsx";
+import { useSessionImport, type SessionImport } from "../imports/SessionPicker.tsx";
 import { Connect } from "./steps/Connect.tsx";
 import { Glass } from "./steps/Glass.tsx";
 import { Hello } from "./steps/Hello.tsx";
+import { Import } from "./steps/Import.tsx";
 import { needsHarness, stepFromQuery, stepsFor, welcomeKey, type StepId } from "./model.ts";
 
 /** How long a step takes to go, while the next one comes in after it. */
@@ -41,7 +44,16 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   // Once it asks for a harness it keeps the step, even as one signs in there.
   const [asks, setAsks] = useState(asked === "connect");
   if (!asks && needsHarness(statuses)) setAsks(true);
-  const steps = stepsFor(asks);
+  // The user's own sessions with the harnesses, which take a few seconds to list: once there are some,
+  // the welcome offers to bring them in, and keeps the step as they come in.
+  const sessions = AsyncResult.getOrElse(
+    useAtomValue(pastSessionsAtom),
+    (): ReadonlyArray<PastSession> => [],
+  );
+  const [offered, setOffered] = useState<ReadonlyArray<PastSession>>([]);
+  if (offered.length === 0 && sessions.length > 0) setOffered(sessions);
+  const importer = useSessionImport(offered);
+  const steps = stepsFor(asks, offered.length > 0);
 
   const [entry, setEntry] = useState(() => ({
     step: asked ?? ("hello" as StepId),
@@ -70,7 +82,15 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   /** The welcome is closing, for good: its step fades and the window is handed over. */
   const [closing, setClosing] = useState(false);
   const close = () => setClosing(true);
-  const next = () => (last ? close() : go(index + 1));
+  /** On the import step, until the sessions are in, the way on brings the ticked ones in. */
+  const importing = step === "import" && importer.state._tag !== "done";
+  const picks = importer.picked.size;
+  const next = () => {
+    if (importing && picks > 0) {
+      if (importer.state._tag !== "importing") void importer.start();
+    } else if (last) close();
+    else go(index + 1);
+  };
   const back = () => go(index - 1);
   const done = useEffectEvent(onDone);
   useEffect(() => {
@@ -170,6 +190,8 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
               number={steps.indexOf(id) + 1}
               titleId={titleIdOf(id)}
               active={state !== "leave" && !closing}
+              sessions={offered}
+              importer={importer}
             />
           </section>
         ))}
@@ -178,7 +200,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
       <footer className="relative flex shrink-0 items-center gap-8 px-(--welcome-gutter) pt-4 pb-6">
         <Progress steps={steps} index={index} visited={visited} onPick={go} />
         <div className="flex shrink-0 items-center gap-2">
-          {last ? null : (
+          {last && !(importing && picks > 0) ? null : (
             <Button
               onClick={close}
               className="mr-2 h-9 rounded-full px-3 text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
@@ -196,7 +218,15 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
             </Button>
           )}
           <ContinueButton onClick={next}>
-            {last ? "Open Cerium" : index === 0 ? "Begin" : "Continue"}
+            {importing && picks > 0
+              ? importer.state._tag === "importing"
+                ? "Importing…"
+                : `Import ${picks}`
+              : last
+                ? "Open Cerium"
+                : index === 0
+                  ? "Begin"
+                  : "Continue"}
           </ContinueButton>
         </div>
       </footer>
@@ -279,7 +309,16 @@ function ContinueButton({
   );
 }
 
-function Step({ id, ...props }: StepProps & { readonly id: StepId }) {
+function Step({
+  id,
+  sessions,
+  importer,
+  ...props
+}: StepProps & {
+  readonly id: StepId;
+  readonly sessions: ReadonlyArray<PastSession>;
+  readonly importer: SessionImport;
+}) {
   switch (id) {
     case "hello":
       return <Hello {...props} />;
@@ -287,5 +326,7 @@ function Step({ id, ...props }: StepProps & { readonly id: StepId }) {
       return <Glass {...props} />;
     case "connect":
       return <Connect {...props} />;
+    case "import":
+      return <Import {...props} sessions={sessions} importer={importer} />;
   }
 }

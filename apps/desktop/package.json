@@ -17,6 +17,7 @@
     "koffi": "3.3.3"
   },
   "devDependencies": {
+    "@cerium/browser": "workspace:*",
     "@effect/vitest": "4.0.5",
     "electron": "44.8.0",
     "electron-builder": "26.17.0"

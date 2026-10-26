@@ -22,6 +22,7 @@ import {
 } from "./notifications.ts";
 import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
+import { previews } from "./preview.ts";
 import { saveImage } from "./saveImage.ts";
 import {
   loginShellPath,
@@ -37,8 +38,8 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows
 // and Vibrancy on macOS, the backend's launcher, and the tray that keeps a signed-in machine
-// reachable (background.ts), and the updater (updater.ts). Everything else lives in the UI and the
-// backend.
+// reachable (background.ts), the updater (updater.ts) and the Preview pane's pages (preview.ts).
+// Everything else lives in the UI and the backend.
 
 /** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
 const smokeTest = prepareSmokeTest();
@@ -92,6 +93,9 @@ const background = backgroundMode({
 });
 
 const notifications = nativeNotifications({ window: () => mainWindow, show: background.show });
+
+/** The Preview pane's pages, one per thread, laid over the window (preview.ts). */
+const browserPreviews = previews(() => mainWindow);
 
 /** Links the UI may open in the browser: https, and the local relay while developing. */
 const opensExternally = (url: string) =>
@@ -163,7 +167,8 @@ const applicationMenu = () =>
  * inside it, and a reload stays on the same page it is on: nothing may move the shell elsewhere.
  */
 app.on("web-contents-created", (_event, contents) => {
-  if (contents.getType() !== "window") return;
+  // A preview's page keeps rules of its own (preview.ts).
+  if (contents.getType() !== "window" || browserPreviews.owns(contents)) return;
   // Links open in the user's browser, never inside the app window.
   contents.setWindowOpenHandler(({ url }) => {
     if (opensExternally(url)) void shell.openExternal(url);
@@ -241,8 +246,11 @@ const createWindow = () => {
   });
   window.on("closed", () => {
     ipcMain.off("cerium:window-ready", onReady);
+    browserPreviews.closeAll();
     mainWindow = undefined;
   });
+  // A reload takes the panes away until the page lays them out again.
+  window.webContents.on("did-start-loading", () => browserPreviews.unplaceAll());
   notifications.watch(window);
   forwardTextMenus(window.webContents);
 

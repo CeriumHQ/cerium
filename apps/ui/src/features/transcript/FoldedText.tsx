@@ -1,4 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+import { UNFOLD_EVENT } from "./find.ts";
 
 /** A message past this many lines, or characters, shows its first lines and folds the rest. */
 const FOLD_LINES = 14;
@@ -16,11 +19,22 @@ export const foldOf = (text: string): { readonly lines: number; readonly folds: 
  */
 export function FoldedText({ text, children }: { text: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const fold = useRef<HTMLDivElement>(null);
   const { lines, folds } = foldOf(text);
+  // A find match inside the folded part opens it, at once, so the match can be brought into view.
+  useEffect(() => {
+    const element = fold.current;
+    if (!element) return;
+    const unfold = () => flushSync(() => setOpen(true));
+    element.addEventListener(UNFOLD_EVENT, unfold);
+    return () => element.removeEventListener(UNFOLD_EVENT, unfold);
+  }, [folds]);
   if (!folds) return children;
   return (
     <>
-      <div className={open ? "" : "max-h-60 overflow-hidden mask-b-from-55% mask-b-to-100%"}>{children}</div>
+      <div ref={fold} className={open ? "" : "max-h-60 overflow-hidden mask-b-from-55% mask-b-to-100%"}>
+        {children}
+      </div>
       <button
         type="button"
         onClick={() => setOpen(!open)}

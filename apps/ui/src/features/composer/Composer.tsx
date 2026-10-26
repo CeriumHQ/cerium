@@ -7,6 +7,7 @@ import {
   type ModelInfo,
   type ProviderId,
   type ReasoningEffort,
+  type UsageSnapshot,
 } from "@cerium/protocol";
 import { RegistryContext, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -29,6 +30,8 @@ import {
 import { harnessesAtom, manifestsAtom, settingsAtom } from "../../backend/atoms.ts";
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
+import { usageAtom } from "../../backend/usage.ts";
+import { useMinute } from "../../lib/useMinute.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -49,6 +52,8 @@ import {
   workplaceAtom,
 } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
+import { contextLabel, ContextRing } from "../agents/ContextMeter.tsx";
+import type { AgentContext } from "../agents/model.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
 import { CommentTray } from "./CommentTray.tsx";
 import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
@@ -78,8 +83,11 @@ import {
   pickModels,
   switchTo,
   useModels,
+  type HandoffChoice,
   type ModelSwitch,
 } from "./models.ts";
+import { handoffTarget, runningLow } from "./handoff.ts";
+import { HandoffDialog, LowLimitNotice, type Handoff } from "./HandoffDialog.tsx";
 import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
 import { chipEffortLabel, FixedChip, MoreMenu, type EffortChoice, type EffortPick } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
@@ -149,6 +157,22 @@ export type ComposerTarget =
        * Resolves false when it didn't go through. Absent where the box can't ask for that.
        */
       readonly onSwitch?: (choice: ModelSwitch) => Promise<boolean>;
+      /** The lead's context as its harness last measured it; absent where it reports none. */
+      readonly context?: AgentContext | undefined;
+      /** Asks the lead's harness to compact its conversation, offered where the harness can. */
+      readonly onCompact?: () => void;
+      /**
+       * Hands the lead to a model of another harness, which the user confirms first; its model menu
+       * then lists every harness. Absent where the machine can't.
+       */
+      readonly handoff?: {
+        /** Harnesses installed and signed in. */
+        readonly available: ReadonlySet<ProviderId>;
+        /** How many of the agents the lead spawned still run. */
+        readonly agents: number;
+        /** Resolves false when it didn't go through. */
+        readonly onHandOff: (choice: HandoffChoice) => Promise<boolean>;
+      };
     }
   /** The first message starts a thread with the chosen setup. */
   | {
@@ -445,6 +469,27 @@ export function Composer({
     });
   };
 
+  // Another harness's model takes the thread over once the user confirms what goes across.
+  const handoff = thread?.handoff;
+  const [handingOff, setHandingOff] = useState<Handoff & { readonly choice: HandoffChoice }>();
+  const askHandoff = (picked: ModelInfo) => {
+    if (thread === undefined) return;
+    setHandingOff({
+      from: thread.provider,
+      to: picked.provider,
+      label: picked.label,
+      choice: { provider: picked.provider, ...switchTo(picked, threadEffort, true, threadAuto) },
+    });
+  };
+  // While the lead's harness runs low, the box offers to carry on in one that isn't.
+  const usage = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
+  const now = useMinute();
+  const low = thread && handoff ? runningLow(usage?.usage ?? [], thread.provider) : undefined;
+  const lowTarget =
+    thread && handoff && low
+      ? handoffTarget(models, handoff.available, usage?.usage ?? [], thread.provider)
+      : undefined;
+
   const setAttachment = (key: string, id: string, state: DraftAttachment["state"]) =>
     updateDraft(key, (current) => ({
       ...current,
@@ -608,11 +653,15 @@ export function Composer({
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
     append: appendToDraft,
-    comment: ({ quote, text }) =>
+    comment: ({ quote, text, file }) =>
       updateDraft(draftKey, (current) => ({
         ...current,
-        comments: [...(current.comments ?? []), { id: crypto.randomUUID(), quote, text }],
+        comments: [
+          ...(current.comments ?? []),
+          { id: crypto.randomUUID(), quote, text, ...(file ? { file } : {}) },
+        ],
       })),
+    key: () => draftKey,
   }));
 
   const editComment = (id: string, text: string) =>
@@ -808,36 +857,64 @@ export function Composer({
             ),
         }
       : undefined;
+  // With a handoff the menu lists every harness: the lead's own models as far as it switches them
+  // mid-thread, and every other harness's, which take the thread over once the user confirms.
+  const ownModels = thread
+    ? switchesModel
+      ? models.filter((each) => each.provider === thread.provider)
+      : threadModel
+        ? [threadModel]
+        : []
+    : [];
+  // A lead between turns can compact its conversation where its harness can when asked.
+  const compacts =
+    AsyncResult.isSuccess(manifests) &&
+    manifests.value.find((manifest) => manifest.provider === thread?.provider)?.compact === true;
+  const onCompact =
+    thread?.onCompact && compacts && !running && thread.ended === undefined ? thread.onCompact : undefined;
   const threadChip =
     thread && threadShown ? (
-      switchesModel || threadEffortChoice ? (
+      handoff || switchesModel || threadEffortChoice || onCompact ? (
         <ModelPicker
-          models={switchesModel ? models : threadModel ? [threadModel] : []}
+          models={
+            handoff
+              ? [...ownModels, ...models.filter((each) => each.provider !== thread.provider)]
+              : ownModels
+          }
           shown={threadShown}
-          providers={[thread.provider]}
-          available={new Set([thread.provider])}
+          providers={handoff ? providers : [thread.provider]}
+          available={new Set([thread.provider, ...(handoff?.available ?? [])])}
           effort={threadEffortChoice}
           effortShown={threadEffortShown}
-          onPick={(picked) => switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto))}
+          leaves={(picked) => picked.provider !== thread.provider}
+          onPick={(picked) =>
+            picked.provider === thread.provider
+              ? switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto))
+              : askHandoff(picked)
+          }
+          context={thread.context}
+          onCompact={onCompact}
           {...(running
             ? { note: "Applies from the next turn" }
-            : switchesModel
+            : switchesModel || handoff
               ? {}
               : { note: `${providerName[thread.provider]} can't switch models mid-thread` })}
         />
       ) : (
         <FixedChip
-          tip={
+          tip={[
+            ...(thread.context ? [contextLabel(thread.context)] : []),
             AsyncResult.isFailure(manifests)
               ? "Update Cerium on that computer to switch models"
               : switching
                 ? `${providerName[thread.provider]} can't switch models mid-thread`
-                : "The model this thread started with"
-          }
+                : "The model this thread started with",
+          ].join(" · ")}
         >
           <ProviderLogo provider={thread.provider} size={13} />
           <span className="max-w-40 truncate font-medium text-fg-primary">{threadShown.label}</span>
           {threadEffortShown ? <span>{chipEffortLabel[threadEffortShown]}</span> : null}
+          <ContextRing context={thread.context} />
         </FixedChip>
       )
     ) : null;
@@ -961,6 +1038,29 @@ export function Composer({
       }`}
     >
       {above}
+      <Reveal>
+        {thread && low && lowTarget ? (
+          <LowLimitNotice
+            from={thread.provider}
+            meter={low.meter}
+            level={low.level}
+            target={lowTarget}
+            now={now}
+            onContinue={() => askHandoff(lowTarget)}
+          />
+        ) : null}
+      </Reveal>
+      {handoff ? (
+        <HandoffDialog
+          handoff={handingOff}
+          running={running}
+          agents={handoff.agents}
+          onOpenChange={(open) => {
+            if (!open) setHandingOff(undefined);
+          }}
+          onConfirm={() => (handingOff ? handoff.onHandOff(handingOff.choice) : Promise.resolve(false))}
+        />
+      ) : null}
       {/* The list sits beside the box, not in it: inside the box's own blur it couldn't blur what's behind. */}
       <div
         className="relative mx-auto max-w-[46.2rem]"

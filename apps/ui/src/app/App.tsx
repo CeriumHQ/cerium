@@ -13,6 +13,7 @@ import type { ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
+  useAtom,
   useAtomRefresh,
   useAtomSet,
   useAtomValue,
@@ -24,18 +25,25 @@ import {
   Bot,
   Columns2,
   Compass,
+  FoldVertical,
   FolderTree,
   GitBranch,
   GitPullRequestArrow,
+  Globe,
+  History,
   MessagesSquare,
   OctagonX,
   PanelLeft,
+  Play,
   RotateCcw,
   Rows2,
   ScrollText,
+  Search,
   Settings,
+  Square,
   SquarePen,
   SquareTerminal,
+  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -45,6 +53,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -52,13 +61,16 @@ import {
   accountAtom,
   accountThreadsAtom,
   cloudEventsAtom,
+  compactAgent,
   createThread,
   deleteThread,
   editMessage,
   fileChangesAtom,
   harnessesAtom,
+  importedThreadsAtom,
   interruptAgent,
   localWorkingAtom,
+  manifestsAtom,
   markThreadsRead,
   previewRestore,
   renameThread,
@@ -75,12 +87,14 @@ import {
   stopAgent,
   stopThread,
   switchModel,
+  handOffLead,
   threadsAtom,
 } from "../backend/atoms.ts";
 import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
+import { runProjectScript } from "../backend/scripts.ts";
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
@@ -120,7 +134,7 @@ import {
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
 import type { MessageBox } from "../features/composer/messageBox.ts";
-import { useModels } from "../features/composer/models.ts";
+import { HANDOFF_VERSION, useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { ScrollArea } from "../components/ui/ScrollArea.tsx";
@@ -145,7 +159,25 @@ import { nameGitHubTab } from "../features/github/tabs.ts";
 import { IssueViewer } from "../features/issues/IssueViewer.tsx";
 import { IssuesTab } from "../features/issues/IssuesTab.tsx";
 import { ISSUES_VERSION } from "../features/issues/model.ts";
-import { PROJECT_TERMINAL_VERSION, TERMINAL_VERSION } from "../features/terminal/model.ts";
+import { BrowserHost } from "../features/preview/BrowserHost.tsx";
+import {
+  previewBridge,
+  previewKey,
+  previewOfKey,
+  previewStates,
+  previewTitle,
+  setLocalOpener,
+  subscribePreviews,
+} from "../features/preview/model.ts";
+import { PreviewPane } from "../features/preview/PreviewPane.tsx";
+import {
+  PROJECT_TERMINAL_VERSION,
+  SCRIPT_VERSION,
+  TERMINAL_VERSION,
+  scriptTerminalOf,
+} from "../features/terminal/model.ts";
+import { fittedSize } from "../features/terminal/session.ts";
+import { closeTerminal, terminalsAtom } from "../backend/terminals.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
 import { canScale, scaleShortcut, useScale } from "../features/settings/scale.ts";
@@ -166,6 +198,7 @@ import { LATER_VERSION, type ThreadSummary } from "../features/threads/model.ts"
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
+import { openFind } from "../features/transcript/find.ts";
 import { EDIT_VERSION, STEER_VERSION, WITHDRAW_VERSION } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
@@ -174,6 +207,8 @@ import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
 import { whatsNewOpenAtom } from "../features/whatsnew/state.ts";
 import { welcomeOpenAtom, welcomeShownAtom } from "../features/onboarding/state.ts";
 import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
+import { ImportDialogHost } from "../features/imports/ImportDialog.tsx";
+import { importOpenAtom } from "../features/imports/state.ts";
 import type { DragSource } from "../features/split/drag.ts";
 import {
   canSplit,
@@ -382,6 +417,18 @@ function Workspace() {
     key === undefined ? undefined : paneHandles.current.get(key);
   /** Puts the cursor in the open thread's message box. */
   const focusComposer = () => handlesOf(openKey.current)?.input.current?.focus();
+  /** Puts a comment of the window's into the routed thread's draft, where the tray and the diffs read it. */
+  const setDrafts = useAtomSet(draftsAtom);
+  const putComment = useEffectEvent((content: Parameters<MessageBox["comment"]>[0]) => {
+    const key = lastThread.current ?? openKey.current;
+    if (key === undefined) return;
+    setDrafts((drafts) =>
+      withDraft(drafts, key, (draft) => ({
+        ...draft,
+        comments: [...(draft.comments ?? []), { id: crypto.randomUUID(), ...content }],
+      })),
+    );
+  });
   /**
    * What the rest of the window puts into the open thread's message box: with a file open, the
    * thread's open before it, else whichever thread shows.
@@ -396,7 +443,8 @@ function Workspace() {
     return {
       mention: (mention) => box()?.mention(mention),
       append: (content) => box()?.append(content),
-      comment: (content) => box()?.comment(content),
+      comment: (content) => putComment(content),
+      key: () => box()?.key(),
     };
   });
   const [onPaneHandles] = useState(() => (key: string, handles: PaneHandles | undefined) => {
@@ -408,6 +456,7 @@ function Workspace() {
   const threadsResult = useAtomValue(threadsAtom);
   const refreshThreads = useAtomRefresh(threadsAtom);
   const harnessesResult = useAtomValue(harnessesAtom);
+  const manifests = useAtomValue(manifestsAtom);
   const harnesses = AsyncResult.getOrElse(harnessesResult, () => []);
   const models = useModels();
   // Another machine that can't be reached shows the threads it last listed no more: they read from
@@ -483,6 +532,12 @@ function Workspace() {
     setPanesByMode((all) => ({ ...all, [mode]: panes }));
   }
   const split = !compact && isSplit(panes);
+  /** The draft the window's message box writes to: the open thread, or the one open last before its file. */
+  const [lastThreadKey, setLastThreadKey] = useState<string | undefined>(
+    isNonThreadKey(current) ? undefined : current,
+  );
+  if (!isNonThreadKey(current) && lastThreadKey !== current) setLastThreadKey(current);
+  const routedDraftKey = isNonThreadKey(current) ? lastThreadKey : current;
   useLayoutEffect(() => {
     openKey.current = current;
     if (!isNonThreadKey(current)) lastThread.current = current;
@@ -503,6 +558,15 @@ function Workspace() {
           }).catch(() => undefined)
       : undefined,
   );
+  // Threads just brought in from the harnesses arrive with their own past activity, which isn't news.
+  const [imported, setImported] = useAtom(importedThreadsAtom);
+  const markImported = useEffectEvent(() => {
+    readState.markRead(imported);
+    setImported([]);
+  });
+  useEffect(() => {
+    if (imported.length > 0) markImported();
+  }, [imported]);
   /** The open thread, when it was unread as the user opened it: it keeps its inbox place until they leave. */
   const [heldUnread, setHeldUnread] = useState<string>();
   const here = overviews
@@ -632,6 +696,11 @@ function Workspace() {
       const drafts = registry.get(draftsAtom);
       const empty = keys.filter((key) => isNewDraftKey(key) && !hasContent(drafts[key]));
       if (empty.length > 0) registry.set(draftsAtom, empty.reduce(withoutDraft, drafts));
+      // A closed preview's page closes with it; an agent's next call opens a fresh one.
+      for (const key of keys) {
+        const previewed = previewOfKey(key);
+        if (previewed !== undefined) previewBridge()?.close(previewed);
+      }
       // A closed tab's pane closes with it, and the pane that takes its room shows in its place.
       if (!isSplit(panes)) return undefined;
       const left = closeKeys(panes, keys);
@@ -683,6 +752,7 @@ function Workspace() {
   );
 
   const openWhatsNew = useAtomSet(whatsNewOpenAtom);
+  const openImport = useAtomSet(importOpenAtom);
   const openWelcome = useAtomSet(welcomeOpenAtom);
   const create = useAtomSet(createThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
@@ -691,6 +761,8 @@ function Workspace() {
   const restore = useAtomSet(restoreBefore, { mode: "promise" });
   const revertTurn = useAtomSet(revertTurnFiles, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
+  const compactLead = useAtomSet(compactAgent, { mode: "promise" });
+  const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
   const resolveSpawn = useAtomSet(resolveSpawnApproval, { mode: "promise" });
@@ -833,6 +905,40 @@ function Workspace() {
     suspended: settingsOpen || searchOpen,
     compact,
   });
+  /** This machine can run a project's scripts, in the thread's terminal drawer. */
+  const scriptsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SCRIPT_VERSION;
+  /** The work thread that can run its project's scripts: local, a work thread, in a folder. */
+  const runThreadId =
+    selected !== undefined &&
+    cloudSelected === undefined &&
+    scriptsOk &&
+    selected.thread.mode === "work" &&
+    selected.thread.cwd !== undefined
+      ? (selected.thread.id as ThreadId)
+      : undefined;
+  /** The thread's project run, as its terminal has it: running while it has no exit code yet. */
+  const machineTerminals = AsyncResult.getOrElse(useAtomValue(terminalsAtom), () => []);
+  const runTerminal =
+    runThreadId === undefined || selected === undefined
+      ? undefined
+      : scriptTerminalOf(machineTerminals, { threadId: selected.thread.id }, "run");
+  const runRunning = runTerminal !== undefined && runTerminal.exitCode === undefined;
+  const runProject = useAtomSet(runProjectScript, { mode: "promise" });
+  const endRun = useAtomSet(closeTerminal, { mode: "promise" });
+  /** Runs the thread's project run command in a terminal of the thread's, or stops it while it runs. */
+  const toggleRun = () => {
+    if (runThreadId === undefined) return;
+    if (runTerminal === undefined || runTerminal.exitCode !== undefined) {
+      void attempt(runProject({ payload: { threadId: runThreadId, kind: "run", size: fittedSize() } }));
+    } else {
+      void attempt(endRun({ payload: { id: runTerminal.id } }));
+    }
+  };
+  /** Installs what the thread's project needs, in a terminal of the thread's. */
+  const setupProject = () => {
+    if (runThreadId === undefined) return;
+    void attempt(runProject({ payload: { threadId: runThreadId, kind: "setup", size: fittedSize() } }));
+  };
   const filesPanel = useFilesExplorer({
     root: filesRoot,
     events: fileEvents,
@@ -1112,6 +1218,64 @@ function Workspace() {
   };
 
   /**
+   * The open thread's browser, in the Preview pane beside it: the desktop app's own threads have one,
+   * which the user browses and the thread's agents drive (features/preview).
+   */
+  const previews = useSyncExternalStore(subscribePreviews, previewStates);
+  const previewsHere = previewBridge() !== undefined && driven === undefined;
+  const previewThread =
+    previewOfKey(current) ?? (previewsHere && selected !== undefined ? selected.thread.id : undefined);
+  const previewPane =
+    previewThread === undefined ? undefined : paneShowing(panes.root, previewKey(previewThread));
+  /**
+   * Shows `threadId`'s preview beside its pane, with `url` open in it: a pane of its own to the right
+   * while there's room, else a tab of its own. Without `focus`, as when an agent opened a page, it
+   * shows only where there's room, and the focus stays where it was.
+   */
+  const openPreview = (
+    threadId: string,
+    options: { readonly url?: string; readonly focus?: boolean } = {},
+  ) => {
+    if (options.url !== undefined) void previewBridge()?.navigate(threadId, options.url);
+    const key = previewKey(threadId);
+    if (paneShowing(panes.root, key) !== undefined) return;
+    const beside = paneShowing(panes.root, threadId);
+    if (beside !== undefined && !compact && canSplit(paneSize(beside.id), "right", MIN_PANE)) {
+      const next = splitPane(panes, beside.id, "right", key, newPaneId());
+      applyPanes(options.focus === false ? focusPane(next, beside.id) : next);
+      return;
+    }
+    if (options.focus === false) return;
+    tabs.openAs(key, "tab");
+    tabs.keep(key);
+    showThreads();
+    setOpenThread((open) => ({ ...open, [mode]: key }));
+    setPane("main");
+  };
+  const togglePreview = () => {
+    if (previewThread === undefined) return;
+    if (previewPane !== undefined && isSplit(panes)) closePaneOf(previewPane.id);
+    else if (previewPane !== undefined) tabs.actions.onClose([previewKey(previewThread)]);
+    else openPreview(previewThread);
+  };
+  // A local address a terminal links or prints opens in the open thread's preview.
+  const openLink = useEffectEvent((url: string) => {
+    if (previewThread !== undefined) openPreview(previewThread, { url });
+  });
+  const linksOpen = previewsHere && previewThread !== undefined;
+  useEffect(() => {
+    if (!linksOpen) return;
+    setLocalOpener(openLink);
+    return () => setLocalOpener(undefined);
+  }, [linksOpen]);
+  /** An agent opened a page: its thread's preview shows beside it, if it shows and there's room. */
+  const agentOpened = (threadId: string) => {
+    if (driven === undefined && paneShowing(panes.root, threadId) !== undefined) {
+      openPreview(threadId, { focus: false });
+    }
+  };
+
+  /**
    * What the command palette (Ctrl K) runs besides opening a thread. To offer a new action, add an entry
    * to the "Actions" below: `keys` shows the shortcut it already has, `when` hides it while it can't run.
    */
@@ -1141,6 +1305,36 @@ function Workspace() {
       keywords: "inspector",
       when: selected !== undefined,
       run: toggleInspector,
+    },
+    {
+      // The focused pane's thread finds the text: the files panel, when it has focus, finds files instead.
+      id: "find-in-thread",
+      group: "Actions",
+      label: "Find in thread",
+      icon: Search,
+      keys: "Ctrl F",
+      keywords: "search messages transcript",
+      when: selected !== undefined,
+      run: openFind,
+    },
+    {
+      // The open thread's lead, between turns, where its harness compacts when asked.
+      id: "compact",
+      group: "Actions",
+      label: "Compact conversation",
+      icon: FoldVertical,
+      keywords: "context summarize tokens",
+      when:
+        viewedLead !== undefined &&
+        cloudSelected === undefined &&
+        viewedLead.state === "idle" &&
+        AsyncResult.isSuccess(manifests) &&
+        manifests.value.some(
+          (manifest) => manifest.provider === viewedLead.provider && manifest.compact === true,
+        ),
+      run: () => {
+        if (viewedLead) void attempt(compactLead({ payload: { agentId: viewedLead.id } }));
+      },
     },
     {
       id: "stop-all",
@@ -1189,6 +1383,34 @@ function Workspace() {
       keys: "Control `",
       when: terminal.available,
       run: terminal.toggle,
+    },
+    {
+      id: "run-project",
+      group: "Actions",
+      label: runRunning ? "Stop project run" : "Run project",
+      icon: runRunning ? Square : Play,
+      keywords: "dev server start localhost stop",
+      when: runThreadId !== undefined,
+      run: toggleRun,
+    },
+    {
+      // The project's setup command: what makes the thread's folder (or its new worktree) usable.
+      id: "setup-project",
+      group: "Actions",
+      label: "Setup project",
+      icon: Wrench,
+      keywords: "install dependencies npm bun pnpm build",
+      when: runThreadId !== undefined,
+      run: setupProject,
+    },
+    {
+      id: "preview",
+      group: "Actions",
+      label: previewPane ? "Hide preview" : "Show preview",
+      icon: Globe,
+      keywords: "browser web page localhost dev server",
+      when: previewThread !== undefined,
+      run: togglePreview,
     },
     {
       id: "mode",
@@ -1281,6 +1503,14 @@ function Workspace() {
       // The web client opens no welcome: it signs in to a desktop that had one.
       when: !WEB,
       run: () => openWelcome(true),
+    },
+    {
+      id: "import-sessions",
+      group: "Actions",
+      label: "Import sessions…",
+      icon: History,
+      keywords: "bring sessions claude code codex opencode muse history resume",
+      run: () => openImport(true),
     },
     ...settingsPages.map(({ id, label, icon }): PaletteCommand => ({
       id: `settings-${id}`,
@@ -1398,6 +1628,11 @@ function Workspace() {
       case "j":
         if (selected === undefined || settingsOpen) return;
         toggleInspector();
+        break;
+      case "f":
+        // The files panel's Ctrl F prevents default before the window hears it, and keeps the key.
+        if (event.defaultPrevented || settingsOpen) return;
+        openFind();
         break;
       default:
         return;
@@ -1517,6 +1752,11 @@ function Workspace() {
         ? (agentId, messageId) => withdraw({ payload: { agentId, messageId } })
         : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
+    compact: (agentId) => compactLead({ payload: { agentId } }),
+    handOff:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION
+        ? (agentId, choice) => handOffTo({ payload: { agentId, ...choice } })
+        : undefined,
     respond: (agentId, requestId, decision, scope) =>
       respond({ payload: { agentId, requestId, decision, scope } }),
     answerApproval,
@@ -1579,6 +1819,7 @@ function Workspace() {
       </Reveal>
       {WEB ? null : <UpdateNotice />}
       <WhatsNewHost />
+      <ImportDialogHost />
       <Reveal shift={-6} className="shrink-0">
         {actionError ? (
           <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
@@ -1706,6 +1947,18 @@ function Workspace() {
 
   /** A pane showing the tab `key`: a file, read-only, or a thread. */
   const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+    const previewed = previewOfKey(key);
+    if (previewed !== undefined) {
+      return (
+        <PreviewPane
+          key={key}
+          threadId={previewed}
+          remote={driven !== undefined}
+          onClose={() => tabs.actions.onClose([key])}
+          pane={chrome}
+        />
+      );
+    }
     const github = githubOfKey(key);
     if (github !== undefined) {
       return (
@@ -1749,7 +2002,16 @@ function Workspace() {
     }
     const turn = turnFileOfKey(key);
     if (turn !== undefined) {
-      return <TurnFileView key={key} tab={turn} onClose={() => tabs.actions.onClose([key])} pane={chrome} />;
+      return (
+        <TurnFileView
+          key={key}
+          tab={turn}
+          onClose={() => tabs.actions.onClose([key])}
+          pane={chrome}
+          messageBox={messageBox}
+          draftKey={routedDraftKey}
+        />
+      );
     }
     const file = fileOfKey(key);
     if (file === undefined) return threadPane(key, focused);
@@ -1759,6 +2021,7 @@ function Workspace() {
         root={file.root}
         path={file.path}
         messageBox={messageBox}
+        draftKey={routedDraftKey}
         onOpenFile={openerIn(file.root)}
         onClose={() => tabs.actions.onClose([key])}
         pane={chrome}
@@ -1769,6 +2032,11 @@ function Workspace() {
   /** What a pane's header calls what it shows. */
   const paneLabel = (leaf: PaneLeaf): PaneLabel => {
     const tab = tabs.tabs.find((each) => each.key === leaf.key);
+    const previewed = previewOfKey(leaf.key);
+    if (previewed !== undefined) {
+      // The preview's own address bar is the pane's header.
+      return { title: previewTitle(previews[previewed]), ownHeader: true };
+    }
     const file = fileOfKey(leaf.key) ?? commitFileOfKey(leaf.key) ?? turnFileOfKey(leaf.key);
     if (file !== undefined) {
       // The viewer's own header names the file, and is the pane's.
@@ -2063,6 +2331,16 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
+      {...(runThreadId === undefined ? {} : { run: { running: runRunning, onToggle: toggleRun } })}
+      {...(previewThread === undefined
+        ? {}
+        : {
+            preview: {
+              open: previewPane !== undefined,
+              live: previews[previewThread] !== undefined,
+              onToggle: togglePreview,
+            },
+          })}
     >
       {compact ? (
         // The narrow window shows one pane: the open tab's.
@@ -2083,6 +2361,7 @@ function Workspace() {
         </div>
       )}
       <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
+      {previewBridge() === undefined ? null : <BrowserHost onOpened={agentOpened} />}
       <TaskSync signedIn={account._tag === "SignedIn"} />
       {selected ? (
         <StopAllDialog

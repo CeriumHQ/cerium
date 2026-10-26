@@ -103,6 +103,8 @@ export interface ShellBridge {
   readonly setBadge?: (badge: { count: number; icon?: string }) => void;
   /** Calls back with the thread of each clicked notification; returns how to stop. */
   readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
+  /** The Preview pane's pages, which the shell lays over the window (apps/desktop/src/preview.ts). */
+  readonly preview?: PreviewBridge;
   /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */
   readonly microphoneAccess?: () => Promise<string>;
   /**
@@ -110,6 +112,44 @@ export interface ShellBridge {
    * on; absent on Linux, which has no such page.
    */
   readonly openMicrophoneSettings?: () => Promise<void>;
+}
+
+/** Mirrors the shell's `PreviewState` in apps/desktop/src/preview.ts. */
+export interface PreviewState {
+  readonly threadId: string;
+  readonly url: string;
+  readonly title: string;
+  readonly loading: boolean;
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+  readonly error?: string;
+}
+
+/** A box in the window's CSS pixels. */
+export interface PreviewBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Each thread's preview page, kept by the shell; the pane says where to lay it and drives it. */
+export interface PreviewBridge {
+  /** Runs an agent's browser call on the thread's page, opening one if it has none. */
+  readonly run: (threadId: string, command: unknown) => Promise<unknown>;
+  /** Lays the page over `bounds`, or takes it away (`null`), opening one first if it has none. */
+  readonly place: (threadId: string, bounds: PreviewBounds | null) => void;
+  /** Opens what the user typed; resolves false for an address the preview won't open. */
+  readonly navigate: (threadId: string, input: string) => Promise<boolean>;
+  readonly go: (threadId: string, go: "back" | "forward" | "reload" | "stop") => void;
+  /** Closes the thread's page. */
+  readonly close: (threadId: string) => void;
+  /** What the page shows now, as a PNG data URL. */
+  readonly still: (threadId: string) => Promise<string | undefined>;
+  /** Every page open now. */
+  readonly states: () => Promise<unknown>;
+  readonly onState: (listener: (state: unknown) => void) => () => void;
+  readonly onClosed: (listener: (threadId: string) => void) => () => void;
 }
 
 /** Mirrors the shell's `NotificationRequest` in apps/desktop/src/notifications.ts. */

@@ -1,7 +1,10 @@
 import type { DiffHunk } from "@cerium/rpc";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import { Button } from "@base-ui/react/button";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
+import type { DraftCommentFile } from "../composer/draft.ts";
+import { lineRange } from "../composer/draft.ts";
 import { CHUNK, chunkStyle, Run } from "./CodeView.tsx";
 import { useHighlight } from "./highlight.ts";
 import {
@@ -106,6 +109,124 @@ const NoPick = () => <span className="w-6 shrink-0" aria-hidden="true" />;
 /** A picked line's mark down its left edge. */
 const pickedEdge = "shadow-[inset_2px_0_0_var(--color-accent)]";
 
+/** A line marked for a comment run, by its hunk's index and its own within the hunk. */
+const runId = (hunk: number, line: number) => `${hunk}:${line}`;
+
+const runAt = (id: string): readonly [number, number] => {
+  const split = id.indexOf(":");
+  return [Number(id.slice(0, split)), Number(id.slice(split + 1))];
+};
+
+/** `ids`, first to last as the diff shows them. */
+const orderedId = (a: string, b: string) => {
+  const [hunkA, lineA] = runAt(a);
+  const [hunkB, lineB] = runAt(b);
+  return hunkA - hunkB || lineA - lineB;
+};
+
+/** The lines of the diff that show, from `from` to `to`, whichever comes first, both included; the stretch folded between hunks isn't. */
+const linesBetween = (hunks: ReadonlyArray<DiffHunk>, from: string, to: string): ReadonlyArray<string> => {
+  const shown = hunks.flatMap((hunk, at) => hunk.lines.map((_, index) => runId(at, index)));
+  const start = shown.indexOf(from);
+  const end = shown.indexOf(to);
+  return start === -1 || end === -1 ? [to] : shown.slice(Math.min(start, end), Math.max(start, end) + 1);
+};
+
+/**
+ * What a diff carries to comment on its lines: the numbers that a comment waiting in the draft
+ * covers, and where the run the user picks goes when it's added.
+ */
+export interface DiffCommenting {
+  /** Line numbers that a comment waiting in the draft covers, at the number each line anchors. */
+  readonly marked: ReadonlySet<number>;
+  /** Adds the run's comment, with the file, its lines and the remark under them. */
+  readonly onAdd: (comment: {
+    readonly quote: string;
+    readonly file: DraftCommentFile;
+    readonly text: string;
+  }) => void;
+}
+
+/** The box beside a line that comments on it, or marks a run already picked. */
+function CommentPlus({ picked, onPick }: { picked: boolean; onPick: (extend: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={picked}
+      aria-label={picked ? "Commenting on this line" : "Comment on line"}
+      // Shift extends the run; the browser would select text instead.
+      onMouseDown={(event) => {
+        if (event.shiftKey) event.preventDefault();
+      }}
+      onClick={(event) => onPick(event.shiftKey)}
+      className={`grid w-5 shrink-0 cursor-default place-items-center self-stretch text-fg-tertiary outline-none select-none transition-opacity duration-100 focus-visible:opacity-100 ${
+        picked ? "opacity-100" : "opacity-0 group-hover/line:opacity-100"
+      }`}
+    >
+      <span className={`grid size-3.5 place-items-center rounded-[3px] ${picked ? "text-accent" : ""}`}>
+        <Plus size={12} strokeWidth={2.25} />
+      </span>
+    </button>
+  );
+}
+
+/** The box under a comment's run, where the remark is written; Enter adds, like the passage's does. */
+function CommentBox({
+  onAdd,
+  onClose,
+  range,
+  lines,
+}: {
+  onAdd: (text: string) => void;
+  onClose: () => void;
+  /** The lines the comment covers, as the tray will name them. */
+  range: string;
+  /** How many of them there are. */
+  lines: number;
+}) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState("");
+  useEffect(() => field.current?.focus(), []);
+  return (
+    <div className="flex flex-col gap-1.5 border-y border-line-subtle bg-surface-window px-2.5 py-2">
+      <div className="flex items-baseline gap-2 font-mono text-meta text-fg-tertiary tabular-nums">
+        <span className="min-w-0 truncate">{range}</span>
+        <span className="shrink-0 font-sans">{lines === 1 ? "1 line" : `${lines} lines`}</span>
+      </div>
+      <textarea
+        ref={field}
+        aria-label="Comment"
+        value={text}
+        rows={2}
+        placeholder="What about these lines?"
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            onAdd(text);
+          }
+        }}
+        className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-disabled focus:border-line-strong"
+      />
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          onClick={onClose}
+          className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={() => onAdd(text)}
+          disabled={text.trim() === ""}
+          className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          Add comment
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * A hunk's rows in chunks the browser lays out and paints only near the view, each with where it
  * starts. Unwrapped, as one column scrolling sideways draws them, a row is one line high, so a chunk
@@ -155,6 +276,7 @@ function Cell({
   tokens,
   gutter,
   wrap = false,
+  mark,
   pick,
 }: {
   line: NumberedLine | undefined;
@@ -164,6 +286,8 @@ function Cell({
   gutter: string;
   /** Long lines wrap rather than run past the side's edge, as each side of a split diff does. */
   wrap?: boolean;
+  /** The box that comments on the line, before its pick on a side of a split diff. */
+  mark?: ReactNode;
   /** The box that picks the line, on a side of a split diff. */
   pick?: ReactNode;
 }) {
@@ -172,6 +296,7 @@ function Cell({
   }
   return (
     <div className={`group/line flex min-w-0 flex-1 ${tint[line.kind]}`}>
+      {mark}
       {pick}
       <span style={{ width: gutter }} className={number} aria-hidden="true">
         {lineNumber}
@@ -207,6 +332,7 @@ export function DiffView({
   scroll = true,
   after,
   picking,
+  commenting,
 }: {
   hunks: ReadonlyArray<DiffHunk>;
   path: string;
@@ -222,6 +348,8 @@ export function DiffView({
   after?: ((line: NumberedLine) => ReactNode) | undefined;
   /** Its changed lines can be picked, and its hunks acted on. */
   picking?: DiffPicking | undefined;
+  /** A run of its lines is being commented on, from the + that hovers over each one. */
+  commenting?: DiffCommenting | undefined;
 }) {
   /** The box for a hunk's line, a spacer for an unchanged one; nothing while lines can't be picked. */
   const pickOf = (hunk: number, index: number, line: NumberedLine) =>
@@ -232,8 +360,107 @@ export function DiffView({
     );
   const edgeOf = (hunk: number, index: number, line: NumberedLine) =>
     picking !== undefined && line.kind !== "context" && picking.picked(hunk, index) ? pickedEdge : "";
+  // The run of lines a comment is being written on, held to the diff it was picked on: one that
+  // reads differently again isn't it any more.
+  const [heldHunks, setHeldHunks] = useState(hunks);
+  const [run, setRun] = useState<{ readonly ids: ReadonlySet<string>; readonly anchor: string }>();
+  if (heldHunks !== hunks || (commenting === undefined && run !== undefined)) {
+    setHeldHunks(hunks);
+    setRun(undefined);
+  }
   const numbered = useNumbered(hunks, path);
   const { ranges, oldTokens, newTokens } = numbered;
+
+  /** The run's lines, in the order the diff shows them, as the comment will carry them. */
+  const markedLines = (ids: ReadonlySet<string>) =>
+    [...ids].toSorted(orderedId).flatMap((id) => {
+      const [hunk, index] = runAt(id);
+      const line = numbered.hunks[hunk]?.lines[index];
+      if (line === undefined) return [];
+      return [
+        {
+          marker:
+            line.kind === "added"
+              ? ("+" as const)
+              : line.kind === "removed"
+                ? ("-" as const)
+                : (" " as const),
+          text: line.text,
+          number: line.new ?? line.old ?? 0,
+        },
+      ];
+    });
+  const pickedLines = run === undefined ? [] : markedLines(run.ids);
+  const runFirst = pickedLines[0]?.number ?? 0;
+  const runEnd = pickedLines.at(-1)?.number ?? 0;
+  const runRange =
+    pickedLines.length === 0
+      ? ""
+      : `${path}:${lineRange(Math.min(runFirst, runEnd), Math.max(runFirst, runEnd))}`;
+
+  const pickRun = (hunk: number, index: number, extend: boolean) => {
+    if (commenting === undefined) return;
+    const id = runId(hunk, index);
+    if (extend && run !== undefined) {
+      const ids = new Set(run.ids);
+      for (const each of linesBetween(hunks, run.anchor, id)) ids.add(each);
+      setRun({ ids, anchor: run.anchor });
+    } else {
+      setRun({ ids: new Set([id]), anchor: id });
+    }
+  };
+  const plusOf = (hunk: number, index: number) =>
+    commenting === undefined ? undefined : (
+      <CommentPlus
+        picked={run !== undefined && run.ids.has(runId(hunk, index))}
+        onPick={(extend) => pickRun(hunk, index, extend)}
+      />
+    );
+  /** A line a waiting comment covers, marked down its edge at half the pick's strength. */
+  const markedEdge = "shadow-[inset_2px_0_0_color-mix(in_srgb,var(--color-accent)_45%,transparent)]";
+  const markOf = (line: NumberedLine) =>
+    commenting !== undefined && commenting.marked.has(line.new ?? line.old ?? 0) ? markedEdge : "";
+  /** The comment box under the run's last line; nothing while there's no run. */
+  const boxOf = (hunk: number, index: number) =>
+    run === undefined || runAfter === undefined || runAfter !== runId(hunk, index) ? null : (
+      /** As wide as the visible view and pinned left, so sideways-scrolling never carries it away. */
+      <div className="sticky left-0" style={{ width: "100cqw" }}>
+        <CommentBox
+          range={runRange}
+          lines={pickedLines.length}
+          onAdd={(text) => {
+            if (commenting === undefined || text.trim() === "" || pickedLines.length === 0) return;
+            commenting.onAdd({
+              quote: pickedLines.map((line) => `${line.marker} ${line.text}`).join("\n"),
+              file: {
+                path,
+                start: Math.min(runFirst, runEnd),
+                end: Math.max(runFirst, runEnd),
+                lines: pickedLines,
+              },
+              text: text.trim(),
+            });
+            setRun(undefined);
+          }}
+          onClose={() => setRun(undefined)}
+        />
+      </div>
+    );
+  /** The run's last line, where the comment box hangs under. */
+  const runAfter = run === undefined ? undefined : [...run.ids].toSorted(orderedId).at(-1);
+  // Commenting elsewhere puts the run away, as picking a passage then clicking apart does.
+  useEffect(() => {
+    if (run === undefined) return;
+    const away = (event: PointerEvent) => {
+      if (root.current === null || root.current.contains(event.target instanceof Node ? event.target : null))
+        return;
+      setRun(undefined);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [run]);
+  const root = useRef<HTMLDivElement>(null);
+
   const tokensOf = (line: NumberedLine | undefined, side: "old" | "new") => {
     if (line === undefined) return undefined;
     return side === "old"
@@ -250,7 +477,8 @@ export function DiffView({
 
   return (
     <div
-      className={`font-mono text-meta leading-[1.6] select-text ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
+      ref={root}
+      className={`font-mono text-meta leading-[1.6] select-text [container-type:inline-size] ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
     >
       <div className={layout === "split" || !scroll ? "min-w-full" : "w-max min-w-full"}>
         {numbered.hunks.map((hunk, hunkIndex) => {
@@ -276,8 +504,9 @@ export function DiffView({
                         return (
                           <Fragment key={index}>
                             <div
-                              className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)}`}
+                              className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
                             >
+                              {plusOf(hunkIndex, index)}
                               {pickOf(hunkIndex, index, line)}
                               <span style={{ width: gutter }} className={number} aria-hidden="true">
                                 {line.old}
@@ -292,6 +521,7 @@ export function DiffView({
                               />
                             </div>
                             {after?.(line)}
+                            {boxOf(hunkIndex, index)}
                           </Fragment>
                         );
                       })}
@@ -303,7 +533,7 @@ export function DiffView({
                         <Fragment key={first + offset}>
                           <div className="grid grid-cols-2 divide-x divide-line-subtle">
                             <div
-                              className={`flex min-w-0 ${row.left ? edgeOf(hunkIndex, indexOf.get(row.left)!, row.left) : ""}`}
+                              className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
                             >
                               <Cell
                                 line={row.left}
@@ -312,13 +542,14 @@ export function DiffView({
                                 tokens={tokensOf(row.left, "old")}
                                 gutter={gutter}
                                 wrap
+                                mark={row.left ? plusOf(hunkIndex, indexOf.get(row.left)!) : undefined}
                                 pick={
                                   row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined
                                 }
                               />
                             </div>
                             <div
-                              className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? edgeOf(hunkIndex, indexOf.get(row.right)!, row.right) : ""}`}
+                              className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
                             >
                               <Cell
                                 wrap
@@ -331,6 +562,11 @@ export function DiffView({
                                 }
                                 tokens={tokensOf(row.right, "new")}
                                 gutter={gutter}
+                                mark={
+                                  row.right && row.right.kind !== "context"
+                                    ? plusOf(hunkIndex, indexOf.get(row.right)!)
+                                    : undefined
+                                }
                                 pick={
                                   row.right
                                     ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
@@ -341,6 +577,10 @@ export function DiffView({
                           </div>
                           {row.left ? after?.(row.left) : null}
                           {row.right && row.right !== row.left ? after?.(row.right) : null}
+                          {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
+                          {row.right && row.right !== row.left
+                            ? boxOf(hunkIndex, indexOf.get(row.right)!)
+                            : null}
                         </Fragment>
                       ))}
                     </div>

@@ -40,7 +40,8 @@ import { dirOf, nameOf, stateAt, stateWord, touchWord, type OpenFile } from "../
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { fileTargets } from "../transcript/menus.ts";
 import { CodeView } from "./CodeView.tsx";
-import { DiffView } from "./DiffView.tsx";
+import { DiffView, type DiffCommenting } from "./DiffView.tsx";
+import { useDiffComments } from "./diffComments.ts";
 import {
   byteSize,
   DIFF_LAYOUT_KEY,
@@ -169,6 +170,7 @@ function DiffBody({
   layout,
   whole,
   onWhole,
+  commenting,
 }: {
   path: string;
   diff: FileDiff | undefined;
@@ -178,6 +180,8 @@ function DiffBody({
   layout: "unified" | "split";
   whole: boolean;
   onWhole: () => void;
+  /** The lines it lets the user comment on, when a thread's message box is there to write to. */
+  commenting?: DiffCommenting | undefined;
 }) {
   if (diff === undefined) return failure === undefined ? null : <Note>{failure}</Note>;
   const { hunks, binary, truncated } = diff;
@@ -194,7 +198,13 @@ function DiffBody({
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1">
-        <DiffView hunks={hunks} path={path} layout={layout} onExpand={whole ? undefined : onWhole} />
+        <DiffView
+          hunks={hunks}
+          path={path}
+          layout={layout}
+          onExpand={whole ? undefined : onWhole}
+          commenting={commenting}
+        />
       </div>
       {truncated === true ? (
         <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary">
@@ -215,6 +225,7 @@ export function FileViewer({
   path,
   touch,
   messageBox,
+  draftKey,
   onOpenFile,
   onClose,
   pane,
@@ -226,6 +237,8 @@ export function FileViewer({
   /** What this thread's agents did to it, when they touched it. */
   touch?: "created" | "modified" | "deleted" | undefined;
   messageBox: MessageBox | undefined;
+  /** The draft the message box writes to, whose comments wait on the diff's lines. */
+  draftKey?: string | undefined;
   /** Opens another of the folder's files in the viewer, as a Markdown file's links ask. */
   onOpenFile?: OpenFile | undefined;
   onClose: () => void;
@@ -234,6 +247,7 @@ export function FileViewer({
 }) {
   const registry = useContext(RegistryContext);
   const key = fileKey(root, path);
+  const commenting = useDiffComments({ messageBox, draftKey, path });
   const [chosen, setChosen] = useAtom(fileViewAtom(key));
   const [layout, setLayout] = useAtom(diffLayoutAtom);
   const [wrap, setWrap] = useAtom(wrapAtom);
@@ -438,6 +452,7 @@ export function FileViewer({
               context={whole ? WHOLE_FILE : CONTEXT}
               whole={whole}
               onWhole={() => setWhole(true)}
+              commenting={commenting}
             />
           ) : view === "diff" ? (
             <DiffBody
@@ -453,6 +468,7 @@ export function FileViewer({
               layout={layout}
               whole={whole}
               onWhole={() => setWhole(true)}
+              commenting={commenting}
             />
           ) : (
             <FileBody

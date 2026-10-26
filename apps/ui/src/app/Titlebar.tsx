@@ -6,8 +6,10 @@ import {
   GalleryVerticalEnd,
   GitBranch,
   GitPullRequestArrow,
+  Globe,
   Minus,
   PanelLeft,
+  Play,
   Square,
   SquarePen,
   SquareTerminal,
@@ -29,6 +31,13 @@ import { RAIL, type SidePanelId } from "./panelLayout.ts";
  * its own and Electron Linux's. A Mac's traffic lights sit at the other end (`--titlebar-inset`).
  */
 const CAPTION_BUTTON_WIDTH = 46;
+
+export interface PreviewToggleProps {
+  readonly open: boolean;
+  /** The thread has a page open, which its agents may be driving out of sight. */
+  readonly live: boolean;
+  readonly onToggle: () => void;
+}
 
 interface TitlebarProps {
   /** The selected thread, if any. */
@@ -53,6 +62,10 @@ interface TitlebarProps {
   readonly onTogglePanel: (panel: SidePanelId) => void;
   /** The terminal drawer's button, offered while the thread can have a terminal. */
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
+  /** The project's run button: starts its run command in a thread terminal, and stops it while it runs. */
+  readonly run?: { readonly running: boolean; readonly onToggle: () => void };
+  /** The Preview pane's button, offered while the thread can have a browser: the desktop app's own threads. */
+  readonly preview?: PreviewToggleProps;
   /** Which of the account's computers the window drives, once there's a choice. */
   readonly machinePicker?: ReactNode;
   /** The open threads' tabs, which take the title's place. */
@@ -73,6 +86,8 @@ export function Titlebar({
   panels,
   onTogglePanel,
   terminal,
+  run,
+  preview,
   machinePicker,
   tabs,
 }: TitlebarProps) {
@@ -149,6 +164,10 @@ export function Titlebar({
           </>
         )}
         <div className="flex h-full shrink-0 items-center justify-end">
+          {run && !covered ? <RunToggle running={run.running} onToggle={run.onToggle} /> : null}
+          {preview && !covered ? (
+            <PreviewToggle open={preview.open} live={preview.live} onToggle={preview.onToggle} />
+          ) : null}
           {terminal && !covered ? <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} /> : null}
           {covered ? null : <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />}
           {machinePicker}
@@ -331,6 +350,51 @@ export function ArtifactsToggle({ open, onToggle }: { open: boolean; onToggle: (
         }`}
       >
         <GalleryVerticalEnd size={15} strokeWidth={1.75} />
+      </Button>
+    </Tooltip>
+  );
+}
+
+/**
+ * Shows the open thread's browser beside it, in the Preview pane; marked while the thread has a page
+ * open, which its agents may be driving out of sight.
+ */
+export function PreviewToggle({ open, live, onToggle }: PreviewToggleProps) {
+  return (
+    <Tooltip label={open ? "Hide preview" : "Show preview"}>
+      <Button
+        onClick={onToggle}
+        aria-pressed={open}
+        aria-label="Preview"
+        className={`relative mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          open
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        <Globe size={15} strokeWidth={1.75} />
+        {live && !open ? (
+          <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
+        ) : null}
+      </Button>
+    </Tooltip>
+  );
+}
+
+/** Starts the open work thread's project run command, or stops it while it runs. */
+export function RunToggle({ running, onToggle }: { running: boolean; onToggle: () => void }) {
+  return (
+    <Tooltip label={running ? "Stop run" : "Run project"}>
+      <Button
+        onClick={onToggle}
+        aria-label={running ? "Stop run" : "Run project"}
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+          running
+            ? "bg-surface-selected text-fg-primary"
+            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+        }`}
+      >
+        {running ? <Square size={13} strokeWidth={1.75} /> : <Play size={14} strokeWidth={1.75} />}
       </Button>
     </Tooltip>
   );

@@ -1,4 +1,10 @@
-import type { AgentEvent, AgentId, ProviderId, RestorePreview } from "@cerium/protocol";
+import {
+  ADVISOR_ROLE,
+  type AgentEvent,
+  type AgentId,
+  type ProviderId,
+  type RestorePreview,
+} from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -14,7 +20,7 @@ import {
 
 import { cloudEventsAtom, queueEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
-import { KeptViews, useKeptResult } from "../components/KeptViews.tsx";
+import { KeptViews, useKeptHidden, useKeptResult } from "../components/KeptViews.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
@@ -26,7 +32,7 @@ import {
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { draftStartAtom } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
-import type { ModelSwitch } from "../features/composer/models.ts";
+import type { HandoffChoice, ModelSwitch } from "../features/composer/models.ts";
 import { useModels } from "../features/composer/models.ts";
 import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
@@ -107,6 +113,10 @@ export interface ThreadPaneActions {
    */
   readonly withdraw?: ((agentId: AgentId, messageId: string) => Promise<boolean>) | undefined;
   readonly switchLead: (agentId: AgentId, choice: ModelSwitch) => Promise<unknown>;
+  /** Asks a lead's harness to compact its conversation. */
+  readonly compact: (agentId: AgentId) => Promise<unknown>;
+  /** Hands a lead to a model of another harness; absent when the machine's backend can't. */
+  readonly handOff?: ((agentId: AgentId, choice: HandoffChoice) => Promise<unknown>) | undefined;
   readonly respond: (
     agentId: AgentId,
     requestId: string,
@@ -217,7 +227,7 @@ export function ThreadPane({
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const { attempt, restore, turnFiles } = actions;
+  const { attempt, restore, turnFiles, handOff } = actions;
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
@@ -258,8 +268,10 @@ export function ThreadPane({
                 lead={lead.id}
                 sameModel={sameModel}
                 folder={viewed.thread.cwd}
+                threadId={viewed.thread.id}
+                focused={focused}
                 agent={{ provider: lead.provider, model: leadModel }}
-                modelName={(model) => modelLabel(models, lead.provider, model)}
+                modelName={(model, provider) => modelLabel(models, provider, model)}
                 {...(cloud ? {} : { messageBox: box })}
                 activity={leadActivity}
                 bottomInset={composerHeight}
@@ -350,6 +362,24 @@ export function ThreadPane({
                     ...(leadEnded ? { ended: leadEnded } : {}),
                     // A thread read from the cloud copy can't be switched: it takes its machine.
                     ...(cloud ? {} : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
+                    context: agents.find((agent) => agent.id === lead.id)?.context,
+                    ...(cloud ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
+                    ...(cloud || handOff === undefined
+                      ? {}
+                      : {
+                          handoff: {
+                            available,
+                            agents: agents.filter(
+                              (agent) =>
+                                agent.parentId === lead.id &&
+                                agent.role !== ADVISOR_ROLE &&
+                                (agent.state === "running" ||
+                                  agent.state === "queued" ||
+                                  agent.state === "idle"),
+                            ).length,
+                            onHandOff: (choice) => attempt(handOff(lead.id, choice)),
+                          },
+                        }),
                   }
                 : {
                     kind: "new",
@@ -413,6 +443,7 @@ function LeadTranscript({
   events: eventsAtom,
   lead,
   sameModel,
+  focused,
   ...props
 }: Omit<ComponentProps<typeof Transcript>, "blocks" | "queued"> & {
   readonly events: EventsAtom;
@@ -420,11 +451,13 @@ function LeadTranscript({
   /** Whether two of the lead's model ids name the same model. */
   readonly sameModel: (a: string, b: string) => boolean;
 }) {
+  const hidden = useKeptHidden();
   const events = AsyncResult.getOrElse(useKeptResult(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
   const leadEvents = events.filter((event) => event.agentId === lead);
   return (
     <Transcript
       {...props}
+      focused={focused === true && !hidden}
       blocks={buildTranscript(leadEvents, sameModel)}
       queued={queuedMessages(leadEvents)}
     />

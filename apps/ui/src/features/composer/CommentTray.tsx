@@ -3,12 +3,14 @@ import { X } from "lucide-react";
 import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { useLingering } from "../../lib/motion.ts";
+import { lineRange } from "./draft.ts";
+import { nameOf } from "../files/model.ts";
 import type { DraftComment } from "./draft.ts";
 
 /**
- * The comments the draft makes on passages of the agent's responses, above its text: each passage
- * on one line, the remark below it to edit in place. A comment grows into the list as it's added and
- * folds out as it's removed.
+ * The comments the draft makes, on passages of the agent's responses and on lines of its diffs,
+ * above its text: each passage or marked run on one line, the remark below it to edit in place. A
+ * comment grows into the list as it's added and folds out as it's removed.
  */
 export function CommentTray({
   comments,
@@ -30,11 +32,25 @@ export function CommentTray({
               {present ? (
                 <div className="pt-1.5">
                   <div className="group/comment relative rounded-lg border border-line-subtle bg-surface-hover py-1.5 pr-8 pl-2.5">
+                    {/* The run a comment sits on, named by its file and lines; a passage as the reply shows it. */}
                     <p
-                      title={comment.quote}
-                      className="truncate border-l-2 border-accent/60 pl-2 text-meta text-fg-tertiary"
+                      title={
+                        comment.file === undefined
+                          ? comment.quote
+                          : `${comment.file.path}:${lineRange(comment.file.start, comment.file.end)}\n${comment.quote}`
+                      }
+                      className={`truncate border-l-2 border-accent/60 pl-2 text-meta text-fg-tertiary ${
+                        comment.file === undefined ? "" : "flex items-baseline gap-1.5 font-mono tabular-nums"
+                      }`}
                     >
-                      {comment.quote}
+                      {comment.file === undefined ? (
+                        comment.quote
+                      ) : (
+                        <>
+                          <span className="min-w-0 truncate">{nameOf(comment.file.path)}</span>
+                          <span className="shrink-0">{lineRange(comment.file.start, comment.file.end)}</span>
+                        </>
+                      )}
                     </p>
                     <textarea
                       aria-label="Comment"

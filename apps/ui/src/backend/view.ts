@@ -2,6 +2,7 @@ import type { AgentEvent, AgentInfo, ModelInfo, ProviderId, TodoItem } from "@ce
 import type { ThreadOverview } from "@cerium/rpc";
 
 import type {
+  AgentContext,
   AgentSummary,
   PendingApproval,
   PendingQuestion,
@@ -76,6 +77,7 @@ export const toAgentSummaries = (
     let lastMessage: string | undefined;
     let error: string | undefined;
     let model = agent.model;
+    let context: AgentContext | undefined;
     const pending = new Map<string, PendingApproval>();
     const spawning = new Map<string, SpawnRequest>();
     const asking = new Map<string, PendingQuestion>();
@@ -94,9 +96,26 @@ export const toAgentSummaries = (
           todos = payload.items;
           todosNote = payload.explanation;
           break;
+        case "ContextReported": {
+          const window = payload.window ?? context?.window;
+          context = window === undefined ? { tokens: payload.tokens } : { tokens: payload.tokens, window };
+          break;
+        }
+        case "ContextCompacted":
+          // Without a size after, the old reading no longer holds until the harness measures again.
+          context =
+            payload.tokensAfter === undefined ? undefined : { ...context, tokens: payload.tokensAfter };
+          break;
+        case "ConversationRewound":
+          context = undefined;
+          break;
         case "SessionStarted":
         case "ModelChanged":
+        case "LeadHandedOff":
           model = payload.model;
+          // Another model's window is its own; another harness starts the conversation over.
+          if (payload._tag === "LeadHandedOff") context = undefined;
+          else if (payload._tag === "ModelChanged" && context) context = { tokens: context.tokens };
           break;
         case "AgentError":
           error = payload.message;
@@ -156,6 +175,7 @@ export const toAgentSummaries = (
       spawns,
       questions,
       usage: { inputTokens, outputTokens, ...(costUsd === undefined ? {} : { costUsd }) },
+      ...(context ? { context } : {}),
       todos,
       ...(todosNote ? { todosNote } : {}),
       ...(lastMessage ? { lastMessage } : {}),

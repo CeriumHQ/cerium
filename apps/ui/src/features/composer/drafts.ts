@@ -3,7 +3,14 @@ import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 
 import { remember, stored } from "../../lib/storage.ts";
-import { draftText, hasContent, type Draft, type DraftAttachment, type DraftStart } from "./draft.ts";
+import {
+  draftText,
+  hasContent,
+  type Draft,
+  type DraftAttachment,
+  type DraftComment,
+  type DraftStart,
+} from "./draft.ts";
 
 // Every draft the window holds, by key: a thread's id, or `new:<uuid>` for a thread not started yet.
 // They live in the window's local storage, so nothing that rebuilds the
@@ -27,11 +34,32 @@ const StoredSegment = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("mention"), mention: Mention }),
 ]);
 
+const StoredCommentLine = Schema.Struct({
+  marker: Schema.Literals(["+", "-", " "]),
+  text: Schema.String,
+  number: Schema.Finite,
+});
+
 const StoredDraft = Schema.Struct({
   segments: Schema.Array(StoredSegment),
   attachments: Schema.Array(Attachment),
   comments: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ id: Schema.String, quote: Schema.String, text: Schema.String })),
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        quote: Schema.String,
+        text: Schema.String,
+        // Optional, so the draft a device an older version reads stays a draft it understands.
+        file: Schema.optionalKey(
+          Schema.Struct({
+            path: Schema.String,
+            start: Schema.Finite,
+            end: Schema.Finite,
+            lines: Schema.Array(StoredCommentLine),
+          }),
+        ),
+      }),
+    ),
   ),
   start: Schema.optionalKey(
     Schema.Struct({
@@ -301,6 +329,13 @@ export const newThreadDraftTitleAtom = Atom.family((key: string) =>
 
 /** One draft, which changes only when it does: another changes with every key typed into its box. */
 export const draftAtom = Atom.family((key: string) => Atom.make((get) => get(draftsAtom)[key]));
+
+/** One draft's comments, which change only when one is added, edited or removed. */
+export const draftCommentsAtom = Atom.family((key: string) =>
+  Atom.make<ReadonlyArray<DraftComment>>((get) => get(draftsAtom)[key]?.comments ?? []).pipe(
+    Atom.withEquality<ReadonlyArray<DraftComment>>((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+  ),
+);
 
 /** How long a draft's text is, for the parts of the window that answer typing without reading it. */
 export const draftLengthAtom = Atom.family((key: string) =>

@@ -1,16 +1,19 @@
 import type { HarnessStatus } from "@cerium/protocol";
 
-// The welcome Cerium opens with on a computer's first run: hello, the glass it's cut from, and, only
-// while no harness can run a thread, signing in to one. When it opens by itself, the steps it takes,
-// and how the keys step through it.
+// The welcome Cerium opens with on a computer's first run: hello, the glass it's cut from, only while
+// no harness can run a thread, signing in to one, and, when the harnesses hold sessions of the user's,
+// bringing them in. When it opens by itself, the steps it takes, and how the keys step through it.
 
 /** The welcome's steps, in order. */
-export const STEPS = ["hello", "glass", "connect"] as const;
+export const STEPS = ["hello", "glass", "connect", "import"] as const;
 export type StepId = (typeof STEPS)[number];
 
-/** The steps a welcome takes: signing in to a harness only while none can run a thread. */
-export const stepsFor = (needsHarness: boolean): ReadonlyArray<StepId> =>
-  needsHarness ? STEPS : STEPS.filter((step) => step !== "connect");
+/**
+ * The steps a welcome takes: signing in to a harness only while none can run a thread, and bringing
+ * sessions in only when there are some.
+ */
+export const stepsFor = (needsHarness: boolean, hasSessions = false): ReadonlyArray<StepId> =>
+  STEPS.filter((step) => (step !== "connect" || needsHarness) && (step !== "import" || hasSessions));
 
 /** Set once the welcome was finished or skipped on this computer; it doesn't open by itself again. */
 export const WELCOMED_KEY = "cerium:welcomed";

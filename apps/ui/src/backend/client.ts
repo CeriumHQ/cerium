@@ -1,4 +1,10 @@
-import { Account, deviceHandlers, openTunnel, refuseEffortRouterKey } from "@cerium/account";
+import {
+  Account,
+  deviceHandlers,
+  noBrowserHosting,
+  openTunnel,
+  refuseEffortRouterKey,
+} from "@cerium/account";
 import { DeviceRpcs, MachineRpcs, TUNNEL_HELLO } from "@cerium/rpc";
 import { Effect, Layer, Schedule, Schema, Stream } from "effect";
 import { Atom, AtomRpc, type AtomRegistry } from "effect/reactivity";
@@ -194,6 +200,7 @@ const webDevice = () =>
       working: Effect.succeed(Stream.succeed(false)),
       notifications: Effect.succeed(Stream.never),
       saveEffortRouterKey: Effect.succeed(refuseEffortRouterKey),
+      browser: Effect.succeed(noBrowserHosting),
     }).pipe(Layer.provideMerge(WebDevice)),
     makeEffect: RpcTest.makeClient(DeviceRpcs, { flatten: true }),
   });

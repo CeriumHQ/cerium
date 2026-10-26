@@ -30,6 +30,7 @@ import { effortLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { AgentMenuArea, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
+import { ContextBar, ContextRing } from "./ContextMeter.tsx";
 import {
   AgentApproval,
   AgentQuestion,
@@ -243,6 +244,7 @@ function AgentRow({
             {agent.parentId === undefined ? "Lead" : agent.role}
           </span>
           <span className="min-w-0 flex-1 truncate text-fg-tertiary">{agent.model}</span>
+          <ContextRing context={agent.context} />
           <StateBadge agent={agent} />
         </Button>
       </AgentMenuArea>
@@ -361,6 +363,11 @@ function AgentDetails({
             <p className="truncate text-meta text-fg-tertiary tabular-nums max-md:text-[13px]">
               {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
               {costUsd !== undefined ? ` · ${usd(costUsd)}` : ""}
+            </p>
+          ) : null}
+          {agent.context ? (
+            <p className="mt-1 flex text-caption text-fg-tertiary max-md:text-[13px]">
+              <ContextBar context={agent.context} />
             </p>
           ) : null}
         </div>

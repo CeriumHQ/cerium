@@ -1,8 +1,10 @@
+import { localUrlsIn } from "@cerium/browser/url";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ITheme } from "@xterm/xterm";
 
 import { usesCommandKey } from "../../lib/keys.ts";
+import { openLocally } from "../preview/model.ts";
 import { isOpenableLink } from "../transcript/menus.ts";
 import { readTheme } from "./theme.ts";
 
@@ -109,6 +111,8 @@ export class TerminalSession {
     this.terminal.loadAddon(this.#fit);
     this.terminal.loadAddon(
       new WebLinksAddon((_event, uri) => {
+        // A dev server's local address opens in the thread's preview, where the desktop app has one.
+        if (openLocally(uri)) return;
         if (isOpenableLink(uri)) window.open(uri, "_blank", "noopener,noreferrer");
       }),
     );
@@ -233,7 +237,40 @@ export class TerminalSession {
   }
 
   write(data: string) {
-    if (!this.#disposed) this.terminal.write(data);
+    if (this.#disposed) return;
+    this.terminal.write(data);
+    this.#watchForLocalUrl(data);
+  }
+
+  /** The tail of the output, so an address split between two writes is still found. */
+  #tail = "";
+  #localUrl: string | undefined;
+  readonly #localUrlListeners = new Set<() => void>();
+
+  /** The last local address the terminal printed, such as a dev server's `Local: http://localhost:5173/`. */
+  get localUrl(): string | undefined {
+    return this.#localUrl;
+  }
+
+  /** Calls back when the terminal prints another local address; returns how to stop. */
+  onLocalUrl(listener: () => void): () => void {
+    this.#localUrlListeners.add(listener);
+    return () => this.#localUrlListeners.delete(listener);
+  }
+
+  #watchForLocalUrl(data: string) {
+    // Colours and cursor moves come out first: a dev server colours its port apart from its host.
+    const text = `${this.#tail}${data}`.replace(
+      // oxlint-disable-next-line no-control-regex -- escape sequences are control characters
+      /\u001b\[[\d;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g,
+      "",
+    );
+    this.#tail = text.slice(-200);
+    if (!text.includes("://")) return;
+    const found = localUrlsIn(text).at(-1);
+    if (found === undefined || found === this.#localUrl) return;
+    this.#localUrl = found;
+    for (const listener of this.#localUrlListeners) listener();
   }
 
   /** Clears the screen and its scrollback, to draw a screen the backend sends afresh. */

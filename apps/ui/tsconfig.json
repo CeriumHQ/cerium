@@ -16,6 +16,9 @@
       "path": "../../packages/artifacts"
     },
     {
+      "path": "../../packages/browser"
+    },
+    {
       "path": "../../packages/protocol"
     },
     {

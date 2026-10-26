@@ -28,6 +28,9 @@ export const drawerLayout = (columnHeight: number, saved: number): DrawerLayout 
 /** The `RPC_VERSION` that brought a project's terminals, opened before a thread starts there. */
 export const PROJECT_TERMINAL_VERSION = 22;
 
+/** The `RPC_VERSION` that brought a project's scripts (`RunProjectScript`); an older machine has none. */
+export const SCRIPT_VERSION = 29;
+
 /** Whose terminals the drawer shows: a work thread's, or a project's while a new thread is written there. */
 export type TerminalOwner = { readonly threadId: string } | { readonly project: string };
 
@@ -95,3 +98,22 @@ export const shownTerminal = (
   terminals: ReadonlyArray<TerminalInfo>,
   chosen: string | undefined,
 ): TerminalInfo | undefined => terminals.find((terminal) => terminal.id === chosen) ?? terminals.at(-1);
+
+/** What a terminal that runs one of a project's scripts is labelled, by the kind of script. */
+export const SCRIPT_LABEL = { setup: "Setup", run: "Run" } as const;
+
+/** An owner's terminal running one of its project's scripts (`Setup`, `Run`), if it has one. The
+ * newest wins: the same script's terminal takes the last one's place, which then lingers, and a
+ * run that ended stays shown in the drawer until its kind starts again. */
+export const scriptTerminalOf = (
+  terminals: ReadonlyArray<TerminalInfo>,
+  owner: TerminalOwner,
+  kind: keyof typeof SCRIPT_LABEL,
+): TerminalInfo | undefined => {
+  const theirs = terminalsOf(terminals, owner);
+  for (let at = theirs.length - 1; at >= 0; at--) {
+    const each = theirs[at];
+    if (each?.script === SCRIPT_LABEL[kind]) return each;
+  }
+  return undefined;
+};

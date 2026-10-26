@@ -7,6 +7,7 @@ import {
   drawerLayout,
   exitNote,
   inputPieces,
+  scriptTerminalOf,
   shownTerminal,
   tabLabels,
   terminalsOf,
@@ -65,6 +66,26 @@ describe("tabLabels", () => {
   it("numbers only shells a thread has more than one of", () => {
     const labels = tabLabels([terminal("a"), terminal("b", { shell: "Command Prompt" }), terminal("c")]);
     expect(labels).toEqual(["PowerShell 1", "Command Prompt", "PowerShell 2"]);
+  });
+});
+
+describe("scriptTerminalOf", () => {
+  it("picks a thread's terminal of the one script, running or ended", () => {
+    const all = [terminal("plain"), terminal("run", { shell: "Run", script: "Run" })];
+    expect(scriptTerminalOf(all, { threadId: "thr_a" }, "run")?.id).toBe("run");
+    expect(scriptTerminalOf(all, { threadId: "thr_a" }, "setup")).toBeUndefined();
+  });
+
+  it("says a run still goes while its terminal has no exit code", () => {
+    const all = [
+      terminal("run", { shell: "Run", script: "Run" }),
+      terminal("run-2", { shell: "Run", script: "Run", exitCode: 0, run: 2, openedAt: 2 }),
+    ];
+    // One script's terminal replaces the last: the newest shows, whatever state it came to.
+    const latest = scriptTerminalOf(all, { threadId: "thr_a" }, "run");
+    expect(latest?.id).toBe("run-2");
+    expect(latest?.exitCode).toBe(0);
+    expect(latest && latest.exitCode === undefined).toBe(false);
   });
 });
 

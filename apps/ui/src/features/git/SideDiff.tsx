@@ -23,7 +23,7 @@ import {
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { DiffView, type DiffLayout } from "../viewer/DiffView.tsx";
+import { DiffView, type DiffCommenting, type DiffLayout } from "../viewer/DiffView.tsx";
 import { diffStats } from "../viewer/model.ts";
 import { Note } from "../viewer/previews.tsx";
 import {
@@ -91,6 +91,7 @@ export function SideDiff({
   context,
   whole,
   onWhole,
+  commenting,
 }: {
   /** The repository's top. */
   root: string;
@@ -104,6 +105,8 @@ export function SideDiff({
   context: number;
   whole: boolean;
   onWhole: () => void;
+  /** Its lines take comments into the thread's draft, beside the picking that stages them. */
+  commenting?: DiffCommenting | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const status = Option.getOrUndefined(AsyncResult.value(useAtomValue(gitStatusAtom(root))));
@@ -373,6 +376,7 @@ export function SideDiff({
               ? { picked: (hunk, line) => picked.has(lineId(hunk, line)), onPick, hunkActions }
               : undefined
           }
+          commenting={commenting}
           staged={shown === "staged"}
         />
       </div>
@@ -400,6 +404,7 @@ function Body({
   whole,
   onWhole,
   picking,
+  commenting,
   staged,
 }: {
   diff: FileDiff | undefined;
@@ -409,6 +414,7 @@ function Body({
   whole: boolean;
   onWhole: () => void;
   picking: Parameters<typeof DiffView>[0]["picking"];
+  commenting: Parameters<typeof DiffView>[0]["commenting"];
   staged: boolean;
 }) {
   if (diff === undefined) return failure === undefined ? null : <Note>{failure}</Note>;
@@ -424,6 +430,7 @@ function Body({
           layout={layout}
           onExpand={whole ? undefined : onWhole}
           picking={picking}
+          commenting={commenting}
         />
       </div>
       {diff.truncated === true ? (

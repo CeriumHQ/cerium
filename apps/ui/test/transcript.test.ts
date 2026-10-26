@@ -306,6 +306,38 @@ describe("the model each response ran on", () => {
     expect(blocks.at(-1)).toMatchObject({ kind: "model", model: "opus", effort: "low", change: "effort" });
   });
 
+  it("marks a handoff to another harness, and labels each response with the harness it ran on", () => {
+    const blocks = buildTranscript(
+      events(
+        started,
+        ...say("first"),
+        {
+          _tag: "LeadHandedOff",
+          from: { provider: "claude", model: "claude-opus-5-5" },
+          provider: "codex",
+          model: "gpt-6-luna",
+          effort: "medium",
+        },
+        {
+          _tag: "SessionStarted",
+          provider: "codex",
+          providerSessionId: "thread-1",
+          model: "gpt-6-luna",
+          effort: "medium",
+        },
+        ...say("second"),
+      ),
+    );
+    const items = layout(blocks);
+    expect(items.flatMap((item) => (item.kind === "header" ? [[item.provider, item.model]] : []))).toEqual([
+      ["claude", "claude-opus-5-5"],
+      ["codex", "gpt-6-luna"],
+    ]);
+    expect(items.filter((item) => item.kind === "switch")).toMatchObject([
+      { provider: "codex", model: "gpt-6-luna", effort: "medium", change: "handoff" },
+    ]);
+  });
+
   it("labels each response with the model in effect when it began, not the thread's current one", () => {
     const blocks = buildTranscript(
       events(

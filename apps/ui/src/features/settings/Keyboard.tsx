@@ -16,6 +16,7 @@ const sendKeys: Record<SendKey, { readonly send: string; readonly newLine: strin
 const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
   ["New thread", "Ctrl N"],
   ["Search threads, or run a command", "Ctrl K"],
+  ["Find in the thread", "Ctrl F"],
   ["Open the sidebar's first ten threads", "Ctrl 1–0"],
   ["Switch to Work", "Ctrl Shift 1"],
   ["Switch to Chat", "Ctrl Shift 2"],

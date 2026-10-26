@@ -130,6 +130,17 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   background: var(--selection);
 }
 
+/* The find bar's matches (features/transcript/Find.tsx): every one faint, the current one stronger, and a
+   search hit a palette pick brings in marked for a moment. */
+::highlight(find),
+::highlight(find-jump) {
+  background: var(--accent-soft);
+}
+
+::highlight(find-current) {
+  background: var(--selection);
+}
+
 /* Text a light sweeps across while something is in progress. */
 @utility text-shimmer {
   background: linear-gradient(90deg, var(--fg-tertiary) 40%, var(--fg-primary) 50%, var(--fg-tertiary) 60%) 0
@@ -156,6 +167,16 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
   to {
     background-position: 0 0;
+  }
+}
+
+/* The Preview pane's hairline, crossing under its address bar while a page loads. */
+@keyframes preview-load {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 300% 0;
   }
 }
 
@@ -247,8 +268,10 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
-/* An artifact the artifacts panel brought into view, ringed for a moment so the eye finds it. */
-[data-artifact][data-found] {
+/* An artifact the artifacts panel brought into view, and a message a palette search brought into view
+   (features/transcript/find.ts), ringed for a moment so the eye finds it. */
+[data-artifact][data-found],
+[data-find][data-found] {
   border-radius: 0.625rem;
   animation: artifact-found 1.6s ease-out;
 

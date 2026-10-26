@@ -1,7 +1,7 @@
 import type { Attachment, Mention } from "@cerium/protocol";
 import { createContext, useContext, useRef } from "react";
 
-import type { Segment } from "./draft.ts";
+import type { DraftCommentFile, Segment } from "./draft.ts";
 
 /**
  * What the rest of the window can put into the open thread's message box. Each call changes only
@@ -24,10 +24,13 @@ export interface MessageBox {
     readonly replacing?: string | undefined;
   }): void;
   /**
-   * A comment on a passage of the agent's response, listed above the draft's text and sent before
-   * it. Focus stays where it is, so the user can go on to the next passage.
+   * A comment on a passage of the agent's response, or (`file`) on lines of a diff of its work,
+   * listed above the draft's text and sent before it. Focus stays where it is, so the user can go
+   * on to the next passage.
    */
-  comment(content: { readonly quote: string; readonly text: string }): void;
+  comment(content: { readonly quote: string; readonly text: string; readonly file?: DraftCommentFile }): void;
+  /** The draft the box writes to: a thread's id, or a thread not started yet's key. */
+  key(): string | undefined;
 }
 
 /** The open thread's message box; absent while there is none to write in (an ended thread's). */
@@ -45,6 +48,7 @@ export const useMessageBoxHandle = () => {
     mention: (mention) => ref.current?.mention(mention),
     append: (content) => ref.current?.append(content),
     comment: (content) => ref.current?.comment(content),
+    key: () => ref.current?.key(),
   };
   return [ref, box] as const;
 };

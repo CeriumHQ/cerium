@@ -50,12 +50,35 @@ export interface DraftStart {
   readonly worktree?: boolean;
 }
 
-/** A remark on a passage the user selected in one of the agent's responses. */
+/** One line of a diff a comment sits on, as the diff shows it. */
+export interface DraftCommentLine {
+  /** The diff's marker for the line: `+` added, `-` removed, ` ` unchanged. */
+  readonly marker: "+" | "-" | " ";
+  readonly text: string;
+  /**
+   * The line's number where the comment anchors: a new or unchanged line's number on the new side,
+   * a removed line's on the old one.
+   */
+  readonly number: number;
+}
+
+/** The diff a comment was made on: the file, where the run sits, and each covered line. */
+export interface DraftCommentFile {
+  readonly path: string;
+  /** The first and last line of the run, by the diff's numbers. */
+  readonly start: number;
+  readonly end: number;
+  readonly lines: ReadonlyArray<DraftCommentLine>;
+}
+
+/** A remark, on a passage the user selected in one of the agent's responses or on lines of a diff. */
 export interface DraftComment {
   readonly id: string;
-  /** The passage, as the response showed it. */
+  /** The passage, as the response showed it; for a diff's lines, the lines with their markers. */
   readonly quote: string;
   readonly text: string;
+  /** Set when the comment sits on lines of a diff rather than on a passage of the reply. */
+  readonly file?: DraftCommentFile;
 }
 
 export interface Draft {
@@ -85,9 +108,32 @@ const quoted = (passage: string): string =>
     .map((line) => (line.trim() === "" ? ">" : `> ${line}`))
     .join("\n");
 
-/** What the agent reads: each comment as its quoted passage and the remark below it, then the text. */
+/** The range a comment covers: `12-19`, or `12` when it covers one line. */
+export const lineRange = (start: number, end: number): string =>
+  start === end ? `${start}` : `${start}-${end}`;
+
+/** What the agent reads of a comment on a diff's lines: the file and lines, then the remark. */
+const fenced = (comment: DraftComment): string => {
+  const file = comment.file!;
+  return [
+    `\`${file.path}:${lineRange(file.start, file.end)}\``,
+    "```diff",
+    ...file.lines.map((line) => `${line.marker} ${line.text}`),
+    "```",
+    comment.text.trim(),
+  ]
+    .filter((part) => part !== "")
+    .join("\n");
+};
+
+/** What the agent reads: each comment (a quoted passage, or a marked-out diff run), then the text. */
 export const withComments = (text: string, comments: ReadonlyArray<DraftComment>): string =>
-  [...comments.map((comment) => [quoted(comment.quote), comment.text.trim()]).flat(), text.trim()]
+  [
+    ...comments.flatMap((comment) =>
+      comment.file === undefined ? [quoted(comment.quote), comment.text.trim()] : [fenced(comment)],
+    ),
+    text.trim(),
+  ]
     .filter((part) => part !== "")
     .join("\n\n");
 

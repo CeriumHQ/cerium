@@ -4,12 +4,15 @@ import {
   OFFERED_PROVIDERS,
   type AccountDrafts,
   type AccountTasks,
+  type AccessMode,
   type AccountThreads,
   type AgentEvent,
   type AgentId,
   type DeviceId,
   type EventPayload,
+  type PastSession,
   type ProviderId,
+  type TaskEntry,
   type ThreadId,
   type ThreadNotification,
 } from "@cerium/protocol";
@@ -167,6 +170,39 @@ export const manifestsAtom = Backend.runtime.atom((get) => {
   get(connectionEpochAtom);
   return Backend.use((client) => client("HarnessManifests", undefined));
 });
+
+/**
+ * The user's own sessions with the harnesses that a thread could take over, newest first. Read once
+ * something asks, as listing them wakes each harness; a machine too old to list them fails it.
+ */
+export const pastSessionsAtom = Backend.runtime.atom((get) => {
+  get(connectionEpochAtom);
+  return Backend.use((client) => client("ListPastSessions", undefined));
+});
+
+/** Brings sessions in as threads, then reads the thread list and the sessions left again. */
+export const importSessions = Backend.runtime.fn<{
+  readonly sessions: ReadonlyArray<PastSession>;
+  readonly access: AccessMode;
+  readonly archiveBefore?: number;
+}>()((payload, get) =>
+  Backend.use((client) => client("ImportSessions", payload)).pipe(
+    Effect.ensuring(
+      Effect.sync(() => {
+        get.refresh(threadsAtom);
+        get.refresh(pastSessionsAtom);
+      }),
+    ),
+  ),
+);
+
+/**
+ * Threads just brought in, for the window to mark seen: they arrive with their own past activity,
+ * which isn't news.
+ */
+export const importedThreadsAtom = Atom.make<
+  ReadonlyArray<{ readonly id: string; readonly updatedAt: number }>
+>([]).pipe(Atom.keepAlive);
 
 const providers = OFFERED_PROVIDERS;
 const MODELS_KEY = "cerium:models";
@@ -410,9 +446,13 @@ export const settledEventsAtom = Atom.family((threadId: ThreadId) =>
 const SUMMARY_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
   "MessageCompleted",
   "UsageReported",
+  "ContextReported",
+  "ContextCompacted",
+  "ConversationRewound",
   "TodosUpdated",
   "SessionStarted",
   "ModelChanged",
+  "LeadHandedOff",
   "AgentError",
   "PermissionRequested",
   "PermissionResolved",
@@ -459,6 +499,8 @@ export const editMessage = Backend.mutation("EditMessage");
 export const previewRestore = Backend.mutation("PreviewRestore");
 export const restoreBefore = Backend.mutation("RestoreBefore");
 export const switchModel = Backend.mutation("SwitchModel");
+export const handOffLead = Backend.mutation("HandOffLead");
+export const compactAgent = Backend.mutation("CompactAgent");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");
 export const resolveSpawnApproval = Backend.mutation("ResolveSpawnApproval");
@@ -503,6 +545,39 @@ export const removeDevice = LocalBackend.mutation("RemoveDevice");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");
 export const saveDrafts = LocalBackend.mutation("SaveDrafts");
 export const saveTasks = LocalBackend.mutation("SaveTasks");
+
+/**
+ * What agents say the user's tasks list gained and lost, each batch as an event's
+ * `UserTasksChanged` told it, kept while the window's tasks so a coalesced render loses none.
+ * `TaskSync` merges them into the window's, newest-wins, and pushes its list back for the agents'
+ * tools to read.
+ */
+export const agentTaskEventsAtom = Backend.runtime
+  .atom((get) =>
+    Stream.unwrap(
+      Effect.map(subscribeLive(get), (live) =>
+        Stream.fromSubscription(live).pipe(
+          Stream.flatMap((live) =>
+            live._tag === "Event" && live.event.payload._tag === "UserTasksChanged"
+              ? Stream.make(live.event.payload.tasks)
+              : Stream.empty,
+          ),
+          Stream.scan(
+            (): ReadonlyMap<string, TaskEntry> => new Map(),
+            (kept, batch) => {
+              const next = new Map(kept);
+              for (const entry of batch) next.set(entry.id, entry);
+              return next;
+            },
+          ),
+        ),
+      ),
+    ),
+  )
+  .pipe(Atom.keepAlive);
+
+/** What this window holds of the user's tasks, as the machine's agents' tools see them. */
+export const syncUserTasks = Backend.mutation("SyncUserTasks");
 // Push notifications: what the window shows, and a browser's subscription.
 export const reportPresence = LocalBackend.mutation("ReportPresence");
 export const subscribePush = LocalBackend.mutation("SubscribePush");

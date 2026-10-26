@@ -110,6 +110,14 @@ export interface ModelSwitch {
   readonly autoEffort?: boolean;
 }
 
+/** The `RPC_VERSION` that brought `HandOffLead`; an older machine's leads stay on their harness. */
+export const HANDOFF_VERSION = 32;
+
+/** What an open thread's lead is handed to: a model of another harness. */
+export interface HandoffChoice extends ModelSwitch {
+  readonly provider: ProviderId;
+}
+
 /**
  * The switch to `model`, carrying `effort` over where the model has it, and Auto when the lead is on
  * it. A harness that can't change effort keeps the thread's own, so asking for the model alone isn't

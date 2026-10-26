@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import type { ReasoningEffort } from "@cerium/protocol";
+import type { ProviderId, ReasoningEffort } from "@cerium/protocol";
 import {
   ArrowRightLeft,
   Ban,
@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   CornerDownRight,
+  FoldVertical,
   Pencil,
   RotateCcw,
   Route,
@@ -29,6 +30,7 @@ import { segmentsOf } from "../composer/draft.ts";
 import { takeLaunch } from "../composer/flight.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { effortLabel } from "../composer/models.ts";
+import { providerName } from "../threads/model.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { FileChip } from "./FileChip.tsx";
 import { FoldedText } from "./FoldedText.tsx";
@@ -135,6 +137,7 @@ export function UserMessage({
       {block.text.trim() === "" ? null : (
         <div
           ref={bubble}
+          data-find={block.id}
           className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text"
         >
           <FoldedText text={block.text}>
@@ -219,23 +222,38 @@ export function Working() {
   );
 }
 
-/** Where the user switched the agent to another model, or just its effort. */
+/** Where the user switched the agent to another model, or just its effort, or handed it to another harness. */
 export function ModelSwitch({
+  provider,
   model,
   effort,
   change,
 }: {
+  /** The harness it runs on from here. */
+  provider: ProviderId;
   /** The model as people know it. */
   model: string;
   effort?: ReasoningEffort;
-  change: "model" | "effort";
+  change: "model" | "effort" | "handoff";
 }) {
   return (
     <p className="flex items-center gap-2 text-meta text-fg-tertiary">
-      <ArrowRightLeft size={13} strokeWidth={1.75} className="shrink-0" />
+      {change === "handoff" ? (
+        <ProviderLogo provider={provider} size={13} className="shrink-0 text-fg-secondary" />
+      ) : (
+        <ArrowRightLeft size={13} strokeWidth={1.75} className="shrink-0" />
+      )}
       <span className="min-w-0 truncate">
         {change === "effort" ? (
           <>Effort set to {effort ? effortLabel[effort] : ""}</>
+        ) : change === "handoff" ? (
+          <>
+            Continued on{" "}
+            <span className="font-medium text-fg-secondary">
+              {providerName[provider]} · {model}
+            </span>
+            {effort ? ` · ${effortLabel[effort]}` : ""}
+          </>
         ) : (
           <>
             Switched to <span className="font-medium text-fg-secondary">{model}</span>
@@ -244,6 +262,72 @@ export function ModelSwitch({
         )}
       </span>
     </p>
+  );
+}
+
+/**
+ * Where the harness compacted the conversation: whether on its own, its size before and after, and
+ * unfolded, the summary it carries on with, as far as the harness says.
+ */
+export function Compaction({ block }: { block: Block<"compacted"> }) {
+  const { tokensBefore, tokensAfter, summary } = block;
+  const sizes =
+    tokensBefore !== undefined && tokensAfter !== undefined
+      ? `${compactTokens(tokensBefore)} → ${compactTokens(tokensAfter)}`
+      : tokensBefore !== undefined
+        ? `from ${compactTokens(tokensBefore)}`
+        : undefined;
+  const line = (
+    <>
+      <FoldVertical size={13} strokeWidth={1.75} className="shrink-0" />
+      <span className="min-w-0 truncate">
+        {block.trigger === "auto" ? "Compacted automatically" : "Compacted"}
+        {sizes ? <span className="tabular-nums"> · {sizes}</span> : null}
+      </span>
+    </>
+  );
+  const text = summary?.trim();
+  if (!text) return <p className="flex items-center gap-2 text-meta text-fg-tertiary">{line}</p>;
+  return (
+    <MessageMenuArea text={text}>
+      <Collapsible.Root>
+        <Collapsible.Trigger className="group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
+          {line}
+          <ChevronRight
+            size={13}
+            className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+          />
+        </Collapsible.Trigger>
+        <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+          <div
+            data-find={block.id}
+            className="mt-2 ml-[5.5px] border-l border-line-strong pl-[14px] select-text"
+          >
+            <Markdown text={text} streaming={false} compact />
+          </div>
+        </Collapsible.Panel>
+      </Collapsible.Root>
+    </MessageMenuArea>
+  );
+}
+
+/** Where an imported thread began: the harness its session came from, and whether its history came too. */
+export function ImportedFrom({ block }: { block: Block<"imported"> }) {
+  const harness = providerName[block.provider];
+  return (
+    <div className="flex flex-col gap-1 text-meta text-fg-tertiary">
+      <p className="flex items-center gap-2">
+        <ProviderLogo provider={block.provider} size={13} className="shrink-0 text-fg-secondary" />
+        <span className="min-w-0 truncate">
+          Imported from <span className="font-medium text-fg-secondary">{harness}</span>
+        </span>
+      </p>
+      {block.unavailable === undefined ? null : (
+        <p className="pl-5" title={block.unavailable.detail}>
+          {harness} couldn't give this session's history. Your next message picks it up where it left off.
+        </p>
+      )}
+    </div>
   );
 }
 

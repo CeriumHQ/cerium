@@ -2,12 +2,13 @@ import { Button } from "@base-ui/react/button";
 import type { TerminalInfo } from "@cerium/rpc";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ClipboardPaste, Copy, Eraser, RotateCcw, TextSelect } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ClipboardPaste, Copy, Eraser, Globe, RotateCcw, TextSelect } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { restartTerminal, terminalSessionAtom } from "../../backend/terminals.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { usesCommandKey } from "../../lib/keys.ts";
+import { canOpenLocally, openLocally, shortUrl } from "../preview/model.ts";
 import { exitNote, messageOf } from "./model.ts";
 import type { TerminalSession } from "./session.ts";
 
@@ -53,6 +54,12 @@ export function TerminalView({
     if (session !== undefined && ended) session.end();
   }, [session, ended]);
 
+  // A dev server's local address, once the terminal prints one, is offered to the thread's preview.
+  const localUrl = useSyncExternalStore(
+    (listener) => session?.onLocalUrl(listener) ?? (() => undefined),
+    () => session?.localUrl,
+  );
+
   useEffect(() => {
     if (session === undefined || focus === 0) return;
     let current = true;
@@ -65,7 +72,16 @@ export function TerminalView({
   }, [session, focus]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
+      {localUrl !== undefined && !ended && canOpenLocally() ? (
+        <Button
+          onClick={() => openLocally(localUrl)}
+          className="absolute top-1.5 right-3 z-10 flex h-6 items-center gap-1.5 rounded-md bg-surface-raised px-2 text-meta text-fg-secondary shadow-raised ring-1 ring-line-subtle transition-colors hover:bg-surface-hover hover:text-fg-primary starting:opacity-0"
+        >
+          <Globe size={12} strokeWidth={1.75} aria-hidden />
+          <span>Preview {shortUrl(localUrl)}</span>
+        </Button>
+      ) : null}
       <ContextMenuArea menu={<TerminalMenu session={session} selected={selected} />}>
         <div
           ref={container}

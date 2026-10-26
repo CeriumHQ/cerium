@@ -132,4 +132,51 @@ describe("withComments", () => {
   it("is the text alone without comments", () => {
     expect(withComments(" Ship it ", [])).toBe("Ship it");
   });
+
+  it("names a diff run by its file and lines, fencing the lines with their markers", () => {
+    const comments = [
+      {
+        id: "c",
+        quote: "+ reroute('do')\n  no route left",
+        text: "Does the redirect keep the query?",
+        file: {
+          path: "src/routes.ts",
+          start: 12,
+          end: 13,
+          lines: [
+            { marker: "+" as const, text: "reroute('do')", number: 12 },
+            { marker: " " as const, text: "no route left", number: 13 },
+          ],
+        },
+      },
+    ];
+    expect(withComments("", comments)).toBe(
+      "`src/routes.ts:12-13`\n```diff\n+ reroute('do')\n  no route left\n```\nDoes the redirect keep the query?",
+    );
+  });
+
+  it("round-trips a comment on a diff's lines through storage", () => {
+    const file = {
+      path: "src/routes.ts",
+      start: 12,
+      end: 12,
+      lines: [{ marker: "-" as const, text: "reroute('old')", number: 12 }],
+    };
+    const drafts: Drafts = {
+      thread: {
+        segments: [],
+        attachments: [],
+        comments: [{ id: "c", quote: "- reroute('old')", text: "Left over?", file }],
+      },
+    };
+    const restored = parseDrafts(serializeDrafts(drafts));
+    expect(restored["thread"]?.comments?.[0]?.file).toEqual(file);
+
+    const old = JSON.parse(
+      JSON.stringify({
+        thread: { segments: [], attachments: [], comments: [{ id: "c", quote: "x", text: "y" }] },
+      }),
+    );
+    expect(parseDrafts(JSON.stringify(old))["thread"]?.comments?.[0]?.file).toBeUndefined();
+  });
 });

@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import type { AppMode } from "../../app/mode.ts";
 import { isNewDraftKey, newDraftKey, newThreadDraftTabsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { githubOfKey } from "../github/model.ts";
 import { githubTitlesAtom } from "../github/tabs.ts";
+import { previewOfKey, previewStates, previewTitle, subscribePreviews } from "../preview/model.ts";
 import { commitFileOfKey, fileOfKey, turnFileOfKey } from "../viewer/model.ts";
 import { isNonThreadKey } from "./tabKinds.ts";
 import {
@@ -71,6 +72,7 @@ export function useThreadTabs({
   const [opening, setOpening] = useState<{ readonly key: string; readonly as: OpenAs }>();
   const drafts = useAtomValue(newThreadDraftTabsAtom);
   const githubTitles = useAtomValue(githubTitlesAtom);
+  const previews = useSyncExternalStore(subscribePreviews, previewStates);
   const strip = strips[machine]?.[mode] ?? emptyStrip;
   const update = (change: (strip: TabStrip) => TabStrip) =>
     setStrips((all) => ({
@@ -117,6 +119,18 @@ export function useThreadTabs({
         github,
         project: `${github.kind === "pr" ? "Pull request" : "Issue"} #${github.number} · ${baseName(github.root)}`,
       };
+    const previewOf = previewOfKey(key);
+    if (previewOf !== undefined) {
+      const owner = threads.find((thread) => thread.id === previewOf);
+      return {
+        key,
+        title: previewTitle(previews[previewOf]),
+        draft: false,
+        preview,
+        previewOf,
+        ...(owner?.title ? { project: owner.title } : {}),
+      };
+    }
     const commit = commitFileOfKey(key);
     const turn = turnFileOfKey(key);
     const file = fileOfKey(key) ?? commit ?? turn;

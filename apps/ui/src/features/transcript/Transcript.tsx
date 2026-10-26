@@ -28,6 +28,8 @@ import { ClosedQuestions, QuestionCard } from "../questions/QuestionCard.tsx";
 import { textScale, textSizeAtom } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
 import {
+  Compaction,
+  ImportedFrom,
   ModelSwitch,
   Notice,
   PermissionCard,
@@ -55,6 +57,7 @@ import {
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { SelectionReply } from "./SelectionReply.tsx";
+import { TranscriptFind } from "./FindBar.tsx";
 import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
@@ -68,7 +71,7 @@ interface TranscriptProps {
   /** The lead's provider, and the model it runs on now, which labels a response with no model of its own. */
   readonly agent: { readonly provider: ProviderId; readonly model: string };
   /** A model's id as people know it ("Opus 5.5"); without it, responses show the id. */
-  readonly modelName?: ((model: string) => string) | undefined;
+  readonly modelName?: ((model: string, provider: ProviderId) => string) | undefined;
   /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
   readonly folder?: string | undefined;
   /** The thread's message box, which messages and chips can put content into; absent when closed. */
@@ -103,6 +106,10 @@ interface TranscriptProps {
   readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
   /** Opens the files a turn changed and undoes them; without it, a turn's files are only listed. */
   readonly turnFiles?: TurnFileActions | undefined;
+  /** The thread the conversation is of, which a message a palette search picked is found in. */
+  readonly threadId?: string | undefined;
+  /** The pane shows this conversation and has focus, so Ctrl F opens its find bar. */
+  readonly focused?: boolean | undefined;
 }
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
@@ -143,6 +150,7 @@ const entrance = (item: Item): string => {
       return "trail";
     case "routed":
     case "switch":
+    case "imported":
     case "spawnAsk":
       return "write-in";
     case "block":
@@ -182,6 +190,8 @@ export function Transcript({
   onPreviewRestore,
   onRestoreMessage,
   turnFiles,
+  threadId,
+  focused = false,
 }: TranscriptProps) {
   // Read from the spawns as text, which stays equal while they do, so `actions` below stays the same
   // object: every card that reads it renders again when it changes, which was every streamed batch.
@@ -206,8 +216,8 @@ export function Transcript({
   const working = activity === "running" && !showsProgress(last);
   // A response labels itself with the model it ran on, which the thread's events say; the model it
   // runs on now is only for one that hasn't started and for threads that never said.
-  const modelLabel = (model: string | undefined) =>
-    model === undefined ? agent.model : (modelName?.(model) ?? model);
+  const modelLabel = (model: string | undefined, provider: ProviderId | undefined) =>
+    model === undefined ? agent.model : (modelName?.(model, provider ?? agent.provider) ?? model);
   const responding =
     items.findLast((item) => item.kind === "header" || item.kind === "input")?.kind === "header";
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
@@ -260,8 +270,12 @@ export function Transcript({
             item={item}
             last={!replaced && item === last}
             activity={replaced ? "ended" : activity}
-            provider={agent.provider}
-            model={item.kind === "header" || item.kind === "switch" ? modelLabel(item.model) : ""}
+            provider={
+              (item.kind === "header" || item.kind === "switch" ? item.provider : undefined) ?? agent.provider
+            }
+            model={
+              item.kind === "header" || item.kind === "switch" ? modelLabel(item.model, item.provider) : ""
+            }
             replaced={replaced}
             fresh={
               !replaced && item.kind === "run"
@@ -303,7 +317,10 @@ export function Transcript({
               {working && !responding ? (
                 <div className="arrive-header">
                   <ResponseHeader
-                    agent={{ provider: agent.provider, model: modelLabel(currentModel(shown)) }}
+                    agent={{
+                      provider: agent.provider,
+                      model: modelLabel(currentModel(shown), agent.provider),
+                    }}
                     routed={pendingRouted(shown)}
                   />
                 </div>
@@ -330,6 +347,7 @@ export function Transcript({
           >
             <ArrowDown size={15} strokeWidth={2} />
           </Button>
+          <TranscriptFind scope={column} threadId={threadId} focused={focused} blocks={shown} />
         </div>
       </ImageGallery>
     </ThreadContext>
@@ -445,10 +463,13 @@ const TranscriptItem = memo(
               <RoutedEffort routed={each.decision} />
             </div>
           );
+        case "imported":
+          return <ImportedFrom key={each.id} block={each.block} />;
         case "switch":
           return (
             <ModelSwitch
               key={each.id}
+              provider={provider}
               model={model}
               {...(each.effort ? { effort: each.effort } : {})}
               change={each.change}
@@ -555,7 +576,7 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
     case "message":
       return (
         <MessageMenuArea text={block.text} className="select-text">
-          <div data-reply-source>
+          <div data-reply-source data-find={block.id}>
             <Markdown text={block.text} streaming={block.streaming} />
           </div>
         </MessageMenuArea>
@@ -568,6 +589,8 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
       return <QuestionBlock block={block} expired={activity === "ended"} />;
     case "error":
       return <p className="text-body text-fg-secondary">{block.message}</p>;
+    case "compacted":
+      return <Compaction block={block} />;
     default:
       return null;
   }

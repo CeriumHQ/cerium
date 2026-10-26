@@ -1,7 +1,7 @@
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import { Dialog } from "@base-ui/react/dialog";
 import type { ThreadMatch } from "@cerium/rpc";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { Archive, Monitor, Search, X } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -11,6 +11,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel } from "../../lib/keys.ts";
 import { shortAgo } from "../../lib/time.ts";
 import type { ThreadSummary } from "../threads/model.ts";
+import { findJumpAtom } from "../transcript/find.ts";
 import { ThreadMark } from "../threads/StatusIndicator.tsx";
 import {
   highlight,
@@ -91,6 +92,7 @@ function PalettePanel({
   readonly onRun: (command: PaletteCommand) => void;
 }) {
   const [typed, setTyped] = useState("");
+  const jumpTo = useAtomSet(findJumpAtom);
   const query = typed.trim();
   const asking = messageSearch && queryWords(query).length > 0 && query.length >= MIN_MESSAGE_QUERY;
   const found = useAtomValue(asking ? threadSearchAtom(threadSearchKey(mode, query)) : noMatches);
@@ -174,9 +176,13 @@ function PalettePanel({
                     <Autocomplete.Item
                       key={entry.key}
                       value={entry}
-                      onClick={() =>
-                        entry.kind === "thread" ? onOpenThread(entry.result.thread.id) : onRun(entry.command)
-                      }
+                      onClick={() => {
+                        if (entry.kind !== "thread") return onRun(entry.command);
+                        const { thread, passage } = entry.result;
+                        // A message the search found: the thread opens on it, its words marked.
+                        if (passage !== undefined) jumpTo({ threadId: thread.id, passage, at: Date.now() });
+                        onOpenThread(thread.id);
+                      }}
                       className="flex cursor-default items-start gap-2.5 rounded-lg px-2 py-1.5 outline-none select-none [scroll-margin-block:0.375rem] data-highlighted:bg-surface-active max-md:gap-3 max-md:py-2.5"
                     >
                       {entry.kind === "thread" ? (

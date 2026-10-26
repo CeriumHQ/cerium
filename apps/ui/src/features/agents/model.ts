@@ -39,6 +39,18 @@ export interface PendingQuestion {
   readonly at: number;
 }
 
+export interface AgentContext {
+  readonly tokens: number;
+  readonly window?: number;
+}
+
+/** What fraction of its window the context fills, when the window is known; at most 1. */
+export const contextFill = (context: AgentContext | undefined): number | undefined =>
+  context?.window === undefined ? undefined : Math.min(1, context.tokens / context.window);
+
+/** From this fill on, the meter warns that the harness will soon compact. */
+export const CONTEXT_NEARLY_FULL = 0.8;
+
 /** What the inspector shows for one agent, derived from its record and event log. */
 export interface AgentSummary {
   readonly id: string;
@@ -61,6 +73,12 @@ export interface AgentSummary {
   /** The questions waiting on the user's answer, oldest first. */
   readonly questions: ReadonlyArray<PendingQuestion>;
   readonly usage: { readonly inputTokens: number; readonly outputTokens: number; readonly costUsd?: number };
+  /**
+   * The tokens in the agent's context as its harness last measured them, against its model's window
+   * where the harness reports one. Absent until a harness reports it, and after the conversation went
+   * back or moved to another harness.
+   */
+  readonly context?: AgentContext;
   /** The agent's todo list or plan as its harness last reported it, whole; empty when it keeps none. */
   readonly todos: ReadonlyArray<TodoItem>;
   /** Why the agent last changed its plan, when its harness said. */

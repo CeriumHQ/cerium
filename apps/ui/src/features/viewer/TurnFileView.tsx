@@ -7,9 +7,11 @@ import { turnDiffAtom, turnDiffKey } from "../../backend/turnFiles.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ContextMenuArea } from "../../components/ui/Menu.tsx";
+import type { MessageBox } from "../composer/messageBox.ts";
 import { dirOf, nameOf } from "../files/model.ts";
 import type { PaneChrome } from "../split/SplitView.tsx";
 import { DiffView } from "./DiffView.tsx";
+import { useDiffComments } from "./diffComments.ts";
 import { diffLayoutAtom, type TurnFileTab } from "./model.ts";
 import { Note, messageOf } from "./previews.tsx";
 
@@ -23,17 +25,24 @@ export function TurnFileView({
   tab,
   onClose,
   pane,
+  messageBox,
+  draftKey,
 }: {
   readonly tab: TurnFileTab;
   readonly onClose: () => void;
   /** While it shares the main area with other panes, its header is the pane's: dragged by, with the pane's menu. */
   readonly pane?: PaneChrome | undefined;
+  /** The window's message box, for comments on the diff's lines; none while it shows no box to write with. */
+  readonly messageBox?: MessageBox | undefined;
+  /** The draft the message box writes to, whose comments wait on the diff's lines. */
+  readonly draftKey?: string | undefined;
 }) {
   const { root, before, after, path } = tab;
   const result = useAtomValue(turnDiffAtom(turnDiffKey(root, before, after, path, CONTEXT)));
   const diff = Option.getOrUndefined(AsyncResult.value(result));
   const [layout] = useAtom(diffLayoutAtom);
   const dir = dirOf(path);
+  const commenting = useDiffComments({ messageBox, draftKey, path });
 
   const header = (
     <header
@@ -65,7 +74,13 @@ export function TurnFileView({
     return (
       <div className="flex h-full flex-col">
         <div className="min-h-0 flex-1">
-          <DiffView hunks={diff.hunks} path={path} layout={layout} onExpand={undefined} />
+          <DiffView
+            hunks={diff.hunks}
+            path={path}
+            layout={layout}
+            onExpand={undefined}
+            commenting={commenting}
+          />
         </div>
         {diff.truncated === true ? (
           <p className="shrink-0 border-t border-line-subtle px-4 py-1.5 text-meta text-fg-tertiary">

@@ -1,4 +1,4 @@
-import type { ReasoningEffort } from "@cerium/protocol";
+import type { ProviderId, ReasoningEffort } from "@cerium/protocol";
 
 import { isAnswerNotice, type RoutedDecision, type TranscriptBlock } from "./model.ts";
 import { outputText, type ToolBlock } from "./tools.ts";
@@ -17,17 +17,22 @@ export type Item =
   | {
       readonly kind: "header";
       readonly id: string;
+      /** The harness it ran on, where the thread said; else the lead's own. */
+      readonly provider?: ProviderId;
       readonly model?: string;
       readonly routed?: RoutedDecision;
     }
-  /** Where the user switched the agent's model, or just its effort. */
+  /** Where the user switched the agent's model, or just its effort, or handed it to another harness. */
   | {
       readonly kind: "switch";
       readonly id: string;
+      readonly provider?: ProviderId;
       readonly model: string;
       readonly effort?: ReasoningEffort;
-      readonly change: "model" | "effort";
+      readonly change: "model" | "effort" | "handoff";
     }
+  /** Where the thread came from: a session the user had with the harness outside Cerium. */
+  | { readonly kind: "imported"; readonly id: string; readonly block: Block<"imported"> }
   /** The effort router's decision for a turn inside a response, such as one a child's result began. */
   | { readonly kind: "routed"; readonly id: string; readonly decision: RoutedDecision }
   | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
@@ -113,8 +118,9 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
   const items: Array<Item> = [];
   // What the agent has said since the user last spoke: what its end-of-response button copies.
   let said: Array<string> = [];
-  // The model the agent runs on, for the header of the response that starts next.
+  // The model the agent runs on, and its harness, for the header of the response that starts next.
   let model: string | undefined;
+  let provider: ProviderId | undefined;
   let headerDue = true;
   // The router decides before the turn's input arrives, so its word waits for the response's header.
   let routed: Block<"routed"> | undefined;
@@ -126,15 +132,26 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     }
     if (block.kind === "model") {
       model = block.model;
+      provider = block.provider ?? provider;
       if (block.change !== "start") {
         items.push({
           kind: "switch",
           id: block.id,
+          ...(provider ? { provider } : {}),
           model: block.model,
           ...(block.effort ? { effort: block.effort } : {}),
           change: block.change,
         });
       }
+      continue;
+    }
+    if (block.kind === "imported") {
+      items.push({ kind: "imported", id: block.id, block });
+      continue;
+    }
+    // A compaction the user asked for between responses begins none of its own.
+    if (block.kind === "compacted" && headerDue) {
+      items.push({ kind: "block", id: block.id, block });
       continue;
     }
     if (block.kind === "replaced") {
@@ -170,6 +187,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
       items.push({
         kind: "header",
         id: `header:${block.id}`,
+        ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         ...(routed ? { routed: routed.decision } : {}),
       });
