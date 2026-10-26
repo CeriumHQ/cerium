@@ -134,7 +134,14 @@ export function PromptSettings() {
   );
 }
 
-/** One saved prompt: its name and scope over the start of its text, with its order and edits. */
+// A row's actions show while it's hovered or holds focus, and always on a touch screen.
+const actionClass =
+  "grid size-7 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,color,background-color] group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-surface-hover focus-visible:opacity-100 data-disabled:opacity-40 pointer-coarse:opacity-100";
+
+/**
+ * One saved prompt: its name and scope over the start of its text, with its order and edits. A
+ * prompt alone in the list has no order to change.
+ */
 function PromptRow({
   prompt,
   disabled,
@@ -165,32 +172,36 @@ function PromptRow({
         <span className="truncate text-meta leading-relaxed text-fg-tertiary">{preview(prompt.text)}</span>
       </div>
       <span className="flex shrink-0 items-center">
-        <Tooltip label="Move up">
-          <Button
-            aria-label={`Move ${prompt.name} up`}
-            disabled={disabled || first}
-            onClick={() => onMove("up")}
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 data-disabled:opacity-40 pointer-coarse:opacity-100"
-          >
-            <ChevronUp size={14} strokeWidth={1.75} />
-          </Button>
-        </Tooltip>
-        <Tooltip label="Move down">
-          <Button
-            aria-label={`Move ${prompt.name} down`}
-            disabled={disabled || last}
-            onClick={() => onMove("down")}
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 data-disabled:opacity-40 pointer-coarse:opacity-100"
-          >
-            <ChevronDown size={14} strokeWidth={1.75} />
-          </Button>
-        </Tooltip>
+        {first && last ? null : (
+          <>
+            <Tooltip label="Move up">
+              <Button
+                aria-label={`Move ${prompt.name} up`}
+                disabled={disabled || first}
+                onClick={() => onMove("up")}
+                className={`${actionClass} hover:text-fg-primary`}
+              >
+                <ChevronUp size={14} strokeWidth={1.75} />
+              </Button>
+            </Tooltip>
+            <Tooltip label="Move down">
+              <Button
+                aria-label={`Move ${prompt.name} down`}
+                disabled={disabled || last}
+                onClick={() => onMove("down")}
+                className={`${actionClass} hover:text-fg-primary`}
+              >
+                <ChevronDown size={14} strokeWidth={1.75} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
         <Tooltip label="Edit prompt">
           <Button
             aria-label={`Edit ${prompt.name}`}
             disabled={disabled}
             onClick={onEdit}
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 data-disabled:opacity-40 pointer-coarse:opacity-100"
+            className={`${actionClass} hover:text-fg-primary`}
           >
             <Pencil size={14} strokeWidth={1.75} />
           </Button>
@@ -200,7 +211,7 @@ function PromptRow({
             aria-label={`Delete ${prompt.name}`}
             disabled={disabled}
             onClick={onRemove}
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,color,background-color] group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 data-disabled:opacity-40 pointer-coarse:opacity-100"
+            className={`${actionClass} hover:text-error`}
           >
             <X size={14} strokeWidth={1.75} />
           </Button>

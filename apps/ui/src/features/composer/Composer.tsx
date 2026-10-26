@@ -370,6 +370,14 @@ export function Composer({
     provider: target.kind === "thread" ? target.provider : starting[0]?.provider,
     chat: target.kind === "thread" ? target.folder === undefined : target.mode === "chat",
   };
+  // Esc shuts a list for the one `@`, `$` or `/` it was opened by; once that is gone, as when the
+  // message is cleared, the next one opens its list again.
+  if (
+    dismissed !== undefined &&
+    (trigger === undefined || trigger.char !== dismissed.char || trigger.start !== dismissed.start)
+  ) {
+    setDismissed(undefined);
+  }
   const menuTrigger =
     trigger !== undefined &&
     trigger.char !== "/" &&

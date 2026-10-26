@@ -8,6 +8,7 @@ import {
   DialogSelect,
   FormDialog,
 } from "../../components/ui/FormDialog.tsx";
+import { projectName } from "./projectList.ts";
 
 // The name, text and scope of one saved prompt, for the settings page and the message menu's
 // "Save as prompt". Keyed by the prompt it edits, so its fields start over for another one.
@@ -95,8 +96,8 @@ export function PromptDialog({
           >
             <option value="everywhere">Everywhere</option>
             {options.map((folder) => (
-              <option key={folder} value={folder}>
-                {folder}
+              <option key={folder} value={folder} title={folder}>
+                {projectName(folder)}
               </option>
             ))}
           </DialogSelect>

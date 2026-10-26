@@ -30,7 +30,13 @@ export const slashGroups = (
 
 type SlashRow =
   | { readonly kind: "heading"; readonly key: string; readonly value: string }
-  | { readonly kind: "entry"; readonly key: string; readonly entry: SlashEntry };
+  | {
+      readonly kind: "entry";
+      readonly key: string;
+      readonly entry: SlashEntry;
+      /** Its place among the entries alone, headings aside: what `active` and the editor count. */
+      readonly index: number;
+    };
 
 export function SlashMenu({
   groups,
@@ -51,13 +57,16 @@ export function SlashMenu({
     list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
 
-  // The rows in order: each group's heading, then its entries, so the highlight moves over them all.
+  // The rows in order: each group's heading, then its entries, numbered across the groups so the
+  // highlight moves over them all.
+  let index = 0;
   const rows: ReadonlyArray<SlashRow> = groups.flatMap((group) => [
     { kind: "heading" as const, key: `heading:${group.value}`, value: group.value },
     ...group.items.map((entry): SlashRow => ({
       kind: "entry" as const,
       key: entry.kind === "prompt" ? `prompt:${entry.prompt.id}` : `action:${entry.command.id}`,
       entry,
+      index: index++,
     })),
   ]);
   const empty = query === "" ? "Type to narrow the list." : `Nothing matches “${query}”.`;
@@ -66,7 +75,7 @@ export function SlashMenu({
       {/* The editor keeps focus and points into this list, which a <select> can't be. */}
       {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
       <div ref={list} id="slash-menu" role="listbox" className="max-h-64 overflow-y-auto px-1 py-1">
-        {rows.map((row, at) =>
+        {rows.map((row) =>
           row.kind === "heading" ? (
             <p key={row.key} className="px-2 pt-2 pb-0.5 text-caption font-medium text-fg-tertiary">
               {row.value}
@@ -74,8 +83,8 @@ export function SlashMenu({
           ) : (
             <SlashOption
               key={row.key}
-              at={at}
-              selected={at === active}
+              at={row.index}
+              selected={row.index === active}
               entry={row.entry}
               onActive={onActive}
               onPick={onPick}
@@ -123,11 +132,17 @@ function SlashOption({
       {entry.kind === "prompt" ? (
         <>
           <Bookmark size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-          <span className="shrink-0 font-medium text-fg-primary">{entry.prompt.name}</span>
+          <span className="max-w-[55%] shrink-0 truncate font-medium text-fg-primary">
+            {entry.prompt.name}
+          </span>
           {scopeLabel(entry.prompt) === undefined ? null : (
-            <span className="min-w-0 truncate text-meta text-fg-tertiary">{scopeLabel(entry.prompt)}</span>
+            <span className="shrink-0 text-meta text-fg-tertiary">{scopeLabel(entry.prompt)}</span>
           )}
-          <CornerDownLeft size={12} strokeWidth={1.75} className="ml-auto shrink-0 text-fg-tertiary" />
+          {/* The start of what it inserts, to tell like-named prompts apart. */}
+          <span className="min-w-0 flex-1 truncate text-meta text-fg-tertiary">
+            {entry.prompt.text.replace(/\s+/g, " ")}
+          </span>
+          <CornerDownLeft size={12} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         </>
       ) : (
         <>
