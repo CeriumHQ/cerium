@@ -70,13 +70,31 @@ export const chatSections = (
   threads: ReadonlyArray<ThreadSummary>,
   now = Date.now(),
 ): ReadonlyArray<ThreadSection> => {
-  const byLabel = new Map<string, ThreadSection>();
+  const byLabel = new Map<string, Array<ThreadSummary>>();
   for (const thread of newestFirst(threads)) {
     const label = recency(thread.updatedAt, now);
-    const section = byLabel.get(label) ?? { key: label, label, kind: "time", threads: [] };
-    byLabel.set(label, { ...section, threads: [...section.threads, thread] });
+    const section = byLabel.get(label);
+    if (section) section.push(thread);
+    else byLabel.set(label, [thread]);
   }
-  return [...byLabel.values()];
+  return [...byLabel].map(([label, threads]) => ({ key: label, label, kind: "time", threads }));
+};
+
+/** The first `count` threads of the sections, counted across them in order, and the sections they fill. */
+export const firstOf = (
+  sections: ReadonlyArray<ThreadSection>,
+  count: number,
+): ReadonlyArray<ThreadSection> => {
+  const first: Array<ThreadSection> = [];
+  let left = count;
+  for (const section of sections) {
+    if (left <= 0) break;
+    first.push(
+      left >= section.threads.length ? section : { ...section, threads: section.threads.slice(0, left) },
+    );
+    left -= section.threads.length;
+  }
+  return first;
 };
 
 export interface InboxProject {

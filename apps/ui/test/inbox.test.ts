@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { ThreadSummary } from "../src/features/threads/model.ts";
 import { wordmark } from "../src/features/threads/ProjectBadge.tsx";
 import { isUnread } from "../src/features/threads/readState.ts";
-import { chatSections, inboxProjects, inboxSections } from "../src/features/threads/sections.ts";
+import { chatSections, firstOf, inboxProjects, inboxSections } from "../src/features/threads/sections.ts";
 
 const now = new Date(2026, 9, 18, 15, 0).getTime();
 const HOUR = 3_600_000;
@@ -81,6 +81,30 @@ describe("chatSections", () => {
       ["Today", ["waiting"]],
       ["Older", ["older"]],
     ]);
+  });
+});
+
+describe("firstOf", () => {
+  const sections = chatSections(
+    [
+      thread("a", { mode: "chat", updatedAt: now - HOUR }),
+      thread("b", { mode: "chat", updatedAt: now - 2 * HOUR }),
+      thread("c", { mode: "chat", updatedAt: now - 30 * HOUR }),
+      thread("d", { mode: "chat", updatedAt: now - 31 * HOUR }),
+    ],
+    now,
+  );
+
+  it("counts the threads across the sections in order, dropping the sections past them", () => {
+    expect(layout(firstOf(sections, 3))).toEqual([
+      ["Today", ["a", "b"]],
+      ["Yesterday", ["c"]],
+    ]);
+    expect(layout(firstOf(sections, 2))).toEqual([["Today", ["a", "b"]]]);
+  });
+
+  it("keeps a section it takes whole as it was", () => {
+    expect(firstOf(sections, 10)[0]).toBe(sections[0]);
   });
 });
 

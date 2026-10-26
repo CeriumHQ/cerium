@@ -19,11 +19,12 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
+import { usePaging } from "../../lib/paging.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
 import type { PaletteCommand } from "../palette/palette.ts";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
-import { chatSections, type ThreadSection } from "./sections.ts";
+import { chatSections, firstOf, type ThreadSection } from "./sections.ts";
 import { EmptyList } from "./EmptyList.tsx";
 import { Inbox } from "./Inbox.tsx";
 import { archivedWork, canArchive, canDelete, isListed, type ThreadSummary } from "./model.ts";
@@ -207,13 +208,21 @@ function ChatList({
   draftActions: DraftActions;
 } & ChatActions) {
   const sections = withPinned(chatSections(threads), useAtomValue(pinnedAtom));
+  // A page of chats renders at a time as the list scrolls, counted across the sections in order.
+  const ordered = sections.flatMap((section) => section.threads);
+  const { shown, more, end } = usePaging<HTMLDivElement>(
+    ordered.length,
+    ordered.findIndex((thread) => thread.id === actions.selectedId),
+  );
+  const paged = firstOf(sections, shown);
   return (
     <ScrollArea className="flex-1">
       <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
         <DraftSection drafts={drafts} list="chat" mark="dot" {...draftActions} />
-        {sections.map((section) => (
+        {paged.map((section) => (
           <ChatGroup key={section.key} section={section} {...actions} />
         ))}
+        {more ? <div ref={end} aria-hidden className="h-px" /> : null}
         {sections.length === 0 && drafts.length === 0 ? (
           <EmptyList icon={MessagesSquare} title="No chats yet" hint="Your conversations are kept here." />
         ) : null}

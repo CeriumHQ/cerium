@@ -33,6 +33,7 @@ import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useArrivals, useGlide, useLingering } from "../../lib/motion.ts";
+import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections } from "./sections.ts";
@@ -432,11 +433,23 @@ function Entries({
   const [rows, release] = useLingering(entries, entryKey);
   const arrived = useArrivals(entries.map(entryKey));
   const glide = useGlide();
+  // A long list, the archive's above all, renders a page at a time as it scrolls.
+  const { selectedId } = rowProps;
+  const { shown, more, end } = usePaging<HTMLLIElement>(
+    rows.length,
+    selectedId === undefined
+      ? -1
+      : rows.findIndex(({ item }) =>
+          item.kind === "thread"
+            ? item.thread.id === selectedId
+            : item.threads.some((thread) => thread.id === selectedId),
+        ),
+  );
   // A fragment, not the bare array: the React Compiler takes a function for a component, and memoizes
   // its rows, only when it returns JSX itself.
   return (
     <>
-      {rows.map(({ key, item: entry, present }) => (
+      {rows.slice(0, shown).map(({ key, item: entry, present }) => (
         <li key={key} ref={glide(key)}>
           <Reveal appear={arrived(key)} onGone={() => release(key)}>
             {!present ? null : entry.kind === "thread" ? (
@@ -447,6 +460,7 @@ function Entries({
           </Reveal>
         </li>
       ))}
+      {more ? <li ref={end} aria-hidden className="h-px" /> : null}
     </>
   );
 }

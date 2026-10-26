@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- The sidebar's lists render a page at a time instead of every thread at once: Inbox, Later, Archive and the chat list show their first 25 rows, and more come ten at a time as the end of the list scrolls near, so opening a long Archive no longer holds the window up while every card mounts (191 archived threads: from about 1.2 s to 0.25 s in a development build). The open thread's row always renders, however far down it sits, so one opened from the palette still shows selected. Grouping chats by date no longer copies each section's list for every chat it adds.
 - Settings' categories have glyphs of Cerium's own in place of stock icons: a slider, a person, a ping, a prism, a fan of agents, a frame, a branch, a gauge and keycaps, each with one facet in the accent colour, as the Prism C has its facet. A phone's list shows each in a tile with a line on what the category holds, and the command palette's settings pages use the same glyphs.
 - Settings → Account reads plainer for newcomers: a device's build number moves from its row to the top of its menu, a computer's row names only its platform (and Nightly or Development build when it is one), a phone or browser shows just its name, the Devices section says how to add one, and on a phone the page says what signing in there does.
 
