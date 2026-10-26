@@ -26,6 +26,7 @@ import { previews } from "./preview.ts";
 import { saveImage } from "./saveImage.ts";
 import {
   loginShellPath,
+import { saveText } from "./saveText.ts";
   rememberedPath,
   rememberPath,
   sessionEnvironment,
@@ -432,6 +433,11 @@ void app.whenReady().then(() => {
       folder: smokeTest,
       window: mainWindow,
       connection: async () => {
+/** Saves a thread's export as Markdown or text, where the user picks; resolves whether it was saved. */
+ipcMain.handle("cerium:save-text", (event, text: unknown, name: unknown, format: unknown) =>
+  saveText(event.sender, text, name, format),
+);
+
         await backendStarting;
         if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
         return backend.connection();
