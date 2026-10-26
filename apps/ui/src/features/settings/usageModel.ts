@@ -30,15 +30,14 @@ export const litSegments = (meter: UsageMeter, segments: number): number => {
   return left > 0 ? Math.max(1, Math.round((left / 100) * segments)) : 0;
 };
 
-/** The reset's full date and time, for its tooltip. */
-export const resetMoment = (resetsAt: number): string =>
-  new Date(resetsAt).toLocaleString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+/** The reset's full date and time, for its tooltip: the date alone when the harness names only the day. */
+export const resetMoment = (resetsAt: number, dayOnly = false): string =>
+  new Date(resetsAt).toLocaleString(
+    [],
+    dayOnly
+      ? { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }
+      : { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" },
+  );
 
 /** Plans whose ids don't read as their names. */
 const planNames: Record<string, string> = {

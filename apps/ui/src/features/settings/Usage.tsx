@@ -90,7 +90,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
     >
       <SettingsSection
         title="Limits"
-        description="As each harness reports them. API keys have none, and Cursor and OpenCode don't report theirs yet."
+        description="As each harness reports them; Cursor's come from its CLI. API keys have none, and OpenCode doesn't report its yet."
       >
         {AsyncResult.isFailure(result) && snapshot === undefined ? (
           <SettingsCard className="px-4 py-3.5 text-body text-error">
@@ -293,8 +293,8 @@ function Meter({
   );
   const reset =
     meter.resetsAt !== undefined ? (
-      <Tooltip label={resetMoment(meter.resetsAt)} side="bottom">
-        <span className="min-w-0 truncate">{resetLabel(meter.resetsAt, now)}</span>
+      <Tooltip label={resetMoment(meter.resetsAt, meter.resetDayOnly)} side="bottom">
+        <span className="min-w-0 truncate">{resetLabel(meter.resetsAt, now, meter.resetDayOnly)}</span>
       </Tooltip>
     ) : (
       <span className="min-w-0 truncate">{spent ?? `${Math.round(meter.usedPercent)}% used`}</span>

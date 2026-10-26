@@ -1,7 +1,8 @@
 import type { CapabilityManifest } from "@cerium/protocol";
 
 // `@cursor/sdk` runs Cursor's agent runtime inside this process ("local mode") with its own bundled
-// tools; it never calls the user's `cursor-agent` CLI and does not share its login. The SDK itself
+// tools; sessions never call the user's `cursor-agent` CLI and do not share its login. Only the plan's
+// limits come from that CLI, which shows them with its own login (usage.ts). The SDK itself
 // resolves credentials: `CURSOR_API_KEY` from the environment, else the key its own browser login
 // (`Cursor.auth.login()`, started from Settings → Harnesses) minted into `~/.cursor/sdk/auth.json`.
 // Cerium passes no `apiKey`.

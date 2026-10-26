@@ -43,7 +43,7 @@ export function LowLimitNotice({
             {providerName[from]} · {meter.label}
           </span>{" "}
           {leftLabel(meter)}
-          {meter.resetsAt === undefined ? "" : ` · ${resetLabel(meter.resetsAt, now)}`}
+          {meter.resetsAt === undefined ? "" : ` · ${resetLabel(meter.resetsAt, now, meter.resetDayOnly)}`}
         </span>
         <Button
           onClick={onContinue}

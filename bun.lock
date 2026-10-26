@@ -172,7 +172,9 @@
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@cursor/sdk": "1.0.38",
+        "@xterm/headless": "6.0.0",
         "effect": "4.0.5",
+        "node-pty": "1.2.0-beta.15",
         "zod": "4.6.7",
       },
       "devDependencies": {

@@ -6,12 +6,15 @@
 // Usage: bun run live-check [--providers=claude,codex,muse,cursor] [--access=auto] [--model=claude:haiku]
 //          [--prompt="…"] [--todos] [--expect=a.txt,b.txt] [--expect-reply=DONE] [--max-approvals=0]
 //          [--approvals=deny|allow] [--timeout=180] [--compact] [--trace]
+//        bun run live-check --usage [--providers=cursor]
 
 import { Adapters } from "@cerium/orchestrator";
+import type { ProviderId } from "@cerium/protocol";
 import { NodeServices } from "@effect/platform-node";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 
 import { AdaptersLive } from "../src/layers.ts";
+import { readProviderUsage } from "../src/usage.ts";
 import {
   LiveCheckRequest,
   renderResults,
@@ -46,9 +49,33 @@ if (process.argv.includes("--help")) {
       "  --interrupt-after=8        run a long command, interrupt after this many seconds; must end as interrupted",
       "  --compact                  after the turn, ask the harness to compact; must report the compaction",
       "  --trace                    print each event, with the start of its raw provider message",
+      "  --usage                    read each harness's plan limits instead of running a turn",
     ].join("\n"),
   );
   process.exit(0);
+}
+
+const live = AdaptersLive.pipe(Layer.provide(NodeServices.layer));
+
+if (process.argv.includes("--usage")) {
+  const readings = await Effect.runPromise(
+    Effect.gen(function* () {
+      const adapters = yield* Adapters;
+      const providers = list("providers") ?? [...adapters.keys()];
+      return yield* Effect.forEach(providers, (provider) => {
+        const adapter = adapters.get(provider as ProviderId);
+        return adapter === undefined
+          ? Effect.succeed([provider, "unknown harness"] as const)
+          : readProviderUsage(adapter).pipe(
+              Effect.map((read) => [provider, Option.getOrElse(read, () => "no subscription")] as const),
+            );
+      });
+    }).pipe(Effect.provide(live)),
+  );
+  for (const [provider, reading] of readings) console.log(`${provider}: ${JSON.stringify(reading, null, 2)}`);
+  process.exit(
+    readings.some(([, reading]) => typeof reading === "object" && reading._tag === "UsageUnreadable") ? 1 : 0,
+  );
 }
 
 const todos = process.argv.includes("--todos");
@@ -76,7 +103,7 @@ const request = Schema.decodeUnknownSync(LiveCheckRequest)(input);
 const results = await Effect.runPromise(
   Effect.gen(function* () {
     return yield* runLiveChecks(yield* Adapters, request);
-  }).pipe(Effect.provide(AdaptersLive.pipe(Layer.provide(NodeServices.layer)))),
+  }).pipe(Effect.provide(live)),
 );
 
 console.log(renderResults(results));

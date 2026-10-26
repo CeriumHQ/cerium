@@ -27,6 +27,8 @@ export const UsageMeter = Schema.Struct({
   usedPercent: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
   /** When the window starts again. */
   resetsAt: Schema.optionalKey(EpochMillis),
+  /** The harness names only the day it starts again: `resetsAt` is that day's start, in UTC. */
+  resetDayOnly: Schema.optionalKey(Schema.Boolean),
   /** The window's length, when the harness says. */
   windowMinutes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   level: Schema.optionalKey(MeterLevel),
@@ -164,9 +166,19 @@ export const runsOutLabel = (runsOutAt: number, now: number): string => {
 
 /**
  * When a meter starts again, as people say it: "Resets in 47 min" today, "Resets Tue 3:59 PM" this
- * week, "Resets Nov 17" after that.
+ * week, "Resets Nov 17" after that. A reset known only by its day is always named by the date.
  */
-export const resetLabel = (resetsAt: number, now: number): string => {
+export const resetLabel = (resetsAt: number, now: number, dayOnly = false): string => {
+  if (dayOnly) {
+    if (now >= resetsAt + DAY) return "Resetting now";
+    const at = new Date(resetsAt);
+    return `Resets ${at.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+      ...(at.getUTCFullYear() === new Date(now).getUTCFullYear() ? {} : { year: "numeric" }),
+    })}`;
+  }
   const wait = resetsAt - now;
   if (wait <= 0) return "Resetting now";
   if (wait < DAY) return `Resets in ${waitLabel(wait)}`;

@@ -8,13 +8,15 @@ import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog, toModelInfo } from "./models.ts";
 import { makeCursorProbe } from "./probe.ts";
 import { startCursorSession } from "./session.ts";
+import { readCursorUsage } from "./usage.ts";
 
 export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter>()(
   "cerium/adapters/cursor/CursorAdapter",
 ) {
   /**
    * Requires the platform's `ChildProcessSpawner`, `FileSystem` and `Path` (e.g. `NodeServices.layer`),
-   * like every adapter, so the backend wires them alike. Cursor itself runs in-process and spawns nothing.
+   * like every adapter, so the backend wires them alike. Cursor itself runs in-process; only reading the
+   * plan's limits starts the user's Cursor CLI (usage.ts).
    */
   static readonly layer = Layer.effect(
     CursorAdapter,
@@ -67,6 +69,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
             Effect.provide(platform),
           ),
         startSession,
+        usage: readyForCompletion.pipe(Effect.andThen(readCursorUsage()), Effect.provide(platform)),
       });
     }),
   );

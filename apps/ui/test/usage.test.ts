@@ -52,6 +52,14 @@ describe("usage meters", () => {
     expect(resetLabel(new Date(2027, 0, 3).getTime(), now)).toBe("Resets Jan 3, 2027");
   });
 
+  it("names a reset known only by its day by the date, until that day is over", () => {
+    const day = Date.UTC(2026, 9, 21);
+    expect(resetLabel(day, Date.UTC(2026, 9, 20, 22), true)).toBe("Resets Oct 21");
+    expect(resetLabel(day, Date.UTC(2026, 9, 21, 15), true)).toBe("Resets Oct 21");
+    expect(resetLabel(day, Date.UTC(2026, 9, 22, 0, 1), true)).toBe("Resetting now");
+    expect(resetLabel(Date.UTC(2027, 0, 3), Date.UTC(2026, 11, 20), true)).toBe("Resets Jan 3, 2027");
+  });
+
   it("paces a window: how much of it has gone, and when use outruns it", () => {
     const now = 1_000_000_000;
     const hour = 3_600_000;

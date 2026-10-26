@@ -209,7 +209,9 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
             {leftLabel(meter)}
           </span>
           {meter.resetsAt === undefined ? null : (
-            <span className="text-caption text-fg-tertiary">{resetLabel(meter.resetsAt, now)}</span>
+            <span className="text-caption text-fg-tertiary">
+              {resetLabel(meter.resetsAt, now, meter.resetDayOnly)}
+            </span>
           )}
         </span>
       ))}

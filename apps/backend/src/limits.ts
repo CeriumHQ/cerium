@@ -89,7 +89,10 @@ export const limitNotification = (
     threshold === "runsOut" && pace?.runsOutAt !== undefined
       ? `${runsOutLabel(pace.runsOutAt, now)} at this rate`
       : leftLabel(meter);
-  const detail = [standing, meter.resetsAt === undefined ? undefined : resetLabel(meter.resetsAt, now)]
+  const detail = [
+    standing,
+    meter.resetsAt === undefined ? undefined : resetLabel(meter.resetsAt, now, meter.resetDayOnly),
+  ]
     .filter((part) => part !== undefined)
     .join(" · ");
   return {
