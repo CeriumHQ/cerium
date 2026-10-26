@@ -24,13 +24,11 @@ import {
   type SpendRange,
 } from "./spendModel.ts";
 
-type Breakdown = "model" | "harness" | "thread" | "agent";
+type Breakdown = "model" | "thread";
 
 const breakdowns: ReadonlyArray<{ readonly id: Breakdown; readonly label: string }> = [
   { id: "model", label: "Model" },
-  { id: "harness", label: "Harness" },
   { id: "thread", label: "Thread" },
-  { id: "agent", label: "Agent" },
 ];
 
 /** One line of a breakdown: who, what to call them, and what they used. */
@@ -52,25 +50,10 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
         provider: each.provider,
         totals: each,
       }));
-    case "harness":
-      return report.providers.map((each) => ({
-        key: each.provider,
-        name: harnessName[each.provider],
-        provider: each.provider,
-        totals: each,
-      }));
     case "thread":
       return report.threads.map((each) => ({
         key: each.threadId,
         name: each.title || "Untitled",
-        totals: each,
-      }));
-    case "agent":
-      return report.agents.map((each) => ({
-        key: each.agentId,
-        name: each.title || "Untitled",
-        detail: `${each.role} · ${each.model}`,
-        provider: each.provider,
         totals: each,
       }));
   }
@@ -78,7 +61,7 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
 
 /**
  * What agents used over `range`, for the Usage page: the totals over a chart, then each model,
- * harness, thread or agent's share. The page's Refresh reads it again.
+ * or thread's share. The page's Refresh reads it again.
  */
 export function SpendSection({
   range,

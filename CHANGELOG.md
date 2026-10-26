@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Settings → Usage breaks tokens and cost down by Model or Thread only; the Harness and Agent cuts are gone.
 - The title bar's right side keeps Run and Agents; Preview, Terminal, Artifacts, GitHub, Source control and Files fold into one "⋯" menu, whose button lights up while one is open.
 - A new thread's message box sits in the middle of the pane, with the question above it, and the question's frost stops above the box so its glass stays clear.
 - Long conversations open on their recent messages, with Show earlier messages loading another page without moving the text being read. Find and artifact navigation still reach the whole history. Each pane keeps two previous conversations drawn out of sight, scrolled where they were left, to bound retained memory while keeping recent switches quick.
