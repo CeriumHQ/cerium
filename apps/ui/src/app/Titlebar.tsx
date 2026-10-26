@@ -171,11 +171,15 @@ export function Titlebar({
         )}
         <div className="flex h-full shrink-0 items-center justify-end">
           {run && !covered ? <RunToggle running={run.running} onToggle={run.onToggle} /> : null}
-          {preview && !covered ? (
-            <PreviewToggle open={preview.open} live={preview.live} onToggle={preview.onToggle} />
-          ) : null}
-          {terminal && !covered ? <TerminalToggle open={terminal.open} onToggle={terminal.onToggle} /> : null}
-          {covered ? null : <PanelToggles agents={agents} panels={panels} onTogglePanel={onTogglePanel} />}
+          {covered ? null : (
+            <CompactPanelMenu
+              agents={agents}
+              panels={panels}
+              onTogglePanel={onTogglePanel}
+              terminal={terminal}
+              preview={preview}
+            />
+          )}
           {machinePicker}
           <CaptionButtons />
         </div>
@@ -184,51 +188,23 @@ export function Titlebar({
   );
 }
 
-/** The buttons of the side panels on offer, in the order they sit in the bar. */
-export function PanelToggles({
-  agents,
-  panels,
-  onTogglePanel,
-}: {
-  agents: ReadonlyArray<ProviderId>;
-  panels: Partial<Record<SidePanelId, boolean>>;
-  onTogglePanel: (panel: SidePanelId) => void;
-}) {
-  return (
-    <>
-      {panels.artifacts === undefined ? null : (
-        <ArtifactsToggle open={panels.artifacts} onToggle={() => onTogglePanel("artifacts")} />
-      )}
-      {panels.github === undefined ? null : (
-        <GitHubToggle open={panels.github} onToggle={() => onTogglePanel("github")} />
-      )}
-      {panels.git === undefined ? null : (
-        <SourceControlToggle open={panels.git} onToggle={() => onTogglePanel("git")} />
-      )}
-      {panels.files === undefined ? null : (
-        <FilesToggle open={panels.files} onToggle={() => onTogglePanel("files")} />
-      )}
-      {panels.agents === undefined || agents.length === 0 ? null : (
-        <AgentsToggle agents={agents} open={panels.agents} onToggle={() => onTogglePanel("agents")} />
-      )}
-    </>
-  );
-}
-
 /**
- * The narrow window's take on the bar's buttons: the agents keep theirs, and the terminal and the
- * other panels fold into one menu, so the thread's title keeps its room.
+ * The bar's panel buttons folded into one menu, so the thread's title keeps its room: the agents keep
+ * theirs, and the preview, terminal and other panels sit in the menu, whose button shows when one is
+ * open (or a page is live in the preview).
  */
 export function CompactPanelMenu({
   agents,
   panels,
   onTogglePanel,
   terminal,
+  preview,
 }: {
   agents: ReadonlyArray<ProviderId>;
   panels: Partial<Record<SidePanelId, boolean>>;
   onTogglePanel: (panel: SidePanelId) => void;
   terminal?: { readonly open: boolean; readonly onToggle: () => void } | undefined;
+  preview?: PreviewToggleProps | undefined;
 }) {
   const items = [
     { id: "artifacts", label: "Artifacts", icon: GalleryVerticalEnd },
@@ -237,19 +213,36 @@ export function CompactPanelMenu({
     { id: "files", label: "Files", icon: FolderTree },
   ] as const;
   const offered = items.filter((item) => panels[item.id] !== undefined);
+  const anyOpen =
+    (terminal?.open ?? false) || (preview?.open ?? false) || offered.some((item) => panels[item.id] === true);
   return (
     <>
-      {terminal || offered.length > 0 ? (
+      {terminal || preview || offered.length > 0 ? (
         <MenuRoot>
           <MenuTrigger>
             <Button
               aria-label="Panels"
-              className="mr-1 grid size-10 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary"
+              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary max-md:size-10 ${
+                anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+              }`}
             >
               <Ellipsis size={18} strokeWidth={1.75} />
+              {preview?.live && !anyOpen ? (
+                <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
+              ) : null}
             </Button>
           </MenuTrigger>
           <MenuPopup>
+            {preview ? (
+              <MenuCheckboxItem
+                icon={Globe}
+                checked={preview.open}
+                onCheckedChange={preview.onToggle}
+                closeOnClick
+              >
+                Preview
+              </MenuCheckboxItem>
+            ) : null}
             {terminal ? (
               <MenuCheckboxItem
                 icon={SquareTerminal}
@@ -281,115 +274,6 @@ export function CompactPanelMenu({
   );
 }
 
-/** Opens Source control, which shares the agents panel's place. */
-export function SourceControlToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Tooltip
-      label={open ? "Hide source control" : "Show source control"}
-      shortcut={useShortcut("toggle-source-control")}
-    >
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="Source control"
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <GitBranch size={15} strokeWidth={1.75} />
-      </Button>
-    </Tooltip>
-  );
-}
-
-/** Opens GitHub's pull requests and issues, which share the agents panel's place. */
-export function GitHubToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Tooltip label={open ? "Hide GitHub" : "Show GitHub"} shortcut={useShortcut("toggle-github-panel")}>
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="GitHub"
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <GitPullRequestArrow size={15} strokeWidth={1.75} />
-      </Button>
-    </Tooltip>
-  );
-}
-
-/** Opens the files panel, which shares the agents panel's place. */
-export function FilesToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Tooltip label={open ? "Hide files" : "Show files"} shortcut={useShortcut("toggle-files")}>
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="Files"
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <FolderTree size={15} strokeWidth={1.75} />
-      </Button>
-    </Tooltip>
-  );
-}
-
-/** Opens the artifacts panel, which shares the agents panel's place. */
-export function ArtifactsToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Tooltip label={open ? "Hide artifacts" : "Show artifacts"}>
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="Artifacts"
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <GalleryVerticalEnd size={15} strokeWidth={1.75} />
-      </Button>
-    </Tooltip>
-  );
-}
-
-/**
- * Shows the open thread's browser beside it, in the Preview pane; marked while the thread has a page
- * open, which its agents may be driving out of sight.
- */
-export function PreviewToggle({ open, live, onToggle }: PreviewToggleProps) {
-  return (
-    <Tooltip label={open ? "Hide preview" : "Show preview"}>
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="Preview"
-        className={`relative mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <Globe size={15} strokeWidth={1.75} />
-        {live && !open ? (
-          <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
-        ) : null}
-      </Button>
-    </Tooltip>
-  );
-}
-
 /** Starts the open work thread's project run command, or stops it while it runs. */
 export function RunToggle({ running, onToggle }: { running: boolean; onToggle: () => void }) {
   return (
@@ -404,26 +288,6 @@ export function RunToggle({ running, onToggle }: { running: boolean; onToggle: (
         }`}
       >
         {running ? <Square size={13} strokeWidth={1.75} /> : <Play size={14} strokeWidth={1.75} />}
-      </Button>
-    </Tooltip>
-  );
-}
-
-/** Shows the open thread's terminals under its conversation. */
-export function TerminalToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut={useShortcut("toggle-terminal")}>
-      <Button
-        onClick={onToggle}
-        aria-pressed={open}
-        aria-label="Terminal"
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
-          open
-            ? "bg-surface-selected text-fg-primary"
-            : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-        }`}
-      >
-        <SquareTerminal size={15} strokeWidth={1.75} />
       </Button>
     </Tooltip>
   );

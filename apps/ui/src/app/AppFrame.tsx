@@ -482,6 +482,7 @@ function CompactFrame({
                           panels={panels}
                           onTogglePanel={onTogglePanel}
                           terminal={terminal}
+                          preview={preview}
                         />
                       ),
                     }
