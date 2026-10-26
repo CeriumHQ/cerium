@@ -58,6 +58,7 @@ import {
   runState,
   runStateLabel,
   soonLabel,
+  soonPhrase,
   whenLabel,
   type Draft,
   type Repeat,
@@ -142,8 +143,8 @@ export function AutomationList({
             {views.length === 0
               ? "Threads that start themselves"
               : on === views.length
-                ? `${on} on`
-                : `${on} on · ${views.length - on} paused`}
+                ? `${on} active`
+                : `${on} active · ${views.length - on} paused`}
           </p>
         </div>
         <Button onClick={onNew} className={accentButton}>
@@ -206,12 +207,13 @@ function AutomationRow({
   const { automation, nextAt } = view;
   const Icon = automation.when._tag === "CiFailed" ? CircleX : CalendarClock;
   const state = last === undefined ? undefined : runState(last.run, last.thread);
-  const status = automation.paused
+  // When it goes off next, over how its last run went.
+  const next = automation.paused
     ? "Paused"
     : nextAt !== undefined
-      ? `Next ${soonLabel(nextAt, now)}`
-      : state !== undefined
-        ? `Last ${runStateLabel[state].toLowerCase()}`
+      ? soonLabel(nextAt, now)
+      : automation.when._tag === "CiFailed"
+        ? "Watching CI"
         : "Waiting";
   return (
     <li>
@@ -243,10 +245,19 @@ function AutomationRow({
             {whenLabel(automation.when)} · {projectName(automation.project)}
           </span>
         </span>
-        <span
-          className={`shrink-0 text-meta tabular-nums ${automation.paused ? "text-fg-disabled" : "text-fg-tertiary"}`}
-        >
-          {status}
+        <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+          <span
+            className={`flex items-center gap-1 text-meta tabular-nums ${automation.paused ? "text-fg-tertiary" : "text-fg-secondary"}`}
+          >
+            {automation.paused ? <Pause size={11} strokeWidth={2} /> : null}
+            {next}
+          </span>
+          {state === undefined ? null : (
+            <span className={`flex items-center gap-1.5 text-caption ${stateText[state]}`}>
+              <span className={`size-1.5 rounded-full ${stateTone[state]}`} />
+              {runStateLabel[state]}
+            </span>
+          )}
         </span>
       </Button>
     </li>
@@ -447,7 +458,7 @@ export function AutomationDetail({
               maxLength={60}
               // oxlint-disable-next-line jsx-a11y/no-autofocus -- a new automation starts at its name
               autoFocus={id === undefined}
-              className="bg-transparent text-reading leading-snug font-medium text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[17px]"
+              className="-mx-2 rounded-md bg-transparent px-2 py-1 text-reading leading-snug font-medium text-fg-primary outline-none transition-colors placeholder:text-fg-tertiary hover:bg-surface-hover focus:bg-surface-hover max-md:text-[17px]"
             />
             <textarea
               value={shownDraft.prompt}
@@ -455,7 +466,7 @@ export function AutomationDetail({
               placeholder="What should the agent do each time?"
               aria-label="Prompt"
               maxLength={20_000}
-              className="min-h-24 resize-none bg-transparent text-body leading-relaxed text-fg-secondary outline-none [field-sizing:content] placeholder:text-fg-tertiary max-md:text-[15px]"
+              className="-mx-2 min-h-24 resize-none rounded-md bg-transparent px-2 py-1.5 text-body leading-relaxed text-fg-secondary outline-none transition-colors [field-sizing:content] placeholder:text-fg-tertiary hover:bg-surface-hover focus:bg-surface-hover focus:text-fg-primary max-md:text-[15px]"
             />
           </div>
 
@@ -499,7 +510,9 @@ export function AutomationDetail({
                         edit({ at: hours * 60 + minutes });
                     }}
                     aria-label="Time"
-                    className="bg-transparent text-fg-primary tabular-nums outline-none"
+                    // The system's own clock glyph is hidden; a click anywhere on the time opens its picker.
+                    onClick={(event) => event.currentTarget.showPicker?.()}
+                    className="bg-transparent text-fg-primary tabular-nums outline-none [&::-webkit-calendar-picker-indicator]:hidden"
                   />
                 </label>
               ) : null}
@@ -659,7 +672,7 @@ function Runs({ view, onOpenThread }: { view: AutomationView; onOpenThread: (thr
   const threads = useThreads();
   const now = useMinute();
   return (
-    <Field label={view.nextAt === undefined ? "Runs" : `Runs · next ${soonLabel(view.nextAt, now)}`}>
+    <Field label={view.nextAt === undefined ? "Runs" : `Runs · next ${soonPhrase(view.nextAt, now)}`}>
       {view.runs.length === 0 ? (
         <p className="text-meta text-fg-tertiary">None yet.</p>
       ) : (

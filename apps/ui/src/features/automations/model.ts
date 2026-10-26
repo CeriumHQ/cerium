@@ -68,6 +68,10 @@ export const soonLabel = (at: number, now: number): string => {
   return days < 7 ? `${weekday.format(at)} ${time}` : `${dateFormat.format(at)} ${time}`;
 };
 
+/** `soonLabel` inside a sentence: "next tomorrow 9:00 AM", with a weekday or a month kept capitalised. */
+export const soonPhrase = (at: number, now: number): string =>
+  soonLabel(at, now).replace(/^(Today|Tomorrow)\b/, (word) => word.toLowerCase());
+
 /** A past time, as a run's row names it: "Today 9:00 AM", "Yesterday 9:00 AM", "Oct 21 9:00 AM". */
 export const pastLabel = (at: number, now: number): string => {
   const time = clockFormat.format(at);
