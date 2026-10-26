@@ -148,7 +148,7 @@ export function Sidebar({
       <div className="flex items-center gap-1 px-2 pt-1 pb-3">
         <Button
           onClick={onNewThread}
-          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active max-md:h-10 max-md:gap-2.5 max-md:rounded-xl max-md:px-3 max-md:text-[15px]"
+          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-hover active:bg-surface-active max-md:h-10 max-md:gap-2.5 max-md:rounded-xl max-md:px-3 max-md:text-[15px]"
         >
           <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary max-md:size-4" />
           {mode === "work" ? "New thread" : "New chat"}

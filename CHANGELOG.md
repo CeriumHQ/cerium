@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Raised surfaces (the New Thread button, project badges, your message bubbles, segmented controls, status chips, shortcut keys) are a light film over the glass instead of a mostly opaque dark layer, so the desktop shows through them, and the docked terminal sits on the same light pane as the thread above it instead of a second layer of window glass.
 - Settings opens with a "Settings" heading and a search field styled like GitHub's, in place of the "Back to chats" button; searching lists matching settings by name and opens the category that holds them.
 - The rail's usage rings use three clear colours (green above half left, amber to a fifth, red below) instead of a blended gradient, open their tooltip at once, and mark each limit in the tooltip with the colour of its arc.
 - Settings → Usage gains a "Since reset" breakdown: for each subscribed harness, the share of its tokens each model took since its longest limit window last reset, as percentages only.
