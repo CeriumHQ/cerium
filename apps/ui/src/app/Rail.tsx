@@ -143,6 +143,7 @@ function UsageRings({
         <Tooltip
           key={ring.provider}
           side={vertical ? "right" : "top"}
+          delay={0}
           label={<RingTip ring={ring} now={now} />}
         >
           <Button
@@ -162,11 +163,9 @@ const SIZE = 30;
 /** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
 const bands = { 1: [2.5, 0], 2: [2.5, 1], 3: [2, 0.5] } as const;
 
-/** Green while a limit is full, through amber at half, to red once it's spent. */
+/** Green while most of a limit is left, amber below half, red once under a fifth. */
 const arcColor = (left: number) =>
-  left >= 50
-    ? `color-mix(in oklch, var(--color-success) ${(left - 50) * 2}%, var(--color-attention))`
-    : `color-mix(in oklch, var(--color-attention) ${left * 2}%, var(--color-error))`;
+  left > 50 ? "var(--color-success)" : left >= 20 ? "var(--color-attention)" : "var(--color-error)";
 
 /**
  * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
@@ -218,19 +217,29 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
         {harnessName[ring.provider]}
         {ring.plan ? <span className="font-normal text-fg-tertiary"> · {planName(ring.plan)}</span> : null}
       </span>
-      {ring.meters.map((meter) => (
-        <span key={meter.label} className="flex flex-col">
-          <span className="flex justify-between gap-6 tabular-nums">
-            <span className="text-fg-secondary">{meter.label}</span>
-            {leftLabel(meter)}
-          </span>
-          {meter.resetsAt === undefined ? null : (
-            <span className="text-caption text-fg-tertiary">
-              {resetLabel(meter.resetsAt, now, meter.resetDayOnly)}
+      {ring.meters.map((meter) => {
+        const arc = ring.arcs.find(({ label }) => label === meter.label);
+        return (
+          <span key={meter.label} className="flex flex-col">
+            <span className="flex justify-between gap-6 tabular-nums">
+              <span className="flex items-center gap-1.5 text-fg-secondary">
+                {/* The arc's colour, so a row finds its arc; a limit without an arc keeps the gap. */}
+                <span
+                  className="size-2 rounded-full"
+                  style={arc === undefined ? undefined : { backgroundColor: arcColor(arc.left) }}
+                />
+                {meter.label}
+              </span>
+              {leftLabel(meter)}
             </span>
-          )}
-        </span>
-      ))}
+            {meter.resetsAt === undefined ? null : (
+              <span className="pl-3.5 text-caption text-fg-tertiary">
+                {resetLabel(meter.resetsAt, now, meter.resetDayOnly)}
+              </span>
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }

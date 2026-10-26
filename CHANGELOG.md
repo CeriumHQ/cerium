@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- The rail's usage rings use three clear colours (green above half left, amber to a fifth, red below) instead of a blended gradient, open their tooltip at once, and mark each limit in the tooltip with the colour of its arc.
 - Settings → Usage gains a "Since reset" breakdown: for each subscribed harness, the share of its tokens each model took since its longest limit window last reset, as percentages only.
 - Settings → Usage breaks tokens and cost down by Model or Thread only; the Harness and Agent cuts are gone.
 - The title bar's right side keeps Run and Agents; Preview, Terminal, Artifacts, GitHub, Source control and Files fold into one "⋯" menu, whose button lights up while one is open.
