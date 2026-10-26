@@ -94,7 +94,7 @@
   overflow: hidden;
   border: 1px solid var(--line-subtle);
   border-radius: 0.625rem;
-  background: var(--surface-window);
+  background: var(--surface-sunken);
   padding: 0;
 }
 [data-streamdown="code-block-header"] {
