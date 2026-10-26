@@ -17,7 +17,16 @@ import {
   Undo2,
 } from "lucide-react";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   MenuGroupLabel,
@@ -32,11 +41,13 @@ import {
 import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { BulkBar, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { useArrivals, useGlide, useLingering } from "../../lib/motion.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections } from "./sections.ts";
+import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { DraftRow, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
 import { InboxCard, type CardAction } from "./InboxCard.tsx";
@@ -200,6 +211,78 @@ export function Inbox({
     onScope: chooseScope,
   };
 
+  // Bulk picking, in the showing list's order so Shift click ticks a run of it. The pick drops
+  // when the list changes; what an action moves away drops out of the list by itself.
+  const ordered = useMemo<ReadonlyArray<string>>(() => {
+    if (box === "later") return later.map((thread) => thread.id);
+    if (box === "archive") return archive.map((thread) => thread.id);
+    return groupRuns(listed).flatMap((entry) =>
+      entry.kind === "thread" ? [entry.thread.id] : entry.threads.map((thread) => thread.id),
+    );
+  }, [box, listed, later, archive]);
+  const {
+    selected: picked,
+    toggle: togglePicked,
+    setAll: setPicked,
+    clear: clearPicked,
+  } = useBulkSelection(ordered);
+  useEffect(() => clearPicked(), [box, scope, clearPicked]);
+  const byId = useMemo(() => {
+    const known = new Map<string, ThreadSummary>();
+    for (const thread of [...threads, ...archived]) known.set(thread.id, thread);
+    return known;
+  }, [threads, archived]);
+  const pickedHere = useMemo(() => {
+    const ticked = new Set(picked);
+    return ordered.flatMap((id) => {
+      const thread = byId.get(id);
+      return thread !== undefined && ticked.has(id) ? [thread] : [];
+    });
+  }, [ordered, picked, byId]);
+  /** What a bulk action says it did, and which threads it skipped with why; shown for a moment. */
+  const [bulkNote, setBulkNote] = useState<string>();
+  useEffect(() => {
+    if (bulkNote === undefined) return;
+    const timer = setTimeout(() => setBulkNote(undefined), NOTE_FOR);
+    return () => clearTimeout(timer);
+  }, [bulkNote]);
+  const laterAll =
+    onLater === undefined
+      ? undefined
+      : (ids: ReadonlyArray<string>) => {
+          const until = laterTime(Date.now());
+          for (const id of ids) onLater(id, until);
+        };
+  const bulkBar = (forBox: InboxBox) =>
+    forBox !== box || pickedHere.length === 0 ? null : (
+      <BulkBar
+        box={forBox}
+        threads={pickedHere}
+        onArchive={actions.onArchive}
+        onRestore={actions.onRestore}
+        onLater={forBox === "inbox" ? laterAll : undefined}
+        onMarkRead={actions.onMarkRead}
+        onDelete={actions.onDelete}
+        onClear={clearPicked}
+        onNote={setBulkNote}
+      />
+    );
+  // Esc clears the pick, unless it belongs to a field, a menu or a dialog.
+  const clearOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape" || picked.length === 0) return;
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("input, textarea, [role='dialog'], [role='alertdialog'], [role='menu']")
+    ) {
+      return;
+    }
+    clearPicked();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", clearOnEscape);
+    return () => window.removeEventListener("keydown", clearOnEscape);
+  }, []);
+
   return (
     <Tabs.Root
       value={box}
@@ -269,6 +352,14 @@ export function Inbox({
         ) : null}
       </div>
 
+      {bulkNote === undefined ? null : (
+        <div className="px-4 pt-0 pb-2 text-meta text-fg-tertiary max-md:text-[13px]">
+          <output className="block truncate" title={bulkNote}>
+            {bulkNote}
+          </output>
+        </div>
+      )}
+
       <BoxPanel
         value="inbox"
         label="Inbox"
@@ -283,8 +374,17 @@ export function Inbox({
             />
           )
         }
+        bar={bulkBar("inbox")}
       >
-        <Entries threads={listed} box="inbox" now={now} {...rowProps} />
+        <Entries
+          threads={listed}
+          box="inbox"
+          now={now}
+          picked={picked}
+          onToggle={togglePicked}
+          setAll={setPicked}
+          {...rowProps}
+        />
       </BoxPanel>
       {box === "inbox" && note ? (
         <div className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-meta text-fg-tertiary max-md:text-[13px]">
@@ -306,16 +406,38 @@ export function Inbox({
         ))}
       </BoxPanel>
 
-      <BoxPanel value="later" label="Later" empty={later.length === 0 ? "Nothing put off." : undefined}>
-        <Entries threads={later} box="later" now={now} {...rowProps} />
+      <BoxPanel
+        value="later"
+        label="Later"
+        empty={later.length === 0 ? "Nothing put off." : undefined}
+        bar={bulkBar("later")}
+      >
+        <Entries
+          threads={later}
+          box="later"
+          now={now}
+          picked={picked}
+          onToggle={togglePicked}
+          setAll={setPicked}
+          {...rowProps}
+        />
       </BoxPanel>
 
       <BoxPanel
         value="archive"
         label="Archive"
         empty={archive.length === 0 ? "Nothing archived yet." : undefined}
+        bar={bulkBar("archive")}
       >
-        <Entries threads={archive} box="archive" now={now} {...rowProps} />
+        <Entries
+          threads={archive}
+          box="archive"
+          now={now}
+          picked={picked}
+          onToggle={togglePicked}
+          setAll={setPicked}
+          {...rowProps}
+        />
       </BoxPanel>
     </Tabs.Root>
   );
@@ -338,15 +460,19 @@ function BoxPanel({
   value,
   label,
   empty,
+  bar,
   children,
 }: {
   value: InboxBox;
   label: string;
   empty: ReactNode;
+  /** The bulk-action bar, while threads of this list are picked. */
+  bar?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Tabs.Panel value={value} className="flex min-h-0 flex-1 flex-col outline-none">
+    <Tabs.Panel value={value} className="flex min-h-0 flex-1 flex-col pt-0 outline-none">
+      {bar}
       <ScrollArea className="flex-1">
         <nav aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
@@ -470,8 +596,19 @@ function Entries({
   box,
   now,
   selectedId,
+  picked,
+  onToggle,
+  setAll,
   ...rowProps
-}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
+}: {
+  threads: ReadonlyArray<ThreadSummary>;
+  box: InboxBox;
+  now: number;
+  /** Ids picked for bulk actions; rows read only whether they hold one. */
+  picked: ReadonlyArray<string>;
+  onToggle: (threadId: string, mode: SelectMode) => void;
+  setAll: (threadIds: ReadonlyArray<string>, on: boolean) => void;
+} & RowProps) {
   // A card that moves glides to its new place; one that comes grows into the list and one that goes
   // (archived, put off) folds out of it, so the cards around it close up smoothly.
   const entries = groupRuns(threads);
@@ -502,10 +639,21 @@ function Entries({
                 box={box}
                 now={now}
                 selected={entry.thread.id === selectedId}
+                checked={picked.includes(entry.thread.id)}
+                onToggle={onToggle}
                 {...rowProps}
               />
             ) : (
-              <InboxRun threads={entry.threads} box={box} now={now} selectedId={selectedId} {...rowProps} />
+              <InboxRun
+                threads={entry.threads}
+                box={box}
+                now={now}
+                selectedId={selectedId}
+                picked={picked}
+                onToggle={onToggle}
+                setAll={setAll}
+                {...rowProps}
+              />
             )}
           </Reveal>
         </li>
@@ -537,7 +685,14 @@ function InboxRun({
   onLater,
   scope,
   onScope,
-}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
+  picked,
+  onToggle,
+  setAll,
+}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps & {
+    picked: ReadonlyArray<string>;
+    onToggle: (threadId: string, mode: SelectMode) => void;
+    setAll: (threadIds: ReadonlyArray<string>, on: boolean) => void;
+  }) {
   const run = runSummary(threads);
   const holdsSelected = threads.some((thread) => thread.id === selectedId);
   const [toggled, setToggled] = useState<boolean>();
@@ -631,6 +786,10 @@ function InboxRun({
     </>
   );
   const laterUntil = Math.max(...threads.map((thread) => thread.laterUntil ?? 0));
+  // Ticking the card ticks every thread of the run; Shift ticks a run of the list through its
+  // first thread, then takes the rest of the run along.
+  const memberIds = threads.map((thread) => thread.id);
+  const held = memberIds.filter((id) => picked.includes(id));
   return (
     <>
       <InboxCard
@@ -642,6 +801,20 @@ function InboxRun({
         onSelect={onSelect}
         onRename={onRename}
         menu={menu}
+        selection={{
+          checked: held.length === memberIds.length,
+          mixed: held.length > 0 && held.length < memberIds.length,
+          onToggle: (mode) => {
+            if (mode === "range") {
+              onToggle(memberIds[0]!, "range");
+              setAll(memberIds, true);
+            } else if (held.length === memberIds.length) {
+              setAll(memberIds, false);
+            } else {
+              setAll(memberIds, true);
+            }
+          },
+        }}
         group={{
           count: threads.length,
           open,
@@ -666,10 +839,15 @@ function InboxRun({
   );
 }
 
-type InboxRowProps = { thread: ThreadSummary; box: InboxBox; now: number; selected: boolean } & Omit<
-  RowProps,
-  "selectedId"
->;
+type InboxRowProps = {
+  thread: ThreadSummary;
+  box: InboxBox;
+  now: number;
+  selected: boolean;
+  /** Whether the thread is picked for bulk actions; a primitive, so memo'd rows keep skipping. */
+  checked: boolean;
+  onToggle: (threadId: string, mode: SelectMode) => void;
+} & Omit<RowProps, "selectedId">;
 
 /**
  * A thread's card. It renders again only when what it shows changes: opening another thread, which
@@ -687,6 +865,8 @@ function InboxRowCard({
   box,
   now,
   selected,
+  checked,
+  onToggle,
   onSelect,
   onMarkRead,
   onMarkUnread,
@@ -779,6 +959,8 @@ function InboxRowCard({
             </MenuItem>
           )}
           <MenuSeparator />
+          <ExportMenuItems threadId={thread.id} />
+          <MenuSeparator />
           <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
             Delete
           </MenuItem>
@@ -799,6 +981,7 @@ function InboxRowCard({
       onRename={onRename}
       onDelete={onDelete}
       menu={menu}
+      selection={{ checked, mixed: false, onToggle: (mode) => onToggle(thread.id, mode) }}
     />
   );
 }

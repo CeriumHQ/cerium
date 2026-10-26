@@ -13,16 +13,19 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { keyLabel, primaryHeld } from "../../lib/keys.ts";
+import { keyLabel, usesCommandKey } from "../../lib/keys.ts";
+import { bindingFor, matchesFamily, shortcutBindingsAtom, useShortcut } from "../../lib/shortcuts.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
 import type { PaletteCommand } from "../palette/palette.ts";
+import { BulkBar, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, firstOf, type ThreadSection } from "./sections.ts";
 import { EmptyList } from "./EmptyList.tsx";
@@ -99,13 +102,20 @@ export function Sidebar({
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
   // Read here rather than by the window, so writing a draft's first line re-renders only the list.
   const drafts = useAtomValue(newThreadDraftsAtom).filter((draft) => draft.mode === mode);
+  const newThreadKeys = useShortcut("new-thread");
+  const paletteKeys = useShortcut("command-palette");
   const draftActions: DraftActions = { selectedId, onSelectDraft, onDiscardDraft, draftMachine };
 
-  // Ctrl 1 to 9 open the list's first nine rows and Ctrl 0 its tenth, counted as the list shows them:
+  // The open-thread-row binding's digit opens the list's first ten rows as the list shows them:
   // its scope, its sections and its folded groups decide, so the rendered rows are what's counted.
   const root = useRef<HTMLDivElement>(null);
+  const rowBindings = useAtomValue(shortcutBindingsAtom);
   const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (!primaryHeld(event) || event.shiftKey || event.altKey || searchOpen) return;
+    if (
+      searchOpen ||
+      !matchesFamily(event, bindingFor(rowBindings, "open-thread-row"), usesCommandKey())
+    )
+      return;
     const digit = /^Digit(\d)$/.exec(event.code)?.[1];
     if (digit === undefined) return;
     event.preventDefault();
@@ -131,13 +141,13 @@ export function Sidebar({
           <SquarePen size={14} strokeWidth={1.75} className="text-fg-secondary max-md:size-4" />
           {mode === "work" ? "New thread" : "New chat"}
           <kbd className="ml-auto font-sans text-caption text-fg-tertiary max-md:hidden">
-            {keyLabel("Ctrl N")}
+            {keyLabel(newThreadKeys)}
           </kbd>
         </Button>
         <IconButton
           icon={Search}
           label="Search and commands"
-          shortcut="Ctrl K"
+          shortcut={paletteKeys}
           onClick={() => onSearchOpenChange(true)}
           className="max-md:size-10"
         />
@@ -171,6 +181,7 @@ export function Sidebar({
           onRename={onRename}
           onArchive={onArchive}
           onDelete={onDelete}
+          onMarkRead={onMarkRead}
         />
       )}
 
@@ -201,11 +212,13 @@ function ChatList({
   threads,
   drafts,
   draftActions,
+  onMarkRead,
   ...actions
 }: {
   threads: ReadonlyArray<ThreadSummary>;
   drafts: ReadonlyArray<NewThreadDraft>;
   draftActions: DraftActions;
+  readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
 } & ChatActions) {
   const sections = withPinned(chatSections(threads), useAtomValue(pinnedAtom));
   // A page of chats renders at a time as the list scrolls, counted across the sections in order.
@@ -215,23 +228,87 @@ function ChatList({
     ordered.findIndex((thread) => thread.id === actions.selectedId),
   );
   const paged = firstOf(sections, shown);
+  // Bulk picking, in the list's order so Shift click ticks a run of it, across pages.
+  const orderIds = ordered.map((thread) => thread.id);
+  const { selected: picked, toggle: togglePicked, clear: clearPicked } = useBulkSelection(orderIds);
+  const ticked = new Set(picked);
+  const pickedHere = ordered.filter((thread) => ticked.has(thread.id));
+  /** What a bulk action says it did, and which chats it skipped with why; shown for a moment. */
+  const [note, setNote] = useState<string>();
+  useEffect(() => {
+    if (note === undefined) return;
+    const timer = setTimeout(() => setNote(undefined), 6_000);
+    return () => clearTimeout(timer);
+  }, [note]);
+  // Esc clears the pick, unless it belongs to a field, a menu or a dialog.
+  const clearOnEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Escape" || picked.length === 0) return;
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("input, textarea, [role='dialog'], [role='alertdialog'], [role='menu']")
+    ) {
+      return;
+    }
+    clearPicked();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", clearOnEscape);
+    return () => window.removeEventListener("keydown", clearOnEscape);
+  }, []);
   return (
-    <ScrollArea className="flex-1">
-      <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
-        <DraftSection drafts={drafts} list="chat" mark="dot" {...draftActions} />
-        {paged.map((section) => (
-          <ChatGroup key={section.key} section={section} {...actions} />
-        ))}
-        {more ? <div ref={end} aria-hidden className="h-px" /> : null}
-        {sections.length === 0 && drafts.length === 0 ? (
-          <EmptyList icon={MessagesSquare} title="No chats yet" hint="Your conversations are kept here." />
-        ) : null}
-      </nav>
-    </ScrollArea>
+    <>
+      {pickedHere.length > 0 ? (
+        <BulkBar
+          box="chat"
+          threads={pickedHere}
+          onArchive={actions.onArchive}
+          onRestore={undefined}
+          onLater={undefined}
+          onMarkRead={onMarkRead}
+          onDelete={actions.onDelete}
+          onClear={clearPicked}
+          onNote={setNote}
+        />
+      ) : null}
+      {note === undefined ? null : (
+        <div className="px-4 pt-0 pb-2 text-meta text-fg-tertiary max-md:text-[13px]">
+          <output className="block truncate" title={note}>
+            {note}
+          </output>
+        </div>
+      )}
+      <ScrollArea className="flex-1">
+        <nav className="flex flex-col gap-3 px-2 pb-3" aria-label="Chats">
+          <DraftSection drafts={drafts} list="chat" mark="dot" {...draftActions} />
+          {paged.map((section) => (
+            <ChatGroup
+              key={section.key}
+              section={section}
+              picked={picked}
+              onToggle={togglePicked}
+              {...actions}
+            />
+          ))}
+          {more ? <div ref={end} aria-hidden className="h-px" /> : null}
+          {sections.length === 0 && drafts.length === 0 ? (
+            <EmptyList icon={MessagesSquare} title="No chats yet" hint="Your conversations are kept here." />
+          ) : null}
+        </nav>
+      </ScrollArea>
+    </>
   );
 }
 
-function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection } & ChatActions) {
+function ChatGroup({
+  section,
+  selectedId,
+  picked,
+  onToggle,
+  ...actions
+}: { section: ThreadSection } & ChatActions & {
+    picked: ReadonlyArray<string>;
+    onToggle: (threadId: string, mode: SelectMode) => void;
+  }) {
   return (
     <Collapsible.Root defaultOpen>
       <Collapsible.Trigger className="group flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-meta font-medium text-fg-secondary/80 transition-colors hover:text-fg-primary max-md:py-2 max-md:text-[13px]">
@@ -246,7 +323,13 @@ function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection
         <ul className="flex flex-col gap-px pt-0.5">
           {section.threads.map((thread) => (
             <li key={thread.id}>
-              <ChatRow thread={thread} selected={thread.id === selectedId} {...actions} />
+              <ChatRow
+                thread={thread}
+                selected={thread.id === selectedId}
+                checked={picked.includes(thread.id)}
+                onToggle={onToggle}
+                {...actions}
+              />
             </li>
           ))}
         </ul>
@@ -258,11 +341,18 @@ function ChatGroup({ section, selectedId, ...actions }: { section: ThreadSection
 function ChatRow({
   thread,
   selected,
+  checked,
+  onToggle,
   onSelect,
   onRename,
   onArchive,
   onDelete,
-}: { thread: ThreadSummary; selected: boolean } & Omit<ChatActions, "selectedId">) {
+}: {
+  thread: ThreadSummary;
+  selected: boolean;
+  checked: boolean;
+  onToggle: (threadId: string, mode: SelectMode) => void;
+} & Omit<ChatActions, "selectedId">) {
   const pins = useAtomValue(pinnedAtom);
   const setPins = useAtomSet(pinnedAtom);
   const pinned = pins.includes(thread.id);
@@ -275,6 +365,7 @@ function ChatRow({
       onSelect={onSelect}
       onRename={onRename}
       onDelete={onDelete}
+      selection={{ checked, onToggle }}
       // Another machine's chat is renamed, archived or deleted there, so its row has no menu here.
       {...(thread.elsewhere
         ? {}
@@ -290,6 +381,8 @@ function ChatRow({
                 <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
                   Archive
                 </MenuItem>
+                <MenuSeparator />
+                <ExportMenuItems threadId={thread.id} />
                 <MenuSeparator />
                 <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
                   Delete

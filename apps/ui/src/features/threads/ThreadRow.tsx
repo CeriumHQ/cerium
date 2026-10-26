@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
+import { SelectBox, type SelectMode } from "./BulkBar.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
 import type { ThreadSummary } from "./model.ts";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
@@ -37,6 +38,14 @@ export interface ThreadRowProps {
   readonly menu?: (controls: RowControls) => ReactNode;
   /** Deleting is confirmed first; this runs once it is. */
   readonly onDelete?: (threadId: string) => void;
+  /**
+   * Bulk picking: whether this thread is picked, and how a click picks it. Ctrl or ⌘ click ticks
+   * the thread instead of opening it in a tab; Shift click ticks a run of the list.
+   */
+  readonly selection?: {
+    readonly checked: boolean;
+    readonly onToggle: (threadId: string, mode: SelectMode) => void;
+  };
 }
 
 /** One thread in the inbox, the chat list or the archive: a line, with its actions a click away. */
@@ -50,11 +59,21 @@ export function ThreadRow({
   onRename,
   menu,
   onDelete,
+  selection,
 }: ThreadRowProps) {
   const [deleting, setDeleting] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const unread = thread.unread && !selected;
-  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${
+  const tick =
+    selection === undefined ? null : (
+      <SelectBox
+        checked={selection.checked}
+        label={`Select “${title}”`}
+        onChange={() => selection.onToggle(thread.id, "toggle")}
+        className="left-2 top-1/2 -translate-y-1/2"
+      />
+    );
+  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${selection === undefined ? "" : "group/row relative pointer-coarse:pl-7"} ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : quiet
@@ -98,8 +117,14 @@ export function ThreadRow({
   const button = (
     <Button
       ref={row}
+      // With bulk picking, Ctrl or ⌘ ticks the thread and Shift ticks a run of the list; else
       // Ctrl or the middle button opens it in a tab of its own.
-      onClick={(event) => onSelect(thread.id, event.ctrlKey || event.metaKey)}
+      onClick={(event) => {
+        if (selection !== undefined && event.shiftKey) selection.onToggle(thread.id, "range");
+        else if (selection !== undefined && (event.ctrlKey || event.metaKey))
+          selection.onToggle(thread.id, "toggle");
+        else onSelect(thread.id, selection === undefined && (event.ctrlKey || event.metaKey));
+      }}
       onMouseDown={(event) => {
         if (event.button === 1) event.preventDefault();
       }}
@@ -123,10 +148,18 @@ export function ThreadRow({
       {content}
     </Button>
   );
-  if (menu === undefined) return button;
+  if (menu === undefined)
+    return selection === undefined ? (
+      button
+    ) : (
+      <div className="group/row relative">
+        {button}
+        {tick}
+      </div>
+    );
   return (
     <>
-      <RowFrame label={title} menu={menu({ rename: start, remove: () => setDeleting(true) })}>
+      <RowFrame label={title} menu={menu({ rename: start, remove: () => setDeleting(true) })} extra={tick}>
         {button}
       </RowFrame>
       {onDelete ? (

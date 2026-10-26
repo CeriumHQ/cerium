@@ -25,6 +25,7 @@ export function RowFrame({
   label,
   menu,
   firstLine = false,
+  extra,
   children,
 }: {
   /** What the button's actions are for, such as the thread's title. */
@@ -32,11 +33,14 @@ export function RowFrame({
   menu: ReactNode;
   /** Puts the button by a two-line row's first line rather than its middle. */
   firstLine?: boolean;
+  /** Floated over the row, such as its bulk-selection tick box. */
+  extra?: ReactNode;
   children: ReactElement;
 }) {
   return (
     <div className="group/row relative">
       <ContextMenuArea menu={menu}>{children}</ContextMenuArea>
+      {extra}
       <MenuRoot>
         <MenuTrigger>
           <Button

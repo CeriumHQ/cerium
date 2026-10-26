@@ -6,6 +6,7 @@ import { ContextMenuArea, MenuPopup, MenuRoot, MenuTrigger } from "../../compone
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
+import { SelectBox, type SelectMode } from "./BulkBar.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
 import { needsYou, type ThreadSummary } from "./model.ts";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
@@ -35,6 +36,15 @@ export interface InboxCardProps {
   readonly menu?: (controls: RowControls) => ReactNode;
   readonly onDelete?: (threadId: string) => void;
   /**
+   * Bulk picking: whether the card is picked (`mixed` for a run with some threads picked), and
+   * how a click picks it. Ctrl or ⌘ ticks instead of opening; Shift ticks a run of the list.
+   */
+  readonly selection?: {
+    readonly checked: boolean;
+    readonly mixed: boolean;
+    readonly onToggle: (mode: SelectMode) => void;
+  };
+  /**
    * Makes it a multi-agent run's card, `thread` summing up its threads: a click folds out the
    * comparison of them below it rather than opening one, and the meta line ends in `tally`.
    */
@@ -63,6 +73,7 @@ export function InboxCard({
   menu,
   onDelete,
   group,
+  selection,
 }: InboxCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -83,7 +94,7 @@ export function InboxCard({
   // Room the quick actions and the menu button take at the right end on hover.
   const room = (actions.length + (menuItems === undefined ? 0 : 1)) * 24;
 
-  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${
+  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${selection === undefined ? "" : "pointer-coarse:pl-7"} ${
     leaving ? "opacity-0" : ""
   } ${selected || editing ? "bg-surface-selected" : "hover:bg-surface-hover"}`;
   const titleClass = `min-w-0 truncate ${
@@ -157,8 +168,14 @@ export function InboxCard({
   const button = (
     <Button
       ref={row}
+      // With bulk picking, Ctrl or ⌘ ticks the card and Shift ticks a run of the list; else
       // Ctrl or the middle button opens it in a tab of its own.
-      onClick={(event) => (group ? group.onToggle() : onSelect(thread.id, event.ctrlKey || event.metaKey))}
+      onClick={(event) => {
+        if (selection !== undefined && event.shiftKey) selection.onToggle("range");
+        else if (selection !== undefined && (event.ctrlKey || event.metaKey)) selection.onToggle("toggle");
+        else if (group) group.onToggle();
+        else onSelect(thread.id, selection === undefined && (event.ctrlKey || event.metaKey));
+      }}
       onMouseDown={(event) => {
         if (event.button === 1) event.preventDefault();
       }}
@@ -195,6 +212,15 @@ export function InboxCard({
     <>
       <div className="group/row relative">
         {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
+        {selection === undefined ? null : (
+          <SelectBox
+            checked={selection.checked}
+            mixed={selection.mixed}
+            label={group ? `Select these ${group.count} threads` : `Select “${title}”`}
+            onChange={() => selection.onToggle("toggle")}
+            className="left-2 top-2"
+          />
+        )}
         <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-has-[[data-popup-open]]/row:opacity-100 focus-within:opacity-100 md:group-hover/row:opacity-100 max-md:top-2 pointer-coarse:opacity-100">
           {actions.map((action) => (
             <Tooltip
