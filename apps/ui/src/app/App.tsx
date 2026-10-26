@@ -2522,8 +2522,6 @@ function Workspace() {
               setSettingsCategory(category);
               setSettingsPane("page");
             }}
-            backLabel={mode === "work" ? "Back to threads" : "Back to chats"}
-            onBack={() => setSettingsOpen(false)}
             active={settingsOpen}
             compact={compact}
           />

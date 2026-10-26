@@ -1,9 +1,10 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowLeft, ChevronRight } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, type ComponentType } from "react";
+import { ChevronRight } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, type ComponentType } from "react";
 
 import { WEB } from "../../backend/target.ts";
 import { SlidingHighlight } from "../../components/SlidingHighlight.tsx";
+import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings } from "./Account.tsx";
 import { AgentSettings } from "./Agents.tsx";
@@ -88,6 +89,52 @@ const categories: ReadonlyArray<{
   { id: "keyboard", label: "Keyboard", description: "Shortcuts", icon: settingsGlyphs.keyboard },
 ];
 
+const settingLabel = (id: SettingsCategory) => categories.find((each) => each.id === id)?.label ?? "";
+
+/** Every setting by name, with the category that holds it, for the sidebar's search. */
+const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: SettingsCategory }> = (
+  [
+    ["general", "This computer"],
+    ["general", "Show activity on Discord"],
+    ["general", "Dictation language"],
+    ["general", "Speech model"],
+    ["general", "Updates"],
+    ["general", "Update channel"],
+    ["account", "Sign out"],
+    ["account", "Devices"],
+    ["account", "Device name"],
+    ["notifications", "Show notifications"],
+    ["notifications", "Play a sound"],
+    ["notifications", "Count on the taskbar"],
+    ["notifications", "Notify me when"],
+    ["appearance", "Theme"],
+    ["appearance", "Light or dark mode"],
+    ["appearance", "Conversation text size"],
+    ["appearance", "Window scale"],
+    ["agents", "Default model"],
+    ["agents", "Reasoning effort"],
+    ["agents", "Access"],
+    ["agents", "Name new threads"],
+    ["agents", "Advisor model"],
+    ["agents", "MCP servers"],
+    ["agents", "Pick effort automatically"],
+    ["agents", "OpenRouter key"],
+    ["agents", "Roster"],
+    ["prompts", "Saved prompts"],
+    ["harnesses", "Installed CLIs"],
+    ["harnesses", "Sign-ins"],
+    ["sourceControl", "Where new work threads run"],
+    ["sourceControl", "Project scripts"],
+    ["usage", "Limits"],
+    ["usage", "Tokens & cost"],
+    ["usage", "Free resets"],
+    ["keyboard", "Send messages with"],
+    ["keyboard", "Shortcuts"],
+  ] as const
+)
+  .map(([category, name]) => ({ category, name }))
+  .filter(({ category }) => categories.some((each) => each.id === category));
+
 /** The categories this window offers, which the command palette lists as pages to jump to. */
 export const settingsPages = categories;
 
@@ -98,9 +145,6 @@ export const settingsLabel = (category: SettingsCategory) =>
 interface SettingsNavProps {
   readonly category: SettingsCategory;
   readonly onSelect: (category: SettingsCategory) => void;
-  /** Where leaving settings goes back to. */
-  readonly backLabel: string;
-  readonly onBack: () => void;
   /** Settings are showing: the current category takes focus, ready for the arrow keys. */
   readonly active: boolean;
   /**
@@ -111,14 +155,8 @@ interface SettingsNavProps {
 }
 
 /** The sidebar while settings are open: the way back, and the categories. */
-export function SettingsNav({
-  category,
-  onSelect,
-  backLabel,
-  onBack,
-  active,
-  compact = false,
-}: SettingsNavProps) {
+export function SettingsNav({ category, onSelect, active, compact = false }: SettingsNavProps) {
+  const [query, setQuery] = useState("");
   const nav = useRef<HTMLElement>(null);
   const current = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -169,21 +207,58 @@ export function SettingsNav({
     );
   }
 
+  const needle = query.trim().toLowerCase();
+  const hits =
+    needle === ""
+      ? []
+      : settingsIndex.filter(
+          ({ name, category: id }) =>
+            name.toLowerCase().includes(needle) || settingLabel(id).toLowerCase().includes(needle),
+        );
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex px-2 pb-2">
-        <Button
-          onClick={onBack}
-          className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body font-medium text-fg-primary shadow-raised transition-colors duration-150 hover:bg-surface-panel active:bg-surface-active"
-        >
-          <ArrowLeft size={14} strokeWidth={1.75} className="text-fg-secondary" />
-          {backLabel}
-          <kbd className="ml-auto font-sans text-caption text-fg-tertiary">Esc</kbd>
-        </Button>
+      <div className="flex items-center gap-1 px-2 pt-1 pb-2 pl-3.5">
+        <h2 className="text-reading font-semibold text-fg-primary max-md:text-base">Settings</h2>
       </div>
-
-      <p className="px-4 pt-2 pb-1.5 text-meta font-medium text-fg-secondary/80">Settings</p>
-      <nav ref={nav} aria-label="Settings" className="relative isolate flex flex-col gap-px px-2">
+      <div className="mx-2 mb-2.5 overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken [&>div]:h-8 [&>div]:border-b-0 [&>div]:pl-2.5">
+        <SearchBar
+          value={query}
+          onChange={setQuery}
+          placeholder="Search settings"
+          label="Search all settings"
+        />
+      </div>
+      {needle !== "" ? (
+        <div className="flex flex-col gap-px px-2">
+          {hits.length === 0 ? (
+            <p className="px-2 py-1.5 text-meta text-fg-tertiary">No settings match.</p>
+          ) : (
+            hits.map(({ name, category: id }) => {
+              const Icon = settingsGlyphs[id];
+              return (
+                <Button
+                  key={`${id}:${name}`}
+                  onClick={() => {
+                    setQuery("");
+                    onSelect(id);
+                  }}
+                  className="flex h-9 items-center gap-2.5 rounded-md px-2 text-left text-body text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary"
+                >
+                  <Icon size={16} className="shrink-0 text-fg-tertiary" />
+                  <span className="min-w-0 flex-1 truncate">{name}</span>
+                  <span className="shrink-0 text-meta text-fg-tertiary">{settingLabel(id)}</span>
+                </Button>
+              );
+            })
+          )}
+        </div>
+      ) : null}
+      <nav
+        ref={nav}
+        aria-label="Settings"
+        className={`relative isolate flex-col gap-px px-2 ${needle === "" ? "flex" : "hidden"}`}
+      >
         <SlidingHighlight within={nav} active={category} className="rounded-md bg-surface-selected" />
         {categories.map(({ id, label, icon: Icon }) => (
           <Button
