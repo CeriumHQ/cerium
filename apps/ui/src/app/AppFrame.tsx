@@ -393,6 +393,7 @@ function CompactFrame({
   onTogglePanel,
   onCloseSide,
   terminal,
+  preview,
   settings,
   page,
   machinePicker,
