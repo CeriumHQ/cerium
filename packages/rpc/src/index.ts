@@ -57,6 +57,7 @@ import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
 import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
+import { AutomationRpcs } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
@@ -65,6 +66,7 @@ import { PushRpcs } from "./pushes.ts";
 import { ScriptRpcs } from "./scripts.ts";
 import { CommandTerminal, TerminalRpcs, TerminalSize } from "./terminal.ts";
 
+export * from "./automations.ts";
 export * from "./browser.ts";
 export * from "./files.ts";
 export * from "./git.ts";
@@ -86,7 +88,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 35;
+export const RPC_VERSION = 36;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -646,7 +648,17 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("EffortRouterStatus", { success: EffortRouterStatus, error: CeriumError }),
   /** Forgets the effort router's key and turns the router off. Since `RPC_VERSION` 23. */
   Rpc.make("RemoveEffortRouterKey", { success: EffortRouterStatus, error: CeriumError }),
-).merge(TerminalRpcs, ScriptRpcs, ImportRpcs, PushRpcs, GitBranchRpcs, GitRpcs, GitHubRpcs, IssueRpcs);
+).merge(
+  TerminalRpcs,
+  ScriptRpcs,
+  ImportRpcs,
+  PushRpcs,
+  AutomationRpcs,
+  GitBranchRpcs,
+  GitRpcs,
+  GitHubRpcs,
+  IssueRpcs,
+);
 
 /**
  * What a device answers its own UI about itself: its Cerium account, the account's threads,

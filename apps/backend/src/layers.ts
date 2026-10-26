@@ -19,6 +19,7 @@ import { Socket } from "effect/socket";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { Automations } from "./automations.ts";
 import { Releases } from "./releases.ts";
 import { Repositories } from "./clone.ts";
 import { CatalogLive, OfferedModels } from "./catalog.ts";
@@ -118,9 +119,14 @@ export const backendLayer = (options: BackendOptions) => {
     },
   ).pipe(
     // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
-    // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows.
+    // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows; over them, the
+    // user's automations, which start threads on a schedule or when a push's CI fails.
     Layer.provideMerge(
-      Layer.mergeAll(limitWarnings, Pushes.layer({ file: join(options.dataDirectory, "pushes.json") })),
+      Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(limitWarnings, Pushes.layer({ file: join(options.dataDirectory, "pushes.json") })),
+        ),
+      ),
     ),
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows

@@ -92,6 +92,8 @@ export class Pushes extends Context.Service<
     watch(threadId: ThreadId): Stream.Stream<ReadonlyArray<PushRecord>>;
     act(pushId: string, action: PushAction): Effect.Effect<void, PushError>;
     push(agentId: AgentId, request: PushRequest): Effect.Effect<PushAnswer, PushError | OrchestratorError>;
+    /** Each push whose CI finished, as it finishes, from when it's subscribed to. */
+    readonly ciEnded: Stream.Stream<PushRecord>;
   }
 >()("cerium/backend/Pushes") {
   /**
@@ -111,6 +113,7 @@ export class Pushes extends Context.Service<
 
         const records = new Map<string, PushRecord>();
         const changes = yield* PubSub.unbounded<ThreadId>();
+        const ciEnded = yield* PubSub.unbounded<PushRecord>();
         /** Agents with a push under way. */
         const pushing = new Set<AgentId>();
         /** Pushes whose runs the user cancelled from the thread, which end `cancelled`, not `superseded`. */
@@ -493,7 +496,10 @@ export class Pushes extends Context.Service<
               });
               if (over) {
                 cancelled.delete(id);
-                if (next !== undefined) yield* tellEnd(next);
+                if (next !== undefined) {
+                  yield* tellEnd(next);
+                  yield* PubSub.publish(ciEnded, next);
+                }
                 return;
               }
               if (Date.now() - since > FOLLOW_FOR) {
@@ -760,6 +766,7 @@ export class Pushes extends Context.Service<
             ),
           act,
           push,
+          ciEnded: Stream.fromPubSub(ciEnded),
         });
       }),
     );

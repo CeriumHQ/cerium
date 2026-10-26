@@ -39,6 +39,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 
+import { Automations, type AutomationError } from "./automations.ts";
 import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
 import { Drafts } from "./drafts.ts";
@@ -77,6 +78,8 @@ const refuse = (
 ) => new CeriumError({ message: error.message });
 
 const refuseDecision = (error: EffortDecisionError) => new CeriumError({ message: error.message });
+
+const refuseAutomation = (error: AutomationError) => new CeriumError({ message: error.message });
 
 /** A snapshot of a folder, as `TurnFilesChanged` names one: a git tree's id. */
 const isSnapshot = (id: string) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id);
@@ -144,6 +147,7 @@ export const Handlers = MachineRpcs.toLayer(
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
     const pushes = yield* Pushes;
+    const automations = yield* Automations;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -508,6 +512,12 @@ export const Handlers = MachineRpcs.toLayer(
       EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
       RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
       ...terminalHandlers(terminals),
+      WatchAutomations: () => automations.watch,
+      SaveAutomation: ({ id, input }) => automations.save(id, input).pipe(Effect.mapError(refuseAutomation)),
+      PauseAutomation: ({ id, paused }) =>
+        automations.pause(id, paused).pipe(Effect.mapError(refuseAutomation)),
+      DeleteAutomation: ({ id }) => automations.remove(id).pipe(Effect.mapError(refuseAutomation)),
+      RunAutomation: ({ id }) => automations.runNow(id).pipe(Effect.mapError(refuseAutomation)),
       WatchPushes: ({ threadId }) => pushes.watch(threadId),
       PushAction: ({ pushId, action }) =>
         pushes

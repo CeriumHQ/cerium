@@ -328,6 +328,12 @@ export const failureNote = (push: PushRecord): string => {
   const failed = ci?.checks.filter((check) => check.state === "failed") ?? [];
   const names = failed.map((check) => check.name);
   const head = `CI failed for your push to ${where(push)}${short(push.head)}: ${names.length === 0 ? "a run failed" : `${names.join(", ")} failed`}.`;
+  return [head, ...failureDetails(push), "Fix what failed and push again."].join("\n\n");
+};
+
+/** Each failed check with the step it failed at and the end of its log, or the failed run's link. */
+export const failureDetails = (push: PushRecord): ReadonlyArray<string> => {
+  const ci = push.ci;
   const details = (ci?.failures ?? []).map((failure: CheckFailure) =>
     [
       `${failure.name}${failure.step === undefined ? "" : `, at step "${failure.step}"`}${failure.summary === undefined ? "" : `: ${failure.summary}`}`,
@@ -336,12 +342,7 @@ export const failureNote = (push: PushRecord): string => {
     ].join("\n"),
   );
   const run = ci?.runs.find((each) => each.state === "failed")?.url;
-  return [
-    head,
-    ...details,
-    ...(details.length === 0 && run !== undefined ? [run] : []),
-    "Fix what failed and push again.",
-  ].join("\n\n");
+  return details.length === 0 && run !== undefined ? [run] : details;
 };
 
 /** The desktop notification's line once CI finished. */
