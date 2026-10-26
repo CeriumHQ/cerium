@@ -517,8 +517,8 @@ describe("Store", () => {
         yield* store.saveProject("C:/b", 2);
         yield* store.saveProject("C:/a", 3);
         assert.deepStrictEqual(yield* store.listProjects, [
-          { path: "C:/a", addedAt: 1, usedAt: 3 },
-          { path: "C:/b", addedAt: 2, usedAt: 2 },
+          { path: "C:/a", addedAt: 1, usedAt: 3, setup: null, run: null },
+          { path: "C:/b", addedAt: 2, usedAt: 2, setup: null, run: null },
         ]);
 
         yield* store.removeProject("C:/a");

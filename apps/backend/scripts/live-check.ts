@@ -5,7 +5,7 @@
 //
 // Usage: bun run live-check [--providers=claude,codex,muse,cursor] [--access=auto] [--model=claude:haiku]
 //          [--prompt="…"] [--todos] [--expect=a.txt,b.txt] [--expect-reply=DONE] [--max-approvals=0]
-//          [--approvals=deny|allow] [--timeout=180]
+//          [--approvals=deny|allow] [--timeout=180] [--compact] [--trace]
 
 import { Adapters } from "@cerium/orchestrator";
 import { NodeServices } from "@effect/platform-node";
@@ -44,6 +44,8 @@ if (process.argv.includes("--help")) {
       "  --approvals=deny|allow     how requests are answered (default deny)",
       "  --timeout=180              seconds per harness",
       "  --interrupt-after=8        run a long command, interrupt after this many seconds; must end as interrupted",
+      "  --compact                  after the turn, ask the harness to compact; must report the compaction",
+      "  --trace                    print each event, with the start of its raw provider message",
     ].join("\n"),
   );
   process.exit(0);
@@ -65,6 +67,8 @@ const input: unknown = {
   ...(flag("approvals") ? { approvals: flag("approvals") } : {}),
   ...(flag("timeout") ? { timeoutSeconds: Number(flag("timeout")) } : {}),
   ...(flag("interrupt-after") ? { interruptAfterSeconds: Number(flag("interrupt-after")) } : {}),
+  ...(process.argv.includes("--compact") ? { compact: true } : {}),
+  ...(process.argv.includes("--trace") ? { trace: true } : {}),
 };
 
 const request = Schema.decodeUnknownSync(LiveCheckRequest)(input);

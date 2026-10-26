@@ -79,7 +79,7 @@ describe("MuseTranslator on the recorded echo session", () => {
   const payloads = payloadsOf(replay(fixture("echo-session.jsonl")));
 
   it("produces each turn's reply in order", () => {
-    expect(payloads.map((payload) => payload._tag)).toEqual([
+    expect(payloads.map((payload) => payload._tag).filter((tag) => tag !== "ContextReported")).toEqual([
       "MessageDelta",
       "MessageCompleted",
       "UsageReported",
@@ -338,5 +338,61 @@ describe("MuseTranslator turn endings", () => {
     translator.expectTurn("t");
     const usage = translate(translator, [tokenUsage("t", {}, 10, 1.5), completed("t", "completed")])[0];
     expect(usage).not.toHaveProperty("costUsd");
+  });
+});
+
+describe("MuseTranslator context and compaction", () => {
+  const compaction = (fields: Record<string, unknown>) =>
+    item("completed", { itemId: "c1", kind: "compaction", status: "completed", revision: 2, ...fields });
+
+  it("reports each completion's context against the model's window", () => {
+    const translator = new MuseTranslator({ workspace: "/work" });
+    translator.window(1_007_997);
+    const payloads = translate(translator, [
+      frame("session/tokenUsage", {
+        turnId: "t",
+        promptTokens: 22_271,
+        totalTokens: 22_447,
+        usage: { cachedTokens: 0, inputTokens: 22_271, outputTokens: 176, reasoningTokens: 0 },
+        cumulative: {},
+      }),
+    ]);
+    expect(payloads).toEqual([{ _tag: "ContextReported", tokens: 22_447, window: 1_007_997 }]);
+  });
+
+  it("ends the turn of a compaction Cerium asked for at its terminal item", () => {
+    const translator = new MuseTranslator({ workspace: "/work" });
+    translator.compactAsked();
+    expect(
+      translate(translator, [
+        compaction({ outcome: "compacted", trigger: "manual", tokensBefore: 22_246, tokensAfter: 19_063 }),
+      ]),
+    ).toEqual([
+      { _tag: "ContextCompacted", trigger: "manual", tokensBefore: 22_246, tokensAfter: 19_063 },
+      { _tag: "TurnCompleted", stopReason: "completed" },
+    ]);
+    // Muse's own, later, ends nothing.
+    expect(
+      translate(translator, [
+        compaction({ itemId: "c2", outcome: "compacted", trigger: "auto", tokensBefore: 9 }),
+      ]),
+    ).toEqual([{ _tag: "ContextCompacted", trigger: "auto", tokensBefore: 9 }]);
+  });
+
+  it("ends the turn with why when there was nothing to compact", () => {
+    const translator = new MuseTranslator({ workspace: "/work" });
+    translator.compactAsked();
+    expect(
+      translate(translator, [compaction({ outcome: "noop", reason: "no_compactable_history" })]),
+    ).toEqual([
+      {
+        _tag: "AgentError",
+        kind: "unknown",
+        message: "Muse Code found nothing to compact (no_compactable_history).",
+        retryable: false,
+      },
+      { _tag: "TurnCompleted", stopReason: "error" },
+    ]);
+    expect(translator.compactRefused("again", null)).toEqual([]);
   });
 });

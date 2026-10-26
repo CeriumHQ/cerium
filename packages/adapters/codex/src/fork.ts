@@ -8,7 +8,11 @@ import { connect, type AppServer } from "./rpc.ts";
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "codex", message, cause });
 
-/** The thread's turns from its first, without the turns Codex starts itself on behalf of another. */
+/**
+ * The thread's turns from its first that a message started, as Cerium counts them: without the turns
+ * Codex starts itself on behalf of another, or the ones a compaction ran in (`thread/compact/start`),
+ * which have no user message.
+ */
 const listTurns = (server: AppServer, threadId: string) =>
   Effect.gen(function* () {
     const turns: Array<Turn> = [];
@@ -18,12 +22,16 @@ const listTurns = (server: AppServer, threadId: string) =>
         threadId,
         cursor,
         sortDirection: "asc",
-        itemsView: "notLoaded",
+        itemsView: "summary",
       });
       turns.push(...page.data);
       cursor = page.nextCursor;
     } while (cursor !== null);
-    return turns.filter((turn) => turn.rootTurnId === null || turn.rootTurnId === turn.id);
+    return turns.filter(
+      (turn) =>
+        (turn.rootTurnId === null || turn.rootTurnId === turn.id) &&
+        turn.items.some((item) => item.type === "userMessage"),
+    );
   });
 
 /**

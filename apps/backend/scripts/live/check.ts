@@ -72,6 +72,13 @@ export const LiveCheckRequest = Schema.Struct({
   timeoutSeconds: Schema.optionalKey(Seconds).annotate({
     description: "Per harness, start to finish; default 180.",
   }),
+  compact: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "After the turn, ask the harness to compact (where its manifest offers it); it passes only if the compaction turn completes and reports ContextCompacted.",
+  }),
+  trace: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Print each canonical event, with the start of its raw provider message, as it arrives.",
+  }),
 });
 export type LiveCheckRequest = typeof LiveCheckRequest.Type;
 
@@ -94,6 +101,12 @@ export const LiveCheckResult = Schema.Struct({
       updates: Schema.Int,
     }),
   ),
+  /** The context as last reported, and how many readings there were. */
+  context: Schema.optionalKey(
+    Schema.Struct({ tokens: Schema.Int, window: Schema.optionalKey(Schema.Int), readings: Schema.Int }),
+  ),
+  /** The compactions reported, as `trigger before→after (summary length)`. */
+  compactions: Schema.optionalKey(Schema.Array(Schema.String)),
   problems: Schema.Array(Schema.String),
 });
 export type LiveCheckResult = typeof LiveCheckResult.Type;
@@ -144,6 +157,9 @@ export const checkHarness = (
       approvals: [] as Array<{ tool: string; summary: string; answer: string }>,
       reply: undefined as string | undefined,
       todos: undefined as { items: ReadonlyArray<TodoItem>; updates: number } | undefined,
+      context: undefined as { tokens: number; window?: number; readings: number } | undefined,
+      compactions: [] as Array<string>,
+      turns: 0,
       problems: [] as Array<string>,
       stopReason: undefined as string | undefined,
       unavailable: false,
@@ -167,11 +183,32 @@ export const checkHarness = (
         includeUserMcpServers: false,
       });
       const done = yield* Deferred.make<void>();
+      // Settled by the compaction's turn, when the check asks for one.
+      const compacted = yield* Deferred.make<void>();
       const callIds = new Set<string>();
       yield* session.events.pipe(
-        Stream.runForEach(({ payload }) =>
+        Stream.runForEach(({ payload, raw }) =>
           Effect.gen(function* () {
+            if (request.trace === true) {
+              const rawText = raw === undefined ? "" : JSON.stringify(raw).slice(0, 2000);
+              console.error(`[${adapter.provider}] ${JSON.stringify(payload).slice(0, 300)}  <- ${rawText}`);
+            }
             switch (payload._tag) {
+              case "ContextReported":
+                record.context = {
+                  tokens: payload.tokens,
+                  ...(payload.window === undefined ? {} : { window: payload.window }),
+                  readings: (record.context?.readings ?? 0) + 1,
+                };
+                break;
+              case "ContextCompacted":
+                record.compactions.push(
+                  `${payload.trigger} ${payload.tokensBefore ?? "?"}→${payload.tokensAfter ?? "?"}` +
+                    (payload.summary === undefined
+                      ? " (no summary)"
+                      : ` (summary of ${payload.summary.length} chars)`),
+                );
+                break;
               case "ToolCallStarted":
                 // Some harnesses announce a call again as it progresses.
                 if (!callIds.has(payload.callId)) record.tools.push(payload.toolName);
@@ -202,14 +239,24 @@ export const checkHarness = (
                 yield* Deferred.succeed(done, undefined);
                 break;
               case "TurnCompleted":
-                record.stopReason = payload.stopReason;
-                yield* Deferred.succeed(done, undefined);
+                record.turns++;
+                if (record.turns === 1) {
+                  record.stopReason = payload.stopReason;
+                  yield* Deferred.succeed(done, undefined);
+                } else {
+                  if (payload.stopReason !== "completed") {
+                    record.problems.push(`The compaction's turn ended: ${payload.stopReason}.`);
+                  }
+                  yield* Deferred.succeed(compacted, undefined);
+                }
                 break;
             }
           }),
         ),
         Effect.catch((error) => Effect.sync(() => record.problems.push(describe(error)))),
-        Effect.ensuring(Deferred.succeed(done, undefined)),
+        Effect.ensuring(
+          Effect.andThen(Deferred.succeed(done, undefined), Deferred.succeed(compacted, undefined)),
+        ),
         Effect.forkScoped,
       );
       yield* session.send(prompt);
@@ -221,6 +268,15 @@ export const checkHarness = (
         );
       }
       yield* Deferred.await(done);
+      if (request.compact === true) {
+        if (session.compact === undefined || adapter.manifest.compact !== true) {
+          record.problems.push("The harness can't compact when asked.");
+        } else if (!record.unavailable) {
+          yield* session.compact;
+          yield* Deferred.await(compacted);
+          if (record.compactions.length === 0) record.problems.push("No compaction was reported.");
+        }
+      }
     }).pipe(
       Effect.scoped,
       Effect.catch((error) =>
@@ -300,6 +356,8 @@ export const checkHarness = (
               updates: record.todos.updates,
             },
           }),
+      ...(record.context === undefined ? {} : { context: record.context }),
+      ...(record.compactions.length === 0 ? {} : { compactions: record.compactions }),
       problems,
     };
     return result;
@@ -344,6 +402,11 @@ export const renderResults = (results: ReadonlyArray<LiveCheckResult>): string =
         const listed = items.map((item) => `${item.status}: ${item.text}`).join("; ") || "emptied";
         lines.push(`  todos: ${listed} (${updates} ${updates === 1 ? "update" : "updates"})`);
       }
+      if (result.context !== undefined) {
+        const { tokens, window, readings } = result.context;
+        lines.push(`  context: ${tokens} of ${window ?? "an unreported window"} (${readings} readings)`);
+      }
+      for (const compaction of result.compactions ?? []) lines.push(`  compacted: ${compaction}`);
       if (result.reply !== undefined)
         lines.push(`  reply: ${result.reply.replace(/\s+/g, " ").slice(0, 300)}`);
       for (const problem of result.problems) lines.push(`  problem: ${problem}`);

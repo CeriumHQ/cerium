@@ -86,4 +86,10 @@ export const projects = sqliteTable("projects", {
   addedAt: integer("added_at").notNull(),
   /** When a thread last started in it, or the user last chose it. */
   usedAt: integer("used_at").notNull(),
+  /**
+   * The project's setup and run commands, as the user overrode them here (`""` turns one off) and
+   * want shared by every thread's worktree of it. Null defers to the project's own `.cerium.toml`.
+   */
+  setup: text("setup"),
+  run: text("run"),
 });

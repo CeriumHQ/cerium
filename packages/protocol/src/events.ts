@@ -4,6 +4,7 @@ import { ReasoningEffort } from "./capabilities.ts";
 import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, EventId, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 import { AccessMode, AgentState } from "./orchestration.ts";
+import { TaskEntry } from "./tasks.ts";
 
 // Canonical events: every adapter translates its provider's stream into these, and the UI,
 // persistence and orchestrator never see provider types. Values a newer version may add read as a
@@ -15,6 +16,17 @@ export const SessionStarted = Schema.TaggedStruct("SessionStarted", {
   providerSessionId: Schema.NonEmptyString,
   model: Schema.NonEmptyString,
   effort: Schema.optionalKey(ReasoningEffort),
+});
+
+/**
+ * The lead came from a session the user had with its harness outside Cerium, and goes on with it.
+ * Recorded first; the turns after it are the session's history, translated. `unavailable` when the
+ * harness couldn't give the history (`detail` says why): the session still resumes where it left off.
+ */
+export const SessionImported = Schema.TaggedStruct("SessionImported", {
+  provider: ProviderId,
+  history: withFallback(Schema.Literals(["full", "unavailable"]), "full"),
+  detail: Schema.optionalKey(Schema.String),
 });
 
 /**
@@ -174,6 +186,32 @@ export const UsageReported = Schema.TaggedStruct("UsageReported", {
   cachedInputTokens: Schema.optionalKey(NonNegativeInt),
   costUsd: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
 });
+
+const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
+
+/**
+ * How full the agent's context is, as its harness last measured it: the tokens the model read on its
+ * latest request, against the window of the model it ran on when the harness says. Each one replaces
+ * the one before.
+ */
+export const ContextReported = Schema.TaggedStruct("ContextReported", {
+  tokens: NonNegativeInt,
+  window: Schema.optionalKey(PositiveInt),
+});
+
+/**
+ * The harness compacted the agent's conversation: it replaced the history so far with a summary.
+ * `manual` when Cerium asked it to (`AgentSession.compact`), `auto` when the context filled. Counts the
+ * harness doesn't report are absent.
+ */
+export const ContextCompacted = Schema.TaggedStruct("ContextCompacted", {
+  trigger: withFallback(Schema.Literals(["auto", "manual"]), "auto"),
+  tokensBefore: Schema.optionalKey(NonNegativeInt),
+  tokensAfter: Schema.optionalKey(NonNegativeInt),
+  /** What the harness kept of the conversation, where it exposes it. */
+  summary: Schema.optionalKey(Schema.String),
+});
+export type ContextCompacted = typeof ContextCompacted.Type;
 
 export const TurnCompleted = Schema.TaggedStruct("TurnCompleted", {
   /**
@@ -401,6 +439,23 @@ export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
 });
 
 /**
+ * The user handed the lead to another harness: the session on `from` ended, and the lead goes on in a
+ * new session on `provider`, told the conversation so far with its next turn, as a notice that turn's
+ * input records. Nothing but that text crosses over: the old harness's own memory and tool state stay
+ * behind.
+ */
+export const LeadHandedOff = Schema.TaggedStruct("LeadHandedOff", {
+  from: Schema.Struct({ provider: ProviderId, model: Schema.NonEmptyString }),
+  provider: ProviderId,
+  model: Schema.NonEmptyString,
+  /** Absent for a model its harness offers no effort setting for. */
+  effort: Schema.optionalKey(ReasoningEffort),
+  /** The agent is on Auto from here: the effort router picks its effort while it is on. */
+  autoEffort: Schema.optionalKey(Schema.Boolean),
+});
+export type LeadHandedOff = typeof LeadHandedOff.Type;
+
+/**
  * The effort router's word on the turn about to start, for an agent set to Auto: the level the turn
  * runs at. Without `kept`, the router picked it; with it, the agent kept the level it had:
  * - `cache`: its model starts the prompt cache over when effort changes, so only a new session's
@@ -448,8 +503,19 @@ export const ThreadRenamed = Schema.TaggedStruct("ThreadRenamed", {
   title: Schema.String,
 });
 
+/**
+ * An agent changed the user's tasks list (the rail's Tasks) with the bus's `add_task` or
+ * `remove_task`, or a window mirrored its own onto the machine the agents run on. The entries
+ * newest-wins against what the window already holds (a deleted task keeps a stamp without `task`),
+ * exactly as the account's relay sync does.
+ */
+export const UserTasksChanged = Schema.TaggedStruct("UserTasksChanged", {
+  tasks: Schema.Array(TaskEntry),
+});
+
 export const EventPayload = Schema.Union([
   SessionStarted,
+  SessionImported,
   MessageDelta,
   MessageCompleted,
   ReasoningDelta,
@@ -463,6 +529,8 @@ export const EventPayload = Schema.Union([
   QuestionAsked,
   QuestionResolved,
   UsageReported,
+  ContextReported,
+  ContextCompacted,
   TurnCompleted,
   AuthRequired,
   AgentError,
@@ -477,10 +545,12 @@ export const EventPayload = Schema.Union([
   AgentSpawned,
   AgentStateChanged,
   ModelChanged,
+  LeadHandedOff,
   EffortRouted,
   SpawnApprovalRequested,
   SpawnApprovalResolved,
   ThreadRenamed,
+  UserTasksChanged,
 ]);
 export type EventPayload = typeof EventPayload.Type;
 

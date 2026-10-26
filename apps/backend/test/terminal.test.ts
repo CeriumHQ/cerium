@@ -103,7 +103,9 @@ const watch = (terminals: Terminals["Service"], id: TerminalId) =>
   });
 
 const text = (outputs: ReadonlyArray<TerminalOutput>) =>
-  outputs.flatMap((output) => (output._tag === "Exit" ? [] : [output.data])).join("");
+  outputs
+    .flatMap((output) => (output._tag === "Exit" || output._tag === "Url" ? [] : [output.data]))
+    .join("");
 
 describe("Terminals.open", () => {
   it.live("starts the shell in the thread's folder, set up as a terminal", () => {

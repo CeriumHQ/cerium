@@ -69,6 +69,13 @@ export class MuseTranslator {
   /** The summary part each open reasoning item streams. */
   readonly #reasoningPart = new Map<string, number>();
   #todos: ReadonlyArray<TodoItem> = [];
+  /** The context window of the model the session runs, from its catalog row. */
+  #window: number | undefined;
+  /**
+   * Cerium asked Muse to compact (`session/compact`), which runs outside any turn: the compaction's
+   * terminal item ends the turn Cerium counts it as.
+   */
+  #compactAsked = false;
 
   constructor(options: { readonly workspace: string; readonly resumed?: boolean }) {
     this.#workspace = options.workspace;
@@ -130,9 +137,34 @@ export class MuseTranslator {
 
   /** Ends every submitted turn after the host went away. */
   endOpenTurns(message: string, raw: unknown): ReadonlyArray<AdapterEvent> {
-    return [...this.#turns.keys()].flatMap((turnId) =>
-      this.endTurn(turnId, "error", raw, { _tag: "AgentError", kind: "crash", message, retryable: true }),
-    );
+    const compaction = this.#compactAsked ? this.compactRefused(message, raw) : [];
+    return [
+      ...compaction,
+      ...[...this.#turns.keys()].flatMap((turnId) =>
+        this.endTurn(turnId, "error", raw, { _tag: "AgentError", kind: "crash", message, retryable: true }),
+      ),
+    ];
+  }
+
+  /** The context window of the model the session runs now, when its catalog row declares one. */
+  window(limit: number | undefined): void {
+    this.#window = limit === undefined || limit < 1 ? undefined : Math.round(limit);
+  }
+
+  /** Cerium is asking Muse to compact: the compaction's end ends a turn. */
+  compactAsked(): void {
+    this.#compactAsked = true;
+  }
+
+  /** Muse refused to compact, or found nothing to: the turn ends with why. */
+  compactRefused(message: string, raw: unknown): ReadonlyArray<AdapterEvent> {
+    if (!this.#compactAsked) return [];
+    this.#compactAsked = false;
+    const payloads: ReadonlyArray<EventPayload> = [
+      { _tag: "AgentError", kind: "unknown", message, retryable: false },
+      { _tag: "TurnCompleted", stopReason: "error" },
+    ];
+    return payloads.map((payload) => ({ payload, raw }));
   }
 
   /**
@@ -168,9 +200,22 @@ export class MuseTranslator {
         return this.#item(params["item"] as Item, "completed");
       case "item/delta":
         return this.#delta(params as unknown as ItemDeltaParams);
-      case "session/tokenUsage":
-        this.#tokenUsage(params as unknown as SessionTokenUsageParams);
-        return [];
+      case "session/tokenUsage": {
+        const usage = params as unknown as SessionTokenUsageParams;
+        this.#tokenUsage(usage);
+        // The completion's whole context, counted once: what it read and what it wrote.
+        const total = Number.isFinite(usage.totalTokens)
+          ? usage.totalTokens
+          : usage.promptTokens + usage.usage.outputTokens;
+        const tokens = Math.max(0, Math.round(total));
+        return [
+          {
+            _tag: "ContextReported",
+            tokens,
+            ...(this.#window === undefined ? {} : { window: this.#window }),
+          },
+        ];
+      }
       case "session/todoListChanged":
         return this.#todoList(params as unknown as SessionTodoListChangedParams);
       case "turn/started": {
@@ -252,11 +297,51 @@ export class MuseTranslator {
         }
         return payloads;
       }
+      case "compaction":
+        return finishing ? this.#compaction(item) : [];
       default:
-        // Subagent, reminder, hook, compaction and other items have no canonical event yet; `raw` in the
-        // store still has them.
+        // Subagent, reminder, hook and other items have no canonical event yet; `raw` in the store still
+        // has them.
         return [];
     }
+  }
+
+  /** A compaction's terminal item; one Cerium asked for ends its turn. */
+  #compaction(item: Item): ReadonlyArray<EventPayload> {
+    const asked = this.#compactAsked;
+    this.#compactAsked = false;
+    const count = (value: number | undefined) =>
+      value === undefined ? undefined : Math.max(0, Math.round(value));
+    const before = count(item.tokensBefore);
+    const after = count(item.tokensAfter);
+    const summary = item.text?.trim();
+    const outcome = item.outcome ?? "compacted";
+    const payloads: Array<EventPayload> =
+      outcome === "compacted"
+        ? [
+            {
+              _tag: "ContextCompacted",
+              trigger: item.trigger === "manual" || (item.trigger === undefined && asked) ? "manual" : "auto",
+              ...(before === undefined ? {} : { tokensBefore: before }),
+              ...(after === undefined ? {} : { tokensAfter: after }),
+              ...(summary ? { summary } : {}),
+            },
+          ]
+        : [
+            {
+              _tag: "AgentError",
+              kind: "unknown",
+              message:
+                outcome === "noop"
+                  ? `Muse Code found nothing to compact${item.reason ? ` (${item.reason})` : ""}.`
+                  : `Muse Code couldn't compact the conversation (${item.reason ?? outcome}).`,
+              retryable: false,
+            },
+          ];
+    if (asked) {
+      payloads.push({ _tag: "TurnCompleted", stopReason: outcome === "compacted" ? "completed" : "error" });
+    }
+    return payloads;
   }
 
   /** Muse sends the whole list at every change, and an empty one when it clears it. */

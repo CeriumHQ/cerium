@@ -127,6 +127,40 @@ export interface SubscriptionReport {
   readonly resetCredits?: number;
 }
 
+/** A session the user had with the harness outside Cerium, as the harness lists it. */
+export interface PastSession {
+  /** The harness's own session id, which `SessionOptions.resume` continues. */
+  readonly id: string;
+  /** The folder it ran in, when the harness recorded one. */
+  readonly cwd?: string;
+  /** Its title, or its first message when it has none. */
+  readonly title: string;
+  readonly createdAt?: number;
+  /** Its last activity. */
+  readonly updatedAt: number;
+  /** How many turns it holds, when the harness counts them. */
+  readonly turns?: number;
+  /** How much the harness keeps of it on disk, when it says. */
+  readonly bytes?: number;
+  /** The model it last ran on, when the harness says. */
+  readonly model?: string;
+}
+
+/** One turn of a past session: what the user sent, and the reply as canonical events. */
+export interface PastTurn {
+  readonly prompt: string;
+  /** When it was sent, when the harness recorded it. */
+  readonly at?: number;
+  readonly events: ReadonlyArray<AdapterEvent>;
+}
+
+/** A past session's conversation, oldest turn first. */
+export interface PastHistory {
+  /** The model it last ran on, when the history says. */
+  readonly model?: string;
+  readonly turns: ReadonlyArray<PastTurn>;
+}
+
 /** A live harness session. Closing the scope it was started in ends the session. */
 export interface AgentSession {
   readonly events: Stream.Stream<AdapterEvent, HarnessFailure>;
@@ -135,6 +169,12 @@ export interface AgentSession {
   readonly interrupt: Effect.Effect<void, HarnessFailure>;
   setModel(model: string): Effect.Effect<void, HarnessFailure>;
   setEffort(effort: ReasoningEffort): Effect.Effect<void, HarnessFailure>;
+  /**
+   * Asks the harness to compact the conversation now, between turns. It runs as a turn of its own,
+   * which reports `ContextCompacted` and ends with `TurnCompleted` like one `send` starts. Present when
+   * the manifest's `compact` is.
+   */
+  readonly compact?: Effect.Effect<void, HarnessFailure>;
 }
 
 export interface HarnessAdapter {
@@ -169,6 +209,17 @@ export interface HarnessAdapter {
    * `session.fork` is.
    */
   fork?(request: ForkRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
+  /**
+   * The user's own sessions with the harness, newest first, for bringing them into Cerium. It reads
+   * sessions only, never credentials, and leaves out the ones Cerium's adapters start where the
+   * harness can tell. Absent when the harness offers no listing.
+   */
+  readonly listSessions?: Effect.Effect<ReadonlyArray<PastSession>, HarnessUnavailable | HarnessFailure>;
+  /**
+   * A listed session's conversation, translated like a live session's events. Absent when the harness
+   * can resume a session but not give its history.
+   */
+  readSession?(session: PastSession): Effect.Effect<PastHistory, HarnessUnavailable | HarnessFailure>;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

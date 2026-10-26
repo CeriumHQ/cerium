@@ -15,8 +15,12 @@ import type { GetAccountRateLimitsResponse } from "./protocol/v2/GetAccountRateL
 import type { GetAccountResponse } from "./protocol/v2/GetAccountResponse.ts";
 import type { ModelListParams } from "./protocol/v2/ModelListParams.ts";
 import type { ModelListResponse } from "./protocol/v2/ModelListResponse.ts";
+import type { ThreadCompactStartParams } from "./protocol/v2/ThreadCompactStartParams.ts";
+import type { ThreadCompactStartResponse } from "./protocol/v2/ThreadCompactStartResponse.ts";
 import type { ThreadForkParams } from "./protocol/v2/ThreadForkParams.ts";
 import type { ThreadForkResponse } from "./protocol/v2/ThreadForkResponse.ts";
+import type { ThreadListParams } from "./protocol/v2/ThreadListParams.ts";
+import type { ThreadListResponse } from "./protocol/v2/ThreadListResponse.ts";
 import type { ThreadResumeParams } from "./protocol/v2/ThreadResumeParams.ts";
 import type { ThreadResumeResponse } from "./protocol/v2/ThreadResumeResponse.ts";
 import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
@@ -43,6 +47,8 @@ interface Methods {
   "thread/start": readonly [ThreadStartParams, ThreadStartResponse];
   "thread/resume": readonly [ThreadResumeParams, ThreadResumeResponse];
   "thread/fork": readonly [ThreadForkParams, ThreadForkResponse];
+  "thread/list": readonly [ThreadListParams, ThreadListResponse];
+  "thread/compact/start": readonly [ThreadCompactStartParams, ThreadCompactStartResponse];
   "thread/turns/list": readonly [ThreadTurnsListParams, ThreadTurnsListResponse];
   "turn/start": readonly [TurnStartParams, TurnStartResponse];
   "turn/interrupt": readonly [TurnInterruptParams, TurnInterruptResponse];

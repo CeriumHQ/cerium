@@ -31,5 +31,7 @@ export const museManifest: CapabilityManifest = {
   // `session/tokenUsage` per model call. Its cost member is a server estimate that only appears for priced
   // routes, so cost is passed through when present but not promised.
   usageReporting: "tokens",
+  // `session/compact`, whose compaction item ends the turn Cerium counts it as.
+  compact: true,
   defaultConcurrency: 4,
 };

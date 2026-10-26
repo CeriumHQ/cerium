@@ -1,4 +1,10 @@
-import type { CapabilityManifest, ProviderId, ReasoningEffort, TodoItem } from "@cerium/protocol";
+import type {
+  CapabilityManifest,
+  ContextCompacted,
+  ProviderId,
+  ReasoningEffort,
+  TodoItem,
+} from "@cerium/protocol";
 import { Deferred, Duration, Effect, Fiber, Queue, Stream, type Cause } from "effect";
 
 import {
@@ -57,11 +63,17 @@ export const makeFakeAdapter = (
     readonly refuseSwitches?: boolean;
     /** The harness can fork sessions (`forks` records each request); `"fail"` refuses every fork. */
     readonly fork?: boolean | "fail";
+    /**
+     * The harness compacts when asked: a turn reporting this compaction (`compactions` counts them);
+     * `"fail"` refuses every request.
+     */
+    readonly compact?: Omit<ContextCompacted, "_tag"> | "fail";
   } = {},
 ) => {
   const sessions: Array<FakeSession> = [];
   const completions: Array<CompletionRequest> = [];
   const forks: Array<ForkRequest> = [];
+  const compactions = { count: 0 };
   let failuresLeft = options.failedStarts ?? 0;
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
@@ -73,8 +85,10 @@ export const makeFakeAdapter = (
     mcpInjection: true,
     nativeSubagents: "disableable",
     usageReporting: "tokens",
+    ...(options.compact === undefined ? {} : { compact: true }),
     defaultConcurrency: options.concurrency ?? 6,
   };
+  const compacted = options.compact;
   const adapter: HarnessAdapter = {
     provider,
     manifest,
@@ -197,8 +211,34 @@ export const makeFakeAdapter = (
           ),
           setModel: (model: string) => switchTo({ model }),
           setEffort: (effort: ReasoningEffort) => switchTo({ effort }),
+          ...(compacted === undefined
+            ? {}
+            : {
+                compact:
+                  compacted === "fail"
+                    ? Effect.fail(
+                        new HarnessFailure({ provider, message: "Nothing to compact.", cause: null }),
+                      )
+                    : Effect.sync(() => void compactions.count++).pipe(
+                        Effect.andThen(
+                          Effect.forkDetach(
+                            Effect.sleep(options.turnDuration ?? 0).pipe(
+                              Effect.andThen(
+                                Queue.offerAll(events, [
+                                  { payload: { _tag: "ContextCompacted", ...compacted } },
+                                  { payload: { _tag: "TurnCompleted", stopReason: "completed" } },
+                                ]),
+                              ),
+                              Effect.asVoid,
+                            ),
+                          ),
+                        ),
+                        Effect.tap((fiber) => Effect.sync(() => void (current = fiber))),
+                        Effect.asVoid,
+                      ),
+              }),
         };
       }),
   };
-  return { adapter, sessions, completions, forks, running };
+  return { adapter, sessions, completions, forks, running, compactions };
 };

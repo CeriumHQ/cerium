@@ -12,8 +12,9 @@ import { Cause, Deferred, Duration, Effect, Exit, Queue, Stream } from "effect";
 import { basename, resolve } from "node:path";
 
 import { call, openHost, type OpenCodeClient } from "./host.ts";
-import { readCatalog, toModelRef, type CatalogRow } from "./models.ts";
+import { readCatalog, toModelRef, windowOf, type CatalogRow } from "./models.ts";
 import { grantsFor, replyFor, sessionRules, toMcpServer, toolNamer, type Rule } from "./policy.ts";
+import { CERIUM_METADATA } from "./sessions.ts";
 import { OpenCodeTranslator, type OpenCodeRecord } from "./translate.ts";
 
 const failure = (message: string) => (cause: unknown) =>
@@ -49,10 +50,8 @@ const userServers = (client: OpenCodeClient, directory: string, injected: Readon
     ),
   );
 
-interface Turn {
-  readonly text: string;
-  readonly extras?: TurnExtras;
-}
+/** A message to send, or a compaction to ask for. */
+type Turn = { readonly text: string; readonly extras?: TurnExtras } | { readonly compact: true };
 
 /**
  * Starts (or resumes) an OpenCode session on a private `opencode serve`. Cerium's MCP servers join
@@ -79,7 +78,11 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   const { client } = host;
 
   const events = yield* Queue.unbounded<AdapterEvent, HarnessFailure | Cause.Done>();
-  const translator = new OpenCodeTranslator({ toolName: toolNamer(injected) });
+  const translator = new OpenCodeTranslator({
+    toolName: toolNamer(injected),
+    // Read as each step ends, after the catalog and model below are set.
+    window: () => windowOf(model, catalog),
+  });
   const emit = (record: OpenCodeRecord) => Queue.offerAllUnsafe(events, translator.translate(record));
 
   let sessionId: string | undefined;
@@ -145,7 +148,16 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   const id =
     resume === undefined
       ? (yield* call("start a session", (signal) =>
-          client.session.create({ location: { directory: cwd }, model: ref, permissions: rules }, { signal }),
+          client.session.create(
+            // Marked as Cerium's, so listing the user's own sessions leaves it out.
+            {
+              location: { directory: cwd },
+              model: ref,
+              permissions: rules,
+              metadata: { ...CERIUM_METADATA },
+            },
+            { signal },
+          ),
         )).id
       : (yield* call("resume the session", (signal) => client.session.get({ sessionID: resume }, { signal })))
           .id;
@@ -211,22 +223,14 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
           Effect.orElseSucceed(() => []),
         );
 
-  const runTurn = ({ text, extras }: Turn) =>
+  const prompt = ({ text, extras }: { readonly text: string; readonly extras?: TurnExtras }) =>
     Effect.gen(function* () {
-      if (interruptRequested) {
-        interruptRequested = false;
-        pending--;
-        emit({ type: "promptSkipped" });
-        return;
-      }
-      const ended = yield* Deferred.make<void>();
-      turnEnded = ended;
       const files = (extras?.images ?? []).map((image) => ({
         uri: `data:${image.mediaType};base64,${image.data}`,
         name: basename(image.path),
       }));
       const skills = yield* skillIds(extras?.skills);
-      const sent = yield* call("send the message", (signal) =>
+      return yield* call("send the message", (signal) =>
         client.session.prompt(
           {
             sessionID: id,
@@ -236,7 +240,26 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
           },
           { signal },
         ),
-      ).pipe(Effect.exit);
+      );
+    });
+
+  const runTurn = (turn: Turn) =>
+    Effect.gen(function* () {
+      if (interruptRequested) {
+        interruptRequested = false;
+        pending--;
+        emit({ type: "promptSkipped" });
+        return;
+      }
+      const ended = yield* Deferred.make<void>();
+      turnEnded = ended;
+      const send: Effect.Effect<void, HarnessFailure> =
+        "compact" in turn
+          ? Effect.asVoid(
+              call("compact the session", (signal) => client.session.compact({ sessionID: id }, { signal })),
+            )
+          : Effect.asVoid(prompt(turn));
+      const sent = yield* Effect.exit(send);
       if (Exit.isFailure(sent)) {
         const error = Cause.squash(sent.cause);
         emit({ type: "promptFailed", message: error instanceof Error ? error.message : String(error) });
@@ -313,5 +336,10 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
     // Both apply from the next step; a running step finishes on the model it started with.
     setModel: (next) => switchModel({ model: next }),
     setEffort: (next) => switchModel({ effort: next }),
+    // Queued like a message: OpenCode runs the compaction as an execution of its own.
+    compact: Effect.sync(() => pending++).pipe(
+      Effect.andThen(Queue.offer(input, { compact: true })),
+      Effect.asVoid,
+    ),
   } satisfies AgentSession;
 });

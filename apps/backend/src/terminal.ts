@@ -52,9 +52,31 @@ const BACKLOG_PIECES = 512;
  */
 const REDRAW_MS = 1_000;
 
+/**
+ * Scripts a project runs in terminals of its threads', one kind at a time: "Setup" and "Run" here
+ * name and tell apart a script's terminal from a plain shell's on the drawer. The kind's terminal
+ * replaces the kind's last one, so running again stops the old server first. A plain shell's name
+ * stands for its tab; a script's kind itself does.
+ */
+export const SCRIPT_LABELS = ["Setup", "Run"] as const;
+export type ScriptLabel = (typeof SCRIPT_LABELS)[number];
+
+/**
+ * Addresses a dev server serves itself at in the shell's output: only hosts the same machine's
+ * browser can reach, as `Url` output pieces. Sites a page links to read the same, so no more is
+ * taken.
+ */
+const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/[^\s"'`<>()\\]*)?/gi;
+
+/** Addresses the output holds, without the punctuation a sentence may end on. */
+export const urlsIn = (text: string): ReadonlyArray<string> => [
+  ...new Set((text.match(LOCAL_URL) ?? []).map((url) => url.replace(/[.,;:!?]+$/, ""))),
+];
+
 /** What goes to the viewers of a terminal, numbered so that a viewer can tell when it missed some. */
 type Piece =
   | { readonly _tag: "Data"; readonly seq: number; readonly data: string }
+  | { readonly _tag: "Url"; readonly seq: number; readonly url: string }
   | { readonly _tag: "Ended"; readonly seq: number; readonly code?: number };
 
 /** A terminal that is open. Mutated only by the callbacks and methods below, never from outside. */
@@ -68,7 +90,9 @@ interface Entry {
   readonly command: string | undefined;
   readonly shell: ShellChoice;
   readonly cwd: string;
-  readonly openedAt: number;
+  /** The project script it runs ("Setup" or "Run"), standing in for the shell's name on its tab. */
+  readonly script: string | undefined;
+  openedAt: number;
   /** 1 for the first shell, and one more with every restart. */
   run: number;
   readonly windowsBuild: number | undefined;
@@ -84,6 +108,10 @@ interface Entry {
   closed: boolean;
   /** Output the shell printed that isn't sent yet, and the timer that will send it. */
   pending: string;
+  /** The piece of its last output a URL could be cut at, scanned again with the next output. */
+  tail: string;
+  /** Addresses the output already told the viewers of, so each is told once. */
+  urls: Set<string>;
   timer: ReturnType<typeof setTimeout> | undefined;
   lastSent: number;
   /** Characters the screen was given and hasn't read yet, and whether the shell is held for it. */
@@ -97,12 +125,13 @@ const infoOf = (entry: Entry): TerminalInfo => ({
   id: entry.id,
   ...(entry.threadId === undefined ? {} : { threadId: entry.threadId }),
   ...(entry.project === undefined ? {} : { project: entry.project }),
-  shell: entry.shell.name,
+  shell: entry.script ?? entry.shell.name,
   cwd: entry.cwd,
   openedAt: entry.openedAt,
   run: entry.run,
   ...(entry.windowsBuild === undefined ? {} : { windowsBuild: entry.windowsBuild }),
   ...(entry.exitCode === undefined ? {} : { exitCode: entry.exitCode }),
+  ...(entry.script === undefined ? {} : { script: entry.script }),
 });
 
 const exists = (file: string) => {
@@ -124,6 +153,18 @@ export class Terminals extends Context.Service<
     open(threadId: ThreadId, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError | StoreError>;
     /** Opens a shell in a project folder, for the new thread being written there. */
     openProject(project: string, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError>;
+    /**
+     * Runs one of a work thread's project's scripts in a terminal of the thread's own, in `cwd`,
+     * whose tab shows `script` ("Setup" or "Run") instead of the shell's name. The same kind's
+     * terminal there is replaced, so what ran before it stops first.
+     */
+    openScript(
+      threadId: ThreadId,
+      script: string,
+      program: ShellChoice,
+      cwd: string,
+      size: TerminalSize,
+    ): Effect.Effect<TerminalInfo, TerminalError>;
     /**
      * Runs one program in the home folder, in a terminal of no thread, replacing the one that ran the
      * same `command` before. Its viewer attaches, writes and closes it by its id, like any terminal.
@@ -215,6 +256,15 @@ export class Terminals extends Context.Service<
             entry.unread -= data.length;
           }
           send(entry, { _tag: "Data", seq: ++entry.seq, data });
+          // A dev server's address goes beside the output that printed it, for a preview to open.
+          // An address cut across two pieces is found when they join here; those on the screen are
+          // found again by the viewers that join later.
+          for (const url of urlsIn(`${entry.tail}${data}`)) {
+            if (entry.urls.has(url)) continue;
+            entry.urls.add(url);
+            send(entry, { _tag: "Url", seq: ++entry.seq, url });
+          }
+          entry.tail = data.length > 256 ? "" : data.slice(-256);
           // A shell that prints faster than the screen reads waits for it, rather than piling up output.
           if (!entry.paused && entry.unread > PAUSE_ABOVE) {
             entry.paused = true;
@@ -336,11 +386,12 @@ export class Terminals extends Context.Service<
           readonly threadId?: ThreadId;
           readonly project?: string;
           readonly command?: string;
+          readonly script?: string;
           readonly shell: ShellChoice;
           readonly cwd: string;
           readonly size: TerminalSize;
         }) {
-          const { threadId, project, command, shell, cwd, size } = fields;
+          const { threadId, project, command, script, shell, cwd, size } = fields;
           if (entries.size >= MAX_TERMINALS) {
             return yield* new TerminalError({
               message: `Cerium runs ${MAX_TERMINALS} terminals at most. Close one to open another.`,
@@ -359,6 +410,7 @@ export class Terminals extends Context.Service<
             threadId,
             project,
             command,
+            script,
             shell,
             cwd,
             openedAt: yield* Clock.currentTimeMillis,
@@ -373,6 +425,8 @@ export class Terminals extends Context.Service<
             endedAt: undefined,
             closed: false,
             pending: "",
+            tail: "",
+            urls: new Set(),
             timer: undefined,
             lastSent: 0,
             unread: 0,
@@ -409,6 +463,32 @@ export class Terminals extends Context.Service<
           return infoOf(yield* create({ project, shell, cwd, size }));
         });
 
+        const openScript = Effect.fn("Terminals.openScript")(function* (
+          threadId: ThreadId,
+          script: string,
+          program: ShellChoice,
+          cwd: string,
+          size: TerminalSize,
+        ) {
+          // The kind's own terminal is the one replaced: another kind's, and plain shells', run on.
+          for (const earlier of [...entries.values()].filter(
+            (entry) => entry.threadId === threadId && entry.script === script,
+          )) {
+            yield* dispose(earlier);
+          }
+          const folder = yield* existingFolder(cwd);
+          // The room count reads without the one this replaces, which went just above.
+          if (
+            [...entries.values()].filter((entry) => entry.threadId === threadId).length + 1 >
+            MAX_PER_THREAD
+          ) {
+            return yield* new TerminalError({
+              message: `A thread can have ${MAX_PER_THREAD} terminals. Close one to open another.`,
+            });
+          }
+          return infoOf(yield* create({ threadId, script, shell: program, cwd: folder, size }));
+        });
+
         const runCommand = Effect.fn("Terminals.run")(function* (
           command: string,
           program: ShellChoice,
@@ -425,32 +505,56 @@ export class Terminals extends Context.Service<
 
         /**
          * What a viewer follows the output with: pieces in order, or the screen again once it missed
-         * any. `viewer` is when it was last drawn the screen again.
+         * any. `viewer` is when it was last drawn the screen again; `urls` holds the addresses it has
+         * been told of, from the output it followed and the screens it was drawn.
          */
         const follow = (
           entry: Entry,
           viewer: { redrawnAt: number },
-          expected: number,
+          state: { expected: number; seen: Set<string> },
           piece: Piece,
-        ): Effect.Effect<readonly [number, ReadonlyArray<TerminalOutput>], TerminalError> =>
+        ): Effect.Effect<readonly [typeof state, ReadonlyArray<TerminalOutput>], TerminalError> =>
           Effect.gen(function* () {
-            if (piece.seq < expected) return [expected, []] as const;
-            if (piece.seq === expected) {
-              return piece._tag === "Data"
-                ? ([expected + 1, [{ _tag: "Data", data: piece.data }]] as const)
-                : ([expected + 1, [exitOf(piece.code)]] as const);
+            if (piece.seq < state.expected) return [state, []] as const;
+            if (piece.seq === state.expected) {
+              state.expected++;
+              return [
+                state,
+                piece._tag === "Data"
+                  ? [{ _tag: "Data", data: piece.data }]
+                  : piece._tag === "Url"
+                    ? freshUrl(state, piece.url)
+                    : [exitOf(piece.code)],
+              ] as const;
             }
             // It fell behind: draw the screen again from here, once it has waited out the last redraw.
             // What it misses meanwhile, the screen shows.
             const wait = viewer.redrawnAt + (options.redrawMs ?? REDRAW_MS) - performance.now();
             if (wait > 0) yield* Effect.sleep(wait);
-            if (entry.closed) return [expected, [exitOf(undefined)]] as const;
+            if (entry.closed) return [state, [exitOf(undefined)]] as const;
             const fresh = yield* snapshot(entry);
             viewer.redrawnAt = performance.now();
+            state.expected = fresh.seq + 1;
             const screen: TerminalOutput = { _tag: "Screen", data: fresh.data };
             const over = entry.endedAt !== undefined && entry.endedAt <= fresh.seq;
-            return [fresh.seq + 1, over ? [screen, exitOf(entry.exitCode)] : [screen]] as const;
+            return [
+              state,
+              over
+                ? [screen, ...freshUrls(state, fresh.data), exitOf(entry.exitCode)]
+                : [screen, ...freshUrls(state, fresh.data)],
+            ] as const;
           });
+
+        /** The address as a piece for a viewer, or nothing when it was given that one already. */
+        const freshUrl = (state: { seen: Set<string> }, url: string): ReadonlyArray<TerminalOutput> => {
+          if (state.seen.has(url)) return [];
+          state.seen.add(url);
+          return [{ _tag: "Url", url }];
+        };
+
+        /** The addresses a screen still shows that its viewer hasn't been told of. */
+        const freshUrls = (state: { seen: Set<string> }, data: string): ReadonlyArray<TerminalOutput> =>
+          urlsIn(data).flatMap((url) => freshUrl(state, url));
 
         const attach = (id: TerminalId, size: TerminalSize) =>
           Stream.unwrap(
@@ -460,20 +564,22 @@ export class Terminals extends Context.Service<
               const subscription = yield* PubSub.subscribe(entry.output);
               const first = yield* snapshot(entry);
               const screen: TerminalOutput = { _tag: "Screen", data: first.data };
+              const state = { expected: first.seq + 1, seen: new Set<string>() };
               if (entry.endedAt !== undefined && entry.endedAt <= first.seq) {
-                return Stream.make(screen, exitOf(entry.exitCode));
+                const urls = freshUrls(state, first.data);
+                return Stream.make(screen, ...urls, exitOf(entry.exitCode));
               }
               const viewer = { redrawnAt: Number.NEGATIVE_INFINITY };
               const live: Stream.Stream<TerminalOutput, TerminalError> = Stream.fromSubscription(
                 subscription,
               ).pipe(
                 Stream.mapAccumEffect(
-                  () => first.seq + 1,
-                  (expected, piece) => follow(entry, viewer, expected, piece),
+                  () => state,
+                  (held, piece) => follow(entry, viewer, held, piece),
                 ),
                 Stream.takeUntil((output) => output._tag === "Exit"),
               );
-              return Stream.concat(Stream.make(screen), live);
+              return Stream.concat(Stream.make(screen, ...freshUrls(state, first.data)), live);
             }),
           );
 
@@ -482,6 +588,7 @@ export class Terminals extends Context.Service<
           list: Effect.sync(currentList),
           open,
           openProject,
+          openScript,
           run: runCommand,
           attach,
           write: (id, data) =>
@@ -514,6 +621,8 @@ export class Terminals extends Context.Service<
               entry.exitCode = undefined;
               entry.endedAt = undefined;
               entry.pending = "";
+              entry.tail = "";
+              entry.urls.clear();
               entry.run++;
               // A shell that won't start leaves the terminal as it was: ended.
               yield* start(entry).pipe(

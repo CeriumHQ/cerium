@@ -209,8 +209,20 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
   );
 
   const translator = new ClaudeTranslator();
+  // Claude Code's own measure of the context as each turn ends, against the window it compacts at, as
+  // its `/context` reports it. `summary` reads the last response's usage, with no API calls.
+  const measure = Effect.tryPromise(() => session.getContextUsage({ detail: "summary" })).pipe(
+    Effect.map((usage) => translator.measured({ tokens: usage.totalTokens, window: usage.rawMaxTokens })),
+    Effect.orElseSucceed(() => translator.measured(undefined)),
+  );
   const sdkEvents = Stream.fromAsyncIterable(session, failure("The Claude session stream failed")).pipe(
-    Stream.flatMap((message) => Stream.fromIterable(translator.translate(message))),
+    Stream.mapEffect((message) => {
+      const events = translator.translate(message);
+      if (message.type !== "result") return Effect.succeed(events);
+      // Measured before the turn's end is told, so the reading belongs to the turn it ends.
+      return Effect.map(measure, (measured) => [...events.slice(0, -1), ...measured, ...events.slice(-1)]);
+    }),
+    Stream.flatMap(Stream.fromIterable),
     Stream.ensuring(Queue.end(sideEvents)),
   );
 
@@ -238,5 +250,11 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
       control("Could not change Claude's effort", () =>
         session.applyFlagSettings({ effortLevel: toClaudeEffort(effort) }),
       ),
+    // Claude Code's own command, which runs as a turn and reports its `compact_boundary`.
+    compact: Queue.offer(input, {
+      type: "user",
+      message: { role: "user", content: "/compact" },
+      parent_tool_use_id: null,
+    }).pipe(Effect.asVoid),
   } satisfies AgentSession;
 });

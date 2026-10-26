@@ -118,6 +118,19 @@ const artifacts = (busServer: string) => [
 ];
 
 /**
+ * The thread's browser, which the user watches in the Preview pane: the lead hears when to reach for
+ * it; the tools' own descriptions say how.
+ */
+const browsing = (busServer: string) => [
+  "",
+  "## The thread's browser",
+  `Your thread has a browser the user watches beside it, driven with the \`browser_*\` tools (\`${busServer}\`` +
+    " MCP server). When you build or change a web page, open its dev server's localhost URL there and" +
+    " check it as a user would: read it, act on it, screenshot it, and read its console errors and failed" +
+    " requests. Your thread's agents share the one browser.",
+];
+
+/**
  * Newer models keep multi-step work in their heads, and some harnesses defer their todo tool, so
  * agents rarely reach for it unasked. Cerium shows the list to the user beside the thread, which is
  * the reason to keep it.
@@ -297,6 +310,7 @@ export const systemPrompt = (
       ...isolation(options.worktree),
       ...neighbourhood(options.neighbours ?? []),
       ...help,
+      ...browsing(busServer),
       ...artifacts(busServer),
     ].join("\n");
   }

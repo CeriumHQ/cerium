@@ -14,6 +14,7 @@ import { listMuseModels } from "./models.ts";
 import { limitInstructions, limitNotice, sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { startMuseSession } from "./session.ts";
+import { listMuseSessions, readMuseSession } from "./sessions.ts";
 
 const SIGNED_OUT = `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`;
 
@@ -83,6 +84,9 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
         complete: (request) =>
           ready.pipe(Effect.flatMap((status) => completeWithMuse(status.executablePath, request))),
+        listSessions: ready.pipe(Effect.flatMap((status) => listMuseSessions(status.executablePath))),
+        readSession: (session) =>
+          ready.pipe(Effect.flatMap((status) => readMuseSession(status.executablePath, session))),
         startSession,
       });
     }),

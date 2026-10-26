@@ -51,6 +51,7 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
+import { BrowserHostRpcs } from "./browser.ts";
 import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
 import { GitRpcs } from "./git.ts";
@@ -58,14 +59,19 @@ import { GitBranchRpcs } from "./gitBranches.ts";
 import { GitHubRpcs } from "./github.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
+import { ImportRpcs } from "./imports.ts";
+import { ScriptRpcs } from "./scripts.ts";
 import { CommandTerminal, TerminalRpcs, TerminalSize } from "./terminal.ts";
 
+export * from "./browser.ts";
 export * from "./files.ts";
 export * from "./git.ts";
 export * from "./gitBranches.ts";
 export * from "./github.ts";
 export * from "./githubIssues.ts";
 export * from "./history.ts";
+export * from "./imports.ts";
+export * from "./scripts.ts";
 export * from "./terminal.ts";
 
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
@@ -77,7 +83,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 27;
+export const RPC_VERSION = 33;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -265,6 +271,28 @@ export const MachineRpcs = RpcGroup.make(
     success: AgentInfo,
     error: CeriumError,
   }),
+  /**
+   * Hands a thread's lead to a model of another harness: a running turn stops, and a new session
+   * starts there, told the conversation so far with its next turn. Only conversation text crosses
+   * over. Since `RPC_VERSION` 32.
+   */
+  Rpc.make("HandOffLead", {
+    payload: {
+      agentId: AgentId,
+      provider: ProviderId,
+      model: Schema.NonEmptyString,
+      effort: Schema.optionalKey(ReasoningEffort),
+      autoEffort: Schema.optionalKey(Schema.Boolean),
+    },
+    success: AgentInfo,
+    error: CeriumError,
+  }),
+  /**
+   * What a window holds of its user's tasks (the rail's Tasks), as the machine's agents' tools
+   * `list_tasks`, `add_task` and `remove_task` see them, sent when it changes and once connected.
+   * Since `RPC_VERSION` 33.
+   */
+  Rpc.make("SyncUserTasks", { payload: { tasks: Schema.Array(TaskEntry) }, error: CeriumError }),
   Rpc.make("RespondToPermission", {
     payload: {
       agentId: AgentId,
@@ -300,6 +328,11 @@ export const MachineRpcs = RpcGroup.make(
    * waiting for its next step. Since `RPC_VERSION` 19.
    */
   Rpc.make("SteerAgent", { payload: { agentId: AgentId }, error: CeriumError }),
+  /**
+   * Asks the agent's harness to compact its conversation now, as a turn of its own, where its manifest
+   * offers `compact`. Refused while the agent is working. Since `RPC_VERSION` 28.
+   */
+  Rpc.make("CompactAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   /**
    * Takes back one of the user's messages still queued for a lead. Answers false when the agent has
    * already taken it. Since `RPC_VERSION` 26.
@@ -604,7 +637,7 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("EffortRouterStatus", { success: EffortRouterStatus, error: CeriumError }),
   /** Forgets the effort router's key and turns the router off. Since `RPC_VERSION` 23. */
   Rpc.make("RemoveEffortRouterKey", { success: EffortRouterStatus, error: CeriumError }),
-).merge(TerminalRpcs, GitBranchRpcs, GitRpcs, GitHubRpcs, IssueRpcs);
+).merge(TerminalRpcs, ScriptRpcs, ImportRpcs, GitBranchRpcs, GitRpcs, GitHubRpcs, IssueRpcs);
 
 /**
  * What a device answers its own UI about itself: its Cerium account, the account's threads,
@@ -677,7 +710,7 @@ export const DeviceRpcs = RpcGroup.make(
     success: EffortRouterStatus,
     error: CeriumError,
   }),
-);
+).merge(BrowserHostRpcs);
 
 /** A desktop backend's own endpoint, for its own UI: the machine and the device. */
 export const CeriumRpcs = MachineRpcs.merge(DeviceRpcs);

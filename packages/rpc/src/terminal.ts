@@ -44,6 +44,11 @@ export const TerminalInfo = Schema.Struct({
   windowsBuild: Schema.optionalKey(Schema.Int),
   /** The shell's exit code, once it has ended; absent while it runs. */
   exitCode: Schema.optionalKey(Schema.Int),
+  /**
+   * The project script it runs ("Setup" or "Run"), where a plain shell name stands; a tab shows
+   * this instead of its shell's name. Since `RPC_VERSION` 29.
+   */
+  script: Schema.optionalKey(Schema.String),
 });
 export type TerminalInfo = typeof TerminalInfo.Type;
 
@@ -68,6 +73,12 @@ export const TerminalOutput = Schema.Union([
   Schema.TaggedStruct("Screen", { data: Schema.String }),
   /** More output for the view to write. */
   Schema.TaggedStruct("Data", { data: Schema.String }),
+  /**
+   * A URL of the shell's own the output reveals, where a dev server prints the address it serves.
+   * One new piece per address per shell run, after the data that printed it; a viewer joining later
+   * is given those still on the screen with its first pieces. Since `RPC_VERSION` 29.
+   */
+  Schema.TaggedStruct("Url", { url: Schema.NonEmptyString }),
   /** The shell ended, or the terminal was closed (no code). Nothing follows. */
   Schema.TaggedStruct("Exit", { code: Schema.optionalKey(Schema.Int) }),
 ]);

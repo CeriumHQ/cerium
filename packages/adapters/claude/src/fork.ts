@@ -6,7 +6,7 @@ import { Effect } from "effect";
 const INTERRUPTED = /^\[Request interrupted by user/;
 
 /** Whether a transcript message is a turn's prompt: the user's text or images, not a tool's result. */
-const isPrompt = (message: SessionMessage): boolean => {
+export const isPrompt = (message: SessionMessage): boolean => {
   if (message.type !== "user" || message.parent_tool_use_id !== null) return false;
   const content = (message.message as { readonly content?: unknown } | null)?.content;
   if (typeof content === "string") return !INTERRUPTED.test(content);

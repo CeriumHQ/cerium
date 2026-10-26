@@ -65,7 +65,9 @@ describe("CodexTranslator on a recorded read/write session", () => {
   });
 
   it("produces the session lifecycle in order", () => {
-    const tags = payloads.map((payload) => payload._tag).filter((tag) => tag !== "MessageDelta");
+    const tags = payloads
+      .map((payload) => payload._tag)
+      .filter((tag) => tag !== "MessageDelta" && tag !== "ContextReported");
     expect(tags).toEqual([
       "SessionStarted",
       "ToolCallStarted",
@@ -197,6 +199,51 @@ describe("CodexTranslator edge cases", () => {
       notification("item/agentMessage/delta", { threadId: "other", turnId: "u", itemId: "m", delta: "x" }),
     ]);
     expect(payloads).toEqual([]);
+  });
+
+  it("reports the context of each request against the model's window", () => {
+    const payloads = run(startedTranslator(), [
+      notification("thread/tokenUsage/updated", {
+        threadId: "t1",
+        turnId: "u1",
+        tokenUsage: { total: usage(900, 0, 100), last: usage(900, 0, 100), modelContextWindow: 258_400 },
+      }),
+      tokenUsage("u1", usage(2_000, 0, 200), usage(1_100, 0, 100)),
+    ]).filter((payload) => payload._tag === "ContextReported");
+    expect(payloads).toEqual([
+      { _tag: "ContextReported", tokens: 1_000, window: 258_400 },
+      { _tag: "ContextReported", tokens: 1_200 },
+    ]);
+  });
+
+  it("reports a compaction Cerium asked for, sized by the usage update after it", () => {
+    const translator = startedTranslator();
+    const compaction = notification("item/completed", {
+      threadId: "t1",
+      turnId: "u2",
+      item: { type: "contextCompaction", id: "c1" },
+    });
+    run(translator, [tokenUsage("u1", usage(9_000, 0, 1_000), usage(9_000, 0, 1_000))]);
+    translator.compactAsked();
+    const payloads = run(translator, [
+      notification("item/started", {
+        threadId: "t1",
+        turnId: "u2",
+        item: { type: "contextCompaction", id: "c1" },
+      }),
+      compaction,
+      tokenUsage("u2", usage(10_000, 0, 1_000), usage(1_500, 0, 0)),
+      turnCompleted("u2", "completed"),
+    ]);
+    expect(payloads.slice(0, 2)).toEqual([
+      { _tag: "ContextCompacted", trigger: "manual", tokensBefore: 10_000, tokensAfter: 1_500 },
+      { _tag: "ContextReported", tokens: 1_500 },
+    ]);
+    expect(payloads.at(-1)).toEqual({ _tag: "TurnCompleted", stopReason: "completed" });
+
+    // Codex's own, which no usage update follows before the turn ends.
+    const auto = run(translator, [compaction, turnCompleted("u3", "completed")]);
+    expect(auto[0]).toEqual({ _tag: "ContextCompacted", trigger: "auto", tokensBefore: 1_500 });
   });
 
   it("reports each turn's usage from the thread's running totals, also after a resume", () => {

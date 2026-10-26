@@ -15,6 +15,7 @@ import {
   EffortDecider,
   Orchestrator,
   OrchestratorConfig,
+  ProjectScripts,
   UserSettings,
   Worktrees,
   type CatalogEntry,
@@ -37,6 +38,8 @@ export const testLayer = (
     readonly threadLimit?: number;
     readonly worktrees?: Layer.Layer<Worktrees>;
     readonly checkpoints?: Layer.Layer<Checkpoints>;
+    /** The projects' scripts, for a test that works one or runs them. */
+    readonly scripts?: Layer.Layer<ProjectScripts>;
     /** A database file to keep across layers, as the app keeps it across restarts. */
     readonly database?: string;
     /** The models the harnesses offer, with their efforts, for the effort router. */
@@ -61,6 +64,7 @@ export const testLayer = (
     Layer.provide(fakeBus),
     Layer.provide(options.worktrees ?? Worktrees.unavailable),
     Layer.provide(options.checkpoints ?? Checkpoints.unavailable),
+    Layer.provide(options.scripts ?? ProjectScripts.unavailable),
     Layer.provide(
       OrchestratorConfig.layer({
         chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),

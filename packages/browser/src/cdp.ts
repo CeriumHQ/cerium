@@ -1,7 +1,7 @@
 // A minimal Chrome DevTools Protocol client over Node's global WebSocket: one connection to one
 // page target. Plain promises.
 
-type Listener = (params: any) => void;
+export type Listener = (params: any) => void;
 
 interface Pending {
   readonly resolve: (value: any) => void;
@@ -11,7 +11,21 @@ interface Pending {
 
 export class CdpError extends Error {}
 
-export class Cdp {
+/**
+ * What a page is driven through: this module's WebSocket client, or another carrier of the same
+ * protocol, such as an Electron web view's own debugger.
+ */
+export interface CdpSession {
+  readonly closed: boolean;
+  send<T = any>(method: string, params?: object, timeoutMs?: number): Promise<T>;
+  /** Calls `listener` for every `method` event until the returned function is called. */
+  on(method: string, listener: Listener): () => void;
+  /** The next `method` event, or undefined after `timeoutMs`. */
+  once(method: string, timeoutMs: number): Promise<any>;
+  close(): void;
+}
+
+export class Cdp implements CdpSession {
   private nextId = 0;
   private readonly pending = new Map<number, Pending>();
   private readonly listeners = new Map<string, Set<Listener>>();

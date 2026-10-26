@@ -1,6 +1,15 @@
 import { artifactGuide } from "@cerium/artifacts";
 import { Orchestrator, OrchestratorError } from "@cerium/orchestrator";
-import { AccessMode, AgentId, ProviderId, ReasoningEffort, type Question } from "@cerium/protocol";
+import {
+  AccessMode,
+  AgentId,
+  MAX_TASK_NOTE,
+  MAX_TASK_TITLE,
+  ProviderId,
+  ReasoningEffort,
+  TaskEntry,
+  type Question,
+} from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 import { HttpServerRequest } from "effect/http";
@@ -239,6 +248,62 @@ export const ArtifactGuide = Tool.make("artifact_guide", {
   failure: OrchestratorError,
 });
 
+/** What the user's tasks page shows about one task, as the bus hands it to an agent. */
+const TaskSummary = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  note: Schema.optionalKey(Schema.String),
+  createdAt: Schema.optionalKey(Schema.Finite),
+  doneAt: Schema.optionalKey(Schema.Finite),
+  folder: Schema.optionalKey(Schema.String),
+  updatedAt: Schema.Finite,
+});
+
+export const AddTask = Tool.make("add_task", {
+  description:
+    "Add a task to the user's tasks list (the Tasks page), named `title`. Use it for what the user" +
+    " asked you to queue for later rather than what you do now: the list is theirs to tick off, hand" +
+    " to an agent or delete.",
+  parameters: Schema.Struct({
+    title: Schema.NonEmptyString.check(Schema.isMaxLength(MAX_TASK_TITLE)).annotate({
+      description: "What the task says, in one line.",
+    }),
+    note: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(MAX_TASK_NOTE))).annotate({
+      description: "Detail beside the title, from the user's words or your plan.",
+    }),
+    folder: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description: "The folder an agent handed it would work in, when you know one fits.",
+    }),
+  }),
+  success: Schema.Struct({ task: TaskEntry }),
+  failure: OrchestratorError,
+});
+
+export const RemoveTask = Tool.make("remove_task", {
+  description:
+    "Take a task off the user's tasks list, once it's done or no longer wanted. Give the task's `id`," +
+    " or its exact `title` when the list has just one named so. Deleted on the user's other devices" +
+    " through their account, like an edit the user made.",
+  parameters: Schema.Struct({
+    id: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description: "The id the task's entry holds; `add_task` returns it, and `list_tasks` lists them.",
+    }),
+    title: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description: "The task's exact title, when the list holds just one named so.",
+    }),
+  }),
+  success: Schema.Struct({ removed: TaskEntry }),
+  failure: OrchestratorError,
+});
+
+export const ListTasks = Tool.make("list_tasks", {
+  description:
+    "What the user's tasks list (the Tasks page) holds: still to do and done, with each task's id for" +
+    " `remove_task`. Maybe moments behind what the user's windows hold, as they tell this machine.",
+  success: Schema.Struct({ tasks: Schema.Array(TaskSummary) }),
+  failure: OrchestratorError,
+});
+
 export const BusToolkit = Toolkit.make(
   ListModels,
   SpawnAgent,
@@ -251,6 +316,9 @@ export const BusToolkit = Toolkit.make(
   AskAdvisor,
   AskUser,
   ArtifactGuide,
+  AddTask,
+  RemoveTask,
+  ListTasks,
 );
 
 const BEARER = /^Bearer\s+(.+)$/i;
@@ -396,6 +464,66 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
       }),
 
       artifact_guide: () => Effect.succeed({ guide: artifactGuide }),
+
+      list_tasks: Effect.fn("Bus.list_tasks")(function* () {
+        yield* caller;
+        return { tasks: (yield* orchestrator.userTasks).flatMap(tasksOf) };
+      }),
+
+      add_task: Effect.fn("Bus.add_task")(function* ({ title, note, folder }) {
+        const task = yield* orchestrator.addUserTask(yield* caller, {
+          title,
+          ...(note === undefined ? {} : { note }),
+          ...(folder === undefined ? {} : { folder }),
+        });
+        return { task };
+      }),
+
+      remove_task: Effect.fn("Bus.remove_task")(function* ({ id, title }) {
+        if (id === undefined && title === undefined) {
+          return yield* new OrchestratorError({
+            reason: "invalid",
+            message: "Give the task's `id`, or its exact `title`. `list_tasks` lists both.",
+          });
+        }
+        const removed = yield* orchestrator.removeUserTask(yield* caller, {
+          ...(id === undefined ? {} : { id }),
+          ...(title === undefined ? {} : { title }),
+        });
+        return { removed };
+      }),
     });
   }),
 );
+
+/** What one entry's content reads as, dropped when the entry doesn't read as a task. */
+const tasksOf = (entry: TaskEntry): ReadonlyArray<(typeof TaskSummary)["Type"]> => {
+  const task = entry.task;
+  if (Array.isArray(task) || typeof task !== "object" || task === null) return [];
+  const object = task as Record<string, Schema.Json>;
+  const { title } = object;
+  const text = (key: string) => {
+    const value = object[key];
+    return typeof value === "string" ? value : undefined;
+  };
+  const time = (key: string) => {
+    const value = object[key];
+    return typeof value === "number" ? value : undefined;
+  };
+  if (typeof title !== "string") return [];
+  const note = text("note");
+  const folder = text("folder");
+  const createdAt = time("createdAt");
+  const doneAt = time("doneAt");
+  return [
+    {
+      id: entry.id,
+      title,
+      updatedAt: entry.updatedAt,
+      ...(note === undefined ? {} : { note }),
+      ...(folder === undefined ? {} : { folder }),
+      ...(createdAt === undefined ? {} : { createdAt }),
+      ...(doneAt === undefined ? {} : { doneAt }),
+    },
+  ];
+};

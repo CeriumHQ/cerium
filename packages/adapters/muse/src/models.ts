@@ -15,6 +15,8 @@ export const CatalogRow = Schema.Struct({
   providerId: Schema.optionalKey(Schema.String),
   defaultReasoningEffort: Schema.optionalKey(Schema.String),
   variants: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Literal("unknown")])),
+  /** The model's context window in tokens; `null` when the catalog declares none. */
+  contextLimit: Schema.optionalKey(Schema.NullOr(Schema.Finite)),
 });
 export type CatalogRow = typeof CatalogRow.Type;
 

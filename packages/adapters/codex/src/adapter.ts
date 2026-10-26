@@ -8,6 +8,7 @@ import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
 import { startCodexSession } from "./session.ts";
+import { listCodexSessions, readCodexSession } from "./sessions.ts";
 import { readCodexUsage } from "./usage.ts";
 
 const SIGNED_OUT = `Codex is not logged in. Run \`${LOGIN_COMMAND}\`.`;
@@ -72,6 +73,12 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         fork: (request) =>
           ready.pipe(
             Effect.flatMap((executablePath) => forkCodexThread(executablePath, request)),
+            Effect.provide(platform),
+          ),
+        listSessions: ready.pipe(Effect.flatMap(listCodexSessions), Effect.provide(platform)),
+        readSession: (session) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) => readCodexSession(executablePath, session)),
             Effect.provide(platform),
           ),
         startSession,

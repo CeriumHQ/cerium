@@ -30,5 +30,7 @@ export const claudeManifest: CapabilityManifest = {
   mcpInjection: true,
   nativeSubagents: "disableable",
   usageReporting: "tokensAndCost",
+  // `/compact` as a message of its own.
+  compact: true,
   defaultConcurrency: 6,
 };

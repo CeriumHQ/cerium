@@ -20,5 +20,7 @@ export const codexManifest: CapabilityManifest = {
   nativeSubagents: "disableable",
   // Token counts per turn; the app-server reports no cost.
   usageReporting: "tokens",
+  // `thread/compact/start`, which runs a turn of its own.
+  compact: true,
   defaultConcurrency: 6,
 };

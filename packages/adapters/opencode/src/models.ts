@@ -24,8 +24,16 @@ export const CatalogRow = Schema.Struct({
   capabilities: Schema.Struct({ input: Schema.Array(Schema.String) }),
   status: Schema.String,
   enabled: Schema.Boolean,
+  /** The model's context window, in tokens. */
+  limit: Schema.optionalKey(Schema.Struct({ context: Schema.optionalKey(Schema.Finite) })),
 });
 export type CatalogRow = typeof CatalogRow.Type;
+
+/** The context window of the model a session runs, when the catalog lists it with one. */
+export const windowOf = (model: string, rows: ReadonlyArray<CatalogRow>): number | undefined => {
+  const context = rows.find((row) => modelId(row) === model)?.limit?.context;
+  return context === undefined || context < 1 ? undefined : Math.round(context);
+};
 
 /** `model.list` and `model.default` answer with their Location beside the data. */
 export const ModelList = Schema.Struct({ data: Schema.Array(CatalogRow) });

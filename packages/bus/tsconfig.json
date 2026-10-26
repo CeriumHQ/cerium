@@ -4,6 +4,7 @@
   "references": [
     { "path": "../artifacts" },
     { "path": "../protocol" },
+    { "path": "../rpc" },
     { "path": "../harness" },
     { "path": "../store" },
     { "path": "../orchestrator" }

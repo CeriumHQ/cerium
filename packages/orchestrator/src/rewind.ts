@@ -75,14 +75,18 @@ export const rewindPoint = (
         : "That message is no longer in the conversation.",
     };
   }
-  // The session the agent runs holds the turns since the last rewind that started a new one.
+  // The session the agent runs holds the turns since the last rewind or handoff that started a new one.
   let base = -1;
   let before = 0;
   for (const [index, { payload }] of live.slice(0, at).entries()) {
-    if (payload._tag === "ConversationRewound" && payload.via !== "fork") base = index;
+    if (startsSession(payload)) base = index;
     if (payload._tag === "TurnInput") before++;
   }
-  const index = live.slice(base + 1, at).filter(({ payload }) => payload._tag === "TurnInput").length;
+  // A session on another harness since then never held the message: it is told the conversation again.
+  const handedOff = live.slice(at).some(({ payload }) => payload._tag === "LeadHandedOff");
+  const index = handedOff
+    ? 0
+    : live.slice(base + 1, at).filter(({ payload }) => payload._tag === "TurnInput").length;
   const turnId = turnEvent.payload.turnId;
   return {
     fromSequence: turnEvent.sequence,
@@ -96,23 +100,33 @@ export const rewindPoint = (
 };
 
 /**
- * Whether the agent's next session starts anew: the last rewind didn't fork, and no session has
- * started since.
+ * Whether the agent's next session starts anew: the last rewind didn't fork, or the lead was handed to
+ * another harness, and no session has started since.
  */
 export const startsAnew = (live: ReadonlyArray<AgentEvent>): boolean => {
   for (let index = live.length - 1; index >= 0; index--) {
     const { payload } = live[index] ?? {};
     if (payload?._tag === "SessionStarted") return false;
     if (payload?._tag === "ConversationRewound") return payload.via !== "fork";
+    if (payload?._tag === "LeadHandedOff") return true;
   }
   return false;
 };
+
+/** A rewind that didn't fork, or a handoff: the session after it holds none of the turns before. */
+const startsSession = (payload: AgentEvent["payload"]) =>
+  (payload._tag === "ConversationRewound" && payload.via !== "fork") || payload._tag === "LeadHandedOff";
 
 /** How much of the conversation a replay tells a new session, in characters. */
 const REPLAY_BUDGET = 60_000;
 /** The most a replay quotes of one message. */
 const REPLAY_MESSAGE = 6_000;
-const REPLAY_PREFACE = "This session continues an earlier conversation your harness couldn't carry over.";
+export const REPLAY_PREFACE =
+  "This session continues an earlier conversation your harness couldn't carry over.";
+export const HANDOFF_PREFACE = "This session takes over a conversation that ran on another harness.";
+
+/** Whether a notice is a brief Cerium wrote to carry the conversation into a new session. */
+export const isBrief = (text: string) => text.startsWith(REPLAY_PREFACE) || text.startsWith(HANDOFF_PREFACE);
 
 const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max)} […]`);
 
@@ -131,10 +145,8 @@ export const replayNotice = (live: ReadonlyArray<AgentEvent>): string | undefine
   const turns: Array<{ input: string; reply?: string }> = [];
   for (const { payload } of live.slice(0, rewound)) {
     if (payload._tag === "TurnInput") {
-      // An earlier replay is the conversation before it, which this one tells again.
-      const items = payload.items.filter(
-        (item) => item._tag !== "SystemNotice" || !item.text.startsWith(REPLAY_PREFACE),
-      );
+      // An earlier replay or handoff is the conversation before it, which this one tells again.
+      const items = payload.items.filter((item) => item._tag !== "SystemNotice" || !isBrief(item.text));
       turns.push({ input: items.length === 0 ? "" : renderTurn(items) });
     }
     const last = turns.at(-1);

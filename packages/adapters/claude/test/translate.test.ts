@@ -38,7 +38,9 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
   });
 
   it("produces the session lifecycle in order", () => {
-    const tags = payloads.map((payload) => payload._tag).filter((tag) => tag !== "MessageDelta");
+    const tags = payloads
+      .map((payload) => payload._tag)
+      .filter((tag) => tag !== "MessageDelta" && tag !== "ContextReported");
     expect(tags).toEqual([
       "SessionStarted",
       "ToolCallStarted",
@@ -88,6 +90,160 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
     const positive = expect.toSatisfy((value: number) => value > 0);
     expect(usage).toMatchObject({ _tag: "UsageReported", cachedInputTokens: positive, costUsd: positive });
     expect(payloads.at(-1)).toEqual({ _tag: "TurnCompleted", stopReason: "completed" });
+  });
+
+  it("reports the context each request read and wrote, rising through the turn", () => {
+    const readings = payloads.flatMap((payload) =>
+      payload._tag === "ContextReported" ? [payload.tokens] : [],
+    );
+    expect(readings.length).toBeGreaterThan(1);
+    expect(readings[0]).toBeGreaterThan(0);
+    expect(readings).toEqual([...readings].sort((a, b) => a - b));
+  });
+});
+
+describe("ClaudeTranslator on context and compaction", () => {
+  const init = { type: "system", subtype: "init", session_id: "s1", model: "claude-haiku-5-5" };
+  const request = (id: string, prompt: number, output: number) => [
+    {
+      type: "stream_event",
+      parent_tool_use_id: null,
+      event: {
+        type: "message_start",
+        message: {
+          id,
+          usage: { input_tokens: 2, cache_creation_input_tokens: prompt - 2, cache_read_input_tokens: 0 },
+        },
+      },
+    },
+    {
+      type: "stream_event",
+      parent_tool_use_id: null,
+      event: { type: "message_delta", usage: { output_tokens: output } },
+    },
+  ];
+  const result = {
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    total_cost_usd: 0.01,
+    usage: { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 10 },
+    modelUsage: { "claude-haiku-5-5": { contextWindow: 400_000 } },
+  };
+  /** Messages, and `measure` where the session takes Claude Code's own measure after a result. */
+  const run = (messages: ReadonlyArray<object | { readonly measure: number | undefined }>) => {
+    const translator = new ClaudeTranslator();
+    return messages.flatMap((message) =>
+      ("measure" in message
+        ? translator.measured(
+            message.measure === undefined ? undefined : { tokens: message.measure, window: 400_000 },
+          )
+        : translator.translate(message as SDKMessage)
+      ).map((event) => event.payload),
+    );
+  };
+
+  it("reports each request's prompt and output, with the window once Claude Code measured it", () => {
+    const payloads = run([
+      init,
+      ...request("m1", 23_401, 10),
+      result,
+      { measure: 23_411 },
+      ...request("m2", 23_500, 20),
+    ]);
+    expect(payloads.filter((payload) => payload._tag === "ContextReported")).toEqual([
+      { _tag: "ContextReported", tokens: 23_411 },
+      { _tag: "ContextReported", tokens: 23_411, window: 400_000 },
+      { _tag: "ContextReported", tokens: 23_520, window: 400_000 },
+    ]);
+  });
+
+  it("forgets the window when a turn runs on another model", () => {
+    const payloads = run([
+      init,
+      { measure: 1_000 },
+      { ...init, model: "claude-opus-5-5" },
+      ...request("m1", 2_000, 10),
+    ]);
+    expect(payloads.at(-1)).toEqual({ _tag: "ContextReported", tokens: 2_010 });
+  });
+
+  it("reports a compaction with its counts and the summary Claude Code kept, not as a message", () => {
+    const payloads = run([
+      init,
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 23_411, post_tokens: 6_282 },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content:
+            "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary Request: say hello.\n\nIf you need specific details from before compaction (like exact code snippets), read the full transcript at: C:\\t.jsonl Continue the conversation from where it left off without asking the user any further questions.",
+        },
+      },
+      { ...result, usage: { ...result.usage, input_tokens: 0, output_tokens: 0 } },
+      { measure: 19_870 },
+    ]);
+    // Claude Code's own count after (6,282) leaves out the system prompt and tools; its measure doesn't.
+    expect(payloads.slice(1)).toEqual([
+      { _tag: "UsageReported", inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, costUsd: 0.01 },
+      { _tag: "TurnCompleted", stopReason: "completed" },
+      {
+        _tag: "ContextCompacted",
+        trigger: "manual",
+        tokensBefore: 23_411,
+        tokensAfter: 19_870,
+        summary: "1. Primary Request: say hello.",
+      },
+      { _tag: "ContextReported", tokens: 19_870, window: 400_000 },
+    ]);
+  });
+
+  it("sizes a compaction mid-turn by the prompt of the request after it", () => {
+    const payloads = run([
+      init,
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 180_000 },
+      },
+      ...request("m3", 9_000, 5),
+    ]);
+    expect(payloads.slice(1, 3)).toEqual([
+      { _tag: "ContextCompacted", trigger: "auto", tokensBefore: 180_000, tokensAfter: 9_000 },
+      { _tag: "ContextReported", tokens: 9_005 },
+    ]);
+  });
+
+  it("reports a compaction without its size when Claude Code couldn't measure it", () => {
+    const payloads = run([
+      init,
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "manual", pre_tokens: 5_000 },
+      },
+      result,
+      { measure: undefined },
+    ]);
+    expect(payloads.at(-1)).toEqual({ _tag: "ContextCompacted", trigger: "manual", tokensBefore: 5_000 });
+  });
+
+  it("reports a compaction that failed as an error", () => {
+    const [payload] = run([
+      {
+        type: "system",
+        subtype: "status",
+        status: null,
+        compact_result: "failed",
+        compact_error: "Too short",
+      },
+    ]);
+    expect(payload).toMatchObject({ _tag: "AgentError", message: expect.stringContaining("Too short") });
   });
 });
 

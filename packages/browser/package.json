@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./url": "./src/url.ts"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5"

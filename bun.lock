@@ -47,6 +47,7 @@
         "koffi": "3.3.3",
       },
       "devDependencies": {
+        "@cerium/browser": "workspace:*",
         "@effect/vitest": "4.0.5",
         "electron": "44.8.0",
         "electron-builder": "26.17.0",
@@ -89,6 +90,7 @@
         "@base-ui/react": "1.9.0",
         "@cerium/account": "workspace:*",
         "@cerium/artifacts": "workspace:*",
+        "@cerium/browser": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "@cerium/rpc": "workspace:*",
         "@effect/atom-react": "4.0.5",
@@ -233,6 +235,7 @@
         "@cerium/harness": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
+        "@cerium/rpc": "workspace:*",
         "@effect/platform-node": "4.0.5",
         "effect": "4.0.5",
       },

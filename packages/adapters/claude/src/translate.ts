@@ -1,6 +1,6 @@
 import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AdapterEvent } from "@cerium/harness";
-import type { EventPayload } from "@cerium/protocol";
+import type { ContextCompacted, EventPayload } from "@cerium/protocol";
 
 import { LOGIN_COMMAND } from "./manifest.ts";
 import { ClaudeTodos } from "./todos.ts";
@@ -30,15 +30,87 @@ export class ClaudeTranslator {
   #started = false;
   /** `total_cost_usd` is cumulative for the session; turns report the difference. */
   #costSoFar = 0;
+  /** The model the session runs, which each turn's `init` names. */
+  #model: string | undefined;
+  /** The window Claude Code measures its context against, as it last reported it (`measured`). */
+  #window: number | undefined;
+  /** The tokens of the latest request's prompt, from its `message_start`. */
+  #prompt: number | undefined;
+  /**
+   * A compaction whose boundary arrived, with the summary Claude Code put in the conversation after
+   * it. The context's next reading completes it: the prompt of the request after it, or the
+   * measurement after the compaction's own turn.
+   */
+  #compaction: Omit<ContextCompacted, "_tag" | "tokensAfter"> | undefined;
 
   translate(message: SDKMessage): ReadonlyArray<AdapterEvent> {
     return this.#payloads(message).map((payload) => ({ payload, raw: message }));
   }
 
+  /**
+   * Claude Code's own measure of the context (`getContextUsage`), taken as each turn ends; `undefined`
+   * when it couldn't say. It completes a compaction waiting on its size.
+   */
+  measured(
+    reading: { readonly tokens: number; readonly window: number } | undefined,
+  ): ReadonlyArray<AdapterEvent> {
+    if (reading === undefined) return this.#flushCompaction(undefined).map((payload) => ({ payload }));
+    if (reading.window >= 1) this.#window = Math.round(reading.window);
+    const tokens = count(reading.tokens);
+    return [...this.#flushCompaction(tokens), this.#contextReported(tokens)].map((payload) => ({ payload }));
+  }
+
+  #flushCompaction(tokensAfter: number | undefined): ReadonlyArray<EventPayload> {
+    const compaction = this.#compaction;
+    this.#compaction = undefined;
+    if (compaction === undefined) return [];
+    return [
+      { _tag: "ContextCompacted", ...compaction, ...(tokensAfter === undefined ? {} : { tokensAfter }) },
+    ];
+  }
+
   #payloads(message: SDKMessage): ReadonlyArray<EventPayload> {
+    // The conversation's synthetic first message after a compaction is its summary, shown nowhere else.
+    const content = message.type === "user" ? message.message.content : undefined;
+    if (
+      this.#compaction !== undefined &&
+      this.#compaction.summary === undefined &&
+      typeof content === "string"
+    ) {
+      const summary = compactSummary(content);
+      if (summary !== undefined) {
+        this.#compaction = { ...this.#compaction, summary };
+        return [];
+      }
+    }
     switch (message.type) {
       case "system":
-        if (message.subtype !== "init" || this.#started) return [];
+        if (message.subtype === "compact_boundary") {
+          const flushed = this.#flushCompaction(undefined);
+          // Claude Code's own count after it leaves out the system prompt and tools, which the counts
+          // before it and every reading include; the next reading says the size instead.
+          const { trigger, pre_tokens } = message.compact_metadata;
+          this.#compaction = {
+            trigger: trigger === "manual" ? "manual" : "auto",
+            tokensBefore: count(pre_tokens),
+          };
+          return flushed;
+        }
+        if (message.subtype === "status" && message.compact_result === "failed") {
+          return [
+            {
+              _tag: "AgentError",
+              kind: "unknown",
+              message: `Claude Code couldn't compact the conversation${message.compact_error ? `: ${message.compact_error}` : "."}`,
+              retryable: false,
+            },
+          ];
+        }
+        if (message.subtype !== "init") return [];
+        // Each turn's `init` names the model it runs, and another model has another window.
+        if (message.model !== this.#model) this.#window = undefined;
+        this.#model = message.model;
+        if (this.#started) return [];
         this.#started = true;
         return [
           {
@@ -85,9 +157,27 @@ export class ClaudeTranslator {
 
   #streamEvent(event: Extract<SDKMessage, { type: "stream_event" }>["event"]): ReadonlyArray<EventPayload> {
     switch (event.type) {
-      case "message_start":
+      case "message_start": {
         this.#streamingMessageId = event.message.id;
-        return [];
+        // Absent from messages recorded before Cerium read usage.
+        const usage: Partial<typeof event.message.usage> | undefined = event.message.usage;
+        this.#prompt =
+          usage?.input_tokens === undefined
+            ? undefined
+            : usage.input_tokens +
+              (usage.cache_creation_input_tokens ?? 0) +
+              (usage.cache_read_input_tokens ?? 0);
+        // The first request after a compaction reads what it left.
+        return this.#prompt === undefined ? [] : this.#flushCompaction(count(this.#prompt));
+      }
+      case "message_delta": {
+        // The request's whole context: what it read, and what it wrote, which the next one reads.
+        const usage: Partial<typeof event.usage> | undefined = event.usage;
+        if (this.#prompt === undefined) return [];
+        const tokens = count(this.#prompt + (usage?.output_tokens ?? 0));
+        this.#prompt = undefined;
+        return [this.#contextReported(tokens)];
+      }
       case "content_block_start": {
         const { type } = event.content_block;
         if ((type === "text" || type === "thinking") && this.#streamingMessageId !== undefined) {
@@ -203,7 +293,33 @@ export class ClaudeTranslator {
       { _tag: "TurnCompleted", stopReason: stopReason(message) },
     ];
   }
+
+  #contextReported(tokens: number): EventPayload {
+    return {
+      _tag: "ContextReported",
+      tokens,
+      ...(this.#window === undefined ? {} : { window: this.#window }),
+    };
+  }
 }
+
+const count = (value: number) => Math.max(0, Math.round(value));
+
+/**
+ * What Claude Code tells the model a compacted conversation was, without the preamble before it or
+ * the instructions after it (where to read the full transcript, to carry on without recapping).
+ */
+const SUMMARY_PREAMBLE = /^This session is being continued from a previous conversation[^\n]*\n/;
+const SUMMARY_AFTERWORD =
+  /\n\s*(?:If you need specific details from before compaction|Continue the conversation from where it left off)/;
+
+const compactSummary = (content: string): string | undefined => {
+  if (!SUMMARY_PREAMBLE.test(content)) return undefined;
+  const marker = content.indexOf("\nSummary:\n");
+  const body = marker === -1 ? content.replace(SUMMARY_PREAMBLE, "") : content.slice(marker + 10);
+  const end = body.search(SUMMARY_AFTERWORD);
+  return (end === -1 ? body : body.slice(0, end)).trim();
+};
 
 /** Reads the structured result Claude Code attaches to file tool results. */
 const fileChange = (toolUseResult: unknown): EventPayload | undefined => {

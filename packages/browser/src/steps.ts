@@ -89,7 +89,7 @@ export const parseTarget = (text: string): Target => {
 const isAction = (name: string): name is Action => (ACTIONS as ReadonlyArray<string>).includes(name);
 
 /** A JSON step, in the shape the bus's old `ui_act` took: `{ "action": "drag", "text": "A", "to": { "text": "B" } }`. */
-const fromJson = (raw: Record<string, any>): Step => {
+export const fromJson = (raw: Record<string, any>): Step => {
   if (typeof raw["action"] !== "string" || !isAction(raw["action"])) {
     throw new Error(`Unknown action in ${JSON.stringify(raw)}. Actions: ${ACTIONS.join(", ")}.`);
   }

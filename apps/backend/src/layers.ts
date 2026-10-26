@@ -3,8 +3,14 @@ import { CodexAdapter } from "@cerium/adapter-codex";
 import { CursorAdapter } from "@cerium/adapter-cursor";
 import { MuseAdapter } from "@cerium/adapter-muse";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
-import { BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
-import { Adapters, Orchestrator, OrchestratorConfig, UserSettings } from "@cerium/orchestrator";
+import { BrowserHost, BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
+import {
+  Adapters,
+  Orchestrator,
+  OrchestratorConfig,
+  SessionImports,
+  UserSettings,
+} from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import { Account, CloudThreads, DEFAULT_RELAY_URL, type AccountOptions, type Vault } from "@cerium/account";
 import { Effect, Layer, type FileSystem, type Path } from "effect";
@@ -33,6 +39,7 @@ import { GitChanges } from "./gitChanges.ts";
 import { History } from "./history.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
+import { projectScriptsLayer } from "./projectScripts.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
@@ -90,8 +97,13 @@ export const AdaptersLive = Layer.effect(
  * The whole backend: store, orchestrator and harness adapters, with the MCP bus and the UI's RPC
  * endpoint served on one loopback port.
  */
-export const backendLayer = (options: BackendOptions) =>
-  HttpRouter.serve(
+export const backendLayer = (options: BackendOptions) => {
+  /** The one Terminals instance; its viewer's tabs and the scripts' own terminals share it. */
+  const terminalsLayer = Terminals.layer({
+    version: options.account?.device.version ?? "dev",
+  }).pipe(Layer.provide(Ptys.layer));
+
+  return HttpRouter.serve(
     Layer.mergeAll(
       BusRoutes,
       rpcRoutes(options.token),
@@ -108,7 +120,8 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(limitWarnings),
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
-    // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
+    // what the agents do on the user's Discord profile when they ask for it. Keeps
+    // the harnesses'
     // subscription usage for Settings → Usage.
     Layer.provideMerge(
       Layer.mergeAll(
@@ -119,19 +132,23 @@ export const backendLayer = (options: BackendOptions) =>
         SubscriptionUsage.layer,
       ),
     ),
-    // With the effort router's decision model, through the user's own OpenRouter key.
+    // With the effort router's decision model, through the user's own OpenRouter key. Beside it, what
+    // brings the user's own harness sessions in as threads.
     Layer.provideMerge(
-      Orchestrator.layer.pipe(
-        Layer.provideMerge(EffortRouter.decider),
-        Layer.provideMerge(
-          EffortRouter.layer.pipe(
-            Layer.provide(
-              options.effortRouterKey ??
-                fileEffortRouterKey(join(options.dataDirectory, "effort-router.json")),
+      Layer.mergeAll(
+        Orchestrator.layer.pipe(
+          Layer.provideMerge(EffortRouter.decider),
+          Layer.provideMerge(
+            EffortRouter.layer.pipe(
+              Layer.provide(
+                options.effortRouterKey ??
+                  fileEffortRouterKey(join(options.dataDirectory, "effort-router.json")),
+              ),
+              Layer.provide(FetchHttpClient.layer),
             ),
-            Layer.provide(FetchHttpClient.layer),
           ),
         ),
+        SessionImports.layer,
       ),
     ),
     Layer.provideMerge(
@@ -154,9 +171,8 @@ export const backendLayer = (options: BackendOptions) =>
     Layer.provideMerge(
       Layer.mergeAll(Projects.layer, Releases.layer.pipe(Layer.provide(FetchHttpClient.layer))),
     ),
-    Layer.provideMerge(
-      Terminals.layer({ version: options.account?.device.version ?? "dev" }).pipe(Layer.provide(Ptys.layer)),
-    ),
+    // Worktree scripts run in a terminal of the thread's own; the same Terminals instance feeds both.
+    Layer.provideMerge([terminalsLayer, projectScriptsLayer.pipe(Layer.provide(terminalsLayer))]),
     Layer.provideMerge(
       Account.layer({
         handoff: loopbackHandoff,
@@ -168,7 +184,8 @@ export const backendLayer = (options: BackendOptions) =>
       ),
     ),
     // With the catalog: the roster in the user's settings, applied to what the harnesses offer.
-    Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive)),
+    // With the browser the desktop window hosts for the bus's browser tools.
+    Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive, BrowserHost.layer)),
     Layer.provideMerge(UserSettings.layer),
     Layer.provideMerge(
       Layer.mergeAll(
@@ -185,3 +202,4 @@ export const backendLayer = (options: BackendOptions) =>
     ),
     Layer.provideMerge(BusHttpServer),
   );
+};

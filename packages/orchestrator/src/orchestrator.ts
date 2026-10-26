@@ -1,7 +1,16 @@
-import type { AgentSession, PermissionDecision, TurnExtras, TurnImage } from "@cerium/harness";
+import type {
+  AgentSession,
+  HarnessFailure,
+  PermissionDecision,
+  TurnExtras,
+  TurnImage,
+} from "@cerium/harness";
 import {
   ADVISOR_ROLE,
   LEAD_ROLE,
+  MAX_TASK_BYTES,
+  MAX_TASK_NOTE,
+  MAX_TASK_TITLE,
   MAX_THREAD_TITLE,
   narrowAccess,
   type AccessMode,
@@ -16,6 +25,7 @@ import {
   type EventPayload,
   type FromUser,
   type InputItem,
+  type LeadHandedOff,
   type Mention,
   type ModelInfo,
   type ProviderId,
@@ -23,6 +33,7 @@ import {
   type QuestionResponse,
   type ReasoningEffort,
   type RestorePreview,
+  type TaskEntry,
   type ThreadId,
   type ThreadInfo,
   type ThreadMode,
@@ -47,6 +58,7 @@ import {
   PubSub,
   Queue,
   Result,
+  Schema,
   Scope,
   Semaphore,
   Stream,
@@ -64,6 +76,7 @@ import {
   type TurnFacts,
 } from "./effort.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
+import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
@@ -83,6 +96,7 @@ import {
   type WorktreeError,
 } from "./services.ts";
 import { UserSettings } from "./settings.ts";
+import { ProjectScripts, type ScriptEnded, type ScriptStarted } from "./scripts.ts";
 import { ThreadTitles } from "./titles.ts";
 
 export interface CreateThreadInput {
@@ -173,6 +187,8 @@ interface Runtime {
   sequence: number;
   /** Completed when the current turn's `TurnCompleted` arrives (or the session ends). */
   turn: Deferred.Deferred<void> | undefined;
+  /** Held for each turn, so a compaction the user asked for never runs beside one. */
+  readonly turnPermit: Semaphore.Semaphore;
   /** The last completed message of the current turn, delivered to the lead when a child finishes. */
   lastMessage: string | undefined;
   ended: boolean;
@@ -214,6 +230,11 @@ export interface ModelChoice {
   readonly autoEffort?: boolean;
 }
 
+/** A model of another harness a lead is handed to (`handOffLead`). */
+export interface HandoffTarget extends ModelChoice {
+  readonly provider: ProviderId;
+}
+
 const choiceOf = (info: AgentInfo): ModelChoice => ({
   model: info.model,
   ...(info.effort ? { effort: info.effort } : {}),
@@ -243,7 +264,19 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "MessageCompleted",
   "SessionStarted",
   "ConversationRewound",
+  "LeadHandedOff",
   "AgentSpawned",
+];
+
+/** What a handoff's brief reads of the lead's history: its conversation, files and plan. */
+const BRIEF_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
+  "TurnInput",
+  "MessageCompleted",
+  "ConversationRewound",
+  "LeadHandedOff",
+  "TurnFilesChanged",
+  "FileChanged",
+  "TodosUpdated",
 ];
 
 /** Events the store never keeps: streamed text, and new titles, which the thread's record holds. */
@@ -284,6 +317,24 @@ const describeChanges = ({ uncommitted, unmerged }: WorktreeChanges, base: strin
   ]
     .filter((part) => part !== undefined)
     .join(" and ");
+
+/** What the lead hears when the worktree was made: what setup runs there, or that none is set. */
+const setupNote = (ran: ScriptStarted | undefined): string =>
+  ran === undefined
+    ? "No setup command is set for this project, so the worktree may lack what it needs. Ask the user to set one in Settings → Source control, or install what's missing yourself."
+    : ran._tag === "Ran"
+      ? `The project's setup (\`${ran.script}\`) is running in this thread's terminal. Wait for the notice of it finishing or failing before relying on what it installs.`
+      : `Cerium guesses the setup \`${ran.script}\` for this project, but a guess never runs by itself. Ask the user to confirm it in Settings → Source control (or press Setup); until then, wait for what it looks for.`;
+
+/** What the lead hears when a script's run is over. */
+const endedNote = (ended: ScriptEnded): string => {
+  const what = `The project's ${ended.kind} (\`${ended.script}\`)`;
+  return ended.code === 0
+    ? `${what} finished.`
+    : ended.code === undefined
+      ? `${what} stopped (its terminal was closed).`
+      : `${what} failed with exit code ${ended.code}; its terminal shows why.`;
+};
 
 export class Orchestrator extends Context.Service<
   Orchestrator,
@@ -340,6 +391,14 @@ export class Orchestrator extends Context.Service<
      * turn. A lead that stopped or failed starts on them when the user picks the thread back up.
      */
     switchModel(agentId: AgentId, choice: ModelChoice): Effect.Effect<AgentInfo, OrchestratorError>;
+    /**
+     * Hands a thread's lead to a model of another harness: a running turn stops, its session ends, and
+     * a new session starts on `target` in the same folder, told the conversation so far with its next
+     * turn (recent turns word for word, older ones condensed, the files the thread changed and its
+     * plan). Only that text crosses over. The lead keeps its id, so the agents it spawned go on and
+     * report to the new session.
+     */
+    handOffLead(agentId: AgentId, target: HandoffTarget): Effect.Effect<AgentInfo, OrchestratorError>;
     respondToPermission(
       agentId: AgentId,
       requestId: string,
@@ -375,6 +434,11 @@ export class Orchestrator extends Context.Service<
      * waiting for its tool calls to finish. Does nothing when no message waits or no turn is running.
      */
     steerAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Asks the agent's harness to compact its conversation, as a turn of its own that starts at once.
+     * Refused while the agent works, and for a harness that can't compact when asked.
+     */
+    compactAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
      * Takes back one of the user's messages waiting for a lead, so no turn delivers it. False when the
      * agent has already taken it.
@@ -456,6 +520,24 @@ export class Orchestrator extends Context.Service<
       callerId: AgentId,
       questions: readonly [Question, ...Array<Question>],
     ): Effect.Effect<{ readonly requestId: string }, OrchestratorError>;
+    /**
+     * What a window mirrors of the user's tasks onto this machine, feeding `list_tasks`'s view of
+     * them. An entry newer than what's held wins; what one holds is only ever a copy, the window's
+     * list the truth.
+     */
+    syncUserTasks(tasks: ReadonlyArray<TaskEntry>): Effect.Effect<void>;
+    /** Adds a task to the user's tasks list, and returns the entry it now holds. */
+    addUserTask(
+      callerId: AgentId,
+      task: { readonly title: string; readonly note?: string; readonly folder?: string },
+    ): Effect.Effect<TaskEntry, OrchestratorError>;
+    /** Takes a task off the user's tasks list, by the id or the title it matches, and returns it. */
+    removeUserTask(
+      callerId: AgentId,
+      which: { readonly id?: string; readonly title?: string },
+    ): Effect.Effect<TaskEntry, OrchestratorError>;
+    /** The user's tasks still on the list, as the windows mirroring them last left them. */
+    readonly userTasks: Effect.Effect<ReadonlyArray<TaskEntry>>;
     /** The agent record for a live agent. */
     agent(agentId: AgentId): Effect.Effect<AgentInfo, OrchestratorError>;
     /** Hands a live agent a Cerium notice, delivered like any message: as its next turn's input. */
@@ -491,8 +573,10 @@ export class Orchestrator extends Context.Service<
         return (yield* settings.get).effortRouter.enabled && (yield* decider.ready);
       });
       const titles = yield* ThreadTitles;
+      const condenser = yield* Condenser;
       const worktrees = yield* Worktrees;
       const checkpoints = yield* Checkpoints;
+      const scripts = yield* ProjectScripts;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -516,6 +600,16 @@ export class Orchestrator extends Context.Service<
       const leadRequests = new Map<AgentId, Set<string>>();
       /** The questions each agent has put to the user and not had answered, by request id. */
       const openQuestions = new Map<AgentId, Map<string, OpenQuestion>>();
+
+      /**
+       * What the windows mirroring in say the user's tasks list holds, plus what agents added while
+       * they worked: the view `list_tasks` reads and `remove_task` matches titles against. A copy,
+       * merged newer-wins like the window's own (`applyTaken` in the UI): the window's list is the
+       * truth, and its next mirror overwrites anything this found out earlier. Deleted tasks keep
+       * their stamps (no `task`) a while, so a mirror older than a delete can't bring one back.
+       */
+      const mirroredTasks = new Map<string, TaskEntry>();
+
       /**
        * Notices each agent hears with its next turn, whatever starts it, rather than starting one: a
        * dismissed question isn't worth waking an agent whose cache may long have gone cold.
@@ -535,6 +629,8 @@ export class Orchestrator extends Context.Service<
         AgentId,
         { readonly undelivered: ReadonlyArray<InputItem>; readonly notices: ReadonlyArray<InputItem> }
       >();
+      /** The leads handed to another harness whose new session hasn't heard the conversation yet. */
+      const briefsOwed = new Map<AgentId, LeadHandedOff>();
 
       // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
       // resumes its harness session when the user next messages it.
@@ -544,6 +640,21 @@ export class Orchestrator extends Context.Service<
        * start two sessions for one lead.
        */
       const acceptPermit = yield* Semaphore.make(1);
+
+      // A script's run ending reaches its thread's lead as any notice does, so it knows when the
+      // setup is through: without one, its work would race the install.
+      yield* scripts.ended.pipe(
+        Stream.runForEach((ended) =>
+          Effect.forEach(
+            [...runtimes.values()].filter(
+              (rt) => rt.info.threadId === ended.threadId && rt.info.parentId === undefined,
+            ),
+            (rt) => deliver(rt.info.id, { _tag: "SystemNotice", text: endedNote(ended) }),
+            { discard: true },
+          ),
+        ),
+        Effect.forkIn(layerScope),
+      );
 
       const makeId = (prefix: string) =>
         crypto.randomUUIDv7().pipe(
@@ -555,6 +666,56 @@ export class Orchestrator extends Context.Service<
         Effect.fromNullishOr(runtimes.get(agentId)).pipe(
           Effect.mapError(() => notFound(`Agent ${agentId} is not running.`)),
         );
+
+      /** The `add_task` and `remove_task` caller rules: live, part of a thread, neither read-only nor the advisor. */
+      const tasksWriterOf = (callerId: AgentId) =>
+        Effect.gen(function* () {
+          const caller = yield* runtime(callerId);
+          if (isAdvisor(caller.info)) {
+            return yield* notAllowed("You are the advisor: answer the question you were asked.");
+          }
+          if (caller.info.access === "readOnly") {
+            return yield* notAllowed("A read-only agent may only read the tasks list.");
+          }
+          return caller;
+        });
+
+      /** Enters the mirror a task entry stamped past the newest edit it knew of: a same-millisecond
+       * edit wins, as the window's own (`stampAfter`) does. */
+      const putTask = (change: { readonly id: string; readonly task?: Schema.Json }) =>
+        Effect.gen(function* () {
+          const stamped: TaskEntry = {
+            id: change.id,
+            updatedAt: Math.max(
+              yield* Clock.currentTimeMillis,
+              (mirroredTasks.get(change.id)?.updatedAt ?? 0) + 1,
+            ),
+            ...(change.task === undefined ? {} : { task: change.task }),
+          };
+          mirroredTasks.set(stamped.id, stamped);
+          return stamped;
+        });
+
+      /** The one task `title` names, whatever its case and spacing; `notFound` when none, and when
+       * several: the agent names one by its id then. */
+      const taskByTitle = (title: string) => {
+        const wanted = title.trim().toLowerCase();
+        const matching = [...mirroredTasks.values()].filter((entry) => {
+          const task = entry.task;
+          const named =
+            typeof task === "object" && task !== null && !Array.isArray(task)
+              ? (task as { readonly title?: unknown }).title
+              : undefined;
+          return typeof named === "string" && named.trim().toLowerCase() === wanted;
+        });
+        if (matching.length <= 1) return Effect.succeed(matching[0]);
+        return new OrchestratorError({
+          reason: "invalid",
+          message: `The list has ${matching.length} tasks titled \u201C${title.trim()}\u201D (${matching
+            .map((entry) => entry.id)
+            .join(", ")}). Pass one's id from \`list_tasks\`.`,
+        });
+      };
 
       /** Who works in each work folder when, by its resolved path, for each turn's summary of its files. */
       const activities = new Map<string, FolderActivity>();
@@ -1072,6 +1233,40 @@ export class Orchestrator extends Context.Service<
         });
 
       /**
+       * A compaction the user asked for: a turn with no input, which the harness's own events report and
+       * end. The agent's lead hears nothing of it, as it delivered nothing.
+       */
+      const compactTurn = (rt: Runtime, compact: Effect.Effect<void, HarnessFailure>) =>
+        Effect.gen(function* () {
+          if (rt.ended) return;
+          yield* setState(rt, "running");
+          rt.halted = false;
+          rt.steering = false;
+          rt.openCalls.clear();
+          rt.turn = yield* Deferred.make<void>();
+          yield* compact.pipe(
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                yield* emit(rt, {
+                  _tag: "AgentError",
+                  kind: "unknown",
+                  message: `Couldn't compact the conversation: ${error.message}`,
+                  retryable: false,
+                });
+                yield* emit(rt, { _tag: "TurnCompleted", stopReason: "error" });
+                yield* finishTurn(rt);
+              }),
+            ),
+          );
+          yield* Deferred.await(rt.turn);
+          rt.turn = undefined;
+          // A message that arrived meanwhile has the agent queued for its turn already.
+          if (!rt.ended && rt.info.state === "running") yield* setState(rt, "idle");
+        }).pipe(
+          Effect.catchCause((cause) => Effect.logError(`Agent ${rt.info.id} compaction failed`, cause)),
+        );
+
+      /**
        * Switches the session to the model and effort the user picked since its last turn. When the
        * harness refuses, the thread says why and the agent goes back to what its session runs.
        */
@@ -1212,6 +1407,43 @@ export class Orchestrator extends Context.Service<
         );
 
       /**
+       * The brief a lead handed to another harness owes its new session with its first turn: the
+       * conversation so far, its older turns condensed by the quick model. None once told.
+       */
+      const briefFor = (rt: Runtime) =>
+        Effect.gen(function* () {
+          const handoff = briefsOwed.get(rt.info.id);
+          if (handoff === undefined) return undefined;
+          briefsOwed.delete(rt.info.id);
+          const history = liveEvents(
+            yield* store.listEvents(rt.info.id, { tags: BRIEF_TAGS }).pipe(Effect.mapError(unavailable)),
+          );
+          const summary = yield* condenser.condense(olderTurns(history), {
+            provider: rt.info.provider,
+            model: rt.info.model,
+          });
+          const running = childrenOf(rt.info.id)
+            .filter((child) => !child.ended && !isAdvisor(child.info))
+            .map((child) => child.info);
+          const item: InputItem = {
+            _tag: "SystemNotice",
+            text: handoffBrief(history, {
+              from: handoff.from,
+              summary: Option.getOrUndefined(summary),
+              running,
+            }),
+          };
+          return item;
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.as(
+              Effect.logWarning(`Couldn't brief ${rt.info.id} on its conversation`, cause),
+              undefined,
+            ),
+          ),
+        );
+
+      /**
        * Delivers inbox items as turns, one turn at a time. Agents never wait for one another's turns
        * to end: a cap on turns at once would leave a messaged thread queued behind other threads' long
        * turns, or behind a child's turn waiting on an answer from the very lead that is queued.
@@ -1231,16 +1463,21 @@ export class Orchestrator extends Context.Service<
 
           yield* setState(rt, "queued");
           // A session that never started took nothing: what the user sent waits for the next start.
-          // The effort router decides meanwhile, so a starting session doesn't wait on it as well.
-          const [session] = yield* Effect.all(
+          // The effort router decides meanwhile, so a starting session doesn't wait on it as well, and
+          // a lead just handed to this harness has its brief written.
+          const [session, , brief] = yield* Effect.all(
             [
               Deferred.await(rt.started).pipe(Effect.tapError(() => setState(rt, "failed"))),
               routeEffort(rt, items),
+              briefFor(rt),
             ],
-            { concurrency: 2 },
+            { concurrency: 3 },
           );
-          yield* applyModel(rt, session);
-          yield* runTurn(rt, session, items);
+          const told: readonly [InputItem, ...Array<InputItem>] =
+            brief === undefined ? items : [brief, ...items];
+          yield* rt.turnPermit.withPermits(1)(
+            Effect.andThen(applyModel(rt, session), runTurn(rt, session, told)),
+          );
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
           const halted = rt.halted;
@@ -1327,6 +1564,7 @@ export class Orchestrator extends Context.Service<
             scope,
             sequence: Option.match(last, { onNone: () => 0, onSome: (sequence) => sequence + 1 }),
             turn: undefined,
+            turnPermit: yield* Semaphore.make(1),
             lastMessage: undefined,
             ended: false,
             halted: false,
@@ -1774,6 +2012,11 @@ export class Orchestrator extends Context.Service<
         const replay = replayNotice(history);
         const before: ReadonlyArray<InputItem> =
           replay === undefined ? [] : [{ _tag: "SystemNotice", text: replay }];
+        // A session on the harness the lead was handed to hears the conversation with its first turn,
+        // whatever starts it.
+        const handoff = pendingHandoff(history);
+        if (handoff === undefined) briefsOwed.delete(agentId);
+        else briefsOwed.set(agentId, handoff);
         if (gone.length > 0) {
           notices.push({
             _tag: "SystemNotice",
@@ -1926,6 +2169,97 @@ export class Orchestrator extends Context.Service<
         const { undelivered, notices } = yield* resumeLead(agentId);
         held.set(agentId, { undelivered, notices });
         return point.message;
+      });
+
+      /** How long a handoff waits for the turn it stopped to end before it ends the session anyway. */
+      const HANDOFF_STOP_TIMEOUT = "15 seconds";
+
+      /**
+       * Hands a lead to another harness (see `handOffLead`). A running turn is stopped and given time
+       * to end, so the transcript records how it ended; what waited in its inbox stays: the user's
+       * messages come back from the history, and the rest goes to the new session.
+       */
+      const handOff = Effect.fn("Orchestrator.handOff")(function* (agentId: AgentId, target: HandoffTarget) {
+        const live = runtimes.get(agentId);
+        const info =
+          live?.info ??
+          Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+        if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+        if (info.parentId !== undefined) {
+          return yield* notAllowed("Only a thread's lead can be handed to another harness.");
+        }
+        if (target.provider === info.provider) {
+          return yield* new OrchestratorError({
+            reason: "invalid",
+            message: `The lead already runs on ${info.provider}: switch its model instead.`,
+          });
+        }
+        if (!adapters.has(target.provider)) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: `No ${target.provider} adapter is installed.`,
+          });
+        }
+        const thread = yield* threadInfo(info.threadId);
+        if (thread.worktree !== undefined && thread.archivedAt !== undefined) {
+          return yield* notAllowed(
+            "This thread's worktree was removed when it was archived; restore it first.",
+          );
+        }
+
+        const carried: Array<InputItem> = [];
+        if (live !== undefined && !live.ended) {
+          // Taken out first, so the stopped turn's end doesn't start another on the old harness.
+          carried.push(...(yield* Queue.clear(live.inbox)).filter((item) => item._tag !== "FromUser"));
+          live.userWaiting = false;
+          const turn = live.turn;
+          if (turn !== undefined) {
+            yield* (live.session?.interrupt ?? Effect.void).pipe(Effect.ignore);
+            yield* expireQuestions(live).pipe(Effect.ignore);
+            yield* Deferred.await(turn).pipe(Effect.timeoutOption(HANDOFF_STOP_TIMEOUT));
+          }
+          yield* stopRuntime(live);
+        }
+        held.delete(agentId);
+
+        const updatedAt = yield* now;
+        const autoEffort = target.autoEffort === true;
+        yield* store
+          .updateAgent(agentId, {
+            provider: target.provider,
+            model: target.model,
+            effort: target.effort ?? null,
+            autoEffort,
+            providerSessionId: null,
+            updatedAt,
+          })
+          .pipe(Effect.mapError(unavailable));
+        const { effort: _effort, autoEffort: _auto, providerSessionId: _session, ...rest } = info;
+        const next: AgentInfo = {
+          ...rest,
+          provider: target.provider,
+          model: target.model,
+          ...(target.effort ? { effort: target.effort } : {}),
+          ...(autoEffort ? { autoEffort } : {}),
+          updatedAt,
+        };
+        yield* emitStored(next, {
+          _tag: "LeadHandedOff",
+          from: { provider: info.provider, model: info.model },
+          provider: target.provider,
+          model: target.model,
+          ...(target.effort ? { effort: target.effort } : {}),
+          ...(autoEffort ? { autoEffort } : {}),
+        });
+        // Started at once, so the new harness's session is ready by the user's next message. What the
+        // old session had still to take goes on now, with the brief; otherwise it waits for the user.
+        const { rt, undelivered, notices } = yield* resumeLead(agentId);
+        if (undelivered.length === 0 && carried.length === 0) held.set(agentId, { undelivered, notices });
+        else {
+          rt.userWaiting = undelivered.length > 0;
+          yield* Queue.offerAll(rt.inbox, [...undelivered, ...notices, ...carried]);
+        }
+        return rt.info;
       });
 
       /**
@@ -2311,6 +2645,23 @@ export class Orchestrator extends Context.Service<
         if (isolated) threadWorktrees.set(threadId, isolated.worktree);
         untitled.set(threadId, input.title);
         yield* startRuntime(lead, directory);
+        // Setup makes the worktree usable, run in the thread's own terminal; the lead hears what runs
+        // with its first turn, and what became of it when the command ends.
+        if (isolated !== undefined) {
+          const started = yield* scripts
+            .start({
+              kind: "setup",
+              threadId,
+              project: isolated.worktree.project,
+              cwd: isolated.cwd,
+              auto: true,
+            })
+            .pipe(Effect.option);
+          yield* deliver(lead.id, {
+            _tag: "SystemNotice",
+            text: setupNote(Option.getOrUndefined(started)),
+          });
+        }
         return { thread, lead };
       });
 
@@ -2387,6 +2738,9 @@ export class Orchestrator extends Context.Service<
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.
+        // Ordered with the user's messages, like a switch within the harness.
+        handOffLead: (agentId, target) => acceptPermit.withPermits(1)(handOff(agentId, target)),
+
         switchModel: (agentId, picked) =>
           acceptPermit.withPermits(1)(
             Effect.gen(function* () {
@@ -2498,6 +2852,70 @@ export class Orchestrator extends Context.Service<
           return { requestId };
         }),
 
+        syncUserTasks: Effect.fn("Orchestrator.syncUserTasks")((tasks: ReadonlyArray<TaskEntry>) =>
+          Effect.sync(() => {
+            for (const entry of tasks) {
+              const held = mirroredTasks.get(entry.id);
+              if (held === undefined || entry.updatedAt > held.updatedAt) {
+                mirroredTasks.set(entry.id, entry);
+              }
+            }
+          }),
+        ),
+
+        addUserTask: Effect.fn("Orchestrator.addUserTask")(function* (callerId, task) {
+          const caller = yield* tasksWriterOf(callerId);
+          const title = task.title.trim();
+          const note = task.note?.trim();
+          const folder = task.folder?.trim();
+          if (title === "") {
+            return yield* new OrchestratorError({ reason: "invalid", message: "Name the task." });
+          }
+          if (title.length > MAX_TASK_TITLE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `The title may be ${MAX_TASK_TITLE} characters at most.`,
+            });
+          }
+          if ((note ?? "").length > MAX_TASK_NOTE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `The note may be ${MAX_TASK_NOTE} characters at most.`,
+            });
+          }
+          const createdAt = yield* Clock.currentTimeMillis;
+          const content: Record<string, Schema.Json> = { title, createdAt };
+          if (note) content.note = note;
+          if (folder) content.folder = folder;
+          if (JSON.stringify(content).length > MAX_TASK_BYTES) {
+            return yield* new OrchestratorError({ reason: "invalid", message: "The task is too long." });
+          }
+          const entry = yield* putTask({
+            id: yield* makeId("task"),
+            task: content as Schema.Json,
+          });
+          yield* emit(caller, { _tag: "UserTasksChanged", tasks: [entry] });
+          return entry;
+        }),
+
+        removeUserTask: Effect.fn("Orchestrator.removeUserTask")(function* (callerId, which) {
+          const caller = yield* tasksWriterOf(callerId);
+          const entry =
+            which.title === undefined ? mirroredTasks.get(which.id ?? "") : yield* taskByTitle(which.title);
+          if (entry === undefined || entry.task === undefined) {
+            return yield* notFound(
+              "No task like that is on the list. See `list_tasks` for the ids and titles it holds.",
+            );
+          }
+          const gone = yield* putTask({ id: entry.id });
+          yield* emit(caller, { _tag: "UserTasksChanged", tasks: [gone] });
+          return gone;
+        }),
+
+        userTasks: Effect.suspend(() =>
+          Effect.succeed([...mirroredTasks.values()].filter((entry) => entry.task !== undefined)),
+        ),
+
         resolveSpawnApproval: Effect.fn("Orchestrator.resolveSpawnApproval")(function* (
           requestId: string,
           approval: SpawnApproval,
@@ -2577,6 +2995,32 @@ export class Orchestrator extends Context.Service<
 
         steerAgent: Effect.fn("Orchestrator.steerAgent")(function* (agentId: AgentId) {
           yield* steer(yield* runtime(agentId));
+        }),
+
+        compactAgent: Effect.fn("Orchestrator.compactAgent")(function* (agentId: AgentId) {
+          const rt = yield* runtime(agentId);
+          if (rt.ended) return yield* notFound(`Agent ${agentId} is not running.`);
+          const session = yield* sessionOf(rt);
+          const compact = session.compact;
+          if (compact === undefined || adapters.get(rt.info.provider)?.manifest.compact !== true) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `${rt.info.provider} can't compact a conversation when asked.`,
+            });
+          }
+          const working = new OrchestratorError({
+            reason: "invalid",
+            message: "The agent is working: compact its conversation once its turn ends.",
+          });
+          if (rt.turn !== undefined || rt.info.state === "running" || rt.info.state === "queued") {
+            return yield* working;
+          }
+          // Held before this returns, so a message sent right after waits for the compaction.
+          if (!(yield* rt.turnPermit.takeIfAvailable(1))) return yield* working;
+          yield* Effect.forkIn(
+            compactTurn(rt, compact).pipe(Effect.ensuring(rt.turnPermit.release(1))),
+            rt.scope,
+          );
         }),
 
         // Under the accept permit, so a message being accepted can't slip between taking the inbox
@@ -2719,9 +3163,22 @@ export class Orchestrator extends Context.Service<
           }
           const thread = yield* threadInfo(threadId);
           if (thread.worktree !== undefined && archived !== (thread.archivedAt !== undefined)) {
-            yield* archived
-              ? removeWorktree(thread.id, thread.worktree, options)
-              : worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
+            if (archived) {
+              yield* removeWorktree(thread.id, thread.worktree, options);
+            } else {
+              yield* worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
+              // A restored worktree starts empty of what setup installs, so it runs again, whether
+              // or not the thread's lead is listening; the terminal shows its output.
+              yield* scripts
+                .start({
+                  kind: "setup",
+                  threadId,
+                  project: thread.worktree.project,
+                  cwd: thread.cwd ?? thread.worktree.root,
+                  auto: true,
+                })
+                .pipe(Effect.ignore);
+            }
           }
           return yield* updateThread(
             threadId,
@@ -2999,5 +3456,5 @@ export class Orchestrator extends Context.Service<
         awaitingApproval: waitsOnUser,
       });
     }),
-  ).pipe(Layer.provide(ThreadTitles.layer));
+  ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer)));
 }

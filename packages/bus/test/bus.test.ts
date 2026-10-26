@@ -4,6 +4,7 @@ import {
   Catalog,
   Orchestrator,
   OrchestratorConfig,
+  ProjectScripts,
   UserSettings,
   Worktrees,
   Checkpoints,
@@ -11,18 +12,19 @@ import {
 import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Layer } from "effect";
+import { Duration, Effect, Layer, Stream } from "effect";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import { BusHttpServer, BusRegistryLive, BusServer } from "../src/index.ts";
+import { BROWSER_UNAVAILABLE, BrowserHost, BusHttpServer, BusRegistryLive, BusServer } from "../src/index.ts";
 
 const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
   BusServer.pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(BusRegistryLive),
+    Layer.provideMerge(BrowserHost.layer),
     Layer.provideMerge(UserSettings.layer),
     Layer.provide(
       Layer.mergeAll(
@@ -33,6 +35,7 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
         Adapters.fromList([fake.adapter]),
         Worktrees.unavailable,
         Checkpoints.unavailable,
+        ProjectScripts.unavailable,
         Catalog.fromEntries([
           { alias: "scout", provider: "claude", model: "haiku", description: "Quick lookups" },
         ]),
@@ -127,7 +130,15 @@ describe("Cerium MCP bus", () => {
           "ask_advisor",
           "ask_user",
           "artifact_guide",
+          "add_task",
+          "remove_task",
+          "list_tasks",
           "artifact_preview",
+          "browser_open",
+          "browser_read",
+          "browser_act",
+          "browser_screenshot",
+          "browser_logs",
         ],
       );
 
@@ -184,6 +195,51 @@ describe("Cerium MCP bus", () => {
       const anonymous = yield* leadClient.callTool("list_agents", {}, { authorization: "Bearer forged" });
       assert.isTrue(anonymous?.result?.isError);
       assert.include(JSON.stringify(anonymous?.result?.content), "Unknown Cerium agent.");
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  it.live("drives the thread's browser through the window hosting it, and says when none does", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const browser = yield* BrowserHost;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Browser",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "ask" },
+      });
+      const client = mcpClient(yield* busOf(fake, 0));
+      yield* client.initialize;
+
+      const alone = yield* client.callTool("browser_open", { url: "localhost:5173" });
+      assert.isTrue(alone?.result?.isError);
+      assert.include(JSON.stringify(alone?.result?.content), BROWSER_UNAVAILABLE);
+
+      // A window hosts it: each call reaches it for the agent's own thread, and its answer comes back.
+      const seen: Array<unknown> = [];
+      yield* browser.host.pipe(
+        Stream.runForEach((call) => {
+          if (call === undefined) return Effect.void;
+          seen.push(call);
+          return browser.answer(call.requestId, { _tag: "Done", text: "Page: Todo", image: "iVBORw0KGgo=" });
+        }),
+        Effect.forkScoped,
+      );
+      yield* Effect.sleep(Duration.millis(20));
+      const shot = yield* client.callTool("browser_screenshot", { fullPage: true });
+      assert.deepStrictEqual(shot?.result?.content, [
+        { type: "text", text: "Page: Todo" },
+        { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+      ]);
+      assert.deepInclude(seen[0] as object, {
+        threadId: lead.threadId,
+        command: { _tag: "Screenshot", fullPage: true },
+      });
+
+      const bad = yield* client.callTool("browser_act", { steps: [{ action: "teleport" }] });
+      assert.isTrue(bad?.result?.isError);
+      assert.include(JSON.stringify(bad?.result?.content), "Give `steps`");
     }).pipe(Effect.provide(stack(fake)), Effect.scoped);
   });
 
@@ -282,6 +338,70 @@ describe("Cerium MCP bus", () => {
       assert.include(
         fake.sessions[0]!.sent.join("\n"),
         "- Which database should the cache use?\n  Answer: Redis, we run it already",
+      );
+    }).pipe(Effect.provide(stack(fake)), Effect.scoped);
+  });
+
+  it.live("adds a task to the user's list, lists it and takes it off again", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      yield* orchestrator.createThread({
+        title: "Tasks",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "ask" },
+      });
+      const client = mcpClient(yield* busOf(fake, 0));
+      yield* client.initialize;
+
+      const empty = yield* client.callTool("list_tasks");
+      assert.deepStrictEqual(empty?.result?.structuredContent?.tasks, []);
+
+      assert.deepStrictEqual(
+        (yield* client.callTool("list_tasks", {}, { authorization: "Bearer forged" }))?.result?.isError,
+        true,
+      );
+
+      const added = yield* client.callTool("add_task", {
+        title: "  Fix the login page  ",
+        note: "After the reporting work is reviewed",
+      });
+      const task = added?.result?.structuredContent?.task;
+      assert.isDefined(task?.id);
+      assert.isDefined(task?.updatedAt);
+      assert.include(task?.task?.title, "Fix the login page");
+
+      const listed = yield* client.callTool("list_tasks");
+      assert.deepStrictEqual(listed?.result?.structuredContent?.tasks, [
+        {
+          id: task?.id,
+          title: "Fix the login page",
+          note: "After the reporting work is reviewed",
+          createdAt: task?.task?.createdAt,
+          updatedAt: task?.updatedAt,
+        },
+      ]);
+
+      const alike = yield* client.callTool("add_task", { title: "fix the LOGIN page" });
+      const second = alike?.result?.structuredContent?.task;
+      const doubled = yield* client.callTool("remove_task", { title: "Fix the login page" });
+      assert.isTrue(doubled?.result?.isError);
+      assert.include(JSON.stringify(doubled?.result?.content), task?.id);
+
+      const removed = yield* client.callTool("remove_task", { id: task?.id });
+      const gone = removed?.result?.structuredContent?.removed;
+      assert.strictEqual(gone?.id, task?.id);
+      assert.isTrue(gone?.task === undefined);
+
+      const missing = yield* client.callTool("remove_task", { title: "Never was" });
+      assert.isTrue(missing?.result?.isError);
+      assert.include(JSON.stringify(missing?.result?.content), "list_tasks");
+
+      const rest = yield* client.callTool("list_tasks");
+      assert.deepStrictEqual(
+        rest?.result?.structuredContent?.tasks?.map((kept: { id: string }) => kept.id),
+        [second?.id],
       );
     }).pipe(Effect.provide(stack(fake)), Effect.scoped);
   });

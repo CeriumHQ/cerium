@@ -12,6 +12,7 @@
     "@cerium/harness": "workspace:*",
     "@cerium/orchestrator": "workspace:*",
     "@cerium/protocol": "workspace:*",
+    "@cerium/rpc": "workspace:*",
     "@effect/platform-node": "4.0.5",
     "effect": "4.0.5"
   },

@@ -297,6 +297,60 @@ describe("OpenCodeTranslator", () => {
     expect(payloads.find((payload) => payload._tag === "UsageReported")).not.toHaveProperty("costUsd");
   });
 
+  it("reports each step's context against the model's window, and a compaction with its summary", () => {
+    const step = (input: number) =>
+      event("session.step.ended", {
+        assistantMessageID: "msg_1",
+        finish: "stop",
+        cost: 0,
+        tokens: { input, output: 10, reasoning: 5, cache: { read: 100, write: 20 } },
+      });
+    const into = new OpenCodeTranslator({ window: () => 200_000 });
+    const payloads = translateAll(
+      [
+        opened,
+        step(1_000),
+        event("session.execution.succeeded", {}),
+        event("session.compaction.started", { reason: "manual", recent: "" }),
+        event("session.compaction.ended", {
+          reason: "manual",
+          text: "## Objective\n- Say hello.\n",
+          recent: "",
+        }),
+        event("session.execution.succeeded", {}),
+        step(300),
+      ],
+      into,
+    ).filter((payload) => payload._tag === "ContextReported" || payload._tag === "ContextCompacted");
+    expect(payloads).toEqual([
+      { _tag: "ContextReported", tokens: 1_135, window: 200_000 },
+      {
+        _tag: "ContextCompacted",
+        trigger: "manual",
+        tokensBefore: 1_135,
+        summary: "## Objective\n- Say hello.",
+      },
+      { _tag: "ContextReported", tokens: 435, window: 200_000 },
+    ]);
+  });
+
+  it("sizes a compaction mid-turn by what the step after it read", () => {
+    const payloads = translateAll([
+      opened,
+      event("session.compaction.ended", { reason: "auto", text: "", recent: "" }),
+      event("session.step.ended", {
+        assistantMessageID: "msg_2",
+        finish: "stop",
+        cost: 0,
+        tokens: { input: 900, output: 10, reasoning: 0, cache: { read: 100, write: 0 } },
+      }),
+    ]);
+    expect(payloads.slice(1, 3)).toEqual([
+      { _tag: "ContextCompacted", trigger: "auto", tokensAfter: 1_000 },
+      { _tag: "ContextReported", tokens: 1_010 },
+    ]);
+  });
+
   it.each([
     [
       "provider.auth",

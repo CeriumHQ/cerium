@@ -7,6 +7,7 @@ import { forkClaudeSession } from "./fork.ts";
 import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
+import { listClaudeSessions, readClaudeSession } from "./sessions.ts";
 import { startClaudeSession } from "./session.ts";
 import { listClaudeSkills } from "./skills.ts";
 import { readClaudeUsage } from "./usage.ts";
@@ -60,6 +61,8 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         complete: (request) =>
           ready.pipe(Effect.flatMap((executablePath) => completeWithClaude(executablePath, request))),
         fork: forkClaudeSession,
+        listSessions: listClaudeSessions,
+        readSession: readClaudeSession,
         startSession,
       });
     }),

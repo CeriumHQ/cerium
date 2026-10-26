@@ -10,6 +10,7 @@ import { INSTALL_HINT, LOGIN_COMMAND, opencodeManifest } from "./manifest.ts";
 import { readCatalog, toModelInfos } from "./models.ts";
 import { probeOpenCode, readAuth } from "./probe.ts";
 import { startOpenCodeSession } from "./session.ts";
+import { listOpenCodeSessions, readOpenCodeSession } from "./sessions.ts";
 import { listOpenCodeSkills } from "./skills.ts";
 
 /** How long the shared server stays up after its last use. */
@@ -116,6 +117,15 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
           ready.pipe(
             Effect.flatMap((executablePath) =>
               withServer(executablePath, (client) => forkOpenCodeSession(client, request)),
+            ),
+          ),
+        listSessions: ready.pipe(
+          Effect.flatMap((executablePath) => withServer(executablePath, listOpenCodeSessions)),
+        ),
+        readSession: (session) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) =>
+              withServer(executablePath, (client) => readOpenCodeSession(client, session)),
             ),
           ),
         startSession,

@@ -1,5 +1,5 @@
 import type { AdapterEvent } from "@cerium/harness";
-import type { EventPayload, ReasoningEffort } from "@cerium/protocol";
+import type { ContextCompacted, EventPayload, ReasoningEffort } from "@cerium/protocol";
 import type { OpenCodeEvent } from "@opencode/client";
 
 import { LOGIN_COMMAND } from "./manifest.ts";
@@ -45,6 +45,8 @@ interface Usage {
 export interface TranslatorOptions {
   /** OpenCode's tool name as Cerium reports it (see `toolNamer`). */
   readonly toolName?: (name: string) => string;
+  /** The context window of the model the session runs now, when its catalog lists one. */
+  readonly window?: () => number | undefined;
 }
 
 /**
@@ -63,9 +65,15 @@ export class OpenCodeTranslator {
   /** Permission requests asked and not yet answered, by request id. */
   readonly #asks = new Map<string, PermissionAsk>();
   #usage: Usage | undefined;
+  readonly #window: () => number | undefined;
+  /** The context as the latest step measured it. */
+  #context: number | undefined;
+  /** A compaction that ended, until the step after it measures what it left, or its turn ends. */
+  #compaction: Omit<ContextCompacted, "_tag"> | undefined;
 
   constructor(options: TranslatorOptions = {}) {
     this.#toolName = options.toolName ?? ((name) => name);
+    this.#window = options.window ?? (() => undefined);
   }
 
   translate(record: OpenCodeRecord): ReadonlyArray<AdapterEvent> {
@@ -137,7 +145,27 @@ export class OpenCodeTranslator {
         return this.#completeTool(event);
       case "session.step.ended":
         this.#addUsage(event.data.tokens, event.data.cost);
-        return [];
+        return this.#measured(event.data.tokens);
+      case "session.compaction.ended": {
+        const flushed = this.#flushCompaction(undefined);
+        const summary = event.data.text.trim();
+        this.#compaction = {
+          trigger: event.data.reason === "manual" ? "manual" : "auto",
+          ...(this.#context === undefined ? {} : { tokensBefore: this.#context }),
+          ...(summary === "" ? {} : { summary }),
+        };
+        this.#context = undefined;
+        return flushed;
+      }
+      case "session.compaction.failed":
+        return [
+          {
+            _tag: "AgentError",
+            kind: "unknown",
+            message: `OpenCode couldn't compact the conversation: ${event.data.error.message}`,
+            retryable: false,
+          },
+        ];
       case "session.step.failed":
         if (event.data.tokens !== undefined) this.#addUsage(event.data.tokens, event.data.cost ?? 0);
         return [];
@@ -236,6 +264,32 @@ export class OpenCodeTranslator {
     ];
   }
 
+  /**
+   * The context a step's request read and wrote; the step after a compaction also sizes what the
+   * compaction left, by what it read.
+   */
+  #measured(tokens: Tokens): ReadonlyArray<EventPayload> {
+    const prompt = tokens.input + tokens.cache.read + tokens.cache.write;
+    const context = count(prompt + tokens.output + tokens.reasoning);
+    // A step that read nothing (an aborted request) measured nothing.
+    if (context === 0) return [];
+    this.#context = context;
+    const window = this.#window();
+    return [
+      ...this.#flushCompaction(count(prompt)),
+      { _tag: "ContextReported", tokens: context, ...(window === undefined ? {} : { window }) },
+    ];
+  }
+
+  #flushCompaction(tokensAfter: number | undefined): ReadonlyArray<EventPayload> {
+    const compaction = this.#compaction;
+    this.#compaction = undefined;
+    if (compaction === undefined) return [];
+    return [
+      { _tag: "ContextCompacted", ...compaction, ...(tokensAfter === undefined ? {} : { tokensAfter }) },
+    ];
+  }
+
   #addUsage(tokens: Tokens, cost: number) {
     const usage = (this.#usage ??= { input: 0, output: 0, cached: 0, cost: 0 });
     // Input excludes cache reads; cache writes are new input, as with Claude. Reasoning is output.
@@ -249,7 +303,7 @@ export class OpenCodeTranslator {
     reason: "completed" | "interrupted" | "error",
     error: StructuredError | undefined,
   ): ReadonlyArray<EventPayload> {
-    const payloads: Array<EventPayload> = [];
+    const payloads: Array<EventPayload> = [...this.#flushCompaction(undefined)];
     // Parts the server never ended (an aborted step) end with what they said.
     for (const [messageId, text] of this.#parts) {
       if (text.trim() === "") continue;
@@ -297,7 +351,16 @@ const numberOf = (value: unknown) =>
 
 const stringOf = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
 
-type Content = ToolEnd["data"]["content"];
+/** A tool's content, as its live events and a stored message's tool state both carry it. */
+type Content = ReadonlyArray<
+  | { readonly type: "text"; readonly text: string }
+  | {
+      readonly type: "file";
+      readonly uri: string;
+      readonly mime: string;
+      readonly name?: string | null | undefined;
+    }
+>;
 
 const DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
 
@@ -305,7 +368,7 @@ const DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
  * A tool's content as the transcript reads it: its text, a command's text with its exit code, or
  * content items with images inline, as MCP carries them.
  */
-const toolOutput = (content: NonNullable<Content>, exitCode: number | undefined): unknown => {
+export const toolOutput = (content: NonNullable<Content>, exitCode: number | undefined): unknown => {
   const text = content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
   if (exitCode !== undefined) return { output: text, exitCode };
   if (content.every((item) => item.type === "text")) return text;
@@ -318,7 +381,7 @@ const toolOutput = (content: NonNullable<Content>, exitCode: number | undefined)
   });
 };
 
-const failureOutput = (message: string, content: Content | undefined): string => {
+export const failureOutput = (message: string, content: Content | undefined): string => {
   const text = content?.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n") ?? "";
   return text === "" || text === message ? message : `${message}\n${text}`;
 };

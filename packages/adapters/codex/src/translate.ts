@@ -1,5 +1,5 @@
 import type { AdapterEvent } from "@cerium/harness";
-import { sameTodos, type EventPayload, type TodoItem } from "@cerium/protocol";
+import { sameTodos, type ContextCompacted, type EventPayload, type TodoItem } from "@cerium/protocol";
 
 import { fromCodexEffort } from "./config.ts";
 import { LOGIN_COMMAND } from "./manifest.ts";
@@ -60,6 +60,15 @@ export class CodexTranslator {
   readonly #usage = new Map<string, { readonly first: ThreadTokenUsage; latest: ThreadTokenUsage }>();
   /** Turns whose failure was already reported by an `error` notification. */
   readonly #reportedErrors = new Set<string>();
+  /** The context as the latest usage update measured it. */
+  #context: number | undefined;
+  /** Cerium asked for the next compaction (`thread/compact/start`); Codex's others are its own. */
+  #compactAsked = false;
+  /**
+   * A compaction that finished, until the usage update Codex sends for the history it left reports
+   * its size; the turn's end or its next item reports it without.
+   */
+  #compaction: Omit<ContextCompacted, "_tag"> | undefined;
   /** The plan as last reported, which a repeated `turn/plan/updated` leaves as it is. */
   #plan: { readonly items: ReadonlyArray<TodoItem>; readonly explanation: string | undefined } = {
     items: [],
@@ -87,6 +96,18 @@ export class CodexTranslator {
 
   translate(notification: ServerNotification): ReadonlyArray<AdapterEvent> {
     return this.#payloads(notification).map((payload) => ({ payload, raw: notification }));
+  }
+
+  /** The session asked Codex to compact: the next compaction is the user's. */
+  compactAsked(): void {
+    this.#compactAsked = true;
+  }
+
+  /** The finished compaction, reported without a size after it when nothing measured one. */
+  #flushCompaction(): ReadonlyArray<EventPayload> {
+    const compaction = this.#compaction;
+    this.#compaction = undefined;
+    return compaction === undefined ? [] : [{ _tag: "ContextCompacted", ...compaction }];
   }
 
   /** A tool item that has started and not completed. */
@@ -120,11 +141,21 @@ export class CodexTranslator {
     switch (notification.method) {
       case "item/started": {
         const { item, turnId } = notification.params;
-        if (!isToolItem(item)) return [];
+        if (!isToolItem(item)) return item.type === "contextCompaction" ? [] : this.#flushCompaction();
         this.#items.set(item.id, { item, turnId });
-        return [toolStarted(item)];
+        return [...this.#flushCompaction(), toolStarted(item)];
       }
       case "item/completed":
+        if (notification.params.item.type === "contextCompaction") {
+          const flushed = this.#flushCompaction();
+          this.#compaction = {
+            trigger: this.#compactAsked ? "manual" : "auto",
+            ...(this.#context === undefined ? {} : { tokensBefore: this.#context }),
+          };
+          this.#compactAsked = false;
+          this.#context = undefined;
+          return flushed;
+        }
         return this.#itemCompleted(notification.params.item);
       case "item/agentMessage/delta": {
         const { itemId, delta } = notification.params;
@@ -149,7 +180,22 @@ export class CodexTranslator {
         const usage = this.#usage.get(turnId);
         if (usage === undefined) this.#usage.set(turnId, { first: tokenUsage, latest: tokenUsage });
         else usage.latest = tokenUsage;
-        return [];
+        // The latest request's whole context: what it read and what it wrote.
+        const tokens = Math.max(0, Math.round(tokenUsage.last.totalTokens));
+        const window = tokenUsage.modelContextWindow;
+        this.#context = tokens;
+        const compaction = this.#compaction;
+        this.#compaction = undefined;
+        return [
+          ...(compaction === undefined
+            ? []
+            : [{ _tag: "ContextCompacted", ...compaction, tokensAfter: tokens } as const]),
+          {
+            _tag: "ContextReported",
+            tokens,
+            ...(window !== null && window >= 1 ? { window: Math.round(window) } : {}),
+          },
+        ];
       }
       case "error": {
         const { error, willRetry, turnId } = notification.params;
@@ -245,6 +291,7 @@ export class CodexTranslator {
 
     return [
       ...unfinished,
+      ...this.#flushCompaction(),
       ...(failed && turn.error !== null ? [turnError(turn.error)] : []),
       turnUsage(usage),
       { _tag: "TurnCompleted", stopReason: stopReason(turn.status) },

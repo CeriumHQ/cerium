@@ -4,6 +4,7 @@ import { LenientArray, Skippable } from "./compat.ts";
 import { AgentEvent } from "./events.ts";
 import { DeviceId, EpochMillis, NonNegativeInt, ThreadId } from "./ids.ts";
 import { AgentInfo, ThreadInfo } from "./orchestration.ts";
+import { TaskEntry } from "./tasks.ts";
 
 // Synced threads: every machine keeps a copy of its threads in the account's cloud, so every device
 // sees every thread, and can read one whose machine is offline.
@@ -79,22 +80,8 @@ export const MAX_DRAFT_BYTES = 256_000;
  * its device made, and gone (`task` absent) once deleted. The most recent edit wins. Like a draft's,
  * its content is the UI's to read, so the relay keeps whatever a newer version writes into it.
  */
-export const TaskEntry = Schema.Struct({
-  id: Schema.NonEmptyString.check(Schema.isMaxLength(64)),
-  updatedAt: EpochMillis,
-  task: Schema.optionalKey(Schema.Json),
-});
-export type TaskEntry = typeof TaskEntry.Type;
-
-/**
- * The account's tasks as a device knows them: `ready` once the relay sent them since this device
- * last connected, before which the list may be missing some.
- */
 export const AccountTasks = Schema.Struct({ ready: Schema.Boolean, tasks: Schema.Array(TaskEntry) });
 export type AccountTasks = typeof AccountTasks.Type;
-
-/** The relay keeps a task only while its content stays under this size. */
-export const MAX_TASK_BYTES = 32_000;
 
 /** Streamed text isn't kept in the cloud copy: each stream ends in a completed event that holds it all. */
 export const isStreamDelta = (tag: string) => tag === "MessageDelta" || tag === "ReasoningDelta";

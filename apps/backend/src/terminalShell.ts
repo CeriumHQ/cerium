@@ -99,6 +99,24 @@ export const commandChoice = (
   return { file: executable, args, name };
 };
 
+/**
+ * A project script, such as `bun install` or `bun run dev`, run as one shell of the kind the thread's
+ * own terminals use: `command` goes through the chosen shell (`-Command`, `/c` or `-c`), so its words
+ * and its pipes work as the user typed them.
+ */
+export const scriptChoice = (shell: ShellChoice, command: string): ShellChoice => {
+  const name = (shell.file.split(/[\\/]/).at(-1) ?? shell.file).replace(/\.exe$/i, "").toLowerCase();
+  switch (name) {
+    case "pwsh":
+    case "powershell":
+      return { ...shell, args: ["-NoLogo", "-Command", command] };
+    case "cmd":
+      return { ...shell, args: ["/d", "/c", command] };
+    default:
+      return { ...shell, args: [...shell.args, "-c", command] };
+  }
+};
+
 /** What a terminal's shell runs with: the backend's environment, set up for a terminal emulator. */
 export const terminalEnv = (
   base: Readonly<Record<string, string | undefined>>,

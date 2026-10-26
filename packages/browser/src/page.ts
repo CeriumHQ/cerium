@@ -1,4 +1,4 @@
-import { Cdp, CdpError } from "./cdp.ts";
+import { Cdp, CdpError, type CdpSession } from "./cdp.ts";
 
 // One driven page: finding elements, acting on them like a user, and reading back what is on screen.
 // Page-side helpers are plain JavaScript strings, so a bundler can never rewrite what runs in the page.
@@ -25,6 +25,14 @@ export interface Found {
 export interface ConsoleEntry {
   readonly level: string;
   readonly text: string;
+}
+
+/** A request the page made that failed, or that the server answered with an error status. */
+export interface FailedRequest {
+  readonly url: string;
+  readonly method: string;
+  /** The HTTP status, or the network's reason when no answer came. */
+  readonly failure: string;
 }
 
 const HELPERS = String.raw`
@@ -213,17 +221,21 @@ interface Held {
   readonly stop: () => void;
 }
 
+/** How many console messages and failed requests a page keeps until they're read. */
+const LOG_LIMIT = 100;
+
 export class Page {
   private readonly console: Array<ConsoleEntry> = [];
+  private readonly failed: Array<FailedRequest> = [];
   private held: Held | undefined;
   private front = false;
-  readonly cdp: Cdp;
+  readonly cdp: CdpSession;
 
-  private constructor(cdp: Cdp) {
+  private constructor(cdp: CdpSession) {
     this.cdp = cdp;
     const push = (entry: ConsoleEntry) => {
       this.console.push({ level: entry.level, text: entry.text.slice(0, 500) });
-      if (this.console.length > 100) this.console.shift();
+      if (this.console.length > LOG_LIMIT) this.console.shift();
     };
     cdp.on("Runtime.consoleAPICalled", (event) =>
       push({
@@ -259,6 +271,51 @@ export class Page {
   }
 
   /**
+   * A page driven through a session another carrier holds, such as an Electron web view's debugger,
+   * which also keeps the requests that fail for `drainRequests`.
+   */
+  static async attach(session: CdpSession): Promise<Page> {
+    const page = new Page(session);
+    page.watchRequests();
+    await Promise.all([
+      session.send("Page.enable"),
+      session.send("Runtime.enable"),
+      session.send("Network.enable"),
+    ]);
+    return page;
+  }
+
+  private watchRequests() {
+    const requests = new Map<string, { url: string; method: string }>();
+    const push = (entry: FailedRequest) => {
+      this.failed.push({ ...entry, url: entry.url.slice(0, 300) });
+      if (this.failed.length > LOG_LIMIT) this.failed.shift();
+    };
+    this.cdp.on("Network.requestWillBeSent", (event) => {
+      if (requests.size > 1_000) requests.clear();
+      requests.set(event.requestId, { url: event.request.url, method: event.request.method });
+    });
+    this.cdp.on("Network.responseReceived", (event) => {
+      const request = requests.get(event.requestId);
+      if (event.response.status >= 400) {
+        push({
+          url: event.response.url,
+          method: request?.method ?? "GET",
+          failure: `${event.response.status} ${event.response.statusText ?? ""}`.trim(),
+        });
+      }
+    });
+    this.cdp.on("Network.loadingFinished", (event) => requests.delete(event.requestId));
+    this.cdp.on("Network.loadingFailed", (event) => {
+      const request = requests.get(event.requestId);
+      requests.delete(event.requestId);
+      // A request the page called off itself (a navigation away, an aborted fetch) failed nothing.
+      if (request === undefined || event.canceled === true) return;
+      push({ url: request.url, method: request.method, failure: event.errorText ?? "failed" });
+    });
+  }
+
+  /**
    * Whether the page is on screen. A hidden page, or a window Windows minimized (and parked far
    * off-screen), draws a frame a second or none, so each input event and screenshot takes seconds.
    */
@@ -286,6 +343,19 @@ export class Page {
     return this.console.splice(0);
   }
 
+  /** Requests that failed or were answered with an error since the last call; `attach`ed pages only. */
+  drainRequests(): ReadonlyArray<FailedRequest> {
+    return this.failed.splice(0);
+  }
+
+  /** How many errors (console errors, uncaught ones) and failed requests wait to be drained. */
+  get unread(): { readonly errors: number; readonly requests: number } {
+    return {
+      errors: this.console.filter((entry) => entry.level === "error" || entry.level === "exception").length,
+      requests: this.failed.length,
+    };
+  }
+
   async evaluate<T = unknown>(expression: string, timeoutMs = 15_000): Promise<T> {
     const result = await this.cdp.send(
       "Runtime.evaluate",
@@ -308,7 +378,8 @@ export class Page {
     const loaded = this.cdp.once("Page.loadEventFired", timeoutMs);
     const result = await this.cdp.send("Page.navigate", { url }, timeoutMs);
     if (result.errorText) throw new CdpError(`Could not open ${url}: ${result.errorText}.`);
-    await loaded;
+    // A move within the same document (a new #hash) loads nothing.
+    if (result.loaderId !== undefined) await loaded;
     await this.settle();
   }
 
@@ -320,8 +391,24 @@ export class Page {
   }
 
   async back(): Promise<void> {
-    await this.evaluate("history.back()");
-    await sleep(300);
+    await this.walkHistory(-1);
+  }
+
+  async forward(): Promise<void> {
+    await this.walkHistory(1);
+  }
+
+  /**
+   * Moves `step` entries through the page's history and waits for the entry to commit, which a page
+   * kept in the back-forward cache does without loading. Nothing happens at either end.
+   */
+  private async walkHistory(step: number, timeoutMs = 10_000): Promise<void> {
+    const history = await this.cdp.send("Page.getNavigationHistory");
+    const entry = history.entries[history.currentIndex + step];
+    if (entry === undefined) return;
+    const committed = this.cdp.once("Page.frameNavigated", timeoutMs);
+    await this.cdp.send("Page.navigateToHistoryEntry", { entryId: entry.id });
+    await committed;
     await this.settle();
   }
 

@@ -316,6 +316,7 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
           list.models.find((entry) => entry.isActive === true) ??
           list.models.find((entry) => entry.modelId === model);
         offeredEfforts = Array.isArray(row?.variants) ? row.variants : undefined;
+        translator.window(row?.contextLimit ?? undefined);
       }),
       Effect.ignore,
     );
@@ -462,5 +463,27 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
     ),
     setModel: (model) => setModel(model),
     setEffort: (effort) => setEffort(effort),
+    // Muse compacts outside any turn and acks only the admission; the compaction's terminal item
+    // ends the turn Cerium counts it as. A noop ack is the whole answer.
+    compact: Effect.suspend(() => {
+      translator.compactAsked();
+      return command("session/compact", { sessionId }, connection.mintCommandId()).pipe(
+        Effect.map((ack) => {
+          if (ack["status"] !== "noop") return;
+          const reason = typeof ack["reason"] === "string" ? ` (${ack["reason"]})` : "";
+          emit(translator.compactRefused(`Muse Code found nothing to compact${reason}.`, ack));
+        }),
+        Effect.catch(({ cause }) =>
+          Effect.sync(() =>
+            emit(
+              translator.compactRefused(`Muse Code refused to compact: ${describe(cause)}`, {
+                method: "session/compact",
+                error: describe(cause),
+              }),
+            ),
+          ),
+        ),
+      );
+    }),
   } satisfies AgentSession;
 });

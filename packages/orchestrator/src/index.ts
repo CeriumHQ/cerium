@@ -9,9 +9,12 @@ export {
   type EffortState,
 } from "./effort.ts";
 export { OrchestratorError } from "./errors.ts";
+export { importedEvents, SessionImports, type ImportOptions } from "./imports.ts";
+export { CONDENSE_INSTRUCTIONS, condensePrompt, handoffBrief } from "./handoff.ts";
 export {
   Orchestrator,
   type CreateThreadInput,
+  type HandoffTarget,
   type ModelChoice,
   type SpawnApproval,
   type SpawnOutcome,
@@ -35,5 +38,15 @@ export {
   type SnapshotChange,
   type SnapshotLines,
 } from "./services.ts";
+export {
+  ProjectScripts,
+  ScriptsError,
+  type ResolvedScript,
+  type ResolvedScripts,
+  type ScriptEnded,
+  type ScriptKind,
+  type ScriptSource,
+  type ScriptStarted,
+} from "./scripts.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

@@ -1,11 +1,15 @@
 import { deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
+import { BrowserHost } from "@cerium/bus";
 import { previewArtifact } from "@cerium/artifacts/preview";
 import type { HarnessAdapter } from "@cerium/harness";
 import {
   Adapters,
   Checkpoints,
   Orchestrator,
+  ProjectScripts,
+  ScriptsError,
+  SessionImports,
   UserSettings,
   type EffortDecisionError,
   type OrchestratorError,
@@ -51,6 +55,7 @@ import { Projects, type ProjectError } from "./project.ts";
 import { newerRelease, Releases } from "./releases.ts";
 import { spendReport } from "./spend.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
+import { SCRIPT_LABEL } from "./projectScripts.ts";
 import { commandChoice } from "./terminalShell.ts";
 import { SubscriptionUsage } from "./usage.ts";
 import { Workspace, type WorkspaceError } from "./workspace.ts";
@@ -66,7 +71,8 @@ const refuse = (
     | HistoryError
     | RepositoryError
     | GitError
-    | StoreError,
+    | StoreError
+    | ScriptsError,
 ) => new CeriumError({ message: error.message });
 
 const refuseDecision = (error: EffortDecisionError) => new CeriumError({ message: error.message });
@@ -129,11 +135,13 @@ export const Handlers = MachineRpcs.toLayer(
     const repositories = yield* Repositories;
     const projects = yield* Projects;
     const terminals = yield* Terminals;
+    const scripts = yield* ProjectScripts;
     const store = yield* Store;
     const usage = yield* SubscriptionUsage;
     const releases = yield* Releases;
     const effortRouter = yield* EffortRouter;
     const offered = yield* OfferedModels;
+    const imports = yield* SessionImports;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -199,6 +207,27 @@ export const Handlers = MachineRpcs.toLayer(
           }),
         ),
       WatchEvents: () => orchestrator.events,
+      ListPastSessions: () => imports.list.pipe(Effect.mapError(refuse)),
+      // The folders of the work threads that come in to the inbox join the projects the composer offers.
+      ImportSessions: ({ sessions, access, archiveBefore }) =>
+        imports
+          .importSessions(sessions, { access, ...(archiveBefore === undefined ? {} : { archiveBefore }) })
+          .pipe(
+            Effect.tap((threads) =>
+              Effect.forEach(
+                new Set(
+                  threads.flatMap((thread) =>
+                    thread.mode === "work" && thread.cwd !== undefined && thread.archivedAt === undefined
+                      ? [thread.cwd]
+                      : [],
+                  ),
+                ),
+                (folder) => projects.save(folder).pipe(Effect.ignore),
+                { discard: true },
+              ),
+            ),
+            Effect.mapError(refuse),
+          ),
       // A work thread's folder joins the projects the composer offers, as the one used last: the
       // project's own, for a thread in a worktree.
       CreateThread: (payload) =>
@@ -239,6 +268,17 @@ export const Handlers = MachineRpcs.toLayer(
             ...(autoEffort === undefined ? {} : { autoEffort }),
           })
           .pipe(Effect.mapError(refuse)),
+      HandOffLead: ({ agentId, provider, model, effort, autoEffort }) =>
+        orchestrator
+          .handOffLead(agentId, {
+            provider,
+            model,
+            ...(effort ? { effort } : {}),
+            ...(autoEffort ? { autoEffort } : {}),
+          })
+          .pipe(Effect.mapError(refuse)),
+      // A mirror of the window's tasks (the rail's Tasks) for the agents' tools to read and match.
+      SyncUserTasks: ({ tasks }) => orchestrator.syncUserTasks(tasks).pipe(Effect.mapError(refuse)),
       RespondToPermission: ({ agentId, requestId, decision, scope }) =>
         orchestrator
           .respondToPermission(agentId, requestId, { decision, scope })
@@ -254,6 +294,7 @@ export const Handlers = MachineRpcs.toLayer(
           .interruptAgent(agentId, includeChildren === undefined ? {} : { includeChildren })
           .pipe(Effect.mapError(refuse)),
       SteerAgent: ({ agentId }) => orchestrator.steerAgent(agentId).pipe(Effect.mapError(refuse)),
+      CompactAgent: ({ agentId }) => orchestrator.compactAgent(agentId).pipe(Effect.mapError(refuse)),
       WithdrawMessage: ({ agentId, messageId }) =>
         orchestrator.withdrawMessage(agentId, messageId).pipe(Effect.mapError(refuse)),
       StopAgent: ({ agentId }) => orchestrator.stopAgent(agentId).pipe(Effect.mapError(refuse)),
@@ -419,6 +460,41 @@ export const Handlers = MachineRpcs.toLayer(
       ListProjects: () => projects.list.pipe(Effect.mapError(refuse)),
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
       RemoveProject: ({ path }) => projects.remove(path).pipe(Effect.mapError(refuse)),
+      ProjectScripts: ({ project }) => scripts.resolve(project).pipe(Effect.mapError(refuse)),
+      SetProjectScripts: ({ path, setup, run }) =>
+        store.writeProjectScripts(path, { setup, run }).pipe(Effect.mapError(refuse)),
+      RunProjectScript: ({ threadId, kind, size }) =>
+        Effect.gen(function* () {
+          const thread = Option.getOrUndefined(
+            yield* store.getThread(threadId).pipe(Effect.mapError(refuse)),
+          );
+          if (thread === undefined || thread.mode !== "work" || thread.cwd === undefined) {
+            return yield* new CeriumError({
+              message: "Only a work thread has a project its scripts run in.",
+            });
+          }
+          const started = yield* scripts
+            .start({
+              kind,
+              threadId,
+              project: thread.worktree?.project ?? thread.cwd,
+              cwd: thread.cwd,
+              size,
+            })
+            .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
+          if (started === undefined) {
+            return yield* new CeriumError({
+              message: `No ${kind} command is set for this project. Set one in Settings → Source control.`,
+            });
+          }
+          const label = SCRIPT_LABEL[kind];
+          const own = (yield* terminals.list).findLast(
+            (info) => info.threadId === threadId && info.script === label,
+          );
+          return own === undefined
+            ? yield* new CeriumError({ message: "The terminal closed as it opened." })
+            : own;
+        }),
       GitBranch: ({ cwd }) => projects.branch(cwd).pipe(Effect.map((branch) => (branch ? { branch } : {}))),
       ProjectIcon: ({ cwd }) => projects.icon(cwd).pipe(Effect.map((icon) => (icon ? { icon } : {}))),
       Settings: () => settings.get,
@@ -484,6 +560,8 @@ const DeviceHandlers = deviceHandlers({
     const router = yield* EffortRouter;
     return (key: string) => router.save(key).pipe(Effect.mapError(refuseDecision));
   }),
+  // The desktop window hosts the browser its threads' agents drive through the bus.
+  browser: Effect.service(BrowserHost),
 });
 
 const sameSecret = (given: string, expected: string) =>

@@ -42,8 +42,10 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
 }) {}
 
 /** `effort: null` clears the effort, for a model its harness offers no effort setting for. */
-export type AgentPatch = Partial<Pick<AgentInfo, "state" | "model" | "providerSessionId" | "autoEffort">> & {
+export type AgentPatch = Partial<Pick<AgentInfo, "state" | "provider" | "model" | "autoEffort">> & {
   readonly effort?: AgentInfo["effort"] | null;
+  /** `null` forgets the session, as handing the agent to another harness does. */
+  readonly providerSessionId?: string | null;
   readonly updatedAt: number;
 };
 
@@ -58,6 +60,10 @@ export interface StoredProject {
   readonly path: string;
   readonly addedAt: number;
   readonly usedAt: number;
+  /** The user's setup command here; null defers to the project's own `.cerium.toml`. */
+  readonly setup: string | null;
+  /** The user's run command here; null defers to the project's own `.cerium.toml`. */
+  readonly run: string | null;
 }
 
 /** A thread whose messages match a search, and the passage around its best match in pieces. */
@@ -203,6 +209,14 @@ export class Store extends Context.Service<
     readonly listProjects: Effect.Effect<ReadonlyArray<StoredProject>, StoreError>;
     /** Saves a project folder, or marks a saved one used at `usedAt`. */
     saveProject(path: string, usedAt: number): Effect.Effect<void, StoreError>;
+    /**
+     * Stores a project's own setup and run commands, over what its `.cerium.toml` holds (`""` turns
+     * one off). Saves the folder as a project if it wasn't one.
+     */
+    writeProjectScripts(
+      path: string,
+      scripts: { readonly setup: string | null; readonly run: string | null },
+    ): Effect.Effect<void, StoreError>;
     /** Forgets a project folder; its threads keep it. */
     removeProject(path: string): Effect.Effect<void, StoreError>;
   }
@@ -566,8 +580,19 @@ export class Store extends Context.Service<
               "Could not save the project",
               db
                 .insert(projects)
-                .values({ path, addedAt: usedAt, usedAt })
+                .values({ path, addedAt: usedAt, usedAt, setup: null, run: null })
                 .onConflictDoUpdate({ target: projects.path, set: { usedAt } }),
+            ),
+          writeProjectScripts: (path, scripts) =>
+            query(
+              "Could not save the project's scripts",
+              db
+                .insert(projects)
+                .values({ path, addedAt: Date.now(), usedAt: Date.now(), ...scripts })
+                .onConflictDoUpdate({
+                  target: projects.path,
+                  set: { setup: scripts.setup, run: scripts.run },
+                }),
             ),
           removeProject: (path) =>
             query("Could not remove the project", db.delete(projects).where(eq(projects.path, path))),

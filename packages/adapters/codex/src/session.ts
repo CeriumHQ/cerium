@@ -286,5 +286,14 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
     }),
     setModel: (next) => Effect.sync(() => (nextModel = next)),
     setEffort: (effort) => Effect.sync(() => (nextEffort = effort)),
+    // A turn of Codex's own, announced and ended like one `turn/start` begins.
+    compact: Effect.gen(function* () {
+      starting = true;
+      translator.compactAsked();
+      yield* server.request("thread/compact/start", { threadId });
+    }).pipe(
+      Effect.catchTag("RpcError", rejectedTurn),
+      Effect.mapError(failure("Could not compact the Codex thread")),
+    ),
   } satisfies AgentSession;
 });

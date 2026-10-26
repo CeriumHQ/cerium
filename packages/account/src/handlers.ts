@@ -1,6 +1,12 @@
 import type { ThreadNotification } from "@cerium/protocol";
-import { CeriumError, DeviceRpcs, type EffortRouterStatus } from "@cerium/rpc";
-import { Effect, type Stream } from "effect";
+import {
+  CeriumError,
+  DeviceRpcs,
+  type BrowserCall,
+  type BrowserOutcome,
+  type EffortRouterStatus,
+} from "@cerium/rpc";
+import { Effect, Stream } from "effect";
 
 import { Account, type AccountError } from "./account.ts";
 import { CloudThreads } from "./cloud.ts";
@@ -20,14 +26,28 @@ export const refuseEffortRouterKey: SaveEffortRouterKey = () =>
   );
 
 /**
- * The handlers of `DeviceRpcs`. `working` says whether this device's own agents are working,
- * `notifications` tells what its threads need the user for, and `saveEffortRouterKey` keeps the
- * effort router's key; a browser has none of them. Requires `Account` and `CloudThreads`.
+ * Where a desktop window hosts its threads' browsers for the agents (`HostBrowser`): the bus's
+ * `BrowserHost` on a desktop's backend; a browser has none to host.
  */
-export const deviceHandlers = <W, N, K>(own: {
+export interface BrowserHosting {
+  readonly host: Stream.Stream<BrowserCall | undefined>;
+  readonly answer: (requestId: string, outcome: BrowserOutcome) => Effect.Effect<void>;
+}
+
+/** A browser hosts no page for agents: they run on a desktop, which hosts its own. */
+export const noBrowserHosting: BrowserHosting = { host: Stream.empty, answer: () => Effect.void };
+
+/**
+ * The handlers of `DeviceRpcs`. `working` says whether this device's own agents are working,
+ * `notifications` tells what its threads need the user for, `saveEffortRouterKey` keeps the
+ * effort router's key, and `browser` hosts the agents' browser; a browser has none of them. Requires
+ * `Account` and `CloudThreads`.
+ */
+export const deviceHandlers = <W, N, K, B>(own: {
   readonly working: Effect.Effect<Stream.Stream<boolean>, never, W>;
   readonly notifications: Effect.Effect<Stream.Stream<ThreadNotification>, never, N>;
   readonly saveEffortRouterKey: Effect.Effect<SaveEffortRouterKey, never, K>;
+  readonly browser: Effect.Effect<BrowserHosting, never, B>;
 }) =>
   DeviceRpcs.toLayer(
     Effect.gen(function* () {
@@ -36,6 +56,7 @@ export const deviceHandlers = <W, N, K>(own: {
       const workingNow = yield* own.working;
       const notifications = yield* own.notifications;
       const saveKey = yield* own.saveEffortRouterKey;
+      const browser = yield* own.browser;
       return DeviceRpcs.of({
         WatchAccount: () => account.changes,
         SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
@@ -58,6 +79,8 @@ export const deviceHandlers = <W, N, K>(own: {
         UnsubscribePush: () => account.send({ _tag: "PushUnsubscribe" }).pipe(Effect.mapError(refuse)),
         WatchNotifications: () => notifications,
         SaveEffortRouterKey: ({ key }) => saveKey(key),
+        HostBrowser: () => browser.host,
+        AnswerBrowser: ({ requestId, outcome }) => browser.answer(requestId, outcome),
       });
     }),
   );
