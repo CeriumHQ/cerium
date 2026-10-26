@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Settings → Appearance → Window has an opacity slider (Windows and macOS) for those who would rather not see the desktop through the window: at the left the theme keeps its own glass, at the right the window is solid.
+
 ### Changed
 
 - Menus, select lists, tooltips, dialogs and the command palette are translucent, glass blurred behind them, instead of 94% opaque; in light mode the thread card and message box are white films over the glass rather than a second near-opaque layer, and code blocks in a reply sit on a darkened film rather than another layer of window glass.

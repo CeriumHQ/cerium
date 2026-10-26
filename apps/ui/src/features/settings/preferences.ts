@@ -66,6 +66,22 @@ export const stepScale = (scale: Scale, by: number): Scale => {
   return scales[at] ?? 100;
 };
 
+const SOLID_KEY = "cerium:windowSolid";
+/**
+ * How solid the window is, in percent, for those who don't want the system's glass (Acrylic on Windows,
+ * Vibrancy on macOS) showing through: 0 keeps the theme's own glass, 100 hides the desktop entirely.
+ */
+export const windowSolidAtom = Atom.writable(
+  (): number => {
+    const value = Number(stored(SOLID_KEY));
+    return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
+  },
+  (context, value: number) => {
+    context.setSelf(value);
+    remember(SOLID_KEY, String(value));
+  },
+).pipe(Atom.keepAlive);
+
 /** Which key sends a message; the other way of pressing Enter starts a new line. */
 export type SendKey = "enter" | "ctrlEnter";
 export const sendKeyAtom = preference<SendKey>("cerium:sendKey", ["enter", "ctrlEnter"], "enter");

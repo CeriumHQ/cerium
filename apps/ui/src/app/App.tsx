@@ -189,7 +189,7 @@ import { fittedSize } from "../features/terminal/session.ts";
 import { closeTerminal, terminalsAtom } from "../backend/terminals.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
-import { canScale, useScale } from "../features/settings/scale.ts";
+import { canScale, useScale, useWindowSolid } from "../features/settings/scale.ts";
 import {
   settingsLabel,
   SettingsNav,
@@ -358,6 +358,7 @@ export function App() {
 function Themed({ children }: { children: ReactNode }) {
   useTheme(useAtomValue(themeAtom));
   useScale();
+  useWindowSolid();
   useSharedPreferences();
   return children;
 }

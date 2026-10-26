@@ -1,5 +1,6 @@
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
+import { Slider } from "@base-ui/react/slider";
 import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 
@@ -8,8 +9,17 @@ import { useShortcut } from "../../lib/shortcuts.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { paletteAtom, palettes, type Palette } from "./palettes.ts";
 import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
-import { scaleAtom, scales, textSizeAtom, textSizes, themeAtom, themes, type Theme } from "./preferences.ts";
-import { canScale } from "./scale.ts";
+import {
+  scaleAtom,
+  scales,
+  textSizeAtom,
+  textSizes,
+  themeAtom,
+  themes,
+  windowSolidAtom,
+  type Theme,
+} from "./preferences.ts";
+import { canScale, hasGlass } from "./scale.ts";
 import { useShownTheme } from "./theme.ts";
 
 const modes: Record<Theme, { label: string; icon: LucideIcon }> = {
@@ -58,6 +68,14 @@ export function AppearanceSettings() {
           {canScale() ? <ScaleRow /> : null}
         </SettingsList>
       </SettingsSection>
+
+      {hasGlass() ? (
+        <SettingsSection title="Window">
+          <SettingsList>
+            <SolidRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
     </SettingsPage>
   );
 }
@@ -114,6 +132,40 @@ function TextSizeRow() {
             ))}
           </SelectPopup>
         </SelectRoot>
+      )}
+    />
+  );
+}
+
+/** How much of the system's glass the window lets through: slide right for a solid window. */
+function SolidRow() {
+  const [solid, setSolid] = useAtom(windowSolidAtom);
+  return (
+    <SettingsRow
+      label="Window opacity"
+      hint="Slide right to hide the desktop behind the window"
+      className="pr-4"
+      control={(labelledBy) => (
+        <Slider.Root
+          value={solid}
+          min={0}
+          max={100}
+          step={5}
+          onValueChange={(next) => setSolid(next)}
+          aria-labelledby={labelledBy}
+          className="w-52 shrink-0"
+        >
+          <Slider.Control className="flex h-6 w-full items-center">
+            <Slider.Track className="h-1 w-full rounded-full bg-surface-selected">
+              <Slider.Indicator className="rounded-full bg-accent" />
+              <Slider.Thumb
+                aria-label="Window opacity"
+                getAriaValueText={(_, value) => `${value}% solid`}
+                className="size-3.5 rounded-full border border-line-strong bg-fg-primary shadow-raised outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              />
+            </Slider.Track>
+          </Slider.Control>
+        </Slider.Root>
       )}
     />
   );

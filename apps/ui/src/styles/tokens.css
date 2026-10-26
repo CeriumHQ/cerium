@@ -39,7 +39,9 @@
   /* The window's glass, before it lets the backdrop through. */
   --window: oklch(calc(0.17 + var(--lift)) var(--glass-c) var(--tint-h));
   --window-alpha: 0.62;
-  --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
+  --surface-window: oklch(
+    from var(--window) l c h / calc(var(--window-alpha) + (1 - var(--window-alpha)) * var(--window-solid, 0))
+  );
   --surface-panel: oklch(calc(0.2 + var(--lift)) var(--glass-c) var(--tint-h) / 0.66);
   /*
    * The cards the work sits on (a thread, a page, a side panel), raised off the glass by lightening it:
@@ -125,7 +127,9 @@
   --backdrop: oklch(calc(0.88 - var(--lift)) var(--glass-c) var(--tint-h));
   --window: oklch(0.96 var(--glass-c) var(--tint-h));
   --window-alpha: 0.62;
-  --surface-window: oklch(from var(--window) l c h / var(--window-alpha));
+  --surface-window: oklch(
+    from var(--window) l c h / calc(var(--window-alpha) + (1 - var(--window-alpha)) * var(--window-solid, 0))
+  );
   --surface-panel: oklch(0.985 calc(var(--glass-c) * 0.6) var(--tint-h) / 0.7);
   /* Light films like the dark theme's: white over the glass, not a second near-opaque layer. */
   --surface-pane: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.3);

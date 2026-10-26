@@ -3,7 +3,13 @@ import { RegistryContext } from "@effect/atom-react";
 
 import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
-import { scaleAtom, sendKeyAtom, textSizeAtom, themeAtom } from "../features/settings/preferences.ts";
+import {
+  scaleAtom,
+  sendKeyAtom,
+  textSizeAtom,
+  themeAtom,
+  windowSolidAtom,
+} from "../features/settings/preferences.ts";
 import {
   focusPane,
   leavesOf,
@@ -69,6 +75,7 @@ export function useSharedPreferences() {
       registry.refresh(themeAtom);
       registry.refresh(textSizeAtom);
       registry.refresh(scaleAtom);
+      registry.refresh(windowSolidAtom);
       registry.refresh(sendKeyAtom);
     };
     window.addEventListener("storage", onStorage);
