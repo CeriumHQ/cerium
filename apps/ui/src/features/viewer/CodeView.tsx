@@ -2,21 +2,12 @@ import type { CSSProperties } from "react";
 
 import { useHighlight, type Line } from "./highlight.ts";
 import type { Piece } from "./model.ts";
+import { VisibleChunk } from "./VisibleChunk.tsx";
 
 /** Lines drawn together; the browser skips painting the ones scrolled far out of view. */
 export const CHUNK = 100;
 /** A line's height: 12.5px text, 1.6 apart. */
 export const LINE_HEIGHT = 20;
-
-/**
- * A chunk of `lines` lines, which the browser lays out and paints only near the view, taking it for
- * that many unwrapped lines until it has. Only its height is guessed: a guessed width would widen a
- * view that is as wide as its longest line.
- */
-export const chunkStyle = (lines: number): CSSProperties => ({
-  contentVisibility: "auto",
-  containIntrinsicSize: `auto none auto ${lines * LINE_HEIGHT}px`,
-});
 
 /** A run of highlighted text; a colourless run is plain text. */
 export function Run({ piece, mark }: { piece: Piece; mark?: string }) {
@@ -66,25 +57,27 @@ export function CodeView({ text, path, wrap }: { text: string; path: string; wra
         {chunks.map((first) => {
           const shown = lines.slice(first, first + CHUNK);
           return (
-            <div key={first} style={chunkStyle(shown.length)}>
-              {shown.map((line, index) => (
-                <div
-                  key={first + index}
-                  className={`flex pr-6 hover:bg-surface-hover ${wrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
-                >
-                  <span
-                    style={{ width: gutter }}
-                    className="shrink-0 pr-4 pl-3 text-right text-fg-disabled tabular-nums select-none"
-                    aria-hidden="true"
+            <VisibleChunk key={first} height={shown.length * LINE_HEIGHT}>
+              {() =>
+                shown.map((line, index) => (
+                  <div
+                    key={first + index}
+                    className={`flex pr-6 hover:bg-surface-hover ${wrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
                   >
-                    {first + index + 1}
-                  </span>
-                  <span className={`min-w-0 text-fg-primary ${wrap ? "break-all" : ""}`}>
-                    <LineText text={line.replace(/\r$/, "")} tokens={highlighted?.[first + index]} />
-                  </span>
-                </div>
-              ))}
-            </div>
+                    <span
+                      style={{ width: gutter }}
+                      className="shrink-0 pr-4 pl-3 text-right text-fg-disabled tabular-nums select-none"
+                      aria-hidden="true"
+                    >
+                      {first + index + 1}
+                    </span>
+                    <span className={`min-w-0 text-fg-primary ${wrap ? "break-all" : ""}`}>
+                      <LineText text={line.replace(/\r$/, "")} tokens={highlighted?.[first + index]} />
+                    </span>
+                  </div>
+                ))
+              }
+            </VisibleChunk>
           );
         })}
       </div>

@@ -75,6 +75,22 @@ export const events = sqliteTable(
 );
 
 /** The user's settings the backend applies, one JSON value per key. */
+/** Compact UI history, separate from canonical rows holding images and provider diagnostics. */
+export const uiEvents = sqliteTable(
+  "ui_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .references(() => events.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    at: integer("at").notNull(),
+    payload: text("payload", { mode: "json" }).notNull(),
+  },
+  (table) => [index("ui_events_thread_at").on(table.threadId, table.at, table.sequence)],
+);
+
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value", { mode: "json" }).notNull(),

@@ -181,7 +181,12 @@ interface Runtime {
   /** Undefined while the harness session starts; messages wait in the inbox meanwhile. */
   session: AgentSession | undefined;
   /** Settles once the session has started, or failed to. */
-  readonly started: Deferred.Deferred<AgentSession, OrchestratorError>;
+  started: Deferred.Deferred<AgentSession, OrchestratorError>;
+  sessionScope: Scope.Closeable | undefined;
+  readonly sessionPermit: Semaphore.Semaphore;
+  sleeping: boolean;
+  touchedAt: number;
+  wakeSession: Effect.Effect<void>;
   readonly inbox: Queue.Queue<InputItem>;
   readonly scope: Scope.Closeable;
   sequence: number;
@@ -564,7 +569,7 @@ export class Orchestrator extends Context.Service<
      */
     threadEvents(
       threadId: ThreadId,
-      options?: { readonly streamed?: boolean },
+      options?: { readonly streamed?: boolean; readonly withoutImages?: boolean },
     ): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
     /**
      * Whether the thread waits for the user: its lead's permission request (a child's goes to the lead),
@@ -850,6 +855,7 @@ export class Orchestrator extends Context.Service<
           if (target === undefined || target.ended) {
             return yield* Effect.logWarning(`Dropped ${item._tag} for ${agentId}: agent is not running`);
           }
+          target.touchedAt = Date.now();
           yield* Queue.offer(target.inbox, item);
         });
 
@@ -1093,9 +1099,12 @@ export class Orchestrator extends Context.Service<
               }
             }),
           ),
-          Effect.catchCause((cause) => Effect.logError(`Agent ${rt.info.id} session failed`, cause)),
+          Effect.catchCause((cause) =>
+            rt.sleeping ? Effect.void : Effect.logError(`Agent ${rt.info.id} session failed`, cause),
+          ),
           Effect.ensuring(
             Effect.gen(function* () {
+              if (rt.sleeping) return;
               rt.ended = true;
               yield* expireQuestions(rt).pipe(Effect.ignore);
               yield* releaseOwnRequests(rt, "The agent's session ended before this was answered.");
@@ -1519,6 +1528,8 @@ export class Orchestrator extends Context.Service<
           if (rt.ended) return yield* Effect.interrupt;
 
           yield* setState(rt, "queued");
+          rt.touchedAt = Date.now();
+          yield* rt.wakeSession;
           // A session that never started took nothing: what the user sent waits for the next start.
           // The effort router decides meanwhile, so a starting session doesn't wait on it as well, and
           // a lead just handed to this harness has its brief written.
@@ -1537,6 +1548,7 @@ export class Orchestrator extends Context.Service<
           );
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
+          rt.touchedAt = Date.now();
           const halted = rt.halted;
           rt.halted = false;
 
@@ -1617,6 +1629,11 @@ export class Orchestrator extends Context.Service<
             info,
             session: undefined,
             started: yield* Deferred.make<AgentSession, OrchestratorError>(),
+            sessionScope: undefined,
+            sessionPermit: yield* Semaphore.make(1),
+            sleeping: false,
+            touchedAt: Date.now(),
+            wakeSession: Effect.void,
             inbox: yield* Queue.unbounded<InputItem>(),
             scope,
             sequence: Option.match(last, { onNone: () => 0, onSome: (sequence) => sequence + 1 }),
@@ -1639,17 +1656,21 @@ export class Orchestrator extends Context.Service<
           };
           runtimes.set(info.id, rt);
 
+          let resume = options.resume;
           const start = Effect.gen(function* () {
+            const info = rt.info;
+            const sessionScope = yield* Scope.fork(scope);
+            rt.sessionScope = sessionScope;
             const { includeUserMcpServers, advisor } = yield* settings.get;
             const neighbours = yield* neighboursOf(info, cwd);
             const busSpec = yield* bus.register(info.id);
-            yield* Scope.addFinalizer(scope, bus.unregister(info.id));
+            yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
             const session = yield* adapter
               .startSession({
                 cwd,
                 model: info.model,
                 ...(info.effort ? { effort: info.effort } : {}),
-                ...(options.resume ? { resume: options.resume } : {}),
+                ...(resume === undefined ? {} : { resume }),
                 access: info.access,
                 mcpServers: { [bus.serverName]: busSpec },
                 includeUserMcpServers,
@@ -1661,15 +1682,28 @@ export class Orchestrator extends Context.Service<
                 }),
               })
               .pipe(
-                Scope.provide(scope),
+                Scope.provide(sessionScope),
                 Effect.mapError(
                   (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
                 ),
               );
             rt.session = session;
-            yield* Effect.forkIn(consumeEvents(rt, session), scope);
+            yield* Effect.forkIn(consumeEvents(rt, session), sessionScope);
             yield* Deferred.succeed(rt.started, session);
           });
+          rt.wakeSession = rt.sessionPermit.withPermits(1)(
+            Effect.gen(function* () {
+              rt.touchedAt = Date.now();
+              if (!rt.sleeping || rt.ended) return;
+              rt.sleeping = false;
+              rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
+              resume = rt.info.providerSessionId;
+              yield* start.pipe(
+                Effect.catch((error) => Deferred.fail(rt.started, error)),
+                Effect.asVoid,
+              );
+            }),
+          );
           yield* Effect.forkIn(
             start.pipe(
               Effect.catch((error) =>
@@ -2579,12 +2613,59 @@ export class Orchestrator extends Context.Service<
 
       /** The agent's harness session, which a live agent only lacks while it starts. */
       const sessionOf = (rt: Runtime) =>
-        Effect.fromNullishOr(rt.session).pipe(
-          Effect.mapError(() => notFound(`${rt.info.model} is still starting.`)),
+        rt.wakeSession.pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              Effect.fromNullishOr(rt.session).pipe(
+                Effect.mapError(() => notFound(`${rt.info.model} is still starting.`)),
+              ),
+            ),
+          ),
         );
 
       const childrenOf = (leadId: AgentId) =>
         [...runtimes.values()].filter((candidate) => candidate.info.parentId === leadId);
+
+      // Keep four recently used idle hosts warm. Only the session scope closes: the inbox and
+      // turn loop remain reachable, so a delayed child report or message wakes the same agent.
+      yield* Effect.gen(function* () {
+        const idle = [...runtimes.values()]
+          .filter((rt) => !rt.ended && !rt.sleeping && rt.info.state === "idle")
+          .sort((a, b) => b.touchedAt - a.touchedAt);
+        for (const rt of idle.slice(config.warmSessions)) {
+          yield* rt.sessionPermit.withPermits(1)(
+            Effect.gen(function* () {
+              if (
+                rt.ended ||
+                rt.sleeping ||
+                rt.info.state !== "idle" ||
+                rt.turn !== undefined ||
+                Date.now() - rt.touchedAt < Duration.toMillis(config.idleSessionTTL) ||
+                Queue.sizeUnsafe(rt.inbox) > 0 ||
+                rt.info.providerSessionId === undefined ||
+                !adapters.get(rt.info.provider)?.manifest.session.resume ||
+                waitsOnUser(rt.info.threadId) ||
+                working(rt.info.threadId) ||
+                rt.openCalls.size > 0
+              )
+                return;
+              const sessionScope = rt.sessionScope;
+              if (!sessionScope) return;
+              rt.sleeping = true;
+              yield* Scope.close(sessionScope, Exit.void);
+              rt.session = undefined;
+              rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
+              rt.sessionScope = undefined;
+              rt.storedRaw = undefined;
+            }),
+          );
+        }
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Couldn't retire idle sessions", cause)),
+        Effect.delay(Math.max(10, Math.min(60_000, Duration.toMillis(config.idleSessionTTL) / 5))),
+        Effect.forever,
+        Effect.forkScoped,
+      );
 
       // Runs before `agentsScope` closes, so agents are stopped rather than failed as the app quits.
       yield* Effect.addFinalizer(() =>
@@ -3560,7 +3641,7 @@ export class Orchestrator extends Context.Service<
         }),
 
         threadEvents: (threadId, options) =>
-          store.listThreadEvents(threadId).pipe(
+          store.listThreadEvents(threadId, { withoutImages: options?.withoutImages === true }).pipe(
             Effect.map((events) =>
               options?.streamed === true ? [...events, ...streamed.soFar(threadId)] : events,
             ),

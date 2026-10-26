@@ -53,7 +53,7 @@ const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
  * How many threads opened before the one a pane shows it keeps drawn, out of sight, to show again at
  * once: enough for the threads Ctrl and a digit open.
  */
-const KEPT_THREADS = 8;
+const KEPT_THREADS = 2;
 
 /** What the window does for any of its thread panes. */
 export interface ThreadPaneActions {

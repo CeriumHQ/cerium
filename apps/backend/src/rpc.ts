@@ -192,10 +192,12 @@ export const Handlers = MachineRpcs.toLayer(
     return MachineRpcs.of({
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       ThreadEvents: ({ threadId, withoutImages: lean, streamed }) =>
-        orchestrator.threadEvents(threadId, { streamed: streamed === true }).pipe(
-          Effect.map((events) => (lean === true ? events.map(withoutImages) : events)),
-          Effect.mapError(refuse),
-        ),
+        orchestrator
+          .threadEvents(threadId, { streamed: streamed === true, withoutImages: lean === true })
+          .pipe(
+            Effect.map((events) => (lean === true ? events.map(withoutImages) : events)),
+            Effect.mapError(refuse),
+          ),
       ToolImage: ({ threadId, callId, index }) =>
         store.findToolCompletion(threadId, callId).pipe(
           Effect.mapError(refuse),
@@ -208,7 +210,7 @@ export const Handlers = MachineRpcs.toLayer(
               : Effect.succeed(image);
           }),
         ),
-      WatchEvents: () => orchestrator.events,
+      WatchEvents: () => orchestrator.events.pipe(Stream.map(withoutImages)),
       ListPastSessions: () => imports.list.pipe(Effect.mapError(refuse)),
       // The folders of the work threads that come in to the inbox join the projects the composer offers.
       ImportSessions: ({ sessions, access, archiveBefore }) =>

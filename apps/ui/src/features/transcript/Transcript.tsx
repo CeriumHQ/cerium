@@ -64,6 +64,7 @@ import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 import { useArrivals } from "../../lib/motion.ts";
+import { HistoryWindow } from "./HistoryWindow.tsx";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
@@ -314,10 +315,7 @@ export function Transcript({
                 paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
               }}
             >
-              {/* Every item is laid out for real. `content-visibility: auto` skipped those out of view
-                on a guessed height, so scrolling up through unseen items swapped each guess for its
-                true height, and the content jumped under the scroll position. */}
-              {items.map((item) => renderItem(item, false))}
+              <HistoryWindow items={items} viewport={viewport} render={(item) => renderItem(item, false)} />
               {working && !responding ? (
                 <div className="arrive-header">
                   <ResponseHeader

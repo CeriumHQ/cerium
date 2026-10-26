@@ -184,6 +184,9 @@ export interface OrchestratorSettings {
   readonly titleDirectory?: string;
   /** How long to wait for more notices before delivering a batch to an idle agent. */
   readonly batchWindow: Duration.Duration;
+  /** Idle hosts beyond the warm pool are closed after this grace period, then resumed on demand. */
+  readonly idleSessionTTL: Duration.Duration;
+  readonly warmSessions: number;
   /** Messages one agent may send another within `messageBudget.window`. */
   readonly messageBudget: { readonly limit: number; readonly window: Duration.Duration };
   /**
@@ -203,6 +206,8 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
   static layer = (settings: Pick<OrchestratorSettings, "chatDirectory"> & Partial<OrchestratorSettings>) =>
     Layer.succeed(OrchestratorConfig, {
       batchWindow: Duration.seconds(2),
+      idleSessionTTL: Duration.minutes(5),
+      warmSessions: 4,
       // Placeholder until tuned from real usage.
       messageBudget: { limit: 10, window: Duration.minutes(30) },
       threadBudget: { limit: 12, window: Duration.minutes(30) },

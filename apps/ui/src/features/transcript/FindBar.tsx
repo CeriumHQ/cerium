@@ -21,6 +21,7 @@ import {
   type FindJump,
 } from "./find.ts";
 import type { TranscriptBlock } from "./model.ts";
+import { HISTORY_EVENT } from "./HistoryWindow.tsx";
 
 /** How long the conversation has to settle before a streaming reply is searched again while the bar is open. */
 const RESCAN_MS = 200;
@@ -71,6 +72,7 @@ export function TranscriptFind({
   };
 
   const askFind = useEffectEvent(() => {
+    window.dispatchEvent(new Event(HISTORY_EVENT));
     if (!open) {
       const active = document.activeElement;
       returnTo.current = active instanceof HTMLElement ? active : null;
@@ -179,6 +181,7 @@ export function TranscriptFind({
       return;
     }
     const deadline = performance.now() + JUMP_WAIT_MS;
+    window.dispatchEvent(new Event(HISTORY_EVENT));
     let frame = 0;
     const look = () => {
       if (locate(jump)) dropJump();

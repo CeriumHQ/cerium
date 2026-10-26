@@ -62,6 +62,7 @@ export const projectArtifacts = (listed: ReadonlyArray<ListedArtifact>): Readonl
  */
 export const revealArtifact = (id: string): Promise<boolean> =>
   new Promise((resolve) => {
+    window.dispatchEvent(new Event("cerium:history"));
     const deadline = performance.now() + 4000;
     // The conversation in view, not one kept out of sight (KeptViews).
     const find = () =>

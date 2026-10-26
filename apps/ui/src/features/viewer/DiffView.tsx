@@ -5,7 +5,8 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { DraftCommentFile } from "../composer/draft.ts";
 import { lineRange } from "../composer/draft.ts";
-import { CHUNK, chunkStyle, Run } from "./CodeView.tsx";
+import { CHUNK, LINE_HEIGHT, Run } from "./CodeView.tsx";
+import { VisibleChunk } from "./VisibleChunk.tsx";
 import { useHighlight } from "./highlight.ts";
 import {
   changedWords,
@@ -240,12 +241,16 @@ function chunksOf<Row>(rows: ReadonlyArray<Row>) {
 }
 
 /** The words each changed line lost or gained against the line it replaced, by index in the hunk. */
-const rangesOf = (lines: ReadonlyArray<NumberedLine>) => {
+const rangesOf = (lines: ReadonlyArray<NumberedLine>, budget: { left: number }) => {
   const pairs = replacedPairs(lines);
   const ranges = new Map<number, ReadonlyArray<Range>>();
   for (const [index, other] of pairs) {
     const line = lines[index]!;
     if (line.kind !== "removed") continue;
+    // Bound the whole diff's work, not just one line. Characters upper-bound token count.
+    const cost = line.text.length * lines[other]!.text.length;
+    if (cost > budget.left) continue;
+    budget.left -= cost;
     const words = changedWords(line.text, lines[other]!.text);
     if (words === undefined) continue;
     ranges.set(index, words.removed);
@@ -262,7 +267,8 @@ const rangesOf = (lines: ReadonlyArray<NumberedLine>) => {
  */
 function useNumbered(hunks: ReadonlyArray<DiffHunk>, path: string) {
   const numbered = numberHunks(hunks);
-  const ranges = numbered.hunks.map((hunk) => rangesOf(hunk.lines));
+  const budget = { left: 2_000_000 };
+  const ranges = numbered.hunks.map((hunk) => rangesOf(hunk.lines, budget));
   const oldTokens = useHighlight(numbered.oldText, path);
   const newTokens = useHighlight(numbered.newText, path);
   return { hunks: numbered.hunks, ranges, oldTokens, newTokens };
@@ -498,92 +504,96 @@ export function DiffView({
               ) : null}
               {layout === "unified"
                 ? chunksOf(hunk.lines).map(({ first, rows }) => (
-                    <div key={first} style={chunkStyle(rows.length)}>
-                      {rows.map((line, offset) => {
-                        const index = first + offset;
-                        return (
-                          <Fragment key={index}>
-                            <div
-                              className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
-                            >
-                              {plusOf(hunkIndex, index)}
-                              {pickOf(hunkIndex, index, line)}
-                              <span style={{ width: gutter }} className={number} aria-hidden="true">
-                                {line.old}
-                              </span>
-                              <Cell
-                                line={line}
-                                number={line.new}
-                                ranges={changed.get(index) ?? []}
-                                tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
-                                gutter={gutter}
-                                wrap={!scroll}
-                              />
-                            </div>
-                            {after?.(line)}
-                            {boxOf(hunkIndex, index)}
-                          </Fragment>
-                        );
-                      })}
-                    </div>
+                    <VisibleChunk key={first} height={rows.length * LINE_HEIGHT}>
+                      {() =>
+                        rows.map((line, offset) => {
+                          const index = first + offset;
+                          return (
+                            <Fragment key={index}>
+                              <div
+                                className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
+                              >
+                                {plusOf(hunkIndex, index)}
+                                {pickOf(hunkIndex, index, line)}
+                                <span style={{ width: gutter }} className={number} aria-hidden="true">
+                                  {line.old}
+                                </span>
+                                <Cell
+                                  line={line}
+                                  number={line.new}
+                                  ranges={changed.get(index) ?? []}
+                                  tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
+                                  gutter={gutter}
+                                  wrap={!scroll}
+                                />
+                              </div>
+                              {after?.(line)}
+                              {boxOf(hunkIndex, index)}
+                            </Fragment>
+                          );
+                        })
+                      }
+                    </VisibleChunk>
                   ))
                 : chunksOf(splitRows(hunk.lines)).map(({ first, rows }) => (
-                    <div key={first} style={chunkStyle(rows.length)}>
-                      {rows.map((row, offset) => (
-                        <Fragment key={first + offset}>
-                          <div className="grid grid-cols-2 divide-x divide-line-subtle">
-                            <div
-                              className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
-                            >
-                              <Cell
-                                line={row.left}
-                                number={row.left?.old}
-                                ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
-                                tokens={tokensOf(row.left, "old")}
-                                gutter={gutter}
-                                wrap
-                                mark={row.left ? plusOf(hunkIndex, indexOf.get(row.left)!) : undefined}
-                                pick={
-                                  row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined
-                                }
-                              />
+                    <VisibleChunk key={first} height={rows.length * LINE_HEIGHT}>
+                      {() =>
+                        rows.map((row, offset) => (
+                          <Fragment key={first + offset}>
+                            <div className="grid grid-cols-2 divide-x divide-line-subtle">
+                              <div
+                                className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
+                              >
+                                <Cell
+                                  line={row.left}
+                                  number={row.left?.old}
+                                  ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
+                                  tokens={tokensOf(row.left, "old")}
+                                  gutter={gutter}
+                                  wrap
+                                  mark={row.left ? plusOf(hunkIndex, indexOf.get(row.left)!) : undefined}
+                                  pick={
+                                    row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined
+                                  }
+                                />
+                              </div>
+                              <div
+                                className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
+                              >
+                                <Cell
+                                  wrap
+                                  line={row.right}
+                                  number={row.right?.new}
+                                  ranges={
+                                    row.right && row.right.kind !== "context"
+                                      ? (changed.get(indexOf.get(row.right)!) ?? [])
+                                      : []
+                                  }
+                                  tokens={tokensOf(row.right, "new")}
+                                  gutter={gutter}
+                                  mark={
+                                    row.right && row.right.kind !== "context"
+                                      ? plusOf(hunkIndex, indexOf.get(row.right)!)
+                                      : undefined
+                                  }
+                                  pick={
+                                    row.right
+                                      ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
+                                      : undefined
+                                  }
+                                />
+                              </div>
                             </div>
-                            <div
-                              className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
-                            >
-                              <Cell
-                                wrap
-                                line={row.right}
-                                number={row.right?.new}
-                                ranges={
-                                  row.right && row.right.kind !== "context"
-                                    ? (changed.get(indexOf.get(row.right)!) ?? [])
-                                    : []
-                                }
-                                tokens={tokensOf(row.right, "new")}
-                                gutter={gutter}
-                                mark={
-                                  row.right && row.right.kind !== "context"
-                                    ? plusOf(hunkIndex, indexOf.get(row.right)!)
-                                    : undefined
-                                }
-                                pick={
-                                  row.right
-                                    ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
-                                    : undefined
-                                }
-                              />
-                            </div>
-                          </div>
-                          {row.left ? after?.(row.left) : null}
-                          {row.right && row.right !== row.left ? after?.(row.right) : null}
-                          {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
-                          {row.right && row.right !== row.left
-                            ? boxOf(hunkIndex, indexOf.get(row.right)!)
-                            : null}
-                        </Fragment>
-                      ))}
-                    </div>
+                            {row.left ? after?.(row.left) : null}
+                            {row.right && row.right !== row.left ? after?.(row.right) : null}
+                            {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
+                            {row.right && row.right !== row.left
+                              ? boxOf(hunkIndex, indexOf.get(row.right)!)
+                              : null}
+                          </Fragment>
+                        ))
+                      }
+                    </VisibleChunk>
                   ))}
             </Fragment>
           );

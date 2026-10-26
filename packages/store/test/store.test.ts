@@ -2,6 +2,9 @@ import type { AgentEvent, AgentId, AgentInfo, EventId, ThreadId, ThreadInfo } fr
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Option } from "effect";
 import { join } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 
 import { Store } from "../src/index.ts";
 
@@ -41,6 +44,49 @@ const event = (sequence: number, text = `message ${sequence}`): AgentEvent => ({
 });
 
 describe("Store", () => {
+  it.effect("backfills compact history for old events once and keeps it idempotent", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-compact-")), "events.db");
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      yield* store.createThread(thread);
+      yield* store.createAgent(lead);
+      yield* store.appendEvents([event(0)]);
+      const db = new DatabaseSync(filename);
+      db.exec("DELETE FROM ui_events");
+      db.close();
+      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), [event(0)]);
+      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), [event(0)]);
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
+  it.effect("keeps image-free UI history while preserving the original tool image, and deletes both", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const image = { type: "image", mimeType: "image/png", data: "a".repeat(20_000) };
+        const original: AgentEvent = {
+          ...event(0),
+          payload: {
+            _tag: "ToolCallCompleted",
+            callId: "shot",
+            output: { content: [image] },
+            isError: false,
+          },
+        };
+        yield* store.appendEvents([original]);
+        const compact = yield* store.listThreadEvents(thread.id, { withoutImages: true });
+        assert.isBelow(JSON.stringify(compact).length, 1000);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), [original]);
+        assert.deepStrictEqual(
+          Option.getOrThrow(yield* store.findToolCompletion(thread.id, "shot")),
+          original,
+        );
+        yield* store.deleteThread(thread.id);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), []);
+      }),
+    ),
+  );
   it.effect("round-trips threads, keeping absent optional fields absent", () =>
     withStore(
       Effect.gen(function* () {
