@@ -32,6 +32,7 @@ import {
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import { draftStartAtom } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
+import type { PaletteCommand } from "../features/palette/palette.ts";
 import type { HandoffChoice, ModelSwitch } from "../features/composer/models.ts";
 import { useModels } from "../features/composer/models.ts";
 import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
@@ -169,6 +170,8 @@ export interface ThreadPaneProps {
   /** The thread, or the thread not started yet, the pane shows. */
   readonly paneKey: string;
   readonly actions: ThreadPaneActions;
+  /** The command palette's actions the message box's `/` list offers. */
+  readonly slashCommands: ReadonlyArray<PaletteCommand>;
 }
 
 /** A pane's message box, as the rest of the window reaches it. */
@@ -194,6 +197,7 @@ export function ThreadPane({
   onHandles,
   paneKey,
   actions,
+  slashCommands,
 }: ThreadPaneProps) {
   const models = useModels();
   const input = useRef<HTMLDivElement>(null);
@@ -423,6 +427,7 @@ export function ThreadPane({
             onStop={() => {
               if (lead) void attempt(actions.interrupt(lead.id));
             }}
+            slashCommands={slashCommands}
           />
         )}
       </div>

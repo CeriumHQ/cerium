@@ -8,6 +8,7 @@ export * from "./images.ts";
 export * from "./imports.ts";
 export * from "./models.ts";
 export * from "./orchestration.ts";
+export * from "./savedPrompts.ts";
 export * from "./push.ts";
 export * from "./restore.ts";
 export * from "./roster.ts";

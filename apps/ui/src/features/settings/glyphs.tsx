@@ -37,13 +37,14 @@ function glyph(art: ReactNode) {
   };
 }
 
-/** Each category's glyph: a slider with its knobs, a person, a ping, a prism, a fan of agents, a frame, a branch, a gauge and keycaps. */
+/** Each category's glyph: a slider with its knobs, a person, a ping, a prism, a fan of agents, a slash, a frame, a branch, a gauge and keycaps. */
 export const settingsGlyphs: Record<
   | "general"
   | "account"
   | "notifications"
   | "appearance"
   | "agents"
+  | "prompts"
   | "harnesses"
   | "sourceControl"
   | "usage"
@@ -82,6 +83,12 @@ export const settingsGlyphs: Record<
       <circle cx="6" cy="18.5" r="2.5" />
       <circle cx="18" cy="18.5" r="2.5" />
       <path d="M12 8v3.5L6.5 16M12 11.5 17.5 16" />
+    </>,
+  ),
+  prompts: glyph(
+    <>
+      <path d="M8.5 20 15.5 4" />
+      <path d={facet(17, 18, 2)} className="fill-accent stroke-none" />
     </>,
   ),
   harnesses: glyph(

@@ -230,9 +230,9 @@ export const withoutEnding = (segments: ReadonlyArray<Segment>, text: string): R
   ]);
 };
 
-/** What is being typed after `@` or `$` right before the caret, if anything. */
+/** What is being typed after `@`, `$` or `/` right before the caret, if anything. */
 export interface Trigger {
-  readonly char: "@" | "$";
+  readonly char: "@" | "$" | "/";
   readonly query: string;
   /** Where the trigger character sits in the text before the caret. */
   readonly start: number;
@@ -240,9 +240,15 @@ export interface Trigger {
 
 /**
  * The tag being typed at the end of `before` (the text from the start of the caret's text node to the
- * caret): `@` or `$` at the start or after whitespace, then anything but whitespace.
+ * caret): `@` or `$` at the start or after whitespace, then anything but whitespace. A `/` only
+ * where the message starts — nothing but blank space before it (`atStart`) — where it opens the
+ * commands and saved prompts.
  */
-export const triggerAt = (before: string): Trigger | undefined => {
+export const triggerAt = (before: string, atStart = false): Trigger | undefined => {
+  if (atStart) {
+    const slash = /^\/([^\s]*)$/.exec(before);
+    if (slash !== null) return { char: "/", query: slash[1]!, start: 0 };
+  }
   const match = /(^|\s)([@$])([^\s@$]*)$/.exec(before);
   if (match === null) return undefined;
   return {

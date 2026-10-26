@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import type { ModelSpeed, ProviderId, ReasoningEffort } from "@cerium/protocol";
+import { promptName, type ModelSpeed, type ProviderId, type ReasoningEffort } from "@cerium/protocol";
 import {
   ArrowRightLeft,
   Ban,
@@ -16,7 +16,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -27,12 +27,14 @@ import { PermissionPrompt } from "../agents/ApprovalParts.tsx";
 import { accessLabel, type AgentSummary } from "../agents/model.ts";
 import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
+import { PromptDialog } from "../composer/PromptDialog.tsx";
+import { newPrompt, usePrompts } from "../composer/prompts.ts";
 import { takeLaunch } from "../composer/flight.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { effortLabel, speedLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import { CopyButton } from "./CopyButton.tsx";
-import { FileChip } from "./FileChip.tsx";
+import { FileChip, WorkspaceFolder } from "./FileChip.tsx";
 import { FoldedText } from "./FoldedText.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
@@ -60,7 +62,11 @@ export function UserMessage({
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
   const messageBox = useMessageBox();
+  const folder = useContext(WorkspaceFolder);
+  const { savePrompt } = usePrompts();
   const [editing, setEditing] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const text = block.text.trim();
   const editable = onEdit !== undefined && block.delivered === true;
   // A message the agent never got began nothing to go back on.
   const restorable = onRestore !== undefined && block.delivered === true;
@@ -74,78 +80,99 @@ export function UserMessage({
     return <MessageEditor block={block} onSend={onEdit} onCancel={() => setEditing(false)} />;
   }
   return (
-    <MessageMenuArea
-      text={block.text.trim()}
-      onCopyToMessageBox={
-        messageBox
-          ? () =>
-              messageBox.append({
-                segments: segmentsOf(block.text.trim(), block.mentions),
-                attachments: block.attachments,
-              })
-          : undefined
-      }
-      onEdit={editable ? () => setEditing(true) : undefined}
-      onRestore={restorable ? onRestore : undefined}
-      className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
-    >
-      {editable || restorable ? (
-        <div className="absolute right-full bottom-0.5 mr-1 flex">
-          {restorable ? (
-            <Tooltip label="Restore to before this message">
-              <Button aria-label="Restore to before this message" onClick={onRestore} className={footButton}>
-                <RotateCcw size={13} strokeWidth={1.75} />
-              </Button>
-            </Tooltip>
-          ) : null}
-          {editable ? (
-            <Tooltip label="Edit message">
-              <Button aria-label="Edit message" onClick={() => setEditing(true)} className={footButton}>
-                <Pencil size={13} strokeWidth={1.75} />
-              </Button>
-            </Tooltip>
-          ) : null}
-        </div>
-      ) : null}
-      {block.writtenIn === undefined ? null : (
-        <p className="flex max-w-full min-w-0 items-center gap-1.5 text-meta text-fg-tertiary">
-          <Split size={12} strokeWidth={1.75} className="shrink-0" />
-          <span className="truncate">
-            Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
-          </span>
-        </p>
-      )}
-      {block.attachments.length > 0 ? (
-        <div className="flex flex-wrap justify-end gap-1.5">
-          {images.map((image, index) => (
-            <FileImageThumb
-              key={attachmentImageKey(block.id, index)}
-              path={image.path}
-              name={image.name}
-              galleryKey={attachmentImageKey(block.id, index)}
-              className="h-32 max-w-full min-w-16"
-              fit="natural"
-            />
-          ))}
-          {files.map((file) => (
-            <span key={file.path} className="text-body">
-              <FileChip path={file.path} folder={false} />
+    <>
+      <MessageMenuArea
+        text={text}
+        onCopyToMessageBox={
+          messageBox
+            ? () =>
+                messageBox.append({
+                  segments: segmentsOf(block.text.trim(), block.mentions),
+                  attachments: block.attachments,
+                })
+            : undefined
+        }
+        onSavePrompt={text === "" ? undefined : () => setPromptOpen(true)}
+        onEdit={editable ? () => setEditing(true) : undefined}
+        onRestore={restorable ? onRestore : undefined}
+        className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
+      >
+        {editable || restorable ? (
+          <div className="absolute right-full bottom-0.5 mr-1 flex">
+            {restorable ? (
+              <Tooltip label="Restore to before this message">
+                <Button
+                  aria-label="Restore to before this message"
+                  onClick={onRestore}
+                  className={footButton}
+                >
+                  <RotateCcw size={13} strokeWidth={1.75} />
+                </Button>
+              </Tooltip>
+            ) : null}
+            {editable ? (
+              <Tooltip label="Edit message">
+                <Button aria-label="Edit message" onClick={() => setEditing(true)} className={footButton}>
+                  <Pencil size={13} strokeWidth={1.75} />
+                </Button>
+              </Tooltip>
+            ) : null}
+          </div>
+        ) : null}
+        {block.writtenIn === undefined ? null : (
+          <p className="flex max-w-full min-w-0 items-center gap-1.5 text-meta text-fg-tertiary">
+            <Split size={12} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">
+              Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
             </span>
-          ))}
-        </div>
+          </p>
+        )}
+        {block.attachments.length > 0 ? (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {images.map((image, index) => (
+              <FileImageThumb
+                key={attachmentImageKey(block.id, index)}
+                path={image.path}
+                name={image.name}
+                galleryKey={attachmentImageKey(block.id, index)}
+                className="h-32 max-w-full min-w-16"
+                fit="natural"
+              />
+            ))}
+            {files.map((file) => (
+              <span key={file.path} className="text-body">
+                <FileChip path={file.path} folder={false} />
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {block.text.trim() === "" ? null : (
+          <div
+            ref={bubble}
+            data-find={block.id}
+            className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text"
+          >
+            <FoldedText text={block.text}>
+              <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
+            </FoldedText>
+          </div>
+        )}
+      </MessageMenuArea>
+      {promptOpen ? (
+        <PromptDialog
+          key={block.id}
+          title="Save as prompt"
+          submit="Save prompt"
+          initial={{ name: promptName(text), text, ...(folder === undefined ? {} : { folder }) }}
+          folders={folder === undefined ? [] : [folder]}
+          onSave={(draft) => savePrompt(newPrompt(draft))}
+          open
+          onOpenChange={(open) => {
+            if (!open) setPromptOpen(false);
+          }}
+        />
       ) : null}
-      {block.text.trim() === "" ? null : (
-        <div
-          ref={bubble}
-          data-find={block.id}
-          className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text"
-        >
-          <FoldedText text={block.text}>
-            <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />
-          </FoldedText>
-        </div>
-      )}
-    </MessageMenuArea>
+    </>
   );
 }
 

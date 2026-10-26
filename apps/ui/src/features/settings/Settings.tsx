@@ -12,6 +12,7 @@ import { GeneralSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
+import { PromptSettings } from "./Prompts.tsx";
 import { settingsGlyphs, type GlyphProps } from "./glyphs.tsx";
 import { SourceControlSettings } from "./SourceControl.tsx";
 import { UsageSettings } from "./Usage.tsx";
@@ -22,6 +23,7 @@ export type SettingsCategory =
   | "notifications"
   | "appearance"
   | "agents"
+  | "prompts"
   | "harnesses"
   | "sourceControl"
   | "usage"
@@ -64,6 +66,12 @@ const categories: ReadonlyArray<{
     icon: settingsGlyphs.appearance,
   },
   { id: "agents", label: "Agents", description: "Models, effort and defaults", icon: settingsGlyphs.agents },
+  {
+    id: "prompts",
+    label: "Prompts",
+    description: "Text and commands on /",
+    icon: settingsGlyphs.prompts,
+  },
   {
     id: "harnesses",
     label: "Harnesses",
@@ -241,6 +249,8 @@ export function SettingsView({
       );
     case "harnesses":
       return <HarnessSettings key={category} />;
+    case "prompts":
+      return <PromptSettings key={category} />;
     case "sourceControl":
       return <SourceControlSettings key={category} />;
     case "usage":

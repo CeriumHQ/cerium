@@ -26,6 +26,8 @@ import {
 export interface PromptEditorHandle {
   /** Replaces the tag being typed before the caret with a chip for `mention`. */
   insertMention(mention: Mention): void;
+  /** Replaces the `/` command being typed before the caret with `text`. */
+  replaceTriggerText(text: string): void;
   /** A chip for `mention` at the caret the editor last had (the end when none), then focus. */
   mentionAtCaret(mention: Mention): void;
   /**
@@ -119,12 +121,22 @@ const read = (root: HTMLElement): ReadonlyArray<Segment> => {
   return normalizeSegments(segments);
 };
 
-/** The tag being typed right before the caret. */
+/**
+ * The tag being typed right before the caret. `/` only where the message starts: anything before the
+ * caret's own text is blank. Read from the range, since replacing a selection can leave empty text
+ * nodes before the one the caret sits in.
+ */
 const currentTrigger = (root: HTMLElement): Trigger | undefined => {
   const selection = document.getSelection();
   const node = selection?.anchorNode;
   if (!selection?.isCollapsed || node?.nodeType !== Node.TEXT_NODE || !root.contains(node)) return undefined;
-  return triggerAt((node.textContent ?? "").slice(0, selection.anchorOffset));
+  const before = (node.textContent ?? "").slice(0, selection.anchorOffset);
+  const range = document.createRange();
+  range.setStart(root, 0);
+  range.setEnd(node, selection.anchorOffset);
+  const fromStart = range.toString();
+  const leading = before.length === 0 ? fromStart : fromStart.slice(0, -before.length);
+  return triggerAt(before, /^\s*$/.test(leading));
 };
 
 const placeCaret = (range: Range) => {
@@ -244,6 +256,29 @@ export function PromptEditor({
       const space = document.createTextNode(" ");
       range.insertNode(space);
       range.insertNode(chipElement(mention));
+      const caret = document.createRange();
+      caret.setStart(space, 1);
+      caret.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(caret);
+      report();
+    },
+    replaceTriggerText: (text) => {
+      const element = root.current;
+      if (!element) return;
+      const trigger = currentTrigger(element);
+      if (trigger === undefined || trigger.char !== "/") return;
+      const selection = document.getSelection();
+      const node = selection?.anchorNode;
+      if (selection === null || node?.nodeType !== Node.TEXT_NODE || !element.contains(node)) return;
+      const range = document.createRange();
+      range.setStart(node, trigger.start);
+      range.setEnd(node, selection.anchorOffset);
+      range.deleteContents();
+      // A space after the text gives the caret somewhere to go that keeps typing plain text.
+      const space = document.createTextNode(" ");
+      range.insertNode(space);
+      range.insertNode(document.createTextNode(text));
       const caret = document.createRange();
       caret.setStart(space, 1);
       caret.collapse(true);

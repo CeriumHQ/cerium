@@ -37,9 +37,10 @@ export interface PaletteGroup {
 
 /**
  * The commands the words ask for, those named by their label before those found by their keywords. With
- * nothing typed, the actions, which are what the palette teaches the keys of.
+ * nothing typed, the actions, which are what the palette teaches the keys of. The `/` list answers
+ * the same way, over the actions the message box offers.
  */
-const matchCommands = (
+export const matchCommands = (
   commands: ReadonlyArray<PaletteCommand>,
   words: ReadonlyArray<string>,
 ): ReadonlyArray<PaletteCommand> => {

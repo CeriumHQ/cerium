@@ -1,8 +1,9 @@
 import { Effect, Schema, Struct } from "effect";
 
-import { ReasoningEffort } from "./capabilities.ts";
+import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { LenientArray, withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
+import { PromptsSettings } from "./savedPrompts.ts";
 
 /**
  * The model agents ask through the bus's `ask_advisor` when they are stuck. It
@@ -80,20 +81,25 @@ export type EffortRouterSettings = typeof EffortRouterSettings.Type;
 
 const defaultEffortRouter: EffortRouterSettings = { enabled: false, children: "router" };
 
-/** A model on the roster, with what a lead should use it for. */
+/** A model on the roster, with what a lead should use it for and the speed it runs at. */
 export const RosterModel = Schema.Struct({
   provider: ProviderId,
   model: Schema.NonEmptyString,
   /** In the user's words; absent, Cerium's line for the model or its harness's description (`rosterUse`). */
   use: Schema.optionalKey(Schema.String),
+  /**
+   * The speed a lead starts it at, where the model offers a choice (`ModelInfo.speeds`); absent, the
+   * harness's own default.
+   */
+  speed: Schema.optionalKey(StoredSpeed),
 });
 export type RosterModel = typeof RosterModel.Type;
 
 /**
  * The roster: the models a lead starts without asking the user, and what it uses each for. A harness
  * the user has changed the roster of is in `edited` and offers the `models` listed for it, in their
- * order; any other offers Cerium's starting picks (`starterRoster`), so a harness signed in later
- * joins with them.
+ * order, which is the order of priority leads pick by; any other offers Cerium's starting picks
+ * (`starterRoster`), so a harness signed in later joins with them.
  */
 export const RosterSettings = Schema.Struct({
   models: LenientArray(RosterModel),
@@ -102,6 +108,8 @@ export const RosterSettings = Schema.Struct({
 export type RosterSettings = typeof RosterSettings.Type;
 
 const defaultRoster: RosterSettings = { models: [], edited: [] };
+
+const defaultPrompts: PromptsSettings = { prompts: [] };
 
 /** Each setting's shape, without the defaults `Settings` reads a missing one as. */
 const SettingsFields = Schema.Struct({
@@ -112,6 +120,7 @@ const SettingsFields = Schema.Struct({
   discord: DiscordSettings,
   effortRouter: EffortRouterSettings,
   roster: RosterSettings,
+  prompts: PromptsSettings,
 });
 
 /**
@@ -130,6 +139,8 @@ export const Settings = Schema.Struct({
   effortRouter: EffortRouterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultEffortRouter))),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 27). */
   roster: RosterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultRoster))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 37). */
+  prompts: PromptsSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultPrompts))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -147,4 +158,5 @@ export const defaultSettings: Settings = {
   discord: defaultDiscord,
   effortRouter: defaultEffortRouter,
   roster: defaultRoster,
+  prompts: defaultPrompts,
 };

@@ -1,4 +1,13 @@
-import { ClipboardCopy, Copy, ExternalLink, Link, Pencil, RotateCcw, TextQuote } from "lucide-react";
+import {
+  BookmarkPlus,
+  ClipboardCopy,
+  Copy,
+  ExternalLink,
+  Link,
+  Pencil,
+  RotateCcw,
+  TextQuote,
+} from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
@@ -40,6 +49,7 @@ const hitAt = (event: MouseEvent<HTMLElement>): Hit => {
 export function MessageMenuArea({
   text,
   onCopyToMessageBox,
+  onSavePrompt,
   onEdit,
   onRestore,
   className,
@@ -48,6 +58,8 @@ export function MessageMenuArea({
   /** What "Copy message" copies; nothing to copy leaves the item out. */
   text: string;
   onCopyToMessageBox?: (() => void) | undefined;
+  /** Keeps the user's own message as a saved prompt. */
+  onSavePrompt?: (() => void) | undefined;
   /** Opens the user's own message for editing, to send it again. */
   onEdit?: (() => void) | undefined;
   /** Asks to restore the thread to before the user's own message. */
@@ -92,6 +104,11 @@ export function MessageMenuArea({
           {onCopyToMessageBox ? (
             <MenuItem icon={TextQuote} onClick={onCopyToMessageBox}>
               Copy to message box
+            </MenuItem>
+          ) : null}
+          {onSavePrompt ? (
+            <MenuItem icon={BookmarkPlus} onClick={onSavePrompt}>
+              Save as prompt
             </MenuItem>
           ) : null}
           {onEdit ? (
