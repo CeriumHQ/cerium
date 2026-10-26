@@ -100,11 +100,12 @@ interface InboxProps {
   /** Opens a new thread in the folder, ready to type. */
   readonly onNewThreadIn: (folder: string) => void;
   readonly onRename: RenameThread;
-  readonly onArchive: (threadId: string) => void;
-  readonly onRestore: (threadId: string) => void;
+  /** Each resolves whether the thread went, so the bulk bar reports what worked. */
+  readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a thread off until then, or brings it back; absent where the machine can't. */
-  readonly onLater: ((threadId: string, until: number | undefined) => void) | undefined;
-  readonly onDelete: (threadId: string) => void;
+  readonly onLater: ((threadId: string, until: number | undefined) => Promise<boolean>) | undefined;
+  readonly onDelete: (threadId: string) => Promise<boolean>;
   /** Opens a thread in a window of its own; absent where there are no such windows. */
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
@@ -251,13 +252,6 @@ export function Inbox({
     const timer = setTimeout(() => setBulkNote(undefined), NOTE_FOR);
     return () => clearTimeout(timer);
   }, [bulkNote]);
-  const laterAll =
-    onLater === undefined
-      ? undefined
-      : (ids: ReadonlyArray<string>) => {
-          const until = laterTime(Date.now());
-          for (const id of ids) onLater(id, until);
-        };
   const bulkBar = (forBox: InboxBox) =>
     forBox !== box || pickedHere.length === 0 ? null : (
       <BulkBar
@@ -265,10 +259,10 @@ export function Inbox({
         threads={pickedHere}
         onArchive={actions.onArchive}
         onRestore={actions.onRestore}
-        onLater={forBox === "inbox" ? laterAll : undefined}
+        onLater={forBox === "inbox" ? actions.onLater : undefined}
         onMarkRead={actions.onMarkRead}
         onDelete={actions.onDelete}
-        onClear={clearPicked}
+        onSettled={(taken) => setPicked(taken, false)}
         onNote={setBulkNote}
       />
     );
@@ -527,13 +521,13 @@ function useCap(
     if (!fresh) return;
     const gone = overflow(inbox, (thread) => thread.id === selectedId || keep(thread), at);
     if (gone.length === 0) return;
-    for (const thread of gone) onArchive(thread.id);
+    for (const thread of gone) void onArchive(thread.id);
     // The note shows once this effect is done, rather than rendering again inside it.
     queueMicrotask(() =>
       setNote({
         label: gone.length === 1 ? `Archived “${gone[0]!.title}”` : `Archived ${gone.length} older threads`,
         undo: () => {
-          for (const thread of gone) onRestore(thread.id);
+          for (const thread of gone) void onRestore(thread.id);
           setNote(undefined);
         },
       }),
@@ -588,7 +582,7 @@ function useSteadyActions(actions: RowActions): RowActions {
     onRename: (threadId, title) => latest.current.onRename(threadId, title),
     onArchive: (threadId) => latest.current.onArchive(threadId),
     onRestore: (threadId) => latest.current.onRestore(threadId),
-    onLater: (threadId, until) => latest.current.onLater?.(threadId, until),
+    onLater: (threadId, until) => latest.current.onLater?.(threadId, until) ?? Promise.resolve(false),
     onDelete: (threadId) => latest.current.onDelete(threadId),
     onOpenWindow: (threadId) => latest.current.onOpenWindow?.(threadId),
   }));
@@ -709,14 +703,14 @@ function InboxRun({
   const { folder, project } = run;
   const here = threads.every((thread) => thread.elsewhere === undefined);
   const archivable = threads.every(canArchive);
-  const each = (act: (threadId: string) => void) => () => {
-    for (const thread of threads) act(thread.id);
+  const each = (act: (threadId: string) => unknown) => () => {
+    for (const thread of threads) void act(thread.id);
   };
   const putOff =
     onLater && here && archivable
       ? () => {
           const until = laterTime(Date.now());
-          for (const thread of threads) onLater(thread.id, until);
+          for (const thread of threads) void onLater(thread.id, until);
         }
       : undefined;
   const back =

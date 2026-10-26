@@ -5,8 +5,15 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { pinnedAtom, togglePin } from "./pins.ts";
-import { planBulk, rangeSelected, summarizeBulk, toggleSelected, type BulkAction } from "./bulk.ts";
-import type { InboxBox, ThreadSummary } from "./model.ts";
+import {
+  planBulk,
+  rangeSelected,
+  summarizeBulk,
+  toggleSelected,
+  type BulkAction,
+  type BulkSkip,
+} from "./bulk.ts";
+import { laterTime, type InboxBox, type ThreadSummary } from "./model.ts";
 
 /** How the row toggles: alone, or a run of the list from the last one touched. */
 export type SelectMode = "toggle" | "range";
@@ -110,7 +117,8 @@ export function SelectBox({
 /**
  * What the sidebar offers while threads are picked: Archive, Later, Pin or Unpin, Mark read,
  * Back to Inbox (in Archive) and Delete, each running thread by thread through its row's own
- * action. Delete asks first. Whatever is skipped is named in the note.
+ * action. Each action reports whether its threads went; whatever didn't, with why, is named in
+ * the note. Delete asks first.
  */
 export function BulkBar({
   box,
@@ -120,21 +128,23 @@ export function BulkBar({
   onLater,
   onMarkRead,
   onDelete,
-  onClear,
+  onSettled,
   onNote,
 }: {
   /** Which list the picked threads are in; the chat list takes no Later or Back to Inbox. */
   readonly box: InboxBox | "chat";
   /** The picked threads of this list, in its order. */
   readonly threads: ReadonlyArray<ThreadSummary>;
-  readonly onArchive: (threadId: string) => void;
+  /** Each resolves whether the thread went. */
+  readonly onArchive: (threadId: string) => Promise<boolean>;
   /** Brings threads back; shown only in Archive. */
-  readonly onRestore: ((threadId: string) => void) | undefined;
-  /** Puts threads off; absent where the machine can't. */
-  readonly onLater: ((ids: ReadonlyArray<string>) => void) | undefined;
+  readonly onRestore: ((threadId: string) => Promise<boolean>) | undefined;
+  /** Puts a thread off; absent where the machine can't. */
+  readonly onLater: ((threadId: string, until: number) => Promise<boolean>) | undefined;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
-  readonly onDelete: (threadId: string) => void;
-  readonly onClear: () => void;
+  readonly onDelete: (threadId: string) => Promise<boolean>;
+  /** Drops the threads an action took, so what it didn't stays picked for another try. */
+  readonly onSettled: (threadIds: ReadonlyArray<string>) => void;
   readonly onNote: (note: string) => void;
 }) {
   const pins = useAtomValue(pinnedAtom);
@@ -143,30 +153,45 @@ export function BulkBar({
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const ids = threads.map((thread) => thread.id);
 
-  /** Runs `action` thread by thread, names what was skipped, and drops moved threads. */
-  const run = (action: BulkAction, apply: (taken: ReadonlyArray<ThreadSummary>) => void) => {
+  /**
+   * Runs `action` thread by thread through `take`, reporting what went and naming what didn't
+   * with why. A thread whose call fails stays picked.
+   */
+  const run = async (action: BulkAction, take: (thread: ThreadSummary) => boolean | Promise<boolean>) => {
     const plan = planBulk(byId, ids, action);
-    apply(plan.act);
-    onNote(summarizeBulk(action, plan));
-    if (action === "archive" || action === "later" || action === "restore" || action === "delete") {
-      onClear();
+    const taken: Array<ThreadSummary> = [];
+    const failed: Array<BulkSkip> = [];
+    for (const thread of plan.act) {
+      try {
+        if (await take(thread)) taken.push(thread);
+        else failed.push({ id: thread.id, title: thread.title, reason: "the action failed" });
+      } catch {
+        failed.push({ id: thread.id, title: thread.title, reason: "the action failed" });
+      }
     }
+    onNote(summarizeBulk(action, { act: taken, skipped: [...plan.skipped, ...failed] }));
+    onSettled(taken.map((thread) => thread.id));
   };
 
   const pin = threads.some((thread) => !pins.includes(thread.id))
-    ? () =>
-        run("pin", (taken) => {
-          let next = pins;
-          for (const thread of taken) next = togglePin(next, thread.id);
+    ? () => {
+        let next = pins;
+        return void run("pin", (thread) => {
+          next = togglePin(next, thread.id);
           setPins(next);
-        })
+          return true;
+        });
+      }
     : undefined;
   const unpin = threads.some((thread) => pins.includes(thread.id))
-    ? () =>
-        run("unpin", (taken) => {
-          const gone = new Set(taken.map((thread) => thread.id));
+    ? () => {
+        const gone = new Set<string>();
+        return void run("unpin", (thread) => {
+          gone.add(thread.id);
           setPins(pins.filter((id) => !gone.has(id)));
-        })
+          return true;
+        });
+      }
     : undefined;
 
   const buttons = [
@@ -174,21 +199,24 @@ export function BulkBar({
       ? {
           icon: ArchiveRestore,
           label: "Back to Inbox",
-          run: () => run("restore", (taken) => taken.forEach((thread) => onRestore(thread.id))),
+          run: () => void run("restore", (thread) => onRestore(thread.id)),
         }
       : box === "archive"
         ? undefined
         : {
             icon: Archive,
             label: "Archive",
-            run: () => run("archive", (taken) => taken.forEach((thread) => onArchive(thread.id))),
+            run: () => void run("archive", (thread) => onArchive(thread.id)),
           },
     ...(box === "inbox" && onLater
       ? [
           {
             icon: Clock,
             label: "Later",
-            run: () => run("later", (taken) => onLater(taken.map((thread) => thread.id))),
+            run: () => {
+              const until = laterTime(Date.now());
+              return void run("later", (thread) => onLater(thread.id, until));
+            },
           },
         ]
       : []),
@@ -199,7 +227,11 @@ export function BulkBar({
           {
             icon: MailOpen,
             label: "Mark read",
-            run: () => run("read", (taken) => onMarkRead(taken)),
+            run: () =>
+              void run("read", (thread) => {
+                onMarkRead([thread]);
+                return true;
+              }),
           },
         ]
       : []),
@@ -213,7 +245,7 @@ export function BulkBar({
         </output>
         <button
           type="button"
-          onClick={onClear}
+          onClick={() => onSettled(ids)}
           aria-label="Clear selection"
           title="Clear selection (Esc)"
           className="grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
@@ -254,7 +286,7 @@ export function BulkBar({
         title={`Delete ${threads.length === 1 ? "this thread" : `these ${threads.length} threads`}?`}
         description="Every message in them will be deleted for good. This can't be undone."
         confirmLabel="Delete"
-        onConfirm={() => run("delete", (taken) => taken.forEach((thread) => onDelete(thread.id)))}
+        onConfirm={() => void run("delete", (thread) => onDelete(thread.id))}
       />
     </div>
   );

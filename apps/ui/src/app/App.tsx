@@ -867,16 +867,20 @@ function Workspace() {
     );
   };
 
-  /** Archives a thread and closes its tab; `discardWork` once the user confirmed losing its worktree's work. */
-  const archive = (threadId: string, discardWork = false) =>
-    void attempt(
+  /**
+   * Archives a thread and closes its tab; resolves whether it went.
+   * `discardWork` once the user confirmed losing its worktree's work.
+   */
+  const archive = (threadId: string, discardWork = false): Promise<boolean> =>
+    attempt(
       setArchived({
         payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
       }),
     ).then((archived) => {
-      if (!archived) return;
+      if (!archived) return false;
       refreshThreads();
       tabs.drop(threadId);
+      return true;
     });
 
   const indicators: ReadonlyArray<HarnessIndicator> = OFFERED_PROVIDERS.map((provider) => {
@@ -2435,45 +2439,53 @@ function Workspace() {
             })
           }
           // A thread whose worktree holds work its base doesn't asks first.
-          onArchive={(threadId) => {
+          // Each resolves whether the thread went, so the sidebar's bulk bar reports what worked.
+          onArchive={(threadId): Promise<boolean> => {
             const thread = summaries.find((summary) => summary.id === threadId);
             if (thread?.worktree === undefined) return archive(threadId);
-            void changesOf({ payload: { threadId: threadId as ThreadId } }).then(
-              (changes) =>
-                changes.uncommitted + changes.unmerged === 0
-                  ? archive(threadId)
-                  : setArchiving({ thread, changes }),
-              (error: unknown) => setActionError(messageOf(error)),
+            return changesOf({ payload: { threadId: threadId as ThreadId } }).then(
+              (changes) => {
+                if (changes.uncommitted + changes.unmerged === 0) return archive(threadId);
+                setArchiving({ thread, changes });
+                return false;
+              },
+              (error: unknown) => {
+                setActionError(messageOf(error));
+                return false;
+              },
             );
           }}
-          onRestore={(threadId) =>
-            void attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
+          onRestore={(threadId): Promise<boolean> =>
+            attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
               (restored) => {
                 if (restored) refreshThreads();
+                return restored;
               },
             )
           }
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
-          onDelete={(threadId) =>
-            void attempt(remove({ payload: { threadId: threadId as ThreadId, discardWork: true } })).then(
+          onDelete={(threadId): Promise<boolean> =>
+            attempt(remove({ payload: { threadId: threadId as ThreadId, discardWork: true } })).then(
               (deleted) => {
-                if (!deleted) return;
+                if (!deleted) return false;
                 registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
                 refreshThreads();
                 tabs.drop(threadId);
+                return true;
               },
             )
           }
           {...(drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LATER_VERSION
             ? {
-                onLater: (threadId: string, until: number | undefined) =>
-                  void attempt(
+                onLater: (threadId: string, until: number | undefined): Promise<boolean> =>
+                  attempt(
                     putOff({
                       payload: { threadId: threadId as ThreadId, ...(until === undefined ? {} : { until }) },
                     }),
                   ).then((done) => {
                     if (done) refreshThreads();
+                    return done;
                   }),
               }
             : {})}
@@ -2636,7 +2648,7 @@ function Workspace() {
           onOpenChange={(open) => {
             if (!open) setArchiving(undefined);
           }}
-          onConfirm={() => archive(archiving.thread.id, true)}
+          onConfirm={() => void archive(archiving.thread.id, true)}
         />
       ) : null}
     </AppFrame>

@@ -59,14 +59,15 @@ interface SidebarProps {
   /** Opens a new work thread in the folder, ready to type. */
   readonly onNewThreadIn: (folder: string) => void;
   readonly onRename: RenameThread;
-  readonly onArchive: (threadId: string) => void;
-  readonly onRestore: (threadId: string) => void;
+  /** Each resolves whether the thread went, so the bulk bar reports what worked. */
+  readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a work thread off until then, or brings it back; absent where the machine can't. */
-  readonly onLater?: (threadId: string, until: number | undefined) => void;
+  readonly onLater?: (threadId: string, until: number | undefined) => Promise<boolean>;
   /** The threads open in tabs. */
   readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
-  readonly onDelete: (threadId: string) => void;
+  readonly onDelete: (threadId: string) => Promise<boolean>;
   /** Opens one of this computer's threads in a window of its own; absent where there are no such windows. */
   readonly onOpenWindow?: (threadId: string) => void;
   /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
@@ -216,8 +217,9 @@ interface ChatActions {
   /** Opens the thread; `newTab` keeps it in a tab of its own rather than the preview. */
   readonly onSelect: (threadId: string, newTab?: boolean) => void;
   readonly onRename: RenameThread;
-  readonly onArchive: (threadId: string) => void;
-  readonly onDelete: (threadId: string) => void;
+  /** Each resolves whether the thread went, so the bulk bar reports what worked. */
+  readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onDelete: (threadId: string) => Promise<boolean>;
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
 
@@ -244,7 +246,12 @@ function ChatList({
   const paged = firstOf(sections, shown);
   // Bulk picking, in the list's order so Shift click ticks a run of it, across pages.
   const orderIds = ordered.map((thread) => thread.id);
-  const { selected: picked, toggle: togglePicked, clear: clearPicked } = useBulkSelection(orderIds);
+  const {
+    selected: picked,
+    toggle: togglePicked,
+    setAll: setPicked,
+    clear: clearPicked,
+  } = useBulkSelection(orderIds);
   const ticked = new Set(picked);
   const pickedHere = ordered.filter((thread) => ticked.has(thread.id));
   /** What a bulk action says it did, and which chats it skipped with why; shown for a moment. */
@@ -280,7 +287,7 @@ function ChatList({
           onLater={undefined}
           onMarkRead={onMarkRead}
           onDelete={actions.onDelete}
-          onClear={clearPicked}
+          onSettled={(taken) => setPicked(taken, false)}
           onNote={setNote}
         />
       ) : null}
