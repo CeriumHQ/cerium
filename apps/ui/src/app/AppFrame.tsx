@@ -27,6 +27,11 @@ import { CompactPanelMenu, Titlebar, type PreviewToggleProps } from "./Titlebar.
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
   readonly mode: AppMode;
+  /**
+   * A thread's own window (threadWindow.ts): its thread alone, with its panels and terminal, and no
+   * rail, sidebar, tabs or machine picker.
+   */
+  readonly alone?: boolean;
   readonly sidebarOpen: boolean;
   readonly onToggleSidebar: () => void;
   readonly onNewThread: () => void;
@@ -143,6 +148,7 @@ function SideContent({ panel, children }: { panel: SidePanelId | undefined; chil
 function DesktopFrame({
   thread,
   mode,
+  alone = false,
   sidebarOpen,
   onToggleSidebar,
   onNewThread,
@@ -164,7 +170,7 @@ function DesktopFrame({
 }: AppFrameProps) {
   const view = settings.open ? "settings" : page ? "page" : "threads";
   const covered = view !== "threads";
-  const bare = view === "page" && page?.list === undefined;
+  const bare = alone || (view === "page" && page?.list === undefined);
   const showSidebar = !bare && (sidebarOpen || covered);
   const showInspector = side !== undefined && !covered;
   // A closing panel keeps what it showed while it slides away.
@@ -211,6 +217,7 @@ function DesktopFrame({
         {...(thread ? { thread } : {})}
         {...(settings.open ? { page: "Settings" } : page ? { page: page.title } : {})}
         bare={bare}
+        alone={alone}
         mode={mode}
         sidebarOpen={sidebarOpen}
         sidebarWidth={sidebarWidth}
@@ -223,17 +230,18 @@ function DesktopFrame({
         {...(terminal ? { terminal } : {})}
         {...(run ? { run } : {})}
         {...(preview ? { preview } : {})}
-        machinePicker={machinePicker}
-        tabs={tabs}
+        {...(alone ? {} : { machinePicker, tabs })}
       />
       <div className="flex min-h-0 flex-1">
         {/* A sunken strip of its own, so the places read apart from the sidebar's list on the same glass. */}
-        <div style={{ width: RAIL }} className="shrink-0 pb-1.5 pl-1.5">
-          <div className="h-full rounded-xl border border-line-subtle bg-surface-sunken">
-            {rail("vertical")}
+        {alone ? null : (
+          <div style={{ width: RAIL }} className="shrink-0 pb-1.5 pl-1.5">
+            <div className="h-full rounded-xl border border-line-subtle bg-surface-sunken">
+              {rail("vertical")}
+            </div>
           </div>
-        </div>
-        <div ref={body} className="relative flex min-w-0 flex-1 pr-1.5 pb-1.5">
+        )}
+        <div ref={body} className={`relative flex min-w-0 flex-1 pr-1.5 pb-1.5 ${alone ? "pl-1.5" : ""}`}>
           {/* The sidebar keeps its width while the frame around it folds, so its rows don't reflow. */}
           <aside
             inert={!showSidebar}
@@ -243,14 +251,17 @@ function DesktopFrame({
             } ${showSidebar ? "opacity-100" : "opacity-0"}`}
           >
             <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
-              <ViewStack
-                active={view}
-                views={[
-                  ["threads", sidebar],
-                  ["page", page?.list],
-                  ["settings", settings.nav],
-                ]}
-              />
+              {/* A thread's own window lists no threads, nor takes the list's keys. */}
+              {alone ? null : (
+                <ViewStack
+                  active={view}
+                  views={[
+                    ["threads", sidebar],
+                    ["page", page?.list],
+                    ["settings", settings.nav],
+                  ]}
+                />
+              )}
             </div>
           </aside>
           {showSidebar ? (

@@ -61,6 +61,8 @@ export const nativeNotifications = (options: {
   readonly window: () => BrowserWindow | undefined;
   /** Brings the window back, from the tray too. */
   readonly show: () => void;
+  /** The thread's own window, when it has one: a click on its toast brings that forward instead. */
+  readonly threadWindow?: (threadId: string) => BrowserWindow | undefined;
 }) => {
   // Kept until dismissed: a toast whose object is collected no longer reports its click.
   const showing = new Set<Notification>();
@@ -76,6 +78,13 @@ export const nativeNotifications = (options: {
     const forget = () => showing.delete(toast);
     toast.on("click", () => {
       forget();
+      const own = options.threadWindow?.(request.threadId);
+      if (own !== undefined) {
+        if (own.isMinimized()) own.restore();
+        own.show();
+        own.focus();
+        return;
+      }
       options.show();
       options.window()?.webContents.send("cerium:open-thread", request.threadId);
     });

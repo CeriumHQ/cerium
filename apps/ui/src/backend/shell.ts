@@ -108,6 +108,11 @@ export interface ShellBridge {
   readonly setBadge?: (badge: { count: number; icon?: string }) => void;
   /** Calls back with the thread of each clicked notification; returns how to stop. */
   readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
+  /**
+   * Opens one of this computer's threads in a window of its own, or brings forward the one it has;
+   * only the main window asks (apps/desktop/src/threadWindows.ts).
+   */
+  readonly openThreadWindow?: (threadId: string, mode: "work" | "chat") => void;
   /** The Preview pane's pages, which the shell lays over the window (apps/desktop/src/preview.ts). */
   readonly preview?: PreviewBridge;
   /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */

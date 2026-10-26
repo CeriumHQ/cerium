@@ -9,6 +9,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
 // or off. Updates come through here too: the shell checks, downloads and installs them. The page
 // asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
+// The main window opens a thread in a window of its own.
 // Dictation opens Windows' or macOS's microphone privacy settings when they block it. The Preview
 // pane's pages are the shell's; the page says where its pane is and passes on the agents' calls.
 contextBridge.exposeInMainWorld("cerium", {
@@ -23,9 +24,9 @@ contextBridge.exposeInMainWorld("cerium", {
   openPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:open-path", path),
   saveImage: (source: string, name: string): Promise<boolean> =>
     ipcRenderer.invoke("cerium:save-image", source, name),
-  openHtml: (html: string, name: string): Promise<void> => ipcRenderer.invoke("cerium:open-html", html, name),
   saveText: (text: string, name: string, format: "markdown" | "text"): Promise<boolean> =>
     ipcRenderer.invoke("cerium:save-text", text, name, format),
+  openHtml: (html: string, name: string): Promise<void> => ipcRenderer.invoke("cerium:open-html", html, name),
   setTheme: (theme: "system" | "dark" | "light"): Promise<boolean> =>
     ipcRenderer.invoke("cerium:set-theme", theme),
   onDarkColorsChange: (listener: (dark: boolean) => void): (() => void) => {
@@ -66,6 +67,8 @@ contextBridge.exposeInMainWorld("cerium", {
     attention: boolean;
   }): void => ipcRenderer.send("cerium:notify", request),
   setBadge: (badge: { count: number; icon?: string }): void => ipcRenderer.send("cerium:set-badge", badge),
+  openThreadWindow: (threadId: string, mode: "work" | "chat"): void =>
+    ipcRenderer.send("cerium:open-thread-window", threadId, mode),
   onOpenThread: (listener: (threadId: string) => void): (() => void) => {
     const forward = (_event: unknown, threadId: unknown) => {
       if (typeof threadId === "string") listener(threadId);

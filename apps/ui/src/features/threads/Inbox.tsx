@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Tabs } from "@base-ui/react/tabs";
 import {
+  AppWindow,
   Archive,
   ArchiveRestore,
   CheckCheck,
@@ -104,6 +105,8 @@ interface InboxProps {
   /** Puts a thread off until then, or brings it back; absent where the machine can't. */
   readonly onLater: ((threadId: string, until: number | undefined) => void) | undefined;
   readonly onDelete: (threadId: string) => void;
+  /** Opens a thread in a window of its own; absent where there are no such windows. */
+  readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
 
 /**
@@ -127,6 +130,7 @@ export function Inbox({
   onRestore,
   onLater,
   onDelete,
+  onOpenWindow,
 }: InboxProps) {
   const now = useNowPast(threads.map((thread) => thread.laterUntil));
   // The list chosen is remembered, so it stays put when the sidebar mounts again, as it does across
@@ -200,6 +204,7 @@ export function Inbox({
     onRestore,
     onLater,
     onDelete,
+    onOpenWindow,
   });
   // Built from each prop rather than the rest of them, so it keeps its identity while only the drafts
   // change, as they do with every key typed into a new thread's first line: the lists' rows, all of
@@ -562,6 +567,7 @@ type RowActions = Pick<
   | "onRestore"
   | "onLater"
   | "onDelete"
+  | "onOpenWindow"
 >;
 
 /**
@@ -584,10 +590,13 @@ function useSteadyActions(actions: RowActions): RowActions {
     onRestore: (threadId) => latest.current.onRestore(threadId),
     onLater: (threadId, until) => latest.current.onLater?.(threadId, until),
     onDelete: (threadId) => latest.current.onDelete(threadId),
+    onOpenWindow: (threadId) => latest.current.onOpenWindow?.(threadId),
   }));
-  // Rows offer to put a thread off only where the machine can.
+  // Rows offer to put a thread off only where the machine can, and a window of its own only where
+  // there are such windows.
   const onLater = actions.onLater === undefined ? undefined : steady.onLater;
-  return { ...steady, onLater };
+  const onOpenWindow = actions.onOpenWindow === undefined ? undefined : steady.onOpenWindow;
+  return { ...steady, onLater, onOpenWindow };
 }
 
 /** A list's threads, each multi-agent run's in one card. */
@@ -876,6 +885,7 @@ function InboxRowCard({
   onRestore,
   onLater,
   onDelete,
+  onOpenWindow,
   scope,
   onScope,
 }: InboxRowProps) {
@@ -919,6 +929,11 @@ function InboxRowCard({
           {pinned ? "Unpin" : "Pin"}
         </MenuItem>
       )}
+      {onOpenWindow && here ? (
+        <MenuItem icon={AppWindow} onClick={() => onOpenWindow(thread.id)}>
+          Open in new window
+        </MenuItem>
+      ) : null}
       {folder && project ? (
         <>
           {here ? (

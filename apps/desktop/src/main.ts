@@ -5,10 +5,12 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  screen,
   session,
   shell,
   systemPreferences,
   type IpcMainEvent,
+  type Rectangle,
 } from "electron";
 import { isAbsolute, join, normalize } from "node:path";
 
@@ -24,9 +26,9 @@ import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { previews } from "./preview.ts";
 import { saveImage } from "./saveImage.ts";
+import { saveText } from "./saveText.ts";
 import {
   loginShellPath,
-import { saveText } from "./saveText.ts";
   rememberedPath,
   rememberPath,
   sessionEnvironment,
@@ -34,13 +36,14 @@ import { saveText } from "./saveText.ts";
 } from "./shellPath.ts";
 import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
+import { isThreadId, isThreadMode, threadWindows, type ThreadMode } from "./threadWindows.ts";
 import { isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows
 // and Vibrancy on macOS, the backend's launcher, and the tray that keeps a signed-in machine
-// reachable (background.ts), the updater (updater.ts) and the Preview pane's pages (preview.ts).
-// Everything else lives in the UI and the backend.
+// reachable (background.ts), the updater (updater.ts), the Preview pane's pages (preview.ts) and
+// threads in windows of their own (threadWindows.ts). Everything else lives in the UI and the backend.
 
 /** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
 const smokeTest = prepareSmokeTest();
@@ -93,7 +96,17 @@ const background = backgroundMode({
   window: () => mainWindow,
 });
 
-const notifications = nativeNotifications({ window: () => mainWindow, show: background.show });
+/** Where the threads open in windows of their own are remembered, so they come back next start. */
+const THREAD_WINDOWS_FILE = "thread-windows.json";
+
+/** Threads in windows of their own (threadWindows.ts), built once the app is ready. */
+let threads: ReturnType<typeof threadWindows> | undefined;
+
+const notifications = nativeNotifications({
+  window: () => mainWindow,
+  show: background.show,
+  threadWindow: (threadId) => threads?.windowOf(threadId),
+});
 
 /** The Preview pane's pages, one per thread, laid over the window (preview.ts). */
 const browserPreviews = previews(() => mainWindow);
@@ -180,12 +193,20 @@ app.on("web-contents-created", (_event, contents) => {
   });
 });
 
-const createWindow = () => {
+/**
+ * A window of the app's, the main one or a thread's own: the glass, frame and caption buttons each
+ * has, its text menu, and showing once its page has painted. `appear` says how it shows then: in
+ * front, behind the window in front (one reopened at start), or not until asked (a start at login).
+ */
+const appWindow = ({
+  size,
+  appear,
+}: {
+  size: Pick<Rectangle, "width" | "height"> & Partial<Pick<Rectangle, "x" | "y">>;
+  appear: "front" | "behind" | "hidden";
+}) => {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 960,
-    minHeight: 600,
+    ...size,
     show: false,
     // On Windows and macOS the page paints nothing behind its surfaces, so the system's glass shows
     // through. Acrylic only reaches the page area of a transparent window (electron/electron#47510);
@@ -235,33 +256,94 @@ const createWindow = () => {
   const showOnce = () => {
     if (shown || window.isDestroyed()) return;
     shown = true;
-    if (!startHidden) window.show();
+    if (appear === "front") window.show();
+    else if (appear === "behind") window.showInactive();
   };
   const onReady = (event: IpcMainEvent) => {
     if (event.sender === window.webContents) showOnce();
   };
   ipcMain.on("cerium:window-ready", onReady);
   window.once("ready-to-show", () => setTimeout(showOnce, WINDOW_READY_TIMEOUT_MS));
+  window.on("closed", () => ipcMain.off("cerium:window-ready", onReady));
+  notifications.watch(window);
+  forwardTextMenus(window.webContents);
+  return window;
+};
+
+/** Loads the UI into `window`: a thread's own window names its thread and mode in the address. */
+const loadPage = (window: BrowserWindow, thread?: { threadId: string; mode: ThreadMode }) => {
+  // Not `thread`, which a tapped notification's address uses (apps/ui/src/web/push.ts).
+  const query = thread ? { window: thread.threadId, mode: thread.mode } : undefined;
+  if (devUrl === undefined) {
+    const page = join(import.meta.dirname, "..", "..", "ui", "dist", "index.html");
+    void window.loadFile(page, query ? { query } : {});
+  } else {
+    const url = new URL(devUrl);
+    for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
+    void window.loadURL(url.toString());
+  }
+};
+
+/** Cerium is quitting, which closes every window: a thread's own comes back next start. */
+let quitting = false;
+app.on("before-quit", () => {
+  quitting = true;
+  threads?.quit();
+});
+
+const createWindow = () => {
+  const window = appWindow({
+    size: { width: 1280, height: 820 },
+    appear: startHidden ? "hidden" : "front",
+  });
+  window.setMinimumSize(960, 600);
   window.on("close", (event) => {
     if (background.interceptClose()) event.preventDefault();
   });
   window.on("closed", () => {
-    ipcMain.off("cerium:window-ready", onReady);
     browserPreviews.closeAll();
     mainWindow = undefined;
+    // The threads' own windows go with the main one, and come back with it next start.
+    if (!quitting) app.quit();
   });
   // A reload takes the panes away until the page lays them out again.
   window.webContents.on("did-start-loading", () => browserPreviews.unplaceAll());
-  notifications.watch(window);
-  forwardTextMenus(window.webContents);
-
-  if (devUrl === undefined) {
-    void window.loadFile(join(import.meta.dirname, "..", "..", "ui", "dist", "index.html"));
-  } else {
-    void window.loadURL(devUrl);
-  }
+  // The threads left in windows of their own last time come back once the main window shows, which
+  // a start at login holds back until it's asked for.
+  window.once("show", () => threads?.restore());
+  loadPage(window);
   mainWindow = window;
 };
+
+/** A thread's own window: smaller than the main one, never so narrow that it turns phone-like. */
+const createThreadWindow = ({
+  threadId,
+  mode,
+  bounds,
+  restored,
+}: {
+  threadId: string;
+  mode: ThreadMode;
+  bounds?: Rectangle;
+  restored: boolean;
+}) => {
+  const window = appWindow({
+    size: bounds ?? { width: 960, height: 780 },
+    appear: restored ? "behind" : "front",
+  });
+  window.setMinimumSize(800, 480);
+  loadPage(window, { threadId, mode });
+  return window;
+};
+
+/** Whether the main window sent `event`, rather than a thread's own. */
+const fromMainWindow = (event: IpcMainEvent) => event.sender === mainWindow?.webContents;
+
+/** Opens a thread in a window of its own, or brings its window forward. */
+ipcMain.on("cerium:open-thread-window", (event, threadId: unknown, mode: unknown) => {
+  if (!fromMainWindow(event) || !isThreadId(threadId) || !isThreadMode(mode)) return;
+  threads?.open(threadId, mode);
+});
 
 /**
  * Whether this machine is signed in and agents are working, which decide whether closing the window
@@ -269,8 +351,9 @@ const createWindow = () => {
  * the machine isn't signed in, since nothing would keep it reachable.
  */
 let heardPresence = false;
-ipcMain.on("cerium:presence", (_event, presence: unknown) => {
-  if (!isPresence(presence)) return;
+ipcMain.on("cerium:presence", (event, presence: unknown) => {
+  // The main window speaks for the app; a thread's own window would only say it again.
+  if (!fromMainWindow(event) || !isPresence(presence)) return;
   background.update(presence);
   if (startHidden && !heardPresence && !presence.signedIn) background.show();
   heardPresence = true;
@@ -287,11 +370,15 @@ app.on("second-instance", () => background.show());
 app.on("activate", () => background.show());
 
 /** A toast about a thread, and the count of threads waiting over the taskbar icon (notifications.ts). */
-ipcMain.on("cerium:notify", (_event, request: unknown) => {
-  if (isNotificationRequest(request)) notifications.notify(request);
+ipcMain.on("cerium:notify", (event, request: unknown) => {
+  // The main window hears every thread's news, so a thread's own window would only repeat it.
+  if (!fromMainWindow(event) || !isNotificationRequest(request)) return;
+  // The user is looking at the thread, in its own window.
+  if (threads?.windowOf(request.threadId)?.isFocused() === true) return;
+  notifications.notify(request);
 });
-ipcMain.on("cerium:set-badge", (_event, request: unknown) => {
-  if (isBadgeRequest(request)) notifications.setBadge(request);
+ipcMain.on("cerium:set-badge", (event, request: unknown) => {
+  if (fromMainWindow(event) && isBadgeRequest(request)) notifications.setBadge(request);
 });
 
 /** Updating Cerium: the chosen channel, what it offers, and downloading and installing it. */
@@ -350,6 +437,11 @@ ipcMain.handle("cerium:open-html", (_event, html: unknown, name: unknown) => ope
 /** Saves an image the transcript shows, where the user picks; resolves whether it was saved. */
 ipcMain.handle("cerium:save-image", (event, source: unknown, name: unknown) =>
   saveImage(event.sender, source, name),
+);
+
+/** Saves a thread's export as Markdown or text, where the user picks; resolves whether it was saved. */
+ipcMain.handle("cerium:save-text", (event, text: unknown, name: unknown, format: unknown) =>
+  saveText(event.sender, text, name, format),
 );
 
 /** A command from the app-wide text menu, run on the right-click it was opened for. */
@@ -427,17 +519,17 @@ void app.whenReady().then(() => {
   nativeTheme.themeSource = "dark";
   // `bun run dev` on macOS runs Electron's own bundle, whose dock icon is Electron's.
   if (mac && devUrl !== undefined) app.dock?.setIcon(appIcon);
+  threads = threadWindows({
+    file: join(app.getPath("userData"), THREAD_WINDOWS_FILE),
+    create: createThreadWindow,
+    screens: () => screen.getAllDisplays().map((display) => display.workArea),
+  });
   createWindow();
   if (smokeTest !== undefined && mainWindow !== undefined) {
     runSmokeTest({
       folder: smokeTest,
       window: mainWindow,
       connection: async () => {
-/** Saves a thread's export as Markdown or text, where the user picks; resolves whether it was saved. */
-ipcMain.handle("cerium:save-text", (event, text: unknown, name: unknown, format: unknown) =>
-  saveText(event.sender, text, name, format),
-);
-
         await backendStarting;
         if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
         return backend.connection();
