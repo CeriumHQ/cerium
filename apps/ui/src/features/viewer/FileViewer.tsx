@@ -21,6 +21,7 @@ import {
 import { shellBridge } from "../../backend/shell.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import {
   ContextMenuArea,
   MenuPopup,
@@ -247,7 +248,7 @@ export function FileViewer({
 }) {
   const registry = useContext(RegistryContext);
   const key = fileKey(root, path);
-  const commenting = useDiffComments({ messageBox, draftKey, path });
+  const commenting = useDiffComments({ messageBox, draftKey, path, scope: { _tag: "Changes", root } });
   const [chosen, setChosen] = useAtom(fileViewAtom(key));
   const [layout, setLayout] = useAtom(diffLayoutAtom);
   const [wrap, setWrap] = useAtom(wrapAtom);
@@ -431,7 +432,13 @@ export function FileViewer({
             ) : null}
           </MenuPopup>
         </MenuRoot>
-        <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+        <IconButton
+          icon={X}
+          label="Close"
+          shortcut={useShortcut("close-tab")}
+          onClick={onClose}
+          className="max-md:size-10"
+        />
       </div>
     </header>
   );

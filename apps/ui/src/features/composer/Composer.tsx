@@ -1,6 +1,8 @@
 import { Button } from "@base-ui/react/button";
 import {
   OFFERED_PROVIDERS,
+  matchPrompts,
+  visiblePrompts,
   type AccessMode,
   type Attachment,
   type Mention,
@@ -12,7 +14,7 @@ import {
 } from "@cerium/protocol";
 import { RegistryContext, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ArrowUp, Paperclip, Square } from "lucide-react";
+import { ArrowRightLeft, ArrowUp, Paperclip, Square } from "lucide-react";
 import {
   useContext,
   useEffect,
@@ -40,6 +42,10 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useChanged, useMorph } from "../../lib/motion.ts";
 import { launch } from "./flight.ts";
 import { useKeyboardOpen } from "../../web/viewport.ts";
+import { usesCommandKey } from "../../lib/keys.ts";
+import { bindingFor, isCapturingBinding, matchesBinding, shortcutBindingsAtom } from "../../lib/shortcuts.ts";
+import { matchCommands, type PaletteCommand } from "../palette/palette.ts";
+import { queryWords } from "../threads/threadSearch.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
 import { WEB } from "../../backend/target.ts";
 import { DictationControl, DictationNotice } from "../dictation/DictationControl.tsx";
@@ -106,15 +112,16 @@ import {
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
+import { SlashMenu, slashGroups, type SlashEntry } from "./SlashMenu.tsx";
 import { WorktreePicker } from "./WorktreePicker.tsx";
 import { QueueTray, type Queue } from "./QueueTray.tsx";
 
 /**
- * Control M starts and stops dictation, which no browser or Windows key takes in a text box; on a Mac
- * too, where ⌘M minimizes.
+ * The dictate binding starts and stops dictation, which no browser or Windows key takes in a text
+ * box. Control stays the Control key itself, even on a Mac where ⌘M minimizes (lib/shortcuts.ts).
  */
-const isDictationKey = (event: KeyboardEvent<HTMLDivElement>) =>
-  event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.code === "KeyM";
+const isDictationKey = (event: KeyboardEvent<HTMLDivElement>, binding: string, mac: boolean) =>
+  matchesBinding(event, binding, mac);
 
 const providers = OFFERED_PROVIDERS;
 const allProviders: ReadonlySet<ProviderId> = new Set(providers);
@@ -236,6 +243,11 @@ interface ComposerProps {
   /** The user's messages waiting for the lead, listed at the top of the box. */
   readonly queue?: Queue | undefined;
   /**
+   * The command palette's actions the `/` list offers: new thread, find in thread, and so on. The
+   * box adds switching models and stopping its turn beside them.
+   */
+  readonly slashCommands?: ReadonlyArray<PaletteCommand> | undefined;
+  /**
    * Where a new thread's box sits in the window, under the question (app/EmptyThread.tsx). Without
    * one, or where the box wouldn't fit there, it floats at the pane's foot, and drops there from its seat.
    */
@@ -257,6 +269,7 @@ export function Composer({
   takesFocus = true,
   activity,
   queue,
+  slashCommands = [],
   seat,
 }: ComposerProps) {
   const setDrafts = useAtomSet(draftsAtom);
@@ -305,6 +318,7 @@ export function Composer({
   const worktree =
     gitFolder !== undefined && branch !== undefined && (draft.start?.worktree ?? workplace === "worktree");
   const sendKey = useAtomValue(sendKeyAtom);
+  const bindings = useAtomValue(shortcutBindingsAtom);
   const touch = useCoarsePointer();
 
   const models = useModels();
@@ -357,7 +371,9 @@ export function Composer({
     chat: target.kind === "thread" ? target.folder === undefined : target.mode === "chat",
   };
   const menuTrigger =
-    trigger !== undefined && !(trigger.char === dismissed?.char && trigger.start === dismissed.start)
+    trigger !== undefined &&
+    trigger.char !== "/" &&
+    !(trigger.char === dismissed?.char && trigger.start === dismissed.start)
       ? trigger
       : undefined;
   const results = useMentionOptions(menuTrigger, sources);
@@ -366,6 +382,47 @@ export function Composer({
     menuTrigger !== undefined &&
     (menuTrigger.char === "@" || menuTrigger.query === "" || results.options.length > 0);
   const activeIndex = Math.min(active, Math.max(0, results.options.length - 1));
+
+  // `/` at the start of the message: the user's saved prompts, then the actions that answer here.
+  const slashTrigger = trigger?.char === "/" ? trigger : undefined;
+  const slashOpen =
+    slashTrigger !== undefined &&
+    !(slashTrigger.char === dismissed?.char && slashTrigger.start === dismissed.start);
+  const storedPrompts = AsyncResult.isSuccess(settings) ? settings.value.prompts.prompts : [];
+  const slashPrompts = slashOpen
+    ? matchPrompts(visiblePrompts(storedPrompts, sources.folder), slashTrigger?.query ?? "")
+    : [];
+  // Switching models and stopping the turn live in the box, beside the palette's actions.
+  const slashLocal: ReadonlyArray<PaletteCommand> = [
+    ...(target.kind === "new"
+      ? [
+          {
+            id: "slash-switch-model",
+            group: "Actions" as const,
+            label: "Switch model",
+            icon: ArrowRightLeft,
+            keywords: "model effort speed",
+            run: () => setModelsOpen(true),
+          },
+        ]
+      : []),
+    ...(running
+      ? [
+          {
+            id: "slash-stop",
+            group: "Actions" as const,
+            label: "Stop this turn",
+            icon: Square,
+            keywords: "interrupt cancel halt",
+            run: onStop,
+          },
+        ]
+      : []),
+  ];
+  const slashActions = slashOpen
+    ? matchCommands([...slashLocal, ...slashCommands], queryWords(slashTrigger?.query ?? ""))
+    : [];
+  const slashActive = Math.min(active, Math.max(0, slashPrompts.length + slashActions.length - 1));
 
   // A long draft, attached files and waiting approvals all grow the box over the transcript's end.
   // An effect rather than a ref callback: reporting re-renders the box, which would re-run the callback.
@@ -716,6 +773,14 @@ export function Composer({
     setActive(0);
   };
 
+  /** A `/` entry: a saved prompt's text in place of the command, or the action run at once. */
+  const pickSlash = (entry: SlashEntry) => {
+    if (entry.kind === "prompt") editor.current?.replaceTriggerText(entry.prompt.text);
+    else entry.command.run();
+    setTrigger(undefined);
+    setActive(0);
+  };
+
   const send = () => {
     if (asksForProject) {
       setProjectsOpen(true);
@@ -775,12 +840,34 @@ export function Composer({
         return;
       }
     }
-    if (menuOpen && event.key === "Escape") {
+    // The `/` list answers the same keys: arrows move, Enter or Tab runs, Esc closes it.
+    const slashCount = slashPrompts.length + slashActions.length;
+    if (slashOpen && slashCount > 0 && !event.nativeEvent.isComposing) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setActive((slashActive + (event.key === "ArrowDown" ? 1 : slashCount - 1)) % slashCount);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        event.preventDefault();
+        pickSlash(
+          slashActive < slashPrompts.length
+            ? { kind: "prompt", prompt: slashPrompts[slashActive]! }
+            : { kind: "action", command: slashActions[slashActive - slashPrompts.length]! },
+        );
+        return;
+      }
+    }
+    if ((menuOpen || slashOpen) && event.key === "Escape") {
       event.preventDefault();
-      setDismissed(menuTrigger);
+      setDismissed(menuTrigger ?? slashTrigger);
       return;
     }
-    if (dictates && isDictationKey(event)) {
+    if (
+      dictates &&
+      !isCapturingBinding() &&
+      isDictationKey(event, bindingFor(bindings, "dictate"), usesCommandKey())
+    ) {
       event.preventDefault();
       dictation.toggle();
       return;
@@ -1138,6 +1225,15 @@ export function Composer({
             onPick={pick}
           />
         ) : null}
+        {slashOpen ? (
+          <SlashMenu
+            groups={slashGroups(slashPrompts, slashActions)}
+            query={slashTrigger?.query ?? ""}
+            active={slashActive}
+            onActive={setActive}
+            onPick={pickSlash}
+          />
+        ) : null}
         {/* A film a step above the conversation's own: the box stands apart by that, its edge and the
             blur of what scrolls under it, never as a dark slab over the glass. */}
         <div
@@ -1198,7 +1294,11 @@ export function Composer({
             onKeyDown={onKeyDown}
             onFiles={addFiles}
             activeOption={
-              menuOpen && results.options.length > 0 ? `mention-option-${activeIndex}` : undefined
+              menuOpen && results.options.length > 0
+                ? `mention-option-${activeIndex}`
+                : slashOpen && slashPrompts.length + slashActions.length > 0
+                  ? `slash-option-${slashActive}`
+                  : undefined
             }
             // While the lead works and nothing is written, the line says what it's doing.
             cover={compact && running ? activity : undefined}

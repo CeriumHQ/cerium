@@ -30,6 +30,7 @@ import {
 } from "../../backend/github.ts";
 import { DialogButton, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -292,7 +293,13 @@ function Header({
             </>
           ) : null}
         </MoreMenu>
-        <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+        <IconButton
+          icon={X}
+          label="Close"
+          shortcut={useShortcut("close-tab")}
+          onClick={onClose}
+          className="max-md:size-10"
+        />
       </div>
       {pull ? (
         <CheckoutDialog open={checkingOut} onOpenChange={setCheckingOut} pull={pull} actions={actions} />

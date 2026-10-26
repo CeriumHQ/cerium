@@ -27,6 +27,7 @@ import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
 import { whenAgo } from "../../lib/time.ts";
 import { effortLabel, speedLabel } from "../composer/models.ts";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { providerName } from "../threads/model.ts";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { AgentMenuArea, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
@@ -44,7 +45,6 @@ import {
   accessLabel,
   agentMenuPlan,
   displayState,
-  STOP_ALL_SHORTCUT,
   stateLabel,
   statusCounts,
   stopAllScope,
@@ -140,6 +140,8 @@ export function Inspector({
   const counts = statusCounts(agents);
   const scope = stopAllScope(agents);
   const canStopAll = onStopAll !== undefined && (scope.agents > 0 || scope.approvals > 0);
+  const stopAllKeys = useShortcut("stop-all");
+  const agentsKeys = useShortcut("toggle-agents");
 
   return (
     <div ref={root} className="flex h-full flex-col">
@@ -160,7 +162,7 @@ export function Inspector({
           <IconButton
             icon={OctagonX}
             label="Stop everything"
-            shortcut={STOP_ALL_SHORTCUT}
+            shortcut={stopAllKeys}
             onClick={onStopAll}
             className="ml-auto text-error/80 hover:text-error max-md:size-10"
           />
@@ -168,7 +170,7 @@ export function Inspector({
         <IconButton
           icon={X}
           label="Close"
-          shortcut="Ctrl J"
+          shortcut={agentsKeys}
           onClick={onClose}
           className={`max-md:size-10 ${canStopAll ? "" : "ml-auto"}`}
         />

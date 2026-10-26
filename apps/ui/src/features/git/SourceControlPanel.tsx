@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "rea
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 
 type Tab = "changes" | "history";
 
@@ -71,7 +72,7 @@ export function SourceControlPanel({
         <IconButton
           icon={X}
           label="Close"
-          shortcut="Ctrl Shift G"
+          shortcut={useShortcut("toggle-source-control")}
           onClick={onClose}
           className="max-md:size-10"
         />

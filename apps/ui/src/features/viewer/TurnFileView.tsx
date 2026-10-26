@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { turnDiffAtom, turnDiffKey } from "../../backend/turnFiles.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { ContextMenuArea } from "../../components/ui/Menu.tsx";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { dirOf, nameOf } from "../files/model.ts";
@@ -42,7 +43,7 @@ export function TurnFileView({
   const diff = Option.getOrUndefined(AsyncResult.value(result));
   const [layout] = useAtom(diffLayoutAtom);
   const dir = dirOf(path);
-  const commenting = useDiffComments({ messageBox, draftKey, path });
+  const commenting = useDiffComments({ messageBox, draftKey, path, scope: { _tag: "Turn", after } });
 
   const header = (
     <header
@@ -59,7 +60,13 @@ export function TurnFileView({
         )}
       </span>
       <span className="ml-auto shrink-0 text-meta text-fg-tertiary">Agent's change</span>
-      <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+      <IconButton
+        icon={X}
+        label="Close"
+        shortcut={useShortcut("close-tab")}
+        onClick={onClose}
+        className="max-md:size-10"
+      />
     </header>
   );
 

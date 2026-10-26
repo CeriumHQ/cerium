@@ -3,6 +3,7 @@ import { Collapsible } from "@base-ui/react/collapsible";
 import type { ProviderId } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
+  AppWindow,
   Archive,
   ChevronRight,
   MessagesSquare,
@@ -20,7 +21,13 @@ import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel, usesCommandKey } from "../../lib/keys.ts";
-import { bindingFor, matchesFamily, shortcutBindingsAtom, useShortcut } from "../../lib/shortcuts.ts";
+import {
+  bindingFor,
+  isCapturingBinding,
+  matchesFamily,
+  shortcutBindingsAtom,
+  useShortcut,
+} from "../../lib/shortcuts.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
 import { CommandPalette } from "../palette/CommandPalette.tsx";
@@ -60,6 +67,8 @@ interface SidebarProps {
   readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
   readonly onDelete: (threadId: string) => void;
+  /** Opens one of this computer's threads in a window of its own; absent where there are no such windows. */
+  readonly onOpenWindow?: (threadId: string) => void;
   /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
   readonly searchOpen: boolean;
   readonly onSearchOpenChange: (open: boolean) => void;
@@ -94,6 +103,7 @@ export function Sidebar({
   onLater,
   open = [],
   onDelete,
+  onOpenWindow,
   searchOpen,
   onSearchOpenChange,
   commands,
@@ -113,6 +123,7 @@ export function Sidebar({
   const onKey = useEffectEvent((event: KeyboardEvent) => {
     if (
       searchOpen ||
+      isCapturingBinding() ||
       !matchesFamily(event, bindingFor(rowBindings, "open-thread-row"), usesCommandKey())
     )
       return;
@@ -170,6 +181,7 @@ export function Sidebar({
           onRestore={onRestore}
           onLater={onLater}
           onDelete={onDelete}
+          onOpenWindow={onOpenWindow}
         />
       ) : (
         <ChatList
@@ -181,6 +193,7 @@ export function Sidebar({
           onRename={onRename}
           onArchive={onArchive}
           onDelete={onDelete}
+          onOpenWindow={onOpenWindow}
           onMarkRead={onMarkRead}
         />
       )}
@@ -205,6 +218,7 @@ interface ChatActions {
   readonly onRename: RenameThread;
   readonly onArchive: (threadId: string) => void;
   readonly onDelete: (threadId: string) => void;
+  readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
 
 /** Chats grouped by how recent they are, under the drafts of chats not started yet. */
@@ -347,6 +361,7 @@ function ChatRow({
   onRename,
   onArchive,
   onDelete,
+  onOpenWindow,
 }: {
   thread: ThreadSummary;
   selected: boolean;
@@ -375,6 +390,11 @@ function ChatRow({
                 <MenuItem icon={pinned ? PinOff : Pin} onClick={() => setPins(togglePin(pins, thread.id))}>
                   {pinned ? "Unpin" : "Pin"}
                 </MenuItem>
+                {onOpenWindow ? (
+                  <MenuItem icon={AppWindow} onClick={() => onOpenWindow(thread.id)}>
+                    Open in new window
+                  </MenuItem>
+                ) : null}
                 <MenuItem icon={Pencil} onClick={rename}>
                   Rename
                 </MenuItem>

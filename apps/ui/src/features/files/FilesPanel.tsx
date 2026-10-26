@@ -9,7 +9,8 @@ import { applyChanges, expandedAtom, treeAtom } from "../../backend/explorer.ts"
 import { shellBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
-import { primaryHeld } from "../../lib/keys.ts";
+import { usesCommandKey } from "../../lib/keys.ts";
+import { isCapturingBinding, matchesBinding, useShortcut } from "../../lib/shortcuts.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { resolvePath } from "../transcript/paths.ts";
 import { Filter, ChangesList } from "./FileLists.tsx";
@@ -52,6 +53,8 @@ export function FilesPanel({
   const [chosenView, setView] = useState<View>("files");
   const view = onShowChanges === undefined ? chosenView : "files";
   const [filtering, setFiltering] = useState(false);
+  const findKeys = useShortcut("find-in-thread");
+  const filesKeys = useShortcut("toggle-files");
   /** A path the tree should bring into view once its folders have loaded. */
   const [revealed, setRevealed] = useState<string>();
   const element = useRef<HTMLDivElement>(null);
@@ -107,7 +110,7 @@ export function FilesPanel({
     );
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (primaryHeld(event) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "f") {
+    if (!isCapturingBinding() && matchesBinding(event, findKeys, usesCommandKey())) {
       event.preventDefault();
       setView("files");
       setFiltering(true);
@@ -196,7 +199,7 @@ export function FilesPanel({
               <IconButton
                 icon={Search}
                 label="Find a file"
-                shortcut="Ctrl F"
+                shortcut={findKeys}
                 onClick={() => setFiltering((now) => !now)}
                 className="max-md:size-10"
               />
@@ -212,7 +215,7 @@ export function FilesPanel({
           <IconButton
             icon={X}
             label="Close"
-            shortcut="Ctrl Shift E"
+            shortcut={filesKeys}
             onClick={onClose}
             className="max-md:size-10"
           />

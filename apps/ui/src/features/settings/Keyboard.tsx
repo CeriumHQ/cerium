@@ -1,10 +1,23 @@
 import { useAtom } from "@effect/atom-react";
+import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 
-import { WEB } from "../../backend/target.ts";
-import { keyLabel } from "../../lib/keys.ts";
+import { keyLabel, usesCommandKey } from "../../lib/keys.ts";
+import {
+  bindingFor,
+  conflictsFor,
+  defaultBindings,
+  eventToBinding,
+  setCapturingBinding,
+  SHORTCUT_GROUPS,
+  SHORTCUTS,
+  shortcutBindingsAtom,
+  shortcutDef,
+  type ShortcutId,
+} from "../../lib/shortcuts.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { DICTATION_SHORTCUT } from "../dictation/DictationControl.tsx";
 import { Keys, SettingsCard, SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
+import { WEB } from "../../backend/target.ts";
 import { sendKeyAtom, type SendKey } from "./preferences.ts";
 import { canScale } from "./scale.ts";
 
@@ -13,42 +26,81 @@ const sendKeys: Record<SendKey, { readonly send: string; readonly newLine: strin
   ctrlEnter: { send: "Ctrl Enter", newLine: "Enter" },
 };
 
-const shortcuts: ReadonlyArray<readonly [action: string, keys: string]> = [
-  ["New thread", "Ctrl N"],
-  ["Search threads, or run a command", "Ctrl K"],
-  ["Find in the thread", "Ctrl F"],
-  ["Open the sidebar's first ten threads", "Ctrl 1–0"],
-  ["Switch to Work", "Ctrl Shift 1"],
-  ["Switch to Chat", "Ctrl Shift 2"],
-  ["Show or hide the sidebar", "Ctrl B"],
-  ["Show or hide the thread's agents", "Ctrl J"],
-  ["Show, focus or hide the terminal", "Control `"],
-  ["Open or close settings", "Ctrl ,"],
-  ["Stop the running turn, or leave settings", "Esc"],
-  // Only the desktop's message boxes dictate.
-  ...(WEB ? [] : ([["Start or stop dictating in the message box", DICTATION_SHORTCUT]] as const)),
-  ["New thread in a tab", "Ctrl T"],
-  ["Close the tab", "Ctrl W"],
-  ["Reopen the tab closed last", "Ctrl Shift T"],
-  ["Next tab", "Control Tab"],
-  ["Previous tab", "Control Shift Tab"],
-  ["Go to a tab, 9 being the last", "Alt 1–9"],
-  ["Move the tab left or right", "Control Shift PgUp/PgDn"],
-  ["Open a sidebar thread in a tab of its own", "Ctrl Click"],
-  ["New thread to the right", "Ctrl \\"],
-  ["New thread below", "Ctrl Shift \\"],
-  // The desktop window scales itself; a browser keeps its own zoom keys.
-  ...(canScale()
-    ? ([
-        ["Make everything larger", "Ctrl +"],
-        ["Make everything smaller", "Ctrl −"],
-        ["Back to 100%", "Ctrl Num0"],
-      ] as const)
-    : []),
-];
+/** Dictation and zoom live in the desktop app, as before: elsewhere their rows stay out of the way. */
+const isOffered = (id: string): boolean =>
+  id === "dictate" ? !WEB : id.startsWith("zoom-") ? canScale() : true;
+
+/** A pending rebind whose keys another shortcut already has. */
+interface Conflict {
+  readonly id: ShortcutId;
+  readonly keys: string;
+  readonly others: ReadonlyArray<ShortcutId>;
+}
 
 export function KeyboardSettings() {
   const [sendKey, setSendKey] = useAtom(sendKeyAtom);
+  const [bindings, setBindings] = useAtom(shortcutBindingsAtom);
+  const [query, setQuery] = useState("");
+  const [capturing, setCapturing] = useState<ShortcutId | undefined>(undefined);
+  const [conflict, setConflict] = useState<Conflict | undefined>(undefined);
+  const rebound = SHORTCUTS.filter((each) => bindings[each.id] !== each.defaultKeys).length;
+
+  // While a row listens for its new keys, the window's own shortcuts stay out of the way.
+  useEffect(() => {
+    if (capturing === undefined) return;
+    setCapturingBinding(true);
+    const listener = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setCapturing(undefined);
+        return;
+      }
+      const next = eventToBinding(event, usesCommandKey());
+      if (next === undefined) return;
+      const id = capturing;
+      if (next === bindings[id]) {
+        setCapturing(undefined);
+        return;
+      }
+      const others = conflictsFor({ ...bindings, [id]: next }, id, usesCommandKey());
+      setCapturing(undefined);
+      if (others.length > 0) setConflict({ id, keys: next, others });
+      else {
+        setConflict(undefined);
+        setBindings({ ...bindings, [id]: next });
+      }
+    };
+    window.addEventListener("keydown", listener, true);
+    return () => {
+      window.removeEventListener("keydown", listener, true);
+      setCapturingBinding(false);
+    };
+  }, [capturing, bindings, setBindings]);
+
+  const words = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word !== "");
+  const matches = (id: ShortcutId): boolean => {
+    if (words.length === 0) return true;
+    const each = shortcutDef(id);
+    if (each === undefined) return false;
+    const haystack =
+      `${each.label} ${each.group} ${each.keywords ?? ""} ${bindingFor(bindings, each.id)} ${keyLabel(each.displayKeys ?? each.defaultKeys)}`.toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  };
+
+  const swap = () => {
+    if (conflict === undefined) return;
+    const current = bindings[conflict.id] ?? "";
+    const next = { ...bindings, [conflict.id]: conflict.keys };
+    for (const other of conflict.others) next[other] = current;
+    setBindings(next);
+    setConflict(undefined);
+  };
+
   return (
     <SettingsPage title="Keyboard">
       <SettingsList>
@@ -77,15 +129,128 @@ export function KeyboardSettings() {
         />
       </SettingsList>
 
-      <SettingsSection title="Shortcuts">
-        <SettingsCard className="divide-y divide-line-subtle">
-          {shortcuts.map(([action, keys]) => (
-            <div key={action} className="flex h-10 items-center justify-between gap-4 px-4 text-body">
-              <span className="text-fg-secondary">{action}</span>
-              <Keys keys={keys} size="sm" />
+      <SettingsSection
+        title="Shortcuts"
+        description="Select a shortcut, then press the new keys. Esc keeps what it had."
+        action={
+          rebound > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setBindings(defaultBindings());
+                setConflict(undefined);
+              }}
+              className="shrink-0 rounded-md px-2 py-1 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            >
+              Reset all
+            </button>
+          ) : undefined
+        }
+      >
+        <label className="flex h-9 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body text-fg-secondary focus-within:border-line-strong">
+          <Search size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" aria-hidden />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search shortcuts"
+            aria-label="Search shortcuts"
+            className="min-w-0 flex-1 bg-transparent text-fg-primary outline-none placeholder:text-fg-tertiary"
+          />
+        </label>
+        {SHORTCUT_GROUPS.map((group) => {
+          const rows = SHORTCUTS.filter(
+            (each) => each.group === group && isOffered(each.id) && matches(each.id),
+          );
+          if (rows.length === 0) return null;
+          return (
+            <div key={group} className="flex flex-col gap-2">
+              <h3 className="px-1 text-meta font-medium text-fg-secondary">{group}</h3>
+              <SettingsCard className="divide-y divide-line-subtle">
+                {rows.map((each) => {
+                  const keys = bindingFor(bindings, each.id);
+                  const changed = keys !== each.defaultKeys;
+                  const waiting = capturing === each.id;
+                  const disputed =
+                    conflict !== undefined && (conflict.id === each.id || conflict.others.includes(each.id));
+                  return (
+                    <div key={each.id}>
+                      <div className="flex min-h-10 items-center justify-between gap-4 px-4 py-1.5 text-body">
+                        <span className="min-w-0 flex-1 truncate text-fg-secondary">{each.label}</span>
+                        {each.fixed ? (
+                          <span className="flex shrink-0 items-center gap-2">
+                            <Keys keys={each.displayKeys ?? each.defaultKeys} size="sm" />
+                            <span className="w-12 text-right text-meta text-fg-tertiary">Built-in</span>
+                          </span>
+                        ) : (
+                          <span className="flex shrink-0 items-center gap-1">
+                            {changed ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBindings({ ...bindings, [each.id]: each.defaultKeys });
+                                  setConflict(undefined);
+                                }}
+                                aria-label={`Reset ${each.label}`}
+                                title={`Back to ${keyLabel(each.defaultKeys)}`}
+                                className="rounded-md px-1.5 py-1 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                              >
+                                Reset
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConflict(undefined);
+                                setCapturing(waiting ? undefined : each.id);
+                              }}
+                              aria-label={`${each.label}: ${keyLabel(keys)}. ${waiting ? "Press the new keys, or Esc to keep these." : "Select to rebind."}`}
+                              className={`rounded-md outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${waiting ? "ring-2 ring-focus-ring" : ""}`}
+                            >
+                              <Keys keys={keys} size="sm" pressed={waiting} />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                      {waiting ? (
+                        <p className="px-4 pb-2 text-meta text-fg-tertiary">
+                          Press the new keys… Esc keeps {keyLabel(keys)}.
+                        </p>
+                      ) : null}
+                      {disputed && conflict !== undefined ? (
+                        <div className="flex flex-wrap items-center gap-2 px-4 pb-2.5">
+                          <span className="min-w-0 flex-1 text-meta leading-relaxed text-fg-secondary">
+                            {keyLabel(conflict.keys)} already {conflict.others.length > 1 ? "run" : "runs"}{" "}
+                            {conflict.others.map((other) => shortcutDef(other)?.label ?? other).join(", ")}.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={swap}
+                            className="shrink-0 rounded-md bg-accent px-2 py-1 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
+                          >
+                            Swap
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConflict(undefined)}
+                            className="shrink-0 rounded-md px-2 py-1 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </SettingsCard>
             </div>
-          ))}
-        </SettingsCard>
+          );
+        })}
+        {SHORTCUTS.some((each) => matches(each.id)) ? null : (
+          <p className="px-1 py-4 text-center text-body text-fg-tertiary">Nothing matches.</p>
+        )}
+        <p className="px-1 text-meta leading-relaxed text-fg-tertiary">
+          Shortcuts marked Built-in stay as they are: a click has no keys to press, and leaving is always Esc.
+        </p>
       </SettingsSection>
     </SettingsPage>
   );

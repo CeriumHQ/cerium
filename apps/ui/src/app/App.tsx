@@ -21,13 +21,14 @@ import {
 import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
+  AppWindow,
   ArchiveRestore,
   Bot,
   Columns2,
-  Compass,
   ClipboardCopy,
-  FoldVertical,
+  Compass,
   FileDown,
+  FoldVertical,
   FolderTree,
   GitBranch,
   GitPullRequestArrow,
@@ -114,7 +115,7 @@ import {
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
 import { Inspector } from "../features/agents/Inspector.tsx";
-import { STOP_ALL_SHORTCUT, STOP_THREAD_VERSION, stopAllScope } from "../features/agents/model.ts";
+import { STOP_THREAD_VERSION, stopAllScope } from "../features/agents/model.ts";
 import { StopAllDialog } from "../features/agents/StopAllDialog.tsx";
 import { ArtifactsPanel } from "../features/artifacts/ArtifactsPanel.tsx";
 import {
@@ -140,6 +141,12 @@ import { HANDOFF_VERSION, useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { ScrollArea } from "../components/ui/ScrollArea.tsx";
+import { AUTOMATIONS_VERSION } from "../backend/automations.ts";
+import {
+  AutomationDetail,
+  AutomationList,
+  AutomationsPage,
+} from "../features/automations/AutomationsPage.tsx";
 import { TaskSync } from "../features/tasks/TaskSync.ts";
 import { TaskDetail, TaskList, TasksPage, type HandOff } from "../features/tasks/TasksPage.tsx";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
@@ -182,7 +189,7 @@ import { fittedSize } from "../features/terminal/session.ts";
 import { closeTerminal, terminalsAtom } from "../backend/terminals.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
-import { canScale, scaleShortcut, useScale } from "../features/settings/scale.ts";
+import { canScale, useScale } from "../features/settings/scale.ts";
 import {
   settingsLabel,
   SettingsNav,
@@ -191,8 +198,8 @@ import {
   type SettingsCategory,
 } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
-import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { exportFailureAtom, useThreadExport } from "../features/export/useThreadExport.ts";
+import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
@@ -255,7 +262,15 @@ import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
 import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { Reveal } from "../components/Reveal.tsx";
-import { primaryHeld } from "../lib/keys.ts";
+import { usesCommandKey } from "../lib/keys.ts";
+import {
+  bindingFor,
+  isCapturingBinding,
+  matchesBinding,
+  matchesFamily,
+  shortcutBindingsAtom,
+  type ShortcutId,
+} from "../lib/shortcuts.ts";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
 import { useDesktopNotifications } from "../desktop/notifications.ts";
@@ -272,6 +287,7 @@ import { Rail } from "./Rail.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 import { ThreadPane, type PaneHandles, type ThreadPaneActions } from "./ThreadPane.tsx";
+import { besideThread, soloThread, threadWindowOpener, useSharedPreferences } from "./threadWindow.ts";
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
@@ -304,6 +320,19 @@ const settleInTurn = async <A, B>(
   return results;
 };
 
+/** The window's shortcuts a thread's own window keeps: its zoom, its panels and its thread's. */
+const SOLO_SHORTCUTS: ReadonlyArray<ShortcutId> = [
+  "zoom-in",
+  "zoom-out",
+  "zoom-reset",
+  "toggle-agents",
+  "toggle-files",
+  "toggle-source-control",
+  "toggle-github-panel",
+  "find-in-thread",
+  "stop-all",
+];
+
 /** The main area's pane until the user splits it. */
 const MAIN_PANE = "main";
 const newPaneId = () => `pane-${crypto.randomUUID()}`;
@@ -329,24 +358,32 @@ export function App() {
 function Themed({ children }: { children: ReactNode }) {
   useTheme(useAtomValue(themeAtom));
   useScale();
+  useSharedPreferences();
   return children;
 }
 
 function Workspace() {
   const registry = useContext(RegistryContext);
   const driven = useAtomValue(machineAtom);
+  /** Every shortcut's keys, following the user's rebinds in Settings → Keyboard. */
+  const bindings = useAtomValue(shortcutBindingsAtom);
+  const keys = (id: ShortcutId): string => bindingFor(bindings, id);
+  /** The thread this window shows alone, when it's a thread's own window (threadWindow.ts). */
+  const solo = soloThread;
   /** Where this tab was before a reload; it comes back once the window drives the same machine. */
-  const [session] = useState(restoredSession);
+  const [session] = useState(() => (solo ? undefined : restoredSession()));
   // Compared on its own line: the React Compiler skips a component whose ternary tests an optional chain.
   const sameMachine = session?.machine === driven?.id;
   const resumed = sameMachine ? session : undefined;
   const [resumePending, setResumePending] = useState(() => session !== undefined && resumed === undefined);
-  const [mode, setMode] = useState<AppMode>(() => session?.mode ?? "work");
+  const [mode, setMode] = useState<AppMode>(() => solo?.mode ?? session?.mode ?? "work");
   /**
    * The open thread per mode, or the draft of a thread not started yet; none means the mode's blank
    * new thread.
    */
-  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>(() => resumed?.open ?? {});
+  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>(() =>
+    solo ? { [solo.mode]: solo.id } : (resumed?.open ?? {}),
+  );
   /** Each mode's blank new thread: once it has something in it, "New thread" starts another. */
   const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
   /** How each mode's main area is split into panes, once the user split it; the open thread is the focused pane's. */
@@ -389,8 +426,15 @@ function Workspace() {
   const [sidebarOpen, setSidebarOpen] = useState(() => stored(SIDEBAR_KEY) !== "hidden");
   const [actionError, setActionError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** The rail's place besides the threads that shows, if any: the user's tasks, or GitHub's items. */
-  const [place, setPlace] = useState<"tasks" | "github">();
+  /**
+   * The rail's place besides the threads that shows, if any: the user's tasks, GitHub's items, or the
+   * automations.
+   */
+  const [place, setPlace] = useState<"tasks" | "github" | "automations">();
+  /** The automation the Automations page shows beside its list: one saved, or `"new"`. */
+  const [automationPick, setAutomationPick] = useState<string>();
+  /** The narrow window's Automations pane: the list, or the automation picked in it. */
+  const [automationsPane, setAutomationsPane] = useState<"list" | "main">("list");
   /** The task the Tasks page shows beside its list. */
   const [taskPick, setTaskPick] = useState<string>();
   /** The narrow window's Tasks pane: the list, or the task picked in it. */
@@ -513,7 +557,8 @@ function Workspace() {
       !AsyncResult.isSuccess(threadsResult);
     return { listed, cloud, shown, loading };
   };
-  const { listed: selected, cloud: cloudSelected, shown: viewed } = resolve(openThread[mode]);
+  // A thread's own window is its thread's, whichever of its panes has the focus.
+  const { listed: selected, cloud: cloudSelected, shown: viewed } = resolve(solo?.id ?? openThread[mode]);
   /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
   const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
   const latestProject = useLatestProject();
@@ -595,6 +640,18 @@ function Workspace() {
         : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
   );
   const selectedSummary = summaries.find((summary) => summary.id === viewed?.thread.id);
+  /**
+   * Opens one of this computer's threads in a window of its own (threadWindow.ts): offered by the
+   * desktop's main window while it shows this computer.
+   */
+  const threadWindow = driven === undefined ? threadWindowOpener() : undefined;
+  const openInWindow =
+    threadWindow === undefined
+      ? undefined
+      : (threadId: string) => {
+          const summary = summaries.find((each) => each.id === threadId && each.elsewhere === undefined);
+          if (summary) threadWindow(summary.id, summary.mode);
+        };
   // The shell keeps this computer awake for its own agents, whichever machine the window shows.
   const localWorking = AsyncResult.getOrElse(useAtomValue(localWorkingAtom), () => undefined);
   useShellPresence(
@@ -629,6 +686,12 @@ function Workspace() {
       (AsyncResult.isSuccess(accountResult) &&
         (AsyncResult.isSuccess(threadsResult) || (WEB && driven === undefined && toDrive === undefined))),
   );
+  // A thread's own window closes once its thread is gone, deleted from here or from the main window.
+  const soloGone =
+    solo !== undefined && live && !overviews.some((overview) => overview.thread.id === solo.id);
+  useEffect(() => {
+    if (soloGone) window.close();
+  }, [soloGone]);
   const markSeen = useEffectEvent(() => {
     if (selectedSummary && readState.isUnread(selectedSummary.id, selectedSummary.updatedAt)) {
       readState.markRead([selectedSummary]);
@@ -713,7 +776,8 @@ function Workspace() {
     },
   });
   useEffect(() => {
-    if (resumePending) return;
+    // A thread's own window comes back to its thread from its address.
+    if (resumePending || solo) return;
     rememberSession({
       ...(driven ? { machine: driven.id } : {}),
       mode,
@@ -723,7 +787,7 @@ function Workspace() {
       tabs: tabs.strips,
       panes: panesByMode,
     });
-  }, [resumePending, driven, mode, openThread, blank, pane, tabs.strips, panesByMode]);
+  }, [resumePending, solo, driven, mode, openThread, blank, pane, tabs.strips, panesByMode]);
 
   // A tapped notification opens its thread, once the inbox lists it.
   useNotificationOpens(
@@ -737,9 +801,11 @@ function Workspace() {
   useRenewPush(account);
   const threadShown = viewed !== undefined && !settingsOpen && (!compact || pane === "main");
   // Nobody is told about the thread this window shows, unless settings or the narrow
-  // window's inbox cover it.
+  // window's inbox cover it. The account hears it from the main window alone, whose word a thread's
+  // own window would otherwise take turns with; the shell likewise takes the main window's presence
+  // and notifications only.
   useAccountPresence(
-    account,
+    solo ? { _tag: "SignedOut" } : account,
     viewed && threadShown && drivenId !== undefined
       ? {
           machine: (cloudSelected?.machine ?? drivenId) as DeviceId,
@@ -785,6 +851,10 @@ function Workspace() {
   const changesOf = useAtomSet(worktreeChanges, { mode: "promise" });
   /** A thread whose worktree holds unmerged work, waiting on the user to confirm archiving it. */
   const [archiving, setArchiving] = useState<{ thread: ThreadSummary; changes: WorktreeChanges }>();
+
+  const exportThread = useThreadExport();
+  const exportFailure = useAtomValue(exportFailureAtom);
+  const setExportFailure = useAtomSet(exportFailureAtom);
 
   const attempt = (action: Promise<unknown>): Promise<boolean> => {
     setActionError(undefined);
@@ -838,10 +908,6 @@ function Workspace() {
   const toggleGit = () => togglePanel("git");
   /**
    * The open work thread's folder, the open file's, or the project of the new work thread being
-  const exportThread = useThreadExport();
-  const exportFailure = useAtomValue(exportFailureAtom);
-  const setExportFailure = useAtomSet(exportFailureAtom);
-
    * written, can be browsed here: it's on the machine the window drives, which knows how.
    */
   const filesRoot =
@@ -854,6 +920,26 @@ function Workspace() {
   const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
   /** New threads there can have worktrees of their own. */
   const worktreesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WORKTREE_VERSION;
+  /**
+   * Shows the file, pull request or new thread `key` in a tab of its own, beside the thread. A preview
+   * would take the thread's tab while that thread is only being read. A thread's own window has no
+   * tabs: it shows there in a pane beside the thread.
+   */
+  const showTab = (key: string) => {
+    if (solo) {
+      const next = besideThread(panes, solo.id, key, newPaneId());
+      setPanesByMode((all) => ({ ...all, [mode]: next }));
+      setOpenThread((open) => ({ ...open, [mode]: focusedKey(next) }));
+      return;
+    }
+    tabs.openAs(key, "tab");
+    tabs.keep(key);
+    showThreads();
+    setOpenThread((open) => ({ ...open, [mode]: key }));
+    setPane("main");
+    // The narrow window shows one pane: the tab takes the panel's place.
+    if (compact) setSidePanel(undefined);
+  };
   /** Opens the folder `root`'s files in the viewer. */
   const openerIn =
     (root: string): OpenFile =>
@@ -861,38 +947,15 @@ function Workspace() {
       const key = fileKey(root, path);
       // From the Changes list, a file opens on what changed.
       if (options?.changes === true) registry.set(fileViewAtom(key), "diff");
-      // A tab of its own, beside the thread. A preview would take the thread's tab while that thread
-      // is only being read.
-      tabs.openAs(key, "tab");
-      tabs.keep(key);
-      showThreads();
-      setOpenThread((open) => ({ ...open, [mode]: key }));
-      setPane("main");
-      // The narrow window shows one pane: the file takes the panel's place.
-      if (compact) setSidePanel(undefined);
+      showTab(key);
     };
   const openInViewer = filesRoot === undefined || !viewerOk ? undefined : openerIn(filesRoot);
   /** Opens the folder `root`'s file as one commit changed it, in a tab of its own, as the viewer's files open. */
   const openCommitFileIn =
-    (root: string) => (sha: string, file: { readonly path: string; readonly from?: string }) => {
-      const key = commitFileKey(root, sha, file.path, file.from);
-      tabs.openAs(key, "tab");
-      tabs.keep(key);
-      showThreads();
-      setOpenThread((open) => ({ ...open, [mode]: key }));
-      setPane("main");
-      if (compact) setSidePanel(undefined);
-    };
+    (root: string) => (sha: string, file: { readonly path: string; readonly from?: string }) =>
+      showTab(commitFileKey(root, sha, file.path, file.from));
   /** Opens a file as one of an agent's turns changed it, in a tab of its own, as a commit's files open. */
-  const openTurnFile = (tab: TurnFileTab) => {
-    const key = turnFileKey(tab);
-    tabs.openAs(key, "tab");
-    tabs.keep(key);
-    showThreads();
-    setOpenThread((open) => ({ ...open, [mode]: key }));
-    setPane("main");
-    if (compact) setSidePanel(undefined);
-  };
+  const openTurnFile = (tab: TurnFileTab) => showTab(turnFileKey(tab));
   /** The open work thread's repository, which Source control shows where its machine can. */
   const gitRoot =
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GIT_VERSION ? undefined : filesRoot;
@@ -962,6 +1025,7 @@ function Workspace() {
     openIn: viewerOk ? openerIn : undefined,
     openCommitFile: openCommitFileIn,
     activeFile: openFile,
+    review: selected === undefined ? undefined : { threadId: selected.thread.id, messageBox },
     onClose: () => closePanel("git"),
   });
   /** The pull request or issue the open tab shows, when it shows one. */
@@ -978,17 +1042,14 @@ function Workspace() {
   const githubOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= GITHUB_VERSION;
   /** The machine has the issue calls; an older one has the pull requests alone. */
   const issuesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ISSUES_VERSION;
+  /** The machine runs automations; an older one has none to show. */
+  const automationsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= AUTOMATIONS_VERSION;
   const toggleGitHub = () => togglePanel("github");
   /** Opens a pull request or an issue of `root`'s repository in a tab of its own, as files open. */
   const openGitHubIn = (root: string, kind: GitHubKind, number: number, title?: string) => {
     const key = githubKey(root, kind, number);
     if (title !== undefined) nameGitHubTab(registry, key, title);
-    tabs.openAs(key, "tab");
-    tabs.keep(key);
-    showThreads();
-    setOpenThread((open) => ({ ...open, [mode]: key }));
-    setPane("main");
-    if (compact) setSidePanel(undefined);
+    showTab(key);
   };
   /** The project a folder is, or is a worktree of: where a thread about its repository starts. */
   const projectOf = (folder: string) =>
@@ -1022,6 +1083,11 @@ function Workspace() {
         }),
       })),
     );
+    if (solo) {
+      showTab(key);
+      focusComposer();
+      return;
+    }
     showThreads();
     setMode("work");
     tabs.openAs(key, "tab");
@@ -1036,6 +1102,7 @@ function Workspace() {
         cwd={githubRoot}
         openPull={openGitHub?.kind === "pr" && openGitHub.root === githubRoot ? openGitHub.number : undefined}
         onOpenPull={(number, title) => openGitHubIn(githubRoot, "pr", number, title)}
+        review={selected === undefined ? undefined : { threadId: selected.thread.id, messageBox }}
         {...(issuesOk
           ? {
               issues: (repository) => ({
@@ -1073,7 +1140,8 @@ function Workspace() {
   const showArtifact = (artifact: PanelArtifact) => {
     if (artifact.threadId !== viewed?.thread.id) {
       const summary = summaries.find((candidate) => candidate.id === artifact.threadId);
-      if (summary === undefined) return;
+      // A thread's own window shows no other thread: the main window has them.
+      if (summary === undefined || solo) return;
       openSummary(summary);
     }
     // The narrow window shows one pane: the conversation takes the panel's place.
@@ -1189,6 +1257,8 @@ function Workspace() {
     if (splitWith(target, side, newDraftKey())) setComposerFocus((count) => count + 1);
   };
   const closePaneOf = (id: string) => {
+    // A thread's own window keeps its thread: closing the window is how it goes.
+    if (solo && findPane(panes.root, id)?.key === solo.id) return;
     const left = closePane(panes, id);
     if (left !== undefined) applyPanes(left);
   };
@@ -1229,7 +1299,8 @@ function Workspace() {
    * which the user browses and the thread's agents drive (features/preview).
    */
   const previews = useSyncExternalStore(subscribePreviews, previewStates);
-  const previewsHere = previewBridge() !== undefined && driven === undefined;
+  // The shell lays the pages over the main window alone.
+  const previewsHere = previewBridge() !== undefined && driven === undefined && !solo;
   const previewThread =
     previewOfKey(current) ?? (previewsHere && selected !== undefined ? selected.thread.id : undefined);
   const previewPane =
@@ -1286,21 +1357,62 @@ function Workspace() {
    * What the command palette (Ctrl K) runs besides opening a thread. To offer a new action, add an entry
    * to the "Actions" below: `keys` shows the shortcut it already has, `when` hides it while it can't run.
    */
-  const paletteCommands: ReadonlyArray<PaletteCommand> = [
-    {
-      id: "new-thread",
-      group: "Actions",
-      label: mode === "work" ? "New thread" : "New chat",
-      icon: SquarePen,
-      keys: "Ctrl N",
-      run: newThread,
+  // The palette's actions the message box's `/` list offers too: each is named once here, and both
+  // lists share it, so the two stay the same action.
+  const newThreadCommand: PaletteCommand = {
+    id: "new-thread",
+    group: "Actions",
+    label: mode === "work" ? "New thread" : "New chat",
+    icon: SquarePen,
+    keys: keys("new-thread"),
+    run: newThread,
+  };
+  const findCommand: PaletteCommand = {
+    // The focused pane's thread finds the text: the files panel, when it has focus, finds files instead.
+    id: "find-in-thread",
+    group: "Actions",
+    label: "Find in thread",
+    icon: Search,
+    keys: keys("find-in-thread"),
+    keywords: "search messages transcript",
+    when: selected !== undefined,
+    run: openFind,
+  };
+  const compactCommand: PaletteCommand = {
+    // The open thread's lead, between turns, where its harness compacts when asked.
+    id: "compact",
+    group: "Actions",
+    label: "Compact conversation",
+    icon: FoldVertical,
+    keywords: "context summarize tokens",
+    when:
+      viewedLead !== undefined &&
+      cloudSelected === undefined &&
+      viewedLead.state === "idle" &&
+      AsyncResult.isSuccess(manifests) &&
+      manifests.value.some(
+        (manifest) => manifest.provider === viewedLead.provider && manifest.compact === true,
+      ),
+    run: () => {
+      if (viewedLead) void attempt(compactLead({ payload: { agentId: viewedLead.id } }));
     },
+  };
+  const settingsCommand: PaletteCommand = {
+    id: "settings",
+    group: "Actions",
+    label: "Open settings",
+    icon: Settings,
+    keys: keys("open-settings"),
+    run: () => openSettings(),
+  };
+  const paletteCommands: ReadonlyArray<PaletteCommand> = [
+    newThreadCommand,
     {
       id: "sidebar",
       group: "Actions",
       label: sidebarOpen ? "Hide sidebar" : "Show sidebar",
       icon: PanelLeft,
-      keys: "Ctrl B",
+      keys: keys("toggle-sidebar"),
       run: toggleSidebar,
     },
     {
@@ -1308,92 +1420,13 @@ function Workspace() {
       group: "Actions",
       label: inspectorOpen ? "Hide agents" : "Show agents",
       icon: Bot,
-      keys: "Ctrl J",
+      keys: keys("toggle-agents"),
       keywords: "inspector",
       when: selected !== undefined,
       run: toggleInspector,
     },
-    {
-      // The focused pane's thread finds the text: the files panel, when it has focus, finds files instead.
-      id: "find-in-thread",
-      group: "Actions",
-      label: "Find in thread",
-      icon: Search,
-      keys: "Ctrl F",
-      keywords: "search messages transcript",
-      when: selected !== undefined,
-      run: openFind,
-    },
-    {
-      // The open thread's lead, between turns, where its harness compacts when asked.
-      id: "compact",
-      group: "Actions",
-      label: "Compact conversation",
-      icon: FoldVertical,
-      keywords: "context summarize tokens",
-      when:
-        viewedLead !== undefined &&
-        cloudSelected === undefined &&
-        viewedLead.state === "idle" &&
-        AsyncResult.isSuccess(manifests) &&
-        manifests.value.some(
-          (manifest) => manifest.provider === viewedLead.provider && manifest.compact === true,
-        ),
-      run: () => {
-        if (viewedLead) void attempt(compactLead({ payload: { agentId: viewedLead.id } }));
-      },
-    },
-    {
-      id: "stop-all",
-      group: "Actions",
-      label: "Stop everything",
-      icon: OctagonX,
-      keys: STOP_ALL_SHORTCUT,
-      keywords: "interrupt cancel halt agents deny approvals",
-      when: canStopAll,
-      run: askStopAll,
-    },
-    {
-      id: "files",
-      group: "Actions",
-      label: filesOpen ? "Hide files" : "Show files",
-      icon: FolderTree,
-      keys: "Ctrl Shift E",
-      when: filesRoot !== undefined,
-      run: toggleFiles,
-    },
-    {
-      id: "source-control",
-      group: "Actions",
-      label: gitOpen ? "Hide source control" : "Show source control",
-      icon: GitBranch,
-      keys: "Ctrl Shift G",
-      keywords: "git changes stage commit",
-      when: gitRoot !== undefined,
-      run: toggleGit,
-    },
-    {
-      id: "github",
-      group: "Actions",
-      label: githubOpen ? "Hide GitHub" : "Show GitHub",
-      icon: GitPullRequestArrow,
-      keys: "Ctrl Shift H",
-      keywords: "pull requests prs issues reviews",
-      when: githubRoot !== undefined,
-      run: toggleGitHub,
-    },
-    {
-      id: "terminal",
-      group: "Actions",
-      label: terminal.open ? "Hide terminal" : "Show terminal",
-      icon: SquareTerminal,
-      keys: "Control `",
-      when: terminal.available,
-      run: terminal.toggle,
-    },
-    {
-      id: "run-project",
-      group: "Actions",
+    findCommand,
+    compactCommand,
     {
       id: "export-markdown",
       group: "Actions",
@@ -1427,6 +1460,57 @@ function Workspace() {
         if (selected) void exportThread(selected.thread.id, "copy");
       },
     },
+    {
+      id: "stop-all",
+      group: "Actions",
+      label: "Stop everything",
+      icon: OctagonX,
+      keys: keys("stop-all"),
+      keywords: "interrupt cancel halt agents deny approvals",
+      when: canStopAll,
+      run: askStopAll,
+    },
+    {
+      id: "files",
+      group: "Actions",
+      label: filesOpen ? "Hide files" : "Show files",
+      icon: FolderTree,
+      keys: keys("toggle-files"),
+      when: filesRoot !== undefined,
+      run: toggleFiles,
+    },
+    {
+      id: "source-control",
+      group: "Actions",
+      label: gitOpen ? "Hide source control" : "Show source control",
+      icon: GitBranch,
+      keys: keys("toggle-source-control"),
+      keywords: "git changes stage commit",
+      when: gitRoot !== undefined,
+      run: toggleGit,
+    },
+    {
+      id: "github",
+      group: "Actions",
+      label: githubOpen ? "Hide GitHub" : "Show GitHub",
+      icon: GitPullRequestArrow,
+      keys: keys("toggle-github-panel"),
+      keywords: "pull requests prs issues reviews",
+      when: githubRoot !== undefined,
+      run: toggleGitHub,
+    },
+    {
+      id: "terminal",
+      group: "Actions",
+      label: terminal.open ? "Hide terminal" : "Show terminal",
+      icon: SquareTerminal,
+      keys: keys("toggle-terminal"),
+      when: terminal.available,
+      run: terminal.toggle,
+    },
+    {
+      id: "run-project",
+      group: "Actions",
       label: runRunning ? "Stop project run" : "Run project",
       icon: runRunning ? Square : Play,
       keywords: "dev server start localhost stop",
@@ -1457,7 +1541,7 @@ function Workspace() {
       group: "Actions",
       label: mode === "work" ? "Switch to Chat" : "Switch to Work",
       icon: MessagesSquare,
-      keys: mode === "work" ? "Ctrl Shift 2" : "Ctrl Shift 1",
+      keys: keys(mode === "work" ? "switch-to-chat" : "switch-to-work"),
       run: () => {
         showThreads();
         setMode(mode === "work" ? "chat" : "work");
@@ -1468,7 +1552,7 @@ function Workspace() {
       group: "Actions",
       label: "Split right",
       icon: Columns2,
-      keys: "Ctrl \\",
+      keys: keys("split-right"),
       keywords: "new thread beside pane",
       when: !compact,
       run: () => splitNew(panes.focused, "right"),
@@ -1478,7 +1562,7 @@ function Workspace() {
       group: "Actions",
       label: "Split below",
       icon: Rows2,
-      keys: "Ctrl Shift \\",
+      keys: keys("split-below"),
       keywords: "new thread pane",
       when: !compact,
       run: () => splitNew(panes.focused, "bottom"),
@@ -1488,7 +1572,7 @@ function Workspace() {
       group: "Actions",
       label: "Close tab",
       icon: X,
-      keys: "Ctrl W",
+      keys: keys("close-tab"),
       when: !compact,
       run: tabs.closeActive,
     },
@@ -1497,9 +1581,21 @@ function Workspace() {
       group: "Actions",
       label: "Reopen closed tab",
       icon: RotateCcw,
-      keys: "Ctrl Shift T",
+      keys: keys("reopen-tab"),
       when: !compact,
       run: tabs.reopen,
+    },
+    {
+      // The open thread on a window of its own, to keep beside this one or on another screen.
+      id: "open-window",
+      group: "Actions",
+      label: "Open in new window",
+      icon: AppWindow,
+      keywords: "pop out detach separate second monitor screen",
+      when: openInWindow !== undefined && selected !== undefined,
+      run: () => {
+        if (selected) openInWindow?.(selected.thread.id);
+      },
     },
     {
       // An archived thread, a chat most of all, is found through the palette, and brought back here.
@@ -1518,14 +1614,7 @@ function Workspace() {
         });
       },
     },
-    {
-      id: "settings",
-      group: "Actions",
-      label: "Open settings",
-      icon: Settings,
-      keys: "Ctrl ,",
-      run: () => openSettings(),
-    },
+    settingsCommand,
     {
       id: "whats-new",
       group: "Actions",
@@ -1563,12 +1652,33 @@ function Workspace() {
   ];
 
   /**
-   * The keys that step through and move the tabs, with Control as browsers have them (a Mac's too,
-   * whose ⌘Tab switches apps); whether `event` was one.
+   * The palette's actions the message box's `/` list offers: new thread, find in thread, compacting
+   * and settings. Each keeps its own `when`, so the list shows what runs here.
+   */
+  const slashCommands: ReadonlyArray<PaletteCommand> = [
+    newThreadCommand,
+    findCommand,
+    compactCommand,
+    settingsCommand,
+  ];
+
+  /**
+   * The keys that step through and move the tabs. Control stays the Control key itself, as browsers
+   * have it (a Mac's too, whose ⌘Tab switches apps); whether `event` was one.
    */
   const tabStepShortcut = (event: KeyboardEvent) => {
-    if (event.key === "Tab") tabs.step(event.shiftKey ? -1 : 1);
-    else if (event.key === "PageDown" || event.key === "PageUp") {
+    const mac = usesCommandKey();
+    if (matchesBinding(event, keys("next-tab"), mac)) tabs.step(1);
+    else if (matchesBinding(event, keys("previous-tab"), mac)) tabs.step(-1);
+    else if (matchesBinding(event, keys("move-tab-right"), mac)) tabs.shift(1);
+    else if (matchesBinding(event, keys("move-tab-left"), mac)) tabs.shift(-1);
+    else if (
+      (event.key === "PageDown" || event.key === "PageUp") &&
+      event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      // PageUp/PageDown with Control step even where the move bindings went elsewhere.
       const by = event.key === "PageDown" ? 1 : -1;
       if (event.shiftKey) tabs.shift(by);
       else tabs.step(by);
@@ -1576,25 +1686,38 @@ function Workspace() {
     return true;
   };
 
-  /** The tabs' other keys with Ctrl (⌘ on a Mac), as browsers have them; whether `event` was one. */
+  /** New, closed and closing tabs; whether `event` was one. */
   const tabShortcut = (event: KeyboardEvent) => {
-    if (event.key.toLowerCase() === "t") {
-      if (event.shiftKey) tabs.reopen();
-      else newThread();
-    } else if (event.key.toLowerCase() === "w" && !event.shiftKey) tabs.closeActive();
+    const mac = usesCommandKey();
+    if (matchesBinding(event, keys("new-tab"), mac)) newThread();
+    else if (matchesBinding(event, keys("reopen-tab"), mac)) tabs.reopen();
+    else if (matchesBinding(event, keys("close-tab"), mac)) tabs.closeActive();
     else return false;
     return true;
   };
 
-  // The shortcuts the window's buttons advertise in their tooltips.
+  // The shortcuts the window's buttons advertise in their tooltips, each following its rebind.
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
+    // Settings → Keyboard is listening for a rebind: the press being learned must not also run.
+    if (isCapturingBinding()) return;
+    const mac = usesCommandKey();
+    // A thread's own window takes its thread's keys alone, with no tabs, sidebar, places or
+    // settings of its own; closing a tab closes the window.
+    if (solo) {
+      if (matchesBinding(event, keys("close-tab"), mac)) {
+        event.preventDefault();
+        window.close();
+        return;
+      }
+      if (!SOLO_SHORTCUTS.some((id) => matchesBinding(event, keys(id), mac))) return;
+    }
     // Esc backs out of settings, unless something inside them (an open menu) already used it.
     if (event.key === "Escape" && settingsOpen && !event.defaultPrevented) {
       setSettingsOpen(false);
       return;
     }
-    // Alt and a digit goes to a tab, as Ctrl and a digit opens a sidebar row.
-    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    // The go-to-tab binding's digit goes to a tab, as the open-thread-row binding opens a sidebar row.
+    if (matchesFamily(event, keys("go-to-tab"), mac)) {
       const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
       if (digit === undefined || settingsOpen || searchOpen || compact) return;
       tabs.goTo(Number(digit));
@@ -1606,76 +1729,88 @@ function Workspace() {
       event.preventDefault();
       return;
     }
-    // Ctrl is ⌘ in the Mac app (lib/keys.ts).
-    if (!primaryHeld(event) || event.altKey) return;
-    // Ctrl + and Ctrl − scale the desktop window wherever focus is; a browser zooms the page itself.
-    const scaling = canScale() ? scaleShortcut(event) : undefined;
-    if (scaling !== undefined) {
-      registry.set(scaleAtom, scaling === "reset" ? 100 : stepScale(registry.get(scaleAtom), scaling));
-      event.preventDefault();
-      return;
+    // The zoom bindings scale the desktop window wherever focus is; a browser zooms the page itself.
+    if (canScale()) {
+      const scaling = matchesBinding(event, keys("zoom-in"), mac)
+        ? 1
+        : matchesBinding(event, keys("zoom-out"), mac)
+          ? -1
+          : matchesBinding(event, keys("zoom-reset"), mac)
+            ? "reset"
+            : undefined;
+      if (scaling !== undefined) {
+        registry.set(scaleAtom, scaling === "reset" ? 100 : stepScale(registry.get(scaleAtom), scaling));
+        event.preventDefault();
+        return;
+      }
     }
-    // Search has the keys while it's open, but for Ctrl K, which closes it.
-    if (searchOpen && event.key.toLowerCase() !== "k") return;
+    // Search has the keys while it's open, but for the palette's own binding, which closes it.
+    if (searchOpen && !matchesBinding(event, keys("command-palette"), mac)) return;
     if (!settingsOpen && !compact && tabShortcut(event)) {
       event.preventDefault();
       return;
     }
-    // Ctrl \ opens a new thread beside the focused pane, and with Shift, below it.
-    if (event.code === "Backslash" && !settingsOpen && !compact) {
-      splitNew(panes.focused, event.shiftKey ? "bottom" : "right");
+    // The split bindings open a new thread beside the focused pane, below with the below binding.
+    if (!settingsOpen && !compact && matchesBinding(event, keys("split-right"), mac)) {
+      splitNew(panes.focused, "right");
       event.preventDefault();
       return;
     }
-    if (event.shiftKey) {
-      // Ctrl and a digit alone opens a sidebar row, which the sidebar listens for.
-      if (event.code === "Digit1" || event.code === "Digit2") {
-        showThreads();
-        setMode(event.code === "Digit1" ? "work" : "chat");
-      } else if (event.code === "Digit3") {
-        setSettingsOpen(false);
-        setPlace("tasks");
-      } else if (event.code === "Digit4" && githubOk) {
-        setSettingsOpen(false);
-        setPlace("github");
-      } else if (event.key.toLowerCase() === "e" && !settingsOpen && filesRoot !== undefined) {
-        toggleFiles();
-      } else if (event.key.toLowerCase() === "g" && !settingsOpen && gitRoot !== undefined) {
-        toggleGit();
-      } else if (event.key.toLowerCase() === "h" && !settingsOpen && githubRoot !== undefined) {
-        toggleGitHub();
-      } else if ((event.code === "Period" || event.key === ">") && !settingsOpen) {
-        askStopAll();
-      } else return;
+    if (!settingsOpen && !compact && matchesBinding(event, keys("split-below"), mac)) {
+      splitNew(panes.focused, "bottom");
       event.preventDefault();
       return;
     }
-    switch (event.key.toLowerCase()) {
-      case ",":
-        setSettingsOpen(!settingsOpen);
-        break;
-      case "b":
-        if (settingsOpen) return;
-        toggleSidebar();
-        break;
-      case "n":
-        newThread();
-        break;
-      case "k":
-        if (settingsOpen) return;
-        setSearchOpen((open) => !open);
-        break;
-      case "j":
-        if (selected === undefined || settingsOpen) return;
-        toggleInspector();
-        break;
-      case "f":
-        // The files panel's Ctrl F prevents default before the window hears it, and keeps the key.
-        if (event.defaultPrevented || settingsOpen) return;
-        openFind();
-        break;
-      default:
-        return;
+    if (matchesBinding(event, keys("switch-to-work"), mac)) {
+      showThreads();
+      setMode("work");
+    } else if (matchesBinding(event, keys("switch-to-chat"), mac)) {
+      showThreads();
+      setMode("chat");
+    } else if (matchesBinding(event, keys("open-tasks"), mac)) {
+      setSettingsOpen(false);
+      setPlace("tasks");
+    } else if (matchesBinding(event, keys("open-github"), mac) && githubOk) {
+      setSettingsOpen(false);
+      setPlace("github");
+    } else if (matchesBinding(event, keys("open-automations"), mac) && automationsOk) {
+      setSettingsOpen(false);
+      setPlace("automations");
+    } else if (!settingsOpen && matchesBinding(event, keys("toggle-files"), mac) && filesRoot !== undefined) {
+      toggleFiles();
+    } else if (
+      !settingsOpen &&
+      matchesBinding(event, keys("toggle-source-control"), mac) &&
+      gitRoot !== undefined
+    ) {
+      toggleGit();
+    } else if (
+      !settingsOpen &&
+      matchesBinding(event, keys("toggle-github-panel"), mac) &&
+      githubRoot !== undefined
+    ) {
+      toggleGitHub();
+    } else if (!settingsOpen && matchesBinding(event, keys("stop-all"), mac)) {
+      askStopAll();
+    } else if (matchesBinding(event, keys("open-settings"), mac)) {
+      setSettingsOpen(!settingsOpen);
+    } else if (settingsOpen) {
+      return;
+    } else if (matchesBinding(event, keys("toggle-sidebar"), mac)) {
+      toggleSidebar();
+    } else if (matchesBinding(event, keys("new-thread"), mac)) {
+      newThread();
+    } else if (matchesBinding(event, keys("command-palette"), mac)) {
+      setSearchOpen((open) => !open);
+    } else if (matchesBinding(event, keys("toggle-agents"), mac)) {
+      if (selected === undefined) return;
+      toggleInspector();
+    } else if (matchesBinding(event, keys("find-in-thread"), mac)) {
+      // The files panel's binding prevents default before the window hears it, and keeps the key.
+      if (event.defaultPrevented) return;
+      openFind();
+    } else {
+      return;
     }
     event.preventDefault();
   });
@@ -1857,9 +1992,14 @@ function Workspace() {
           </Notice>
         ) : null}
       </Reveal>
-      {WEB ? null : <UpdateNotice />}
-      <WhatsNewHost />
-      <ImportDialogHost />
+      {/* The main window has the app's own news; a thread's own window, its thread's. */}
+      {solo ? null : (
+        <>
+          {WEB ? null : <UpdateNotice />}
+          <WhatsNewHost />
+          <ImportDialogHost />
+        </>
+      )}
       <Reveal shift={-6} className="shrink-0">
         {(actionError ?? exportFailure) ? (
           <Notice
@@ -1881,7 +2021,8 @@ function Workspace() {
   const threadPane = (key: string, focused: boolean) => {
     const resolved = resolve(key);
     const lead = resolved.shown ? leadOf(resolved.shown.agents) !== undefined : false;
-    const opened = key === current;
+    // A thread's own window keeps them with its thread, whichever pane has the focus.
+    const opened = key === (solo?.id ?? current);
     return (
       <ThreadPane
         mode={mode}
@@ -1907,6 +2048,7 @@ function Workspace() {
         paneKey={key}
         onHandles={onPaneHandles}
         actions={paneActions}
+        slashCommands={slashCommands}
       />
     );
   };
@@ -1924,6 +2066,61 @@ function Workspace() {
       onHandOff={handOff}
     />
   );
+  /** Opens a thread an automation started, from its runs. */
+  const openAutomationThread = (threadId: string) => {
+    const summary = summaries.find((candidate) => candidate.id === threadId);
+    if (summary) openSummary(summary);
+  };
+  const automationList = (
+    <AutomationList
+      selected={automationPick}
+      onSelect={(id) => {
+        setAutomationPick(id);
+        setAutomationsPane("main");
+      }}
+      onNew={() => {
+        setAutomationPick("new");
+        setAutomationsPane("main");
+      }}
+    />
+  );
+  /** The picked automation's form, keyed so a switch starts it afresh. */
+  const automationDetail = (onClose?: () => void) =>
+    automationPick === undefined ? null : (
+      <AutomationDetail
+        key={automationPick}
+        id={automationPick === "new" ? undefined : automationPick}
+        available={available}
+        {...(onClose ? { onClose } : {})}
+        onCreated={setAutomationPick}
+        onDeleted={() => {
+          setAutomationPick(undefined);
+          setAutomationsPane("list");
+        }}
+        onOpenThread={openAutomationThread}
+      />
+    );
+  /** The Automations page, laid out as the Tasks page is. */
+  const automationsPage = compact
+    ? {
+        title: "Automations",
+        list: <ScrollArea className="h-full">{automationList}</ScrollArea>,
+        main: automationDetail(),
+        pane: automationsPane,
+        onBackToList: () => setAutomationsPane("list"),
+      }
+    : {
+        title: "Automations",
+        main: (
+          <AutomationsPage
+            list={automationList}
+            detail={automationDetail(() => setAutomationPick(undefined))}
+          />
+        ),
+        pane: "main" as const,
+        onBackToList: () => setAutomationPick(undefined),
+      };
+
   /**
    * The Tasks page lays out its own list and the picked task on a wide window; a narrow one shows
    * them a pane at a time.
@@ -2138,6 +2335,7 @@ function Workspace() {
           ? { thread: { title: baseName(openFile.path), project: baseName(openFile.root) } }
           : {})}
       mode={mode}
+      alone={solo !== undefined}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={toggleSidebar}
       onNewThread={newThread}
@@ -2168,7 +2366,9 @@ function Workspace() {
           }
         : place === "tasks"
           ? { page: tasksPage }
-          : {})}
+          : place === "automations" && automationsOk
+            ? { page: automationsPage }
+            : {})}
       rail={(orientation) => (
         <Rail
           view={settingsOpen ? "settings" : (place ?? (mode === "work" ? "home" : "chat"))}
@@ -2176,7 +2376,7 @@ function Workspace() {
             if (view === "settings") {
               if (settingsOpen) setSettingsOpen(false);
               else openSettings();
-            } else if (view === "github" || view === "tasks") {
+            } else if (view === "github" || view === "tasks" || view === "automations") {
               setSettingsOpen(false);
               setPlace(view);
             } else {
@@ -2186,7 +2386,10 @@ function Workspace() {
           }}
           harnesses={indicators}
           onOpenUsage={() => openSettings("usage")}
-          hidden={githubOk ? [] : ["github"]}
+          hidden={[
+            ...(githubOk ? [] : (["github"] as const)),
+            ...(automationsOk ? [] : (["automations"] as const)),
+          ]}
           orientation={orientation}
         />
       )}
@@ -2274,6 +2477,7 @@ function Workspace() {
                   }),
               }
             : {})}
+          {...(openInWindow ? { onOpenWindow: openInWindow } : {})}
           open={tabs.tabs.map((tab) => tab.key)}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
@@ -2293,6 +2497,7 @@ function Workspace() {
           newLabel={mode === "work" ? "New thread" : "New chat"}
           {...tabs.actions}
           onSplit={(key, side) => splitWith(panes.focused, side, key)}
+          {...(openInWindow ? { onOpenWindow: openInWindow } : {})}
         />
       }
       {...(searchOpen ? { closeDialog: () => setSearchOpen(false) } : {})}
@@ -2407,9 +2612,14 @@ function Workspace() {
           />
         </div>
       )}
-      <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
-      {previewBridge() === undefined ? null : <BrowserHost onOpened={agentOpened} />}
-      <TaskSync signedIn={account._tag === "SignedIn"} />
+      {/* The main window keeps the account's syncs and hosts the agents' browser. */}
+      {solo ? null : (
+        <>
+          <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
+          {previewBridge() === undefined ? null : <BrowserHost onOpened={agentOpened} />}
+          <TaskSync signedIn={account._tag === "SignedIn"} />
+        </>
+      )}
       {selected ? (
         <StopAllDialog
           scope={stopScope}

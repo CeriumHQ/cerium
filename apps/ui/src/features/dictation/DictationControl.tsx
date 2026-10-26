@@ -5,11 +5,11 @@ import { useEffect, useEffectEvent, useRef, useState, type MouseEvent } from "re
 import { shellBridge } from "../../backend/shell.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useChanged } from "../../lib/motion.ts";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { elapsed, problemText } from "./model.ts";
 import type { Dictation } from "./useDictation.ts";
 
-// Control on a Mac too, where ⌘M minimizes the window (lib/keys.ts).
-export const DICTATION_SHORTCUT = "Control M";
+// Control stays the Control key itself, even on a Mac where ⌘M minimizes (lib/shortcuts.ts).
 
 /** Clicking keeps the cursor in the message, where the words go. */
 const keepFocus = (event: MouseEvent) => event.preventDefault();
@@ -60,6 +60,7 @@ function Elapsed({ since }: { since: number }) {
  * time and a level meter that stops it. Its download shows here the first time.
  */
 export function DictationControl({ dictation }: { dictation: Dictation }) {
+  const dictateKeys = useShortcut("dictate");
   const { state, download } = dictation;
   // Each of the microphone, the recording pill and the writing pill pops in as it takes the place.
   const form =
@@ -76,7 +77,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
 
   if (form === "recording") {
     return (
-      <Tooltip label="Stop dictating" shortcut={DICTATION_SHORTCUT}>
+      <Tooltip label="Stop dictating" shortcut={dictateKeys}>
         <Button
           onClick={dictation.toggle}
           onMouseDown={keepFocus}
@@ -114,7 +115,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
   }
 
   return (
-    <Tooltip label="Dictate" shortcut={DICTATION_SHORTCUT}>
+    <Tooltip label="Dictate" shortcut={dictateKeys}>
       <Button
         onClick={dictation.toggle}
         onMouseDown={keepFocus}

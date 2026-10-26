@@ -14,6 +14,7 @@ import {
   refreshIssue,
 } from "../../backend/issues.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Conversation } from "../github/Conversation.tsx";
@@ -130,7 +131,13 @@ export function IssueViewer({
             </>
           ) : null}
         </MoreMenu>
-        <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+        <IconButton
+          icon={X}
+          label="Close"
+          shortcut={useShortcut("close-tab")}
+          onClick={onClose}
+          className="max-md:size-10"
+        />
       </span>
     </header>
   );

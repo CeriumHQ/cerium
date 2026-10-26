@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
+import type { ThreadId } from "@cerium/protocol";
 import type { GitHubRepository } from "@cerium/rpc";
 import { RegistryContext, useAtom, useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
@@ -15,6 +16,9 @@ import {
   refreshPullList,
 } from "../../backend/github.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
+import type { MessageBox } from "../composer/messageBox.ts";
+import { useReviewsOffered } from "../review/hooks.ts";
 import { CreatePullDialog } from "./CreatePullDialog.tsx";
 import { GitHubSignIn } from "./GitHubSignIn.tsx";
 import { githubErrorOf } from "./model.ts";
@@ -38,10 +42,13 @@ export function GitHubPanel({
   issues,
   openPull,
   onOpenPull,
+  review,
   onClose,
 }: {
   /** The open work thread's folder, its worktree's when it has one. */
   cwd: string;
+  /** The thread a review before opening a pull request reports to, and its message box. */
+  review?: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
   /** The Issues tab, given the repository, and how to read it again. */
   issues?: ((repository: GitHubRepository) => { content: ReactNode; refresh: () => void }) | undefined;
   /** The pull request whose tab shows. */
@@ -56,6 +63,7 @@ export function GitHubPanel({
   const repository = AsyncResult.getOrElse(result, () => undefined);
   const branch = AsyncResult.getOrElse(useAtomValue(branchPullAtom(cwd)), () => undefined);
   const [creating, setCreating] = useState(false);
+  const reviewsOffered = useReviewsOffered();
   const issuesTab = repository && issues ? issues(repository) : undefined;
   const shown = issuesTab === undefined ? "pulls" : tab;
   const element = useRef<HTMLDivElement>(null);
@@ -118,7 +126,13 @@ export function GitHubPanel({
           />
         ) : null}
         <IconButton icon={RefreshCw} label="Refresh" onClick={refresh} className="max-md:size-10" />
-        <IconButton icon={X} label="Close" onClick={onClose} className="max-md:size-10" />
+        <IconButton
+          icon={X}
+          label="Close"
+          shortcut={useShortcut("toggle-github-panel")}
+          onClick={onClose}
+          className="max-md:size-10"
+        />
       </header>
       <div className="min-h-0 flex-1">
         {repository ? (
@@ -149,6 +163,7 @@ export function GitHubPanel({
           open={creating}
           onOpenChange={setCreating}
           onCreated={onOpenPull}
+          review={reviewsOffered ? review : undefined}
         />
       ) : null}
     </div>

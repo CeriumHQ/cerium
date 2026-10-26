@@ -22,6 +22,7 @@ import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
 import { MenuCheckboxItem, MenuPopup, MenuRoot, MenuTrigger } from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
+import { useShortcut } from "../lib/shortcuts.ts";
 import { WEB } from "../backend/target.ts";
 import type { AppMode } from "./mode.ts";
 import { RAIL, type SidePanelId } from "./panelLayout.ts";
@@ -46,6 +47,8 @@ interface TitlebarProps {
   readonly page?: string;
   /** The page lays out its own list, so the sidebar's place, and the controls over it, fold away. */
   readonly bare?: boolean;
+  /** A thread's own window, which has no sidebar to toggle and no new thread to start: the mark alone. */
+  readonly alone?: boolean;
   readonly mode: AppMode;
   readonly sidebarOpen: boolean;
   /** The sidebar's width while it shows, so the controls above it end where it does. */
@@ -76,6 +79,7 @@ export function Titlebar({
   thread,
   page,
   bare = false,
+  alone = false,
   mode,
   sidebarOpen,
   sidebarWidth,
@@ -112,26 +116,28 @@ export function Titlebar({
         <span style={{ paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))` }}>
           <CeriumBrand nameClassName="max-lg:hidden" />
         </span>
-        <div
-          inert={covered}
-          className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${covered ? "opacity-0" : ""}`}
-        >
-          <IconButton
-            icon={PanelLeft}
-            label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            shortcut="Ctrl B"
-            onClick={onToggleSidebar}
-          />
-          {/* The tabs bring their own. */}
-          {sidebarOpen || tabs ? null : (
+        {alone ? null : (
+          <div
+            inert={covered}
+            className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${covered ? "opacity-0" : ""}`}
+          >
             <IconButton
-              icon={SquarePen}
-              label={mode === "work" ? "New thread" : "New chat"}
-              shortcut="Ctrl N"
-              onClick={onNewThread}
+              icon={PanelLeft}
+              label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              shortcut={useShortcut("toggle-sidebar")}
+              onClick={onToggleSidebar}
             />
-          )}
-        </div>
+            {/* The tabs bring their own. */}
+            {sidebarOpen || tabs ? null : (
+              <IconButton
+                icon={SquarePen}
+                label={mode === "work" ? "New thread" : "New chat"}
+                shortcut={useShortcut("new-thread")}
+                onClick={onNewThread}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/*
@@ -278,7 +284,10 @@ export function CompactPanelMenu({
 /** Opens Source control, which shares the agents panel's place. */
 export function SourceControlToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Tooltip label={open ? "Hide source control" : "Show source control"} shortcut="Ctrl Shift G">
+    <Tooltip
+      label={open ? "Hide source control" : "Show source control"}
+      shortcut={useShortcut("toggle-source-control")}
+    >
       <Button
         onClick={onToggle}
         aria-pressed={open}
@@ -298,7 +307,7 @@ export function SourceControlToggle({ open, onToggle }: { open: boolean; onToggl
 /** Opens GitHub's pull requests and issues, which share the agents panel's place. */
 export function GitHubToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Tooltip label={open ? "Hide GitHub" : "Show GitHub"} shortcut="Ctrl Shift H">
+    <Tooltip label={open ? "Hide GitHub" : "Show GitHub"} shortcut={useShortcut("toggle-github-panel")}>
       <Button
         onClick={onToggle}
         aria-pressed={open}
@@ -318,7 +327,7 @@ export function GitHubToggle({ open, onToggle }: { open: boolean; onToggle: () =
 /** Opens the files panel, which shares the agents panel's place. */
 export function FilesToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Tooltip label={open ? "Hide files" : "Show files"} shortcut="Ctrl Shift E">
+    <Tooltip label={open ? "Hide files" : "Show files"} shortcut={useShortcut("toggle-files")}>
       <Button
         onClick={onToggle}
         aria-pressed={open}
@@ -403,7 +412,7 @@ export function RunToggle({ running, onToggle }: { running: boolean; onToggle: (
 /** Shows the open thread's terminals under its conversation. */
 export function TerminalToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut="Control `">
+    <Tooltip label={open ? "Hide terminal" : "Show terminal"} shortcut={useShortcut("toggle-terminal")}>
       <Button
         onClick={onToggle}
         aria-pressed={open}
@@ -432,7 +441,7 @@ export function AgentsToggle({
 }) {
   const providers = [...new Set(agents)];
   return (
-    <Tooltip label={open ? "Hide agents" : "Show agents"} shortcut="Ctrl J">
+    <Tooltip label={open ? "Hide agents" : "Show agents"} shortcut={useShortcut("toggle-agents")}>
       <Button
         onClick={onToggle}
         aria-pressed={open}

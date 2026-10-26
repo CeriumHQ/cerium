@@ -16,17 +16,3 @@ export const useScale = () => {
     window.cerium?.setZoom?.(scale / 100);
   }, [scale]);
 };
-
-/**
- * What a key pressed with Ctrl does to the scale: + and − step it, on the main keys or the numpad,
- * and the numpad's 0 puts it back to 100% (the main row's Ctrl 0 opens a thread).
- */
-export const scaleShortcut = (event: {
-  readonly key: string;
-  readonly code: string;
-}): -1 | 1 | "reset" | undefined => {
-  if (event.key === "=" || event.key === "+" || event.code === "NumpadAdd") return 1;
-  if (event.key === "-" || event.key === "_" || event.code === "NumpadSubtract") return -1;
-  if (event.code === "Numpad0") return "reset";
-  return undefined;
-};

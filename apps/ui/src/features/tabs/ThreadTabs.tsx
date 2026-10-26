@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Tabs } from "@base-ui/react/tabs";
 import type { ProviderId } from "@cerium/protocol";
 import {
+  AppWindow,
   ArrowRightToLine,
   CircleDot,
   Columns2,
@@ -30,9 +31,10 @@ import { FileIcon } from "../../components/FileIcon.tsx";
 import { settled, useArrivals, useLingering } from "../../lib/motion.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
-import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { isNonThreadKey } from "./tabKinds.ts";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { newThreadDraftTitleAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { paneDrag } from "../split/drag.ts";
@@ -76,6 +78,8 @@ export interface TabActions {
   readonly onReopen?: () => void;
   /** Opens the tab's thread in a pane on `side` of the focused one; absent where panes can't split. */
   readonly onSplit?: (key: string, side: "right" | "bottom") => void;
+  /** Opens the tab's thread in a window of its own; absent where there are no such windows. */
+  readonly onOpenWindow?: (threadId: string) => void;
 }
 
 const tabKey = (tab: TabView) => tab.key;
@@ -101,6 +105,7 @@ export function ThreadTabs({
   onNewTab,
   onReopen,
   onSplit,
+  onOpenWindow,
 }: {
   tabs: ReadonlyArray<TabView>;
   active: string | undefined;
@@ -109,6 +114,7 @@ export function ThreadTabs({
 } & TabActions) {
   const list = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLElement>());
+  const newTabKeys = useShortcut("new-tab");
   /**
    * The tab pressed, and the one shown before it: a tab carried off the strip to the panes gives the
    * focused pane back what it showed.
@@ -263,6 +269,10 @@ export function ThreadTabs({
                 {...(onSplit && tab.key !== active
                   ? { onSplit: (side: "right" | "bottom") => onSplit(tab.key, side) }
                   : {})}
+                // A thread that has started, on this computer.
+                {...(onOpenWindow && tab.thread && tab.thread.elsewhere === undefined
+                  ? { onOpenWindow: () => onOpenWindow(tab.key) }
+                  : {})}
               />
             ) : (
               <ClosingTab key={key} tab={tab} onGone={() => release(key)} />
@@ -275,7 +285,7 @@ export function ThreadTabs({
           />
         </Tabs.List>
       </Tabs.Root>
-      <Tooltip label={newLabel} shortcut="Ctrl T">
+      <Tooltip label={newLabel} shortcut={newTabKeys}>
         <Button
           aria-label={newLabel}
           onClick={onNewTab}
@@ -390,6 +400,7 @@ function ThreadTab({
   onKeep,
   onReopen,
   onSplit,
+  onOpenWindow,
 }: {
   tab: TabView;
   active: boolean;
@@ -409,9 +420,12 @@ function ThreadTab({
   onKeep: () => void;
   onReopen?: () => void;
   onSplit?: (side: "right" | "bottom") => void;
+  onOpenWindow?: () => void;
 }) {
   const unread = tab.unread === true && !active;
   const title = useAtomValue(newThreadDraftTitleAtom(tab.key)) ?? tab.title;
+  const closeTabKeys = useShortcut("close-tab");
+  const reopenTabKeys = useShortcut("reopen-tab");
   return (
     <ContextMenuArea
       menu={
@@ -421,18 +435,27 @@ function ThreadTab({
               Keep open
             </MenuItem>
           ) : null}
-          {onSplit ? (
+          {onSplit || onOpenWindow ? (
             <>
-              <MenuItem icon={Columns2} onClick={() => onSplit("right")}>
-                Open to the right
-              </MenuItem>
-              <MenuItem icon={Rows2} onClick={() => onSplit("bottom")}>
-                Open below
-              </MenuItem>
+              {onSplit ? (
+                <>
+                  <MenuItem icon={Columns2} onClick={() => onSplit("right")}>
+                    Open to the right
+                  </MenuItem>
+                  <MenuItem icon={Rows2} onClick={() => onSplit("bottom")}>
+                    Open below
+                  </MenuItem>
+                </>
+              ) : null}
+              {onOpenWindow ? (
+                <MenuItem icon={AppWindow} onClick={onOpenWindow}>
+                  Open in new window
+                </MenuItem>
+              ) : null}
               <MenuSeparator />
             </>
           ) : null}
-          <MenuItem icon={X} shortcut="Ctrl W" onClick={onClose}>
+          <MenuItem icon={X} shortcut={closeTabKeys} onClick={onClose}>
             Close
           </MenuItem>
           <MenuItem icon={XSquare} disabled={!others} onClick={onCloseOthers}>
@@ -442,9 +465,15 @@ function ThreadTab({
             Close to the right
           </MenuItem>
           <MenuSeparator />
+          {tab.draft || isNonThreadKey(tab.key) ? null : (
+            <>
+              <ExportMenuItems threadId={tab.key} />
+              <MenuSeparator />
+            </>
+          )}
           <MenuItem
             icon={History}
-            shortcut="Ctrl Shift T"
+            shortcut={reopenTabKeys}
             disabled={onReopen === undefined}
             {...(onReopen ? { onClick: onReopen } : {})}
           >
@@ -465,12 +494,6 @@ function ThreadTab({
         onDoubleClick={tab.preview ? onKeep : undefined}
         className={`group/tab relative flex h-7 max-w-52 min-w-28 basis-52 items-center rounded-lg transition-[background-color,opacity,flex-basis,min-width,max-width] ${
           // A tab opened grows out of the strip from nothing, pushing those after it along.
-          {tab.draft || isNonThreadKey(tab.key) ? null : (
-            <>
-              <ExportMenuItems threadId={tab.key} />
-              <MenuSeparator />
-            </>
-          )}
           arriving
             ? "overflow-hidden duration-[150ms,200ms,240ms,240ms,240ms] ease-out-soft starting:max-w-0 starting:min-w-0 starting:basis-0 starting:opacity-0"
             : "duration-150"

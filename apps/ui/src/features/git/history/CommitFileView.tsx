@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { commitDiffAtom, commitDiffKey } from "../../../backend/history.ts";
 import { FileIcon } from "../../../components/FileIcon.tsx";
 import { IconButton } from "../../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../../lib/shortcuts.ts";
 import { ContextMenuArea } from "../../../components/ui/Menu.tsx";
 import { dirOf, nameOf } from "../../files/model.ts";
 import type { PaneChrome } from "../../split/SplitView.tsx";
@@ -60,7 +61,13 @@ export function CommitFileView({
       <span className="ml-auto shrink-0 font-mono text-meta text-fg-tertiary" title={`Commit ${sha}`}>
         {sha.slice(0, 7)}
       </span>
-      <IconButton icon={X} label="Close" shortcut="Ctrl W" onClick={onClose} className="max-md:size-10" />
+      <IconButton
+        icon={X}
+        label="Close"
+        shortcut={useShortcut("close-tab")}
+        onClick={onClose}
+        className="max-md:size-10"
+      />
     </header>
   );
 

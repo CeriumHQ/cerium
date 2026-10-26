@@ -1,6 +1,9 @@
 import type { TerminalId } from "@cerium/rpc";
+import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
+import { usesCommandKey } from "../../lib/keys.ts";
+import { isCapturingBinding, matchesBinding, shortcutBindingsAtom } from "../../lib/shortcuts.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import { ownerKey, type TerminalOwner } from "./model.ts";
 import { TerminalDrawer } from "./TerminalDrawer.tsx";
@@ -69,9 +72,10 @@ export function useTerminalDrawer({
     if (key !== undefined) setOpen(key, false);
   };
 
+  const terminalKeys = useAtomValue(shortcutBindingsAtom)["toggle-terminal"];
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (!event.ctrlKey || event.code !== "Backquote" || event.altKey || event.metaKey || event.shiftKey)
-      return;
+    if (isCapturingBinding()) return;
+    if (!matchesBinding(event, terminalKeys ?? "Control `", usesCommandKey())) return;
     if (suspended || key === undefined) return;
     event.preventDefault();
     if (!open) show();

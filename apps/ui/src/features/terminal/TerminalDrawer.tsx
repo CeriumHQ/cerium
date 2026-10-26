@@ -11,6 +11,7 @@ import { Notice } from "../../app/Notice.tsx";
 import { usePanelWidth } from "../../app/ResizeHandle.tsx";
 import { closeTerminal, openTerminal, terminalsAtom } from "../../backend/terminals.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { HeightHandle } from "./HeightHandle.tsx";
 import {
   DRAWER,
@@ -174,7 +175,12 @@ export function TerminalDrawer({
           </Tabs.List>
           <IconButton icon={Plus} label="New terminal" onClick={start} />
           <div className="ml-auto" />
-          <IconButton icon={ChevronDown} label="Hide terminal" shortcut="Control `" onClick={onHide} />
+          <IconButton
+            icon={ChevronDown}
+            label="Hide terminal"
+            shortcut={useShortcut("toggle-terminal")}
+            onClick={onHide}
+          />
         </div>
         {error ? (
           <Notice tone="error" clamp onDismiss={() => setError(undefined)}>

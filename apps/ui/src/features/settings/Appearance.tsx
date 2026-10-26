@@ -4,6 +4,7 @@ import { useAtom } from "@effect/atom-react";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 
 import { keyLabel } from "../../lib/keys.ts";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { paletteAtom, palettes, type Palette } from "./palettes.ts";
 import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
@@ -124,7 +125,7 @@ function ScaleRow() {
   return (
     <SettingsRow
       label="Window scale"
-      hint={`${keyLabel("Ctrl +")} and ${keyLabel("Ctrl −")} change it from anywhere`}
+      hint={`${keyLabel(useShortcut("zoom-in"))} and ${keyLabel(useShortcut("zoom-out"))} change it from anywhere`}
       className="pr-2.5"
       control={() => (
         <SelectRoot
