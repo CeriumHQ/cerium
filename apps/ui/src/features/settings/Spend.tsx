@@ -151,7 +151,7 @@ export function SpendSection({
 /** Each subscribed harness's models by the share of its tokens they took since its limits last reset. */
 function ResetShares() {
   const snapshot = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
-  const now = Date.now();
+  const [now] = useState(() => Date.now());
   const sections = (snapshot?.usage ?? []).flatMap((usage) => {
     const start = lastResetOf(usage, now);
     return start === undefined ? [] : [{ provider: usage.provider, start }];
