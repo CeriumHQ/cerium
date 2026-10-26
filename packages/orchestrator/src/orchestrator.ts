@@ -13,6 +13,7 @@ import {
   MAX_TASK_TITLE,
   MAX_THREAD_TITLE,
   narrowAccess,
+  REVIEWER_ROLE,
   type AccessMode,
   type AdvisorSettings,
   type AgentEvent,
@@ -166,6 +167,8 @@ interface SpawnTarget {
   readonly provider: ProviderId;
   readonly model: string;
   readonly effort?: ReasoningEffort;
+  /** The roster's speed for it; absent, the harness's own default. */
+  readonly speed?: ModelSpeed;
 }
 
 /**
@@ -258,6 +261,12 @@ const choiceOf = (info: AgentInfo): ModelChoice => ({
 
 /** A thread's advisor: the read-only child Cerium starts for `ask_advisor`. */
 const isAdvisor = (info: AgentInfo) => info.parentId !== undefined && info.role === ADVISOR_ROLE;
+
+/** A cross-harness reviewer: the read-only child Cerium starts for `startReview`. */
+const isReviewer = (info: AgentInfo) => info.parentId !== undefined && info.role === REVIEWER_ROLE;
+
+/** A child Cerium starts itself, whose answers go elsewhere than its lead: the advisor or a reviewer. */
+const isHelper = (info: AgentInfo) => isAdvisor(info) || isReviewer(info);
 
 const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("image/");
 
@@ -528,6 +537,20 @@ export class Orchestrator extends Context.Service<
       question: string,
     ): Effect.Effect<{ readonly advisorId: AgentId }, OrchestratorError>;
     /**
+     * Starts a cross-harness reviewer in a thread: a read-only child of its lead on `reviewer`, in the
+     * thread's folder, told `prompt`. Its final message of that turn is the review, which `reply`
+     * resolves with, and goes nowhere else: the lead never hears it. It stops once it has answered, and
+     * `reply` fails when it ends before then.
+     */
+    startReview(
+      threadId: ThreadId,
+      reviewer: { readonly provider: ProviderId; readonly model: string; readonly effort?: ReasoningEffort },
+      prompt: string,
+    ): Effect.Effect<
+      { readonly agentId: AgentId; readonly reply: Effect.Effect<string, OrchestratorError> },
+      OrchestratorError
+    >;
+    /**
      * Puts questions to the user for an agent: `ask_user`, the only question tool agents have. Returns
      * at once; the user's answer reaches the caller later, as a notice.
      */
@@ -662,6 +685,8 @@ export class Orchestrator extends Context.Service<
       const advisorQuestions = new Map<AgentId, Array<AgentId>>();
       /** One advisor starts at a time, so agents asking together share it. */
       const advisorPermit = yield* Semaphore.make(1);
+      /** Each live reviewer's review, settled with its final message once its turn ends. */
+      const reviews = new Map<AgentId, Deferred.Deferred<string, OrchestratorError>>();
       const feed = yield* PubSub.unbounded<AgentEvent>();
       /** Threads still waiting for their first message to name them, with the title they started with. */
       const untitled = new Map<ThreadId, string>();
@@ -899,6 +924,21 @@ export class Orchestrator extends Context.Service<
           );
         });
 
+      /** A reviewer that ended before it answered leaves its review failed. */
+      const releaseReview = (rt: Runtime) =>
+        Effect.gen(function* () {
+          const review = reviews.get(rt.info.id);
+          reviews.delete(rt.info.id);
+          if (review === undefined) return;
+          yield* Deferred.fail(
+            review,
+            new OrchestratorError({
+              reason: "unavailable",
+              message: `${rt.info.model} stopped before it finished the review.`,
+            }),
+          );
+        });
+
       const setState = (rt: Runtime, state: AgentState) =>
         Effect.gen(function* () {
           if (rt.info.state === state) return;
@@ -909,6 +949,7 @@ export class Orchestrator extends Context.Service<
           yield* store.updateAgent(rt.info.id, { state, updatedAt }).pipe(Effect.mapError(unavailable));
           yield* emit(rt, { _tag: "AgentStateChanged", state });
           if (isAdvisor(rt.info) && (state === "stopped" || state === "failed")) yield* releaseAdvisor(rt);
+          if (isReviewer(rt.info) && (state === "stopped" || state === "failed")) yield* releaseReview(rt);
         });
 
       const finishTurn = (rt: Runtime) =>
@@ -1513,7 +1554,7 @@ export class Orchestrator extends Context.Service<
             model: rt.info.model,
           });
           const running = childrenOf(rt.info.id)
-            .filter((child) => !child.ended && !isAdvisor(child.info))
+            .filter((child) => !child.ended && !isHelper(child.info))
             .map((child) => child.info);
           const item: InputItem = {
             _tag: "SystemNotice",
@@ -1541,8 +1582,9 @@ export class Orchestrator extends Context.Service<
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
           const first = yield* Queue.take(rt.inbox);
-          // An advisor answers one question a turn, each to the agent that asked it.
-          const advisor = isAdvisor(rt.info);
+          // An advisor answers one question a turn, each to the agent that asked it; a reviewer reviews
+          // the one diff it was started with.
+          const advisor = isHelper(rt.info);
           // Notices wait briefly so several arriving together become one turn; the user never waits.
           if (first._tag !== "FromUser" && !advisor) yield* Effect.sleep(config.batchWindow);
           const items = advisor
@@ -1576,7 +1618,18 @@ export class Orchestrator extends Context.Service<
           const halted = rt.halted;
           rt.halted = false;
 
-          if (advisor) {
+          const review = reviews.get(rt.info.id);
+          if (review !== undefined) {
+            reviews.delete(rt.info.id);
+            yield* halted
+              ? Deferred.fail(
+                  review,
+                  new OrchestratorError({ reason: "unavailable", message: "The review was stopped." }),
+                )
+              : Deferred.succeed(review, rt.lastMessage ?? "");
+            // Its answer is all it was for; stopped behind this fiber, which stopping interrupts.
+            yield* Effect.forkIn(stopRuntime(rt), layerScope);
+          } else if (advisor) {
             if (first._tag !== "FromAgent") return;
             const waiting = advisorQuestions.get(rt.info.id) ?? [];
             const index = waiting.indexOf(first.agentId);
@@ -1816,6 +1869,7 @@ export class Orchestrator extends Context.Service<
             model: target.model,
             ...(effort ? { effort } : {}),
             ...(autoEffort ? { autoEffort: true } : {}),
+            ...(target.speed ? { speed: target.speed } : {}),
             access: childAccess(lead, request),
             state: "idle",
             createdAt,
@@ -1931,7 +1985,12 @@ export class Orchestrator extends Context.Service<
           );
         if (entry === undefined) return undefined;
         const effort = request.effort ?? entry.effort;
-        return { provider: entry.provider, model: entry.model, ...(effort ? { effort } : {}) };
+        return {
+          provider: entry.provider,
+          model: entry.model,
+          ...(effort ? { effort } : {}),
+          ...(entry.speed ? { speed: entry.speed } : {}),
+        };
       };
 
       const stopRuntime = (rt: Runtime) =>
@@ -2116,11 +2175,12 @@ export class Orchestrator extends Context.Service<
           history.flatMap(({ payload }) => (payload._tag === "AgentSpawned" ? [payload.childId] : [])),
         );
         const gone = (yield* store.listAgents(thread.id).pipe(Effect.mapError(unavailable))).filter(
-          // The advisor isn't the lead's to spawn again: the next question starts a new one.
+          // The advisor and reviewers aren't the lead's to spawn again: the next question or review
+          // starts a new one.
           (agent) =>
             agent.parentId === agentId &&
             spawned.has(agent.id) &&
-            !isAdvisor(agent) &&
+            !isHelper(agent) &&
             !runtimes.has(agent.id),
         );
         const notices: Array<InputItem> = [];
@@ -3254,8 +3314,8 @@ export class Orchestrator extends Context.Service<
           const rt = yield* runtime(agentId);
           yield* stopRuntime(rt);
           // A lead waiting on this child would otherwise wait for a result that never comes. An
-          // advisor's askers hear from `releaseAdvisor` instead.
-          if (rt.info.parentId !== undefined && !isAdvisor(rt.info)) {
+          // advisor's askers hear from `releaseAdvisor` instead, and a reviewer reports to nobody.
+          if (rt.info.parentId !== undefined && !isHelper(rt.info)) {
             yield* deliver(rt.info.parentId, {
               _tag: "SystemNotice",
               text: `The user stopped agent ${rt.info.id} "${rt.info.role}"; it will not report back. Carry on without it, or spawn a new agent if you still need that work.`,
@@ -3425,6 +3485,12 @@ export class Orchestrator extends Context.Service<
               message: `The role "${ADVISOR_ROLE}" belongs to the user's advisor: ask it with \`ask_advisor\`, or give your agent another role.`,
             });
           }
+          if (request.role === REVIEWER_ROLE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `The role "${REVIEWER_ROLE}" belongs to the reviews the user starts: give your agent another role, such as "reviewer".`,
+            });
+          }
           const target = resolveTarget(yield* catalog.entries, request);
           if (target !== undefined) {
             return {
@@ -3548,6 +3614,12 @@ export class Orchestrator extends Context.Service<
           if (isAdvisor(recipient.info)) {
             return yield* notAllowed("Put questions to the advisor with `ask_advisor`.");
           }
+          if (isReviewer(from.info)) {
+            return yield* notAllowed("A reviewer messages nobody: end your turn with the review.");
+          }
+          if (isReviewer(recipient.info)) {
+            return yield* notAllowed("That agent is reviewing a diff for the user and takes no messages.");
+          }
           const crossThread = from.info.threadId !== recipient.info.threadId;
           if (crossThread && (from.info.parentId !== undefined || recipient.info.parentId !== undefined)) {
             return yield* notAllowed(
@@ -3609,6 +3681,66 @@ export class Orchestrator extends Context.Service<
               return { advisorId: advisor.info.id };
             }),
           );
+        }),
+
+        startReview: Effect.fn("Orchestrator.startReview")(function* (
+          threadId: ThreadId,
+          reviewer: {
+            readonly provider: ProviderId;
+            readonly model: string;
+            readonly effort?: ReasoningEffort;
+          },
+          prompt: string,
+        ) {
+          const thread = yield* threadInfo(threadId);
+          if (thread.worktree !== undefined && thread.archivedAt !== undefined) {
+            return yield* notAllowed(
+              "This thread's worktree was removed when it was archived; restore it first.",
+            );
+          }
+          if (!adapters.has(reviewer.provider)) {
+            return yield* new OrchestratorError({
+              reason: "unavailable",
+              message: `No ${reviewer.provider} adapter is installed to review with.`,
+            });
+          }
+          const lead = (yield* store.listAgents(threadId).pipe(Effect.mapError(unavailable))).find(
+            (agent) => agent.parentId === undefined,
+          );
+          if (lead === undefined) return yield* notFound(`Thread ${threadId} has no lead.`);
+          const createdAt = yield* now;
+          const info: AgentInfo = {
+            id: (yield* makeId("agt")) as AgentId,
+            threadId,
+            parentId: lead.id,
+            role: REVIEWER_ROLE,
+            provider: reviewer.provider,
+            model: reviewer.model,
+            ...(reviewer.effort ? { effort: reviewer.effort } : {}),
+            access: "readOnly",
+            state: "idle",
+            createdAt,
+            updatedAt: createdAt,
+          };
+          yield* store.createAgent(info).pipe(Effect.mapError(unavailable));
+          const spawned: EventPayload = {
+            _tag: "AgentSpawned",
+            childId: info.id,
+            role: info.role,
+            provider: info.provider,
+            model: info.model,
+            access: info.access,
+          };
+          const live = runtimes.get(lead.id);
+          yield* live === undefined ? emitStored(lead, spawned) : emit(live, spawned);
+          const reply = yield* Deferred.make<string, OrchestratorError>();
+          reviews.set(info.id, reply);
+          const rt = yield* startRuntime(info, threadDirectories.get(threadId) ?? threadDirectory(thread), {
+            initial: { _tag: "SystemNotice", text: prompt },
+          });
+          // One that ended as it started would leave the review waiting.
+          if (rt.ended) yield* releaseReview(rt);
+          return { agentId: info.id, reply: Deferred.await(reply) };
         }),
 
         killChild: Effect.fn("Orchestrator.killChild")(function* (callerId: AgentId, childId: AgentId) {

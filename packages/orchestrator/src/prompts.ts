@@ -1,6 +1,7 @@
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import {
   ADVISOR_ROLE,
+  REVIEWER_ROLE,
   type AgentId,
   type AgentInfo,
   type AgentState,
@@ -293,6 +294,21 @@ const advisorPrompt = [
     " change no files, run nothing that changes anything, and start or message no agents.",
 ].join("\n");
 
+/**
+ * A cross-harness reviewer's whole brief: it reviews the one diff it is given, on another provider than
+ * the agents that wrote it, and its final message is the review Cerium reads. The diff and the form of
+ * the answer come with its turn.
+ */
+const reviewerPrompt = [
+  "You are running inside Cerium, which coordinates agents from several AI providers in one thread.",
+  "You are a code reviewer the user called in from another provider than the agents that wrote the changes," +
+    " to catch what they missed. You get one diff to review. Your final message goes to Cerium, which turns" +
+    " it into comments on the diff's lines for the user to send back to the agents or dismiss.",
+  "Read the files around the changes to ground what you say, but never change anything: edit no files, run" +
+    " nothing that changes anything, and start or message no agents. You can't ask questions: review what" +
+    " you have.",
+].join("\n");
+
 export const systemPrompt = (
   agent: AgentInfo,
   busServer: string,
@@ -304,6 +320,7 @@ export const systemPrompt = (
 ): string => {
   const ask = asking(agent, busServer);
   if (agent.parentId !== undefined && agent.role === ADVISOR_ROLE) return advisorPrompt;
+  if (agent.parentId !== undefined && agent.role === REVIEWER_ROLE) return reviewerPrompt;
   const help = options.advisor === true ? stuck : [];
   const shared = [
     "You are running inside Cerium, which runs agents from several AI providers side by side. A thread has" +

@@ -102,6 +102,12 @@ export const LEAD_ROLE = "lead";
 /** The role of a thread's advisor, a child Cerium starts itself; leads can't spawn one. */
 export const ADVISOR_ROLE = "advisor";
 
+/**
+ * The role of a cross-harness reviewer, a read-only child Cerium starts when the user asks for a review
+ * of a diff; its findings go to the user, not the lead, and leads can't spawn one.
+ */
+export const REVIEWER_ROLE = "review";
+
 export const AgentInfo = Schema.Struct({
   id: AgentId,
   threadId: ThreadId,

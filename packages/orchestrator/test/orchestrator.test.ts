@@ -17,6 +17,7 @@ const haiku: CatalogEntry = {
   provider: "claude",
   model: "haiku",
   effort: "low",
+  speed: "fast",
   description: "Quick lookups",
 };
 
@@ -311,6 +312,7 @@ describe("Orchestrator", () => {
       const child = yield* orchestrator.agent(childId);
       assert.strictEqual(child.access, "ask", "a child never gets more access than its lead");
       assert.strictEqual(child.effort, "low");
+      assert.strictEqual(child.speed, "fast", "a child runs at its roster entry's speed");
       assert.strictEqual(child.parentId, lead.id);
 
       const [items] = yield* waitFor((events) => {
@@ -321,6 +323,7 @@ describe("Orchestrator", () => {
         { _tag: "ChildFinishedTurn", agentId: childId, role: "scout", text: "Paris" },
       ]);
       assert.include(fake.sessions[1]?.sent[0] ?? "", "Capital of France?");
+      assert.strictEqual(fake.sessions[1]?.options.speed, "fast");
       assert.include(fake.sessions[1]?.options.appendSystemPrompt ?? "", 'role "scout"');
       assert.isTrue(seen.some((event) => event.agentId === lead.id && event.payload._tag === "AgentSpawned"));
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);

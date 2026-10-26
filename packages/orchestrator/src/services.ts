@@ -3,6 +3,7 @@ import type {
   AgentId,
   ModelChoice,
   ModelInfo,
+  ModelSpeed,
   ProviderId,
   ReasoningEffort,
   ThreadId,
@@ -25,8 +26,12 @@ export interface CatalogEntry {
   readonly provider: ProviderId;
   readonly model: string;
   readonly effort?: ReasoningEffort;
+  /** The speed it starts at; absent, the harness's own default. */
+  readonly speed?: ModelSpeed;
   /** Plain-language "use this for…" description the lead picks models by. */
   readonly description: string;
+  /** 1 for the model the user wants first among its harness's, counting down; absent, unranked. */
+  readonly priority?: number;
 }
 
 /**
