@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- A new thread's message box sits in the middle of the pane, with the question above it, and the question's frost stops above the box so its glass stays clear.
 - Long conversations open on their recent messages, with Show earlier messages loading another page without moving the text being read. Find and artifact navigation still reach the whole history. Each pane keeps two previous conversations drawn out of sight, scrolled where they were left, to bound retained memory while keeping recent switches quick.
 - Image-heavy histories have a compact stored UI view, keeping screenshots behind their existing on-demand image requests. Live events also carry image references, so a screenshot from another thread no longer travels to every watching window. Existing threads build their compact view on first open; originals remain available.
 - Idle harness hosts beyond the four most recently used idle sessions close after five minutes and resume their saved session when a message, delayed report or compaction reaches them. Their agents remain idle and reachable; working threads and unanswered requests keep their hosts.

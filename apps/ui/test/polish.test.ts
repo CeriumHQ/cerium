@@ -201,6 +201,16 @@ describe("breath", () => {
     expect(fog.every((value) => value >= 0 && value <= 1)).toBe(true);
     expect(fogOver(3).fog).toEqual(fog);
   });
+
+  it("leaves the glass clear from the floor down, where the message box sits", () => {
+    const grid = new PolishGrid(400, 300, 4);
+    const fog = breath(grid, 400, 300, question, 40, seeded(1), 196);
+    const at = (x: number, y: number) =>
+      fog[Math.floor(y / grid.cell) * grid.cols + Math.floor(x / grid.cell)] ?? 0;
+    expect(at(200, 130)).toBeGreaterThan(0.95);
+    const below = fog.slice(Math.floor(196 / grid.cell) * grid.cols);
+    expect(Math.max(...below)).toBeLessThan(0.01);
+  });
 });
 
 describe("revealStrokes", () => {

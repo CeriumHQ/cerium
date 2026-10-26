@@ -20,7 +20,9 @@ const QUESTION_FONT = '200 expanded 64px "Anybody Variable"';
 /** How long the pane's size keeps still before the glass is drawn again for it. */
 const SETTLE_MS = 150;
 /** The space between the question and the message box seated under it. */
-const SEAT_GAP = 28;
+const SEAT_GAP = 36;
+/** Half the empty message box's height: seated, its middle lands on the pane's, where the eye goes first. */
+const BOX_MIDDLE = 47;
 /** The width from which the box sits under the question; a phone keeps it at the foot, over the keyboard. */
 const SEATED = "(min-width: 48rem)";
 
@@ -60,9 +62,14 @@ export function EmptyThread({
   // The box's seat follows the question's foot as the page lays it out, before it's painted, so the box
   // never shows at the pane's foot first.
   const said = useRef<HTMLDivElement>(null);
-  const seat = useEffectEvent((seated: boolean) => {
+  const seatOf = () => {
     const block = said.current;
-    onSeat?.(seated && block !== null ? block.getBoundingClientRect().bottom + SEAT_GAP : undefined);
+    return block !== null && matchMedia(SEATED).matches
+      ? block.getBoundingClientRect().bottom + SEAT_GAP
+      : undefined;
+  };
+  const seat = useEffectEvent((seated: boolean) => {
+    onSeat?.(seated ? seatOf() : undefined);
   });
   useLayoutEffect(() => {
     const surface = glass.current;
@@ -101,7 +108,8 @@ export function EmptyThread({
           void document.fonts.load(QUESTION_FONT).then(measure, () => undefined);
           return;
         }
-        const scene = readScene(surface, heading);
+        // The fog stops above the seated box, whose own glass it would cloud.
+        const scene = readScene(surface, heading, seatOf());
         if (scene === undefined) return;
         pane.show(scene);
         shown = scene;
@@ -176,14 +184,18 @@ export function EmptyThread({
         aria-hidden="true"
         className="pointer-events-none absolute top-0 left-0 rounded-full border border-line-subtle opacity-0 transition-opacity duration-500 data-[on]:opacity-(--fog) data-[on]:duration-150"
       />
-      <div className="relative flex h-full flex-col items-center justify-center px-6 pb-32">
+      {/* Seated, the question stands over the pane's middle, which the message box takes. */}
+      <div
+        style={{ "--seat": `${BOX_MIDDLE + SEAT_GAP}px` } as CSSProperties}
+        className="relative flex h-full flex-col items-center justify-center px-6 pb-32 md:[justify-content:safe_flex-end] md:pb-[calc(50cqb+var(--seat))]"
+      >
         <div ref={said} className="flex max-w-full flex-col items-start">
           {/* Laid out by the page and drawn by the glass; screen readers and high contrast read it here.
               Its longest line spans most of a phone and less of a wide pane, and never crowds a short one. */}
           <h1
             ref={headline}
             style={{ "--measure": question.measure } as CSSProperties}
-            className="font-display text-[length:min(calc(min(61.5cqi_+_70px,84cqi)/var(--measure)),16cqb,148px)] leading-[1.04] font-extralight tracking-[-0.01em] text-transparent font-stretch-expanded [font-size-adjust:none] forced-colors:text-[CanvasText]"
+            className="font-display text-[length:min(calc(min(61.5cqi_+_70px,84cqi)/var(--measure)),13cqb,148px)] leading-[1.04] font-extralight tracking-[-0.01em] text-transparent font-stretch-expanded [font-size-adjust:none] forced-colors:text-[CanvasText]"
           >
             {question.lines.map((line) => (
               <span key={line} className="block whitespace-nowrap">

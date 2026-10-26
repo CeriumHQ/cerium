@@ -221,7 +221,8 @@ const EDGE_BAND = 96;
 /**
  * How thick the fog lies over each of `grid`'s cells on a `width` by `height` pane: a breath's patch
  * over `question`, its edge frayed by `random`, thinning to nothing before the pane's own edges so the
- * pane meets the window around it as it always does. 1 is full fog, 0 clear glass.
+ * pane meets the window around it as it always does, and before `floor`, where the message box sits
+ * under the question, so the box's own glass stays clear. 1 is full fog, 0 clear glass.
  */
 export const breath = (
   grid: PolishGrid,
@@ -230,6 +231,7 @@ export const breath = (
   question: Rect,
   size: number,
   random: () => number,
+  floor: number = height,
 ): Float32Array => {
   // The breath itself: an oval through the question's corners, full over its middle and its lines' ends.
   const centreX = (question.left + question.right) / 2;
@@ -266,17 +268,19 @@ export const breath = (
   const fromCol = Math.max(0, Math.floor(left / cell));
   const toCol = Math.min(cols, Math.ceil(right / cell));
   const fromRow = Math.max(0, Math.floor(top / cell));
-  const toRow = Math.min(rows, Math.ceil(bottom / cell));
+  const foot = Math.min(height, floor);
+  const toRow = Math.min(rows, Math.ceil(Math.min(bottom, foot) / cell));
   // Each edge thins the fog over the room the question leaves it, so a narrow pane's stays on the letters.
   const bandX = Math.min(EDGE_BAND, Math.max(12, Math.min(question.left, width - question.right) * 0.8));
-  const bandY = Math.min(EDGE_BAND, Math.max(12, Math.min(question.top, height - question.bottom) * 0.8));
+  const bandTop = Math.min(EDGE_BAND, Math.max(12, question.top * 0.8));
+  const bandFoot = Math.min(EDGE_BAND, Math.max(12, (foot - question.bottom) * 0.8));
   const edgesX = Array.from({ length: cols }, (_, col) => {
     const x = (col + 0.5) * cell;
     return smoothstep(0, bandX, Math.min(x, width - x));
   });
   for (let row = fromRow; row < toRow; row++) {
     const y = (row + 0.5) * cell;
-    const edgeY = smoothstep(0, bandY, Math.min(y, height - y));
+    const edgeY = Math.min(smoothstep(0, bandTop, y), smoothstep(0, bandFoot, foot - y));
     if (edgeY === 0) continue;
     const ovalDy = ((y - centreY) / ovalY) ** 2;
     for (let col = fromCol; col < toCol; col++) {

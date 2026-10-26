@@ -45,6 +45,8 @@ export interface FrostScene {
   /** The question's size, in CSS pixels. */
   readonly size: number;
   readonly lines: ReadonlyArray<SceneLine>;
+  /** Where the message box's top sits under the question, in CSS pixels from the glass's top: no fog below. */
+  readonly floor: number;
   readonly colors: {
     /** The question through clear glass. */
     readonly text: string;
@@ -70,9 +72,14 @@ const STRETCHES: Readonly<Record<string, CanvasFontStretch>> = {
 
 /**
  * Reads the scene from the page: `headline`'s lines, each a child element, as laid out over `glass`,
- * and the frost tokens. Undefined while the glass has no size.
+ * and the frost tokens, with the fog kept above `floor`, in the window's coordinates. Undefined while
+ * the glass has no size.
  */
-export const readScene = (glass: HTMLElement, headline: HTMLElement): FrostScene | undefined => {
+export const readScene = (
+  glass: HTMLElement,
+  headline: HTMLElement,
+  floor?: number,
+): FrostScene | undefined => {
   const box = glass.getBoundingClientRect();
   if (box.width < 1 || box.height < 1) return undefined;
   const style = getComputedStyle(headline);
@@ -109,6 +116,7 @@ export const readScene = (glass: HTMLElement, headline: HTMLElement): FrostScene
     letterSpacing: style.letterSpacing === "normal" ? "0px" : style.letterSpacing,
     size: Number.parseFloat(style.fontSize),
     lines,
+    floor: floor === undefined ? box.height : floor - box.top,
     colors,
   };
 };
@@ -631,7 +639,7 @@ const draw = (scene: FrostScene, grid: PolishGrid, seed: number): Drawn => {
   glass.globalAlpha = 1;
 
   // All of it gathered into a breath's patch over the question, gone before the pane's edges.
-  const fog = breath(grid, width, height, question, size, random);
+  const fog = breath(grid, width, height, question, size, random, scene.floor);
   const shape = new OffscreenCanvas(grid.cols, grid.rows);
   const shaping = shape.getContext("2d");
   if (shaping === null) throw new Error("The frosted glass needs a 2D canvas");
