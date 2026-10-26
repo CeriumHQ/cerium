@@ -54,6 +54,11 @@ export interface ShellBridge {
    * a `data:image/…;base64,` URL or an absolute path to an image file. Resolves whether it was saved.
    */
   readonly saveImage?: (source: string, name: string) => Promise<boolean>;
+  /**
+   * Saves `text` where the user picks with the native Save dialog, suggesting `name`; `format` picks the
+   * file types offered. Resolves whether it was saved.
+   */
+  readonly saveText?: (text: string, name: string, format: "markdown" | "text") => Promise<boolean>;
   /** Opens `html`, a page of its own, in the user's browser, from a file named after `name`. */
   readonly openHtml?: (html: string, name: string) => Promise<void>;
   /**

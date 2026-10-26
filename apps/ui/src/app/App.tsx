@@ -25,7 +25,9 @@ import {
   Bot,
   Columns2,
   Compass,
+  ClipboardCopy,
   FoldVertical,
+  FileDown,
   FolderTree,
   GitBranch,
   GitPullRequestArrow,
@@ -190,6 +192,7 @@ import {
 } from "../features/settings/Settings.tsx";
 import { useTheme } from "../features/settings/theme.ts";
 import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
+import { exportFailureAtom, useThreadExport } from "../features/export/useThreadExport.ts";
 import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
@@ -835,6 +838,10 @@ function Workspace() {
   const toggleGit = () => togglePanel("git");
   /**
    * The open work thread's folder, the open file's, or the project of the new work thread being
+  const exportThread = useThreadExport();
+  const exportFailure = useAtomValue(exportFailureAtom);
+  const setExportFailure = useAtomSet(exportFailureAtom);
+
    * written, can be browsed here: it's on the machine the window drives, which knows how.
    */
   const filesRoot =
@@ -1387,6 +1394,39 @@ function Workspace() {
     {
       id: "run-project",
       group: "Actions",
+    {
+      id: "export-markdown",
+      group: "Actions",
+      label: "Export as Markdown…",
+      icon: FileDown,
+      keywords: "save download file thread conversation",
+      when: selected !== undefined && cloudSelected === undefined,
+      run: () => {
+        if (selected) void exportThread(selected.thread.id, "markdown");
+      },
+    },
+    {
+      id: "export-text",
+      group: "Actions",
+      label: "Export as text…",
+      icon: FileDown,
+      keywords: "save download file thread conversation plain",
+      when: selected !== undefined && cloudSelected === undefined,
+      run: () => {
+        if (selected) void exportThread(selected.thread.id, "text");
+      },
+    },
+    {
+      id: "copy-markdown",
+      group: "Actions",
+      label: "Copy as Markdown",
+      icon: ClipboardCopy,
+      keywords: "clipboard thread conversation",
+      when: selected !== undefined && cloudSelected === undefined,
+      run: () => {
+        if (selected) void exportThread(selected.thread.id, "copy");
+      },
+    },
       label: runRunning ? "Stop project run" : "Run project",
       icon: runRunning ? Square : Play,
       keywords: "dev server start localhost stop",
@@ -1821,9 +1861,16 @@ function Workspace() {
       <WhatsNewHost />
       <ImportDialogHost />
       <Reveal shift={-6} className="shrink-0">
-        {actionError ? (
-          <Notice tone="error" clamp onDismiss={() => setActionError(undefined)}>
-            {actionError}
+        {(actionError ?? exportFailure) ? (
+          <Notice
+            tone="error"
+            clamp
+            onDismiss={() => {
+              setActionError(undefined);
+              setExportFailure(undefined);
+            }}
+          >
+            {actionError ?? exportFailure}
           </Notice>
         ) : null}
       </Reveal>

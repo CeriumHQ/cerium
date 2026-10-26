@@ -17,6 +17,7 @@ import { toolImageRef, toolOutputImages, type ToolImageRef } from "@cerium/proto
 
 import { fileEdits, type FileEdit } from "./diff.ts";
 import type { TranscriptBlock } from "./model.ts";
+import { relativePath, resolvePath } from "./paths.ts";
 
 // What the transcript knows about tool calls, whichever harness made them: what each one is called,
 // what it was about, whether it failed and why, and what to show of its input and output.
@@ -264,6 +265,55 @@ export const describeTool = (
       const [, server, name] = /^mcp__(.+?)__(.+)$/.exec(tool.toolName) ?? [];
       if (server && name) return { icon: Workflow, verb: toolWords(name), detail: detail ?? server };
       return { icon: Wrench, verb: toolWords(tool.toolName), ...(detail ? { detail } : {}) };
+    }
+  }
+};
+
+/**
+ * A tool call as one line of an exported conversation, past tense and with what it touched: "Edited
+ * apps/ui/src/App.tsx", "Ran bun test". Paths inside the thread's folder are written relative to it.
+ */
+export const exportedToolLine = (tool: ToolBlock, folder: string | undefined): string => {
+  const { input } = tool;
+  const shown = (path: string) => {
+    const location = resolvePath(path, folder);
+    return (location === undefined ? undefined : relativePath(location, folder)) ?? path;
+  };
+  const path = field(input, "file_path") ?? field(input, "path");
+  switch (toolKinds[tool.toolName]) {
+    case "read":
+      return path ? `Read ${shown(path)}` : "Read a file";
+    case "edit":
+      return path ? `Edited ${shown(path)}` : "Edited a file";
+    case "write":
+      return path ? `Wrote ${shown(path)}` : "Wrote a file";
+    case "delete":
+      return path ? `Deleted ${shown(path)}` : "Deleted a file";
+    case "patch": {
+      const files = patchedFiles(input).map(shown);
+      return files.length > 0 ? `Edited ${files.join(", ")}` : "Edited files";
+    }
+    case "search": {
+      const query = field(input, "pattern") ?? field(input, "globPattern") ?? field(input, "query");
+      return query ? `Searched for ${query}` : "Searched";
+    }
+    case "list":
+      return path ? `Listed ${shown(path)}` : "Listed a folder";
+    case "run": {
+      const command = firstLine(field(input, "command"));
+      return command ? `Ran ${command}` : "Ran a command";
+    }
+    case "fetch": {
+      const url = field(input, "url");
+      return url ? `Fetched ${url}` : "Fetched a page";
+    }
+    case "webSearch": {
+      const query = field(input, "query");
+      return query ? `Searched the web for ${query}` : "Searched the web";
+    }
+    default: {
+      const { verb, detail } = describeTool(tool);
+      return detail ? `${verb} ${detail}` : verb;
     }
   }
 };

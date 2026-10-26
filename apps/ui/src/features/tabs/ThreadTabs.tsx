@@ -31,6 +31,8 @@ import { settled, useArrivals, useLingering } from "../../lib/motion.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { ExportMenuItems } from "../export/ExportItems.tsx";
+import { isNonThreadKey } from "./tabKinds.ts";
 import { newThreadDraftTitleAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { paneDrag } from "../split/drag.ts";
@@ -463,6 +465,12 @@ function ThreadTab({
         onDoubleClick={tab.preview ? onKeep : undefined}
         className={`group/tab relative flex h-7 max-w-52 min-w-28 basis-52 items-center rounded-lg transition-[background-color,opacity,flex-basis,min-width,max-width] ${
           // A tab opened grows out of the strip from nothing, pushing those after it along.
+          {tab.draft || isNonThreadKey(tab.key) ? null : (
+            <>
+              <ExportMenuItems threadId={tab.key} />
+              <MenuSeparator />
+            </>
+          )}
           arriving
             ? "overflow-hidden duration-[150ms,200ms,240ms,240ms,240ms] ease-out-soft starting:max-w-0 starting:min-w-0 starting:basis-0 starting:opacity-0"
             : "duration-150"
