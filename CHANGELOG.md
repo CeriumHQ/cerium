@@ -376,6 +376,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Saving one setting no longer resets the others to their defaults. Turning the advisor on turned the effort router off and the other way round, and either reset thread naming, Discord and the roster: the backend read a change to one setting as defaults for every setting it left out. `SettingsPatch` now leaves them out.
+
 - The model picker's column of harnesses no longer shows a horizontal scrollbar at its foot: the active harness's marker overhung the column by half a pixel.
 - A new thread's question resizes with the pane as a side panel opens or the window is resized, where it slid at its old size and then shrank in one jump once the size settled.
 - Several images attached at once without a file of their own (pasted, dropped from a browser, or picked on a phone or the web client) each arrive as themselves: they saved together through one call, which cut each save short with the next and gave every image the last one's file.

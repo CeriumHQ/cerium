@@ -103,13 +103,23 @@ export type RosterSettings = typeof RosterSettings.Type;
 
 const defaultRoster: RosterSettings = { models: [], edited: [] };
 
+/** Each setting's shape, without the defaults `Settings` reads a missing one as. */
+const SettingsFields = Schema.Struct({
+  /** Load the MCP servers the user set up in each harness into sessions Cerium starts. */
+  includeUserMcpServers: Schema.Boolean,
+  advisor: AdvisorSettings,
+  titles: TitleSettings,
+  discord: DiscordSettings,
+  effortRouter: EffortRouterSettings,
+  roster: RosterSettings,
+});
+
 /**
  * The user's settings the backend applies. Preferences that only change the window (theme, text
  * size, keys) stay in the UI.
  */
 export const Settings = Schema.Struct({
-  /** Load the MCP servers the user set up in each harness into sessions Cerium starts. */
-  includeUserMcpServers: Schema.Boolean,
+  ...SettingsFields.fields,
   /** Read as its default from a backend that predates it. */
   advisor: AdvisorSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAdvisor))),
   /** Read as its default from a backend that predates it. */
@@ -123,8 +133,11 @@ export const Settings = Schema.Struct({
 });
 export type Settings = typeof Settings.Type;
 
-/** Some settings to change; the rest keep their values. */
-export const SettingsPatch = Settings.mapFields(Struct.map(Schema.optionalKey));
+/**
+ * Some settings to change; the rest keep their values. Built without `Settings`' decoding defaults,
+ * which would fill every missing key in and so reset the settings the patch leaves out.
+ */
+export const SettingsPatch = SettingsFields.mapFields(Struct.map(Schema.optionalKey));
 export type SettingsPatch = typeof SettingsPatch.Type;
 
 export const defaultSettings: Settings = {
