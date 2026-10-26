@@ -170,12 +170,23 @@ export function KeyboardSettings() {
                   const keys = bindingFor(bindings, each.id);
                   const changed = keys !== each.defaultKeys;
                   const waiting = capturing === each.id;
-                  const disputed =
-                    conflict !== undefined && (conflict.id === each.id || conflict.others.includes(each.id));
+                  // The row being rebound asks what to do; the rows already on those keys are marked.
+                  const disputed = conflict?.id === each.id;
+                  const taken = conflict?.others.includes(each.id) === true;
                   return (
                     <div key={each.id}>
-                      <div className="flex min-h-10 items-center justify-between gap-4 px-4 py-1.5 text-body">
-                        <span className="min-w-0 flex-1 truncate text-fg-secondary">{each.label}</span>
+                      {/* The whole row labels its keys' button, so a click anywhere on it starts listening. */}
+                      <label
+                        {...(each.fixed ? {} : { htmlFor: `shortcut-${each.id}` })}
+                        className={`flex min-h-10 items-center justify-between gap-4 px-4 py-1.5 text-body transition-colors ${
+                          each.fixed ? "" : waiting ? "bg-surface-hover" : "hover:bg-surface-hover"
+                        }`}
+                      >
+                        <span
+                          className={`min-w-0 flex-1 truncate ${waiting ? "text-fg-primary" : "text-fg-secondary"}`}
+                        >
+                          {each.label}
+                        </span>
                         {each.fixed ? (
                           <span className="flex shrink-0 items-center gap-2">
                             <Keys keys={each.displayKeys ?? each.defaultKeys} size="sm" />
@@ -183,7 +194,7 @@ export function KeyboardSettings() {
                           </span>
                         ) : (
                           <span className="flex shrink-0 items-center gap-1">
-                            {changed ? (
+                            {changed && !waiting ? (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -199,23 +210,31 @@ export function KeyboardSettings() {
                             ) : null}
                             <button
                               type="button"
+                              id={`shortcut-${each.id}`}
                               onClick={() => {
                                 setConflict(undefined);
                                 setCapturing(waiting ? undefined : each.id);
                               }}
                               aria-label={`${each.label}: ${keyLabel(keys)}. ${waiting ? "Press the new keys, or Esc to keep these." : "Select to rebind."}`}
-                              className={`rounded-md outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${waiting ? "ring-2 ring-focus-ring" : ""}`}
+                              className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                             >
-                              <Keys keys={keys} size="sm" pressed={waiting} />
+                              {waiting ? (
+                                // In the keys' place while it listens, so the row keeps its height.
+                                <span className="flex h-5.5 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary ring-1 ring-focus-ring">
+                                  Press keys
+                                  <span className="text-fg-tertiary">· Esc keeps {keyLabel(keys)}</span>
+                                </span>
+                              ) : (
+                                <span
+                                  className={`flex rounded-md ${taken ? "ring-1 ring-attention ring-offset-2 ring-offset-surface-raised" : ""}`}
+                                >
+                                  <Keys keys={keys} size="sm" />
+                                </span>
+                              )}
                             </button>
                           </span>
                         )}
-                      </div>
-                      {waiting ? (
-                        <p className="px-4 pb-2 text-meta text-fg-tertiary">
-                          Press the new keys… Esc keeps {keyLabel(keys)}.
-                        </p>
-                      ) : null}
+                      </label>
                       {disputed && conflict !== undefined ? (
                         <div className="flex flex-wrap items-center gap-2 px-4 pb-2.5">
                           <span className="min-w-0 flex-1 text-meta leading-relaxed text-fg-secondary">
