@@ -493,7 +493,7 @@ function Stage({
             Math.abs(at - index) > 1 ? null : (
               <div
                 key={each.key}
-                className="absolute inset-0 px-0 py-[calc(3.5rem+max(env(safe-area-inset-top),env(safe-area-inset-bottom)))] md:px-20 md:py-16"
+                className="absolute inset-0 px-0 py-[calc(3.5rem+max(env(safe-area-inset-top),env(safe-area-inset-bottom)))] md:px-20 md:pt-[calc(4rem+env(titlebar-area-height,0px))] md:pb-16"
                 style={{ transform: `translateX(calc(${at - index} * (100% + ${GAP}px)))` }}
               >
                 {at === index ? (
@@ -515,8 +515,10 @@ function Stage({
           )}
         </div>
       </div>
+      {/* Under the titlebar's height in the desktop app, whose caption buttons the system draws over
+          every page: the close button sits clear of them. */}
       <div
-        className="absolute inset-x-0 top-0 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 px-4 pt-[env(safe-area-inset-top)] transition-opacity duration-200"
+        className="absolute inset-x-0 top-[env(titlebar-area-height,0px)] flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 px-4 pt-[env(safe-area-inset-top)] transition-opacity duration-200"
         style={{ opacity: drop > 0 ? 0 : 1 }}
       >
         <Dialog.Title className="flex min-w-0 flex-1 items-baseline gap-2 text-meta">

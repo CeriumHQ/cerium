@@ -401,6 +401,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- In the desktop app on Windows and Linux, an image preview's close button sits below the titlebar instead of under the window's own minimize, maximize and close buttons, which took its clicks.
+
 - Saving one setting no longer resets the others to their defaults. Turning the advisor on turned the effort router off and the other way round, and either reset thread naming, Discord and the roster: the backend read a change to one setting as defaults for every setting it left out. `SettingsPatch` now leaves them out.
 
 - The model picker's column of harnesses no longer shows a horizontal scrollbar at its foot: the active harness's marker overhung the column by half a pixel.
