@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import type { ThreadId } from "@cerium/protocol";
 import type { ReviewFinding, ReviewRecord, ReviewTarget } from "@cerium/rpc";
 import { useAtomSet } from "@effect/atom-react";
-import { Glasses, LoaderCircle, Send, Undo2, X } from "lucide-react";
+import { ChevronRight, Glasses, LoaderCircle, Send, Undo2, X } from "lucide-react";
 import { useState } from "react";
 
 import { resolveReviewFinding, stopReview } from "../../backend/reviews.ts";
@@ -63,11 +63,18 @@ export const useFindingActions = (threadId: ThreadId) => {
 
 type FindingActions = ReturnType<typeof useFindingActions>;
 
-function SeverityDot({ severity }: { severity: ReviewFinding["severity"] }) {
+/** A finding's severity; `centred` on a one-line row, else level with the first line of a longer one. */
+function SeverityDot({
+  severity,
+  centred = false,
+}: {
+  severity: ReviewFinding["severity"];
+  centred?: boolean;
+}) {
   return (
     <span
       title={`${severityName[severity]} severity`}
-      className={`mt-[7px] size-1.5 shrink-0 rounded-full ${severityMark[severity]}`}
+      className={`${centred ? "" : "mt-[7px]"} size-1.5 shrink-0 rounded-full ${severityMark[severity]}`}
     >
       <span className="sr-only">{severityName[severity]} severity</span>
     </span>
@@ -313,6 +320,12 @@ export function ReviewCard({
             aria-expanded={showResolved}
             className="flex h-8 w-full cursor-default items-center gap-1 px-3 text-left text-meta text-fg-tertiary outline-none hover:bg-surface-hover hover:text-fg-secondary focus-visible:bg-surface-hover"
           >
+            <ChevronRight
+              size={12}
+              strokeWidth={2}
+              aria-hidden
+              className={`shrink-0 transition-transform duration-150 ${showResolved ? "rotate-90" : ""}`}
+            />
             {[
               sent > 0 ? `${sent} sent` : undefined,
               dismissed.length > 0 ? `${dismissed.length} dismissed` : undefined,
@@ -324,7 +337,7 @@ export function ReviewCard({
             <ul>
               {resolved.map((finding) => (
                 <li key={finding.id} className="flex items-center gap-2.5 py-1 pr-1.5 pl-3">
-                  <SeverityDot severity={finding.severity} />
+                  <SeverityDot severity={finding.severity} centred />
                   <span className="min-w-0 flex-1 truncate text-meta text-fg-tertiary" title={finding.title}>
                     {finding.title}
                   </span>
