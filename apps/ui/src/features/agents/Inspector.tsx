@@ -26,7 +26,7 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
 import { whenAgo } from "../../lib/time.ts";
-import { effortLabel } from "../composer/models.ts";
+import { effortLabel, speedLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { AgentMenuArea, StopAgentDialog, type AgentActions } from "./AgentMenu.tsx";
@@ -347,6 +347,9 @@ function AgentDetails({
                 · {agent.autoEffort && routerOn ? "Auto, " : ""}
                 {effortLabel[agent.effort]}
               </span>
+            ) : null}
+            {agent.speed && agent.speed !== "standard" ? (
+              <span className="font-normal text-fg-tertiary"> · {speedLabel[agent.speed]}</span>
             ) : null}
           </p>
           <p className="flex min-w-0 items-center gap-1 text-meta text-fg-tertiary max-md:text-[13px]">

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ReasoningEffort } from "./capabilities.ts";
+import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, EventId, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 import { AccessMode, AgentState } from "./orchestration.ts";
@@ -427,8 +427,8 @@ export const AgentStateChanged = Schema.TaggedStruct("AgentStateChanged", {
 });
 
 /**
- * The user switched the agent to another model of its harness, or another effort. Its next turn
- * runs with them; one that's running finishes on what it started with.
+ * The user switched the agent to another model of its harness, or another effort or speed. Its next
+ * turn runs with them; one that's running finishes on what it started with.
  */
 export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
   model: Schema.NonEmptyString,
@@ -436,6 +436,8 @@ export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
   effort: Schema.optionalKey(ReasoningEffort),
   /** The agent is on Auto from here: the effort router picks its effort while it is on. */
   autoEffort: Schema.optionalKey(Schema.Boolean),
+  /** Absent for a model with no speed setting, which runs at its harness's default. */
+  speed: Schema.optionalKey(StoredSpeed),
 });
 
 /**
@@ -452,6 +454,8 @@ export const LeadHandedOff = Schema.TaggedStruct("LeadHandedOff", {
   effort: Schema.optionalKey(ReasoningEffort),
   /** The agent is on Auto from here: the effort router picks its effort while it is on. */
   autoEffort: Schema.optionalKey(Schema.Boolean),
+  /** Absent for a model with no speed setting, which runs at its harness's default. */
+  speed: Schema.optionalKey(StoredSpeed),
 });
 export type LeadHandedOff = typeof LeadHandedOff.Type;
 

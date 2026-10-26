@@ -357,6 +357,7 @@ export function ThreadPane({
                     modelId: lead.model,
                     effort: lead.effort,
                     autoEffort: lead.autoEffort,
+                    speed: lead.speed,
                     folder: viewed.thread.cwd,
                     worktree: viewed.thread.worktree,
                     ...(leadEnded ? { ended: leadEnded } : {}),

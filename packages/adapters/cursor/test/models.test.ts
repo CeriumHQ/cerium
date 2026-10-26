@@ -51,7 +51,19 @@ describe("toModelInfo", () => {
       description: "OpenAI's frontier model",
       efforts: ["low", "medium", "high", "xhigh"],
       defaultEffort: "medium",
+      speeds: ["standard", "fast"],
+      defaultSpeed: "standard",
     });
+  });
+
+  it("reads a Fast switch as the model's speeds, defaulting to what its default variant runs", () => {
+    const fastByDefault: ModelListItem = {
+      id: "composer-2.6",
+      displayName: "Composer 2.6",
+      parameters: [{ id: "fast", values: [{ value: "false" }, { value: "true" }] }],
+      variants: [{ params: [{ id: "fast", value: "true" }], displayName: "Composer 2.6", isDefault: true }],
+    };
+    expect(toModelInfo(fastByDefault)).toMatchObject({ speeds: ["standard", "fast"], defaultSpeed: "fast" });
   });
 
   it("treats an on/off thinking switch as no effort setting", () => {
@@ -118,5 +130,22 @@ describe("effort names", () => {
   it("breaks clamping ties toward the lower effort", () => {
     expect(clampEffort("medium", ["low", "high"])).toBe("low");
     expect(clampEffort("high", [])).toBeUndefined();
+  });
+});
+
+describe("speed", () => {
+  it("asks for the Fast tier, or standard speed, over the model's default", () => {
+    expect(toModelSelection("gpt-5.5", "high", catalog, "fast").params).toEqual([
+      { id: "reasoning", value: "high" },
+      { id: "fast", value: "true" },
+    ]);
+    expect(toModelSelection("gpt-5.5[fast=true]", undefined, catalog, "standard").params).toEqual([
+      { id: "fast", value: "false" },
+    ]);
+  });
+
+  it("leaves the speed alone where none is picked or the model has no Fast switch", () => {
+    expect(toModelSelection("gpt-5.5", undefined, catalog).params).toBeUndefined();
+    expect(toModelSelection("composer-2.5", undefined, catalog, "fast")).toEqual({ id: "composer-2.5" });
   });
 });

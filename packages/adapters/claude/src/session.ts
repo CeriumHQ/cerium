@@ -72,6 +72,9 @@ export const toSdkOptions = (
   cwd: options.cwd,
   model: options.model,
   ...(options.effort ? { effort: toClaudeEffort(options.effort) } : {}),
+  // An SDK session runs fast mode only when its own settings opt in; the user's saved `fastMode`
+  // doesn't count. A model without fast mode runs at standard speed under it.
+  ...(options.speed === "fast" ? { settings: { fastMode: true } } : {}),
   ...(options.resume ? { resume: options.resume } : {}),
   includePartialMessages: true,
   // Load the user's own Claude configuration (CLAUDE.md, settings, skills) like their CLI does.
@@ -249,6 +252,10 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
     setEffort: (effort) =>
       control("Could not change Claude's effort", () =>
         session.applyFlagSettings({ effortLevel: toClaudeEffort(effort) }),
+      ),
+    setSpeed: (speed) =>
+      control("Could not change Claude's speed", () =>
+        session.applyFlagSettings({ fastMode: speed === "fast" }),
       ),
     // Claude Code's own command, which runs as a turn and reports its `compact_boundary`.
     compact: Queue.offer(input, {

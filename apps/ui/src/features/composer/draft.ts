@@ -3,6 +3,7 @@ import {
   type AccessMode,
   type Attachment,
   type Mention,
+  type ModelSpeed,
   type ReasoningEffort,
 } from "@cerium/protocol";
 
@@ -45,6 +46,7 @@ export interface DraftStart {
   readonly effort?: ReasoningEffort;
   /** Off when the user took this draft off Auto; absent, it starts on Auto while the effort router is on. */
   readonly autoEffort?: boolean;
+  readonly speed?: ModelSpeed;
   readonly access?: AccessMode;
   /** The thread runs in a git worktree of its own. */
   readonly worktree?: boolean;

@@ -264,21 +264,23 @@ export const Handlers = MachineRpcs.toLayer(
         orchestrator.revertTurn(agentId, turnId, direction).pipe(Effect.mapError(refuse)),
       RestoreBefore: ({ agentId, messageId }) =>
         orchestrator.restoreBefore(agentId, messageId).pipe(Effect.mapError(refuse)),
-      SwitchModel: ({ agentId, model, effort, autoEffort }) =>
+      SwitchModel: ({ agentId, model, effort, autoEffort, speed }) =>
         orchestrator
           .switchModel(agentId, {
             model,
             ...(effort ? { effort } : {}),
             ...(autoEffort === undefined ? {} : { autoEffort }),
+            ...(speed ? { speed } : {}),
           })
           .pipe(Effect.mapError(refuse)),
-      HandOffLead: ({ agentId, provider, model, effort, autoEffort }) =>
+      HandOffLead: ({ agentId, provider, model, effort, autoEffort, speed }) =>
         orchestrator
           .handOffLead(agentId, {
             provider,
             model,
             ...(effort ? { effort } : {}),
             ...(autoEffort ? { autoEffort } : {}),
+            ...(speed ? { speed } : {}),
           })
           .pipe(Effect.mapError(refuse)),
       // A mirror of the window's tasks (the rail's Tasks) for the agents' tools to read and match.

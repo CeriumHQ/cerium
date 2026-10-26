@@ -6,11 +6,11 @@ import {
   type SessionOptions,
   type TurnExtras,
 } from "@cerium/harness";
-import type { ReasoningEffort } from "@cerium/protocol";
+import type { ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import { Clock, Deferred, Effect, Queue, Stream, type Cause } from "effect";
 
 import { handleServerRequest, type RequestHandling } from "./approvals.ts";
-import { accessPolicy, threadParams, toCodexEffort, type UserConfig } from "./config.ts";
+import { accessPolicy, threadParams, toCodexEffort, toServiceTier, type UserConfig } from "./config.ts";
 import { listAllModels } from "./models.ts";
 import type { ServerNotification } from "./protocol/ServerNotification.ts";
 import type { ServerRequest } from "./protocol/ServerRequest.ts";
@@ -100,6 +100,7 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
   let model = options.model;
   let nextModel: string | undefined;
   let nextEffort: ReasoningEffort | undefined;
+  let nextSpeed: ModelSpeed | undefined;
   let activeTurn: string | undefined;
   let lastCompletedTurn: string | undefined;
   let starting = false;
@@ -261,10 +262,12 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
         // Overrides apply to this turn and the ones after it.
         ...(nextModel === undefined ? {} : { model: nextModel }),
         ...(nextEffort === undefined ? {} : { effort: effortFor(turnModel, nextEffort) }),
+        ...(nextSpeed === undefined ? {} : { serviceTier: toServiceTier(nextSpeed) }),
       });
       model = turnModel;
       nextModel = undefined;
       nextEffort = undefined;
+      nextSpeed = undefined;
       yield* turnStarted(started.turn.id);
     }).pipe(
       Effect.catchTag("RpcError", rejectedTurn),
@@ -286,6 +289,7 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
     }),
     setModel: (next) => Effect.sync(() => (nextModel = next)),
     setEffort: (effort) => Effect.sync(() => (nextEffort = effort)),
+    setSpeed: (speed) => Effect.sync(() => (nextSpeed = speed)),
     // A turn of Codex's own, announced and ended like one `turn/start` begins.
     compact: Effect.gen(function* () {
       starting = true;

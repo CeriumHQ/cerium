@@ -24,7 +24,7 @@ export const claudeManifest: CapabilityManifest = {
   session: { resume: true, fork: true },
   // Effort switches mid-session through `applyFlagSettings({ effortLevel })`. The prompt cache survives
   // the switch on the 5.5 and Fable 5.1 models only (`CACHE_SAFE_EFFORT` in models.ts).
-  switching: { model: true, effort: true, cacheSafeEffort: true },
+  switching: { model: true, effort: true, cacheSafeEffort: true, speed: true },
   input: { images: true },
   permissions: { approvals: "callback", readOnlyMode: true },
   mcpInjection: true,

@@ -1,4 +1,11 @@
-import { AccessMode, Attachment, MAX_THREAD_TITLE, Mention, ReasoningEffort } from "@cerium/protocol";
+import {
+  AccessMode,
+  Attachment,
+  MAX_THREAD_TITLE,
+  Mention,
+  ReasoningEffort,
+  StoredSpeed,
+} from "@cerium/protocol";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
 
@@ -71,6 +78,7 @@ const StoredDraft = Schema.Struct({
       models: Schema.optionalKey(Schema.Array(Schema.String)),
       effort: Schema.optionalKey(ReasoningEffort),
       autoEffort: Schema.optionalKey(Schema.Boolean),
+      speed: Schema.optionalKey(StoredSpeed),
       access: Schema.optionalKey(AccessMode),
       worktree: Schema.optionalKey(Schema.Boolean),
     }),

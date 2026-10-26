@@ -31,6 +31,8 @@ export const agents = sqliteTable(
     effort: text("effort", { enum: ["minimal", "low", "medium", "high", "xhigh", "max"] }),
     /** Null for agents never set to Auto. */
     autoEffort: integer("auto_effort", { mode: "boolean" }),
+    /** Null for agents that run at their harness's default speed. */
+    speed: text("speed", { enum: ["standard", "fast", "ultrafast"] }),
     access: text("access", { enum: ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"] }).notNull(),
     state: text("state", { enum: ["queued", "running", "idle", "stopped", "failed"] }).notNull(),
     providerSessionId: text("provider_session_id"),

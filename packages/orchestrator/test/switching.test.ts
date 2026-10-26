@@ -92,6 +92,58 @@ describe("Orchestrator model switching", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
+  it.live("starts a lead at its speed and switches it from the next turn, keeping it across efforts", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const store = yield* Store;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Test",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", effort: "high", speed: "fast", access: "auto" },
+      });
+      assert.strictEqual(lead.speed, "fast");
+      yield* orchestrator.sendUserMessage(lead.id, "one");
+      yield* waitFor(turnsCompleted(1, lead.id));
+      assert.strictEqual(fake.sessions[0]?.options.speed, "fast");
+
+      const standard = yield* orchestrator.switchModel(lead.id, { model: "opus", speed: "standard" });
+      assert.strictEqual(standard.speed, "standard");
+      const recorded = (yield* store.listEvents(lead.id)).at(-1)?.payload;
+      assert.deepStrictEqual(recorded, {
+        _tag: "ModelChanged",
+        model: "opus",
+        effort: "high",
+        speed: "standard",
+      });
+      // An effort picked alone, as a client from before speeds picks it, keeps the speed.
+      assert.strictEqual(
+        (yield* orchestrator.switchModel(lead.id, { model: "opus", effort: "low" })).speed,
+        "standard",
+      );
+      yield* orchestrator.sendUserMessage(lead.id, "two");
+      yield* waitFor(turnsCompleted(2, lead.id));
+      assert.deepStrictEqual(fake.sessions[0]?.switches, [{ effort: "low" }, { speed: "standard" }]);
+      const stored = (yield* orchestrator.listAgents(lead.threadId))[0];
+      assert.strictEqual(stored?.speed, "standard");
+
+      // Another model without a speed setting runs at its harness's default.
+      assert.isUndefined((yield* orchestrator.switchModel(lead.id, { model: "haiku" })).speed);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("refuses a speed change where the harness can't switch speed", () => {
+    const fake = makeFakeAdapter("claude", { switching: { speed: false } });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* startWorkThread;
+      const refused = yield* Effect.flip(orchestrator.switchModel(lead.id, { model: "opus", speed: "fast" }));
+      assert.strictEqual(refused.reason, "notAllowed");
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
   it.live("refuses what the harness can't switch, and agents other than a thread's lead", () => {
     const fake = makeFakeAdapter("claude", { switching: { model: false, effort: true } });
     return Effect.gen(function* () {

@@ -1,4 +1,4 @@
-import type { ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { ModelSpeed, ProviderId, ReasoningEffort } from "@cerium/protocol";
 
 import { isAnswerNotice, type RoutedDecision, type TranscriptBlock } from "./model.ts";
 import { isPushCall } from "./push.ts";
@@ -23,14 +23,18 @@ export type Item =
       readonly model?: string;
       readonly routed?: RoutedDecision;
     }
-  /** Where the user switched the agent's model, or just its effort, or handed it to another harness. */
+  /**
+   * Where the user switched the agent's model, or just its effort or speed, or handed it to another
+   * harness.
+   */
   | {
       readonly kind: "switch";
       readonly id: string;
       readonly provider?: ProviderId;
       readonly model: string;
       readonly effort?: ReasoningEffort;
-      readonly change: "model" | "effort" | "handoff";
+      readonly speed?: ModelSpeed;
+      readonly change: "model" | "effort" | "speed" | "handoff";
     }
   /** Where the thread came from: a session the user had with the harness outside Cerium. */
   | { readonly kind: "imported"; readonly id: string; readonly block: Block<"imported"> }
@@ -143,6 +147,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
           ...(provider ? { provider } : {}),
           model: block.model,
           ...(block.effort ? { effort: block.effort } : {}),
+          ...(block.speed ? { speed: block.speed } : {}),
           change: block.change,
         });
       }

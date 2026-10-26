@@ -55,6 +55,20 @@ describe("toModelRef", () => {
   it("passes an unlisted model on without a variant", () => {
     expect(toModelRef("openai/gpt-6", "high", rows)).toEqual({ providerID: "openai", id: "gpt-6" });
   });
+
+  it("runs Fast speed on the model's Fast row, with that row's variant", () => {
+    const openai = [row("openai", "gpt-6-luna", ["low", "high"]), row("openai", "gpt-6-luna-fast", ["high"])];
+    expect(toModelRef("openai/gpt-6-luna", "low", openai, "fast")).toEqual({
+      providerID: "openai",
+      id: "gpt-6-luna-fast",
+      variant: "high",
+    });
+    expect(toModelRef("openai/gpt-6-luna", "low", openai, "standard")).toMatchObject({ id: "gpt-6-luna" });
+    // No Fast row: the model as it is.
+    expect(toModelRef("anthropic/claude-sonnet-5-5", undefined, rows, "fast")).toMatchObject({
+      id: "claude-sonnet-5-5",
+    });
+  });
 });
 
 describe("toModelInfos", () => {
@@ -86,6 +100,33 @@ describe("toModelInfos", () => {
         efforts: ["high"],
       },
     ]);
+  });
+});
+
+describe("toModelInfos speeds", () => {
+  it("folds a provider's Fast row into its model's speeds", () => {
+    const infos = toModelInfos(
+      [
+        row("openai", "gpt-6-luna", ["high"]),
+        row("openai", "gpt-6-luna-fast", ["high"]),
+        // Another provider's, or one without its model listed, stays a model of its own.
+        row("zen", "gpt-6-luna-fast"),
+        row("openai", "gpt-5.5-fast"),
+      ],
+      null,
+    );
+    expect(infos.map((info) => [info.id, info.speeds])).toEqual([
+      ["openai/gpt-6-luna", ["standard", "fast"]],
+      ["zen/gpt-6-luna-fast", undefined],
+      ["openai/gpt-5.5-fast", undefined],
+    ]);
+    expect(infos[0]?.defaultSpeed).toBe("standard");
+  });
+
+  it("marks the model default, at Fast speed, when its Fast row is the default", () => {
+    const fast = row("openai", "gpt-6-luna-fast");
+    const [info] = toModelInfos([row("openai", "gpt-6-luna"), fast], fast);
+    expect(info).toMatchObject({ id: "openai/gpt-6-luna", isDefault: true, defaultSpeed: "fast" });
   });
 });
 

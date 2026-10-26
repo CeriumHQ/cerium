@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { ReasoningEffort } from "./capabilities.ts";
+import { ModelSpeed, ReasoningEffort, StoredSpeed } from "./capabilities.ts";
+import { LenientArray } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
 
 /** A model the user's installed harness offers, as that harness reports it. */
@@ -18,6 +19,13 @@ export const ModelInfo = Schema.Struct({
    * model, so the effort router may change it every turn. Absent: not measured, or the cache restarts.
    */
   cacheSafeEffort: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Speeds the model runs at for the signed-in account, slowest first, `standard` among them. Absent
+   * when there is nothing to pick: the harness has no speed setting for it, or the plan offers none.
+   */
+  speeds: Schema.optionalKey(LenientArray(ModelSpeed)),
+  /** The speed the harness runs it at when Cerium names none, as the user's own configuration says. */
+  defaultSpeed: Schema.optionalKey(StoredSpeed),
   /** The model the harness picks when none is named. */
   isDefault: Schema.optionalKey(Schema.Boolean),
 });

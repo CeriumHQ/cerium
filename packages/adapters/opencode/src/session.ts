@@ -6,7 +6,7 @@ import {
   type SessionOptions,
   type TurnExtras,
 } from "@cerium/harness";
-import type { ReasoningEffort } from "@cerium/protocol";
+import type { ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import type { OpenCodeEvent } from "@opencode/client";
 import { Cause, Deferred, Duration, Effect, Exit, Queue, Stream } from "effect";
 import { basename, resolve } from "node:path";
@@ -124,8 +124,9 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   let catalog: ReadonlyArray<CatalogRow> = rows;
   let model = options.model;
   let effort: ReasoningEffort | undefined = options.effort;
+  let speed: ModelSpeed | undefined = options.speed;
   const selection = () => {
-    const ref = toModelRef(model, effort, catalog);
+    const ref = toModelRef(model, effort, catalog, speed);
     return ref === undefined
       ? Effect.fail(failure(`"${model}" is not an OpenCode model; models are named provider/model`)(model))
       : Effect.succeed(ref);
@@ -276,14 +277,19 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   const input = yield* Queue.unbounded<Turn>();
   yield* Effect.forkScoped(Effect.forever(Queue.take(input).pipe(Effect.flatMap(runTurn))));
 
-  const switchModel = (next: { readonly model?: string; readonly effort?: ReasoningEffort }) =>
+  const switchModel = (next: {
+    readonly model?: string;
+    readonly effort?: ReasoningEffort;
+    readonly speed?: ModelSpeed;
+  }) =>
     Effect.gen(function* () {
       if (next.model !== undefined && !catalog.some((row) => `${row.providerID}/${row.id}` === next.model)) {
         catalog = (yield* readCatalog(client, cwd)).rows;
       }
-      const previous = { model, effort };
+      const previous = { model, effort, speed };
       model = next.model ?? model;
       effort = next.effort ?? effort;
+      speed = next.speed ?? speed;
       const ref = yield* selection();
       yield* call("switch the session's model", (signal) =>
         client.session.switchModel({ sessionID: id, model: ref }, { signal }),
@@ -292,6 +298,7 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
           Effect.sync(() => {
             model = previous.model;
             effort = previous.effort;
+            speed = previous.speed;
           }),
         ),
       );
@@ -333,9 +340,10 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
       if (pending > 0) interruptRequested = true;
       return turnEnded === undefined ? Effect.void : interruptTurn;
     }),
-    // Both apply from the next step; a running step finishes on the model it started with.
+    // Each applies from the next step; a running step finishes on the model it started with.
     setModel: (next) => switchModel({ model: next }),
     setEffort: (next) => switchModel({ effort: next }),
+    setSpeed: (next) => switchModel({ speed: next }),
     // Queued like a message: OpenCode runs the compaction as an execution of its own.
     compact: Effect.sync(() => pending++).pipe(
       Effect.andThen(Queue.offer(input, { compact: true })),

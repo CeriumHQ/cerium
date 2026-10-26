@@ -1,6 +1,7 @@
 import type {
   CapabilityManifest,
   ContextCompacted,
+  ModelSpeed,
   ProviderId,
   ReasoningEffort,
   TodoItem,
@@ -26,8 +27,10 @@ export interface FakeSession {
   readonly sent: Array<string>;
   /** What each turn carried beside its text, in the same order. */
   readonly extras: Array<TurnExtras | undefined>;
-  /** Each `setModel` and `setEffort` the session took, in order. */
-  readonly switches: Array<{ readonly model: string } | { readonly effort: ReasoningEffort }>;
+  /** Each `setModel`, `setEffort` and `setSpeed` the session took, in order. */
+  readonly switches: Array<
+    { readonly model: string } | { readonly effort: ReasoningEffort } | { readonly speed: ModelSpeed }
+  >;
 }
 
 /** A scripted harness: every turn replies `reply(text)` after `turnDuration`, then completes. */
@@ -57,9 +60,9 @@ export const makeFakeAdapter = (
     readonly complete?: (request: CompletionRequest) => string;
     /** How long each `complete` takes. */
     readonly completeDuration?: Duration.Input;
-    /** What the manifest says sessions can switch (default: model and effort). */
-    readonly switching?: { readonly model: boolean; readonly effort: boolean };
-    /** `setModel` and `setEffort` fail, as a harness refusing a model would. */
+    /** What the manifest says sessions can switch (default: model, effort and speed). */
+    readonly switching?: { readonly model?: boolean; readonly effort?: boolean; readonly speed?: boolean };
+    /** `setModel`, `setEffort` and `setSpeed` fail, as a harness refusing a model would. */
     readonly refuseSwitches?: boolean;
     /** The harness can fork sessions (`forks` records each request); `"fail"` refuses every fork. */
     readonly fork?: boolean | "fail";
@@ -79,7 +82,7 @@ export const makeFakeAdapter = (
   const manifest: CapabilityManifest = {
     provider,
     session: { resume: true, fork: options.fork !== undefined && options.fork !== false },
-    switching: { model: true, effort: true, ...options.switching, cacheSafeEffort: true },
+    switching: { model: true, effort: true, speed: true, ...options.switching, cacheSafeEffort: true },
     input: { images: options.images ?? false },
     permissions: { approvals: "callback", readOnlyMode: true },
     mcpInjection: true,
@@ -94,7 +97,13 @@ export const makeFakeAdapter = (
     manifest,
     probe: Effect.die("unused"),
     listModels: Effect.succeed([
-      { provider, id: "fake-model", label: "Fake model", efforts: ["low", "medium", "high"] },
+      {
+        provider,
+        id: "fake-model",
+        label: "Fake model",
+        efforts: ["low", "medium", "high"],
+        speeds: ["standard", "fast"],
+      },
     ]),
     complete: (request) =>
       Effect.gen(function* () {
@@ -211,6 +220,9 @@ export const makeFakeAdapter = (
           ),
           setModel: (model: string) => switchTo({ model }),
           setEffort: (effort: ReasoningEffort) => switchTo({ effort }),
+          ...(manifest.switching.speed === true
+            ? { setSpeed: (speed: ModelSpeed) => switchTo({ speed }) }
+            : {}),
           ...(compacted === undefined
             ? {}
             : {

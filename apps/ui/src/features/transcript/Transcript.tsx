@@ -476,6 +476,7 @@ const TranscriptItem = memo(
               provider={provider}
               model={model}
               {...(each.effort ? { effort: each.effort } : {})}
+              {...(each.speed ? { speed: each.speed } : {})}
               change={each.change}
             />
           );

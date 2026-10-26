@@ -10,6 +10,7 @@ import type {
   ProviderId,
   Question,
   QuestionAnswer,
+  ModelSpeed,
   ReasoningEffort,
   TurnFile,
 } from "@cerium/protocol";
@@ -107,8 +108,8 @@ export type TranscriptBlock =
   | { readonly kind: "routed"; readonly id: string; readonly decision: RoutedDecision }
   /**
    * The model the agent runs on from here: where its session starts, where the user switches it to
-   * another model or effort, and where they hand it to another harness. Responses are labelled with
-   * the one in effect when they began.
+   * another model, effort or speed, and where they hand it to another harness. Responses are labelled
+   * with the one in effect when they began.
    */
   | {
       readonly kind: "model";
@@ -117,8 +118,9 @@ export type TranscriptBlock =
       readonly provider?: ProviderId;
       readonly model: string;
       readonly effort?: ReasoningEffort;
+      readonly speed?: ModelSpeed;
       /** `start` is a session beginning, which says nothing; the others are the user's switches. */
-      readonly change: "start" | "model" | "effort" | "handoff";
+      readonly change: "start" | "model" | "effort" | "speed" | "handoff";
     }
   /**
    * What the conversation went back on: the turns from one of the user's messages on, which the user
@@ -197,7 +199,14 @@ export const buildTranscript = (
   const blocks: Array<TranscriptBlock> = [];
   const indexOf = new Map<string, number>();
   let lastUsage: Extract<TranscriptBlock, { kind: "turnEnd" }>["usage"];
-  let running: { model: string; effort: ReasoningEffort | undefined; provider?: ProviderId } | undefined;
+  let running:
+    | {
+        model: string;
+        effort: ReasoningEffort | undefined;
+        speed?: ModelSpeed | undefined;
+        provider?: ProviderId;
+      }
+    | undefined;
   /** The turn in progress, by the id its files are recorded under. */
   let turnId: string | undefined;
   /**
@@ -259,6 +268,8 @@ export const buildTranscript = (
       case "ModelChanged":
       case "LeadHandedOff": {
         const effort = payload.effort;
+        // A session's start says nothing of its speed: the switch that picked it did.
+        const speed = payload._tag === "SessionStarted" ? running?.speed : payload.speed;
         const change =
           payload._tag === "SessionStarted"
             ? "start"
@@ -268,17 +279,25 @@ export const buildTranscript = (
                 ? "model"
                 : running.effort !== effort
                   ? "effort"
-                  : undefined;
+                  : running.speed !== speed
+                    ? "speed"
+                    : undefined;
         const provider = payload._tag === "ModelChanged" ? running?.provider : payload.provider;
-        running = { model: payload.model, effort, ...(provider ? { provider } : {}) };
+        running = { model: payload.model, effort, speed, ...(provider ? { provider } : {}) };
         // A switch to what the agent already ran on changes nothing to show.
-        if (change === undefined || (change === "effort" && effort === undefined)) break;
+        if (
+          change === undefined ||
+          (change === "effort" && effort === undefined) ||
+          (change === "speed" && speed === undefined)
+        )
+          break;
         blocks.push({
           kind: "model",
           id: `model:${id}`,
           ...(provider ? { provider } : {}),
           model: payload.model,
           ...(effort ? { effort } : {}),
+          ...(speed ? { speed } : {}),
           change,
         });
         break;

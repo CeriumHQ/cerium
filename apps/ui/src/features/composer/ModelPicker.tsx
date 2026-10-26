@@ -1,7 +1,7 @@
 import { Combobox } from "@base-ui/react/combobox";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { ModelInfo, ProviderId } from "@cerium/protocol";
+import type { ModelInfo, ModelSpeed, ProviderId } from "@cerium/protocol";
 import { useAtom } from "@effect/atom-react";
 import { Check, Search, Star } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
@@ -21,14 +21,18 @@ import {
   EffortRow,
   effortSteps,
   offersChoice,
+  offersSpeed,
+  SpeedMark,
+  SpeedRow,
   type EffortChoice,
   type EffortPick,
+  type SpeedChoice,
 } from "./Pickers.tsx";
 
 // The model menu in the message box: a rail down its side holds the starred models and a tab per
 // harness, a search spans every harness's models, and Ctrl and a digit picks one of the first ten
-// rows. Its foot picks the model's effort, so the model and how hard it thinks are one control. It
-// picks one model, or several for multi agent.
+// rows. Its foot picks the model's speed and effort, so the model, how fast it's served and how hard
+// it thinks are one control. It picks one model, or several for multi agent.
 
 /** What the model picker's trigger shows: the model in use, which the list may not offer any more. */
 export interface ShownModel {
@@ -59,6 +63,13 @@ interface MenuProps {
   readonly effort?: EffortChoice | undefined;
   /** The effort the trigger names after the model, whether it's picked here or not. */
   readonly effortShown?: EffortPick | undefined;
+  /**
+   * The speed the menu's foot picks, wherever one can be picked; its row shows for a model served at
+   * more than one.
+   */
+  readonly speed?: SpeedChoice | undefined;
+  /** The speed the trigger marks after the effort, past standard. */
+  readonly speedShown?: ModelSpeed | undefined;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -132,8 +143,8 @@ function useBrowse(
 type Browse = ReturnType<typeof useBrowse>;
 
 /**
- * Picks one model. A pick keeps the menu open on its effort row, for the model's effort next; picking
- * the effort, or the model in use again, closes it.
+ * Picks one model. A pick keeps the menu open on its speed and effort rows, for those next; picking
+ * the effort, or the model in use again, closes it, as does the speed of a model without efforts.
  */
 export function ModelPicker({
   shown,
@@ -157,14 +168,11 @@ export function ModelPicker({
   const pick = (key: string | null) => {
     const picked = key === null ? undefined : browse.byKey.get(key);
     if (picked === undefined) return;
-    // The model in use again, or one without efforts to pick from, ends the choice.
-    if (
-      key === shown?.key ||
-      !offersChoice(menu.effort) ||
-      picked.efforts.length < 2 ||
-      leaves?.(picked) === true
-    )
-      browse.setOpen(false);
+    // The model in use again, or one with neither efforts nor speeds to pick from, ends the choice.
+    const efforts = offersChoice(menu.effort) && picked.efforts.length > 1;
+    // The speed row follows the model picked, wherever speeds can be picked at all.
+    const speeds = menu.speed !== undefined && (picked.speeds?.length ?? 0) > 1;
+    if (key === shown?.key || (!efforts && !speeds) || leaves?.(picked) === true) browse.setOpen(false);
     if (key !== shown?.key) onPick(picked);
   };
   return (
@@ -200,6 +208,7 @@ export function ModelPicker({
               <ProviderLogo provider={shown.provider} size={13} />
               <span className="truncate font-medium text-fg-primary">{shown.label}</span>
               <EffortTrail effort={menu.effortShown} />
+              <SpeedMark speed={menu.speedShown} />
               <ContextRing context={context} />
             </>
           ) : (
@@ -300,6 +309,7 @@ export function ModelsPicker({
         ) : null}
         <span className="truncate font-medium text-fg-primary">{label}</span>
         <EffortTrail effort={menu.effortShown} />
+        <SpeedMark speed={menu.speedShown} />
       </Combobox.Trigger>
       <MenuPopup
         {...menu}
@@ -339,6 +349,7 @@ function MenuPopup({
   available,
   note,
   effort,
+  speed,
   label,
   browse,
   multiple = false,
@@ -453,6 +464,19 @@ function MenuPopup({
               <div className="flex items-center gap-2 border-t border-line-subtle px-2.5 py-1.5 text-caption text-fg-tertiary">
                 {count}
               </div>
+            ) : null}
+            {offersSpeed(speed) ? (
+              <SpeedRow
+                choice={{
+                  ...speed,
+                  // The effort row below still waits; a model without one is done with its speed.
+                  onPick: (next) => {
+                    speed.onPick(next);
+                    if (!multiple && !offersChoice(effort)) browse.setOpen(false);
+                  },
+                }}
+                model={label ?? "it"}
+              />
             ) : null}
             {offersChoice(effort) ? (
               <EffortRow

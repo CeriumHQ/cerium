@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Collapsible } from "@base-ui/react/collapsible";
-import type { ProviderId, ReasoningEffort } from "@cerium/protocol";
+import type { ModelSpeed, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import {
   ArrowRightLeft,
   Ban,
@@ -29,7 +29,7 @@ import type { OutgoingMessage } from "../composer/Composer.tsx";
 import { segmentsOf } from "../composer/draft.ts";
 import { takeLaunch } from "../composer/flight.ts";
 import { useMessageBox } from "../composer/messageBox.ts";
-import { effortLabel } from "../composer/models.ts";
+import { effortLabel, speedLabel } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { FileChip } from "./FileChip.tsx";
@@ -222,11 +222,15 @@ export function Working() {
   );
 }
 
-/** Where the user switched the agent to another model, or just its effort, or handed it to another harness. */
+/**
+ * Where the user switched the agent to another model, or just its effort or speed, or handed it to
+ * another harness. A model's speed is said only past standard, where it costs more.
+ */
 export function ModelSwitch({
   provider,
   model,
   effort,
+  speed,
   change,
 }: {
   /** The harness it runs on from here. */
@@ -234,8 +238,15 @@ export function ModelSwitch({
   /** The model as people know it. */
   model: string;
   effort?: ReasoningEffort;
-  change: "model" | "effort" | "handoff";
+  speed?: ModelSpeed;
+  change: "model" | "effort" | "speed" | "handoff";
 }) {
+  const settings = [
+    ...(effort ? [effortLabel[effort]] : []),
+    ...(speed && speed !== "standard" ? [speedLabel[speed]] : []),
+  ]
+    .map((label) => ` · ${label}`)
+    .join("");
   return (
     <p className="flex items-center gap-2 text-meta text-fg-tertiary">
       {change === "handoff" ? (
@@ -246,18 +257,20 @@ export function ModelSwitch({
       <span className="min-w-0 truncate">
         {change === "effort" ? (
           <>Effort set to {effort ? effortLabel[effort] : ""}</>
+        ) : change === "speed" ? (
+          <>Speed set to {speed ? speedLabel[speed] : ""}</>
         ) : change === "handoff" ? (
           <>
             Continued on{" "}
             <span className="font-medium text-fg-secondary">
               {providerName[provider]} · {model}
             </span>
-            {effort ? ` · ${effortLabel[effort]}` : ""}
+            {settings}
           </>
         ) : (
           <>
             Switched to <span className="font-medium text-fg-secondary">{model}</span>
-            {effort ? ` · ${effortLabel[effort]}` : ""}
+            {settings}
           </>
         )}
       </span>

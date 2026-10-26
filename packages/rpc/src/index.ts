@@ -20,6 +20,7 @@ import {
   LoginProgress,
   Mention,
   ModelInfo,
+  ModelSpeed,
   NotificationKind,
   ProjectInfo,
   PushSubscriptionInfo,
@@ -85,7 +86,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 34;
+export const RPC_VERSION = 35;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -133,6 +134,8 @@ export const CreateThreadPayload = Schema.Struct({
     effort: Schema.optionalKey(ReasoningEffort),
     /** The lead starts on Auto, where the effort router is on. Since `RPC_VERSION` 23. */
     autoEffort: Schema.optionalKey(Schema.Boolean),
+    /** Since `RPC_VERSION` 35; an older backend starts the lead at its harness's default speed. */
+    speed: Schema.optionalKey(ModelSpeed),
     access: AccessMode,
   }),
 });
@@ -256,8 +259,8 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
-   * Switches a thread's lead to another model of its harness, or another effort, from its next turn.
-   * Refused where `HarnessManifests` says the harness can't switch.
+   * Switches a thread's lead to another model of its harness, or another effort or speed, from its next
+   * turn. Refused where `HarnessManifests` says the harness can't switch.
    */
   Rpc.make("SwitchModel", {
     payload: {
@@ -269,6 +272,8 @@ export const MachineRpcs = RpcGroup.make(
        * `effort` is given, which takes it off. Since `RPC_VERSION` 23.
        */
       autoEffort: Schema.optionalKey(Schema.Boolean),
+      /** Absent for the same model keeps its speed. Since `RPC_VERSION` 35. */
+      speed: Schema.optionalKey(ModelSpeed),
     },
     success: AgentInfo,
     error: CeriumError,
@@ -285,6 +290,8 @@ export const MachineRpcs = RpcGroup.make(
       model: Schema.NonEmptyString,
       effort: Schema.optionalKey(ReasoningEffort),
       autoEffort: Schema.optionalKey(Schema.Boolean),
+      /** Since `RPC_VERSION` 35. */
+      speed: Schema.optionalKey(ModelSpeed),
     },
     success: AgentInfo,
     error: CeriumError,

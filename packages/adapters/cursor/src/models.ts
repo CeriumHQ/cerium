@@ -1,6 +1,6 @@
 import { Cursor, type ModelListItem, type ModelParameterDefinition, type ModelSelection } from "@cursor/sdk";
 import { HarnessFailure } from "@cerium/harness";
-import type { ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import type { ModelInfo, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import { Effect } from "effect";
 
 const EFFORTS: ReadonlyArray<ReasoningEffort> = ["minimal", "low", "medium", "high", "xhigh", "max"];
@@ -63,16 +63,34 @@ export const clampEffort = (
   return best;
 };
 
+/**
+ * The parameter that runs a model on Cursor's Fast tier, an on/off switch on the models that have
+ * one. Some default to it on (Composer, Grok), so standard speed has to be asked for.
+ */
+export const speedParameter = (model: ModelListItem): ModelParameterDefinition | undefined =>
+  model.parameters?.find(
+    (parameter) =>
+      parameter.id === SPEED_PARAMETER &&
+      parameter.values.some(({ value }) => value === "true") &&
+      parameter.values.some(({ value }) => value === "false"),
+  );
+
+const SPEED_PARAMETER = "fast";
+
+/** The value a model's default variant gives a parameter: what runs when Cerium names none. */
+const defaultValueOf = (model: ModelListItem, parameter: ModelParameterDefinition | undefined) =>
+  parameter === undefined
+    ? undefined
+    : model.variants
+        ?.find((variant) => variant.isDefault === true)
+        ?.params.find((param) => param.id === parameter.id)?.value;
+
 export const toModelInfo = (model: ModelListItem): ModelInfo => {
   const parameter = effortParameter(model);
   const efforts = parameter === undefined ? [] : effortValues(parameter).map(([effort]) => effort);
-  const defaultValue =
-    parameter === undefined
-      ? undefined
-      : model.variants
-          ?.find((variant) => variant.isDefault === true)
-          ?.params.find((param) => param.id === parameter.id)?.value;
+  const defaultValue = defaultValueOf(model, parameter);
   const defaultEffort = defaultValue === undefined ? undefined : toCeriumEffort(defaultValue);
+  const speed = speedParameter(model);
   return {
     provider: "cursor",
     id: model.id,
@@ -80,18 +98,26 @@ export const toModelInfo = (model: ModelListItem): ModelInfo => {
     ...(model.description ? { description: model.description } : {}),
     efforts,
     ...(defaultEffort !== undefined && efforts.includes(defaultEffort) ? { defaultEffort } : {}),
+    ...(speed === undefined
+      ? {}
+      : {
+          speeds: ["standard", "fast"],
+          defaultSpeed: defaultValueOf(model, speed) === "true" ? "fast" : "standard",
+        }),
   };
 };
 
 /**
- * Builds the SDK's model selection from a Cerium model id and effort. Ids may carry parameters in the
- * CLI's bracket form (`gpt-5[effort=high,fast=true]`); `effort` replaces any effort given there and is
- * clamped to the closest level the model offers. Models without an effort parameter ignore it.
+ * Builds the SDK's model selection from a Cerium model id, effort and speed. Ids may carry parameters
+ * in the CLI's bracket form (`gpt-5[effort=high,fast=true]`); `effort` and `speed` replace any given
+ * there, the effort clamped to the closest level the model offers. Models without an effort parameter
+ * ignore it; a speed other than `fast` runs a model with a Fast switch at standard speed.
  */
 export const toModelSelection = (
   modelId: string,
   effort: ReasoningEffort | undefined,
   catalog: ReadonlyArray<ModelListItem>,
+  speed?: ModelSpeed,
 ): ModelSelection => {
   const match = /^([^[\]]+)\[([^\]]*)\]$/.exec(modelId.trim());
   const id = (match?.[1] ?? modelId).trim();
@@ -111,9 +137,17 @@ export const toModelSelection = (
           values.map(([level]) => level),
         );
   const value = values.find(([level]) => level === chosen)?.[1];
-  const params =
+  const withEffort =
     parameter === undefined || value === undefined
       ? given
       : [...given.filter((param) => param.id !== parameter.id), { id: parameter.id, value }];
+  const fast = model === undefined || speed === undefined ? undefined : speedParameter(model);
+  const params =
+    fast === undefined
+      ? withEffort
+      : [
+          ...withEffort.filter((param) => param.id !== fast.id),
+          { id: fast.id, value: speed === "fast" ? "true" : "false" },
+        ];
   return params.length > 0 ? { id, params } : { id };
 };

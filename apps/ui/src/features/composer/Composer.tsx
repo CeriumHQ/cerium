@@ -5,6 +5,7 @@ import {
   type Attachment,
   type Mention,
   type ModelInfo,
+  type ModelSpeed,
   type ProviderId,
   type ReasoningEffort,
   type UsageSnapshot,
@@ -49,6 +50,7 @@ import {
   isSendKey,
   modelAtom,
   sendKeyAtom,
+  speedAtom,
   workplaceAtom,
 } from "../settings/preferences.ts";
 import { providerName } from "../threads/model.ts";
@@ -81,6 +83,8 @@ import {
   modelKey,
   pickModel,
   pickModels,
+  speedFor,
+  speedsOf,
   switchTo,
   useModels,
   type HandoffChoice,
@@ -89,7 +93,16 @@ import {
 import { handoffTarget, runningLow } from "./handoff.ts";
 import { HandoffDialog, LowLimitNotice, type Handoff } from "./HandoffDialog.tsx";
 import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
-import { chipEffortLabel, FixedChip, MoreMenu, type EffortChoice, type EffortPick } from "./Pickers.tsx";
+import {
+  chipEffortLabel,
+  FixedChip,
+  MoreMenu,
+  offersSpeed,
+  SpeedMark,
+  type EffortChoice,
+  type EffortPick,
+  type SpeedChoice,
+} from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
@@ -128,6 +141,8 @@ export interface ThreadSetup {
   readonly effort?: ReasoningEffort;
   /** The effort router picks the lead's effort each turn, starting from `effort`. */
   readonly autoEffort?: boolean;
+  /** Absent for models served at one speed. */
+  readonly speed?: ModelSpeed;
   readonly access: AccessMode;
   /** A work thread runs in a git worktree of its own. */
   readonly worktree?: boolean;
@@ -146,6 +161,8 @@ export type ComposerTarget =
       readonly effort?: ReasoningEffort | undefined;
       /** The effort router picks the lead's effort each turn. */
       readonly autoEffort?: boolean | undefined;
+      /** Absent for a lead at its harness's default speed. */
+      readonly speed?: ModelSpeed | undefined;
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
       /** The thread's own worktree's branch, and the branch it was made from. */
@@ -153,7 +170,7 @@ export type ComposerTarget =
       /** The lead stopped or failed; the next message picks the thread back up. */
       readonly ended?: "stopped" | "failed";
       /**
-       * Switches the lead to another model of its harness, or another effort, from its next turn.
+       * Switches the lead to another model of its harness, or another effort or speed, from its next turn.
        * Resolves false when it didn't go through. Absent where the box can't ask for that.
        */
       readonly onSwitch?: (choice: ModelSwitch) => Promise<boolean>;
@@ -266,13 +283,15 @@ export function Composer({
   const focusMoves = useRef(0);
   const registry = useContext(RegistryContext);
   const draft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
-  // New threads start with the model and effort the last one was given, which are also the defaults
-  // in settings. Access always starts from the settings default. A pick here stays with the draft.
+  // New threads start with the model, effort and speed the last one was given, which are also the
+  // defaults in settings. Access always starts from the settings default. A pick here stays with the draft.
   const [defaultModel, setDefaultModel] = useAtom(modelAtom);
   const [defaultEffort, setDefaultEffort] = useAtom(effortAtom);
+  const [defaultSpeed, setDefaultSpeed] = useAtom(speedAtom);
   const defaultAccess = useAtomValue(accessAtom);
   const modelId = draft.start?.model ?? defaultModel;
   const effort = draft.start?.effort ?? defaultEffort;
+  const speed = draft.start?.speed ?? defaultSpeed;
   const pickedAccess = draft.start?.access ?? defaultAccess;
   // While the machine's effort router is on, a new thread starts on Auto unless taken off it.
   const settings = useAtomValue(settingsAtom);
@@ -311,6 +330,12 @@ export function Composer({
     multi && effort !== undefined && efforts.includes(effort)
       ? effort
       : starting.map((each) => effortFor(each, effort)).find((each) => each !== undefined);
+  /** One speed for every model starting, the same way; each model that lacks it runs at its default. */
+  const speeds = speedsOf(starting);
+  const activeSpeed =
+    multi && speed !== undefined && speeds.includes(speed)
+      ? speed
+      : starting.map((each) => speedFor(each, speed)).find((each) => each !== undefined);
   const [modelsOpen, setModelsOpen] = useState(false);
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
@@ -405,7 +430,10 @@ export function Composer({
   /** Remembers a pick in the open new thread's draft; nothing else changes it. */
   const pickForDraft = (
     pick: Partial<
-      Pick<DraftStart, "folder" | "model" | "models" | "effort" | "autoEffort" | "access" | "worktree">
+      Pick<
+        DraftStart,
+        "folder" | "model" | "models" | "effort" | "autoEffort" | "speed" | "access" | "worktree"
+      >
     >,
   ) =>
     updateDraft(draftKey, (current) => {
@@ -436,10 +464,14 @@ export function Composer({
     setDefaultEffort(value);
     pickForDraft({ effort: value, ...(routerOn ? { autoEffort: false } : {}) });
   };
+  const setSpeed = (value: ModelSpeed) => {
+    setDefaultSpeed(value);
+    pickForDraft({ speed: value });
+  };
   const setAccess = (value: AccessMode) => pickForDraft({ access: value });
 
-  // An open thread's lead can take another model of its harness, or another effort, when the harness
-  // can switch a session. A machine too old to say (it has no manifests) offers nothing to switch.
+  // An open thread's lead can take another model of its harness, or another effort or speed, when the
+  // harness can switch a session. A machine too old to say (it has no manifests) offers nothing to switch.
   const thread = target.kind === "thread" ? target : undefined;
   const manifests = useAtomValue(manifestsAtom);
   const switching =
@@ -448,7 +480,7 @@ export function Composer({
       : undefined;
   /** A pick the machine hasn't confirmed yet, which holds only while the thread still has what it was made against. */
   const [pending, setPending] = useState<{ readonly base: string; readonly choice: ModelSwitch }>();
-  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}|${thread?.autoEffort}`;
+  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}|${thread?.autoEffort}|${thread?.speed}`;
   const picked = pending?.base === base ? pending.choice : undefined;
   const threadModel =
     thread === undefined
@@ -460,6 +492,7 @@ export function Composer({
   // Turning Auto on asks for no level, so the lead's own shows until the router picks one.
   const threadEffort = threadModel ? effortFor(threadModel, picked?.effort ?? thread?.effort) : undefined;
   const threadAuto = routerOn && (picked ? picked.autoEffort === true : thread?.autoEffort === true);
+  const threadSpeed = threadModel ? speedFor(threadModel, picked?.speed ?? thread?.speed) : undefined;
   const switchLead = (choice: ModelSwitch) => {
     if (thread?.onSwitch === undefined) return;
     setPending({ base, choice });
@@ -478,7 +511,7 @@ export function Composer({
       from: thread.provider,
       to: picked.provider,
       label: picked.label,
-      choice: { provider: picked.provider, ...switchTo(picked, threadEffort, true, threadAuto) },
+      choice: { provider: picked.provider, ...switchTo(picked, threadEffort, true, threadAuto, threadSpeed) },
     });
   };
   // While the lead's harness runs low, the box offers to carry on in one that isn't.
@@ -690,11 +723,13 @@ export function Composer({
     }
     const setupOf = (each: ModelInfo): ThreadSetup => {
       const level = effortFor(each, activeEffort);
+      const pace = speedFor(each, activeSpeed);
       return {
         provider: each.provider,
         model: each.id,
         ...(level ? { effort: level } : {}),
         ...(level && autoEffort ? { autoEffort } : {}),
+        ...(pace ? { speed: pace } : {}),
         access: isNew && target.mode === "chat" ? "readOnly" : access,
         ...(worktree ? { worktree } : {}),
       };
@@ -834,10 +869,11 @@ export function Composer({
               : "Describe the task"
           : `Message ${threadShown?.label}`;
 
-  // The lead's model and effort as one chip in the box's line. It opens the harness's models, with the
-  // effort under them, as far as the harness can switch either mid-thread.
+  // The lead's model, effort and speed as one chip in the box's line. It opens the harness's models,
+  // with the speed and effort under them, as far as the harness can switch each mid-thread.
   const switchesModel = switching?.model === true;
   const switchesEffort = switching?.effort === true;
+  const switchesSpeed = switching?.speed === true;
   const threadEffortShown: EffortPick | undefined = threadEffort
     ? threadAuto
       ? "auto"
@@ -857,6 +893,15 @@ export function Composer({
             ),
         }
       : undefined;
+  // A speed picked keeps the lead's effort, and Auto.
+  const threadSpeedChoice: SpeedChoice | undefined =
+    threadModel && switchesSpeed
+      ? {
+          speeds: threadModel.speeds ?? [],
+          value: threadSpeed ?? "standard",
+          onPick: (next) => switchLead(switchTo(threadModel, threadEffort, switchesEffort, threadAuto, next)),
+        }
+      : undefined;
   // With a handoff the menu lists every harness: the lead's own models as far as it switches them
   // mid-thread, and every other harness's, which take the thread over once the user confirms.
   const ownModels = thread
@@ -874,7 +919,7 @@ export function Composer({
     thread?.onCompact && compacts && !running && thread.ended === undefined ? thread.onCompact : undefined;
   const threadChip =
     thread && threadShown ? (
-      handoff || switchesModel || threadEffortChoice || onCompact ? (
+      handoff || switchesModel || threadEffortChoice || offersSpeed(threadSpeedChoice) || onCompact ? (
         <ModelPicker
           models={
             handoff
@@ -886,10 +931,12 @@ export function Composer({
           available={new Set([thread.provider, ...(handoff?.available ?? [])])}
           effort={threadEffortChoice}
           effortShown={threadEffortShown}
+          speed={threadSpeedChoice}
+          speedShown={threadSpeed}
           leaves={(picked) => picked.provider !== thread.provider}
           onPick={(picked) =>
             picked.provider === thread.provider
-              ? switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto))
+              ? switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto, threadSpeed))
               : askHandoff(picked)
           }
           context={thread.context}
@@ -914,6 +961,7 @@ export function Composer({
           <ProviderLogo provider={thread.provider} size={13} />
           <span className="max-w-40 truncate font-medium text-fg-primary">{threadShown.label}</span>
           {threadEffortShown ? <span>{chipEffortLabel[threadEffortShown]}</span> : null}
+          <SpeedMark speed={threadSpeed} />
           <ContextRing context={thread.context} />
         </FixedChip>
       )
@@ -933,6 +981,7 @@ export function Composer({
         onPick: (next) => (next === "auto" ? pickForDraft({ autoEffort: true }) : setEffort(next)),
       }
     : undefined;
+  const newSpeedChoice: SpeedChoice = { speeds, value: activeSpeed ?? "standard", onPick: setSpeed };
   const newChip =
     target.kind === "new" ? (
       multi ? (
@@ -946,6 +995,8 @@ export function Composer({
           onOpenChange={setModelsOpen}
           effort={newEffortChoice}
           effortShown={newEffortShown}
+          speed={newSpeedChoice}
+          speedShown={activeSpeed}
           onPick={(keys) => pickForDraft({ models: keys })}
           onSingle={() => setMulti(false)}
           // Agents that may edit share the one folder, where they can undo each other's work.
@@ -964,6 +1015,8 @@ export function Composer({
           onOpenChange={setModelsOpen}
           effort={newEffortChoice}
           effortShown={newEffortShown}
+          speed={newSpeedChoice}
+          speedShown={activeSpeed}
           onPick={(picked) => setModelId(modelKey(picked))}
         />
       )

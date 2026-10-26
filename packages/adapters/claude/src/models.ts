@@ -1,4 +1,11 @@
-import { query, type Options, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type FastModeDisabledReason,
+  type ModelInfo as SdkModelInfo,
+  type Options,
+  type Query,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
 import { Cause, Effect, Queue, Stream } from "effect";
@@ -9,11 +16,12 @@ const failure = (message: string) => (cause: unknown) =>
 /**
  * The session `inspectClaude` asks. Without a `cwd` it is asked about the account (its models, its
  * usage), which needs none of the user's MCP servers: Claude Code would otherwise start each of them
- * for the question.
+ * for the question. It opts in to fast mode, which an SDK session must, so it says whether the account
+ * may use it.
  */
 export const inspectOptions = (executablePath: string, cwd: string | undefined): Options => ({
   pathToClaudeCodeExecutable: executablePath,
-  ...(cwd === undefined ? { mcpServers: {}, strictMcpConfig: true } : { cwd }),
+  ...(cwd === undefined ? { mcpServers: {}, strictMcpConfig: true, settings: { fastMode: true } } : { cwd }),
   persistSession: false,
   settingSources: ["user", "project", "local"],
 });
@@ -42,16 +50,37 @@ export const inspectClaude = <A>(
     );
   });
 
-/** Asks the user's `claude` which models it offers. */
-export const listClaudeModels = Effect.fn("ClaudeAdapter.listModels")(function* (executablePath: string) {
-  const models = yield* inspectClaude(executablePath, undefined, "Could not list Claude models", (session) =>
-    session.supportedModels(),
-  );
+/**
+ * Why Claude Code says the account can't use fast mode, for the reasons that hold for every model:
+ * no paid plan, no usage credits, the organization or the environment turned it off, a provider other
+ * than Anthropic's own, or the check failing, which runs requests at standard speed. Still checking,
+ * and an allowlist that leaves out the default fast-mode model, don't keep it from the models.
+ */
+const FAST_MODE_BLOCKED: ReadonlySet<FastModeDisabledReason> = new Set([
+  "free",
+  "preference",
+  "extra_usage_disabled",
+  "network_error",
+  "unknown",
+  "not_first_party",
+  "disabled_by_env",
+]);
+
+/**
+ * Claude Code's model rows as Cerium lists them. `fastMode` is why the account can't use fast mode,
+ * absent when it can: the models that support it then offer it, and run at standard speed unless a
+ * session opts in.
+ */
+export const toModelInfos = (
+  models: ReadonlyArray<SdkModelInfo>,
+  fastMode: FastModeDisabledReason | undefined,
+): ReadonlyArray<ModelInfo> => {
   // The "default" row is an alias for another row; it marks that row instead of being listed itself.
   const listed = models.filter((model) => model.value !== DEFAULT_ROW);
   const fallback = models.find((model) => model.value === DEFAULT_ROW)?.resolvedModel;
   const defaultId =
     fallback === undefined ? undefined : listed.find((model) => model.resolvedModel === fallback)?.value;
+  const fast = fastMode === undefined || !FAST_MODE_BLOCKED.has(fastMode);
   return listed.map((model): ModelInfo => ({
     provider: "claude",
     id: model.value,
@@ -59,8 +88,25 @@ export const listClaudeModels = Effect.fn("ClaudeAdapter.listModels")(function* 
     ...(model.description ? { description: model.description } : {}),
     efforts: model.supportsEffort === true ? [...(model.supportedEffortLevels ?? [])] : [],
     ...(CACHE_SAFE_EFFORT.has(model.resolvedModel ?? model.value) ? { cacheSafeEffort: true } : {}),
+    ...(fast && model.supportsFastMode === true
+      ? { speeds: ["standard", "fast"], defaultSpeed: "standard" }
+      : {}),
     ...(model.value === defaultId ? { isDefault: true } : {}),
   }));
+};
+
+/** Asks the user's `claude` which models it offers, and whether the account may run them fast. */
+export const listClaudeModels = Effect.fn("ClaudeAdapter.listModels")(function* (executablePath: string) {
+  const { models, fastMode } = yield* inspectClaude(
+    executablePath,
+    undefined,
+    "Could not list Claude models",
+    async (session) => {
+      const [models, init] = await Promise.all([session.supportedModels(), session.initializationResult()]);
+      return { models, fastMode: init.fast_mode_disabled_reason };
+    },
+  );
+  return toModelInfos(models, fastMode);
 });
 
 const DEFAULT_ROW = "default";

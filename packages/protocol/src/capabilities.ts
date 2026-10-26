@@ -1,9 +1,21 @@
 import { Schema } from "effect";
 
+import { withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
 
 export const ReasoningEffort = Schema.Literals(["minimal", "low", "medium", "high", "xhigh", "max"]);
 export type ReasoningEffort = typeof ReasoningEffort.Type;
+
+/**
+ * How fast the provider serves a model: `standard`, or a faster tier it charges more for. `fast` is
+ * Claude's fast mode, OpenAI's Fast (`priority`) tier and Cursor's Fast models; `ultrafast` is
+ * OpenAI's Ultrafast tier, which a few models offer on some plans. Slowest first.
+ */
+export const ModelSpeed = Schema.Literals(["standard", "fast", "ultrafast"]);
+export type ModelSpeed = typeof ModelSpeed.Type;
+
+/** A speed as another version wrote it: one this version doesn't know reads as `standard`. */
+export const StoredSpeed = withFallback(ModelSpeed, "standard");
 
 const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
 
@@ -46,6 +58,8 @@ export const CapabilityManifest = Schema.Struct({
      * `ModelInfo.cacheSafeEffort` says which.
      */
     cacheSafeEffort: Schema.Boolean,
+    /** Speed changes mid-session, on the models whose `ModelInfo.speeds` offer a choice. */
+    speed: Schema.optionalKey(Schema.Boolean),
   }),
   input: Schema.Struct({
     images: Schema.Boolean,

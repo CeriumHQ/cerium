@@ -1,6 +1,7 @@
 import {
   NOTIFICATION_KINDS,
   type AccessMode,
+  type ModelSpeed,
   type NotificationKind,
   type ReasoningEffort,
 } from "@cerium/protocol";
@@ -9,7 +10,7 @@ import { Atom } from "effect/reactivity";
 import { WEB } from "../../backend/target.ts";
 import { primaryHeld } from "../../lib/keys.ts";
 import { remember, stored } from "../../lib/storage.ts";
-import { accessOptions, effortLabel } from "../composer/models.ts";
+import { accessOptions, effortLabel, speedLabel } from "../composer/models.ts";
 
 // Preferences that only change this window, kept in its local storage. Each is an atom, so the
 // settings view and the parts of the window a preference changes stay in step.
@@ -130,6 +131,19 @@ export const effortAtom = preference<ReasoningEffort>(
   Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>,
   "high",
 );
+const SPEED_KEY = "cerium:speed";
+/**
+ * The speed new threads start at, once one is picked; until then each model runs at its harness's own
+ * default, as the user configured it there.
+ */
+export const speedAtom = Atom.writable(
+  (): ModelSpeed | undefined =>
+    (Object.keys(speedLabel) as ReadonlyArray<ModelSpeed>).find((speed) => speed === stored(SPEED_KEY)),
+  (context, value: ModelSpeed) => {
+    context.setSelf(value);
+    remember(SPEED_KEY, value);
+  },
+).pipe(Atom.keepAlive);
 /**
  * The access every new work thread starts with. Only Settings changes it: a pick in the composer
  * covers the one thread it starts. Kept under a new key, so earlier remembered picks don't carry over.

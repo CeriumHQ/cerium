@@ -1,5 +1,5 @@
 import { HarnessFailure } from "@cerium/harness";
-import type { ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import type { ModelInfo, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import { Effect, Schema } from "effect";
 
 import { call, type OpenCodeClient } from "./host.ts";
@@ -10,7 +10,8 @@ const failure = (message: string) => (cause: unknown) =>
 // OpenCode names a model `<provider>/<model>` (`opencode/big-pickle`, `anthropic/claude-sonnet-5-5`), and
 // Cerium uses that as the model id. A model's effort settings are its variants: reasoning levels named
 // like Cerium's efforts (`low`, `high`, `max`), plus toggles such as `none` and `thinking` that have no
-// Cerium name.
+// Cerium name. A provider that serves a model faster lists that as a model of its own, named with
+// `-fast` (`openai/gpt-6-luna-fast`), which Cerium offers as the model's Fast speed.
 
 /**
  * The subset of a `model.list` row Cerium reads. Its `settings`, `headers` and `body` can carry the
@@ -56,6 +57,12 @@ export const parseModel = (model: string): ModelRef | undefined => {
 
 export const modelId = (row: Pick<CatalogRow, "providerID" | "id">) => `${row.providerID}/${row.id}`;
 
+const FAST_SUFFIX = "-fast";
+
+/** The row that runs `row`'s model at Fast speed, when its provider lists one. */
+const fastRowOf = (row: Pick<CatalogRow, "providerID" | "id">, rows: ReadonlyArray<CatalogRow>) =>
+  rows.find((candidate) => candidate.providerID === row.providerID && candidate.id === row.id + FAST_SUFFIX);
+
 /** The efforts a model's variants offer, lowest first. */
 export const effortsOf = (variants: ReadonlyArray<string>): ReadonlyArray<ReasoningEffort> =>
   EFFORTS.filter((effort) => variants.includes(effort));
@@ -80,32 +87,43 @@ export const variantFor = (
   return best;
 };
 
-/** Models a session can run: enabled ones that call tools are listed by `model.list` already. */
-export const toModelInfo = (row: CatalogRow, defaultId: string | undefined): ModelInfo => {
+/**
+ * Models a session can run: enabled ones that call tools are listed by `model.list` already. `fast`
+ * is the model's Fast row, listed beside it.
+ */
+export const toModelInfo = (row: CatalogRow, defaultId: string | undefined, fast?: CatalogRow): ModelInfo => {
   const id = modelId(row);
   const efforts = effortsOf(row.variants.map((variant) => variant.id));
+  const fastIsDefault = fast !== undefined && modelId(fast) === defaultId;
   return {
     provider: "opencode",
     id,
     label: row.name,
     description: id,
     efforts,
-    ...(id === defaultId ? { isDefault: true } : {}),
+    ...(fast === undefined
+      ? {}
+      : { speeds: ["standard", "fast"], defaultSpeed: fastIsDefault ? "fast" : "standard" }),
+    ...(id === defaultId || fastIsDefault ? { isDefault: true } : {}),
   };
 };
 
 /**
- * The model a session runs, with the variant for `effort`. A model the catalog doesn't list is still
- * passed on, without a variant: OpenCode says why it can't run it when the turn starts.
+ * The model a session runs, with the variant for `effort`: at Fast speed, the model's Fast row where
+ * its provider lists one. A model the catalog doesn't list is still passed on, without a variant:
+ * OpenCode says why it can't run it when the turn starts.
  */
 export const toModelRef = (
   model: string,
   effort: ReasoningEffort | undefined,
   rows: ReadonlyArray<CatalogRow>,
+  speed?: ModelSpeed,
 ): (ModelRef & { readonly variant?: string }) | undefined => {
-  const ref = parseModel(model);
-  if (ref === undefined) return undefined;
-  const row = rows.find((candidate) => modelId(candidate) === model);
+  const parsed = parseModel(model);
+  if (parsed === undefined) return undefined;
+  const fast = speed === "fast" ? fastRowOf(parsed, rows) : undefined;
+  const ref = fast === undefined ? parsed : { providerID: fast.providerID, id: fast.id };
+  const row = fast ?? rows.find((candidate) => modelId(candidate) === model);
   const variant =
     row === undefined
       ? undefined
@@ -116,15 +134,25 @@ export const toModelRef = (
   return variant === undefined ? ref : { ...ref, variant };
 };
 
-/** The listing as Cerium offers it: deprecated models dropped, the default first. */
+/**
+ * The listing as Cerium offers it: deprecated models dropped, each Fast row folded into its model's
+ * speeds, the default first.
+ */
 export const toModelInfos = (
   rows: ReadonlyArray<CatalogRow>,
   defaultRow: CatalogRow | null,
 ): ReadonlyArray<ModelInfo> => {
   const defaultId = defaultRow === null ? undefined : modelId(defaultRow);
-  const models = rows
-    .filter((row) => row.enabled && row.status !== "deprecated")
-    .map((row) => toModelInfo(row, defaultId));
+  const usable = rows.filter((row) => row.enabled && row.status !== "deprecated");
+  const folded = new Set(
+    usable.flatMap((row) => {
+      const fast = fastRowOf(row, usable);
+      return fast === undefined ? [] : [modelId(fast)];
+    }),
+  );
+  const models = usable
+    .filter((row) => !folded.has(modelId(row)))
+    .map((row) => toModelInfo(row, defaultId, fastRowOf(row, usable)));
   return [...models.filter((model) => model.isDefault), ...models.filter((model) => !model.isDefault)];
 };
 

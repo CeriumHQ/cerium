@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { ReasoningEffort } from "./capabilities.ts";
+import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 
@@ -116,6 +116,8 @@ export const AgentInfo = Schema.Struct({
    * the level the agent last ran at.
    */
   autoEffort: Schema.optionalKey(Schema.Boolean),
+  /** The speed picked for it; absent runs the harness's own default, or a model with no speed setting. */
+  speed: Schema.optionalKey(StoredSpeed),
   access: AccessMode,
   state: AgentState,
   providerSessionId: Schema.optionalKey(Schema.NonEmptyString),

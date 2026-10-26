@@ -42,9 +42,13 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
   cause: Schema.Defect(),
 }) {}
 
-/** `effort: null` clears the effort, for a model its harness offers no effort setting for. */
+/**
+ * `effort: null` clears the effort, for a model its harness offers no effort setting for; `speed: null`
+ * the speed, for one with no speed setting.
+ */
 export type AgentPatch = Partial<Pick<AgentInfo, "state" | "provider" | "model" | "autoEffort">> & {
   readonly effort?: AgentInfo["effort"] | null;
+  readonly speed?: AgentInfo["speed"] | null;
   /** `null` forgets the session, as handing the agent to another harness does. */
   readonly providerSessionId?: string | null;
   readonly updatedAt: number;
@@ -354,6 +358,7 @@ export class Store extends Context.Service<
                 parentId: agent.parentId ?? null,
                 effort: agent.effort ?? null,
                 autoEffort: agent.autoEffort ?? null,
+                speed: agent.speed ?? null,
                 providerSessionId: agent.providerSessionId ?? null,
               }),
             ).pipe(allAgents.forget),

@@ -245,6 +245,28 @@ describe("the model each response ran on", () => {
     ]);
   });
 
+  it("marks a speed switch, and keeps the speed across a session that starts again", () => {
+    const blocks = buildTranscript(
+      events(
+        started,
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "high", speed: "fast" },
+        {
+          _tag: "SessionStarted",
+          provider: "claude",
+          providerSessionId: "s-2",
+          model: "claude-opus-5-5",
+          effort: "high",
+        },
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "high", speed: "fast" },
+        { _tag: "ModelChanged", model: "claude-opus-5-5", effort: "high", speed: "standard" },
+      ),
+    );
+    expect(blocks.filter((block) => block.kind === "model" && block.change !== "start")).toMatchObject([
+      { kind: "model", speed: "fast", change: "speed" },
+      { kind: "model", speed: "standard", change: "speed" },
+    ]);
+  });
+
   it("puts the effort router's decision on its response's header, and runs on the level it picked", () => {
     const blocks = buildTranscript(
       events(

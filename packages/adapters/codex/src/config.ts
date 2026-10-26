@@ -1,5 +1,5 @@
 import type { McpServerSpec, SessionOptions } from "@cerium/harness";
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 
 import type { JsonValue } from "./protocol/serde_json/JsonValue.ts";
 import type { ApprovalsReviewer } from "./protocol/v2/ApprovalsReviewer.ts";
@@ -117,6 +117,39 @@ export const toCodexEffort = (effort: ReasoningEffort, supported?: ReadonlyArray
   return above ?? available.at(-1) ?? effort;
 };
 
+/**
+ * The service tier Codex runs a speed at. `default` asks for standard speed over the tier the user's
+ * config names, as Codex's own picker does.
+ */
+export const toServiceTier = (speed: ModelSpeed): string => {
+  switch (speed) {
+    case "standard":
+      return "default";
+    case "fast":
+      return "priority";
+    case "ultrafast":
+      return "ultrafast";
+  }
+};
+
+/**
+ * A service tier id as a Cerium speed: `fast` is the old name of `priority`. `flex`, slower and
+ * cheaper than standard, and ids Cerium doesn't know have none.
+ */
+export const fromServiceTier = (tier: string | null | undefined): ModelSpeed | undefined => {
+  switch (tier) {
+    case "default":
+      return "standard";
+    case "priority":
+    case "fast":
+      return "fast";
+    case "ultrafast":
+      return "ultrafast";
+    default:
+      return undefined;
+  }
+};
+
 /** One `[mcp_servers.<name>]` table. Trusted servers' tools never prompt; every other tool asks. */
 export const toMcpServerConfig = (spec: McpServerSpec, trusted: boolean): Record<string, JsonValue> => {
   const default_tools_approval_mode = trusted ? "approve" : "prompt";
@@ -191,6 +224,7 @@ export const threadParams = (options: SessionOptions, user: UserConfig, effort?:
     .join("\n\n");
   return {
     model: options.model,
+    ...(options.speed === undefined ? {} : { serviceTier: toServiceTier(options.speed) }),
     cwd: options.cwd,
     approvalPolicy,
     approvalsReviewer,

@@ -11,6 +11,8 @@ import {
   modelKey,
   pickModel,
   pickModels,
+  speedFor,
+  speedsOf,
   switchTo,
 } from "../src/features/composer/models.ts";
 
@@ -40,6 +42,36 @@ describe("effortFor", () => {
 
   it("offers none for a model without an effort setting", () => {
     expect(effortFor(haiku, "high")).toBeUndefined();
+  });
+});
+
+describe("speedFor", () => {
+  const fastOpus = model("claude", "opus", { speeds: ["standard", "fast"], defaultSpeed: "standard" });
+  const configuredFast = model("codex", "astra", {
+    speeds: ["standard", "fast", "ultrafast"],
+    defaultSpeed: "fast",
+  });
+
+  it("keeps the speed the model has, else its harness's default", () => {
+    expect(speedFor(fastOpus, "fast")).toBe("fast");
+    expect(speedFor(fastOpus, "ultrafast")).toBe("standard");
+    expect(speedFor(configuredFast, undefined)).toBe("fast");
+    expect(speedFor(configuredFast, "ultrafast")).toBe("ultrafast");
+  });
+
+  it("offers none for a model served at one speed", () => {
+    expect(speedFor(haiku, "fast")).toBeUndefined();
+    expect(speedFor(model("codex", "one", { speeds: ["standard"] }), "standard")).toBeUndefined();
+  });
+
+  it("lists every speed any of the models has, slowest first", () => {
+    expect(speedsOf([configuredFast, haiku])).toEqual(["standard", "fast", "ultrafast"]);
+    expect(speedsOf([haiku])).toEqual([]);
+  });
+
+  it("carries the speed over a switch where the new model has it", () => {
+    expect(switchTo(fastOpus, "high", true, false, "fast")).toEqual({ model: "opus", speed: "fast" });
+    expect(switchTo(haiku, undefined, true, false, "fast")).toEqual({ model: "haiku" });
   });
 });
 

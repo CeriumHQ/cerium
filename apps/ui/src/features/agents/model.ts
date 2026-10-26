@@ -3,6 +3,7 @@ import type {
   AgentState,
   ProviderId,
   Question,
+  ModelSpeed,
   ReasoningEffort,
   TodoItem,
 } from "@cerium/protocol";
@@ -62,6 +63,7 @@ export interface AgentSummary {
   readonly effort?: ReasoningEffort;
   /** The effort router picks its effort each turn, while the router is on. */
   readonly autoEffort?: true;
+  readonly speed?: ModelSpeed;
   readonly access: AccessMode;
   readonly state: AgentState;
   /** A permission request, a question, or a spawn request of the lead's, is waiting on the user. */

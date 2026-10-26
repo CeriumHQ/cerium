@@ -23,7 +23,7 @@ import {
   type SessionOptions,
   type TurnExtras,
 } from "@cerium/harness";
-import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Data, Effect, Queue, Stream } from "effect";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -200,7 +200,8 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
 
   let model = options.model;
   let effort: ReasoningEffort | undefined = options.effort;
-  let selection: ModelSelection = toModelSelection(model, effort, yield* catalog);
+  let speed: ModelSpeed | undefined = options.speed;
+  let selection: ModelSelection = toModelSelection(model, effort, yield* catalog, speed);
 
   // Inline servers are not stored with the agent, so every session passes them again. Servers passed
   // per send replace every other source for that run, which keeps the user's own servers out.
@@ -315,12 +316,17 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
   const input = yield* Queue.unbounded<{ readonly text: string; readonly extras?: TurnExtras }>();
   yield* Effect.forkScoped(Effect.forever(Queue.take(input).pipe(Effect.flatMap(runTurn))));
 
-  const reselect = (next: { readonly model?: string; readonly effort?: ReasoningEffort }) =>
+  const reselect = (next: {
+    readonly model?: string;
+    readonly effort?: ReasoningEffort;
+    readonly speed?: ModelSpeed;
+  }) =>
     catalog.pipe(
       Effect.map((models) => {
         model = next.model ?? model;
         effort = next.effort ?? effort;
-        selection = toModelSelection(model, effort, models);
+        speed = next.speed ?? speed;
+        selection = toModelSelection(model, effort, models, speed);
       }),
     );
 
@@ -338,8 +344,9 @@ export const startCursorSession = Effect.fn("CursorAdapter.startSession")(functi
       if (pending > 0) interruptRequested = true;
       return Effect.void;
     }),
-    // Both apply from the next turn: each `send()` carries the current selection.
+    // Each applies from the next turn: each `send()` carries the current selection.
     setModel: (next) => reselect({ model: next }),
     setEffort: (next) => reselect({ effort: next }),
+    setSpeed: (next) => reselect({ speed: next }),
   } satisfies AgentSession;
 });

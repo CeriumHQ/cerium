@@ -34,7 +34,7 @@ export const cursorManifest: CapabilityManifest = {
   session: { resume: true, fork: false },
   // Model and effort ride on each `send()`, so they switch from the next turn. Whether an effort
   // change keeps the prompt cache has not been measured.
-  switching: { model: true, effort: true, cacheSafeEffort: false },
+  switching: { model: true, effort: true, cacheSafeEffort: false, speed: true },
   input: { images: true },
   // The SDK cannot ask: local runs execute every tool call, and hooks load only from files in the
   // user's repo or home. Until a hook bridge is possible the session withholds every tool that would

@@ -3,6 +3,7 @@ import type {
   HarnessLimit,
   HarnessStatus,
   ModelInfo,
+  ModelSpeed,
   ProviderId,
   ReasoningEffort,
 } from "@cerium/protocol";
@@ -101,6 +102,22 @@ export const effortFor = (
     ? effort
     : (model.defaultEffort ?? model.efforts.at(-1));
 
+const speedOrder = (): ReadonlyArray<ModelSpeed> => Object.keys(speedLabel) as Array<ModelSpeed>;
+
+/** Every speed any of `models` runs at, slowest first: what one pick for all of them chooses from. */
+export const speedsOf = (models: ReadonlyArray<ModelInfo>): ReadonlyArray<ModelSpeed> =>
+  speedOrder().filter((speed) => models.some((model) => model.speeds?.includes(speed) === true));
+
+/**
+ * The speed a model runs at: the chosen one when it has it, else its harness's default. Undefined for
+ * a model with no speed to pick.
+ */
+export const speedFor = (model: ModelInfo, speed: ModelSpeed | undefined): ModelSpeed | undefined => {
+  const speeds = model.speeds ?? [];
+  if (speeds.length < 2) return undefined;
+  return speed !== undefined && speeds.includes(speed) ? speed : (model.defaultSpeed ?? speeds[0]);
+};
+
 /** What an open thread's lead is switched to: another model of its harness, at an effort it has. */
 export interface ModelSwitch {
   readonly model: string;
@@ -108,6 +125,8 @@ export interface ModelSwitch {
   readonly effort?: ReasoningEffort;
   /** The effort router picks the effort each turn (true), or stops picking it (false). */
   readonly autoEffort?: boolean;
+  /** Absent for a model with no speed to pick. */
+  readonly speed?: ModelSpeed;
 }
 
 /** The `RPC_VERSION` that brought `HandOffLead`; an older machine's leads stay on their harness. */
@@ -119,18 +138,25 @@ export interface HandoffChoice extends ModelSwitch {
 }
 
 /**
- * The switch to `model`, carrying `effort` over where the model has it, and Auto when the lead is on
- * it. A harness that can't change effort keeps the thread's own, so asking for the model alone isn't
- * refused over it.
+ * The switch to `model`, carrying `effort` and `speed` over where the model has them, and Auto when
+ * the lead is on it. A harness that can't change effort keeps the thread's own, so asking for the model
+ * alone isn't refused over it.
  */
 export const switchTo = (
   model: ModelInfo,
   effort: ReasoningEffort | undefined,
   canSwitchEffort: boolean,
   auto = false,
+  speed?: ModelSpeed,
 ): ModelSwitch => {
   const carried = canSwitchEffort ? effortFor(model, effort) : effort;
-  return { model: model.id, ...(carried ? { effort: carried } : {}), ...(auto ? { autoEffort: true } : {}) };
+  const pace = speedFor(model, speed);
+  return {
+    model: model.id,
+    ...(carried ? { effort: carried } : {}),
+    ...(auto ? { autoEffort: true } : {}),
+    ...(pace ? { speed: pace } : {}),
+  };
 };
 
 export const effortLabel: Record<ReasoningEffort, string> = {
@@ -151,6 +177,19 @@ export const effortHint: Record<ReasoningEffort | "auto", string> = {
   high: "Thorough",
   xhigh: "Slower, more thorough",
   max: "Slowest, most thorough",
+};
+
+export const speedLabel: Record<ModelSpeed, string> = {
+  standard: "Standard",
+  fast: "Fast",
+  ultrafast: "Ultrafast",
+};
+
+/** What each speed trades, said beside the model menu's speeds. */
+export const speedHint: Record<ModelSpeed, string> = {
+  standard: "Usual pace and price",
+  fast: "Faster, uses more",
+  ultrafast: "Fastest, uses the most",
 };
 
 /**

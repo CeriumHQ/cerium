@@ -31,6 +31,7 @@ import {
   type ProviderId,
   type Question,
   type QuestionResponse,
+  type ModelSpeed,
   type ReasoningEffort,
   type RestorePreview,
   type TaskEntry,
@@ -114,6 +115,7 @@ export interface CreateThreadInput {
     readonly effort?: ReasoningEffort;
     /** The lead starts on Auto: the effort router picks its effort while it is on. */
     readonly autoEffort?: boolean;
+    readonly speed?: ModelSpeed;
     readonly access: AccessMode;
   };
 }
@@ -205,7 +207,10 @@ interface Runtime {
   readonly openCalls: Set<string>;
   /** Cerium interrupted the turn in progress to hand the agent the user's waiting messages. */
   steering: boolean;
-  /** The model and effort its harness session runs with; its next turn brings them in line with `info`. */
+  /**
+   * The model, effort and speed its harness session runs with; its next turn brings them in line with
+   * `info`.
+   */
   applied: ModelChoice;
   /** Its session is new and has run no turn: the one turn the router may route on any model. */
   fresh: boolean;
@@ -224,10 +229,14 @@ interface Runtime {
   storedRaw: unknown;
 }
 
-/** A model of the agent's harness, and its effort (none for a model without an effort setting). */
+/**
+ * A model of the agent's harness, its effort and its speed (none for a model without that setting, or
+ * the harness's default speed).
+ */
 export interface ModelChoice {
   readonly model: string;
   readonly effort?: ReasoningEffort;
+  readonly speed?: ModelSpeed;
   /**
    * Auto: the effort router picks the effort while it is on. Absent from a switch, the agent stays as
    * it is unless an effort is picked, which takes it off.
@@ -244,6 +253,7 @@ const choiceOf = (info: AgentInfo): ModelChoice => ({
   model: info.model,
   ...(info.effort ? { effort: info.effort } : {}),
   ...(info.autoEffort ? { autoEffort: true } : {}),
+  ...(info.speed ? { speed: info.speed } : {}),
 });
 
 /** A thread's advisor: the read-only child Cerium starts for `ask_advisor`. */
@@ -392,8 +402,8 @@ export class Orchestrator extends Context.Service<
       direction: "undone" | "redone",
     ): Effect.Effect<TurnFilesReverted, OrchestratorError>;
     /**
-     * Switches a thread's lead to another model of its harness, or another effort, from its next
-     * turn. A lead that stopped or failed starts on them when the user picks the thread back up.
+     * Switches a thread's lead to another model of its harness, or another effort or speed, from its
+     * next turn. A lead that stopped or failed starts on them when the user picks the thread back up.
      */
     switchModel(agentId: AgentId, choice: ModelChoice): Effect.Effect<AgentInfo, OrchestratorError>;
     /**
@@ -818,19 +828,21 @@ export class Orchestrator extends Context.Service<
         });
 
       /**
-       * Records the model and effort an agent runs with from its next turn: on its runtime, if it has
-       * one, in the store, and in its transcript. A lead with no runtime starts its next session on them.
+       * Records the model, effort and speed an agent runs with from its next turn: on its runtime, if it
+       * has one, in the store, and in its transcript. A lead with no runtime starts its next session on
+       * them.
        */
       const recordModel = (info: AgentInfo, rt: Runtime | undefined, choice: ModelChoice) =>
         Effect.gen(function* () {
           const updatedAt = yield* Clock.currentTimeMillis;
-          const { effort: _previous, autoEffort: _wasAuto, ...rest } = info;
+          const { effort: _previous, autoEffort: _wasAuto, speed: _speed, ...rest } = info;
           const autoEffort = choice.autoEffort === true;
           const next: AgentInfo = {
             ...rest,
             model: choice.model,
             ...(choice.effort ? { effort: choice.effort } : {}),
             ...(autoEffort ? { autoEffort } : {}),
+            ...(choice.speed ? { speed: choice.speed } : {}),
             updatedAt,
           };
           // Stored first, so a switch the store refused isn't half made: the next turn and the next
@@ -840,6 +852,7 @@ export class Orchestrator extends Context.Service<
               model: choice.model,
               effort: choice.effort ?? null,
               autoEffort,
+              speed: choice.speed ?? null,
               updatedAt,
             })
             .pipe(Effect.mapError(unavailable));
@@ -1333,8 +1346,8 @@ export class Orchestrator extends Context.Service<
         );
 
       /**
-       * Switches the session to the model and effort the user picked since its last turn. When the
-       * harness refuses, the thread says why and the agent goes back to what its session runs.
+       * Switches the session to the model, effort and speed the user picked since its last turn. When
+       * the harness refuses, the thread says why and the agent goes back to what its session runs.
        */
       const applyModel = (rt: Runtime, session: AgentSession) =>
         Effect.gen(function* () {
@@ -1355,6 +1368,13 @@ export class Orchestrator extends Context.Service<
                 );
               rt.applied = { ...rt.applied, effort };
             }
+            if (wanted.speed !== undefined && wanted.speed !== rt.applied.speed && session.setSpeed) {
+              const speed = wanted.speed;
+              yield* session
+                .setSpeed(speed)
+                .pipe(Effect.mapError((error) => `Couldn't change the speed to ${speed}: ${error.message}`));
+              rt.applied = { ...rt.applied, speed };
+            }
           });
           yield* switched.pipe(
             Effect.catch((message) =>
@@ -1362,7 +1382,11 @@ export class Orchestrator extends Context.Service<
                 yield* emit(rt, { _tag: "AgentError", kind: "unknown", message, retryable: false });
                 // A pick made while this one was being applied stands, for the next turn to try.
                 const now = choiceOf(rt.info);
-                if (now.model === wanted.model && now.effort === wanted.effort) {
+                if (
+                  now.model === wanted.model &&
+                  now.effort === wanted.effort &&
+                  now.speed === wanted.speed
+                ) {
                   yield* recordModel(rt.info, rt, {
                     ...rt.applied,
                     ...(rt.info.autoEffort ? { autoEffort: true } : {}),
@@ -1670,6 +1694,7 @@ export class Orchestrator extends Context.Service<
                 cwd,
                 model: info.model,
                 ...(info.effort ? { effort: info.effort } : {}),
+                ...(info.speed ? { speed: info.speed } : {}),
                 ...(resume === undefined ? {} : { resume }),
                 access: info.access,
                 mcpServers: { [bus.serverName]: busSpec },
@@ -2321,17 +2346,25 @@ export class Orchestrator extends Context.Service<
             model: target.model,
             effort: target.effort ?? null,
             autoEffort,
+            speed: target.speed ?? null,
             providerSessionId: null,
             updatedAt,
           })
           .pipe(Effect.mapError(unavailable));
-        const { effort: _effort, autoEffort: _auto, providerSessionId: _session, ...rest } = info;
+        const {
+          effort: _effort,
+          autoEffort: _auto,
+          speed: _speed,
+          providerSessionId: _session,
+          ...rest
+        } = info;
         const next: AgentInfo = {
           ...rest,
           provider: target.provider,
           model: target.model,
           ...(target.effort ? { effort: target.effort } : {}),
           ...(autoEffort ? { autoEffort } : {}),
+          ...(target.speed ? { speed: target.speed } : {}),
           updatedAt,
         };
         yield* emitStored(next, {
@@ -2341,6 +2374,7 @@ export class Orchestrator extends Context.Service<
           model: target.model,
           ...(target.effort ? { effort: target.effort } : {}),
           ...(autoEffort ? { autoEffort } : {}),
+          ...(target.speed ? { speed: target.speed } : {}),
         });
         // Started at once, so the new harness's session is ready by the user's next message. What the
         // old session had still to take goes on now, with the brief; otherwise it waits for the user.
@@ -2766,6 +2800,7 @@ export class Orchestrator extends Context.Service<
           model: input.lead.model,
           ...(effort ? { effort } : {}),
           ...(input.lead.autoEffort ? { autoEffort: true } : {}),
+          ...(input.lead.speed ? { speed: input.lead.speed } : {}),
           access: input.mode === "chat" ? "readOnly" : input.lead.access,
           state: "idle",
           createdAt,
@@ -2897,15 +2932,20 @@ export class Orchestrator extends Context.Service<
               // Picking an effort takes the agent off Auto; otherwise it stays as it is.
               const autoEffort =
                 picked.autoEffort ?? (picked.effort === undefined && current.autoEffort === true);
+              // Likewise no speed for the same model keeps its speed, as a client before speeds asks.
+              const speed =
+                picked.speed === undefined && picked.model === current.model ? current.speed : picked.speed;
               const choice: ModelChoice = {
                 model,
                 ...(effort ? { effort } : {}),
                 ...(autoEffort ? { autoEffort } : {}),
+                ...(speed ? { speed } : {}),
               };
               if (
                 choice.model === current.model &&
                 choice.effort === current.effort &&
-                choice.autoEffort === current.autoEffort
+                choice.autoEffort === current.autoEffort &&
+                choice.speed === current.speed
               ) {
                 return info;
               }
@@ -2919,6 +2959,9 @@ export class Orchestrator extends Context.Service<
                 switching?.effort !== true
               ) {
                 return yield* notAllowed(`${info.provider} can't change a session's effort.`);
+              }
+              if (choice.speed !== undefined && choice.speed !== current.speed && switching?.speed !== true) {
+                return yield* notAllowed(`${info.provider} can't change a session's speed.`);
               }
               return yield* recordModel(info, rt, choice);
             }),

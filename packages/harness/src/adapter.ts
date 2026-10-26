@@ -5,6 +5,7 @@ import type {
   HarnessStatus,
   LoginProgress,
   ModelInfo,
+  ModelSpeed,
   ProviderId,
   ReasoningEffort,
   SkillInfo,
@@ -52,6 +53,8 @@ export interface SessionOptions {
   readonly cwd: string;
   readonly model: string;
   readonly effort?: ReasoningEffort;
+  /** Absent: the harness's own default, as the user configured it. */
+  readonly speed?: ModelSpeed;
   readonly access: AccessMode;
   /** Servers Cerium injects, always including its orchestration bus. */
   readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
@@ -169,6 +172,8 @@ export interface AgentSession {
   readonly interrupt: Effect.Effect<void, HarnessFailure>;
   setModel(model: string): Effect.Effect<void, HarnessFailure>;
   setEffort(effort: ReasoningEffort): Effect.Effect<void, HarnessFailure>;
+  /** From the next turn. Present when the manifest's `switching.speed` is. */
+  setSpeed?(speed: ModelSpeed): Effect.Effect<void, HarnessFailure>;
   /**
    * Asks the harness to compact the conversation now, between turns. It runs as a turn of its own,
    * which reports `ContextCompacted` and ends with `TurnCompleted` like one `send` starts. Present when

@@ -17,7 +17,7 @@ export const opencodeManifest: CapabilityManifest = {
   session: { resume: true, fork: true },
   // `session.switchModel` takes the model and its variant (OpenCode's effort) together, from the next
   // step. Whether a variant switch keeps the provider's prompt cache depends on the provider.
-  switching: { model: true, effort: true, cacheSafeEffort: false },
+  switching: { model: true, effort: true, cacheSafeEffort: false, speed: true },
   input: { images: true },
   // Each session's permission rules decide what asks; asks arrive as `permission.asked` events and
   // are answered with `permission.reply`. `readOnly` denies everything but reading and the web.

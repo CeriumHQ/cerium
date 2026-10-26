@@ -43,3 +43,25 @@ describe("access modes", () => {
     }
   });
 });
+
+describe("speed", () => {
+  const withSpeed = (speed: "standard" | "fast" | undefined) =>
+    toSdkOptions(
+      "claude",
+      {
+        cwd: ".",
+        model: "opus",
+        ...(speed ? { speed } : {}),
+        access: "auto",
+        mcpServers: {},
+        includeUserMcpServers: false,
+      },
+      canUseTool,
+    );
+
+  it("opts the session in to fast mode only when it runs fast", () => {
+    expect(withSpeed("fast").settings).toEqual({ fastMode: true });
+    expect(withSpeed("standard").settings).toBeUndefined();
+    expect(withSpeed(undefined).settings).toBeUndefined();
+  });
+});

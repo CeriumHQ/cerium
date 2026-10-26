@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Menu } from "@base-ui/react/menu";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { AccessMode, HarnessLimit, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, HarnessLimit, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import {
   Ellipsis,
   Eye,
@@ -12,6 +12,7 @@ import {
   ShieldOff,
   ShieldQuestion,
   Users,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -24,7 +25,7 @@ import {
   MenuSeparator,
 } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { accessOptions, effortHint, effortLabel, MAX_AGENTS } from "./models.ts";
+import { accessOptions, effortHint, effortLabel, MAX_AGENTS, speedHint, speedLabel } from "./models.ts";
 
 // The message box's own controls beside the model menu (ModelPicker.tsx): the effort row inside that
 // menu, and the menu of what's seldom changed (access, several models at once).
@@ -123,6 +124,78 @@ export function EffortRow({ choice, model }: { readonly choice: EffortChoice; re
           >
             {step === "auto" ? <Route size={11} strokeWidth={2} /> : null}
             {segmentLabel[step]}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
+
+/** What the model menu offers for the picked model's speed. */
+export interface SpeedChoice {
+  /** The speeds on offer, slowest first. */
+  readonly speeds: ReadonlyArray<ModelSpeed>;
+  readonly value: ModelSpeed;
+  readonly onPick: (speed: ModelSpeed) => void;
+}
+
+/** Whether there's a speed to pick: a model served at one speed leaves none. */
+export const offersSpeed = (choice: SpeedChoice | undefined): choice is SpeedChoice =>
+  choice !== undefined && choice.speeds.length > 1;
+
+/**
+ * A speed past standard, which costs more: a bolt, filled for the fastest. Nothing for standard, so
+ * the chip stays quiet until speed costs something.
+ */
+export function SpeedMark({
+  speed,
+  size = 11,
+}: {
+  readonly speed: ModelSpeed | undefined;
+  readonly size?: number;
+}) {
+  if (speed === undefined || speed === "standard") return null;
+  return (
+    <Zap
+      size={size}
+      strokeWidth={2}
+      aria-label={speedLabel[speed]}
+      className={`shrink-0 text-attention ${speed === "ultrafast" ? "fill-current" : ""}`}
+    />
+  );
+}
+
+/**
+ * The model menu's speed: how fast the provider serves the picked model, at a higher price past
+ * standard. One line above the effort row, since it's seldom changed.
+ */
+export function SpeedRow({ choice, model }: { readonly choice: SpeedChoice; readonly model: string }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 border-t border-line-subtle px-2.5 py-2">
+      <span className="flex min-w-0 flex-1 flex-col px-0.5 text-caption">
+        <span className="truncate text-fg-tertiary">Speed</span>
+        <span className="truncate text-fg-secondary">{speedHint[choice.value]}</span>
+      </span>
+      <ToggleGroup
+        value={[choice.value]}
+        onValueChange={(value) => {
+          const next = value[0] as ModelSpeed | undefined;
+          if (next !== undefined) choice.onPick(next);
+        }}
+        aria-label={`Speed for ${model}`}
+        className="flex shrink-0 gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+      >
+        {choice.speeds.map((speed) => (
+          <Toggle
+            key={speed}
+            value={speed}
+            aria-label={speedLabel[speed]}
+            // The menu's search keeps focus, so typing and the arrow keys carry on after a click.
+            onMouseDown={(event) => event.preventDefault()}
+            className="flex h-7 items-center justify-center gap-1 rounded-[7px] px-2.5 text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
+          >
+            <SpeedMark speed={speed} />
+            {speedLabel[speed]}
           </Toggle>
         ))}
       </ToggleGroup>
