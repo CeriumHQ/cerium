@@ -17,7 +17,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   MenuGroupLabel,
@@ -54,6 +54,7 @@ import {
   needsYou,
   overflow,
   runSummary,
+  sameSummary,
   type ThreadSummary,
 } from "./model.ts";
 import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
@@ -178,11 +179,7 @@ export function Inbox({
     onRestore,
   });
 
-  // Built from each prop rather than the rest of them, so it keeps its identity while only the drafts
-  // change, as they do with every key typed into a new thread's first line: the lists' rows, all of
-  // the Archive's among them, then don't render again.
-  const rowProps: RowProps = {
-    selectedId,
+  const actions = useSteadyActions({
     onSelect,
     onMarkRead,
     onMarkUnread,
@@ -192,6 +189,13 @@ export function Inbox({
     onRestore,
     onLater,
     onDelete,
+  });
+  // Built from each prop rather than the rest of them, so it keeps its identity while only the drafts
+  // change, as they do with every key typed into a new thread's first line: the lists' rows, all of
+  // the Archive's among them, then don't render again.
+  const rowProps: RowProps = {
+    selectedId,
+    ...actions,
     scope: project?.folder,
     onScope: chooseScope,
   };
@@ -420,11 +424,52 @@ type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archiv
   readonly onScope: (folder: string) => void;
 };
 
+/** What a row does to its threads. */
+type RowActions = Pick<
+  InboxProps,
+  | "onSelect"
+  | "onMarkRead"
+  | "onMarkUnread"
+  | "onNewThreadIn"
+  | "onRename"
+  | "onArchive"
+  | "onRestore"
+  | "onLater"
+  | "onDelete"
+>;
+
+/**
+ * `actions` as functions that stay the same from one render to the next and call the latest given.
+ * The window makes them afresh each time it renders, so rows that took them as they came all rendered
+ * again, menus and tooltips and all, each time another thread opened.
+ */
+function useSteadyActions(actions: RowActions): RowActions {
+  const latest = useRef(actions);
+  useLayoutEffect(() => {
+    latest.current = actions;
+  });
+  const [steady] = useState((): RowActions => ({
+    onSelect: (threadId, newTab) => latest.current.onSelect(threadId, newTab),
+    onMarkRead: (threads) => latest.current.onMarkRead(threads),
+    onMarkUnread: (threadId) => latest.current.onMarkUnread(threadId),
+    onNewThreadIn: (folder) => latest.current.onNewThreadIn(folder),
+    onRename: (threadId, title) => latest.current.onRename(threadId, title),
+    onArchive: (threadId) => latest.current.onArchive(threadId),
+    onRestore: (threadId) => latest.current.onRestore(threadId),
+    onLater: (threadId, until) => latest.current.onLater?.(threadId, until),
+    onDelete: (threadId) => latest.current.onDelete(threadId),
+  }));
+  // Rows offer to put a thread off only where the machine can.
+  const onLater = actions.onLater === undefined ? undefined : steady.onLater;
+  return { ...steady, onLater };
+}
+
 /** A list's threads, each multi-agent run's in one card. */
 function Entries({
   threads,
   box,
   now,
+  selectedId,
   ...rowProps
 }: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps) {
   // A card that moves glides to its new place; one that comes grows into the list and one that goes
@@ -434,7 +479,6 @@ function Entries({
   const arrived = useArrivals(entries.map(entryKey));
   const glide = useGlide();
   // A long list, the archive's above all, renders a page at a time as it scrolls.
-  const { selectedId } = rowProps;
   const { shown, more, end } = usePaging<HTMLLIElement>(
     rows.length,
     selectedId === undefined
@@ -453,9 +497,15 @@ function Entries({
         <li key={key} ref={glide(key)}>
           <Reveal appear={arrived(key)} onGone={() => release(key)}>
             {!present ? null : entry.kind === "thread" ? (
-              <InboxRow thread={entry.thread} box={box} now={now} {...rowProps} />
+              <InboxRow
+                thread={entry.thread}
+                box={box}
+                now={now}
+                selected={entry.thread.id === selectedId}
+                {...rowProps}
+              />
             ) : (
-              <InboxRun threads={entry.threads} box={box} now={now} {...rowProps} />
+              <InboxRun threads={entry.threads} box={box} now={now} selectedId={selectedId} {...rowProps} />
             )}
           </Reveal>
         </li>
@@ -616,11 +666,27 @@ function InboxRun({
   );
 }
 
-function InboxRow({
+type InboxRowProps = { thread: ThreadSummary; box: InboxBox; now: number; selected: boolean } & Omit<
+  RowProps,
+  "selectedId"
+>;
+
+/**
+ * A thread's card. It renders again only when what it shows changes: opening another thread, which
+ * renders the whole window, re-rendered every card's menus and tooltips (264 components a switch).
+ */
+const InboxRow = memo(
+  InboxRowCard,
+  ({ thread: before, ...rest }: InboxRowProps, { thread: after, ...next }: InboxRowProps) =>
+    sameSummary(before, after) &&
+    (Object.keys(rest) as Array<keyof typeof rest>).every((key) => Object.is(rest[key], next[key])),
+);
+
+function InboxRowCard({
   thread,
   box,
   now,
-  selectedId,
+  selected,
   onSelect,
   onMarkRead,
   onMarkUnread,
@@ -632,7 +698,7 @@ function InboxRow({
   onDelete,
   scope,
   onScope,
-}: { thread: ThreadSummary; box: InboxBox; now: number } & RowProps) {
+}: InboxRowProps) {
   const { folder, project } = thread;
   const pins = useAtomValue(pinnedAtom);
   const setPins = useAtomSet(pinnedAtom);
@@ -723,7 +789,7 @@ function InboxRow({
   return (
     <InboxCard
       thread={thread}
-      selected={thread.id === selectedId}
+      selected={selected}
       pinned={pinned && box !== "archive"}
       {...(box === "later" && thread.laterUntil !== undefined
         ? { when: backLabel(thread.laterUntil, now) }

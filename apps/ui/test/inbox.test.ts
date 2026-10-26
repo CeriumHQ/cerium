@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { ThreadSummary } from "../src/features/threads/model.ts";
+import { sameSummary, type ThreadSummary } from "../src/features/threads/model.ts";
 import { wordmark } from "../src/features/threads/ProjectBadge.tsx";
 import { isUnread } from "../src/features/threads/readState.ts";
 import { chatSections, firstOf, inboxProjects, inboxSections } from "../src/features/threads/sections.ts";
@@ -125,6 +125,26 @@ describe("wordmark", () => {
     expect(wordmark("myApp")).toBe("MA");
     expect(wordmark("cerium")).toBe("Ce");
     expect(wordmark(".dotfiles")).toBe("Do");
+  });
+});
+
+describe("sameSummary", () => {
+  it("finds summaries built afresh from the same thread the same", () => {
+    const built = () =>
+      thread("a", {
+        providers: ["claude", "codex"],
+        worktree: { branch: "fix", base: "main" },
+        lead: { id: "agt_1", model: "claude-opus-5-5" },
+      });
+    expect(sameSummary(built(), built())).toBe(true);
+  });
+
+  it("tells apart summaries that show something different", () => {
+    const base = thread("a", { providers: ["claude"], lead: { id: "agt_1", model: "claude-opus-5-5" } });
+    expect(sameSummary(base, { ...base, unread: true })).toBe(false);
+    expect(sameSummary(base, { ...base, providers: ["claude", "codex"] })).toBe(false);
+    expect(sameSummary(base, { ...base, lead: { id: "agt_1", model: "claude-sonnet-5-5" } })).toBe(false);
+    expect(sameSummary(base, { ...base, laterUntil: now })).toBe(false);
   });
 });
 

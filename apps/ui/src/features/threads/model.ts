@@ -65,6 +65,28 @@ export const groupRuns = (threads: ReadonlyArray<ThreadSummary>): ReadonlyArray<
 export const entryThreads = (entry: InboxEntry): ReadonlyArray<ThreadSummary> =>
   entry.kind === "thread" ? [entry.thread] : entry.threads;
 
+/** Whether two values hold the same, looking one level into arrays and objects. */
+const sameField = (a: unknown, b: unknown): boolean => {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const keys = Object.keys(a);
+  return (
+    Array.isArray(a) === Array.isArray(b) &&
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.is((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+  );
+};
+
+/**
+ * Whether two summaries say the same of their thread. The window builds them afresh each time it
+ * renders, so a row compares what they say rather than which object it got.
+ */
+export const sameSummary = (a: ThreadSummary, b: ThreadSummary): boolean => {
+  if (a === b) return true;
+  const keys = Object.keys(a) as Array<keyof ThreadSummary>;
+  return keys.length === Object.keys(b).length && keys.every((key) => sameField(a[key], b[key]));
+};
+
 const statusRank = { awaitingApproval: 3, running: 2, failed: 1, idle: 0 } as const;
 
 /**
