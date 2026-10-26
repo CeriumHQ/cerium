@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import type { ProviderId, QuestionResponse, RestorePreview } from "@cerium/protocol";
+import type { ProviderId, QuestionResponse, RestorePreview, ThreadId } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown, History } from "lucide-react";
 import {
@@ -54,6 +54,7 @@ import {
   type TranscriptBlock,
   type TurnChanges as TurnChangesModel,
 } from "./model.ts";
+import { PushCard } from "./PushCard.tsx";
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { SelectionReply } from "./SelectionReply.tsx";
@@ -153,6 +154,8 @@ const entrance = (item: Item): string => {
     case "imported":
     case "spawnAsk":
       return "write-in";
+    case "push":
+      return "unroll";
     case "block":
       switch (item.block.kind) {
         case "message":
@@ -234,6 +237,7 @@ export function Transcript({
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
     ...(onEditMessage ? { onEditMessage } : {}),
     ...(turnFiles ? { turnFiles } : {}),
+    ...(threadId === undefined ? {} : { threadId }),
     ...(onPreviewRestore && onRestoreMessage
       ? {
           restore: {
@@ -374,6 +378,8 @@ interface TranscriptActions {
     readonly harness: string;
   };
   readonly turnFiles?: TurnFileActions | undefined;
+  /** The thread shown, whose pushes its push cards follow. */
+  readonly threadId?: string | undefined;
 }
 
 const Actions = createContext<TranscriptActions>({
@@ -497,6 +503,8 @@ const TranscriptItem = memo(
           return <SpawnCards key={each.id} spawns={each.spawns} />;
         case "spawnAsk":
           return <SpawnAsk key={each.id} call={each.call} />;
+        case "push":
+          return <PushItem key={each.id} call={each.call} />;
         case "block":
           return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
         case "turnEnd":
@@ -686,6 +694,11 @@ function EarlierVersion({
       <div className="flex flex-col gap-3 border-l border-line-subtle pl-4 opacity-75">{children}</div>
     </Disclosure>
   );
+}
+
+function PushItem({ call }: { call: Block<"tool"> }) {
+  const { threadId } = use(Actions);
+  return <PushCard call={call} threadId={threadId as ThreadId | undefined} />;
 }
 
 function NoticeBlock({ block }: { block: Block<"notice"> }) {

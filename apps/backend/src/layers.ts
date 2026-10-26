@@ -40,6 +40,7 @@ import { History } from "./history.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { projectScriptsLayer } from "./projectScripts.ts";
+import { Pushes } from "./pushes.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
@@ -117,7 +118,10 @@ export const backendLayer = (options: BackendOptions) => {
     },
   ).pipe(
     // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
-    Layer.provideMerge(limitWarnings),
+    // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows.
+    Layer.provideMerge(
+      Layer.mergeAll(limitWarnings, Pushes.layer({ file: join(options.dataDirectory, "pushes.json") })),
+    ),
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
     // what the agents do on the user's Discord profile when they ask for it. Keeps

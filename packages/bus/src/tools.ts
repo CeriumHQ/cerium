@@ -14,6 +14,7 @@ import { Effect, Option, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 import { HttpServerRequest } from "effect/http";
 
+import { Push, PushHost } from "./push.ts";
 import { BusRegistry } from "./registry.ts";
 
 // The tools every Cerium-managed session sees under the `cerium` MCP server.
@@ -319,6 +320,7 @@ export const BusToolkit = Toolkit.make(
   AddTask,
   RemoveTask,
   ListTasks,
+  Push,
 );
 
 const BEARER = /^Bearer\s+(.+)$/i;
@@ -327,6 +329,7 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     const registry = yield* BusRegistry;
+    const pushes = yield* PushHost;
 
     /** The agent making this call, from its per-session bearer token. */
     const caller = Effect.gen(function* () {
@@ -491,6 +494,10 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
           ...(title === undefined ? {} : { title }),
         });
         return { removed };
+      }),
+
+      push: Effect.fn("Bus.push")(function* (request) {
+        return yield* pushes.push(yield* caller, request);
       }),
     });
   }),

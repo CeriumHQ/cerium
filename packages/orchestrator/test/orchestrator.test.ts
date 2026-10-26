@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentId, ThreadId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Exit } from "effect";
+import { Duration, Effect, Exit, Fiber } from "effect";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -651,6 +651,39 @@ describe("Orchestrator", () => {
         "PermissionResolved",
         "TurnCompleted",
       ]);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("asks the user before one of Cerium's own tools acts, as the agent's access says", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startWorkThread;
+      const request = { toolName: "push", summary: "Push main to origin", input: { branch: "main" } };
+
+      const asking = yield* Effect.forkChild(orchestrator.requestApproval(lead.id, request));
+      const asked = yield* waitFor((events) =>
+        events.find(
+          (event) => event.payload._tag === "PermissionRequested" && event.payload.toolName === "push",
+        ),
+      );
+      assert.isTrue(orchestrator.awaitingApproval(thread.id));
+      const requestId = asked.payload._tag === "PermissionRequested" ? asked.payload.requestId : "";
+      yield* orchestrator.respondToPermission(lead.id, requestId, { decision: "allow", scope: "session" });
+      assert.deepStrictEqual(yield* Fiber.join(asking), { decision: "allow", scope: "session" });
+      yield* waitFor((events) => events.find((event) => event.payload._tag === "PermissionResolved"));
+      assert.isFalse(orchestrator.awaitingApproval(thread.id));
+      // Allowed for the session, the next push goes ahead unasked.
+      assert.strictEqual((yield* orchestrator.requestApproval(lead.id, request)).decision, "allow");
+
+      const reader = yield* orchestrator.createThread({
+        title: "Read only",
+        mode: "work",
+        cwd: ".",
+        lead: { provider: "claude", model: "opus", access: "readOnly" },
+      });
+      assert.strictEqual((yield* orchestrator.requestApproval(reader.lead.id, request)).decision, "deny");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

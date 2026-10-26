@@ -44,11 +44,14 @@ if (import.meta.main) {
       return false;
     }
   };
+  // `> label` and `< label: passed|failed` bracket each check: Cerium's `push` tool shows them as steps.
   const run = (label: string, command: string, args: readonly string[]): boolean => {
     console.log(`\n> ${label}`);
     // The shell finds bun however it's installed (bun.exe, or a .cmd shim on Windows).
     const shell = command !== process.execPath;
-    return spawnSync(command, args, { cwd: root, stdio: "inherit", shell }).status === 0;
+    const ok = spawnSync(command, args, { cwd: root, stdio: "inherit", shell }).status === 0;
+    console.log(`< ${label}: ${ok ? "passed" : "failed"}`);
+    return ok;
   };
 
   const input = process.stdin.isTTY ? "" : readFileSync(0, "utf8");

@@ -52,6 +52,7 @@ import { githubHandlers } from "./githubPulls.ts";
 import { History, type HistoryError } from "./history.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
+import { Pushes } from "./pushes.ts";
 import { newerRelease, Releases } from "./releases.ts";
 import { spendReport } from "./spend.ts";
 import { Terminals, terminalHandlers } from "./terminal.ts";
@@ -142,6 +143,7 @@ export const Handlers = MachineRpcs.toLayer(
     const effortRouter = yield* EffortRouter;
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
+    const pushes = yield* Pushes;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -502,6 +504,11 @@ export const Handlers = MachineRpcs.toLayer(
       EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
       RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
       ...terminalHandlers(terminals),
+      WatchPushes: ({ threadId }) => pushes.watch(threadId),
+      PushAction: ({ pushId, action }) =>
+        pushes
+          .act(pushId, action)
+          .pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       ...gitBranchHandlers(gitBranches),
       ...gitChangesHandlers(gitChanges, drafts),
       ...githubHandlers(github, drafts),

@@ -18,13 +18,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import { BROWSER_UNAVAILABLE, BrowserHost, BusHttpServer, BusRegistryLive, BusServer } from "../src/index.ts";
+import {
+  BROWSER_UNAVAILABLE,
+  BrowserHost,
+  BusHttpServer,
+  BusRegistryLive,
+  BusServer,
+  PushHost,
+} from "../src/index.ts";
 
 const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
   BusServer.pipe(
     Layer.provideMerge(Orchestrator.layer),
     Layer.provideMerge(BusRegistryLive),
     Layer.provideMerge(BrowserHost.layer),
+    Layer.provideMerge(PushHost.unavailable),
     Layer.provideMerge(UserSettings.layer),
     Layer.provide(
       Layer.mergeAll(
@@ -133,6 +141,7 @@ describe("Cerium MCP bus", () => {
           "add_task",
           "remove_task",
           "list_tasks",
+          "push",
           "artifact_preview",
           "browser_open",
           "browser_read",

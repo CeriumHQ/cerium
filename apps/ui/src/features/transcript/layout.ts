@@ -1,6 +1,7 @@
 import type { ProviderId, ReasoningEffort } from "@cerium/protocol";
 
 import { isAnswerNotice, type RoutedDecision, type TranscriptBlock } from "./model.ts";
+import { isPushCall } from "./push.ts";
 import { outputText, type ToolBlock } from "./tools.ts";
 
 // How a thread's blocks become what the transcript shows: inputs, a header per response, tool calls
@@ -39,6 +40,8 @@ export type Item =
   | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
   /** A request to start an agent that waits for the user's approval, which leaves no card yet. */
   | { readonly kind: "spawnAsk"; readonly id: string; readonly call: Block<"tool"> }
+  /** A push through Cerium's `push` tool, shown with its checks rather than as a row of a run. */
+  | { readonly kind: "push"; readonly id: string; readonly call: Block<"tool"> }
   | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock }
   /** The end of a response, with the response's text for its copy button. */
   | { readonly kind: "turnEnd"; readonly id: string; readonly block: Block<"turnEnd">; readonly text: string }
@@ -200,6 +203,8 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     const previous = items.at(-1);
     if (isSpawnCall(block) && block.status !== "error") {
       items.push({ kind: "spawnAsk", id: block.id, call: block });
+    } else if (block.kind === "tool" && block.status !== "error" && isPushCall(block)) {
+      items.push({ kind: "push", id: block.id, call: block });
     } else if (block.kind === "tool") {
       if (previous?.kind === "tools")
         items[items.length - 1] = { ...previous, tools: [...previous.tools, block] };
@@ -252,6 +257,8 @@ export const showsProgress = (item: Item | undefined): boolean => {
       return showsProgress(item.steps.at(-1));
     case "tools":
       return item.tools.some((tool) => tool.status === "running");
+    case "push":
+      return item.call.status === "running";
     case "block":
       return (
         ((item.block.kind === "message" || item.block.kind === "reasoning") && item.block.streaming) ||

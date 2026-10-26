@@ -143,6 +143,19 @@ const planning = [
 ];
 
 /**
+ * Pushing through Cerium's tool shows the user the push and its CI checks in the thread, which a
+ * `git push` in a shell can't. Recommended, not enforced: a bare push still works.
+ */
+const pushing = (busServer: string) => [
+  "",
+  "## Pushing",
+  `Push commits with the \`push\` tool (\`${busServer}\` MCP server) rather than running \`git push\`: the` +
+    " user follows the push and its CI checks in the thread instead of opening GitHub. It runs the" +
+    " repository's pre-push hook as git would, and the CI result reaches you later as a message, with the" +
+    " failing check's log when CI fails: fix what failed and push again. No force pushes and no `--no-verify`.",
+];
+
+/**
  * How agents work together. Agents never messaged each other while the
  * prompt only named the tools, so it says what replaced their harness's own, when a message is worth
  * sending, and what one is.
@@ -307,6 +320,7 @@ export const systemPrompt = (
       ...together(agent),
       ...ask,
       ...planning,
+      ...pushing(busServer),
       ...isolation(options.worktree),
       ...neighbourhood(options.neighbours ?? []),
       ...help,
@@ -322,6 +336,7 @@ export const systemPrompt = (
     ...together(agent),
     ...ask,
     ...planning,
+    ...pushing(busServer),
     ...isolation(options.worktree),
     ...help,
   ].join("\n");

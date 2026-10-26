@@ -21,6 +21,8 @@ const INSTRUCTIONS = [
     " user with create_thread when asked.",
   "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",
   "Artifacts: artifact_guide before writing your first visual, artifact_preview to look at it before you reply.",
+  "Git: push instead of running `git push`, so the user follows the push and its CI checks in the thread;" +
+    " the CI result reaches you as a message.",
   "Browser: your thread's browser, which the user watches beside the thread: browser_open a page (a dev" +
     " server's localhost URL), browser_read it, browser_act on it, browser_screenshot it, and browser_logs" +
     " for its console errors and failed requests.",
@@ -28,7 +30,7 @@ const INSTRUCTIONS = [
 
 /**
  * The MCP endpoint's routes, for serving alongside other routes. Requires the Orchestrator,
- * BusRegistry and BrowserHost.
+ * BusRegistry, BrowserHost and PushHost.
  */
 export const BusRoutes = Layer.mergeAll(
   McpServer.toolkit(BusToolkit),
