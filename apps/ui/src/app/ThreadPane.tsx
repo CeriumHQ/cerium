@@ -14,6 +14,7 @@ import {
 
 import { cloudEventsAtom, queueEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
+import { KeptViews, useKeptResult } from "../components/KeptViews.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
 import {
@@ -41,6 +42,12 @@ import type { AppMode } from "./mode.ts";
 type EventsAtom = Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>>;
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
+
+/**
+ * How many threads opened before the one a pane shows it keeps drawn, out of sight, to show again at
+ * once: enough for the threads Ctrl and a digit open.
+ */
+const KEPT_THREADS = 8;
 
 /** What the window does for any of its thread panes. */
 export interface ThreadPaneActions {
@@ -244,67 +251,71 @@ export function ThreadPane({
       <div className="relative flex min-h-0 flex-1 flex-col">
         {notices}
         <div className="relative min-h-0 flex-1">
-          {viewed && lead ? (
-            <LeadTranscript
-              key={viewed.thread.id}
-              events={eventsAtom}
-              lead={lead.id}
-              sameModel={sameModel}
-              folder={viewed.thread.cwd}
-              agent={{ provider: lead.provider, model: leadModel }}
-              modelName={(model) => modelLabel(models, lead.provider, model)}
-              {...(cloud ? {} : { messageBox: box })}
-              activity={leadActivity}
-              bottomInset={composerHeight}
-              childState={(childId) => {
-                const child = agents.find((agent) => agent.id === childId);
-                return child?.awaitingApproval
-                  ? "needsYou"
-                  : child?.state === "running" || child?.state === "queued"
-                    ? "running"
-                    : child?.state === "failed"
-                      ? "failed"
-                      : "idle";
-              }}
-              childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-              // A thread read from the cloud copy offers no agent actions: they take its machine.
-              agentActions={cloud ? {} : actions.agentActions}
-              onAnswerPermission={(requestId, decision, scope) =>
-                cloud ? Promise.resolve(false) : attempt(actions.respond(lead.id, requestId, decision, scope))
-              }
-              onAnswerQuestion={(requestId, response) =>
-                cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
-              }
-              // A thread read from the cloud copy can't go back: that takes its machine.
-              {...(cloud || !actions.edit
-                ? {}
-                : {
-                    onEditMessage: (messageId: string, message: OutgoingMessage) => {
-                      actions.keep(viewed.thread.id);
-                      return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
-                    },
-                  })}
-              {...(cloud || !restore
-                ? {}
-                : {
-                    onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
-                    onRestoreMessage: (messageId: string) => {
-                      actions.keep(viewed.thread.id);
-                      return attempt(restore.restore(lead.id, messageId));
-                    },
-                  })}
-              {...(cloud || !turnFiles || viewed.thread.cwd === undefined
-                ? {}
-                : {
-                    turnFiles: {
-                      open: (file: TurnFileOpen) =>
-                        turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
-                      revert: (turnId: string, direction: "undone" | "redone") =>
-                        attempt(turnFiles.revert(lead.id, turnId, direction)),
-                    },
-                  })}
-            />
-          ) : loading ? null : (
+          <KeptViews shown={viewed && lead ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
+            {viewed && lead ? (
+              <LeadTranscript
+                events={eventsAtom}
+                lead={lead.id}
+                sameModel={sameModel}
+                folder={viewed.thread.cwd}
+                agent={{ provider: lead.provider, model: leadModel }}
+                modelName={(model) => modelLabel(models, lead.provider, model)}
+                {...(cloud ? {} : { messageBox: box })}
+                activity={leadActivity}
+                bottomInset={composerHeight}
+                childState={(childId) => {
+                  const child = agents.find((agent) => agent.id === childId);
+                  return child?.awaitingApproval
+                    ? "needsYou"
+                    : child?.state === "running" || child?.state === "queued"
+                      ? "running"
+                      : child?.state === "failed"
+                        ? "failed"
+                        : "idle";
+                }}
+                childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+                // A thread read from the cloud copy offers no agent actions: they take its machine.
+                agentActions={cloud ? {} : actions.agentActions}
+                onAnswerPermission={(requestId, decision, scope) =>
+                  cloud
+                    ? Promise.resolve(false)
+                    : attempt(actions.respond(lead.id, requestId, decision, scope))
+                }
+                onAnswerQuestion={(requestId, response) =>
+                  cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
+                }
+                // A thread read from the cloud copy can't go back: that takes its machine.
+                {...(cloud || !actions.edit
+                  ? {}
+                  : {
+                      onEditMessage: (messageId: string, message: OutgoingMessage) => {
+                        actions.keep(viewed.thread.id);
+                        return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                      },
+                    })}
+                {...(cloud || !restore
+                  ? {}
+                  : {
+                      onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
+                      onRestoreMessage: (messageId: string) => {
+                        actions.keep(viewed.thread.id);
+                        return attempt(restore.restore(lead.id, messageId));
+                      },
+                    })}
+                {...(cloud || !turnFiles || viewed.thread.cwd === undefined
+                  ? {}
+                  : {
+                      turnFiles: {
+                        open: (file: TurnFileOpen) =>
+                          turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
+                        revert: (turnId: string, direction: "undone" | "redone") =>
+                          attempt(turnFiles.revert(lead.id, turnId, direction)),
+                      },
+                    })}
+              />
+            ) : null}
+          </KeptViews>
+          {viewed && lead ? null : loading ? null : (
             <EmptyThread
               mode={mode}
               draftKey={draftKey}
@@ -395,7 +406,8 @@ export function ThreadPane({
 /**
  * The lead's conversation from the thread's events, which renders again for every batch of them that
  * streams in. Only it does: rendering the pane around it as well redrew its message box, approvals
- * and every card that reads the transcript's actions, even for words a subagent streamed.
+ * and every card that reads the transcript's actions, even for words a subagent streamed. Kept out
+ * of sight, it holds what it showed.
  */
 function LeadTranscript({
   events: eventsAtom,
@@ -408,7 +420,7 @@ function LeadTranscript({
   /** Whether two of the lead's model ids name the same model. */
   readonly sameModel: (a: string, b: string) => boolean;
 }) {
-  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
+  const events = AsyncResult.getOrElse(useKeptResult(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
   const leadEvents = events.filter((event) => event.agentId === lead);
   return (
     <Transcript

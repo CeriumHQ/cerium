@@ -63,9 +63,10 @@ export const projectArtifacts = (listed: ReadonlyArray<ListedArtifact>): Readonl
 export const revealArtifact = (id: string): Promise<boolean> =>
   new Promise((resolve) => {
     const deadline = performance.now() + 4000;
+    // The conversation in view, not one kept out of sight (KeptViews).
     const find = () =>
-      [...document.querySelectorAll<HTMLElement>(`[data-artifact-id="${CSS.escape(id)}"]`)].find(
-        (element) => element.offsetParent !== null,
+      [...document.querySelectorAll<HTMLElement>(`[data-artifact-id="${CSS.escape(id)}"]`)].find((element) =>
+        element.checkVisibility(),
       );
     const look = () => {
       const found = find();
