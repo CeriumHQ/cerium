@@ -19,16 +19,27 @@ const model = (provider: ProviderId, id: string): ModelInfo => ({
   label: id.toUpperCase(),
   efforts: [],
 });
-const member = (provider: ProviderId, id: string): RosterMember => ({ model: model(provider, id), use: id });
+const member = (provider: ProviderId, id: string, extra: Partial<RosterMember> = {}): RosterMember => ({
+  model: model(provider, id),
+  use: id,
+  priority: 1,
+  ...extra,
+});
 
 describe("catalogEntries", () => {
   it("names each model by its id, prefixed by its harness where two harnesses share the id", () => {
     expect(
-      catalogEntries([member("claude", "opus"), member("muse", "spark"), member("cursor", "spark")]),
+      catalogEntries([
+        member("claude", "opus", { speed: "fast" }),
+        member("claude", "haiku", { priority: 2 }),
+        member("muse", "spark"),
+        member("cursor", "spark"),
+      ]),
     ).toEqual([
-      { alias: "opus", provider: "claude", model: "opus", description: "opus" },
-      { alias: "muse/spark", provider: "muse", model: "spark", description: "spark" },
-      { alias: "cursor/spark", provider: "cursor", model: "spark", description: "spark" },
+      { alias: "opus", provider: "claude", model: "opus", speed: "fast", description: "opus", priority: 1 },
+      { alias: "haiku", provider: "claude", model: "haiku", description: "haiku", priority: 2 },
+      { alias: "muse/spark", provider: "muse", model: "spark", description: "spark", priority: 1 },
+      { alias: "cursor/spark", provider: "cursor", model: "spark", description: "spark", priority: 1 },
     ]);
   });
 });
@@ -117,7 +128,7 @@ describe("CatalogLive", () => {
       };
       const catalog = yield* Catalog;
       assert.deepStrictEqual(yield* catalog.entries, [
-        { alias: "fable", provider: "claude", model: "fable", description: "Architecture" },
+        { alias: "fable", provider: "claude", model: "fable", description: "Architecture", priority: 1 },
       ]);
       yield* (yield* OfferedModels).offer("codex", [model("codex", "gpt-6-sol")]);
       assert.deepStrictEqual(yield* aliases, ["fable", "gpt-6-sol"]);

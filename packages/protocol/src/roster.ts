@@ -1,3 +1,4 @@
+import type { ModelSpeed } from "./capabilities.ts";
 import type { ProviderId } from "./ids.ts";
 import type { ModelInfo } from "./models.ts";
 import type { RosterModel, RosterSettings } from "./settings.ts";
@@ -64,16 +65,32 @@ export const starterRoster = (
   return fallback === undefined ? [] : [{ provider, model: fallback.id }];
 };
 
-/** One model on the roster as it applies: what the harness says of it, and what a lead uses it for. */
+/**
+ * The speed a roster entry runs `model` at: the one saved when the model offers it, else none, so the
+ * harness's own default applies.
+ */
+export const rosterSpeed = (model: ModelInfo, saved?: ModelSpeed): ModelSpeed | undefined => {
+  const speeds = model.speeds ?? [];
+  return saved !== undefined && speeds.length > 1 && speeds.includes(saved) ? saved : undefined;
+};
+
+/**
+ * One model on the roster as it applies: what the harness says of it, what a lead uses it for, where it
+ * ranks among its harness's models and the speed it runs at.
+ */
 export interface RosterMember {
   readonly model: ModelInfo;
   readonly use: string;
+  /** 1 for the harness's model a lead prefers first, counting down its list. */
+  readonly priority: number;
+  /** Absent for the harness's own default. */
+  readonly speed?: ModelSpeed;
 }
 
 /**
  * The roster's models that the harnesses offer, harness by harness in the order they're offered: the
- * user's list for a harness they've edited, Cerium's starting picks for any other. A model the harness
- * no longer offers is left out.
+ * user's list for a harness they've edited, Cerium's starting picks for any other, each in its order of
+ * priority. A model the harness no longer offers is left out.
  */
 export const rosterMembers = (
   settings: RosterSettings,
@@ -85,18 +102,37 @@ export const rosterMembers = (
       ? settings.models.filter((entry) => entry.provider === provider)
       : starterRoster(provider, offered);
     const seen = new Set<string>();
-    return listed.flatMap((entry) => {
+    return listed.flatMap((entry): ReadonlyArray<RosterMember> => {
       const model = offered.find((each) => each.provider === provider && each.id === entry.model);
       if (model === undefined || seen.has(model.id)) return [];
       seen.add(model.id);
-      return [{ model, use: rosterUse(model, entry.use) }];
+      const speed = rosterSpeed(model, entry.speed);
+      return [{ model, use: rosterUse(model, entry.use), priority: seen.size, ...(speed ? { speed } : {}) }];
     });
   });
 };
 
 /**
+ * A harness's models, by id in order of priority, with `model` moved to the place of `target`, which
+ * shifts one toward where `model` was. The order as it was unless both are in it.
+ */
+export const movedInOrder = (
+  order: ReadonlyArray<string>,
+  model: string,
+  target: string,
+): ReadonlyArray<string> => {
+  const from = order.indexOf(model);
+  const to = order.indexOf(target);
+  if (from === -1 || to === -1 || from === to) return order;
+  const rest = order.filter((_, index) => index !== from);
+  // Moving down, `target` sits one lower in `rest`, so `model` lands just after it; moving up, before.
+  return [...rest.slice(0, to), model, ...rest.slice(to)];
+};
+
+/**
  * The roster with one harness's list replaced by `models`: what the UI saves when the user adds,
- * removes or describes one of its models. The harness counts as edited from then on.
+ * removes, moves, describes or sets the speed of one of its models. The harness counts as edited from
+ * then on.
  */
 export const withHarnessRoster = (
   settings: RosterSettings,

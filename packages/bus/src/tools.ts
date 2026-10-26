@@ -5,6 +5,7 @@ import {
   AgentId,
   MAX_TASK_NOTE,
   MAX_TASK_TITLE,
+  ModelSpeed,
   ProviderId,
   ReasoningEffort,
   TaskEntry,
@@ -24,7 +25,13 @@ const ModelSummary = Schema.Struct({
   provider: ProviderId,
   model: Schema.String,
   effort: Schema.optionalKey(ReasoningEffort),
+  speed: Schema.optionalKey(ModelSpeed).annotate({
+    description: "The speed it runs at; past standard, faster and costlier. Absent: the harness's default.",
+  }),
   description: Schema.String,
+  priority: Schema.optionalKey(Schema.Int).annotate({
+    description: "Its rank among its provider's models, 1 first.",
+  }),
 });
 
 const AgentSummary = Schema.Struct({
@@ -39,8 +46,9 @@ const AgentSummary = Schema.Struct({
 export const ListModels = Tool.make("list_models", {
   description:
     "List the user's roster: the models you may spawn without asking the user, with what the user wants" +
-    " each used for. Pick by that. For a model not on it, call spawn_agent with its id and `provider`:" +
-    " Cerium asks the user to approve it.",
+    " each used for. Pick by that, and where several of a provider's models fit, the one with the lowest" +
+    " `priority`. For a model not on it, call spawn_agent with its id and `provider`: Cerium asks the user" +
+    " to approve it.",
   success: Schema.Struct({ models: Schema.Array(ModelSummary) }),
   failure: OrchestratorError,
 });
@@ -347,12 +355,14 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
     return BusToolkit.of({
       list_models: () =>
         Effect.map(orchestrator.catalog, (catalog) => ({
-          models: catalog.map(({ alias, provider, model, effort, description }) => ({
+          models: catalog.map(({ alias, provider, model, effort, speed, description, priority }) => ({
             alias,
             provider,
             model,
             ...(effort ? { effort } : {}),
+            ...(speed ? { speed } : {}),
             description,
+            ...(priority === undefined ? {} : { priority }),
           })),
         })),
 

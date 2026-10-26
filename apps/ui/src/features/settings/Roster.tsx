@@ -1,21 +1,27 @@
 import { Button } from "@base-ui/react/button";
 import {
+  movedInOrder,
   rosterMembers,
   rosterUse,
   starterRoster,
   withHarnessReset,
   withHarnessRoster,
   type ModelInfo,
+  type ModelSpeed,
   type ProviderId,
+  type RosterMember,
   type RosterModel,
   type RosterSettings,
 } from "@cerium/protocol";
-import { MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { GripVertical, MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
+import { useRef, useState, type DragEvent } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { speedHint, speedLabel } from "../composer/models.ts";
+import { SpeedMark } from "../composer/Pickers.tsx";
 import { TitleField } from "../threads/Rename.tsx";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
@@ -29,9 +35,10 @@ const MAX_USE = 160;
 const emptyRoster: RosterSettings = { models: [], edited: [] };
 
 /**
- * The roster: for each harness that can run, the models a lead starts without asking, each with what
- * it's for. Models join from the harness's Add menu and leave from their row; a line is edited in
- * place. Saved by the backend, which hands it to leads as `list_models`.
+ * The roster: for each harness that can run, the models a lead starts without asking, in the order it
+ * prefers them, each with what it's for and the speed it runs at. Models join from the harness's Add
+ * menu, leave from their row and move by their handle; a line is edited in place. Saved by the
+ * backend, which hands it to leads as `list_models`.
  */
 export function RosterSection({
   models,
@@ -62,8 +69,8 @@ export function RosterSection({
       title="Roster"
       description={
         <>
-          The models a lead starts without asking you, and what it uses each for. It asks before starting any
-          other.
+          The models a lead starts without asking you, first choice first, and what it uses each for. It asks
+          before starting any other.
           {error ? <span className="block text-error">{error}</span> : null}
         </>
       }
@@ -96,6 +103,23 @@ export function RosterSection({
                   }),
                 )
               }
+              onSpeed={(model, speed) =>
+                change(
+                  provider,
+                  list.map((entry) => {
+                    if (entry.model !== model.id) return entry;
+                    const { speed: _, ...rest } = entry;
+                    return speed === undefined ? rest : { ...rest, speed };
+                  }),
+                )
+              }
+              // Models the harness no longer offers keep their entries, after the ones it ranks.
+              onOrder={(order) =>
+                change(provider, [
+                  ...order.flatMap((model) => list.filter((entry) => entry.model === model)),
+                  ...list.filter((entry) => !order.includes(entry.model)),
+                ])
+              }
               onReset={() => save(withHarnessReset(roster, provider))}
             />
           );
@@ -105,7 +129,13 @@ export function RosterSection({
   );
 }
 
-/** One harness's card: its name and Add menu over a row per model on the roster. */
+/** What a dragged row carries: nothing another drop target takes. */
+const ROW_DRAG_TYPE = "application/x-cerium-roster-model";
+
+/**
+ * One harness's card: its name and Add menu over a row per model on the roster, first choice first. A
+ * row moves by dragging its handle, the card showing where it lands, or by the arrow keys on it.
+ */
 function HarnessRoster({
   provider,
   offered,
@@ -115,21 +145,66 @@ function HarnessRoster({
   onAdd,
   onRemove,
   onDescribe,
+  onSpeed,
+  onOrder,
   onReset,
 }: {
   provider: ProviderId;
   offered: ReadonlyArray<ModelInfo>;
-  members: ReadonlyArray<{ readonly model: ModelInfo; readonly use: string }>;
+  members: ReadonlyArray<RosterMember>;
   edited: boolean;
   disabled: boolean;
   onAdd: (model: ModelInfo) => void;
   onRemove: (model: ModelInfo) => void;
   /** The user's own line, or undefined for Cerium's. */
   onDescribe: (model: ModelInfo, use: string | undefined) => void;
+  /** The speed picked, or undefined for the harness's own. */
+  onSpeed: (model: ModelInfo, speed: ModelSpeed | undefined) => void;
+  /** The models' ids in their new order of priority. */
+  onOrder: (order: ReadonlyArray<string>) => void;
   onReset: () => void;
 }) {
+  /** The row being dragged and the order it would land in, saved on the drop. */
+  const [drag, setDrag] = useState<{ readonly model: string; readonly order: ReadonlyArray<string> }>();
   const others = offered.filter((model) => !members.some((member) => member.model.id === model.id));
   const name = providerName[provider];
+  const order = members.map((member) => member.model.id);
+  const shown =
+    drag === undefined
+      ? members
+      : drag.order.flatMap((id) => members.filter((member) => member.model.id === id));
+
+  /** A step up or down by keyboard; the handle keeps focus as its row moves. */
+  const step = (model: string, by: -1 | 1) => {
+    const target = order[order.indexOf(model) + by];
+    if (target === undefined) return;
+    onOrder(movedInOrder(order, model, target));
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(`[data-roster-handle="${CSS.escape(`${provider}/${model}`)}"]`)
+        ?.focus(),
+    );
+  };
+
+  // Only this card's own drag is taken: it alone sets `drag`.
+  const dragProps = (model: string) => ({
+    onDragEnter: () => {
+      if (drag === undefined || model === drag.model) return;
+      setDrag({ ...drag, order: movedInOrder(drag.order, drag.model, model) });
+    },
+    onDragOver: (event: DragEvent) => {
+      if (drag === undefined) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    onDrop: (event: DragEvent) => {
+      if (drag === undefined) return;
+      event.preventDefault();
+      if (drag.order.some((id, at) => id !== order[at])) onOrder(drag.order);
+      setDrag(undefined);
+    },
+  });
+
   return (
     <SettingsCard className="flex flex-col divide-y divide-line-subtle">
       <div className="flex h-11 items-center gap-2 pr-2.5 pl-4">
@@ -184,14 +259,33 @@ function HarnessRoster({
           None. A lead asks before starting any {name} model.
         </p>
       ) : (
-        members.map(({ model, use }) => (
+        shown.map(({ model, use, speed }, at) => (
           <RosterRow
             key={model.id}
+            provider={provider}
             model={model}
             use={use}
+            speed={speed}
+            rank={members.length > 1 ? at + 1 : undefined}
+            dragging={drag?.model === model.id}
             disabled={disabled}
             onRemove={() => onRemove(model)}
             onDescribe={(next) => onDescribe(model, next)}
+            onSpeed={(next) => onSpeed(model, next)}
+            onStep={(by) => step(model.id, by)}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(ROW_DRAG_TYPE, model.id);
+              event.dataTransfer.effectAllowed = "move";
+              const row = event.currentTarget.closest("[data-roster-row]");
+              if (row instanceof HTMLElement) {
+                const handle = event.currentTarget.getBoundingClientRect();
+                const box = row.getBoundingClientRect();
+                event.dataTransfer.setDragImage(row, handle.left - box.left + 12, handle.top - box.top + 12);
+              }
+              setDrag({ model: model.id, order });
+            }}
+            onDragEnd={() => setDrag(undefined)}
+            {...dragProps(model.id)}
           />
         ))
       )}
@@ -200,21 +294,45 @@ function HarnessRoster({
 }
 
 /**
- * A model on the roster: its name over what it's for, a line to click and rewrite, and a button that
+ * A model on the roster: its rank, which turns into a handle to move it by, over its name and what it's
+ * for, a line to click and rewrite; then its speed, where the model offers a choice, and a button that
  * takes it off. A line cleared, or put back to Cerium's own, stops being the user's.
  */
 function RosterRow({
+  provider,
   model,
   use,
+  speed,
+  rank,
+  dragging,
   disabled,
   onRemove,
   onDescribe,
+  onSpeed,
+  onStep,
+  onDragStart,
+  onDragEnd,
+  onDragEnter,
+  onDragOver,
+  onDrop,
 }: {
+  provider: ProviderId;
   model: ModelInfo;
   use: string;
+  speed: ModelSpeed | undefined;
+  /** Its place among the harness's models; undefined when it's the only one. */
+  rank: number | undefined;
+  dragging: boolean;
   disabled: boolean;
   onRemove: () => void;
   onDescribe: (use: string | undefined) => void;
+  onSpeed: (speed: ModelSpeed | undefined) => void;
+  onStep: (by: -1 | 1) => void;
+  onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
+  onDragEnd: () => void;
+  onDragEnter: () => void;
+  onDragOver: (event: DragEvent) => void;
+  onDrop: (event: DragEvent) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const line = useRef<HTMLButtonElement>(null);
@@ -230,8 +348,45 @@ function RosterRow({
     if (kept !== (own ? use : undefined)) onDescribe(kept);
   };
 
+  const speeds = model.speeds ?? [];
   return (
-    <div className="group/row flex min-h-12 items-center gap-3 py-2 pr-2.5 pl-4">
+    <div
+      data-roster-row
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={`group/row flex min-h-12 items-center gap-3 py-2 pr-2.5 transition-opacity ${
+        rank === undefined ? "pl-4" : "pl-1.5"
+      } ${dragging ? "opacity-40" : ""}`}
+    >
+      {rank === undefined ? null : (
+        <Tooltip label="Drag to reorder">
+          <Button
+            data-roster-handle={`${provider}/${model.id}`}
+            aria-label={`${model.label}, choice ${rank}. Move with the arrow keys`}
+            aria-keyshortcuts="ArrowUp ArrowDown"
+            disabled={disabled}
+            draggable={!disabled}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+              event.preventDefault();
+              onStep(event.key === "ArrowUp" ? -1 : 1);
+            }}
+            className="group/handle relative -mr-1 grid h-8 w-6 shrink-0 cursor-grab place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring active:cursor-grabbing data-disabled:cursor-default"
+          >
+            <span className="text-meta tabular-nums transition-opacity group-hover/row:opacity-0 group-focus-visible/handle:opacity-0">
+              {rank}
+            </span>
+            <GripVertical
+              size={14}
+              strokeWidth={1.75}
+              className="absolute opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-visible/handle:opacity-100"
+            />
+          </Button>
+        </Tooltip>
+      )}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-body font-medium text-fg-primary">{model.label}</span>
         {editing ? (
@@ -257,6 +412,35 @@ function RosterRow({
           </Tooltip>
         )}
       </div>
+      {speeds.length > 1 ? (
+        <SelectRoot
+          value={speed ?? "default"}
+          disabled={disabled}
+          onValueChange={(next) => {
+            if (next !== null) onSpeed(next === "default" ? undefined : (next as ModelSpeed));
+          }}
+        >
+          <SelectTrigger label={`Speed for ${model.label}`}>
+            <SpeedMark speed={speed} />
+            <span className={speed === undefined ? "text-fg-tertiary" : ""}>
+              {speed === undefined ? "Default speed" : speedLabel[speed]}
+            </span>
+          </SelectTrigger>
+          <SelectPopup>
+            <SelectItem
+              value="default"
+              description={`${speedLabel[model.defaultSpeed ?? "standard"]}, as ${providerName[provider]} is set`}
+            >
+              Default speed
+            </SelectItem>
+            {speeds.map((each) => (
+              <SelectItem key={each} value={each} description={speedHint[each]}>
+                {speedLabel[each]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      ) : null}
       <Tooltip label="Take off the roster">
         <Button
           aria-label={`Take ${model.label} off the roster`}

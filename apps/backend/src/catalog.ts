@@ -12,16 +12,19 @@ const LIST_TIMEOUT = "20 seconds";
 const RELIST_AFTER = Duration.minutes(1);
 
 /**
- * The roster's models as leads know them: by id, or `provider/id` where two harnesses list the same id.
+ * The roster's models as leads know them: by id, or `provider/id` where two harnesses list the same id,
+ * each with its rank among its harness's models and its speed.
  */
 export const catalogEntries = (members: ReadonlyArray<RosterMember>): ReadonlyArray<CatalogEntry> =>
-  members.map(({ model, use }): CatalogEntry => ({
+  members.map(({ model, use, priority, speed }): CatalogEntry => ({
     alias: members.some((other) => other.model !== model && other.model.id === model.id)
       ? `${model.provider}/${model.id}`
       : model.id,
     provider: model.provider,
     model: model.id,
+    ...(speed ? { speed } : {}),
     description: use,
+    priority,
   }));
 
 /**

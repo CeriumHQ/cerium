@@ -45,7 +45,14 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
         Checkpoints.unavailable,
         ProjectScripts.unavailable,
         Catalog.fromEntries([
-          { alias: "scout", provider: "claude", model: "haiku", description: "Quick lookups" },
+          {
+            alias: "scout",
+            provider: "claude",
+            model: "haiku",
+            speed: "fast",
+            description: "Quick lookups",
+            priority: 1,
+          },
         ]),
         OrchestratorConfig.layer({
           chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),
@@ -153,7 +160,14 @@ describe("Cerium MCP bus", () => {
 
       const models = yield* leadClient.callTool("list_models");
       assert.deepStrictEqual(models?.result?.structuredContent?.models, [
-        { alias: "scout", provider: "claude", model: "haiku", description: "Quick lookups" },
+        {
+          alias: "scout",
+          provider: "claude",
+          model: "haiku",
+          speed: "fast",
+          description: "Quick lookups",
+          priority: 1,
+        },
       ]);
 
       const spawned = yield* leadClient.callTool("spawn_agent", {
