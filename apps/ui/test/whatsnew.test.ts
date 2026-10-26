@@ -1,75 +1,107 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  hiddenCount,
   opensAfterUpdate,
   parseChangelog,
-  PREVIEW,
-  releaseMarkdown,
-  releaseTitle,
+  seenValue,
+  splitEntry,
+  unseenIds,
 } from "../src/features/whatsnew/model.ts";
 
 const changelog = `# Changelog
+
+Intro paragraph.
 
 ## [Unreleased]
 
 ### Added
 
-- first
-- second
-  continued
+- Find in a thread: Ctrl F opens a bar.
+- Muse is back. The backend loads it
+  again.
 
 ### Fixed
 
-- a fix
+- A fix
+
+### Added
+
+- Find in a thread: listed twice.
 
 ## [0.2.0] - 2026-01-02
 
 ### Changed
 
-- older
+- Older one.
 `;
 
 describe("parseChangelog", () => {
-  it("lists releases as the file does, entries newest first", () => {
-    const [unreleased, older] = parseChangelog(changelog);
-    expect(unreleased?.title).toBe("Unreleased");
-    expect(unreleased?.groups).toEqual([
-      { heading: "Added", entries: ["- second\n  continued", "- first"] },
-      { heading: "Fixed", entries: ["- a fix"] },
+  it("lists every entry in file order, continuation lines joined", () => {
+    expect(
+      parseChangelog(changelog).map(({ kind, headline, detail }) => ({ kind, headline, detail })),
+    ).toEqual([
+      { kind: "added", headline: "Find in a thread", detail: "Ctrl F opens a bar." },
+      { kind: "added", headline: "Muse is back", detail: "The backend loads it again." },
+      { kind: "fixed", headline: "A fix", detail: undefined },
+      { kind: "changed", headline: "Older one", detail: undefined },
     ]);
-    expect(older).toMatchObject({ title: "0.2.0", date: "2026-01-02" });
   });
 
-  it("skips releases without entries", () => {
-    expect(parseChangelog("## [Unreleased]\n\n## [0.1.0]\n\n### Added\n\n- x\n")).toHaveLength(1);
+  it("keeps the same id while the headline stays", () => {
+    const [before] = parseChangelog("## x\n\n### Added\n\n- Muse is back. Old detail.\n");
+    const [after] = parseChangelog("## x\n\n### Added\n\n- Muse is back. New detail.\n");
+    expect(before?.id).toBe(after?.id);
   });
-});
 
-describe("releaseMarkdown", () => {
-  const many = `## [Unreleased]\n\n### Added\n\n${Array.from({ length: PREVIEW + 2 }, (_, i) => `- e${i}`).join("\n")}\n`;
-  const [release] = parseChangelog(many);
-
-  it("cuts each group to its newest entries until all are asked for", () => {
-    expect(hiddenCount(release!)).toBe(2);
-    expect(releaseMarkdown(release!, false)).not.toContain("- e0");
-    expect(releaseMarkdown(release!, false)).toContain(`- e${PREVIEW + 1}`);
-    expect(releaseMarkdown(release!, true)).toContain("- e0");
+  it("reads the real changelog into headlines", () => {
+    const changes = parseChangelog(readFileSync(new URL("../../../CHANGELOG.md", import.meta.url), "utf8"));
+    expect(changes.length).toBeGreaterThan(0);
+    expect(changes.every((change) => change.headline.length > 0)).toBe(true);
   });
 });
 
-describe("releaseTitle", () => {
-  it("names unreleased changes and versions", () => {
-    expect(releaseTitle({ title: "Unreleased", groups: [] })).toBe("Latest changes");
-    expect(releaseTitle({ title: "0.2.0", groups: [] })).toBe("Cerium 0.2.0");
+describe("splitEntry", () => {
+  it("breaks at the first sentence or a colon after a phrase", () => {
+    expect(splitEntry("Pushes and their CI checks in the thread. Agents push.")).toEqual({
+      headline: "Pushes and their CI checks in the thread",
+      detail: "Agents push.",
+    });
+    expect(splitEntry("Window has a slider: at the left the glass")).toEqual({
+      headline: "Window has a slider",
+      detail: "At the left the glass",
+    });
+  });
+
+  it("doesn't break inside code or brackets, after a one-word label or before lowercase", () => {
+    expect(splitEntry("`a. B` stays. Rest")).toEqual({ headline: "`a. B` stays", detail: "Rest" });
+    expect(splitEntry("Builds (x64. Arm) ship. Rest")).toEqual({
+      headline: "Builds (x64. Arm) ship",
+      detail: "Rest",
+    });
+    expect(splitEntry("UI: a run is one card. Rest").headline).toBe("UI: a run is one card");
+    expect(splitEntry("Models, e.g. sonnet, are listed. Rest").headline).toBe(
+      "Models, e.g. sonnet, are listed",
+    );
+    expect(splitEntry("No sentence end")).toEqual({ headline: "No sentence end" });
+  });
+});
+
+describe("unseenIds", () => {
+  const changes = parseChangelog(changelog);
+
+  it("is empty on a first run, then lists what wasn't there before", () => {
+    expect(unseenIds(changes, undefined).size).toBe(0);
+    expect(unseenIds(changes, seenValue(changes)).size).toBe(0);
+    expect([...unseenIds(changes, seenValue(changes.slice(1)))]).toEqual([changes[0]?.id]);
   });
 });
 
 describe("opensAfterUpdate", () => {
-  it("opens only when a different build ran before", () => {
-    expect(opensAfterUpdate(undefined, "0.2.0")).toBe(false);
-    expect(opensAfterUpdate("0.2.0", "0.2.0")).toBe(false);
-    expect(opensAfterUpdate("0.1.0", "0.2.0")).toBe(true);
-    expect(opensAfterUpdate("0.1.0", "dev")).toBe(false);
+  it("opens when a released build brings unseen changes", () => {
+    expect(opensAfterUpdate(0, "0.2.0")).toBe(false);
+    expect(opensAfterUpdate(2, "0.2.0")).toBe(true);
+    expect(opensAfterUpdate(2, "dev")).toBe(false);
   });
 });

@@ -10,7 +10,12 @@ import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
 import { CeriumMark } from "../components/CeriumMark.tsx";
 import { opensOnLaunch, stepFromQuery, WELCOMED_KEY } from "../features/onboarding/model.ts";
-import { threadCountAtom, welcomeOpenAtom, welcomeShownAtom } from "../features/onboarding/state.ts";
+import {
+  threadCountAtom,
+  welcomeOpenAtom,
+  welcomeShownAtom,
+  windowCoveredAtom,
+} from "../features/onboarding/state.ts";
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
 import { remember, stored } from "../lib/storage.ts";
@@ -80,6 +85,8 @@ export function Launch({ children }: { children: ReactNode }) {
   }, [threadCount]);
   const setShown = useAtomSet(welcomeShownAtom);
   useEffect(() => setShown(welcoming), [welcoming, setShown]);
+  const setCovered = useAtomSet(windowCoveredAtom);
+  useEffect(() => setCovered(launching || welcoming), [launching, welcoming, setCovered]);
   const openAsked = useEffectEvent(() => {
     if (asked && !launching && !welcoming) swap(() => setWelcoming(true), "welcome");
   });

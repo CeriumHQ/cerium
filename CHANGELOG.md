@@ -12,6 +12,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- What's new lists each change as a one-line headline, its detail folded under it until clicked. The changes this computer hasn't shown yet come first under "In this update"; the rest follow a page at a time. After an update it waits until the launch screen and the welcome have handed the window over, then opens only when the update brought changes it hasn't shown, instead of opening under the launch screen.
 - Menus, select lists, tooltips, dialogs and the command palette are translucent, glass blurred behind them, instead of 94% opaque; in light mode the thread card and message box are white films over the glass rather than a second near-opaque layer, and code blocks in a reply sit on a darkened film rather than another layer of window glass.
 - Raised surfaces (the New Thread button, project badges, your message bubbles, segmented controls, status chips, shortcut keys) are a light film over the glass instead of a mostly opaque dark layer, so the desktop shows through them, and the docked terminal sits on the same light pane as the thread above it instead of a second layer of window glass.
 - Settings opens with a "Settings" heading and a search field styled like GitHub's, in place of the "Back to chats" button; searching lists matching settings by name and opens the category that holds them.
