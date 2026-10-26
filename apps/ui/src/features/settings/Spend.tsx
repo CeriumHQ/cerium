@@ -1,14 +1,15 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { ProviderId, SpendReport, SpendTotals } from "@cerium/protocol";
+import type { ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronRight, CircleDollarSign } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
-import { spendAtom } from "../../backend/spend.ts";
+import { spendAtom, spendSinceAtom } from "../../backend/spend.ts";
+import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { harnessName } from "./Harnesses.tsx";
@@ -23,12 +24,14 @@ import {
   tokensOf,
   type SpendRange,
 } from "./spendModel.ts";
+import { lastResetOf } from "./usageModel.ts";
 
-type Breakdown = "model" | "thread";
+type Breakdown = "model" | "thread" | "reset";
 
 const breakdowns: ReadonlyArray<{ readonly id: Breakdown; readonly label: string }> = [
   { id: "model", label: "Model" },
   { id: "thread", label: "Thread" },
+  { id: "reset", label: "Since reset" },
 ];
 
 /** One line of a breakdown: who, what to call them, and what they used. */
@@ -56,6 +59,8 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
         name: each.title || "Untitled",
         totals: each,
       }));
+    case "reset":
+      return [];
   }
 };
 
@@ -136,10 +141,84 @@ export function SpendSection({
               ))}
             </ToggleGroup>
           </div>
-          <Rows rows={rowsOf(report, by)} />
+          {by === "reset" ? <ResetShares /> : <Rows rows={rowsOf(report, by)} />}
         </>
       )}
     </SettingsSection>
+  );
+}
+
+/** Each subscribed harness's models by the share of its tokens they took since its limits last reset. */
+function ResetShares() {
+  const snapshot = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
+  const now = Date.now();
+  const sections = (snapshot?.usage ?? []).flatMap((usage) => {
+    const start = lastResetOf(usage, now);
+    return start === undefined ? [] : [{ provider: usage.provider, start }];
+  });
+  if (sections.length === 0) {
+    return (
+      <SettingsCard className="px-4 py-3.5 text-meta text-fg-tertiary">
+        No subscription reports when its limits reset.
+      </SettingsCard>
+    );
+  }
+  return sections.map(({ provider, start }) => (
+    <ResetCard key={provider} provider={provider} start={start} />
+  ));
+}
+
+function ResetCard({ provider, start }: { provider: ProviderId; start: number }) {
+  const report = AsyncResult.getOrElse(
+    useAtomValue(spendSinceAtom(start)),
+    (): SpendReport | undefined => undefined,
+  );
+  const models = (report?.models ?? [])
+    .filter((each) => each.provider === provider && tokensOf(each) > 0)
+    .sort((a, b) => tokensOf(b) - tokensOf(a));
+  const total = models.reduce((sum, each) => sum + tokensOf(each), 0);
+  return (
+    <SettingsCard className="divide-y divide-line-subtle overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-2.5">
+        <ProviderLogo provider={provider} size={14} className="shrink-0 text-fg-secondary" />
+        <span className="min-w-0 flex-1 truncate text-body font-medium text-fg-primary">
+          {harnessName[provider]}
+        </span>
+        <span className="shrink-0 text-meta text-fg-tertiary">
+          since{" "}
+          {new Date(start).toLocaleString([], {
+            weekday: "short",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </span>
+      </div>
+      {report === undefined ? (
+        <p className="px-4 py-2.5 text-meta text-fg-tertiary">Reading…</p>
+      ) : models.length === 0 ? (
+        <p className="px-4 py-2.5 text-meta text-fg-tertiary">Nothing used since.</p>
+      ) : (
+        models.map((each) => {
+          const share = (tokensOf(each) / total) * 100;
+          return (
+            <div key={each.model} className="flex items-center gap-3 px-4 py-2.5">
+              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <span className="truncate text-body font-medium text-fg-primary">{each.model}</span>
+                <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-hover">
+                  <span
+                    className="block h-full rounded-full bg-fg-secondary"
+                    style={{ width: `${Math.max(2, share)}%` }}
+                  />
+                </span>
+              </span>
+              <span className="w-12 shrink-0 text-right text-body text-fg-primary tabular-nums">
+                {share < 1 ? "<1" : Math.round(share)}%
+              </span>
+            </div>
+          );
+        })
+      )}
+    </SettingsCard>
   );
 }
 

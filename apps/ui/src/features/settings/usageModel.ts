@@ -11,7 +11,21 @@ export {
   type Pace,
 } from "@cerium/protocol";
 
-import { leftPercent, type Pace, type UsageMeter } from "@cerium/protocol";
+import { leftPercent, type Pace, type ProviderUsage, type UsageMeter } from "@cerium/protocol";
+
+/**
+ * When a subscription's limits last reset, to the minute: the start of its longest window that
+ * reports both its length and its next reset. None when no meter does.
+ */
+export const lastResetOf = (usage: ProviderUsage, now: number): number | undefined => {
+  if (usage._tag !== "Subscribed") return undefined;
+  const longest = usage.meters
+    .filter((meter) => meter.resetsAt !== undefined && meter.windowMinutes !== undefined)
+    .sort((a, b) => b.windowMinutes! - a.windowMinutes!)[0];
+  if (longest?.resetsAt === undefined || longest.windowMinutes === undefined) return undefined;
+  const start = Math.floor((longest.resetsAt - longest.windowMinutes * 60_000) / 60_000) * 60_000;
+  return start < now ? start : undefined;
+};
 
 /** What would be left now at an even pace through the window, from 0 to 100. */
 export const evenLeft = (pace: Pace): number => Math.round(100 - pace.elapsed);

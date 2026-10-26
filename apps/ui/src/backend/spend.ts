@@ -15,3 +15,13 @@ export const spendAtom = Atom.family((range: SpendRange) =>
     })
     .pipe(Atom.setIdleTTL("1 minute")),
 );
+
+/** What agents used from `start` until now, for the share each model took since a limit reset. */
+export const spendSinceAtom = Atom.family((start: number) =>
+  Backend.runtime
+    .atom((get) => {
+      get(connectionEpochAtom);
+      return Backend.use((client) => client("SpendReport", { edges: [start, Date.now()] }));
+    })
+    .pipe(Atom.setIdleTTL("1 minute")),
+);
