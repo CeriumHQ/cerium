@@ -13,7 +13,12 @@ import {
 import { memo, useContext, useState, type ReactNode } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
-import { FileImageThumb, ImageThumb, ToolOutputImageThumb } from "../../components/ImageThumb.tsx";
+import {
+  FileImageThumb,
+  ImageThumb,
+  MissingImage,
+  ToolOutputImageThumb,
+} from "../../components/ImageThumb.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { useArrivals, useChanged } from "../../lib/motion.ts";
 import { CopyButton } from "./CopyButton.tsx";
@@ -28,6 +33,7 @@ import {
   hasToolMenu,
   outputText,
   sameTool,
+  shownImages,
   summarizeTools,
   toolImages,
   toolInputView,
@@ -45,6 +51,13 @@ const FULL = "h-40 max-w-full min-w-24";
 
 function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: boolean }) {
   const className = full ? FULL : PREVIEW;
+  if (image.removed) {
+    return full ? (
+      <MissingImage title="Screenshots go from threads quiet for a while (Settings → General)">
+        {image.name} removed
+      </MissingImage>
+    ) : null;
+  }
   if (image.url) {
     return (
       <ImageThumb
@@ -112,7 +125,7 @@ export function ToolRun({
   const [toggled, setToggled] = useState<boolean>();
   const failed = tools.filter((tool) => tool.status === "error").length;
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
-  const images = tools.flatMap(toolImages);
+  const images = tools.flatMap(shownImages);
   const open = toggled ?? live;
   const previewed = images.length <= PREVIEWED ? images : images.slice(0, PREVIEWED - 1);
   return (

@@ -1,3 +1,4 @@
+import { SLIM_AFTER_DAYS, type SlimThreadsAfter } from "@cerium/protocol";
 import { Button } from "@base-ui/react/button";
 import { Progress } from "@base-ui/react/progress";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -65,7 +66,10 @@ export function GeneralSettings() {
   );
 }
 
-/** Starting at login, signed in, and Discord's Rich Presence while it's this computer's window. */
+/**
+ * Starting at login, signed in; Discord's Rich Presence and slimming old threads while it's this
+ * computer's window; crash reports.
+ */
 function ThisComputerSection() {
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), () => undefined);
   const local = useAtomValue(machineAtom) === undefined;
@@ -78,9 +82,54 @@ function ThisComputerSection() {
       <SettingsList>
         {startup ? <StartAtLoginRow /> : null}
         {local ? <DiscordRows /> : null}
+        {local ? <SlimThreadsRow /> : null}
         {reports ? <CrashReportsRow /> : null}
       </SettingsList>
     </SettingsSection>
+  );
+}
+
+const slimLabel: Record<SlimThreadsAfter, string> = {
+  0: "Never",
+  1: "After a day",
+  3: "After 3 days",
+  7: "After a week",
+  14: "After 2 weeks",
+  30: "After 30 days",
+};
+
+/**
+ * How long a thread on this computer goes quiet before its screenshots and the harnesses' raw data go
+ * (apps/backend/src/slimming.ts), which keeps the database small; not offered while driving another
+ * machine, whose backend keeps its own threads.
+ */
+function SlimThreadsRow() {
+  const { value, saved, save, error } = useSetting("slimThreadsAfter", 7);
+  return (
+    <SettingsRow
+      label="Slim old threads"
+      hint="Removes screenshots and raw harness data from quiet threads. Text stays."
+      error={error}
+      control={() => (
+        <SelectRoot
+          value={String(value)}
+          onValueChange={(next) => {
+            const days = SLIM_AFTER_DAYS.find((each) => String(each) === next);
+            if (days !== undefined) save(days);
+          }}
+          disabled={saved === undefined}
+        >
+          <SelectTrigger label="Slim old threads">{slimLabel[value]}</SelectTrigger>
+          <SelectPopup>
+            {SLIM_AFTER_DAYS.map((days) => (
+              <SelectItem key={days} value={String(days)}>
+                {slimLabel[days]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
   );
 }
 

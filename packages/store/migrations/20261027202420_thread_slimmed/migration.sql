@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `slimmed_at` integer;

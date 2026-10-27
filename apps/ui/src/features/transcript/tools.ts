@@ -13,7 +13,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { toolImageRef, toolOutputImages, type ToolImageRef } from "@cerium/protocol";
+import { REMOVED_IMAGE, toolImageRef, toolOutputImages, type ToolImageRef } from "@cerium/protocol";
 
 import { fileEdits, type FileEdit } from "./diff.ts";
 import type { TranscriptBlock } from "./model.ts";
@@ -611,6 +611,8 @@ export interface ToolImage {
   readonly ref?: ToolImageRef;
   /** An absolute path the backend can read, otherwise. */
   readonly path?: string;
+  /** Removed when its thread was slimmed: there's nothing to show but that it was there. */
+  readonly removed?: true;
 }
 
 const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|bmp|avif)$/i;
@@ -623,10 +625,13 @@ export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
   const inline = toolOutputImages(tool.output);
   if (inline.length > 0) {
     return inline.map((image, index) => {
+      const key = `${tool.id}:${index}`;
+      const shown = inline.length === 1 ? name : `${name} (${index + 1})`;
+      if (image.data === REMOVED_IMAGE) return { key, name: shown, removed: true };
       const ref = toolImageRef(image.data);
       return {
-        key: `${tool.id}:${index}`,
-        name: inline.length === 1 ? name : `${name} (${index + 1})`,
+        key,
+        name: shown,
         ...(ref === undefined ? { url: `data:${image.mediaType};base64,${image.data}` } : { ref }),
       };
     });
@@ -639,6 +644,10 @@ export const toolImages = (tool: ToolBlock): ReadonlyArray<ToolImage> => {
   }
   return [];
 };
+
+/** A tool call's images there are still pictures of: those its thread's slimming left. */
+export const shownImages = (tool: ToolBlock): ReadonlyArray<ToolImage> =>
+  toolImages(tool).filter((image) => image.removed !== true);
 
 /**
  * The key of the `index`th image the user attached to a message, unique in the thread even when two
@@ -662,7 +671,7 @@ export const threadImages = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyAr
             path: image.path,
           }));
       case "tool":
-        return toolImages(block);
+        return shownImages(block);
       case "replaced":
         return threadImages(block.blocks);
       default:

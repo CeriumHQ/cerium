@@ -43,6 +43,7 @@ import { Projects } from "./project.ts";
 import { projectScriptsLayer } from "./projectScripts.ts";
 import { Pushes } from "./pushes.ts";
 import { Reviews } from "./reviews.ts";
+import { threadSlimming } from "./slimming.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
@@ -136,9 +137,8 @@ export const backendLayer = (options: BackendOptions) => {
     ),
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
-    // what the agents do on the user's Discord profile when they ask for it. Keeps
-    // the harnesses'
-    // subscription usage for Settings → Usage.
+    // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
+    // subscription usage for Settings → Usage. Slims threads gone quiet for the days the user chose.
     Layer.provideMerge(
       Layer.mergeAll(
         CloudCopy,
@@ -146,6 +146,7 @@ export const backendLayer = (options: BackendOptions) => {
         Notifications.layer,
         discordPresence(),
         SubscriptionUsage.layer,
+        threadSlimming,
       ),
     ),
     // With the effort router's decision model, through the user's own OpenRouter key. Beside it, what

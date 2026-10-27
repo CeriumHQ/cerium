@@ -4,7 +4,8 @@ import type { ThreadId } from "./ids.ts";
 // Images in a tool's output, such as a screenshot an agent read. They are most of a long thread's
 // bytes, so a thread's history can leave them out: each keeps its place as a reference naming its
 // thread, tool call and position (`cerium-image:["<thread>","<call>",<index>]`), which the transcript
-// reads on its own (`ToolImage`) when it shows the image.
+// reads on its own (`ToolImage`) when it shows the image. A slimmed thread has removed them for good,
+// each leaving `REMOVED_IMAGE` as its data.
 
 /** An image in a tool's output, base64-encoded. */
 export interface OutputImage {
@@ -20,6 +21,9 @@ export interface ToolImageRef {
 }
 
 const REF = "cerium-image:";
+
+/** The data of an image removed when its thread was slimmed. */
+export const REMOVED_IMAGE = "cerium-image-removed";
 
 /** Images this small stay in place: fetching one would cost more than carrying it. */
 const KEPT_UNDER = 8 * 1024;
@@ -102,6 +106,10 @@ export const toolImageRef = (data: string): ToolImageRef | undefined => {
     return undefined;
   }
 };
+
+/** `output` with its images removed for good (`REMOVED_IMAGE`); the same object when it has none. */
+export const withImagesRemoved = (output: unknown): unknown =>
+  mapImages(output, (image) => (image.data === REMOVED_IMAGE ? undefined : REMOVED_IMAGE));
 
 /** An event with the images of its tool output left out; any other event as it is. */
 export const withoutImages = (event: AgentEvent): AgentEvent => {

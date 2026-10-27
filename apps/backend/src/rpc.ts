@@ -17,6 +17,7 @@ import {
 import {
   isStreamDelta,
   LEAD_ROLE,
+  REMOVED_IMAGE,
   toolOutputImages,
   withoutImages,
   type AgentEvent,
@@ -211,7 +212,7 @@ export const Handlers = MachineRpcs.toLayer(
             const payload = Option.getOrUndefined(found)?.payload;
             const image =
               payload?._tag === "ToolCallCompleted" ? toolOutputImages(payload.output)[index] : undefined;
-            return image === undefined
+            return image === undefined || image.data === REMOVED_IMAGE
               ? Effect.fail(new CeriumError({ message: "That image isn't in the thread anymore." }))
               : Effect.succeed(image);
           }),

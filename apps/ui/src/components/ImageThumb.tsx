@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { ImageOff } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import type { ToolImageRef } from "@cerium/protocol";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { imageAtom, toolImageAtom } from "../backend/files.ts";
 import { ImageViewer, useGallery, WithImageMenu } from "./ImageViewer.tsx";
@@ -133,20 +133,25 @@ function LoadedImageThumb({
   }
   if (AsyncResult.isFailure(result)) {
     if (quiet) return null;
-    return (
-      <span
-        title={path ?? name}
-        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-meta text-fg-tertiary"
-      >
-        <ImageOff size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="min-w-0 truncate">{name} can't be shown</span>
-      </span>
-    );
+    return <MissingImage title={path ?? name}>{name} can't be shown</MissingImage>;
   }
   return (
     <span
       title={name}
       className={`grid shrink-0 animate-pulse place-items-center rounded-lg border border-line-subtle bg-surface-hover ${className}`}
     />
+  );
+}
+
+/** Where an image would be, labelled with why it isn't. */
+export function MissingImage({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-line-subtle bg-surface-hover px-2 text-meta text-fg-tertiary"
+    >
+      <ImageOff size={13} strokeWidth={1.75} className="shrink-0" />
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
   );
 }

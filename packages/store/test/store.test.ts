@@ -1,4 +1,13 @@
-import type { AgentEvent, AgentId, AgentInfo, EventId, ThreadId, ThreadInfo } from "@cerium/protocol";
+import {
+  REMOVED_IMAGE,
+  type AgentEvent,
+  type EventPayload,
+  type AgentId,
+  type AgentInfo,
+  type EventId,
+  type ThreadId,
+  type ThreadInfo,
+} from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Option } from "effect";
 import { join } from "node:path";
@@ -87,6 +96,96 @@ describe("Store", () => {
       }),
     ),
   );
+  it.effect("slims threads gone quiet, keeping their text and slimming again after new events", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-slim-")), "events.db");
+    const shot = (sequence: number, callId: string): AgentEvent => ({
+      ...event(sequence),
+      payload: {
+        _tag: "ToolCallCompleted",
+        callId,
+        output: {
+          content: [
+            { type: "text", text: "took a screenshot" },
+            { type: "image", mimeType: "image/png", data: "a".repeat(20_000) },
+          ],
+        },
+        isError: false,
+      },
+      raw: { harness: "b".repeat(5_000) },
+    });
+    const removed = (callId: string): EventPayload => ({
+      _tag: "ToolCallCompleted",
+      callId,
+      output: {
+        content: [
+          { type: "text", text: "took a screenshot" },
+          { type: "image", mimeType: "image/png", data: REMOVED_IMAGE },
+        ],
+      },
+      isError: false,
+    });
+    const raws = () => {
+      const db = new DatabaseSync(filename);
+      const rows = db.prepare("SELECT count(*) AS n FROM events WHERE raw IS NOT NULL").get();
+      db.close();
+      return rows?.["n"];
+    };
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      yield* store.createThread(thread);
+      yield* store.createAgent(lead);
+      yield* store.appendEvents([{ ...event(0), raw: { harness: "c" } }, shot(1, "one")]);
+
+      assert.strictEqual(yield* store.slimThreads(11), 0, "not quiet since then");
+      assert.strictEqual(yield* store.slimThreads(100), 1);
+      assert.strictEqual(raws(), 0);
+      const [message, tool] = yield* store.listThreadEvents(thread.id);
+      assert.deepStrictEqual(message, event(0));
+      assert.deepStrictEqual(tool?.payload, removed("one"));
+      const [, compact] = yield* store.listThreadEvents(thread.id, { withoutImages: true });
+      assert.deepStrictEqual(compact?.payload, removed("one"));
+      assert.strictEqual(yield* store.slimThreads(100), 0, "already slim");
+
+      yield* store.appendEvents([shot(2, "two")]);
+      assert.strictEqual(yield* store.slimThreads(100), 1);
+      assert.deepStrictEqual(
+        Option.getOrThrow(yield* store.findToolCompletion(thread.id, "two")).payload,
+        removed("two"),
+      );
+      yield* store.reclaimSpace;
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
+  it.effect("hands freed space back to the disk, rewriting the file once and in steps after", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-reclaim-")), "events.db");
+    const pragma = (name: string) => {
+      const db = new DatabaseSync(filename);
+      const row = db.prepare(`PRAGMA ${name}`).get();
+      db.close();
+      return Object.values(row ?? {})[0];
+    };
+    const fill = (from: number) =>
+      Array.from({ length: 40 }, (_, index) => ({
+        ...event(from + index),
+        raw: { harness: "r".repeat(1_000_000) },
+      }));
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      yield* store.createThread(thread);
+      yield* store.createAgent(lead);
+      yield* store.appendEvents(fill(0));
+      yield* store.slimThreads(1_000);
+      assert.isAbove(Number(pragma("freelist_count")), 4096);
+      yield* store.reclaimSpace;
+      assert.strictEqual(pragma("auto_vacuum"), 2);
+      assert.strictEqual(pragma("freelist_count"), 0);
+
+      yield* store.appendEvents(fill(100));
+      yield* store.slimThreads(1_000);
+      assert.isAbove(Number(pragma("freelist_count")), 0);
+      yield* store.reclaimSpace;
+      assert.strictEqual(pragma("freelist_count"), 0);
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
   it.effect("round-trips threads, keeping absent optional fields absent", () =>
     withStore(
       Effect.gen(function* () {

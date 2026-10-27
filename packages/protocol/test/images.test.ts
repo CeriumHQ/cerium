@@ -1,8 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 
 import {
+  REMOVED_IMAGE,
   toolImageRef,
   toolOutputImages,
+  withImagesRemoved,
   withoutImages,
   type AgentEvent,
   type AgentId,
@@ -66,5 +68,33 @@ describe("withoutImages", () => {
   it("reads no reference from ordinary image data", () => {
     assert.strictEqual(toolImageRef(screenshot), undefined);
     assert.strictEqual(toolImageRef("cerium-image:not json"), undefined);
+    assert.strictEqual(toolImageRef(REMOVED_IMAGE), undefined);
+  });
+});
+
+describe("withImagesRemoved", () => {
+  it("removes every image, big and small, keeping the text and where each image was", () => {
+    const output = {
+      content: [
+        { type: "text", text: "Took a screenshot" },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: screenshot } },
+        { type: "image", data: icon, mimeType: "image/png" },
+      ],
+    };
+    const slim = withImagesRemoved(output);
+    assert.deepStrictEqual(
+      toolOutputImages(slim).map((image) => image.data),
+      [REMOVED_IMAGE, REMOVED_IMAGE],
+    );
+    assert.deepStrictEqual((slim as typeof output).content[0], output.content[0]);
+    // A compact history keeps the marker as it is: there's nothing left to fetch.
+    assert.deepStrictEqual(outputOf(withoutImages(completed(slim))), slim);
+  });
+
+  it("returns an output with no images left as it is", () => {
+    const text = { stdout: "done" };
+    assert.strictEqual(withImagesRemoved(text), text);
+    const slim = withImagesRemoved([{ type: "image", data: screenshot, mimeType: "image/png" }]);
+    assert.strictEqual(withImagesRemoved(slim), slim);
   });
 });

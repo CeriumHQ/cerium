@@ -1,3 +1,4 @@
+import { REMOVED_IMAGE } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -7,6 +8,7 @@ import {
   hasToolMenu,
   outputText,
   sameTool,
+  shownImages,
   summarizeTools,
   toolImages,
   toolInputView,
@@ -143,6 +145,28 @@ describe("toolImages", () => {
   it("shows nothing for other files or paths it can't resolve", () => {
     expect(call("Read", { file_path: "/w/a.ts" }, "export {}")).toEqual([]);
     expect(call("read", { path: "shot.png" }, "binary")).toEqual([]);
+  });
+
+  it("marks an image its thread's slimming removed, which has no pictures left to show", () => {
+    const tool: ToolBlock = {
+      kind: "tool",
+      id: "tool:1",
+      toolName: "mcp__browser__screenshot",
+      input: {},
+      output: {
+        content: [
+          { type: "image", data: REMOVED_IMAGE, mimeType: "image/png" },
+          { type: "image", data: "R0lG", mimeType: "image/gif" },
+        ],
+      },
+      status: "done",
+      changedFiles: [],
+    };
+    expect(toolImages(tool)).toEqual([
+      { key: "tool:1:0", name: "Image (1)", removed: true },
+      { key: "tool:1:1", name: "Image (2)", url: "data:image/gif;base64,R0lG" },
+    ]);
+    expect(shownImages(tool).map((image) => image.key)).toEqual(["tool:1:1"]);
   });
 });
 

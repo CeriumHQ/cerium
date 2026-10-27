@@ -111,6 +111,18 @@ const defaultRoster: RosterSettings = { models: [], edited: [] };
 
 const defaultPrompts: PromptsSettings = { prompts: [] };
 
+/** The days a thread can go quiet before it's slimmed, the user's choices; 0 never slims. */
+export const SLIM_AFTER_DAYS = [0, 1, 3, 7, 14, 30] as const;
+
+/**
+ * How many days nothing has happened in a thread before its screenshots and the harnesses' payloads
+ * kept beside its events are removed (`Store.slimThreads`); its text stays.
+ */
+export const SlimThreadsAfter = Schema.Literals(SLIM_AFTER_DAYS);
+export type SlimThreadsAfter = typeof SlimThreadsAfter.Type;
+
+const defaultSlimThreadsAfter: SlimThreadsAfter = 7;
+
 /** Each setting's shape, without the defaults `Settings` reads a missing one as. */
 const SettingsFields = Schema.Struct({
   /** Load the MCP servers the user set up in each harness into sessions Cerium starts. */
@@ -121,6 +133,7 @@ const SettingsFields = Schema.Struct({
   effortRouter: EffortRouterSettings,
   roster: RosterSettings,
   prompts: PromptsSettings,
+  slimThreadsAfter: SlimThreadsAfter,
 });
 
 /**
@@ -141,6 +154,10 @@ export const Settings = Schema.Struct({
   roster: RosterSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultRoster))),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 37). */
   prompts: PromptsSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultPrompts))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 38). */
+  slimThreadsAfter: SlimThreadsAfter.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(defaultSlimThreadsAfter)),
+  ),
 });
 export type Settings = typeof Settings.Type;
 
@@ -159,4 +176,5 @@ export const defaultSettings: Settings = {
   effortRouter: defaultEffortRouter,
   roster: defaultRoster,
   prompts: defaultPrompts,
+  slimThreadsAfter: defaultSlimThreadsAfter,
 };
