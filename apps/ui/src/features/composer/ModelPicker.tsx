@@ -206,10 +206,13 @@ export function ModelPicker({
           {shown ? (
             <>
               <ProviderLogo provider={shown.provider} size={13} />
-              <span className="truncate font-medium text-fg-primary">{shown.label}</span>
-              <EffortTrail effort={menu.effortShown} />
-              <SpeedMark speed={menu.speedShown} />
-              <ContextRing context={context} />
+              <span className="truncate font-medium text-fg-primary max-[22.5rem]:hidden">{shown.label}</span>
+              {/* A phone's line is the message's first: the chip keeps the model, and the menu has the rest. */}
+              <span className="contents max-md:hidden">
+                <EffortTrail effort={menu.effortShown} />
+                <SpeedMark speed={menu.speedShown} />
+                <ContextRing context={context} />
+              </span>
             </>
           ) : (
             <span className="text-fg-tertiary">Finding models…</span>
@@ -308,8 +311,10 @@ export function ModelsPicker({
           </span>
         ) : null}
         <span className="truncate font-medium text-fg-primary">{label}</span>
-        <EffortTrail effort={menu.effortShown} />
-        <SpeedMark speed={menu.speedShown} />
+        <span className="contents max-md:hidden">
+          <EffortTrail effort={menu.effortShown} />
+          <SpeedMark speed={menu.speedShown} />
+        </span>
       </Combobox.Trigger>
       <MenuPopup
         {...menu}

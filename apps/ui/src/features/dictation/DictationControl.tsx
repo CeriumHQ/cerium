@@ -120,7 +120,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
         onClick={dictation.toggle}
         onMouseDown={keepFocus}
         aria-label="Dictate"
-        className={`grid size-8 shrink-0 place-items-center rounded-full text-fg-tertiary transition-[color,background-color,opacity,scale,filter] hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active ${swap}`}
+        className={`grid size-8 shrink-0 place-items-center rounded-full text-fg-tertiary transition-[color,background-color,opacity,scale,filter] pointer-coarse:size-10 max-md:size-10 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active ${swap}`}
       >
         <Mic size={15} strokeWidth={1.75} />
       </Button>

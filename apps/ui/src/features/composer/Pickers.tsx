@@ -32,7 +32,7 @@ import { accessOptions, effortHint, effortLabel, MAX_AGENTS, speedHint, speedLab
 
 /** A control in the box's rows, without its colours: a pill, the box itself being one. */
 const chipShape =
-  "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none";
+  "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none pointer-coarse:h-10 max-md:h-10";
 
 /** A control in the box's rows: a quiet pill. */
 export const chipClass = `${chipShape} text-fg-secondary hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary`;
@@ -229,7 +229,7 @@ export function MoreMenu({
       <Tooltip label={label ? `Access: ${label}` : access ? "Access, several at once" : "Several at once"}>
         <Menu.Trigger
           aria-label={label ? `Access: ${label}` : "More options"}
-          className={`${chipShape} relative w-8 justify-center px-0 ${
+          className={`${chipShape} relative w-8 justify-center px-0 pointer-coarse:w-10 max-md:w-10 ${
             shown
               ? (accessChipTone[shown] ??
                 "bg-surface-hover text-fg-primary hover:bg-surface-active data-popup-open:bg-surface-active")

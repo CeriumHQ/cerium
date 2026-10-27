@@ -900,12 +900,22 @@ export function Composer({
       icon={Paperclip}
       label="Attach files"
       onClick={() => filePicker.current?.click()}
-      className={oneLine ? "size-10" : inline ? "m-1 size-8 rounded-full" : "size-8 rounded-full"}
+      className={
+        oneLine
+          ? "size-10"
+          : inline
+            ? "m-1 size-8 rounded-full pointer-coarse:size-10 max-md:size-10"
+            : "size-8 rounded-full pointer-coarse:size-10 max-md:size-10"
+      }
     />
   );
   // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
   const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
-  const discSize = oneLine ? "m-0.5 size-9" : inline ? "m-1 size-8" : "size-8";
+  const discSize = oneLine
+    ? "m-0.5 size-9"
+    : inline
+      ? "m-1 size-8 pointer-coarse:size-10 max-md:size-10"
+      : "size-8 pointer-coarse:size-10 max-md:size-10";
   // Stop pops in as a turn starts, and send as it ends, once the box has seen one change.
   const turned = useChanged(running);
   const stopButton = (
