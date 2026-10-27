@@ -8,7 +8,7 @@
   <img src=".github/media/wordmark-light.svg" alt="Cerium" width="520" />
 </picture>
 
-<h3>One thread. Every agent.</h3>
+<h3>Your coding agents, working as one team.</h3>
 
 <p>
   <a href="https://github.com/CeriumHQ/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/CeriumHQ/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
@@ -25,8 +25,8 @@
   <img alt="Works with OpenCode" src="https://img.shields.io/badge/OpenCode-211e1e?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2IDZIOHYxMmg4VjZ6bTQgMTZINFYyaDE2djIweiIvPjwvc3ZnPg==" />
 </p>
 
-Claude Code, Codex, Muse Code, Cursor and OpenCode side by side. Ask once, and your lead agent hands each
-piece of the job to the one that does it best.
+Ask once. A lead agent splits the job across Claude Code, Codex, Cursor, OpenCode and Muse Code, the
+helpers work in parallel and talk to each other, and you get one answer back.
 
 [**Download**](https://github.com/CeriumHQ/cerium/releases) ·
 [Website](https://cerium.nonlooped.xyz) ·
@@ -37,61 +37,75 @@ piece of the job to the one that does it best.
 <br />
 
 <p align="center">
-  <img src=".github/media/hero.webp" alt="A Claude lead adding rate limiting to a job queue while a Codex agent writes the tests, an OpenCode agent the docs and a Cursor agent reviews the timing, with the agents panel open" width="100%" />
+  <img src=".github/media/hero.webp" alt="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread" width="100%" />
 </p>
 
-## What it does
+## One prompt, a whole team
+
+Every model is good at something. Cerium lets them work together instead of taking turns in five
+terminals.
+
+- **The lead splits the work.** It spawns helpers on any harness you're signed in to, each with the
+  model and access the job needs.
+- **Helpers talk to each other.** They message the lead and one another, and say so before touching a
+  file someone else is editing.
+- **You get one report.** Who did what, on which model, and what came of it, in the thread you started.
+
+<p align="center">
+  <img src=".github/media/team.webp" alt="The lead's report as a table of who did what: Claude Opus built the feature, a Codex agent wrote 8 tests and fixed one the lead sent back, an OpenCode agent wrote the docs; the Agents panel beside it lists all four agents" width="100%" />
+</p>
+
+## A second opinion from another lab
+
+Claude wrote it? Have Codex review the diff before you commit. **Review** asks a model from a different
+harness than the one that made the change, so the reviewer doesn't share the author's blind spots. Its
+findings land as comments on the diff's lines, one click from going back to the agent.
+
+Plan running dry mid-task? **Continue on another harness**: Cerium offers it when a limit runs low, and
+the thread carries on there with the conversation, the files it changed and its plan.
+
+## Answers you can play with
+
+Agents answer with charts, timelines and what-ifs drawn right in the conversation, on your theme.
+Drag a slider and the page reruns; click its button and your reply is written for you.
+
+<p align="center">
+  <img src=".github/media/artifact.webp" alt="An agent's answer as an interactive page: sliders for a job queue's rate limit, stat tiles and a timeline of 24 jobs that re-plans as the sliders move, then a button that writes the chosen settings into the message box" width="100%" />
+</p>
+
+## Fixes CI while you're away
+
+Automations start threads on a schedule, or **when CI fails** on a commit an agent pushed: a thread
+starts with the failed checks' logs and your standing orders, say "find why CI failed, fix it and
+push". Your phone hears about it when it's done.
+
+<p align="center">
+  <img src=".github/media/automation.webp" alt="A new automation named Fix failing CI, set to run When CI fails, being created" width="100%" />
+</p>
+
+## Everything else a day of agent work needs
 
 <table>
   <tr>
-    <td width="50%" valign="top">
-      <b>Every harness in one thread</b><br />
-      A lead agent hands work to agents from any harness you're signed in to. They run in parallel,
-      warn each other before touching the same files, and report back to the lead.
-    </td>
-    <td width="50%" valign="top">
-      <b>The real harnesses, on your plans</b><br />
-      Each agent is the harness itself, driven through its official SDK on your own subscription.
-      Cerium never reads a harness's token or key.
-    </td>
+    <td width="33%" valign="top"><b>Undo any turn</b><br />Take the thread, and its files, back to before any message.</td>
+    <td width="33%" valign="top"><b>Terminal and browser</b><br />Each thread has its own shells and a browser its agents can drive.</td>
+    <td width="33%" valign="top"><b>Git and GitHub</b><br />Stage, commit and work through pull requests and issues beside the thread.</td>
   </tr>
   <tr>
-    <td valign="top">
-      <b>Answers you can see</b><br />
-      Agents answer with charts, tables and timelines drawn right in the conversation.
-    </td>
-    <td valign="top">
-      <b>Undo any turn</b><br />
-      Take a thread back to before any message, its files included. Give each thread its own git
-      worktree so parallel work never collides.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <b>Git and GitHub beside the thread</b><br />
-      Review diffs, stage lines and commit, then work through pull requests and issues without
-      leaving the app.
-    </td>
-    <td valign="top">
-      <b>Answer from anywhere</b><br />
-      Sign in on your phone and your computer's threads come along, with a notification when an
-      agent needs you.
-    </td>
+    <td valign="top"><b>From your phone</b><br />Sign in and your computer's threads come along, with a ping when an agent needs you.</td>
+    <td valign="top"><b>Side by side</b><br />Split the window into panes, or send one prompt to four models and compare.</td>
+    <td valign="top"><b>Bring your sessions</b><br />Import the Claude Code, Codex, OpenCode and Muse sessions you already have.</td>
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src=".github/media/artifact.webp" alt="An agent's answer drawn as a view of the test results: 29 of 29 passed, each test file with its tests and how long each took" />
-    </td>
-    <td width="50%" valign="top">
-      <img src=".github/media/source-control.webp" alt="A file's diff open beside Source control, which lists the project's changed files with Stage and Commit" />
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src=".github/media/themes.webp" alt="Settings → Appearance cycling through Cerium's six palettes and light mode, the window's glass showing the desktop behind it" width="100%" />
+</p>
 
-## Supported harnesses
+## Your harnesses, on your plans
+
+Each agent is the real harness, driven through its official SDK on your own subscription. Cerium
+starts each harness's own sign-in and never reads its tokens or keys.
 
 | Harness         | Driven through                                      | Sign in                  |
 | --------------- | --------------------------------------------------- | ------------------------ |
@@ -106,7 +120,10 @@ On Windows, Muse runs commands with Full access only for now: `muse serve` can't
 Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
 Anysphere or Anomaly.
 
-## How it works
+<details>
+<summary><b>How it works</b></summary>
+
+<br />
 
 ```mermaid
 flowchart LR
@@ -124,6 +141,8 @@ Adapters translate each harness's stream into one event schema, stored as an app
 runs no agent loop of its own: agents spawn and message each other only through an MCP server it
 injects into every session, so every agent stays visible in the thread.
 
+</details>
+
 ## Install
 
 Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
@@ -131,13 +150,13 @@ Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/rel
 - **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC. The
   installer isn't code-signed yet, so SmartScreen warns that it "protected your PC": choose More info,
   then Run anyway.
+- **macOS**: open `Cerium-<version>-arm64.dmg` on Apple silicon, or `-x64.dmg` on an Intel Mac, and
+  drag Cerium into Applications. Until it is notarized, open it once, then choose Open Anyway in
+  System Settings → Privacy & Security.
 - **Ubuntu and Debian**: `sudo apt install ./cerium_<version>_amd64.deb` (`arm64` on Arm).
 - **Fedora**: `sudo dnf install ./cerium-<version>.x86_64.rpm` (`aarch64` on Arm).
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
   needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
-- **macOS**: open `Cerium-<version>-arm64.dmg` on Apple silicon, or `-x64.dmg` on an
-  Intel Mac, and drag Cerium into Applications. Until it is notarized, open it once, then choose
-  Open Anyway in System Settings → Privacy & Security.
 
 Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
 pick in Settings → Updates.
@@ -145,7 +164,12 @@ pick in Settings → Updates.
 ## Privacy
 
 Cerium has no telemetry. Your threads live in a SQLite database on your machine, and each harness
-talks to its own provider as it does without Cerium. Beyond that, Cerium itself only reaches out for:
+talks to its own provider as it does without Cerium.
+
+<details>
+<summary>What Cerium itself reaches out for</summary>
+
+<br />
 
 - **Your Cerium account, if you sign in.** Signing in (through Clerk) lets your phone and other
   machines follow your threads. The relay at `cerium.nonlooped.xyz` then keeps, per account:
@@ -164,6 +188,8 @@ talks to its own provider as it does without Cerium. Beyond that, Cerium itself 
   transcribed on your machine.
 - **Artifacts.** Pages an agent draws can load scripts over HTTPS, such as the chart libraries
   Cerium suggests from `cdn.jsdelivr.net`, so viewing one may fetch from that CDN.
+
+</details>
 
 ## Build from source
 
