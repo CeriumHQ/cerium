@@ -41,6 +41,20 @@ All notable changes to Cerium are recorded here. The format follows
 - Settings' categories have glyphs of Cerium's own in place of stock icons: a slider, a person, a ping, a prism, a fan of agents, a frame, a branch, a gauge and keycaps, each with one facet in the accent colour, as the Prism C has its facet. A phone's list shows each in a tile with a line on what the category holds, and the command palette's settings pages use the same glyphs.
 - Settings → Account reads plainer for newcomers: a device's build number moves from its row to the top of its menu, a computer's row names only its platform (and Nightly or Development build when it is one), a phone or browser shows just its name, the Devices section says how to add one, and on a phone the page says what signing in there does.
 
+### Fixed
+
+- On a phone, the rail's usage rings no longer run off the bottom edge (at 320 px only the first showed): when the places and the rings can't share the row, the rings stack above the places; held sideways they still share it.
+- The search palette shows its results on a short screen. A phone's results area was sized to the screen less 20 rem, which left none at 320 px high; it now follows the part of the screen that shows, the keyboard taken out, and keeps clear of a notch.
+- A pull request's header on a phone keeps its title, Start thread, More and Close on one line, over a line for the tabs, which scroll when they don't fit (a cut-off tab shows there's more). A changed file's path has a line to itself over its status and counts, so a long name no longer runs into "Added" or the counts.
+- A side panel (Files, Source control, GitHub, Artifacts, Agents) no longer covers the thread in a window around 800 px: the sidebar folds away while the panel is open, so the two sit side by side, and the sidebar button, which then reads "Show sidebar", closes the panel and brings it back. A window too narrow for even that still floats the panel.
+- The message box on a phone leaves room to write in: the model chip is the model's mark and name, with effort, speed and context left to its menu, so the message gets about 130 px at 390 px where it had 90. At 360 px or less the chip is the mark alone.
+- The roster on a phone shows each model's whole line under its name, wrapped rather than cut at "Hard pro…", with the speed on a line of its own, and gives each model buttons to move it up or down, which also show on any touch screen: dragging a handle or the arrow keys were the only ways to reorder it. A button that has run out of room hands its focus to the other.
+- Touch targets match their neighbours: the thread bar's agents button, the message box's controls, a thread card's More button, the title bar's buttons and the tabs' + are 36 to 40 px on a phone or any touch screen (28, 32 and 22 px before).
+- A diff's comment button rests in sight on a touch screen instead of showing only on hover, and a tap on another line while a comment is open takes the lines up to it (Shift-click did that); tapping the first line again starts over. A phone shows a saved side-by-side diff in one column, as the switch for it is hidden there.
+- The run scoreboard's per-thread Archive button stays in sight on a touch screen instead of being hidden.
+- Dialogs (confirm, hand off, restore, clone, forms, harness actions) are never taller than the part of the screen that shows, scroll when they are, and centre in it with the keyboard open. An expanded artifact on a phone takes the screen's width less 16 px instead of leaving about 190 px at 320.
+- A phone turned sideways keeps the lists, the thread and its message box, the pages and the rail off the notch and the rounded corners.
+
 ### Removed
 
 - The repository's `social-preview.png`: GitHub's social preview is managed through Settings → Social preview.
