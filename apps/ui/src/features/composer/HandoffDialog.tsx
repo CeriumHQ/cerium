@@ -112,7 +112,7 @@ export function HandoffDialog({
     <AlertDialog.Root open={handoff !== undefined} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 flex w-[25rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+        <AlertDialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex max-h-[calc(var(--app-height,100dvh)-2rem)] w-[25rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
           <div className="flex flex-col gap-1.5">
             <AlertDialog.Title className="flex items-center gap-2 text-reading font-semibold tracking-tight max-md:text-[16px]">
               {shown ? <ProviderLogo provider={shown.to} size={16} /> : null}

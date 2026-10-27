@@ -108,7 +108,7 @@ export function FormDialog({
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
         <Dialog.Popup
-          className={`fixed top-1/2 left-1/2 ${wide ? "w-[34rem]" : "w-[24rem]"} max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto -translate-1/2 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0`}
+          className={`fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 ${wide ? "w-[34rem]" : "w-[24rem]"} max-h-[calc(var(--app-height,100dvh)-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain -translate-1/2 rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0`}
         >
           <form
             className="flex flex-col gap-4"

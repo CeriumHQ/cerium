@@ -218,7 +218,8 @@ export function ArtifactDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <Dialog.Popup className="fixed top-1/2 left-1/2 flex h-[calc(100dvh-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+        {/* A phone gives the page nearly all of the screen: its own margins would leave the artifact about 190 px at 320. */}
+        <Dialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex h-[calc(var(--app-height,100dvh)-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl max-md:h-[calc(var(--app-height,100dvh)-1rem)] max-md:w-[calc(100vw-1rem)] max-md:rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
           <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
             <Dialog.Title className="min-w-0 flex-1 truncate text-body font-medium text-fg-secondary">
               {title ?? "Artifact"}
@@ -234,7 +235,7 @@ export function ArtifactDialog({
               <X size={14} strokeWidth={2} />
             </Dialog.Close>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-6 max-md:px-3 max-md:py-4">
             <ArtifactFrame code={code} title={title} onReply={onReply} />
           </div>
         </Dialog.Popup>
