@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { ChevronDown, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
+import { CheckSquare, ChevronDown, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { ContextMenuArea, MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
@@ -89,7 +89,9 @@ export function InboxCard({
     menu === undefined ? undefined : (
       <>
         {selection && !selection.active ? (
-          <MenuItem onClick={() => selection.onToggle("toggle")}>Select</MenuItem>
+          <MenuItem icon={CheckSquare} onClick={() => selection.onToggle("toggle")}>
+            Select
+          </MenuItem>
         ) : null}
         {menu({ rename: start, remove: () => setDeleting(true) })}
       </>
