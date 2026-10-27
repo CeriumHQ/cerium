@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { ChevronDown, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
-import { ContextMenuArea, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { ContextMenuArea, MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
@@ -40,6 +40,7 @@ export interface InboxCardProps {
    * how a click picks it. Ctrl or ⌘ ticks instead of opening; Shift ticks a run of the list.
    */
   readonly selection?: {
+    readonly active: boolean;
     readonly checked: boolean;
     readonly mixed: boolean;
     readonly onToggle: (mode: SelectMode) => void;
@@ -84,7 +85,15 @@ export function InboxCard({
       ? thread.status
       : undefined;
   const offline = thread.elsewhere?.online === false;
-  const menuItems = menu?.({ rename: start, remove: () => setDeleting(true) });
+  const menuItems =
+    menu === undefined ? undefined : (
+      <>
+        {selection && !selection.active ? (
+          <MenuItem onClick={() => selection.onToggle("toggle")}>Select</MenuItem>
+        ) : null}
+        {menu({ rename: start, remove: () => setDeleting(true) })}
+      </>
+    );
   // The card fades out as an action takes it to another list, and back if the action fails.
   const run = (action: CardAction) => {
     setLeaving(true);
@@ -94,7 +103,7 @@ export function InboxCard({
   // Room the quick actions and the menu button take at the right end on hover.
   const room = (actions.length + (menuItems === undefined ? 0 : 1)) * 24;
 
-  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${selection === undefined ? "" : "pl-8 max-md:pl-8"} ${
+  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${selection?.active ? "pl-8 max-md:pl-8" : ""} ${
     leaving ? "opacity-0" : ""
   } ${selected || editing ? "bg-surface-selected" : "hover:bg-surface-hover"}`;
   const titleClass = `min-w-0 truncate ${
@@ -214,13 +223,13 @@ export function InboxCard({
     <>
       <div className="group/row relative">
         {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
-        {selection === undefined ? null : (
+        {!selection?.active ? null : (
           <SelectBox
             checked={selection.checked}
             mixed={selection.mixed}
             label={group ? `Select these ${group.count} threads` : `Select “${title}”`}
             onChange={() => selection.onToggle("toggle")}
-            className="left-2 top-1/2 -translate-y-1/2"
+            className="left-2 top-1/2 -translate-y-1/2 !opacity-100"
           />
         )}
         <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-has-[[data-popup-open]]/row:opacity-100 focus-within:opacity-100 md:group-hover/row:opacity-100 max-md:top-2 pointer-coarse:opacity-100">

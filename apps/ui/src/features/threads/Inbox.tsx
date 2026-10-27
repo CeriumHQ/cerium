@@ -639,6 +639,7 @@ function Entries({
                 now={now}
                 selected={entry.thread.id === selectedId}
                 checked={picked.includes(entry.thread.id)}
+                selecting={picked.length > 0}
                 onToggle={onToggle}
                 {...rowProps}
               />
@@ -801,6 +802,7 @@ function InboxRun({
         onRename={onRename}
         menu={menu}
         selection={{
+          active: picked.length > 0,
           checked: held.length === memberIds.length,
           mixed: held.length > 0 && held.length < memberIds.length,
           onToggle: (mode) => {
@@ -845,6 +847,7 @@ type InboxRowProps = {
   selected: boolean;
   /** Whether the thread is picked for bulk actions; a primitive, so memo'd rows keep skipping. */
   checked: boolean;
+  selecting: boolean;
   onToggle: (threadId: string, mode: SelectMode) => void;
 } & Omit<RowProps, "selectedId">;
 
@@ -865,6 +868,7 @@ function InboxRowCard({
   now,
   selected,
   checked,
+  selecting,
   onToggle,
   onSelect,
   onMarkRead,
@@ -986,7 +990,7 @@ function InboxRowCard({
       onRename={onRename}
       onDelete={onDelete}
       menu={menu}
-      selection={{ checked, mixed: false, onToggle: (mode) => onToggle(thread.id, mode) }}
+      selection={{ active: selecting, checked, mixed: false, onToggle: (mode) => onToggle(thread.id, mode) }}
     />
   );
 }

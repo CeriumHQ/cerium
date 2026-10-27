@@ -19,7 +19,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
-- Thread cards give the selection checkbox its own space beside the provider badge.
+- Thread selection starts from Select in a thread's context menu; checkboxes appear only while selecting.
 
 - Colour contrast is audited across all six themes. Status text (needs you, running, done, error) uses its own deeper hues in light themes, where the fill colours were as low as 2.7:1 as text (the dots and badges keep theirs); dark muted text is brighter so timestamps and paths stay readable on cards and the message box; light-theme card borders are a little clearer; Cobalt's and Sea glass's accents are adjusted so button text reads at 4.5:1; and a few labels that read as disabled (a missing project, a skipped line) now use the muted text colour. Warnings in the handoff, restore and kept-changes views had no colour at all and now use the attention colour.
 
