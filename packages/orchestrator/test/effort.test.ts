@@ -109,6 +109,55 @@ describe("effortState", () => {
 });
 
 describe("Orchestrator effort routing", () => {
+  it.live("carries pending work and tool errors into recovery, and records a replayable posterior", () => {
+    const fake = makeFakeAdapter("claude", {
+      todos: [[{ text: "Repair the parser", status: "inProgress" }]],
+      work: () => [{ _tag: "ToolCallCompleted", callId: "failed", output: "check failed", isError: true }],
+    });
+    const { decider, asked } = scripted([sure("high"), sure("low")]);
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const store = yield* Store;
+      const { waitFor } = yield* recordEvents;
+      yield* turnRouter(true);
+      const { lead } = yield* startAutoLead("opus");
+      const task =
+        "Investigate the parser's subtle dependency bug and implement a fix that preserves the existing serialization behavior.";
+      yield* orchestrator.sendUserMessage(lead.id, task);
+      yield* waitFor(turnsCompleted(1, lead.id));
+      yield* orchestrator.sendUserMessage(lead.id, "Continue");
+      yield* waitFor(turnsCompleted(2, lead.id));
+      assert.include(asked[1]?.state.task ?? "", task);
+      assert.deepStrictEqual(asked[1]?.state.pending, ["Repair the parser"]);
+      assert.strictEqual(asked[1]?.state.previousTurn?.toolErrors, 1);
+      assert.strictEqual(asked[1]?.state.previousTurn?.failed, false);
+      const decision = routed(yield* store.listEvents(lead.id), lead.id)[1];
+      assert.strictEqual(decision?.effort, "high");
+      assert.strictEqual(decision?.proposedEffort, "low");
+      assert.strictEqual(decision?.policyVersion, "effort-v2");
+      assert.deepStrictEqual(decision?.probabilities, sure("low").probabilities);
+      assert.deepStrictEqual(decision?.question, asked[1]);
+    }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
+  });
+
+  it.live("records the actual effort when a harness refuses the router's choice", () => {
+    const fake = makeFakeAdapter("claude", { refuseSwitches: true });
+    const { decider } = scripted([sure("high")]);
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const store = yield* Store;
+      const { waitFor } = yield* recordEvents;
+      yield* turnRouter(true);
+      const { lead } = yield* startAutoLead("opus");
+      yield* orchestrator.sendUserMessage(lead.id, "Investigate this bug");
+      yield* waitFor(turnsCompleted(1, lead.id));
+      const decision = routed(yield* store.listEvents(lead.id), lead.id)[0];
+      assert.strictEqual(decision?.effort, "medium");
+      assert.strictEqual(decision?.proposedEffort, "high");
+      assert.include(decision?.detail ?? "", "harness kept");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
+  });
+
   it.live("routes every turn of an Auto lead on a cache-safe model", () => {
     const fake = makeFakeAdapter("claude");
     const { decider, asked } = scripted([sure("low"), sure("high")]);

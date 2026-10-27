@@ -1,9 +1,12 @@
 import {
   DECISION_INSTRUCTIONS,
+  DIFFICULTY_LEVELS,
   EffortDecider,
   EffortDecisionError,
   LEVEL_GUIDE,
   UserSettings,
+  supportedProbabilities,
+  validProbabilities,
   type EffortAnswer,
   type EffortQuestion,
 } from "@cerium/orchestrator";
@@ -13,6 +16,7 @@ import { Clock, Context, Effect, Layer, Option, Ref, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { EffortRouterKey } from "./vault.ts";
+import { effortSpend } from "./effortSpend.ts";
 
 // The effort router's decision model: Jev, by TypeSafe, through OpenRouter's Decisions API and the
 // key the user gave Cerium. The key goes to OpenRouter and nowhere else: never into a log, an event
@@ -22,13 +26,23 @@ const DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions";
 /** Picked over OpenAI's Decisions for its price: $0.042 per million input tokens, output free. */
 const DECISION_MODEL = "typesafe/jev-1.13";
 
+const Probability = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }));
 const ScoreAnswer = Schema.Struct({
-  probabilities: Schema.Record(Schema.String, Schema.Finite),
-  confidence: Schema.Finite,
+  probabilities: Schema.Record(Schema.String, Probability),
+  confidence: Probability,
 });
-const DecisionResponse = Schema.Struct({
-  answers: Schema.Struct({ effort: ScoreAnswer }),
-  usage: Schema.optionalKey(Schema.Struct({ cost: Schema.optionalKey(Schema.Finite) })),
+export const DecisionResponse = Schema.Struct({
+  model: Schema.optionalKey(Schema.String),
+  answers: Schema.Struct({
+    effort: ScoreAnswer,
+    task: Schema.Struct({
+      choice: Schema.Literals(["acknowledge", "execute", "investigate", "design", "verify"]),
+    }),
+    context: Schema.Struct({ noul: Probability }),
+  }),
+  usage: Schema.optionalKey(
+    Schema.Struct({ cost: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))) }),
+  ),
 });
 const ErrorResponse = Schema.Struct({ error: Schema.Struct({ message: Schema.String }) });
 
@@ -93,7 +107,24 @@ export class EffortRouter extends Context.Service<
                 effort: {
                   type: "score",
                   instructions: DECISION_INSTRUCTIONS,
-                  criteria: question.levels.map((level) => `${level}: ${LEVEL_GUIDE[level]}`),
+                  criteria: DIFFICULTY_LEVELS.map((level) => LEVEL_GUIDE[level]),
+                },
+                task: {
+                  type: "choice",
+                  instructions:
+                    "What work does the next turn require, resolving follow-ups using task, pending and recent?",
+                  criteria: {
+                    acknowledge: "Only acknowledge or repeat; no execution requested",
+                    execute: "Carry out a specified implementation or routine procedure",
+                    investigate: "Find a cause or gather evidence to answer an unresolved question",
+                    design: "Choose an approach among alternatives or reconcile requirements",
+                    verify: "Check an existing result against requirements",
+                  },
+                },
+                context: {
+                  type: "noul",
+                  instructions:
+                    "Does the supplied state identify what work the next turn requires? Short approvals need an identifiable antecedent; missing file contents alone do not make the task unclear.",
                 },
               },
             }),
@@ -114,10 +145,21 @@ export class EffortRouter extends Context.Service<
             Effect.mapError(failed("OpenRouter's answer wasn't a decision.")),
           );
           const { probabilities, confidence } = decision.answers.effort;
+          const distribution = DIFFICULTY_LEVELS.map((_, index) => probabilities[String(index)] ?? 0);
+          if (
+            Object.keys(probabilities).some((key) => !DIFFICULTY_LEVELS.some((_, i) => String(i) === key)) ||
+            !validProbabilities(distribution, DIFFICULTY_LEVELS.length)
+          )
+            return yield* new EffortDecisionError({
+              message: "The router returned an invalid probability distribution.",
+            });
           const cost = decision.usage?.cost;
           return {
-            probabilities: question.levels.map((_, index) => probabilities[String(index)] ?? 0),
+            probabilities: supportedProbabilities(question.levels, distribution),
             confidence,
+            decisionModel: decision.model ?? DECISION_MODEL,
+            taskType: decision.answers.task.choice,
+            contextSufficient: decision.answers.context.noul,
             ...(cost === undefined ? {} : { costUsd: cost }),
           } satisfies EffortAnswer;
         });
@@ -138,17 +180,15 @@ export class EffortRouter extends Context.Service<
         const routed = yield* store
           .listEventsByTag("EffortRouted")
           .pipe(Effect.mapError(failed("Couldn't read what the router spent.")));
-        const now = new Date(yield* Clock.currentTimeMillis);
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        let monthUsd = 0;
-        let totalUsd = 0;
-        for (const event of routed) {
-          if (event.payload._tag !== "EffortRouted") continue;
-          const cost = event.payload.costUsd ?? 0;
-          totalUsd += cost;
-          if (event.at >= monthStart) monthUsd += cost;
-        }
-        return { ...(key === undefined ? {} : { key: { last4: last4(key) } }), monthUsd, totalUsd };
+        const spend = effortSpend(
+          routed.flatMap((event) =>
+            event.payload._tag === "EffortRouted"
+              ? [{ at: event.at, costUsd: event.payload.costUsd ?? 0 }]
+              : [],
+          ),
+          yield* Clock.currentTimeMillis,
+        );
+        return { ...(key === undefined ? {} : { key: { last4: last4(key) } }), ...spend };
       });
 
       const save = (given: string) =>

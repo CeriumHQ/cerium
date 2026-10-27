@@ -10,6 +10,7 @@
   ],
   "type": "module",
   "scripts": {
+    "effort:eval": "node apps/backend/scripts/effort-eval.ts",
     "check": "vp check",
     "fix": "vp check --fix",
     "test": "vp test",

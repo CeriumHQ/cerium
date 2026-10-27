@@ -461,17 +461,31 @@ export type LeadHandedOff = typeof LeadHandedOff.Type;
 
 /**
  * The effort router's word on the turn about to start, for an agent set to Auto: the level the turn
- * runs at. Without `kept`, the router picked it; with it, the agent kept the level it had:
+ * runs at. Without `kept`, the router picked it; with it, routing used a fallback or kept a level:
  * - `cache`: its model starts the prompt cache over when effort changes, so only a new session's
  *   first turn is routed.
- * - `unsure`: the decision model's confidence was under the floor.
+ * - `unsure`: the posterior did not meet the policy threshold, or the agent was recovering.
+ * - `fallback`: context was missing, so the model's stable baseline was used.
  * - `timeout`, `failed`: no answer in time, or no usable one (`detail` says why).
  */
 export const EffortRouted = Schema.TaggedStruct("EffortRouted", {
+  /** Optional on older events. The bounded input and posterior make policy replay possible. */
+  policyVersion: Schema.optionalKey(Schema.String),
+  decisionModel: Schema.optionalKey(Schema.String),
+  levels: Schema.optionalKey(Schema.Array(ReasoningEffort)),
+  probabilities: Schema.optionalKey(Schema.Array(Schema.Finite)),
+  question: Schema.optionalKey(Schema.Unknown),
+  beforeEffort: Schema.optionalKey(ReasoningEffort),
+  baselineEffort: Schema.optionalKey(ReasoningEffort),
+  proposedEffort: Schema.optionalKey(ReasoningEffort),
+  taskType: Schema.optionalKey(Schema.String),
+  contextSufficient: Schema.optionalKey(Schema.Finite),
   /** Absent when the agent kept its harness's own default level. */
   effort: Schema.optionalKey(ReasoningEffort),
-  kept: Schema.optionalKey(withFallback(Schema.Literals(["cache", "unsure", "timeout", "failed"]), "failed")),
-  /** The decision model's confidence in the level it found likeliest, from 0 to 1. */
+  kept: Schema.optionalKey(
+    withFallback(Schema.Literals(["cache", "unsure", "timeout", "failed", "fallback"]), "failed"),
+  ),
+  /** Concentration of the decision model's distribution, not probability of correctness. */
   confidence: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
   /** How long deciding took, in milliseconds. */
   ms: Schema.optionalKey(NonNegativeInt),

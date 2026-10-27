@@ -19,7 +19,11 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
-- Thread selection starts from Select in a thread's context menu; checkboxes appear only while selecting.
+- The effort router's settings show Spent this month and Estimated by month end, projected from the current month's usage rate. Both start fresh each calendar month; an open settings page refreshes at rollover and every minute. These replace the explanatory footer and all-time total.
+
+- Auto effort routing preserves the task brief, pending plan items and both ends of recent exchanges. Jev judges reasoning difficulty separately from task type and context sufficiency; Cerium maps difficulty onto the model's supported efforts, requires stronger evidence for a downgrade, preserves effort during recovery, and uses the model baseline when context is missing. Failed tool calls and interruption reasons inform the next decision, including after restart. Invalid probability distributions are refused. Decisions record their bounded input, probabilities, policy/model version, proposed effort and the effort the harness actually applied; the tooltip describes distribution confidence rather than claiming a chance of correctness. `bun run effort:eval` exports traces from a database and replays labelled cases against default/high baselines, reporting measured task success, cost and time only when execution outcomes are supplied. Policy thresholds remain initial values pending evaluation on real tasks.
+
+- Thread selection starts from Select in a thread's context menu; checkboxes appear only while selecting. The Select item has an icon aligned with the other menu actions.
 
 - Colour contrast is audited across all six themes. Status text (needs you, running, done, error) uses its own deeper hues in light themes, where the fill colours were as low as 2.7:1 as text (the dots and badges keep theirs); dark muted text is brighter so timestamps and paths stay readable on cards and the message box; light-theme card borders are a little clearer; Cobalt's and Sea glass's accents are adjusted so button text reads at 4.5:1; and a few labels that read as disabled (a missing project, a skipped line) now use the muted text colour. Warnings in the handoff, restore and kept-changes views had no colour at all and now use the attention colour.
 

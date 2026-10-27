@@ -527,12 +527,14 @@ const stoppedNote = {
 /** Why the effort router left the level where it was. */
 const keptReason = (routed: RoutedDecision): string => {
   switch (routed.kept) {
+    case "fallback":
+      return "The task context was insufficient; used the model's baseline effort";
     case "cache":
       return "Changing it would restart this model's prompt cache";
     case "unsure":
       return routed.confidence === undefined
         ? "The router wasn't sure enough"
-        : `The router was only ${Math.round(routed.confidence * 100)}% sure`;
+        : "The evidence did not meet the routing policy's threshold";
     case "timeout":
       return "The router didn't answer in time";
     default:
@@ -545,7 +547,7 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
   const level = routed.effort === undefined ? "" : effortLabel[routed.effort];
   const facts = [
     routed.kept === undefined && routed.confidence !== undefined
-      ? `${Math.round(routed.confidence * 100)}% sure`
+      ? `${Math.round(routed.confidence * 100)}% distribution confidence`
       : undefined,
     routed.ms === undefined ? undefined : `${(routed.ms / 1000).toFixed(1)} s`,
     routed.costUsd === undefined ? undefined : `$${Number(routed.costUsd.toPrecision(2))}`,
@@ -556,7 +558,11 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
       label={
         <span className="flex flex-col gap-0.5">
           <span className="font-medium">
-            {routed.kept === undefined ? `Picked ${level}` : `Kept ${level}`}
+            {routed.kept === undefined
+              ? `Picked ${level}`
+              : routed.kept === "fallback"
+                ? `Used baseline ${level}`
+                : `Kept ${level}`}
           </span>
           {routed.kept === undefined ? null : <span className="text-fg-secondary">{keptReason(routed)}</span>}
           {facts.length > 0 ? (

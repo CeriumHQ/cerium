@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Route, Users } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   effortRouterStatusAtom,
@@ -46,6 +46,22 @@ export function EffortRouterSetting() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [keyError, setKeyError] = useState<string>();
+
+  const monthEndsAt = AsyncResult.isSuccess(status) ? status.value.monthEndsAt : undefined;
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(
+        () => {
+          refreshStatus();
+          schedule();
+        },
+        Math.min(60_000, Math.max(1000, (monthEndsAt ?? Infinity) - Date.now() + 50)),
+      );
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [refreshStatus, monthEndsAt]);
 
   // A machine too old for the router has nothing to show.
   if (AsyncResult.isFailure(status)) return null;
@@ -101,7 +117,7 @@ export function EffortRouterSetting() {
           hint={
             key === undefined && !router.enabled
               ? "Add an OpenRouter key first."
-              : "Before each turn of an agent on Auto, a decision model picks its effort. Unsure or slow, the level stays."
+              : "Before each turn of an agent on Auto, a decision model picks its effort. Downgrades need stronger evidence; missing context uses the model's baseline."
           }
           error={routerError}
           control={(labelledBy) => (
@@ -178,16 +194,24 @@ export function EffortRouterSetting() {
             )}
           />
         ) : null}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5 text-meta leading-relaxed text-fg-tertiary">
-          <span className="max-w-sm">
-            Each turn's message, the last two exchanges and how the last turn went go to OpenRouter, which
-            runs TypeSafe's Jev 1.13.
-          </span>
-          {known && known.totalUsd > 0 ? (
-            <span className="shrink-0 tabular-nums">
-              {spent(known.monthUsd)} this month · {spent(known.totalUsd)} in all
-            </span>
-          ) : null}
+        <div className="px-4 py-4">
+          <dl className="grid grid-cols-2 gap-4">
+            <div>
+              <dt className="text-meta text-fg-secondary">Spent this month</dt>
+              <dd className="mt-1 text-lg font-medium tabular-nums text-fg-primary">
+                {known ? spent(known.monthUsd) : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-meta text-fg-secondary">Estimated by month end</dt>
+              <dd className="mt-1 text-lg font-medium tabular-nums text-fg-primary">
+                {known?.projectedMonthUsd === undefined ? "—" : spent(known.projectedMonthUsd)}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-meta text-fg-tertiary">
+            At this month's usage rate. Both reset each month.
+          </p>
         </div>
       </SettingsList>
     </SettingsSection>

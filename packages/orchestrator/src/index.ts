@@ -1,6 +1,10 @@
 export {
-  CONFIDENCE_FLOOR,
+  POLICY_VERSION,
+  selectEffort,
   DECISION_INSTRUCTIONS,
+  DIFFICULTY_LEVELS,
+  supportedProbabilities,
+  validProbabilities,
   EffortDecider,
   EffortDecisionError,
   LEVEL_GUIDE,

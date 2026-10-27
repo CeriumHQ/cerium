@@ -153,6 +153,10 @@ export const EffortRouterStatus = Schema.Struct({
   key: Schema.optionalKey(Schema.Struct({ last4: Schema.String })),
   /** What the router's decisions cost since the start of this month, in the machine's time zone. */
   monthUsd: Schema.Finite,
+  /** Current calendar month's spending extrapolated at its elapsed usage rate. */
+  projectedMonthUsd: Schema.optionalKey(Schema.Finite),
+  /** The agent machine's next calendar-month boundary, for refreshing an open settings page. */
+  monthEndsAt: Schema.optionalKey(Schema.Finite),
   totalUsd: Schema.Finite,
 });
 export type EffortRouterStatus = typeof EffortRouterStatus.Type;

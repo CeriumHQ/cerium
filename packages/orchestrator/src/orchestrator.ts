@@ -69,7 +69,10 @@ import {
 import { Base64 } from "effect/encoding";
 
 import {
-  CONFIDENCE_FLOOR,
+  POLICY_VERSION,
+  clipContext,
+  selectEffort,
+  validProbabilities,
   DECISION_TIMEOUT,
   EffortDecider,
   effortState,
@@ -225,6 +228,9 @@ interface Runtime {
   /** The tool calls, failure and changed files of the turn in progress. */
   turnToolCalls: number;
   turnFailed: boolean;
+  turnToolErrors: number;
+  turnStopReason: string | undefined;
+  effortDecision: EffortRouted | undefined;
   readonly turnFiles: Set<string>;
   /**
    * The provider's message last stored with one of its events. A message makes several events (an
@@ -1117,6 +1123,8 @@ export class Orchestrator extends Context.Service<
                 rt.turnFailed = true;
               }
               if (payload._tag === "FileChanged") rt.turnFiles.add(payload.path);
+              if (payload._tag === "ToolCallCompleted" && payload.isError) rt.turnToolErrors += 1;
+              if (payload._tag === "TurnCompleted") rt.turnStopReason = payload.stopReason;
               switch (payload._tag) {
                 case "SessionStarted": {
                   const updatedAt = yield* Clock.currentTimeMillis;
@@ -1296,6 +1304,8 @@ export class Orchestrator extends Context.Service<
           rt.openCalls.clear();
           rt.turnToolCalls = 0;
           rt.turnFailed = false;
+          rt.turnToolErrors = 0;
+          rt.turnStopReason = undefined;
           rt.turnFiles.clear();
           const startedAt = yield* Clock.currentTimeMillis;
           rt.turn = yield* Deferred.make<void>();
@@ -1332,6 +1342,8 @@ export class Orchestrator extends Context.Service<
             seconds: Math.round(((yield* Clock.currentTimeMillis) - startedAt) / 1000),
             failed: rt.turnFailed,
             filesChanged: rt.turnFiles.size,
+            toolErrors: rt.turnToolErrors,
+            ...(rt.turnStopReason === undefined ? {} : { stopReason: rt.turnStopReason }),
           };
           rt.recent?.push({ sent: renderTurn(items), replied: rt.lastMessage ?? "" });
           rt.recent?.splice(0, Math.max(0, rt.recent.length - RECENT_EXCHANGES));
@@ -1483,6 +1495,7 @@ export class Orchestrator extends Context.Service<
        */
       const routeEffort = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
         Effect.gen(function* () {
+          rt.effortDecision = undefined;
           if (rt.info.autoEffort !== true || !(yield* routerOn)) return;
           const models = yield* (catalog.models ?? Effect.succeed([])).pipe(
             Effect.timeoutOption("3 seconds"),
@@ -1496,48 +1509,139 @@ export class Orchestrator extends Context.Service<
           if (model === undefined || lowest === undefined || higher.length === 0) return;
           const levels = [lowest, ...higher] as const;
           const current = rt.info.effort ?? model.defaultEffort;
+          const baseline =
+            model.defaultEffort && levels.includes(model.defaultEffort)
+              ? model.defaultEffort
+              : (levels.find((level) => ["medium", "high", "xhigh", "max"].includes(level)) ??
+                higher.at(-1) ??
+                lowest);
           const kept = (reason: NonNullable<EffortRouted["kept"]>, extra: Partial<EffortRouted> = {}) =>
-            emit(rt, {
-              _tag: "EffortRouted",
-              ...(current ? { effort: current } : {}),
-              kept: reason,
-              ...extra,
+            Effect.sync(() => {
+              rt.effortDecision = {
+                _tag: "EffortRouted",
+                ...(current ? { effort: current } : {}),
+                kept: reason,
+                ...extra,
+              };
             });
           if (model.cacheSafeEffort !== true && !rt.fresh) return yield* kept("cache");
 
-          const state = effortState(
-            {
-              from: items.some((item) => item._tag === "FromUser") ? "user" : "agent",
-              text: renderTurn(items),
-            },
-            yield* recentOf(rt),
-            rt.lastTurn,
-          );
+          const history = yield* store.listEvents(rt.info.id, {
+            tags: ["TurnInput", "TodosUpdated", "ConversationRewound"],
+          });
+          let task = "";
+          let latestRequest = "";
+          let pending: string[] = [];
+          for (const { payload } of history) {
+            if (payload._tag === "ConversationRewound") {
+              task = "";
+              latestRequest = "";
+              pending = [];
+            }
+            if (payload._tag === "TurnInput")
+              for (const item of payload.items) {
+                if (item._tag === "FromUser") {
+                  if (!task) task = item.text;
+                  if (item.text.length >= 80) latestRequest = item.text;
+                }
+              }
+            if (payload._tag === "TodosUpdated")
+              pending = payload.items
+                .filter((item) => item.status === "pending" || item.status === "inProgress")
+                .slice(0, 12)
+                .map((item) => clipContext(item.text, 200));
+          }
+          if (rt.lastTurn === undefined) {
+            const lastInput = history.findLast((event) => event.payload._tag === "TurnInput");
+            if (lastInput) {
+              const facts = yield* store.listEvents(rt.info.id, {
+                afterSequence: lastInput.sequence,
+                tags: ["ToolCallStarted", "ToolCallCompleted", "FileChanged", "AgentError", "TurnCompleted"],
+              });
+              rt.lastTurn = {
+                toolCalls: facts.filter((event) => event.payload._tag === "ToolCallStarted").length,
+                toolErrors: facts.filter(
+                  (event) => event.payload._tag === "ToolCallCompleted" && event.payload.isError,
+                ).length,
+                seconds: Math.max(0, Math.round(((facts.at(-1)?.at ?? lastInput.at) - lastInput.at) / 1000)),
+                filesChanged: new Set(
+                  facts.flatMap((event) =>
+                    event.payload._tag === "FileChanged" ? [event.payload.path] : [],
+                  ),
+                ).size,
+                failed: facts.some(
+                  (event) =>
+                    event.payload._tag === "AgentError" ||
+                    (event.payload._tag === "TurnCompleted" && event.payload.stopReason === "error"),
+                ),
+                stopReason:
+                  facts
+                    .flatMap((event) =>
+                      event.payload._tag === "TurnCompleted" ? [event.payload.stopReason] : [],
+                    )
+                    .at(-1) ?? "interrupted",
+              };
+            }
+          }
+          const state = {
+            // The first request anchors approvals; pending items carry the current scope.
+            ...effortState(
+              {
+                from: items.some((item) => item._tag === "FromUser") ? "user" : "agent",
+                text: renderTurn(items),
+              },
+              yield* recentOf(rt),
+              rt.lastTurn,
+            ),
+            task: clipContext(task === latestRequest ? task : `${task}\n${latestRequest}`, 2000),
+            pending,
+            model: { provider: rt.info.provider, id: rt.info.model },
+          };
+          const question = { levels, state };
           const startedAt = yield* Clock.currentTimeMillis;
           const asked = yield* decider
-            .decide({ levels, state })
+            .decide(question)
             .pipe(Effect.timeoutOption(DECISION_TIMEOUT), Effect.result);
           const ms = (yield* Clock.currentTimeMillis) - startedAt;
           if (Result.isFailure(asked)) return yield* kept("failed", { ms, detail: asked.failure.message });
           if (Option.isNone(asked.success)) return yield* kept("timeout", { ms });
           const answer = asked.success.value;
           const spent = {
+            policyVersion: POLICY_VERSION,
+            baselineEffort: baseline,
+            question,
+            levels: [...levels],
+            probabilities: [...answer.probabilities],
+            ...(current ? { beforeEffort: current } : {}),
+            ...(answer.decisionModel ? { decisionModel: answer.decisionModel } : {}),
+            ...(answer.taskType ? { taskType: answer.taskType } : {}),
+            ...(answer.contextSufficient === undefined
+              ? {}
+              : { contextSufficient: answer.contextSufficient }),
             ms,
             confidence: Math.min(1, Math.max(0, answer.confidence)),
             ...(answer.costUsd === undefined ? {} : { costUsd: answer.costUsd }),
           };
           const top = likeliest(levels, answer.probabilities);
-          if (top === undefined)
-            return yield* kept("failed", { ...spent, detail: "The answer named no level." });
-          if (answer.confidence < CONFIDENCE_FLOOR) return yield* kept("unsure", spent);
-          if (top !== rt.info.effort) {
+          if (top === undefined || !validProbabilities(answer.probabilities, levels.length))
+            return yield* kept("failed", { ms, detail: "The answer contained invalid probabilities." });
+          const selected = selectEffort(question, answer, current, baseline);
+          if (selected.effort !== rt.info.effort) {
             const updatedAt = yield* Clock.currentTimeMillis;
             yield* store
-              .updateAgent(rt.info.id, { effort: top, updatedAt })
+              .updateAgent(rt.info.id, { effort: selected.effort, updatedAt })
               .pipe(Effect.mapError(unavailable));
-            rt.info = { ...rt.info, effort: top, updatedAt };
+            rt.info = { ...rt.info, effort: selected.effort, updatedAt };
           }
-          yield* emit(rt, { _tag: "EffortRouted", effort: top, ...spent });
+          rt.effortDecision = {
+            _tag: "EffortRouted",
+            effort: selected.effort,
+            proposedEffort: top,
+            ...(!selected.accepted
+              ? { kept: selected.effort === current ? ("unsure" as const) : ("fallback" as const) }
+              : {}),
+            ...spent,
+          };
         }).pipe(
           Effect.catchCause((cause) => Effect.logWarning(`Couldn't route ${rt.info.id}'s effort`, cause)),
         );
@@ -1615,7 +1719,19 @@ export class Orchestrator extends Context.Service<
           const told: readonly [InputItem, ...Array<InputItem>] =
             brief === undefined ? items : [brief, ...items];
           yield* rt.turnPermit.withPermits(1)(
-            Effect.andThen(applyModel(rt, session), runTurn(rt, session, told)),
+            Effect.gen(function* () {
+              yield* applyModel(rt, session);
+              if (rt.effortDecision) {
+                const { effort: requested, ...decision } = rt.effortDecision;
+                const actual = rt.applied.effort;
+                yield* emit(rt, {
+                  ...decision,
+                  ...(actual ? { effort: actual } : {}),
+                  ...(requested !== actual ? { detail: "The harness kept its previous effort." } : {}),
+                });
+              }
+              yield* runTurn(rt, session, told);
+            }),
           );
           if (rt.ended) return yield* Effect.interrupt;
           yield* setState(rt, "idle");
@@ -1733,6 +1849,9 @@ export class Orchestrator extends Context.Service<
             lastTurn: undefined,
             turnToolCalls: 0,
             turnFailed: false,
+            turnToolErrors: 0,
+            turnStopReason: undefined,
+            effortDecision: undefined,
             turnFiles: new Set(),
             storedRaw: undefined,
           };
