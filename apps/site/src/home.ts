@@ -73,6 +73,19 @@ if (!reduced) {
   );
 }
 
+// The footage plays only while it is on screen, so the artifact's clip loads when the page nears it.
+const footage = new IntersectionObserver(
+  (entries) => {
+    for (const { target, isIntersecting } of entries) {
+      const video = target as HTMLVideoElement;
+      if (isIntersecting) void video.play().catch(() => {});
+      else video.pause();
+    }
+  },
+  { rootMargin: "50% 0px" },
+);
+for (const video of document.querySelectorAll<HTMLVideoElement>("[data-footage]")) footage.observe(video);
+
 // Each roster line widens and lights as it crosses the middle of the screen, then dims as it leaves,
 // widening only as far as the page has room for it.
 const roster = [...document.querySelectorAll<HTMLElement>("[data-stretch]")];

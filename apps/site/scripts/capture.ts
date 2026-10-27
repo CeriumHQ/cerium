@@ -17,6 +17,7 @@
 //   --opaque            paint the theme's own backdrop, as on a phone, which has no Acrylic
 //   --out=<dir>         where shots go (default: a cerium-site-capture folder in the temp directory)
 //   --format=png|webp   webp keeps the transparency at a tenth of the size, for the site itself
+//   --clock=<iso time>  the time the app believes it is, so a reshoot's "10m ago" reads as the first did
 //
 // Steps are `bun run ui act`'s. `shot=<name>` saves <out>/<name>.png of the whole window and
 // `shot@<target>=<name>` of one element; `script=<file>` runs a file of JavaScript in the page, to mark
@@ -58,6 +59,11 @@ const palette = options.get("palette") ?? "cerium";
 const glass = !options.has("opaque");
 const out = resolve(options.get("out") ?? join(tmpdir(), "cerium-site-capture"));
 const format = options.get("format") === "webp" ? "webp" : "png";
+const clock = options.has("clock") ? Date.parse(options.get("clock")!) : null;
+if (clock !== null && Number.isNaN(clock)) {
+  console.error("capture's --clock needs a time Date.parse reads, like 2026-10-23T02:09+03:00.");
+  process.exit(1);
+}
 mkdirSync(out, { recursive: true });
 
 // Runs before the app: hands it the showcase backend, answers the folder prompt, picks the theme, and,
@@ -78,6 +84,19 @@ const prelude = `(() => {
     return fetch(input, init);
   };
   window.prompt = () => folder;
+  const clock = ${JSON.stringify(clock)};
+  if (clock !== null) {
+    const offset = clock - Date.now();
+    const RealDate = Date;
+    window.Date = class extends RealDate {
+      constructor(...args) {
+        super(...(args.length === 0 ? [RealDate.now() + offset] : args));
+      }
+      static now() {
+        return RealDate.now() + offset;
+      }
+    };
+  }
   const style = document.createElement("style");
   // A dark color-scheme on the root paints the canvas dark, which no background override clears.
   style.textContent = ${glass} ? \`

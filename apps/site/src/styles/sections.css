@@ -14,7 +14,7 @@
     0 30px 60px -30px oklch(0 0 0 / 0.6);
 }
 
-.window img {
+.window :is(img, video) {
   width: 100%;
   height: auto;
 }
@@ -213,7 +213,7 @@
   aspect-ratio: 2.1 / 1;
 }
 
-.window-flat img {
+.window-flat video {
   height: 100%;
   object-fit: cover;
   transform-origin: 57% 38%;

@@ -16,9 +16,9 @@
       property="og:description"
       content="One prompt splits across Claude Code, Codex, Cursor, OpenCode and Muse Code. One answer comes back."
     />
-    <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
-    <meta property="og:image:width" content="2400" />
-    <meta property="og:image:height" content="1260" />
+    <meta property="og:image" content="https://cerium.nonlooped.xyz/og-prism.png" />
+    <meta property="og:image:width" content="1732" />
+    <meta property="og:image:height" content="908" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://cerium.nonlooped.xyz/" />
@@ -103,12 +103,20 @@
         </div>
         <div class="proof-stage" data-tilt>
           <figure class="window">
-            <img
-              src="./src/media/footage/hero.webp"
-              width="1600"
-              height="900"
-              alt="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
-            />
+            <video
+              width="2560"
+              height="1440"
+              autoplay
+              muted
+              loop
+              playsinline
+              disablepictureinpicture
+              data-footage
+              aria-label="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
+            >
+              <source media="(max-width: 760px)" src="./src/media/footage/hero-small.mp4" type="video/mp4" />
+              <source src="./src/media/footage/hero.mp4" type="video/mp4" />
+            </video>
           </figure>
         </div>
       </section>
@@ -213,13 +221,24 @@
             </p>
           </div>
           <figure class="window window-flat">
-            <img
-              src="./src/media/footage/artifact.webp"
-              width="1600"
-              height="900"
-              loading="lazy"
-              alt="An agent's answer as an interactive page: sliders for a job queue's rate limit and a timeline of jobs that re-plans as they move"
-            />
+            <video
+              width="3712"
+              height="2088"
+              preload="metadata"
+              muted
+              loop
+              playsinline
+              disablepictureinpicture
+              data-footage
+              aria-label="An agent's answer as an interactive page: sliders for a job queue's rate limit and a timeline of jobs that re-plans as they move"
+            >
+              <source
+                media="(max-width: 760px)"
+                src="./src/media/footage/artifact-small.mp4"
+                type="video/mp4"
+              />
+              <source src="./src/media/footage/artifact.mp4" type="video/mp4" />
+            </video>
           </figure>
         </article>
       </section>
@@ -270,47 +289,74 @@
             <img
               data-shot="cerium"
               src="./src/media/themes/cerium-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="
+                ./src/media/themes/cerium-dark-1600.webp 1600w,
+                ./src/media/themes/cerium-dark.webp      3200w
+              "
+              sizes="92vw"
+              width="3200"
+              height="2000"
               alt="Cerium in its clear Cerium theme"
             />
             <img
               data-shot="amber"
               src="./src/media/themes/amber-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="./src/media/themes/amber-dark-1600.webp 1600w, ./src/media/themes/amber-dark.webp 3200w"
+              sizes="92vw"
+              width="3200"
+              height="2000"
               loading="lazy"
               alt="Cerium in the Amber theme"
             />
             <img
               data-shot="uranium"
               src="./src/media/themes/uranium-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="
+                ./src/media/themes/uranium-dark-1600.webp 1600w,
+                ./src/media/themes/uranium-dark.webp      3200w
+              "
+              sizes="92vw"
+              width="3200"
+              height="2000"
               loading="lazy"
               alt="Cerium in the Uranium theme"
             />
             <img
               data-shot="seaglass"
               src="./src/media/themes/seaglass-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="
+                ./src/media/themes/seaglass-dark-1600.webp 1600w,
+                ./src/media/themes/seaglass-dark.webp      3200w
+              "
+              sizes="92vw"
+              width="3200"
+              height="2000"
               loading="lazy"
               alt="Cerium in the Seaglass theme"
             />
             <img
               data-shot="cobalt"
               src="./src/media/themes/cobalt-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="
+                ./src/media/themes/cobalt-dark-1600.webp 1600w,
+                ./src/media/themes/cobalt-dark.webp      3200w
+              "
+              sizes="92vw"
+              width="3200"
+              height="2000"
               loading="lazy"
               alt="Cerium in the Cobalt theme"
             />
             <img
               data-shot="cranberry"
               src="./src/media/themes/cranberry-dark.webp"
-              width="1600"
-              height="1000"
+              srcset="
+                ./src/media/themes/cranberry-dark-1600.webp 1600w,
+                ./src/media/themes/cranberry-dark.webp      3200w
+              "
+              sizes="92vw"
+              width="3200"
+              height="2000"
               loading="lazy"
               alt="Cerium in the Cranberry theme"
             />
