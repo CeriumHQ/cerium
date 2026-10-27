@@ -56,8 +56,8 @@ export function RunScoreboard({
               aria-current={thread.id === selectedId ? "page" : undefined}
               title={`${label}\n${thread.title}`}
               className={`grid h-6.5 w-full grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1.5 text-left text-meta transition-colors duration-150 max-md:h-9 max-md:text-[13px] ${
-                thread.id === selectedId ? "bg-surface-selected" : "hover:bg-surface-hover"
-              }`}
+                archive ? "max-md:pr-10 pointer-coarse:pr-10" : ""
+              } ${thread.id === selectedId ? "bg-surface-selected" : "hover:bg-surface-hover"}`}
             >
               {provider === undefined ? <span /> : <ProviderLogo provider={provider} size={12} />}
               <span
@@ -82,7 +82,8 @@ export function RunScoreboard({
                 <Button
                   aria-label={`Archive “${label}”`}
                   onClick={archive}
-                  className="absolute top-1/2 right-1 grid size-5.5 -translate-y-1/2 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 md:group-hover/line:opacity-100 pointer-coarse:hidden"
+                  // A touch screen can't hover for it, so it stays in sight there, with room kept in the row.
+                  className="absolute top-1/2 right-1 grid size-5.5 -translate-y-1/2 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 md:group-hover/line:opacity-100 max-md:size-8 max-md:opacity-100 pointer-coarse:size-8 pointer-coarse:opacity-100"
                 >
                   <Archive size={13} strokeWidth={1.75} />
                 </Button>

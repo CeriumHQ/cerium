@@ -242,7 +242,7 @@ export function InboxCard({
               <MenuTrigger>
                 <Button
                   aria-label={`More actions for “${title}”`}
-                  className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-8"
+                  className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-9 pointer-coarse:size-9"
                 >
                   <Ellipsis size={14} strokeWidth={1.75} />
                 </Button>

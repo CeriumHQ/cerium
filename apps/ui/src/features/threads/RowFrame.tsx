@@ -50,7 +50,7 @@ export function RowFrame({
                 ? "top-1.5 right-1.5 size-5.5 max-md:top-2"
                 : "top-1/2 right-1 size-6 -translate-y-1/2"
             } text-fg-tertiary opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 data-popup-open:bg-surface-active data-popup-open:text-fg-primary data-popup-open:opacity-100 md:group-hover/row:opacity-100 max-md:right-1.5 max-md:opacity-100 pointer-coarse:opacity-100 ${
-              firstLine ? "max-md:size-8" : "max-md:size-9"
+              firstLine ? "max-md:size-9 pointer-coarse:size-9" : "max-md:size-10 pointer-coarse:size-10"
             }`}
           >
             <Ellipsis size={15} strokeWidth={1.75} />
