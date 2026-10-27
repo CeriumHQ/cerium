@@ -39,6 +39,7 @@ import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
+import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
@@ -162,6 +163,8 @@ export interface ThreadPaneProps {
   readonly notices?: ReactNode;
   /** The thread's terminal drawer, docked under it. */
   readonly drawer?: ReactNode;
+  /** The thread's browser, docked beside it. */
+  readonly preview?: ReactNode;
   /** The pane has focus: opening a thread in it puts the cursor in its message box. */
   readonly focused: boolean;
   /**
@@ -195,6 +198,7 @@ export function ThreadPane({
   bar,
   notices,
   drawer,
+  preview,
   focused,
   onHandles,
   paneKey,
@@ -262,185 +266,190 @@ export function ThreadPane({
       : undefined;
 
   return (
-    // The terminal drawer docks under the conversation, which keeps its message box floating above it.
-    <div data-drawer-column="" className="relative flex h-full flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {notices}
-        <div className="relative min-h-0 flex-1">
-          <KeptViews shown={viewed && lead ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
-            {viewed && lead ? (
-              // A conversation that can't be drawn leaves the thread's message box to write in.
-              <CrashGuard fallback={PaneCrash}>
-                <LeadTranscript
-                  events={eventsAtom}
-                  lead={lead.id}
-                  sameModel={sameModel}
-                  folder={viewed.thread.cwd}
-                  threadId={viewed.thread.id}
-                  focused={focused}
-                  agent={{ provider: lead.provider, model: leadModel }}
-                  modelName={(model, provider) => modelLabel(models, provider, model)}
-                  {...(cloud ? {} : { messageBox: box })}
-                  activity={leadActivity}
-                  bottomInset={composerHeight}
-                  childState={(childId) => {
-                    const child = agents.find((agent) => agent.id === childId);
-                    return child?.awaitingApproval
-                      ? "needsYou"
-                      : child?.state === "running" || child?.state === "queued"
-                        ? "running"
-                        : child?.state === "failed"
-                          ? "failed"
-                          : "idle";
-                  }}
-                  childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-                  // A thread read from the cloud copy offers no agent actions: they take its machine.
-                  agentActions={cloud ? {} : actions.agentActions}
-                  onAnswerPermission={(requestId, decision, scope) =>
-                    cloud
-                      ? Promise.resolve(false)
-                      : attempt(actions.respond(lead.id, requestId, decision, scope))
-                  }
-                  onAnswerQuestion={(requestId, response) =>
-                    cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
-                  }
-                  // A thread read from the cloud copy can't go back: that takes its machine.
-                  {...(cloud || !actions.edit
-                    ? {}
-                    : {
-                        onEditMessage: (messageId: string, message: OutgoingMessage) => {
-                          actions.keep(viewed.thread.id);
-                          return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
-                        },
-                      })}
-                  {...(cloud || !restore
-                    ? {}
-                    : {
-                        onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
-                        onRestoreMessage: (messageId: string) => {
-                          actions.keep(viewed.thread.id);
-                          return attempt(restore.restore(lead.id, messageId));
-                        },
-                      })}
-                  {...(cloud || !turnFiles || viewed.thread.cwd === undefined
-                    ? {}
-                    : {
-                        turnFiles: {
-                          open: (file: TurnFileOpen) =>
-                            turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
-                          revert: (turnId: string, direction: "undone" | "redone") =>
-                            attempt(turnFiles.revert(lead.id, turnId, direction)),
-                        },
-                      })}
-                />
-              </CrashGuard>
-            ) : null}
-          </KeptViews>
-          {viewed && lead ? null : loading ? null : (
-            <EmptyThread
-              mode={mode}
-              draftKey={draftKey}
-              {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
-              onSeat={setSeat}
+    // The browser docks beside the conversation and its terminal drawer, which docks under the
+    // conversation and keeps its message box floating above it.
+    <PreviewDock preview={preview}>
+      <div data-drawer-column="" className="relative flex h-full flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {notices}
+          <div className="relative min-h-0 flex-1">
+            <KeptViews shown={viewed && lead ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
+              {viewed && lead ? (
+                // A conversation that can't be drawn leaves the thread's message box to write in.
+                <CrashGuard fallback={PaneCrash}>
+                  <LeadTranscript
+                    events={eventsAtom}
+                    lead={lead.id}
+                    sameModel={sameModel}
+                    folder={viewed.thread.cwd}
+                    threadId={viewed.thread.id}
+                    focused={focused}
+                    agent={{ provider: lead.provider, model: leadModel }}
+                    modelName={(model, provider) => modelLabel(models, provider, model)}
+                    {...(cloud ? {} : { messageBox: box })}
+                    activity={leadActivity}
+                    bottomInset={composerHeight}
+                    childState={(childId) => {
+                      const child = agents.find((agent) => agent.id === childId);
+                      return child?.awaitingApproval
+                        ? "needsYou"
+                        : child?.state === "running" || child?.state === "queued"
+                          ? "running"
+                          : child?.state === "failed"
+                            ? "failed"
+                            : "idle";
+                    }}
+                    childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+                    // A thread read from the cloud copy offers no agent actions: they take its machine.
+                    agentActions={cloud ? {} : actions.agentActions}
+                    onAnswerPermission={(requestId, decision, scope) =>
+                      cloud
+                        ? Promise.resolve(false)
+                        : attempt(actions.respond(lead.id, requestId, decision, scope))
+                    }
+                    onAnswerQuestion={(requestId, response) =>
+                      cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
+                    }
+                    // A thread read from the cloud copy can't go back: that takes its machine.
+                    {...(cloud || !actions.edit
+                      ? {}
+                      : {
+                          onEditMessage: (messageId: string, message: OutgoingMessage) => {
+                            actions.keep(viewed.thread.id);
+                            return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                          },
+                        })}
+                    {...(cloud || !restore
+                      ? {}
+                      : {
+                          onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
+                          onRestoreMessage: (messageId: string) => {
+                            actions.keep(viewed.thread.id);
+                            return attempt(restore.restore(lead.id, messageId));
+                          },
+                        })}
+                    {...(cloud || !turnFiles || viewed.thread.cwd === undefined
+                      ? {}
+                      : {
+                          turnFiles: {
+                            open: (file: TurnFileOpen) =>
+                              turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
+                            revert: (turnId: string, direction: "undone" | "redone") =>
+                              attempt(turnFiles.revert(lead.id, turnId, direction)),
+                          },
+                        })}
+                  />
+                </CrashGuard>
+              ) : null}
+            </KeptViews>
+            {viewed && lead ? null : loading ? null : (
+              <EmptyThread
+                mode={mode}
+                draftKey={draftKey}
+                {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
+                onSeat={setSeat}
+              />
+            )}
+          </div>
+
+          {bar ?? (
+            // While the open thread's machine is still connecting, the box keeps its draft and takes
+            // writing; sending waits until the machine answers.
+            <Composer
+              draftKey={viewed && lead ? viewed.thread.id : draftKey}
+              connecting={cloud !== undefined}
+              inputRef={input}
+              messageBox={boxRef}
+              seat={seat}
+              // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
+              takesFocus={focused}
+              target={
+                viewed && lead
+                  ? {
+                      kind: "thread",
+                      provider: lead.provider,
+                      model: leadModel,
+                      modelId: lead.model,
+                      effort: lead.effort,
+                      autoEffort: lead.autoEffort,
+                      speed: lead.speed,
+                      folder: viewed.thread.cwd,
+                      worktree: viewed.thread.worktree,
+                      ...(leadEnded ? { ended: leadEnded } : {}),
+                      // A thread read from the cloud copy can't be switched: it takes its machine.
+                      ...(cloud
+                        ? {}
+                        : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
+                      context: agents.find((agent) => agent.id === lead.id)?.context,
+                      ...(cloud ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
+                      ...(cloud || handOff === undefined
+                        ? {}
+                        : {
+                            handoff: {
+                              available,
+                              agents: agents.filter(
+                                (agent) =>
+                                  agent.parentId === lead.id &&
+                                  agent.role !== ADVISOR_ROLE &&
+                                  (agent.state === "running" ||
+                                    agent.state === "queued" ||
+                                    agent.state === "idle"),
+                              ).length,
+                              onHandOff: (choice) => attempt(handOff(lead.id, choice)),
+                            },
+                          }),
+                    }
+                  : {
+                      kind: "new",
+                      mode,
+                      folder: newFolder,
+                      onChooseFolder: actions.chooseFolder,
+                      available,
+                      worktrees,
+                    }
+              }
+              running={leadRunning && cloud === undefined}
+              activity={
+                leadRunning && lead ? (
+                  <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
+                ) : undefined
+              }
+              queue={queue}
+              above={
+                cloud ? (
+                  <ConnectingNote machine={cloud.name} />
+                ) : (
+                  <ApprovalTray
+                    agents={agents}
+                    onAnswer={actions.answerApproval}
+                    onAnswerSpawn={actions.answerSpawn}
+                    onAnswerQuestion={actions.answerQuestion}
+                  />
+                )
+              }
+              onHeight={setComposerHeight}
+              onSend={(message, setups) => {
+                // Writing to a thread keeps its tab: it's no longer only a preview.
+                if (viewed) actions.keep(viewed.thread.id);
+                return attempt(
+                  selected && lead
+                    ? actions.send(lead.id, message)
+                    : actions.start(draftKey, message, setups, newFolder),
+                );
+              }}
+              onStop={() => {
+                if (lead) void attempt(actions.interrupt(lead.id));
+              }}
+              slashCommands={slashCommands}
             />
           )}
         </div>
-
-        {bar ?? (
-          // While the open thread's machine is still connecting, the box keeps its draft and takes
-          // writing; sending waits until the machine answers.
-          <Composer
-            draftKey={viewed && lead ? viewed.thread.id : draftKey}
-            connecting={cloud !== undefined}
-            inputRef={input}
-            messageBox={boxRef}
-            seat={seat}
-            // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
-            takesFocus={focused}
-            target={
-              viewed && lead
-                ? {
-                    kind: "thread",
-                    provider: lead.provider,
-                    model: leadModel,
-                    modelId: lead.model,
-                    effort: lead.effort,
-                    autoEffort: lead.autoEffort,
-                    speed: lead.speed,
-                    folder: viewed.thread.cwd,
-                    worktree: viewed.thread.worktree,
-                    ...(leadEnded ? { ended: leadEnded } : {}),
-                    // A thread read from the cloud copy can't be switched: it takes its machine.
-                    ...(cloud ? {} : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
-                    context: agents.find((agent) => agent.id === lead.id)?.context,
-                    ...(cloud ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
-                    ...(cloud || handOff === undefined
-                      ? {}
-                      : {
-                          handoff: {
-                            available,
-                            agents: agents.filter(
-                              (agent) =>
-                                agent.parentId === lead.id &&
-                                agent.role !== ADVISOR_ROLE &&
-                                (agent.state === "running" ||
-                                  agent.state === "queued" ||
-                                  agent.state === "idle"),
-                            ).length,
-                            onHandOff: (choice) => attempt(handOff(lead.id, choice)),
-                          },
-                        }),
-                  }
-                : {
-                    kind: "new",
-                    mode,
-                    folder: newFolder,
-                    onChooseFolder: actions.chooseFolder,
-                    available,
-                    worktrees,
-                  }
-            }
-            running={leadRunning && cloud === undefined}
-            activity={
-              leadRunning && lead ? (
-                <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
-              ) : undefined
-            }
-            queue={queue}
-            above={
-              cloud ? (
-                <ConnectingNote machine={cloud.name} />
-              ) : (
-                <ApprovalTray
-                  agents={agents}
-                  onAnswer={actions.answerApproval}
-                  onAnswerSpawn={actions.answerSpawn}
-                  onAnswerQuestion={actions.answerQuestion}
-                />
-              )
-            }
-            onHeight={setComposerHeight}
-            onSend={(message, setups) => {
-              // Writing to a thread keeps its tab: it's no longer only a preview.
-              if (viewed) actions.keep(viewed.thread.id);
-              return attempt(
-                selected && lead
-                  ? actions.send(lead.id, message)
-                  : actions.start(draftKey, message, setups, newFolder),
-              );
-            }}
-            onStop={() => {
-              if (lead) void attempt(actions.interrupt(lead.id));
-            }}
-            slashCommands={slashCommands}
-          />
-        )}
+        {/* Rises from the pane's foot as it opens, and drops back into it. */}
+        <Reveal shift={0} className="shrink-0">
+          {drawer}
+        </Reveal>
       </div>
-      {/* Rises from the pane's foot as it opens, and drops back into it. */}
-      <Reveal shift={0} className="shrink-0">
-        {drawer}
-      </Reveal>
-    </div>
+    </PreviewDock>
   );
 }
 

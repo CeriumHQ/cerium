@@ -1,12 +1,10 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowLeft, ArrowRight, Ellipsis, Globe, RotateCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Globe, RotateCw, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { PreviewBounds, PreviewBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { ContextMenuArea, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import type { PaneChrome } from "../split/SplitView.tsx";
 import { previewBridge, previewStates, shortUrl, subscribePreviews } from "./model.ts";
 
 /** How far in from the pane's edges the page sits, and how long the pane watches its place after a change. */
@@ -26,8 +24,9 @@ const overlaps = (a: DOMRect, b: DOMRect) =>
 
 /**
  * Whether something the window draws over its own page covers `area`: a menu, a dialog or the
- * palette, which Base UI portals to the body beside the app's root. The page sits over the window in
- * a view of its own, so it steps aside for them.
+ * palette, which Base UI portals to the body beside the app's root, or a panel floating over the
+ * panes, which says so with `data-floats`. The page sits over the window in a view of its own, so it
+ * steps aside for them.
  */
 const covered = (area: DOMRect) => {
   for (const layer of document.body.children) {
@@ -36,8 +35,19 @@ const covered = (area: DOMRect) => {
       if (overlaps(popup.getBoundingClientRect(), area)) return true;
     }
   }
+  for (const panel of document.querySelectorAll("[data-floats]")) {
+    if (overlaps(panel.getBoundingClientRect(), area)) return true;
+  }
   return false;
 };
+
+/**
+ * Whether the window hides `element` where it stands: a view another took the place of (settings over
+ * the threads) turns inert at once and fades out of sight, keeping its size all the while.
+ */
+const tucked = (element: HTMLElement) =>
+  element.closest("[inert]") !== null ||
+  !element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
 
 /**
  * Lays the thread's page over `area` while it shows and nothing covers it, following it as the
@@ -61,16 +71,19 @@ function useLaidOver(
     const check = () => {
       frame = 0;
       const rect = element.getBoundingClientRect();
-      const hide = away || rect.width < 2 || rect.height < 2 || covered(rect);
-      if (hide) {
+      const gone = away || rect.width < 2 || rect.height < 2 || tucked(element);
+      if (gone || covered(rect)) {
         if (!hidden) {
           hidden = true;
           placed = undefined;
-          // The still is taken before the page goes, so the pane never flashes empty.
-          void bridge.still(threadId).then((image) => {
-            setStill(image);
-            if (hidden) bridge.place(threadId, null);
-          });
+          // Out of sight, the page goes at once. Under a popup, the still is taken before the page
+          // goes, so the pane never flashes empty.
+          if (gone) bridge.place(threadId, null);
+          else
+            void bridge.still(threadId).then((image) => {
+              setStill(image);
+              if (hidden) bridge.place(threadId, null);
+            });
         }
       } else {
         const box = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
@@ -94,7 +107,7 @@ function useLaidOver(
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["style", "data-open"],
+      attributeFilter: ["style", "data-open", "inert"],
     });
     window.addEventListener("resize", watch);
     document.addEventListener("transitionrun", watch, true);
@@ -121,21 +134,9 @@ const navClass =
 /**
  * A thread's browser: an address bar with back, forward and reload over the page, which the user
  * browses and the thread's agents drive. The page itself is the shell's, laid over the pane. Outside
- * the desktop app, or for another machine's thread, it says where the preview runs instead.
+ * the desktop app it says where the preview runs instead.
  */
-export function PreviewPane({
-  threadId,
-  remote,
-  onClose,
-  pane,
-}: {
-  threadId: string;
-  /** The thread is another machine's, whose pages this computer doesn't hold. */
-  remote: boolean;
-  onClose: () => void;
-  /** While it shares the main area with other panes, its header is the pane's. */
-  pane?: PaneChrome | undefined;
-}) {
+export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: () => void }) {
   const bridge = previewBridge();
   const states = useSyncExternalStore(subscribePreviews, previewStates);
   const state = states[threadId];
@@ -155,100 +156,81 @@ export function PreviewPane({
     });
   };
 
-  const header = (
-    <header
-      {...pane?.grip}
-      className={`flex h-10 shrink-0 items-center gap-0.5 border-b border-line-subtle pr-1.5 pl-1.5 max-md:h-12 ${pane ? "select-none" : ""}`}
-    >
-      <Tooltip label="Back">
-        <Button
-          aria-label="Back"
-          disabled={!state?.canGoBack}
-          onClick={() => bridge?.go(threadId, "back")}
-          className={navClass}
-        >
-          <ArrowLeft size={15} strokeWidth={1.75} />
-        </Button>
-      </Tooltip>
-      <Tooltip label="Forward">
-        <Button
-          aria-label="Forward"
-          disabled={!state?.canGoForward}
-          onClick={() => bridge?.go(threadId, "forward")}
-          className={navClass}
-        >
-          <ArrowRight size={15} strokeWidth={1.75} />
-        </Button>
-      </Tooltip>
-      <Tooltip label={state?.loading ? "Stop" : "Reload"}>
-        <Button
-          aria-label={state?.loading ? "Stop" : "Reload"}
-          disabled={url === ""}
-          onClick={() => bridge?.go(threadId, state?.loading ? "stop" : "reload")}
-          className={navClass}
-        >
-          {state?.loading ? <X size={15} strokeWidth={1.75} /> : <RotateCw size={14} strokeWidth={1.75} />}
-        </Button>
-      </Tooltip>
-      <form
-        className="mx-1 flex min-w-0 flex-1"
-        onSubmit={(event) => {
-          event.preventDefault();
-          open(draft ?? url);
-        }}
-      >
-        <input
-          ref={field}
-          value={draft ?? (url === "" ? "" : shortUrl(url))}
-          onFocus={(event) => {
-            setDraft(draft ?? url);
-            event.currentTarget.select();
-          }}
-          onBlur={() => {
-            if (draft === url) setDraft(undefined);
-          }}
-          onChange={(event) => {
-            setRefused(false);
-            setDraft(event.currentTarget.value);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setDraft(undefined);
-            setRefused(false);
-            event.currentTarget.blur();
-          }}
-          disabled={bridge === undefined || remote}
-          placeholder="localhost:5173"
-          aria-label="Address"
-          aria-invalid={refused || undefined}
-          spellCheck={false}
-          autoComplete="off"
-          className={`h-7 min-w-0 flex-1 rounded-md bg-surface-sunken px-2.5 text-meta text-fg-primary outline-none transition-[box-shadow] placeholder:text-fg-tertiary focus:ring-2 focus:ring-focus-ring disabled:opacity-60 max-md:h-9 max-md:text-[14px] ${
-            refused ? "ring-2 ring-error/60" : ""
-          }`}
-        />
-      </form>
-      {pane ? (
-        <MenuRoot>
-          <Tooltip label="More">
-            <MenuTrigger>
-              <Button aria-label="More" className={navClass}>
-                <Ellipsis size={15} strokeWidth={1.75} />
-              </Button>
-            </MenuTrigger>
-          </Tooltip>
-          <MenuPopup>{pane.menu}</MenuPopup>
-        </MenuRoot>
-      ) : null}
-      <IconButton icon={X} label="Close preview" onClick={onClose} className="max-md:size-10" />
-    </header>
-  );
-
   return (
     <section aria-label="Preview" className="flex h-full flex-col">
-      {pane ? <ContextMenuArea menu={pane.menu}>{header}</ContextMenuArea> : header}
+      <header className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line-subtle pr-1.5 pl-1.5 max-md:h-12">
+        <Tooltip label="Back">
+          <Button
+            aria-label="Back"
+            disabled={!state?.canGoBack}
+            onClick={() => bridge?.go(threadId, "back")}
+            className={navClass}
+          >
+            <ArrowLeft size={15} strokeWidth={1.75} />
+          </Button>
+        </Tooltip>
+        <Tooltip label="Forward">
+          <Button
+            aria-label="Forward"
+            disabled={!state?.canGoForward}
+            onClick={() => bridge?.go(threadId, "forward")}
+            className={navClass}
+          >
+            <ArrowRight size={15} strokeWidth={1.75} />
+          </Button>
+        </Tooltip>
+        <Tooltip label={state?.loading ? "Stop" : "Reload"}>
+          <Button
+            aria-label={state?.loading ? "Stop" : "Reload"}
+            disabled={url === ""}
+            onClick={() => bridge?.go(threadId, state?.loading ? "stop" : "reload")}
+            className={navClass}
+          >
+            {state?.loading ? <X size={15} strokeWidth={1.75} /> : <RotateCw size={14} strokeWidth={1.75} />}
+          </Button>
+        </Tooltip>
+        <form
+          className="mx-1 flex min-w-0 flex-1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            open(draft ?? url);
+          }}
+        >
+          <input
+            ref={field}
+            value={draft ?? (url === "" ? "" : shortUrl(url))}
+            onFocus={(event) => {
+              setDraft(draft ?? url);
+              event.currentTarget.select();
+            }}
+            onBlur={() => {
+              if (draft === url) setDraft(undefined);
+            }}
+            onChange={(event) => {
+              setRefused(false);
+              setDraft(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setDraft(undefined);
+              setRefused(false);
+              event.currentTarget.blur();
+            }}
+            disabled={bridge === undefined}
+            placeholder="localhost:5173"
+            aria-label="Address"
+            aria-invalid={refused || undefined}
+            spellCheck={false}
+            autoComplete="off"
+            className={`h-7 min-w-0 flex-1 rounded-md bg-surface-sunken px-2.5 text-meta text-fg-primary outline-none transition-[box-shadow] placeholder:text-fg-tertiary focus:ring-2 focus:ring-focus-ring disabled:opacity-60 max-md:h-9 max-md:text-[14px] ${
+              refused ? "ring-2 ring-error/60" : ""
+            }`}
+          />
+        </form>
+        <IconButton icon={X} label="Close preview" onClick={onClose} className="max-md:size-10" />
+      </header>
       {/* A hairline that runs while the page loads. */}
       <div className="relative h-px shrink-0 overflow-hidden">
         {state?.loading ? (
@@ -256,12 +238,8 @@ export function PreviewPane({
         ) : null}
       </div>
       <div className="relative min-h-0 flex-1">
-        {bridge === undefined || remote ? (
-          <Away>
-            {remote
-              ? "Previews open on this computer's own threads."
-              : "The preview opens in Cerium's desktop app."}
-          </Away>
+        {bridge === undefined ? (
+          <Away>The preview opens in Cerium's desktop app.</Away>
         ) : (
           <Page
             bridge={bridge}

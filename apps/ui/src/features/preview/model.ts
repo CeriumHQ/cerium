@@ -2,23 +2,34 @@ import { isLocalUrl } from "@cerium/browser/url";
 
 import type { PreviewBridge, PreviewState } from "../../backend/shell.ts";
 
-// The Preview pane: a thread's browser, which the user watches and the thread's agents drive. The
-// desktop shell keeps each thread's page; this is what the window knows of them: the tab that shows
-// one, what each page shows now, and who opens a local address a terminal printed or linked.
+// The Preview: a thread's browser, docked in its pane beside the conversation, which the user watches
+// and the thread's agents drive. The desktop shell keeps each thread's page; this is what the window
+// knows of them: how the dock shares its pane, what each page shows now, and who opens a local
+// address a terminal printed or linked.
 
 // ---------------------------------------------------------------------------------------------
-// Tabs
+// The dock
 
-const PREVIEW_PREFIX = "preview:";
+/**
+ * The dock's share of its thread's pane until the user drags it, the least it takes, and what it
+ * always leaves the conversation beside it.
+ */
+export const DOCK = { key: "cerium:previewShare", share: 0.5, min: 320, beside: 400 } as const;
 
-/** The tab key of a thread's preview. */
-export const previewKey = (threadId: string) => `${PREVIEW_PREFIX}${threadId}`;
+export interface DockLayout {
+  /** The pane is too narrow for both: the page covers the conversation until it closes. */
+  readonly covers: boolean;
+  readonly width: number;
+  readonly min: number;
+  readonly max: number;
+}
 
-/** The thread whose preview a tab key names; undefined for any other key. */
-export const previewOfKey = (key: string | undefined): string | undefined => {
-  if (key?.startsWith(PREVIEW_PREFIX) !== true) return undefined;
-  const threadId = key.slice(PREVIEW_PREFIX.length);
-  return threadId === "" ? undefined : threadId;
+/** How a pane `paneWidth` wide divides between the conversation and its page, at `share` of it. */
+export const dockLayout = (paneWidth: number, share: number): DockLayout => {
+  const max = Math.floor(paneWidth - DOCK.beside);
+  if (max < DOCK.min) return { covers: true, width: paneWidth, min: paneWidth, max: paneWidth };
+  const width = Math.min(Math.max(Math.round(share * paneWidth), DOCK.min), max);
+  return { covers: false, width, min: DOCK.min, max };
 };
 
 /** What the address bar shows of `url` while it isn't being edited: the host and path, without `http://`. */
@@ -31,10 +42,6 @@ export const shortUrl = (url: string): string => {
     return url;
   }
 };
-
-/** What a preview's tab and pane are called: the page's title, else its address, else "Preview". */
-export const previewTitle = (state: PreviewState | undefined): string =>
-  state?.title.trim() || (state?.url ? shortUrl(state.url) : "") || "Preview";
 
 // ---------------------------------------------------------------------------------------------
 // What each page shows, as the shell reports it

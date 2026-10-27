@@ -1,5 +1,4 @@
 import { githubOfKey } from "../github/model.ts";
-import { previewOfKey } from "../preview/model.ts";
 import { commitFileOfKey, fileOfKey, turnFileOfKey } from "../viewer/model.ts";
 
 // The kinds of tab that aren't a thread's: each is named by its key, and this is where a kind is
@@ -8,11 +7,10 @@ import { commitFileOfKey, fileOfKey, turnFileOfKey } from "../viewer/model.ts";
 
 /**
  * Whether a tab key names a tab that isn't a thread's or a draft's: a file, a commit's file, a pull
- * request, an issue or a thread's preview.
+ * request or an issue.
  */
 export const isNonThreadKey = (key: string | undefined): boolean =>
   fileOfKey(key) !== undefined ||
   commitFileOfKey(key) !== undefined ||
   turnFileOfKey(key) !== undefined ||
-  githubOfKey(key) !== undefined ||
-  previewOfKey(key) !== undefined;
+  githubOfKey(key) !== undefined;

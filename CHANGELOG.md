@@ -19,6 +19,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- A thread's Preview docks in the thread's own pane, to the right of the conversation, instead of opening as a pane or tab of its own. Each thread keeps its own: switching threads shows that thread's browser, or none, and coming back finds the page as it was, across a reload too. The seam between them drags to size it (double-click puts it back to half), remembered across launches; a pane too narrow for both lets the page cover the conversation. The titlebar's Preview and the command palette show and hide it, keeping its page for the thread's agents; its X closes the page. An agent opening a page shows its thread's Preview, there or whenever the thread next shows. A session that kept a Preview tab comes back to its thread.
+
 - The effort router's settings show Spent this month and Estimated by month end, projected from the current month's usage rate. Both start fresh each calendar month; an open settings page refreshes at rollover and every minute. These replace the explanatory footer and all-time total.
 
 - Auto effort routing preserves the task brief, pending plan items and both ends of recent exchanges. Jev judges reasoning difficulty separately from task type and context sufficiency; Cerium maps difficulty onto the model's supported efforts, requires stronger evidence for a downgrade, preserves effort during recovery, and uses the model baseline when context is missing. Failed tool calls and interruption reasons inform the next decision, including after restart. Invalid probability distributions are refused. Decisions record their bounded input, probabilities, policy/model version, proposed effort and the effort the harness actually applied; the tooltip describes distribution confidence rather than claiming a chance of correctness. `bun run effort:eval` exports traces from a database and replays labelled cases against default/high baselines, reporting measured task success, cost and time only when execution outcomes are supplied. Policy thresholds remain initial values pending evaluation on real tasks.
@@ -51,6 +53,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- A thread's Preview page no longer shows over Settings, Tasks, GitHub or Automations: the page, which sits over the window in a view of its own, now leaves the moment its thread's view is covered, and steps aside for a side panel floating over the thread.
 - On a phone, the rail's usage rings no longer run off the bottom edge (at 320 px only the first showed): when the places and the rings can't share the row, the rings stack above the places; held sideways they still share it.
 - The search palette shows its results on a short screen. A phone's results area was sized to the screen less 20 rem, which left none at 320 px high; it now follows the part of the screen that shows, the keyboard taken out, and keeps clear of a notch.
 - A pull request's header on a phone keeps its title, Start thread, More and Close on one line, over a line for the tabs, which scroll when they don't fit (a cut-off tab shows there's more). A changed file's path has a line to itself over its status and counts, so a long name no longer runs into "Added" or the counts.

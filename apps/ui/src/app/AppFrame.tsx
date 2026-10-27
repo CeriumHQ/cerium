@@ -332,6 +332,8 @@ function DesktopFrame({
                 <div
                   ref={inspector}
                   data-phase={inspectorPhase}
+                  // A thread's browser, docked under it, steps aside (features/preview).
+                  data-floats=""
                   inert={!showInspector}
                   style={{ width: inspectorWidth }}
                   className="group/side absolute top-0 right-1.5 bottom-1.5 z-20 transition-[translate] duration-300 ease-out-soft data-[phase=entering]:starting:translate-x-6 data-[phase=leaving]:translate-x-6 data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft"
@@ -546,6 +548,7 @@ function CompactFrame({
       />
       {inspecting ? (
         <div
+          data-floats=""
           className={`${notchSides} absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl`}
         >
           {side?.content}

@@ -7,7 +7,6 @@ import {
   CircleDot,
   Columns2,
   GitPullRequestArrow,
-  Globe,
   History,
   PenLine,
   Pin,
@@ -64,8 +63,6 @@ export interface TabView {
   readonly file?: FileTab;
   /** A pull request or an issue, rather than a thread. */
   readonly github?: GitHubTab;
-  /** The thread whose browser the Preview pane shows, rather than a thread. */
-  readonly previewOf?: string;
 }
 
 export interface TabActions {
@@ -353,8 +350,6 @@ function TabFace({
           ) : (
             <CircleDot size={13} strokeWidth={2} aria-hidden />
           )
-        ) : tab.previewOf !== undefined ? (
-          <Globe size={13} strokeWidth={2} aria-hidden className={active ? "" : "opacity-80"} />
         ) : tab.draft ? (
           <span
             aria-hidden

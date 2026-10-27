@@ -171,14 +171,12 @@ import { ISSUES_VERSION } from "../features/issues/model.ts";
 import { BrowserHost } from "../features/preview/BrowserHost.tsx";
 import {
   previewBridge,
-  previewKey,
-  previewOfKey,
   previewStates,
-  previewTitle,
   setLocalOpener,
   subscribePreviews,
 } from "../features/preview/model.ts";
 import { PreviewPane } from "../features/preview/PreviewPane.tsx";
+import { usePreviewDocks } from "../features/preview/usePreviewDocks.ts";
 import {
   PROJECT_TERMINAL_VERSION,
   SCRIPT_VERSION,
@@ -767,11 +765,6 @@ function Workspace() {
       const drafts = registry.get(draftsAtom);
       const empty = keys.filter((key) => isNewDraftKey(key) && !hasContent(drafts[key]));
       if (empty.length > 0) registry.set(draftsAtom, empty.reduce(withoutDraft, drafts));
-      // A closed preview's page closes with it; an agent's next call opens a fresh one.
-      for (const key of keys) {
-        const previewed = previewOfKey(key);
-        if (previewed !== undefined) previewBridge()?.close(previewed);
-      }
       // A closed tab's pane closes with it, and the pane that takes its room shows in its place.
       if (!isSplit(panes)) return undefined;
       const left = closeKeys(panes, keys);
@@ -1304,63 +1297,34 @@ function Workspace() {
   };
 
   /**
-   * The open thread's browser, in the Preview pane beside it: the desktop app's own threads have one,
-   * which the user browses and the thread's agents drive (features/preview).
+   * The open thread's browser, docked in its pane beside the conversation: the desktop app's own
+   * threads each have one, which the user browses and the thread's agents drive (features/preview).
    */
   const previews = useSyncExternalStore(subscribePreviews, previewStates);
+  const previewDocks = usePreviewDocks();
   // The shell lays the pages over the main window alone.
   const previewsHere = previewBridge() !== undefined && driven === undefined && !solo;
-  const previewThread =
-    previewOfKey(current) ?? (previewsHere && selected !== undefined ? selected.thread.id : undefined);
-  const previewPane =
-    previewThread === undefined ? undefined : paneShowing(panes.root, previewKey(previewThread));
-  /**
-   * Shows `threadId`'s preview beside its pane, with `url` open in it: a pane of its own to the right
-   * while there's room, else a tab of its own. Without `focus`, as when an agent opened a page, it
-   * shows only where there's room, and the focus stays where it was.
-   */
-  const openPreview = (
-    threadId: string,
-    options: { readonly url?: string; readonly focus?: boolean } = {},
-  ) => {
-    if (options.url !== undefined) void previewBridge()?.navigate(threadId, options.url);
-    const key = previewKey(threadId);
-    if (paneShowing(panes.root, key) !== undefined) return;
-    const beside = paneShowing(panes.root, threadId);
-    if (beside !== undefined && !compact && canSplit(paneSize(beside.id), "right", MIN_PANE)) {
-      const next = splitPane(panes, beside.id, "right", key, newPaneId());
-      applyPanes(options.focus === false ? focusPane(next, beside.id) : next);
-      return;
-    }
-    if (options.focus === false) return;
-    tabs.openAs(key, "tab");
-    tabs.keep(key);
-    showThreads();
-    setOpenThread((open) => ({ ...open, [mode]: key }));
-    setPane("main");
-  };
+  const previewThread = previewsHere && selected !== undefined ? selected.thread.id : undefined;
+  const previewOpen = previewThread !== undefined && previewDocks.isOpen(previewThread);
   const togglePreview = () => {
     if (previewThread === undefined) return;
-    if (previewPane !== undefined && isSplit(panes)) closePaneOf(previewPane.id);
-    else if (previewPane !== undefined) tabs.actions.onClose([previewKey(previewThread)]);
-    else openPreview(previewThread);
+    if (previewOpen) previewDocks.hide(previewThread);
+    else previewDocks.show(previewThread);
   };
   // A local address a terminal links or prints opens in the open thread's preview.
   const openLink = useEffectEvent((url: string) => {
-    if (previewThread !== undefined) openPreview(previewThread, { url });
+    if (previewThread === undefined) return;
+    void previewBridge()?.navigate(previewThread, url);
+    previewDocks.show(previewThread);
   });
-  const linksOpen = previewsHere && previewThread !== undefined;
+  const linksOpen = previewThread !== undefined;
   useEffect(() => {
     if (!linksOpen) return;
     setLocalOpener(openLink);
     return () => setLocalOpener(undefined);
   }, [linksOpen]);
-  /** An agent opened a page: its thread's preview shows beside it, if it shows and there's room. */
-  const agentOpened = (threadId: string) => {
-    if (driven === undefined && paneShowing(panes.root, threadId) !== undefined) {
-      openPreview(threadId, { focus: false });
-    }
-  };
+  /** An agent opened a page: its thread's preview shows, there or whenever the thread next does. */
+  const agentOpened = (threadId: string) => previewDocks.show(threadId);
 
   /**
    * What the command palette (Ctrl K) runs besides opening a thread. To offer a new action, add an entry
@@ -1539,7 +1503,7 @@ function Workspace() {
     {
       id: "preview",
       group: "Actions",
-      label: previewPane ? "Hide preview" : "Show preview",
+      label: previewOpen ? "Hide preview" : "Show preview",
       icon: Globe,
       keywords: "browser web page localhost dev server",
       when: previewThread !== undefined,
@@ -2034,6 +1998,8 @@ function Workspace() {
     const lead = resolved.shown ? leadOf(resolved.shown.agents) !== undefined : false;
     // A thread's own window keeps them with its thread, whichever pane has the focus.
     const opened = key === (solo?.id ?? current);
+    // Each of this computer's threads keeps its own browser, beside it in whichever pane shows it.
+    const previewed = previewsHere ? resolved.listed?.thread.id : undefined;
     return (
       <ThreadPane
         mode={mode}
@@ -2055,6 +2021,17 @@ function Workspace() {
         bar={barFor(resolved, lead)}
         // The window's notices and its terminal go with the open thread.
         {...(opened ? { notices, drawer: terminal.drawer } : {})}
+        {...(previewed !== undefined && previewDocks.isOpen(previewed)
+          ? {
+              preview: (
+                <PreviewPane
+                  key={previewed}
+                  threadId={previewed}
+                  onClose={() => previewDocks.close(previewed)}
+                />
+              ),
+            }
+          : {})}
         focused={focused}
         paneKey={key}
         onHandles={onPaneHandles}
@@ -2211,18 +2188,6 @@ function Workspace() {
     </CrashGuard>
   );
   const paneView = (key: string, focused: boolean, chrome?: PaneChrome) => {
-    const previewed = previewOfKey(key);
-    if (previewed !== undefined) {
-      return (
-        <PreviewPane
-          key={key}
-          threadId={previewed}
-          remote={driven !== undefined}
-          onClose={() => tabs.actions.onClose([key])}
-          pane={chrome}
-        />
-      );
-    }
     const github = githubOfKey(key);
     if (github !== undefined) {
       return (
@@ -2296,11 +2261,6 @@ function Workspace() {
   /** What a pane's header calls what it shows. */
   const paneLabel = (leaf: PaneLeaf): PaneLabel => {
     const tab = tabs.tabs.find((each) => each.key === leaf.key);
-    const previewed = previewOfKey(leaf.key);
-    if (previewed !== undefined) {
-      // The preview's own address bar is the pane's header.
-      return { title: previewTitle(previews[previewed]), ownHeader: true };
-    }
     const file = fileOfKey(leaf.key) ?? commitFileOfKey(leaf.key) ?? turnFileOfKey(leaf.key);
     if (file !== undefined) {
       // The viewer's own header names the file, and is the pane's.
@@ -2486,6 +2446,7 @@ function Workspace() {
               (deleted) => {
                 if (!deleted) return false;
                 registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
+                previewDocks.close(threadId);
                 refreshThreads();
                 tabs.drop(threadId);
                 return true;
@@ -2614,7 +2575,7 @@ function Workspace() {
         ? {}
         : {
             preview: {
-              open: previewPane !== undefined,
+              open: previewOpen,
               live: previews[previewThread] !== undefined,
               onToggle: togglePreview,
             },

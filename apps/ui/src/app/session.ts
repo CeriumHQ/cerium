@@ -1,7 +1,8 @@
 import { Option, Schema } from "effect";
 
 import { newDraftKey } from "../features/composer/drafts.ts";
-import type { PaneNode as PaneNodeType } from "../features/split/model.ts";
+import { closeKeys, leavesOf, type PaneNode as PaneNodeType } from "../features/split/model.ts";
+import { closeTabs } from "../features/tabs/model.ts";
 import { rememberForTab, storedForTab } from "../lib/storage.ts";
 import type { AppMode } from "./mode.ts";
 
@@ -59,9 +60,58 @@ export type Session = typeof Session.Type;
 /** A blank new thread per mode, each with a draft of its own. */
 export const freshBlank = (): Record<AppMode, string> => ({ work: newDraftKey(), chat: newDraftKey() });
 
+/** The key a thread's browser had while it was a tab of its own, which an older session may hold. */
+const BROWSER_TAB = "preview:";
+const isBrowserTab = (key: string) => key.startsWith(BROWSER_TAB);
+
+const eachMode = <A>(
+  modes: { readonly work?: A; readonly chat?: A },
+  change: (value: A) => A | undefined,
+): { work?: A; chat?: A } => {
+  const work = modes.work === undefined ? undefined : change(modes.work);
+  const chat = modes.chat === undefined ? undefined : change(modes.chat);
+  return { ...(work === undefined ? {} : { work }), ...(chat === undefined ? {} : { chat }) };
+};
+
+/**
+ * `session` without the browser tabs and panes an older Cerium kept: each thread's browser docks
+ * beside it now. A mode that showed one shows its thread instead.
+ */
+export const withoutBrowserTabs = (session: Session): Session => ({
+  ...session,
+  open: eachMode(session.open, (key) => (isBrowserTab(key) ? key.slice(BROWSER_TAB.length) : key)),
+  ...(session.tabs === undefined
+    ? {}
+    : {
+        tabs: Object.fromEntries(
+          Object.entries(session.tabs).map(([machine, strips]) => [
+            machine,
+            eachMode(strips, (strip) => {
+              const left = closeTabs(strip, strip.keys.filter(isBrowserTab), { remember: false }).strip;
+              return { ...left, closed: left.closed.filter((key) => !isBrowserTab(key)) };
+            }),
+          ]),
+        ),
+      }),
+  ...(session.panes === undefined
+    ? {}
+    : {
+        panes: eachMode(session.panes, (panes) =>
+          closeKeys(
+            panes,
+            leavesOf(panes.root)
+              .map((leaf) => leaf.key)
+              .filter(isBrowserTab),
+          ),
+        ),
+      }),
+});
+
 /** Where this tab was before it reloaded, if it was anywhere. */
 export const restoredSession = (): Session | undefined =>
-  Option.getOrUndefined(Schema.decodeUnknownOption(Session)(storedForTab(SESSION_KEY)));
+  Option.getOrUndefined(
+    Schema.decodeUnknownOption(Session)(storedForTab(SESSION_KEY)).pipe(Option.map(withoutBrowserTabs)),
+  );
 
 /** Remembers where the window is; like any remembered preference, failing never breaks the window. */
 export const rememberSession = (
