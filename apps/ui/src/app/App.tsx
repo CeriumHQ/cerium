@@ -281,6 +281,9 @@ import { useLaunched } from "./launch.ts";
 import { Launch } from "./LaunchScreen.tsx";
 import { useCompact } from "./compact.ts";
 import type { AppMode } from "./mode.ts";
+import { BackendFailureNotice, useBackendFailure } from "../features/crash/BackendFailureNotice.tsx";
+import { CrashGuard } from "../features/crash/CrashGuard.tsx";
+import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { Notice } from "./Notice.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
 import { Rail } from "./Rail.tsx";
@@ -501,6 +504,7 @@ function Workspace() {
   });
 
   const connection = useAtomValue(connectionAtom);
+  const backendFailure = useBackendFailure();
   const threadsResult = useAtomValue(threadsAtom);
   const refreshThreads = useAtomRefresh(threadsAtom);
   const harnessesResult = useAtomValue(harnessesAtom);
@@ -1981,6 +1985,8 @@ function Workspace() {
             presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
             onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
           />
+        ) : backendFailure !== undefined && driven === undefined ? (
+          <BackendFailureNotice failure={backendFailure} />
         ) : connection === "unreachable" && !WEB ? (
           <Notice tone="attention">
             Reconnecting to Cerium's backend…
@@ -2195,7 +2201,16 @@ function Workspace() {
     );
 
   /** A pane showing the tab `key`: a file, read-only, or a thread. */
-  const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+  /**
+   * What a pane shows, which takes only its own pane down if it throws while drawing. The guard isn't
+   * keyed by the tab, so a thread pane stays mounted, with the threads it keeps drawn, as tabs switch.
+   */
+  const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => (
+    <CrashGuard resetKey={key} fallback={PaneCrash}>
+      {paneView(key, focused, chrome)}
+    </CrashGuard>
+  );
+  const paneView = (key: string, focused: boolean, chrome?: PaneChrome) => {
     const previewed = previewOfKey(key);
     if (previewed !== undefined) {
       return (

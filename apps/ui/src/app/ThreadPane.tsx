@@ -37,6 +37,8 @@ import type { HandoffChoice, ModelSwitch } from "../features/composer/models.ts"
 import { useModels } from "../features/composer/models.ts";
 import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
+import { CrashGuard } from "../features/crash/CrashGuard.tsx";
+import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
@@ -267,68 +269,71 @@ export function ThreadPane({
         <div className="relative min-h-0 flex-1">
           <KeptViews shown={viewed && lead ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
             {viewed && lead ? (
-              <LeadTranscript
-                events={eventsAtom}
-                lead={lead.id}
-                sameModel={sameModel}
-                folder={viewed.thread.cwd}
-                threadId={viewed.thread.id}
-                focused={focused}
-                agent={{ provider: lead.provider, model: leadModel }}
-                modelName={(model, provider) => modelLabel(models, provider, model)}
-                {...(cloud ? {} : { messageBox: box })}
-                activity={leadActivity}
-                bottomInset={composerHeight}
-                childState={(childId) => {
-                  const child = agents.find((agent) => agent.id === childId);
-                  return child?.awaitingApproval
-                    ? "needsYou"
-                    : child?.state === "running" || child?.state === "queued"
-                      ? "running"
-                      : child?.state === "failed"
-                        ? "failed"
-                        : "idle";
-                }}
-                childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-                // A thread read from the cloud copy offers no agent actions: they take its machine.
-                agentActions={cloud ? {} : actions.agentActions}
-                onAnswerPermission={(requestId, decision, scope) =>
-                  cloud
-                    ? Promise.resolve(false)
-                    : attempt(actions.respond(lead.id, requestId, decision, scope))
-                }
-                onAnswerQuestion={(requestId, response) =>
-                  cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
-                }
-                // A thread read from the cloud copy can't go back: that takes its machine.
-                {...(cloud || !actions.edit
-                  ? {}
-                  : {
-                      onEditMessage: (messageId: string, message: OutgoingMessage) => {
-                        actions.keep(viewed.thread.id);
-                        return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
-                      },
-                    })}
-                {...(cloud || !restore
-                  ? {}
-                  : {
-                      onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
-                      onRestoreMessage: (messageId: string) => {
-                        actions.keep(viewed.thread.id);
-                        return attempt(restore.restore(lead.id, messageId));
-                      },
-                    })}
-                {...(cloud || !turnFiles || viewed.thread.cwd === undefined
-                  ? {}
-                  : {
-                      turnFiles: {
-                        open: (file: TurnFileOpen) =>
-                          turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
-                        revert: (turnId: string, direction: "undone" | "redone") =>
-                          attempt(turnFiles.revert(lead.id, turnId, direction)),
-                      },
-                    })}
-              />
+              // A conversation that can't be drawn leaves the thread's message box to write in.
+              <CrashGuard fallback={PaneCrash}>
+                <LeadTranscript
+                  events={eventsAtom}
+                  lead={lead.id}
+                  sameModel={sameModel}
+                  folder={viewed.thread.cwd}
+                  threadId={viewed.thread.id}
+                  focused={focused}
+                  agent={{ provider: lead.provider, model: leadModel }}
+                  modelName={(model, provider) => modelLabel(models, provider, model)}
+                  {...(cloud ? {} : { messageBox: box })}
+                  activity={leadActivity}
+                  bottomInset={composerHeight}
+                  childState={(childId) => {
+                    const child = agents.find((agent) => agent.id === childId);
+                    return child?.awaitingApproval
+                      ? "needsYou"
+                      : child?.state === "running" || child?.state === "queued"
+                        ? "running"
+                        : child?.state === "failed"
+                          ? "failed"
+                          : "idle";
+                  }}
+                  childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+                  // A thread read from the cloud copy offers no agent actions: they take its machine.
+                  agentActions={cloud ? {} : actions.agentActions}
+                  onAnswerPermission={(requestId, decision, scope) =>
+                    cloud
+                      ? Promise.resolve(false)
+                      : attempt(actions.respond(lead.id, requestId, decision, scope))
+                  }
+                  onAnswerQuestion={(requestId, response) =>
+                    cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
+                  }
+                  // A thread read from the cloud copy can't go back: that takes its machine.
+                  {...(cloud || !actions.edit
+                    ? {}
+                    : {
+                        onEditMessage: (messageId: string, message: OutgoingMessage) => {
+                          actions.keep(viewed.thread.id);
+                          return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                        },
+                      })}
+                  {...(cloud || !restore
+                    ? {}
+                    : {
+                        onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
+                        onRestoreMessage: (messageId: string) => {
+                          actions.keep(viewed.thread.id);
+                          return attempt(restore.restore(lead.id, messageId));
+                        },
+                      })}
+                  {...(cloud || !turnFiles || viewed.thread.cwd === undefined
+                    ? {}
+                    : {
+                        turnFiles: {
+                          open: (file: TurnFileOpen) =>
+                            turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
+                          revert: (turnId: string, direction: "undone" | "redone") =>
+                            attempt(turnFiles.revert(lead.id, turnId, direction)),
+                        },
+                      })}
+                />
+              </CrashGuard>
             ) : null}
           </KeptViews>
           {viewed && lead ? null : loading ? null : (

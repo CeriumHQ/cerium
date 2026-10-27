@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App.tsx";
 import { WEB } from "./backend/target.ts";
+import { CrashGuard } from "./features/crash/CrashGuard.tsx";
+import { AppCrash } from "./features/crash/CrashViews.tsx";
 import { registerServiceWorker } from "./web/push.ts";
 import { followThemeColor } from "./web/statusBar.ts";
 import { followKeyboard, followVisualViewport } from "./web/viewport.ts";
@@ -35,6 +37,9 @@ if (WEB || document.documentElement.dataset["shell"] === "browser") followKeyboa
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    {/* A view that throws while drawing takes its pane down at most (App's own guards), else the window. */}
+    <CrashGuard fallback={AppCrash}>
+      <App />
+    </CrashGuard>
   </StrictMode>,
 );

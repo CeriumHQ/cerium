@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 // Sandboxed preload: the UI talks to the backend over its own RPC connection, so the bridge only
-// tells the page it is running inside Cerium's shell and where the shell's backend listens, offers
+// tells the page it is running inside Cerium's shell and where the shell's backend listens, or why
+// it stopped (with a restart and the logs folder), offers
 // the native dialogs it can't open, and passes on the theme the system should draw the window's glass
 // and caption buttons in, and the scale it is drawn at. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
 // the file manager or opens it in its own app, none of which a page can do itself. Right-clicks no page menu claimed come
@@ -17,6 +18,14 @@ contextBridge.exposeInMainWorld("cerium", {
   platform: process.platform,
   backendConnection: (): Promise<{ url: string; token: string } | undefined> =>
     ipcRenderer.invoke("cerium:backend-connection"),
+  backendFailure: (): Promise<unknown> => ipcRenderer.invoke("cerium:backend-failure"),
+  onBackendFailure: (listener: (failure: unknown) => void): (() => void) => {
+    const forward = (_event: unknown, failure: unknown) => listener(failure);
+    ipcRenderer.on("cerium:backend-failure", forward);
+    return () => ipcRenderer.off("cerium:backend-failure", forward);
+  },
+  restartBackend: (): Promise<void> => ipcRenderer.invoke("cerium:restart-backend"),
+  openLogs: (): Promise<void> => ipcRenderer.invoke("cerium:open-logs"),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
   // Empty for a file that only exists in memory, such as a pasted screenshot.
   pathForFile: (file: File): string | undefined => webUtils.getPathForFile(file) || undefined,

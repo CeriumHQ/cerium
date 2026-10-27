@@ -8,6 +8,9 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- A crash guard: a view that throws while drawing no longer blanks the window. A conversation that can't be drawn gives way to "This view couldn't be drawn" with Try again and Copy details, while the sidebar, the tabs and the thread's message box carry on; a pane that throws takes only its pane, and anything that throws outside every pane shows "Cerium hit a problem" with Reload, Copy details and the logs folder. Copy details holds the version, the system, the error's stack and the views it was drawn in.
+- When the desktop app's backend stops, the window says why instead of only "Reconnecting to Cerium's backend…": it couldn't open its database, couldn't update the database for this version, couldn't open its local port, couldn't start, crashed, or exited with a code, with the reason in one line. Restart starts it again at once instead of after its back-off, Logs opens the logs folder, and Copy details holds the reason with the end of the backend's log.
+
 - Settings → Appearance → Window has an opacity slider (Windows and macOS) for those who would rather not see the desktop through the window: at the left the theme keeps its own glass, at the right the window is solid.
 
 ### Changed

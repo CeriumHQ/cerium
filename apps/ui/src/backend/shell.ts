@@ -39,6 +39,14 @@ export interface ShellBridge {
    * backend has a new port and token. Undefined in development, where the UI asks the dev server.
    */
   readonly backendConnection?: () => Promise<BackendConnection | undefined>;
+  /** Why the shell's backend last stopped, while none listens since (`BackendFailure`). */
+  readonly backendFailure?: () => Promise<unknown>;
+  /** Calls back whenever the backend stops on a failure, or listens again (undefined); returns how to stop. */
+  readonly onBackendFailure?: (listener: (failure: unknown) => void) => () => void;
+  /** Starts a stopped backend now instead of after its back-off. */
+  readonly restartBackend?: () => Promise<void>;
+  /** Opens the folder of Cerium's logs in the system's file manager. */
+  readonly openLogs?: () => Promise<void>;
   readonly pickFolder?: () => Promise<string | undefined>;
   /** Where a pasted or dropped file lives on disk; undefined for one that only exists in memory. */
   readonly pathForFile?: (file: File) => string | undefined;

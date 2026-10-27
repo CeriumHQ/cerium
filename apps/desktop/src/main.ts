@@ -396,6 +396,14 @@ ipcMain.handle("cerium:backend-connection", async () => {
   return backend?.connection();
 });
 
+/** Why the backend last stopped, while none listens since; the UI also hears each change. */
+ipcMain.handle("cerium:backend-failure", () => backend?.failure());
+ipcMain.handle("cerium:restart-backend", () => backend?.restart());
+/** The folder with the backend's and the updater's logs, in the file manager. */
+ipcMain.handle("cerium:open-logs", async () => {
+  await shell.openPath(app.getPath("logs"));
+});
+
 /** The folder a work thread runs in, chosen with the native dialog. */
 ipcMain.handle("cerium:pick-folder", async (event) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
@@ -509,7 +517,15 @@ const launchBackend = async () => {
 };
 
 void app.whenReady().then(() => {
-  if (devUrl === undefined) backendStarting = launchBackend();
+  if (devUrl === undefined) {
+    backendStarting = launchBackend();
+    void backendStarting.then(() =>
+      backend?.onFailure((failure) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cerium:backend-failure", failure);
+      }),
+    );
+  }
   updater = startUpdater();
   // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
   // gets its groups from what a right-click was on now.

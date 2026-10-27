@@ -11,12 +11,13 @@
 // --app-version      this build's version, shown the same way (default: dev)
 //
 // The packaged app runs this bundled in an Electron utility process (apps/desktop/src/backend.ts),
-// which receives { url, token } over its parent port and sends "stop" there to shut it down. It
+// which receives { url, token } over its parent port, or what stopped it (src/failure.ts), and sends
+// "stop" there to shut it down. It
 // also keeps this machine's sign-in there, encrypted (src/vault.ts).
 
 import type { Channel } from "@cerium/protocol";
 import { NodeRuntime } from "@effect/platform-node";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Cause, Effect, FileSystem, Layer, Path } from "effect";
 import { HttpServer } from "effect/http";
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -25,6 +26,7 @@ import { join, resolve } from "node:path";
 
 import { DEFAULT_RELAY_URL } from "@cerium/account";
 import { thisInstallation, thisMachine } from "./device.ts";
+import { backendFailed, messageChain, type BackendFailed } from "./failure.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
 import { isSetPath, parentPort as shell } from "./shell.ts";
@@ -51,12 +53,25 @@ shell?.on("message", ({ data }) => {
   if (isSetPath(data)) process.env["PATH"] = data.path;
 });
 
+/** Whether the server listens yet, which tells a failure at startup from a crash after it. */
+let listening = false;
+
+// An exception nothing caught still stops the backend as Node does, but the shell hears why first.
+process.on("uncaughtExceptionMonitor", (error) => {
+  shell?.postMessage({
+    _tag: "BackendFailed",
+    kind: "crash",
+    message: messageChain(error),
+  } satisfies BackendFailed);
+});
+
 /** Tells the UI where to connect once the server is listening. */
 const Announce = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* HttpServer.HttpServer;
     const url = `${HttpServer.formatAddress(server.address).replace(/^http/, "ws")}${RPC_PATH}`;
     yield* Effect.log(`Cerium backend listening on ${url} (data: ${dataDirectory})`);
+    listening = true;
     shell?.postMessage({ url, token });
     if (connectionFile === undefined) return;
     const fs = yield* FileSystem.FileSystem;
@@ -83,4 +98,12 @@ const options = {
       : shellEffortRouterKey(shell),
 };
 
-Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(NodeRuntime.runMain);
+Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(
+  // The shell shows the user why the backend stopped; runMain still logs the whole cause.
+  Effect.tapCause((cause) =>
+    Effect.sync(() => {
+      if (!Cause.hasInterruptsOnly(cause)) shell?.postMessage(backendFailed(cause, listening));
+    }),
+  ),
+  NodeRuntime.runMain,
+);
