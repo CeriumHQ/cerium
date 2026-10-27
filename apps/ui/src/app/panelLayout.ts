@@ -50,6 +50,8 @@ export const GUTTER = 6;
 export const RAIL = 52;
 /** Below this the transcript is too narrow for its message box, so the inspector floats over it instead. */
 export const MIN_TRANSCRIPT = 480;
+/** The same, with the sidebar folded away: the transcript and the panel are all there is to the window. */
+export const MIN_TRANSCRIPT_ALONE = 400;
 
 export const clampWidth = (width: number, min: number, max: number) =>
   Math.min(Math.max(width, min), Math.max(min, max));
@@ -61,6 +63,11 @@ export interface PanelLayout {
   readonly sidebarSpace: number;
   /** The inspector floats over the transcript rather than sitting beside it. */
   readonly floating: boolean;
+  /**
+   * The shown sidebar leaves the inspector no room beside the transcript, but folding the sidebar away
+   * would: the window gives it up while the inspector is open rather than cover the transcript.
+   */
+  readonly foldsSidebar: boolean;
   readonly inspectorWidth: number;
   readonly inspectorMax: number;
 }
@@ -68,7 +75,8 @@ export interface PanelLayout {
 /**
  * How the window divides `bodyWidth` between its panels, given the widths the user last left them at.
  * The sidebar never takes more than 40% of the window. The inspector sits beside the transcript while
- * that keeps its room, and floats over it once it wouldn't.
+ * that keeps its room, and floats over it once it wouldn't; a folded sidebar needs less of the
+ * transcript, since nothing else shares the window.
  */
 export const panelLayout = (
   bodyWidth: number,
@@ -81,14 +89,17 @@ export const panelLayout = (
   const sidebarMax = Math.min(SIDEBAR.max, Math.floor(bodyWidth * 0.4));
   const sidebarWidth = clampWidth(saved.sidebar, sidebarMin, sidebarMax);
   const sidebarSpace = sidebarShown ? sidebarWidth : GUTTER;
-  const roomBeside = bodyWidth - sidebarSpace - GUTTER * 2 - MIN_TRANSCRIPT;
+  const roomBeside =
+    bodyWidth - sidebarSpace - GUTTER * 2 - (sidebarShown ? MIN_TRANSCRIPT : MIN_TRANSCRIPT_ALONE);
   const floating = roomBeside < side.min;
+  const roomBesideAlone = bodyWidth - GUTTER * 3 - MIN_TRANSCRIPT_ALONE;
   const inspectorMax = Math.min(side.max, floating ? bodyWidth - sidebarSpace - GUTTER * 8 : roomBeside);
   return {
     sidebarWidth,
     sidebarMax,
     sidebarSpace,
     floating,
+    foldsSidebar: sidebarShown && floating && roomBesideAlone >= side.min,
     inspectorWidth: clampWidth(saved.inspector, side.min, inspectorMax),
     inspectorMax,
   };

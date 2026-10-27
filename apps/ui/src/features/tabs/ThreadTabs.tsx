@@ -289,7 +289,7 @@ export function ThreadTabs({
         <Button
           aria-label={newLabel}
           onClick={onNewTab}
-          className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 [app-region:no-drag] hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active"
+          className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 [app-region:no-drag] hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active pointer-coarse:size-10"
         >
           <Plus size={15} strokeWidth={1.75} />
         </Button>

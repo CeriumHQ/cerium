@@ -27,6 +27,22 @@ describe("panelLayout", () => {
     expect(panelLayout(960, defaults, false).floating).toBe(false);
   });
 
+  it("offers to fold the sidebar when that is what lets the panel sit beside the transcript", () => {
+    // An 800 px window: 748 px of body, which a sidebar, a transcript and a panel can't share.
+    const narrow = panelLayout(748, defaults, true);
+    expect(narrow.floating).toBe(true);
+    expect(narrow.foldsSidebar).toBe(true);
+    const folded = panelLayout(748, defaults, false);
+    expect(folded.floating).toBe(false);
+    expect(folded.foldsSidebar).toBe(false);
+    expect(748 - folded.sidebarSpace - 12 - folded.inspectorWidth).toBeGreaterThanOrEqual(400);
+    // A roomy window keeps its sidebar, and one too narrow for any panel beside a transcript floats it.
+    expect(panelLayout(1440, defaults, true).foldsSidebar).toBe(false);
+    const cramped = panelLayout(600, defaults, true);
+    expect(cramped.floating).toBe(true);
+    expect(cramped.foldsSidebar).toBe(false);
+  });
+
   it("never lets the sidebar take more than 40% of the window or a width the user couldn't drag to", () => {
     expect(panelLayout(1000, { ...defaults, sidebar: 420 }, true).sidebarWidth).toBe(400);
     expect(panelLayout(1440, { ...defaults, sidebar: 100 }, true).sidebarWidth).toBe(SIDEBAR.min);

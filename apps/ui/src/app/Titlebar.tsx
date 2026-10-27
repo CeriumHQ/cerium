@@ -222,7 +222,7 @@ export function CompactPanelMenu({
           <MenuTrigger>
             <Button
               aria-label="Panels"
-              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary max-md:size-10 ${
+              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary pointer-coarse:size-10 max-md:size-10 ${
                 anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
               }`}
             >
@@ -281,7 +281,7 @@ export function RunToggle({ running, onToggle }: { running: boolean; onToggle: (
       <Button
         onClick={onToggle}
         aria-label={running ? "Stop run" : "Run project"}
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] max-md:size-10 ${
+        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] pointer-coarse:size-10 max-md:size-10 ${
           running
             ? "bg-surface-selected text-fg-primary"
             : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -309,7 +309,7 @@ export function AgentsToggle({
       <Button
         onClick={onToggle}
         aria-pressed={open}
-        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-meta transition-colors [app-region:no-drag] ${
+        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-meta transition-colors [app-region:no-drag] pointer-coarse:h-10 max-md:h-10 ${
           open
             ? "bg-surface-selected text-fg-primary"
             : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"

@@ -37,7 +37,7 @@ export function CompactBar({
             <Button
               onClick={back.onBack}
               aria-label={`Back to ${back.label}`}
-              className="-ml-0.5 flex h-10 shrink-0 items-center gap-0.5 rounded-lg pr-2 pl-0.5 text-reading text-fg-secondary transition-colors active:bg-surface-active"
+              className="-ml-0.5 flex h-10 min-w-10 shrink-0 items-center gap-0.5 rounded-lg pr-2 pl-0.5 text-reading text-fg-secondary transition-colors active:bg-surface-active"
             >
               <ChevronLeft size={22} strokeWidth={1.75} />
               {title === undefined ? back.label : null}

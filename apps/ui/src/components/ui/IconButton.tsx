@@ -18,7 +18,7 @@ export function IconButton({ icon: Icon, label, shortcut, onClick, className }: 
       <Button
         aria-label={label}
         onClick={onClick}
-        className={`grid size-7 place-items-center rounded-md text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active ${className ?? ""}`}
+        className={`grid size-7 place-items-center rounded-md text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active pointer-coarse:size-10 ${className ?? ""}`}
       >
         <Icon size={15} strokeWidth={1.75} />
       </Button>

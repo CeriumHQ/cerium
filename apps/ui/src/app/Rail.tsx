@@ -70,51 +70,54 @@ export function Rail({
   const waiting =
     !checking && harnesses.some(({ state, needsSetup }) => state === "loggedOut" || needsSetup === true);
   const ready = new Set(harnesses.flatMap(({ provider, state }) => (state === "ready" ? [provider] : [])));
+  const shown = views.filter(({ view: id }) => !hidden.includes(id));
   return (
     <div
       className={
         vertical
           ? "flex h-full w-full flex-col items-center gap-1 py-1.5"
-          : "flex w-full items-center gap-1 border-t border-line-subtle px-3 pt-1.5"
+          : // Wrapping from the bottom: a phone held upright has no room for the rings beside the places,
+            // so they stack above them rather than run off the edge; sideways they share the row.
+            "flex w-full flex-wrap-reverse items-center justify-center gap-x-2 border-t border-line-subtle px-3 pt-1"
       }
     >
       <nav
         ref={places}
         aria-label="Places"
+        // Never narrower than its places at their touch size, which is what sends the rings above.
+        style={vertical ? undefined : { minWidth: shown.length * 44 }}
         className={`relative isolate ${vertical ? "flex flex-col gap-1" : "flex flex-1 justify-around"}`}
       >
         {/* Slides from the place that was open to the one that is. */}
         <SlidingHighlight within={places} active={view} className="rounded-lg bg-surface-selected" />
-        {views
-          .filter(({ view: id }) => !hidden.includes(id))
-          .map(({ view: id, label, icon: Icon, shortcut }) => {
-            const active = id === view;
-            return (
-              <Tooltip
-                key={id}
-                label={label}
-                shortcut={bindingFor(bindings, shortcut)}
-                side={vertical ? "right" : "top"}
+        {shown.map(({ view: id, label, icon: Icon, shortcut }) => {
+          const active = id === view;
+          return (
+            <Tooltip
+              key={id}
+              label={label}
+              shortcut={bindingFor(bindings, shortcut)}
+              side={vertical ? "right" : "top"}
+            >
+              <Button
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                {...(active ? { "data-highlight-active": "" } : {})}
+                onClick={() => onSelect(id)}
+                className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
+                  active
+                    ? "text-fg-primary"
+                    : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+                }`}
               >
-                <Button
-                  aria-label={label}
-                  aria-current={active ? "page" : undefined}
-                  {...(active ? { "data-highlight-active": "" } : {})}
-                  onClick={() => onSelect(id)}
-                  className={`relative grid size-9 place-items-center rounded-lg transition-colors duration-150 max-md:size-11 ${
-                    active
-                      ? "text-fg-primary"
-                      : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-                  }`}
-                >
-                  <Icon size={18} strokeWidth={1.75} />
-                  {id === "settings" && waiting ? (
-                    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
-                  ) : null}
-                </Button>
-              </Tooltip>
-            );
-          })}
+                <Icon size={18} strokeWidth={1.75} />
+                {id === "settings" && waiting ? (
+                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
+                ) : null}
+              </Button>
+            </Tooltip>
+          );
+        })}
       </nav>
       <UsageRings ready={ready} vertical={vertical} onOpen={onOpenUsage} />
     </div>
@@ -137,7 +140,9 @@ function UsageRings({
   return (
     <div
       aria-label="Usage limits"
-      className={vertical ? "mt-auto flex flex-col items-center gap-1.5" : "flex items-center gap-1"}
+      className={
+        vertical ? "mt-auto flex flex-col items-center gap-1.5" : "flex items-center justify-center gap-2"
+      }
     >
       {rings.map((ring) => (
         <Tooltip

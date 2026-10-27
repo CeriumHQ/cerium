@@ -171,7 +171,7 @@ function DesktopFrame({
   const view = settings.open ? "settings" : page ? "page" : "threads";
   const covered = view !== "threads";
   const bare = alone || (view === "page" && page?.list === undefined);
-  const showSidebar = !bare && (sidebarOpen || covered);
+  const wantSidebar = !bare && (sidebarOpen || covered);
   const showInspector = side !== undefined && !covered;
   // A closing panel keeps what it showed while it slides away.
   const inspector = useRef<HTMLDivElement>(null);
@@ -189,13 +189,16 @@ function DesktopFrame({
   const [dragging, setDragging] = useState<"sidebar" | "inspector">();
 
   const sidebarMin = onMac() ? SIDEBAR.macMin : SIDEBAR.min;
-  const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = panelLayout(
-    bodyWidth,
-    { sidebar: savedSidebar, inspector: savedSide },
-    showSidebar,
-    sideSpec,
-    sidebarMin,
-  );
+  const saved = { sidebar: savedSidebar, inspector: savedSide };
+  const withSidebar = panelLayout(bodyWidth, saved, wantSidebar, sideSpec, sidebarMin);
+  // A window too narrow for the transcript, the sidebar and a panel together gives the sidebar up while
+  // the panel is there (until it has slid out), rather than let the panel cover the transcript and its
+  // message box. The panel's own button brings the sidebar back by closing the panel.
+  const sidebarYields = withSidebar.foldsSidebar && inspectorPhase !== "gone";
+  const showSidebar = wantSidebar && !sidebarYields;
+  const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = sidebarYields
+    ? panelLayout(bodyWidth, saved, false, sideSpec, sidebarMin)
+    : withSidebar;
 
   const inspectorHandle = (
     <ResizeHandle
@@ -219,10 +222,10 @@ function DesktopFrame({
         bare={bare}
         alone={alone}
         mode={mode}
-        sidebarOpen={sidebarOpen}
+        sidebarOpen={sidebarOpen && !sidebarYields}
         sidebarWidth={sidebarWidth}
         resizing={dragging === "sidebar"}
-        onToggleSidebar={onToggleSidebar}
+        onToggleSidebar={sidebarYields ? onCloseSide : onToggleSidebar}
         onNewThread={onNewThread}
         agents={agents}
         panels={panels}
@@ -378,6 +381,13 @@ function DesktopFrame({
 }
 
 /**
+ * What keeps a pane's content off the notch or the rounded corners of a phone turned sideways. The top
+ * bar keeps its own (CompactBar), so the panes under it step in by margin: the message box and what
+ * else sits absolutely in them follow their edges.
+ */
+const notchSides = "ml-[env(safe-area-inset-left)] mr-[env(safe-area-inset-right)]";
+
+/**
  * The phone-narrow window: one pane at a time, each under its own top
  * bar with the way back, and a thread's agents over the thread. Every pane stays mounted, so going
  * back finds it as it was left.
@@ -463,8 +473,10 @@ function CompactFrame({
                 }
                 trailing={machinePicker}
               />
-              <div className="min-h-0 flex-1">{sidebar}</div>
-              <div className="pb-[max(env(safe-area-inset-bottom),6px)]">{rail("horizontal")}</div>
+              <div className={`${notchSides} min-h-0 flex-1`}>{sidebar}</div>
+              <div className={`${notchSides} pb-[max(env(safe-area-inset-bottom),6px)]`}>
+                {rail("horizontal")}
+              </div>
             </div>,
           ],
           [
@@ -489,7 +501,7 @@ function CompactFrame({
                     }
                   : {})}
               />
-              <main className="relative min-h-0 flex-1 overflow-hidden">{children}</main>
+              <main className={`${notchSides} relative min-h-0 flex-1 overflow-hidden`}>{children}</main>
             </div>,
           ],
           [
@@ -503,35 +515,39 @@ function CompactFrame({
                 }
                 trailing={machinePicker}
               />
-              <div className="min-h-0 flex-1">{page?.list}</div>
-              <div className="pb-[max(env(safe-area-inset-bottom),6px)]">{rail("horizontal")}</div>
+              <div className={`${notchSides} min-h-0 flex-1`}>{page?.list}</div>
+              <div className={`${notchSides} pb-[max(env(safe-area-inset-bottom),6px)]`}>
+                {rail("horizontal")}
+              </div>
             </div>,
           ],
           [
             "pageMain",
             <div key="pageMain" className="flex h-full flex-col">
               <CompactBar back={{ label: page?.title ?? "", onBack: () => page?.onBackToList() }} />
-              <div className="relative min-h-0 flex-1 overflow-hidden">{page?.main}</div>
+              <div className={`${notchSides} relative min-h-0 flex-1 overflow-hidden`}>{page?.main}</div>
             </div>,
           ],
           [
             "settings",
             <div key="settings" className="flex h-full flex-col">
               <CompactBar back={{ label: listLabel, onBack: settings.onClose }} title="Settings" />
-              <div className="min-h-0 flex-1">{settings.nav}</div>
+              <div className={`${notchSides} min-h-0 flex-1`}>{settings.nav}</div>
             </div>,
           ],
           [
             "category",
             <div key="category" className="flex h-full flex-col">
               <CompactBar back={{ label: "Settings", onBack: settings.onBackToNav }} title={settings.title} />
-              <div className="min-h-0 flex-1">{settings.page}</div>
+              <div className={`${notchSides} min-h-0 flex-1`}>{settings.page}</div>
             </div>,
           ],
         ]}
       />
       {inspecting ? (
-        <div className="absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl">
+        <div
+          className={`${notchSides} absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl`}
+        >
           {side?.content}
         </div>
       ) : null}
