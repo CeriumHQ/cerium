@@ -8,6 +8,32 @@ import {
   renderErrorMessage,
   shortMessage,
 } from "../src/features/crash/model.ts";
+import { uiCrashReport } from "../src/features/crash/report.ts";
+
+describe("uiCrashReport", () => {
+  it("carries the error's name, message and stack", () => {
+    const error = new TypeError("x is undefined");
+    expect(uiCrashReport("render", error, "pane")).toEqual({
+      category: "render",
+      kind: "pane",
+      name: "TypeError",
+      message: "x is undefined",
+      stack: error.stack,
+    });
+    expect(uiCrashReport("uncaught", "plain")).toEqual({
+      category: "uncaught",
+      name: "Error",
+      message: "plain",
+    });
+  });
+
+  it("leaves out what browsers raise for nothing", () => {
+    expect(
+      uiCrashReport("uncaught", new Error("ResizeObserver loop completed with undelivered notifications.")),
+    ).toBeUndefined();
+    expect(uiCrashReport("uncaught", "Script error.")).toBeUndefined();
+  });
+});
 
 describe("asBackendFailure", () => {
   it("reads the shell's failure, and nothing else", () => {

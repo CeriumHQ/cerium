@@ -47,6 +47,11 @@ export interface ShellBridge {
   readonly restartBackend?: () => Promise<void>;
   /** Opens the folder of Cerium's logs in the system's file manager. */
   readonly openLogs?: () => Promise<void>;
+  /** Whether this build sends anonymous crash reports, and whether the user lets it (`CrashReportsState`). */
+  readonly crashReports?: () => Promise<CrashReportsState>;
+  readonly setCrashReports?: (enabled: boolean) => Promise<CrashReportsState>;
+  /** Hands the shell a failure to report, which it scrubs and sends as the user allows. */
+  readonly reportCrash?: (report: UiCrashReport) => void;
   readonly pickFolder?: () => Promise<string | undefined>;
   /** Where a pasted or dropped file lives on disk; undefined for one that only exists in memory. */
   readonly pathForFile?: (file: File) => string | undefined;
@@ -182,6 +187,22 @@ export interface NativeNotification {
 export interface StartAtLogin {
   readonly available: boolean;
   readonly enabled: boolean;
+}
+
+/** Mirrors the shell's own type in apps/desktop/src/crashReports.ts. */
+export interface CrashReportsState {
+  /** This build sends reports at all: a packaged release. */
+  readonly available: boolean;
+  readonly enabled: boolean;
+}
+
+/** A failure in the UI, as the shell's `asCrashReport` (apps/desktop/src/crashReport.ts) takes it. */
+export interface UiCrashReport {
+  readonly category: "render" | "uncaught";
+  readonly kind?: string;
+  readonly name: string;
+  readonly message: string;
+  readonly stack?: string;
 }
 
 export type UpdateChannel = "stable" | "nightly";

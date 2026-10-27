@@ -12,6 +12,7 @@ import {
   onMac,
   onWindows,
   shellBridge,
+  type CrashReportsState,
   type StartAtLogin,
   type UpdateChannel,
   type Updates,
@@ -70,14 +71,44 @@ function ThisComputerSection() {
   const local = useAtomValue(machineAtom) === undefined;
   // Closing the window keeps a signed-in Cerium in the tray, which a start at login opens to.
   const startup = account?._tag === "SignedIn" && shellBridge()?.startAtLogin !== undefined;
-  if (!startup && !local) return null;
+  const reports = shellBridge()?.crashReports !== undefined;
+  if (!startup && !local && !reports) return null;
   return (
     <SettingsSection title="This computer">
       <SettingsList>
         {startup ? <StartAtLoginRow /> : null}
         {local ? <DiscordRows /> : null}
+        {reports ? <CrashReportsRow /> : null}
       </SettingsList>
     </SettingsSection>
+  );
+}
+
+/**
+ * Anonymous crash reports from this computer (apps/desktop/src/crashReports.ts), on until turned off;
+ * absent from builds that send none, such as development's.
+ */
+function CrashReportsRow() {
+  const bridge = shellBridge();
+  const [state, setState] = useState<CrashReportsState>();
+
+  useEffect(() => {
+    void bridge?.crashReports?.().then(setState, () => undefined);
+  }, [bridge]);
+
+  if (state?.available !== true) return null;
+  const change = (enabled: boolean) => {
+    setState({ ...state, enabled });
+    void bridge?.setCrashReports?.(enabled).then(setState, () => setState({ ...state, enabled: !enabled }));
+  };
+  return (
+    <SettingsRow
+      label="Send crash reports"
+      hint="Anonymous: what failed and where. Never messages, files or paths."
+      control={(labelledBy) => (
+        <SettingsSwitch checked={state.enabled} onCheckedChange={change} labelledBy={labelledBy} />
+      )}
+    />
   );
 }
 

@@ -163,8 +163,9 @@ pick in Settings → Updates.
 
 ## Privacy
 
-Cerium has no telemetry. Your threads live in a SQLite database on your machine, and each harness
-talks to its own provider as it does without Cerium.
+Cerium collects no usage data. Your threads live in a SQLite database on your machine, and each harness
+talks to its own provider as it does without Cerium. When something in Cerium crashes, it sends an
+anonymous crash report, which you can turn off.
 
 <details>
 <summary>What Cerium itself reaches out for</summary>
@@ -181,6 +182,15 @@ talks to its own provider as it does without Cerium.
   Signing a machine out, or removing it in Settings → Account, deletes its threads' copies, and
   deleting a thread deletes its copy. Clerk keeps your sign-in, and Cloudflare, which runs the relay,
   keeps its request logs.
+- **Crash reports.** When Cerium fails (a view that can't be drawn, a backend that can't start or
+  crashes, a harness session that fails unexpectedly, an update that can't install), the desktop app
+  sends a report to [Sentry](https://sentry.io): the error's type, its message with every file path,
+  web address, email address, IP address and id removed, and where in Cerium's own code it happened;
+  Cerium's version and channel; your system, its version and your processor. Never your messages,
+  files, folder or project names, thread titles, account, machine name or memory contents, and the
+  project doesn't store the IP address a report comes from. The scrubbing is in
+  [`apps/desktop/src/scrub.ts`](apps/desktop/src/scrub.ts). Turn it off in Settings → General → Send
+  crash reports.
 - **Updates.** The app checks this repository's GitHub Releases at launch and every six hours, and
   downloads an update only when you ask. Settings → Harnesses looks up each harness's newest version
   on npm or GitHub to tell you when one is out.

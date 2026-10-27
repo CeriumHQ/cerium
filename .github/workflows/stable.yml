@@ -84,6 +84,7 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
+          sentry-dsn: ${{ vars.SENTRY_DSN }}
 
   package-windows:
     name: Package (Windows ${{ matrix.arch }})
@@ -106,6 +107,7 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
+          sentry-dsn: ${{ vars.SENTRY_DSN }}
 
   # Signed with the repository's Developer ID and notarized when it has them, else signed ad hoc.
   package-macos:
@@ -129,6 +131,7 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
+          sentry-dsn: ${{ vars.SENTRY_DSN }}
           mac-certificate: ${{ secrets.MAC_CERTIFICATE }}
           mac-certificate-password: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           apple-api-key: ${{ secrets.APPLE_API_KEY }}

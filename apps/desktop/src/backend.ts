@@ -9,7 +9,13 @@ import {
   type BackendFailure,
   type BackendFailureKind,
 } from "./backendFailure.ts";
+import { asCrashReport } from "./crashReport.ts";
+import { reportCrash } from "./crashReports.ts";
 import { buildChannel } from "./updater.ts";
+
+/** A failure the backend reports (apps/backend/src/reports.ts), checked by `asCrashReport`. */
+const isCrashReportMessage = (message: unknown): boolean =>
+  typeof message === "object" && message !== null && (message as { _tag?: unknown })._tag === "CrashReport";
 import { answerVault, isVaultRequest } from "./vault.ts";
 
 // The packaged app's backend: the bundled dist/backend.mjs, run in an
@@ -91,6 +97,11 @@ export const startBackend = (initial: NodeJS.ProcessEnv) => {
         said = { kind: message.kind, message: message.message };
         return;
       }
+      if (isCrashReportMessage(message)) {
+        const report = asCrashReport(message, "backend");
+        if (report !== undefined) reportCrash(report);
+        return;
+      }
       if (!isConnection(message)) return;
       connection = message;
       setFailure(undefined);
@@ -103,6 +114,17 @@ export const startBackend = (initial: NodeJS.ProcessEnv) => {
       log.write(`Cerium backend exited with code ${code}\n`);
       if (stopping) return;
       setFailure(failureOnExit(said, code, tail.read(), Date.now()));
+      // One that said why reported it itself; one that couldn't, such as a native crash, is reported here.
+      if (said === undefined) {
+        reportCrash({
+          process: "backend",
+          category: "crash",
+          kind: "exited",
+          name: "BackendExited",
+          message: `The backend exited with code ${code}`,
+          context: { code },
+        });
+      }
       failures = Date.now() - startedAt >= HEALTHY_RUN_MS ? 0 : failures + 1;
       relaunch = setTimeout(launch, failures === 0 ? 0 : Math.min(30_000, 1000 * 2 ** (failures - 1)));
     });

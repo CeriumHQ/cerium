@@ -16,6 +16,8 @@ import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
 import { startBackend } from "./backend.ts";
+import { asCrashReport } from "./crashReport.ts";
+import { reportCrash, startCrashReports } from "./crashReports.ts";
 import {
   isBadgeRequest,
   isNotificationRequest,
@@ -37,7 +39,7 @@ import {
 import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
 import { isThreadId, isThreadMode, threadWindows, type ThreadMode } from "./threadWindows.ts";
-import { isUpdateChannel, startUpdater } from "./updater.ts";
+import { buildChannel, isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
 // The thin shell: a window with native caption buttons around the UI, Acrylic behind it on Windows
@@ -61,6 +63,9 @@ if (!app.requestSingleInstanceLock()) app.quit();
 const devUrl = app.isPackaged
   ? undefined
   : process.argv.findLast((arg) => arg.startsWith("--dev-url="))?.slice("--dev-url=".length);
+
+/** Anonymous crash reports, started before anything else can fail. */
+const crashReports = startCrashReports(buildChannel());
 
 let backend: ReturnType<typeof startBackend> | undefined;
 /** Settles once the packaged app's backend has started. */
@@ -399,6 +404,17 @@ ipcMain.handle("cerium:backend-connection", async () => {
 /** Why the backend last stopped, while none listens since; the UI also hears each change. */
 ipcMain.handle("cerium:backend-failure", () => backend?.failure());
 ipcMain.handle("cerium:restart-backend", () => backend?.restart());
+/** Whether this build sends crash reports, and the user's switch for them. */
+ipcMain.handle("cerium:crash-reports", () => crashReports.state());
+ipcMain.handle("cerium:set-crash-reports", (_event, enabled: unknown) =>
+  typeof enabled === "boolean" ? crashReports.setEnabled(enabled) : crashReports.state(),
+);
+/** A failure Cerium's own windows report; preview pages get no preload to send one. */
+ipcMain.on("cerium:report-crash", (event, report: unknown) => {
+  if (BrowserWindow.fromWebContents(event.sender) === null) return;
+  const valid = asCrashReport(report, "renderer");
+  if (valid !== undefined) reportCrash(valid);
+});
 /** The folder with the backend's and the updater's logs, in the file manager. */
 ipcMain.handle("cerium:open-logs", async () => {
   await shell.openPath(app.getPath("logs"));

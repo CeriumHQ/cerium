@@ -3,6 +3,7 @@ import electronUpdater from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { reportCrash } from "./crashReports.ts";
 import { linuxInstall } from "./linuxInstall.ts";
 import { diskImageUrl, updatesInPlace } from "./macUpdates.ts";
 
@@ -68,6 +69,31 @@ const reasonFor = (error: unknown): "offline" | "unpublished" => {
   return statusCode === 404 || (typeof code === "string" && unpublishedCodes.has(code))
     ? "unpublished"
     : "offline";
+};
+
+/** Whether an update failed for want of a network, which no report would help with. */
+export const offline = (error: unknown): boolean => {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  const text = `${typeof code === "string" ? code : ""} ${typeof message === "string" ? message : ""}`;
+  return /ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|net::ERR_(INTERNET_DISCONNECTED|NETWORK|NAME_NOT_RESOLVED|CONNECTION|TIMED_OUT|ADDRESS_UNREACHABLE|PROXY)/.test(
+    text,
+  );
+};
+
+/** Reports an update that failed for a reason of its own, with electron-updater's code. */
+const reportUpdateFailure = (phase: "check" | "download", error: unknown) => {
+  const { code, name, message, stack } = (error ?? {}) as Partial<
+    Record<"code" | "name" | "message" | "stack", unknown>
+  >;
+  reportCrash({
+    process: "main",
+    category: "update",
+    kind: phase,
+    name: typeof name === "string" ? name : "UpdateError",
+    message: typeof message === "string" ? message : String(error),
+    ...(typeof stack === "string" ? { stack } : {}),
+    context: { phase, ...(typeof code === "string" ? { code } : {}) },
+  });
 };
 
 export const startUpdater = () => {
@@ -155,7 +181,10 @@ export const startUpdater = () => {
               ? { kind: "available", version: result.updateInfo.version }
               : { kind: "current", checkedAt: Date.now() },
           ),
-        (error: unknown) => set({ kind: "unreachable", reason: reasonFor(error), checkedAt: Date.now() }),
+        (error: unknown) => {
+          if (!offline(error)) reportUpdateFailure("check", error);
+          set({ kind: "unreachable", reason: reasonFor(error), checkedAt: Date.now() });
+        },
       )
       .finally(() => {
         checking = undefined;
@@ -180,6 +209,7 @@ export const startUpdater = () => {
       set({ kind: "ready", version });
     } catch (error) {
       log("error")(error);
+      if (!offline(error)) reportUpdateFailure("download", error);
       set({ kind: "failed", version });
     }
   };

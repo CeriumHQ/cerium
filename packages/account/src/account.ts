@@ -163,6 +163,12 @@ const CLAIM_EVERY = "2 seconds";
 const STEADY_FOR_MS = 10_000;
 
 /**
+ * Close codes of a line that ended as lines do: normally, going away, with no code, abnormally (the
+ * network), or the relay restarting for a deploy.
+ */
+const DROPPED_CODES: ReadonlySet<number> = new Set([1000, 1001, 1005, 1006, 1012]);
+
+/**
  * Reconnecting after a steady connection drops goes again at once, within a quarter second's
  * jitter; then it backs off from one second to thirty, jittered so devices don't stampede.
  */
@@ -405,7 +411,13 @@ export class Account extends Context.Service<
                     continue;
                   }
                   const message = Option.getOrUndefined(decodeMessage(frame));
-                  if (message === undefined) continue;
+                  if (message === undefined) {
+                    // The relay and this build disagree on a message: reported, never with the frame.
+                    yield* Effect.logWarning("Couldn't read a message from the relay").pipe(
+                      Effect.annotateLogs({ report: "relay", kind: "decode" }),
+                    );
+                    continue;
+                  }
                   if (message._tag === "SignedOut") return yield* new SignedOff({ reason: message.reason });
                   if (message._tag !== "State") {
                     yield* PubSub.publish(tunnelEvents, message);
@@ -432,6 +444,13 @@ export class Account extends Context.Service<
               }
               if (reason._tag === "SocketCloseError" && reason.code === CLOSE_BAD_CREDENTIAL) {
                 return Effect.fail(new SignedOff({ reason: "invalid" }));
+              }
+              // A line that dropped closes normally or not at all; any other code is the relay's own
+              // failure, and is reported (apps/backend/src/reports.ts) before reconnecting as usual.
+              if (reason._tag === "SocketCloseError" && !DROPPED_CODES.has(reason.code)) {
+                return Effect.logWarning(`The relay closed the connection with code ${reason.code}`).pipe(
+                  Effect.annotateLogs({ report: "relay", kind: "close", code: reason.code }),
+                );
               }
               return Effect.void;
             }),

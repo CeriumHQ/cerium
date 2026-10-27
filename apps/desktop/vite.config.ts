@@ -5,11 +5,14 @@ export default defineConfig({
   pack: [
     // koffi is a native module and loads from node_modules at runtime; so does electron-updater,
     // CommonJS that requires electron itself.
+    // Sentry's SDK requires electron itself and finds its own files, so it stays in node_modules. The
+    // release workflows give the DSN crash reports go to (src/crashReports.ts); no other build has one.
     {
       entry: { main: "src/main.ts" },
       format: "esm",
       platform: "node",
-      deps: { neverBundle: ["electron", "koffi", "electron-updater"] },
+      deps: { neverBundle: ["electron", "koffi", "electron-updater", /^@sentry\//] },
+      define: { __CERIUM_SENTRY_DSN__: JSON.stringify(process.env["CERIUM_SENTRY_DSN"] ?? "") },
       dts: false,
     },
     {

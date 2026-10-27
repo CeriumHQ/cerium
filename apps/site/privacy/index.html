@@ -50,8 +50,9 @@
 
       <article class="policy-body">
         <p class="policy-lead">
-          Cerium has no telemetry. Your threads live in a database on your machine, and each harness talks to
-          its own provider as it does without Cerium.
+          Cerium collects no usage data. Your threads live in a database on your machine, and each harness
+          talks to its own provider as it does without Cerium. When something in Cerium crashes, it sends an
+          anonymous crash report, which you can turn off.
         </p>
         <p>This page covers what Cerium itself keeps or reaches out for.</p>
 
@@ -92,6 +93,17 @@
 
         <h2 id="reaching-out">What the app reaches out for</h2>
         <dl>
+          <dt>Crash reports</dt>
+          <dd>
+            When Cerium fails (a view that can't be drawn, a backend that can't start or crashes, a harness
+            session that fails unexpectedly, an update that can't install), the desktop app sends a report to
+            <a href="https://sentry.io/privacy/">Sentry</a>: the error's type, its message with every file
+            path, web address, email address, IP address and id removed, and where in Cerium's own code it
+            happened; Cerium's version and update channel; your system, its version and your processor. It
+            never includes your messages, files, folder or project names, thread titles, account, machine name
+            or memory contents, and Cerium's Sentry project doesn't store the IP address a report comes from.
+            Turn it off in Settings → General → Send crash reports.
+          </dd>
           <dt>Updates</dt>
           <dd>
             The app checks Cerium's GitHub Releases at launch and every six hours, and downloads an update

@@ -19,6 +19,12 @@ inputs:
       (apps/desktop/electron-builder.ts), so each installs and updates the same way: for nightlies and
       for runs that only check the packaging.
     required: true
+  sentry-dsn:
+    description: >-
+      Where the packaged app sends its anonymous crash reports (apps/desktop/src/crashReports.ts),
+      the repository's SENTRY_DSN variable; without one the app sends none.
+    required: false
+    default: ""
   mac-certificate:
     description: The Developer ID Application certificate and its key, a base64 .p12 (macOS only).
     required: false
@@ -68,6 +74,7 @@ runs:
       run: bun run build:desktop
       env:
         CERIUM_VERSION: ${{ inputs.version }}
+        CERIUM_SENTRY_DSN: ${{ inputs.sentry-dsn }}
 
     # electron-builder downloads Electron, NSIS, the AppImage tools, fpm and the rest into these folders.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -7,6 +7,7 @@ import { App } from "./app/App.tsx";
 import { WEB } from "./backend/target.ts";
 import { CrashGuard } from "./features/crash/CrashGuard.tsx";
 import { AppCrash } from "./features/crash/CrashViews.tsx";
+import { renderErrorHandlers, reportUnhandled } from "./features/crash/report.ts";
 import { registerServiceWorker } from "./web/push.ts";
 import { followThemeColor } from "./web/statusBar.ts";
 import { followKeyboard, followVisualViewport } from "./web/viewport.ts";
@@ -35,7 +36,13 @@ if (WEB) {
 // The browser preview stands in for the web client at phone size, keyboard included.
 if (WEB || document.documentElement.dataset["shell"] === "browser") followKeyboard();
 
-createRoot(document.getElementById("root")!).render(
+// The desktop shell reports what threw, anonymously and as the user allows (features/crash/report.ts).
+reportUnhandled();
+
+createRoot(
+  document.getElementById("root")!,
+  renderErrorHandlers((boundary) => boundary instanceof CrashGuard && boundary.props.fallback === AppCrash),
+).render(
   <StrictMode>
     {/* A view that throws while drawing takes its pane down at most (App's own guards), else the window. */}
     <CrashGuard fallback={AppCrash}>

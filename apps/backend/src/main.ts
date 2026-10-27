@@ -17,7 +17,7 @@
 
 import type { Channel } from "@cerium/protocol";
 import { NodeRuntime } from "@effect/platform-node";
-import { Cause, Effect, FileSystem, Layer, Path } from "effect";
+import { Cause, Effect, FileSystem, Layer, Logger, Path } from "effect";
 import { HttpServer } from "effect/http";
 import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -27,6 +27,7 @@ import { join, resolve } from "node:path";
 import { DEFAULT_RELAY_URL } from "@cerium/account";
 import { thisInstallation, thisMachine } from "./device.ts";
 import { backendFailed, messageChain, type BackendFailed } from "./failure.ts";
+import { crashReport, reportLogger } from "./reports.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
 import { isSetPath, parentPort as shell } from "./shell.ts";
@@ -56,13 +57,20 @@ shell?.on("message", ({ data }) => {
 /** Whether the server listens yet, which tells a failure at startup from a crash after it. */
 let listening = false;
 
-// An exception nothing caught still stops the backend as Node does, but the shell hears why first.
+// An exception nothing caught still stops the backend as Node does, but the shell hears why first,
+// and reports it.
 process.on("uncaughtExceptionMonitor", (error) => {
   shell?.postMessage({
     _tag: "BackendFailed",
     kind: "crash",
     message: messageChain(error),
   } satisfies BackendFailed);
+  shell?.postMessage(crashReport("crash", error, { kind: "uncaught" }));
+});
+
+/** Logs annotated as reports (src/reports.ts) go to the shell too, beside the usual log. */
+const Reports = Logger.layer([reportLogger((report) => shell?.postMessage(report))], {
+  mergeWithExisting: true,
 });
 
 /** Tells the UI where to connect once the server is listening. */
@@ -99,10 +107,18 @@ const options = {
 };
 
 Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(
-  // The shell shows the user why the backend stopped; runMain still logs the whole cause.
+  Effect.provide(Reports),
+  // The shell shows the user why the backend stopped, and reports it; runMain still logs the whole cause.
   Effect.tapCause((cause) =>
     Effect.sync(() => {
-      if (!Cause.hasInterruptsOnly(cause)) shell?.postMessage(backendFailed(cause, listening));
+      if (Cause.hasInterruptsOnly(cause)) return;
+      const failed = backendFailed(cause, listening);
+      shell?.postMessage(failed);
+      shell?.postMessage(
+        crashReport(failed.kind === "crash" ? "crash" : "startup", Cause.squash(cause), {
+          kind: failed.kind,
+        }),
+      );
     }),
   ),
   NodeRuntime.runMain,

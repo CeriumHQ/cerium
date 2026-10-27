@@ -46,6 +46,7 @@ import {
 } from "@cerium/protocol";
 import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
 import {
+  Cause,
   Clock,
   Context,
   Crypto,
@@ -1154,7 +1155,11 @@ export class Orchestrator extends Context.Service<
             }),
           ),
           Effect.catchCause((cause) =>
-            rt.sleeping ? Effect.void : Effect.logError(`Agent ${rt.info.id} session failed`, cause),
+            rt.sleeping
+              ? Effect.void
+              : Effect.logError(`Agent ${rt.info.id} session failed`, cause).pipe(
+                  Effect.annotateLogs({ report: "harness", harness: rt.info.provider, phase: "session" }),
+                ),
           ),
           Effect.ensuring(
             Effect.gen(function* () {
@@ -1761,6 +1766,15 @@ export class Orchestrator extends Context.Service<
               })
               .pipe(
                 Scope.provide(sessionScope),
+                // A harness that isn't installed or signed in is the user's to fix; anything else is
+                // reported (apps/backend/src/reports.ts).
+                Effect.tapError((error) =>
+                  error._tag === "HarnessUnavailable"
+                    ? Effect.void
+                    : Effect.logError("Harness session failed to start", Cause.fail(error)).pipe(
+                        Effect.annotateLogs({ report: "harness", harness: info.provider, phase: "start" }),
+                      ),
+                ),
                 Effect.mapError(
                   (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
                 ),

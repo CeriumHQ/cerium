@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld("cerium", {
     return () => ipcRenderer.off("cerium:backend-failure", forward);
   },
   restartBackend: (): Promise<void> => ipcRenderer.invoke("cerium:restart-backend"),
+  crashReports: (): Promise<unknown> => ipcRenderer.invoke("cerium:crash-reports"),
+  setCrashReports: (enabled: boolean): Promise<unknown> =>
+    ipcRenderer.invoke("cerium:set-crash-reports", enabled),
+  reportCrash: (report: unknown): void => ipcRenderer.send("cerium:report-crash", report),
   openLogs: (): Promise<void> => ipcRenderer.invoke("cerium:open-logs"),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
   // Empty for a file that only exists in memory, such as a pasted screenshot.
