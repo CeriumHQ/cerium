@@ -62,7 +62,7 @@ export function MenuItem({
       {...(disabled ? { disabled } : {})}
       className={`${itemClass} ${
         tone === "danger"
-          ? "text-error data-highlighted:text-error"
+          ? "text-error-text data-highlighted:text-error-text"
           : "text-fg-secondary data-highlighted:text-fg-primary"
       }`}
     >

@@ -194,7 +194,7 @@ function PushSettings({ noun }: { noun: string }) {
               {testSent ? "Sent" : "Send a test"}
             </button>
           ) : null}
-          {error ? <p className="text-meta text-error max-md:text-[14px]">{error}</p> : null}
+          {error ? <p className="text-meta text-error-text max-md:text-[14px]">{error}</p> : null}
         </div>
         <SettingsSwitch
           checked={shown !== undefined}

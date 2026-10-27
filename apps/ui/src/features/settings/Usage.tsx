@@ -93,7 +93,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
         description="As each harness reports them; Cursor's come from its CLI. API keys have none, and OpenCode doesn't report its yet."
       >
         {AsyncResult.isFailure(result) && snapshot === undefined ? (
-          <SettingsCard className="px-4 py-3.5 text-body text-error">
+          <SettingsCard className="px-4 py-3.5 text-body text-error-text">
             {driven
               ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
               : "Couldn't read the usage. Try again in a moment."}
@@ -190,8 +190,16 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
 }
 
 const litTone = { normal: "bg-fg-primary", warning: "bg-attention", critical: "bg-error" } as const;
-const textTone = { normal: "text-fg-primary", warning: "text-attention", critical: "text-error" } as const;
-const statusTone = { normal: "text-fg-tertiary", warning: "text-attention", critical: "text-error" } as const;
+const textTone = {
+  normal: "text-fg-primary",
+  warning: "text-attention-text",
+  critical: "text-error-text",
+} as const;
+const statusTone = {
+  normal: "text-fg-tertiary",
+  warning: "text-attention-text",
+  critical: "text-error-text",
+} as const;
 
 /** The upward caret that marks an even pace, under a bar and in the note that explains it. */
 function PaceMark({ className, style }: { className?: string; style?: CSSProperties }) {

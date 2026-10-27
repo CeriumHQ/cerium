@@ -84,12 +84,12 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
           aria-label="Stop dictating"
           className={`flex h-8 shrink-0 items-center gap-2 rounded-full border border-error/30 bg-error/10 pr-3 pl-2.5 text-meta text-fg-primary transition-[background-color,opacity,scale,filter] hover:bg-error/18 ${swap}`}
         >
-          <span className="grid size-4 place-items-center text-error">
+          <span className="grid size-4 place-items-center text-error-text">
             <Square size={10} fill="currentColor" strokeWidth={0} />
           </span>
           {state.phase === "recording" ? (
             <>
-              <span className="text-error">
+              <span className="text-error-text">
                 <LevelMeter level={dictation.level} />
               </span>
               <Elapsed since={state.since} />
@@ -149,7 +149,7 @@ export function DictationNotice({ dictation }: { dictation: Dictation }) {
           : "border-error/25 bg-error/6 text-fg-primary"
       }`}
     >
-      <Mic size={13} strokeWidth={1.75} className={quiet ? "text-fg-tertiary" : "text-error"} />
+      <Mic size={13} strokeWidth={1.75} className={quiet ? "text-fg-tertiary" : "text-error-text"} />
       <span className="min-w-0 flex-1 truncate">{problemText[state.problem]}</span>
       {action ? (
         <Button

@@ -99,9 +99,9 @@ export function RunScoreboard({
 /** What a thread still working, or waiting on the user, says in place of its outcome. */
 function Status({ thread }: { thread: ThreadSummary }) {
   if (thread.status === "awaitingApproval")
-    return <span className="font-medium text-attention">Needs you</span>;
-  if (thread.status === "running") return <span className="text-running">Working</span>;
-  if (thread.status === "failed") return <span className="text-error">Failed</span>;
+    return <span className="font-medium text-attention-text">Needs you</span>;
+  if (thread.status === "running") return <span className="text-running-text">Working</span>;
+  if (thread.status === "failed") return <span className="text-error-text">Failed</span>;
   return null;
 }
 
@@ -131,8 +131,8 @@ function Outcome({ thread }: { thread: ThreadSummary }) {
         <span>No changes</span>
       ) : (
         <span title={`${stats.files} ${stats.files === 1 ? "file" : "files"} changed`}>
-          <span className="text-success">+{stats.added}</span>{" "}
-          <span className="text-error">−{stats.removed}</span>
+          <span className="text-success-text">+{stats.added}</span>{" "}
+          <span className="text-error-text">−{stats.removed}</span>
         </span>
       )}
       {took}

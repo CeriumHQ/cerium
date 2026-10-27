@@ -75,28 +75,31 @@ export function MergeBox({
 
   const checks =
     pull.checks === "failing" ? (
-      <Line icon={<CircleX size={15} strokeWidth={2} className="text-error" />} onClick={onShowChecks}>
+      <Line icon={<CircleX size={15} strokeWidth={2} className="text-error-text" />} onClick={onShowChecks}>
         Some checks failed
       </Line>
     ) : pull.checks === "pending" ? (
       <Line
-        icon={<CircleDashed size={15} strokeWidth={2} className="text-attention" />}
+        icon={<CircleDashed size={15} strokeWidth={2} className="text-attention-text" />}
         onClick={onShowChecks}
       >
         Checks are running
       </Line>
     ) : pull.checks === "passing" ? (
-      <Line icon={<CircleCheck size={15} strokeWidth={2} className="text-success" />} onClick={onShowChecks}>
+      <Line
+        icon={<CircleCheck size={15} strokeWidth={2} className="text-success-text" />}
+        onClick={onShowChecks}
+      >
         All checks passed
       </Line>
     ) : null;
   const review =
     pull.reviewDecision === "approved" ? (
-      <Line icon={<CircleCheck size={15} strokeWidth={2} className="text-success" />}>Approved</Line>
+      <Line icon={<CircleCheck size={15} strokeWidth={2} className="text-success-text" />}>Approved</Line>
     ) : pull.reviewDecision === "changesRequested" ? (
-      <Line icon={<CircleX size={15} strokeWidth={2} className="text-error" />}>Changes requested</Line>
+      <Line icon={<CircleX size={15} strokeWidth={2} className="text-error-text" />}>Changes requested</Line>
     ) : pull.reviewDecision === "reviewRequired" ? (
-      <Line icon={<Eye size={15} strokeWidth={2} className="text-attention" />}>Review required</Line>
+      <Line icon={<Eye size={15} strokeWidth={2} className="text-attention-text" />}>Review required</Line>
     ) : null;
   const conflicts = pull.mergeable === "conflicting";
   const note = conflicts ? mergeStateNote("dirty") : mergeStateNote(pull.mergeState);
@@ -109,9 +112,9 @@ export function MergeBox({
       <Line
         icon={
           conflicts || pull.mergeState === "blocked" || pull.mergeState === "behind" ? (
-            <TriangleAlert size={15} strokeWidth={2} className="text-attention" />
+            <TriangleAlert size={15} strokeWidth={2} className="text-attention-text" />
           ) : (
-            <CircleCheck size={15} strokeWidth={2} className="text-success" />
+            <CircleCheck size={15} strokeWidth={2} className="text-success-text" />
           )
         }
       >
@@ -262,7 +265,7 @@ function MergeDialog({
         </DialogCheck>
       ) : null}
       {actions.error === undefined ? null : (
-        <p role="alert" className="text-meta text-error">
+        <p role="alert" className="text-meta text-error-text">
           {actions.error}
         </p>
       )}
@@ -442,7 +445,7 @@ function ReviewDialog({
         })}
       </div>
       {actions.error === undefined ? null : (
-        <p role="alert" className="text-meta text-error">
+        <p role="alert" className="text-meta text-error-text">
           {actions.error}
         </p>
       )}

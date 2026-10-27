@@ -357,7 +357,7 @@ function CheckoutDialog({
       }
     >
       {actions.error === undefined || done !== undefined ? null : (
-        <p role="alert" className="text-meta text-error">
+        <p role="alert" className="text-meta text-error-text">
           {actions.error}
         </p>
       )}
@@ -392,8 +392,8 @@ function TitleBlock({ pull }: { pull: PullRequestDetail }) {
           )}
           <span aria-hidden="true">·</span>
           <span className="font-mono text-meta tabular-nums">
-            <span className="text-success">+{pull.additions}</span>{" "}
-            <span className="text-error">−{pull.deletions}</span>
+            <span className="text-success-text">+{pull.additions}</span>{" "}
+            <span className="text-error-text">−{pull.deletions}</span>
           </span>
         </span>
       </ViewerTitle>
@@ -403,11 +403,11 @@ function TitleBlock({ pull }: { pull: PullRequestDetail }) {
 }
 
 const reviewerLook: Record<Reviewer["state"], { icon: LucideIcon; tone: string; word: string }> = {
-  approved: { icon: CircleCheck, tone: "text-success", word: "approved" },
-  changesRequested: { icon: CircleX, tone: "text-error", word: "requested changes" },
+  approved: { icon: CircleCheck, tone: "text-success-text", word: "approved" },
+  changesRequested: { icon: CircleX, tone: "text-error-text", word: "requested changes" },
   commented: { icon: MessageSquare, tone: "text-fg-tertiary", word: "commented" },
   dismissed: { icon: CircleSlash, tone: "text-fg-tertiary", word: "review dismissed" },
-  requested: { icon: CircleDashed, tone: "text-attention", word: "review requested" },
+  requested: { icon: CircleDashed, tone: "text-attention-text", word: "review requested" },
 };
 
 /** Who reviews it and who it's assigned to, its labels and milestone: the lines that have something. */
@@ -575,7 +575,7 @@ function TimelinePage({
   if (page === undefined) {
     return (
       <p
-        className={`text-center text-meta ${AsyncResult.isFailure(result) ? "text-error" : "text-fg-tertiary"}`}
+        className={`text-center text-meta ${AsyncResult.isFailure(result) ? "text-error-text" : "text-fg-tertiary"}`}
       >
         {AsyncResult.isFailure(result)
           ? failureMessage(result.cause, "More of the conversation couldn't be read.")

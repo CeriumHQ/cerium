@@ -142,7 +142,7 @@ function InstalledCard({
               Set up
             </Button>
           ) : (
-            <span className="flex h-7.5 items-center gap-1.5 pr-1 text-meta text-success">
+            <span className="flex h-7.5 items-center gap-1.5 pr-1 text-meta text-success-text">
               <Check size={14} strokeWidth={2} />
               Ready
             </span>
@@ -179,7 +179,7 @@ function Card({
           {harnessName[provider]}
         </span>
         <span
-          className={`truncate text-meta ${readiness === "attention" ? "text-attention" : "text-fg-tertiary"}`}
+          className={`truncate text-meta ${readiness === "attention" ? "text-attention-text" : "text-fg-tertiary"}`}
         >
           {detail}
         </span>

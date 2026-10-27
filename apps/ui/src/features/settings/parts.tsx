@@ -108,7 +108,7 @@ export function SettingsRow({
           {label}
         </span>
         {hint ? <span className="text-meta leading-relaxed text-fg-tertiary">{hint}</span> : null}
-        {error ? <span className="text-meta leading-relaxed text-error">{error}</span> : null}
+        {error ? <span className="text-meta leading-relaxed text-error-text">{error}</span> : null}
       </div>
       {control(labelId)}
     </div>

@@ -34,7 +34,7 @@ export function OperationBanner({
       className="flex flex-col gap-2 border-b border-line-subtle bg-surface-sunken px-3 py-2.5"
     >
       <div className="flex items-start gap-2">
-        <GitMerge size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-attention" />
+        <GitMerge size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 text-attention-text" />
         <div className="flex min-w-0 flex-col">
           <h3 className="text-body font-medium text-fg-primary max-md:text-[15px]">
             {operationTitle(state)}
@@ -66,7 +66,7 @@ export function OperationBanner({
             type="button"
             disabled={busy}
             onClick={() => onAsk({ kind: "abort" })}
-            className={`${buttonClass} hover:text-error`}
+            className={`${buttonClass} hover:text-error-text`}
           >
             Abort
           </button>

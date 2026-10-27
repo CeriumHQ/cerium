@@ -35,7 +35,7 @@ export function StateIcon({
   return (
     <span
       title={stateLabel(issue)}
-      className={`shrink-0 ${issue.state === "open" ? "text-success" : "text-fg-tertiary"} ${className}`}
+      className={`shrink-0 ${issue.state === "open" ? "text-success-text" : "text-fg-tertiary"} ${className}`}
     >
       <Icon size={size} strokeWidth={1.75} aria-label={stateLabel(issue)} />
     </span>
@@ -58,7 +58,7 @@ export function PullRequestChip({ pull }: { pull: LinkedPullRequest }) {
       title={`${pull.title ?? "Pull request"} (${how})`}
       className="inline-flex shrink-0 items-center gap-1 text-meta text-fg-tertiary"
     >
-      <Icon size={13} strokeWidth={1.75} className={pull.state === "open" ? "text-success" : ""} />
+      <Icon size={13} strokeWidth={1.75} className={pull.state === "open" ? "text-success-text" : ""} />
       <span className="tabular-nums">#{pull.number}</span>
     </span>
   );

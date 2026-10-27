@@ -37,7 +37,7 @@ function CloneRun({
 
   if (AsyncResult.isFailure(result)) {
     return (
-      <p role="alert" className="text-meta leading-relaxed text-error">
+      <p role="alert" className="text-meta leading-relaxed text-error-text">
         {messageOf(result.cause, "The clone didn't finish.")}
       </p>
     );

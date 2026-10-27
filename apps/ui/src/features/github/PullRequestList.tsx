@@ -295,7 +295,7 @@ function Page({
   if (page === undefined) {
     if (AsyncResult.isFailure(result)) {
       return (
-        <li className="px-4 py-6 text-center text-meta text-error">
+        <li className="px-4 py-6 text-center text-meta text-error-text">
           {failureMessage(result.cause, "The pull requests couldn't be listed.")}
         </li>
       );
@@ -368,8 +368,8 @@ function Skeleton() {
 }
 
 const reviewLook = {
-  approved: { label: "Approved", tone: "text-success" },
-  changesRequested: { label: "Changes requested", tone: "text-error" },
+  approved: { label: "Approved", tone: "text-success-text" },
+  changesRequested: { label: "Changes requested", tone: "text-error-text" },
   reviewRequired: undefined,
 } as const;
 
@@ -400,7 +400,7 @@ function PullRow({
       marks={
         <>
           {pull.mergeable === "conflicting" && pull.state === "open" ? (
-            <span className="text-attention">Conflicts</span>
+            <span className="text-attention-text">Conflicts</span>
           ) : null}
           {review === undefined ? null : <span className={review.tone}>{review.label}</span>}
           <CommentCount count={pull.comments} />
@@ -419,11 +419,11 @@ export function ChecksMark({ state, size = 12 }: { state: ChecksState; size?: nu
   return (
     <span aria-label={checksLabel[state]} className="flex">
       {state === "passing" ? (
-        <Check size={size} strokeWidth={2.5} className="text-success" />
+        <Check size={size} strokeWidth={2.5} className="text-success-text" />
       ) : state === "failing" ? (
-        <X size={size} strokeWidth={2.5} className="text-error" />
+        <X size={size} strokeWidth={2.5} className="text-error-text" />
       ) : (
-        <CircleDashed size={size} strokeWidth={2.25} className="text-attention" />
+        <CircleDashed size={size} strokeWidth={2.25} className="text-attention-text" />
       )}
     </span>
   );

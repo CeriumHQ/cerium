@@ -50,7 +50,9 @@ export function Notice({
         <Icon
           size={13}
           strokeWidth={2}
-          className={tone === "error" ? "text-error" : tone === "update" ? "text-accent" : "text-attention"}
+          className={
+            tone === "error" ? "text-error-text" : tone === "update" ? "text-accent" : "text-attention-text"
+          }
         />
       </span>
       <span ref={text} className={`min-w-0 flex-1 ${clamp && !expanded ? "line-clamp-2" : ""}`}>

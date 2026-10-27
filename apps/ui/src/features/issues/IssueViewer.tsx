@@ -175,7 +175,7 @@ export function IssueViewer({
             <StatePill
               icon={<StateIcon issue={issue} size={13} />}
               label={stateLabel(issue)}
-              tone={issue.state === "open" ? "text-success" : "text-fg-secondary"}
+              tone={issue.state === "open" ? "text-success-text" : "text-fg-secondary"}
             />
             <span>
               <span className="font-medium text-fg-secondary">{loginOf(issue.author)}</span> opened this{" "}

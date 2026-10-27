@@ -10,7 +10,7 @@ const tint = {
   added: "bg-success/10 text-fg-primary",
 } as const;
 
-const markerTint = { context: "", removed: "text-error", added: "text-success" } as const;
+const markerTint = { context: "", removed: "text-error-text", added: "text-success-text" } as const;
 
 /** A file edit as a compact diff, several edits to one file separated by a gap marker. */
 export function EditDiff({ edits }: { edits: ReadonlyArray<FileEdit> }) {

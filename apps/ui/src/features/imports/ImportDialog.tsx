@@ -52,7 +52,7 @@ function ImportDialog({ onClose }: { readonly onClose: () => void }) {
     >
       {done ? (
         <p className="flex items-center gap-2 text-body text-fg-primary">
-          <Check size={15} strokeWidth={2} className="text-success" />
+          <Check size={15} strokeWidth={2} className="text-success-text" />
           {state.count === 1 ? "1 thread" : `${state.count} threads`} in, each where you left it.
         </p>
       ) : AsyncResult.isInitial(result) || (result.waiting && sessions.length === 0) ? (
@@ -61,7 +61,7 @@ function ImportDialog({ onClose }: { readonly onClose: () => void }) {
           Looking through your harnesses…
         </p>
       ) : AsyncResult.isFailure(result) ? (
-        <p className="py-2 text-body text-error">This machine couldn't list its harnesses' sessions.</p>
+        <p className="py-2 text-body text-error-text">This machine couldn't list its harnesses' sessions.</p>
       ) : sessions.length === 0 ? (
         <p className="py-2 text-body text-fg-tertiary">No sessions left to bring in.</p>
       ) : (
@@ -75,7 +75,7 @@ function ImportDialog({ onClose }: { readonly onClose: () => void }) {
               disabled={state._tag === "importing"}
             />
           </ScrollArea>
-          {state._tag === "failed" ? <p className="text-meta text-error">{state.message}</p> : null}
+          {state._tag === "failed" ? <p className="text-meta text-error-text">{state.message}</p> : null}
         </>
       )}
     </FormDialog>

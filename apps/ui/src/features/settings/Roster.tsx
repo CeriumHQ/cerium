@@ -71,7 +71,7 @@ export function RosterSection({
         <>
           The models a lead starts without asking you, first choice first, and what it uses each for. It asks
           before starting any other.
-          {error ? <span className="block text-error">{error}</span> : null}
+          {error ? <span className="block text-error-text">{error}</span> : null}
         </>
       }
     >

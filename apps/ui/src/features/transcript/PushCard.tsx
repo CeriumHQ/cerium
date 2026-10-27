@@ -95,9 +95,11 @@ const isLive = (push: PushRecord) =>
     (push.ci === undefined || push.ci.state === "waiting" || push.ci.state === "running"));
 
 function ToneIcon({ tone, size = 14 }: { tone: Tone; size?: number }) {
-  if (tone === "running") return <LoaderCircle size={size} className="shrink-0 animate-spin text-running" />;
-  if (tone === "failed") return <X size={size} strokeWidth={2.25} className="shrink-0 text-error" />;
-  if (tone === "passed") return <Check size={size} strokeWidth={2.25} className="shrink-0 text-success" />;
+  if (tone === "running")
+    return <LoaderCircle size={size} className="shrink-0 animate-spin text-running-text" />;
+  if (tone === "failed") return <X size={size} strokeWidth={2.25} className="shrink-0 text-error-text" />;
+  if (tone === "passed")
+    return <Check size={size} strokeWidth={2.25} className="shrink-0 text-success-text" />;
   return <Ban size={size - 1} strokeWidth={2} className="shrink-0 text-fg-tertiary" />;
 }
 
@@ -204,9 +206,9 @@ function SentDetails({ push, now }: { push: PushRecord; now: number }) {
     <Collapsible.Root className="border-t border-line-subtle">
       <Collapsible.Trigger className="group flex h-8 w-full items-center gap-2.5 px-3 text-left text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-10">
         {push.stage === "rejected" ? (
-          <X size={14} strokeWidth={2.25} className="shrink-0 text-error" />
+          <X size={14} strokeWidth={2.25} className="shrink-0 text-error-text" />
         ) : (
-          <Check size={14} strokeWidth={2.25} className="shrink-0 text-success" />
+          <Check size={14} strokeWidth={2.25} className="shrink-0 text-success-text" />
         )}
         <span className="min-w-0 truncate">
           {push.stage === "rejected" ? "Checked on your computer, but not sent" : sentLine(push)}
@@ -248,12 +250,12 @@ function SentDetails({ push, now }: { push: PushRecord; now: number }) {
 function StateIcon({ state }: { state: PushCheck["state"] | HookStep["state"] }) {
   switch (state) {
     case "running":
-      return <LoaderCircle size={14} className="shrink-0 animate-spin text-running" />;
+      return <LoaderCircle size={14} className="shrink-0 animate-spin text-running-text" />;
     case "passed":
     case "done":
-      return <Check size={14} strokeWidth={2.25} className="shrink-0 text-success" />;
+      return <Check size={14} strokeWidth={2.25} className="shrink-0 text-success-text" />;
     case "failed":
-      return <X size={14} strokeWidth={2.25} className="shrink-0 text-error" />;
+      return <X size={14} strokeWidth={2.25} className="shrink-0 text-error-text" />;
     case "cancelled":
     case "skipped":
       return <Ban size={13} strokeWidth={2} className="shrink-0 text-fg-tertiary" />;
@@ -285,7 +287,7 @@ function Row({
         {name}
       </span>
       <span
-        className={`ml-auto shrink-0 tabular-nums ${state === "failed" ? "text-error" : "text-fg-tertiary"}`}
+        className={`ml-auto shrink-0 tabular-nums ${state === "failed" ? "text-error-text" : "text-fg-tertiary"}`}
       >
         {status}
       </span>
@@ -431,7 +433,7 @@ function Actions({ push }: { push: PushRecord }) {
         </ActionButton>
       ) : null}
       {error === undefined ? null : (
-        <span className="min-w-0 truncate px-2 text-meta text-error">{error}</span>
+        <span className="min-w-0 truncate px-2 text-meta text-error-text">{error}</span>
       )}
     </footer>
   );

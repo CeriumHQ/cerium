@@ -217,8 +217,8 @@ function Count({ count }: { count: number }) {
 }
 
 const reviewLook = {
-  approved: { label: "Approved", tone: "text-success" },
-  changesRequested: { label: "Changes requested", tone: "text-error" },
+  approved: { label: "Approved", tone: "text-success-text" },
+  changesRequested: { label: "Changes requested", tone: "text-error-text" },
   reviewRequired: undefined,
 } as const;
 

@@ -6,7 +6,7 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAt
 const toneClass = {
   neutral: "border border-line-strong text-fg-primary hover:bg-surface-hover",
   primary: "bg-accent text-accent-fg hover:bg-accent-strong",
-  danger: "border border-error/35 bg-error/15 text-error hover:bg-error/25",
+  danger: "border border-error/35 bg-error/15 text-error-text hover:bg-error/25",
 } as const;
 
 /** A button for a dialog's footer: `primary` for the choice most people want, `danger` for what can't be undone. */

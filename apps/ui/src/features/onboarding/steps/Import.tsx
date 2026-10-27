@@ -40,7 +40,7 @@ export function Import({
         <Reveal order={3} className="mt-[clamp(22px,4vh,40px)] flex max-w-[24rem] flex-col items-start gap-3">
           {state._tag === "done" ? (
             <p className="flex items-center gap-2 text-reading leading-relaxed text-fg-primary">
-              <Check size={16} strokeWidth={2} className="text-success" />
+              <Check size={16} strokeWidth={2} className="text-success-text" />
               {state.count === 1 ? "1 thread" : `${state.count} threads`} in, each where you left it.
             </p>
           ) : (
@@ -50,7 +50,7 @@ export function Import({
               where it left off; older ones go to Archive.
             </p>
           )}
-          {state._tag === "failed" ? <p className="text-meta text-error">{state.message}</p> : null}
+          {state._tag === "failed" ? <p className="text-meta text-error-text">{state.message}</p> : null}
           <p className="flex items-center gap-1.5 text-meta text-fg-tertiary">
             <Cloud size={13} strokeWidth={1.75} className="shrink-0" />
             {signedIn

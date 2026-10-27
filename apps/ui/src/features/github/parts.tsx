@@ -21,9 +21,9 @@ import { whenAgo } from "../../lib/time.ts";
 import { labelColor, pullStateLabel, type PullStateKind } from "./model.ts";
 
 const pullStateLook: Record<PullStateKind, { icon: LucideIcon; tone: string }> = {
-  open: { icon: GitPullRequestArrow, tone: "text-success" },
+  open: { icon: GitPullRequestArrow, tone: "text-success-text" },
   draft: { icon: GitPullRequestDraft, tone: "text-fg-tertiary" },
-  closed: { icon: GitPullRequestClosed, tone: "text-error" },
+  closed: { icon: GitPullRequestClosed, tone: "text-error-text" },
   merged: { icon: GitMerge, tone: "text-merged" },
 };
 
@@ -345,12 +345,12 @@ export function CommentBox({
         <div className="flex flex-wrap items-center justify-end gap-1.5 p-2">{children}</div>
       </div>
       {error === undefined ? null : (
-        <p role="alert" className="flex items-start gap-2 px-1 text-meta text-error max-md:text-[14px]">
+        <p role="alert" className="flex items-start gap-2 px-1 text-meta text-error-text max-md:text-[14px]">
           <span className="min-w-0 flex-1 text-balance">{error}</span>
           <Button
             aria-label="Dismiss"
             onClick={onDismiss}
-            className="grid size-4 shrink-0 place-items-center rounded text-error/70 hover:text-error"
+            className="grid size-4 shrink-0 place-items-center rounded text-error-text/70 hover:text-error-text"
           >
             <X size={12} strokeWidth={2} />
           </Button>

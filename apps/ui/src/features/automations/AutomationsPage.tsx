@@ -89,10 +89,10 @@ const stateTone: Record<RunState, string> = {
 
 const stateText: Record<RunState, string> = {
   working: "text-fg-secondary",
-  needsYou: "text-attention",
+  needsYou: "text-attention-text",
   done: "text-fg-tertiary",
-  failed: "text-error",
-  notStarted: "text-error",
+  failed: "text-error-text",
+  notStarted: "text-error-text",
   skipped: "text-fg-tertiary",
 };
 
@@ -449,7 +449,7 @@ export function AutomationDetail({
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 px-4 pb-6">
           <div className="flex flex-col gap-1">
-            {paused ? <span className="text-meta font-medium text-attention">Paused</span> : null}
+            {paused ? <span className="text-meta font-medium text-attention-text">Paused</span> : null}
             <input
               value={shownDraft.name}
               onChange={(event) => edit({ name: event.target.value })}
@@ -617,7 +617,7 @@ export function AutomationDetail({
 
           {dirty ? (
             <div className="flex items-center justify-end gap-2">
-              {problem ? <span className="mr-auto min-w-0 text-meta text-error">{problem}</span> : null}
+              {problem ? <span className="mr-auto min-w-0 text-meta text-error-text">{problem}</span> : null}
               {view !== undefined ? (
                 <Button
                   onClick={() => {
@@ -643,7 +643,7 @@ export function AutomationDetail({
               </Tooltip>
             </div>
           ) : problem ? (
-            <p className="text-meta text-error">{problem}</p>
+            <p className="text-meta text-error-text">{problem}</p>
           ) : null}
 
           {view === undefined ? null : <Runs view={view} onOpenThread={onOpenThread} />}

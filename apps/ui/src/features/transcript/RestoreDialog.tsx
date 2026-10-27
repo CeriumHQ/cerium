@@ -19,7 +19,7 @@ function Line({ icon: Icon, tone, children }: { icon: LucideIcon; tone?: "warnin
       <Icon
         size={14}
         strokeWidth={1.75}
-        className={`mt-[3px] shrink-0 ${tone === "warning" ? "text-warning" : "text-fg-tertiary"}`}
+        className={`mt-[3px] shrink-0 ${tone === "warning" ? "text-attention-text" : "text-fg-tertiary"}`}
       />
       <div className="min-w-0 flex-1">{children}</div>
     </li>
@@ -132,7 +132,7 @@ export function RestoreDialog({
           {check.status === "loading" ? (
             <p className="animate-pulse text-body text-fg-tertiary">Checking what changed since…</p>
           ) : check.status === "failed" ? (
-            <p className="text-body text-error">{check.message}</p>
+            <p className="text-body text-error-text">{check.message}</p>
           ) : (
             <Consequences preview={check.preview} harness={harness} />
           )}
@@ -144,7 +144,7 @@ export function RestoreDialog({
             <Button
               disabled={check.status !== "ready" || restoring}
               onClick={restore}
-              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error transition-colors hover:bg-error/25 disabled:opacity-50 disabled:hover:bg-error/15 max-md:h-10 max-md:px-4 max-md:text-[15px]"
+              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error-text transition-colors hover:bg-error/25 disabled:opacity-50 disabled:hover:bg-error/15 max-md:h-10 max-md:px-4 max-md:text-[15px]"
             >
               {restoring ? "Restoring…" : "Restore"}
             </Button>

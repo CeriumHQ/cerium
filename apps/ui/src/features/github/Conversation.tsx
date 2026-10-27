@@ -256,11 +256,11 @@ export function CommentCard({
 }
 
 const verdict: Record<ReviewState, { icon: LucideIcon; tone: string; words: string }> = {
-  approved: { icon: CircleCheck, tone: "text-success", words: "approved these changes" },
-  changesRequested: { icon: FileDiff, tone: "text-error", words: "requested changes" },
+  approved: { icon: CircleCheck, tone: "text-success-text", words: "approved these changes" },
+  changesRequested: { icon: FileDiff, tone: "text-error-text", words: "requested changes" },
   commented: { icon: Eye, tone: "text-fg-tertiary", words: "reviewed" },
   dismissed: { icon: CircleSlash, tone: "text-fg-tertiary", words: "reviewed (dismissed)" },
-  pending: { icon: Eye, tone: "text-attention", words: "started a review" },
+  pending: { icon: Eye, tone: "text-attention-text", words: "started a review" },
 };
 
 type Review = Extract<ConversationItem, { readonly _tag: "Review" }>;
@@ -445,7 +445,7 @@ function Event({ item }: { item: EventItem }) {
         item.reason === "notPlanned" ? "text-fg-tertiary" : "text-merged",
       );
     case "Reopened":
-      return row(CircleDot, "reopened this", "text-success");
+      return row(CircleDot, "reopened this", "text-success-text");
     case "Renamed":
       return row(
         Pencil,

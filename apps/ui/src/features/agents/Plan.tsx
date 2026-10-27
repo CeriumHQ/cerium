@@ -79,7 +79,7 @@ function Step({
         }`}
       >
         {item.status === "completed" ? (
-          <Check size={13} strokeWidth={2.5} className={`text-success ${changed ? "draw-check" : ""}`} />
+          <Check size={13} strokeWidth={2.5} className={`text-success-text ${changed ? "draw-check" : ""}`} />
         ) : item.status === "cancelled" ? (
           <X size={12} strokeWidth={2} className="text-fg-disabled" />
         ) : active ? (
@@ -101,7 +101,7 @@ function Step({
               : item.status === "completed"
                 ? "text-fg-tertiary"
                 : item.status === "cancelled"
-                  ? "text-fg-disabled line-through"
+                  ? "text-fg-tertiary line-through"
                   : "text-fg-secondary"
           }`}
         >

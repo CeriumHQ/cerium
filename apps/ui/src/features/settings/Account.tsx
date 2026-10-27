@@ -137,7 +137,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
             <p className="text-meta text-fg-tertiary">
               Google, GitHub, X or email. Cerium never sees your password.
             </p>
-            {shownError ? <p className="w-full text-meta text-error">{shownError}</p> : null}
+            {shownError ? <p className="w-full text-meta text-error-text">{shownError}</p> : null}
           </div>
         )}
       </div>
@@ -200,7 +200,9 @@ function AccountCard({ account }: { account: SignedIn }) {
           <QuietButton onClick={() => setConfirming(true)}>Sign out</QuietButton>
         </div>
       </div>
-      {error ? <p className="border-t border-line-subtle px-4 py-3 text-meta text-error">{error}</p> : null}
+      {error ? (
+        <p className="border-t border-line-subtle px-4 py-3 text-meta text-error-text">{error}</p>
+      ) : null}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -245,7 +247,7 @@ function ConnectionState({ connection }: { connection: SignedIn["connection"] })
   return (
     <span
       className={`flex shrink-0 items-center gap-1.5 text-meta ${
-        connection === "offline" ? "text-attention" : "text-fg-tertiary"
+        connection === "offline" ? "text-attention-text" : "text-fg-tertiary"
       }`}
     >
       <span
@@ -385,7 +387,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
               {note === undefined ? null : (
                 <>
                   {details === "" ? null : " · "}
-                  <span className={outdated ? "text-attention" : undefined}>{note}</span>
+                  <span className={outdated ? "text-attention-text" : undefined}>{note}</span>
                 </>
               )}
             </span>
@@ -417,7 +419,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
           </MenuPopup>
         </MenuRoot>
       </div>
-      {error ? <p className="pl-11.5 text-meta text-error">{error}</p> : null}
+      {error ? <p className="pl-11.5 text-meta text-error-text">{error}</p> : null}
       <ConfirmDialog
         open={removing}
         onOpenChange={setRemoving}

@@ -125,7 +125,9 @@ export function InboxCard({
         <span className="min-w-0 flex-1 truncate">
           {status ? (
             <>
-              <span className={`font-medium ${status === "failed" ? "text-error" : "text-attention"}`}>
+              <span
+                className={`font-medium ${status === "failed" ? "text-error-text" : "text-attention-text"}`}
+              >
                 {asks[status]}
               </span>
               {thread.project ? " · " : ""}

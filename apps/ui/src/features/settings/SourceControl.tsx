@@ -202,7 +202,7 @@ function ProjectScriptFields({
         </RowButton>
         <div className="flex min-w-0 flex-1 items-center">
           {error !== undefined ? (
-            <span className="truncate text-meta text-error">{error}</span>
+            <span className="truncate text-meta text-error-text">{error}</span>
           ) : fresh ? (
             <span className="text-meta text-fg-tertiary">Saved.</span>
           ) : null}

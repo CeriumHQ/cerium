@@ -47,7 +47,7 @@ function Waiting({ children }: { children: string }) {
 }
 
 function Failed({ children }: { children: string }) {
-  return <p className="px-6 py-10 text-center text-meta text-error">{children}</p>;
+  return <p className="px-6 py-10 text-center text-meta text-error-text">{children}</p>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -128,10 +128,10 @@ function CommitRow({ commit }: { commit: PullRequestCommit }) {
 // Checks
 
 const checkLook: Record<PullRequestCheck["state"], { icon: LucideIcon; tone: string; word: string }> = {
-  failure: { icon: CircleX, tone: "text-error", word: "Failed" },
-  actionRequired: { icon: CircleX, tone: "text-attention", word: "Action required" },
-  pending: { icon: CircleDashed, tone: "text-attention", word: "Running" },
-  success: { icon: CircleCheck, tone: "text-success", word: "Passed" },
+  failure: { icon: CircleX, tone: "text-error-text", word: "Failed" },
+  actionRequired: { icon: CircleX, tone: "text-attention-text", word: "Action required" },
+  pending: { icon: CircleDashed, tone: "text-attention-text", word: "Running" },
+  success: { icon: CircleCheck, tone: "text-success-text", word: "Passed" },
   neutral: { icon: CircleMinus, tone: "text-fg-tertiary", word: "Neutral" },
   skipped: { icon: CircleSlash, tone: "text-fg-tertiary", word: "Skipped" },
   cancelled: { icon: CircleSlash, tone: "text-fg-tertiary", word: "Cancelled" },
@@ -415,8 +415,8 @@ function FileDiff({
             <span className="text-fg-tertiary">{fileStatusWord[file.status]}</span>
           )}
           <span className="font-mono">
-            <span className="text-success">+{file.additions}</span>{" "}
-            <span className="text-error">−{file.deletions}</span>
+            <span className="text-success-text">+{file.additions}</span>{" "}
+            <span className="text-error-text">−{file.deletions}</span>
           </span>
         </span>
       </Button>

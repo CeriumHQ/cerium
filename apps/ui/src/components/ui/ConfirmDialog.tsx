@@ -42,7 +42,7 @@ export function ConfirmDialog({
             </AlertDialog.Close>
             <AlertDialog.Close
               onClick={onConfirm}
-              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error transition-colors hover:bg-error/25 max-md:h-10 max-md:px-4 max-md:text-[15px]"
+              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error-text transition-colors hover:bg-error/25 max-md:h-10 max-md:px-4 max-md:text-[15px]"
             >
               {confirmLabel}
             </AlertDialog.Close>

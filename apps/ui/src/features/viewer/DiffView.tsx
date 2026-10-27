@@ -28,7 +28,11 @@ const tint = {
   removed: "bg-error/10",
   added: "bg-success/10",
 } as const;
-const markerTint = { context: "text-fg-disabled", removed: "text-error", added: "text-success" } as const;
+const markerTint = {
+  context: "text-fg-disabled",
+  removed: "text-error-text",
+  added: "text-success-text",
+} as const;
 /** The words that changed within a changed line, a step stronger than the line's own tint. */
 const wordMark = { context: "", removed: "rounded-[2px] bg-error/25", added: "rounded-[2px] bg-success/25" };
 

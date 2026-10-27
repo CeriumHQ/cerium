@@ -227,7 +227,7 @@ function RiskFacts({ risk, effects }: { risk: Risk; effects: ReadonlyArray<Effec
   return (
     <ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-meta text-fg-tertiary max-md:text-[13px]">
       <li
-        className={`flex items-center gap-1.5 font-medium ${risk === "high" ? "text-error" : "text-fg-primary"}`}
+        className={`flex items-center gap-1.5 font-medium ${risk === "high" ? "text-error-text" : "text-fg-primary"}`}
       >
         <span aria-hidden className="flex items-end gap-[2px]">
           {[6, 9, 12].map((height, index) => (
@@ -292,7 +292,7 @@ const base = "h-7 rounded-md px-2.5 text-meta transition-colors max-md:h-9 max-m
 export const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-40`;
 const outlined = `${base} border border-line-strong font-medium text-fg-primary hover:bg-surface-hover`;
 /** Allowing what can't be undone: outlined in the error colour rather than filled, so it reads as a choice. */
-const riskyAnswer = `${base} border border-error/55 font-medium text-error hover:bg-error/10`;
+const riskyAnswer = `${base} border border-error/55 font-medium text-error-text hover:bg-error/10`;
 export const quiet = `${base} ml-auto text-fg-secondary hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40`;
 
 /** An answer button, naming the chord that gives the same answer where there is one. */

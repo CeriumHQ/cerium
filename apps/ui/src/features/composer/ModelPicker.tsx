@@ -606,7 +606,7 @@ function ModelRow({
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => browse.toggleFavorite(key)}
         // An unstarred row's star waits for the pointer or keyboard, so the list stays quiet.
-        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-surface-active max-md:size-8 ${starred ? "text-attention" : "text-fg-disabled opacity-0 group-hover/row:opacity-100 group-has-data-highlighted/row:opacity-100 hover:text-fg-secondary max-md:opacity-100"}`}
+        className={`absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-surface-active max-md:size-8 ${starred ? "text-attention-text" : "text-fg-disabled opacity-0 group-hover/row:opacity-100 group-has-data-highlighted/row:opacity-100 hover:text-fg-secondary max-md:opacity-100"}`}
       >
         <Star size={13} strokeWidth={1.75} className={starred ? "fill-current" : ""} />
       </button>

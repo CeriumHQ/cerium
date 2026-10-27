@@ -5,12 +5,12 @@ import { stateLetter, stateWord, touchWord } from "./model.ts";
 
 /** Colour only where it means something: what needs a look is amber or red, what's new is green. */
 export const stateTone: Readonly<Record<FileState, string>> = {
-  modified: "text-attention",
-  added: "text-success",
-  untracked: "text-success",
-  deleted: "text-error",
-  renamed: "text-running",
-  conflicted: "text-error",
+  modified: "text-attention-text",
+  added: "text-success-text",
+  untracked: "text-success-text",
+  deleted: "text-error-text",
+  renamed: "text-running-text",
+  conflicted: "text-error-text",
 };
 
 /** The letter beside a changed file, as editors show it. */

@@ -70,7 +70,7 @@ export function HarnessSettings() {
       }
     >
       {failed ? (
-        <p className="rounded-xl border border-line-subtle px-4 py-3.5 text-body text-error">
+        <p className="rounded-xl border border-line-subtle px-4 py-3.5 text-body text-error-text">
           {machine
             ? `Couldn't reach ${machine}. Check again once it's connected.`
             : "Couldn't check the harnesses. Try again in a moment."}
@@ -345,7 +345,7 @@ function SignInProgress({ provider, onSignedIn }: { provider: ProviderId; onSign
   if (AsyncResult.isFailure(result)) {
     return (
       <div className="flex items-center gap-3 text-meta">
-        <p className="min-w-0 flex-1 text-error">The sign-in didn't finish.</p>
+        <p className="min-w-0 flex-1 text-error-text">The sign-in didn't finish.</p>
         <RowButton onClick={retry}>Try again</RowButton>
       </div>
     );

@@ -59,7 +59,7 @@ export function AttachmentTray({
                     </span>
                   ) : attachment.state._tag === "Failed" ? (
                     <Tooltip label={attachment.state.message} side="top">
-                      <span className="absolute inset-0 grid place-items-center rounded-lg border border-error/60 bg-scrim text-error">
+                      <span className="absolute inset-0 grid place-items-center rounded-lg border border-error/60 bg-scrim text-error-text">
                         <CircleAlert size={16} strokeWidth={2} />
                       </span>
                     </Tooltip>
@@ -80,7 +80,7 @@ export function AttachmentTray({
         </div>
       </ScrollArea>
       {failures[0] === undefined ? null : (
-        <p className="px-4 pt-2 text-meta text-error">
+        <p className="px-4 pt-2 text-meta text-error-text">
           {failures[0]}
           {failures.length > 1 ? ` ${failures.length - 1} more failed too.` : ""}
         </p>

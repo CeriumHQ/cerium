@@ -135,7 +135,7 @@ export function ToolRun({
       >
         <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
         <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
-        {failed > 0 ? <span className="shrink-0 text-error">· {failed} failed</span> : null}
+        {failed > 0 ? <span className="shrink-0 text-error-text">· {failed} failed</span> : null}
         {interrupted > 0 ? <span className="shrink-0">· {interrupted} interrupted</span> : null}
         <ChevronRight
           size={13}
@@ -236,7 +236,7 @@ const ToolRow = memo(
           </span>
         </span>
         {reason && !open ? (
-          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-meta text-error">{reason}</span>
+          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-meta text-error-text">{reason}</span>
         ) : null}
       </Collapsible.Trigger>
     );
@@ -315,10 +315,12 @@ function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activit
       </span>
     );
   }
-  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running" />;
+  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running-text" />;
   if (status === "error")
-    return <X size={13} strokeWidth={2.25} className={`text-error ${finished ? "swap-in" : ""}`} />;
-  return <Check size={13} strokeWidth={2.25} className={`text-success/80 ${finished ? "draw-check" : ""}`} />;
+    return <X size={13} strokeWidth={2.25} className={`text-error-text ${finished ? "swap-in" : ""}`} />;
+  return (
+    <Check size={13} strokeWidth={2.25} className={`text-success-text/80 ${finished ? "draw-check" : ""}`} />
+  );
 }
 
 /** What an opened row shows: what the call was given, then what came back. */
@@ -437,7 +439,7 @@ function Pane({
         <span className={LABEL}>{label}</span>
         {badge ? (
           <span
-            className={`rounded px-1.5 text-caption tabular-nums ${failed ? "bg-error/10 text-error" : "bg-surface-hover text-fg-secondary"}`}
+            className={`rounded px-1.5 text-caption tabular-nums ${failed ? "bg-error/10 text-error-text" : "bg-surface-hover text-fg-secondary"}`}
           >
             {badge}
           </span>

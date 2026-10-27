@@ -86,7 +86,11 @@ const statusWords = {
   failed: (count: number) => `${count} failed`,
 } as const;
 
-const statusTone = { needsYou: "text-attention", running: "text-fg-tertiary", failed: "text-error" } as const;
+const statusTone = {
+  needsYou: "text-attention-text",
+  running: "text-fg-tertiary",
+  failed: "text-error-text",
+} as const;
 
 /** The thread's agents: who is doing what, what they cost, and controls for each. */
 export function Inspector({
@@ -164,7 +168,7 @@ export function Inspector({
             label="Stop everything"
             shortcut={stopAllKeys}
             onClick={onStopAll}
-            className="ml-auto text-error/80 hover:text-error max-md:size-10"
+            className="ml-auto text-error-text/80 hover:text-error-text max-md:size-10"
           />
         ) : null}
         <IconButton
@@ -261,9 +265,9 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
     <span
       className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-meta max-md:text-[14px]" : "text-caption max-md:text-xs"} ${
         state === "needsYou"
-          ? "text-attention"
+          ? "text-attention-text"
           : state === "failed"
-            ? "text-error"
+            ? "text-error-text"
             : plain
               ? "text-fg-primary"
               : "text-fg-tertiary"
@@ -279,7 +283,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
       ) : state === "failed" ? (
         <span className="size-1.5 rounded-full bg-error" />
       ) : finished ? (
-        <Check size={11} strokeWidth={2.5} className="text-success" />
+        <Check size={11} strokeWidth={2.5} className="text-success-text" />
       ) : state === "queued" ? (
         <span className="size-1.5 rounded-full border border-fg-tertiary" />
       ) : state === "stopped" ? (
@@ -393,7 +397,7 @@ function AgentDetails({
         <AgentQuestion agent={agent} onAnswer={onAnswerQuestion} />
       ) : null}
       {asksInConversation ? (
-        <p className="flex items-center gap-1.5 text-meta text-attention max-md:text-[14px]">
+        <p className="flex items-center gap-1.5 text-meta text-attention-text max-md:text-[14px]">
           <ShieldQuestion size={13} strokeWidth={1.75} />
           Waiting for you in the conversation
         </p>
@@ -444,7 +448,7 @@ function AgentDetails({
           {plan.stop ? (
             <Button
               onClick={() => setConfirmingStop(true)}
-              className={`${actionButton} ml-auto text-fg-secondary hover:bg-error/10 hover:text-error`}
+              className={`${actionButton} ml-auto text-fg-secondary hover:bg-error/10 hover:text-error-text`}
             >
               <CircleStop size={13} strokeWidth={1.75} />
               Stop
@@ -484,7 +488,7 @@ function Quote({
 }) {
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
-  const color = tone === "error" ? "text-error" : "text-fg-secondary";
+  const color = tone === "error" ? "text-error-text" : "text-fg-secondary";
   const rule =
     tone === "error"
       ? "border-l border-error/40"

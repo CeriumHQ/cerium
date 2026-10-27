@@ -48,7 +48,7 @@ export function ToolRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-reading font-medium text-fg-primary">{name}</span>
         <span
-          className={`truncate text-meta ${tone === "attention" ? "text-attention" : "text-fg-tertiary"}`}
+          className={`truncate text-meta ${tone === "attention" ? "text-attention-text" : "text-fg-tertiary"}`}
         >
           {detail}
         </span>

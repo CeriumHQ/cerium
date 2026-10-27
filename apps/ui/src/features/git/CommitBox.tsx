@@ -257,7 +257,7 @@ export function CommitBox({
       </div>
       {failure ? (
         <div role="alert" className="flex flex-col gap-1">
-          <p className="text-meta text-error max-md:text-[14px]">{failure.message}</p>
+          <p className="text-meta text-error-text max-md:text-[14px]">{failure.message}</p>
           {failure.output === undefined ? null : (
             <Disclosure
               summary={/hook/.test(failure.message) ? "What the hook printed" : "What git printed"}
@@ -271,13 +271,13 @@ export function CommitBox({
         </div>
       ) : made ? (
         <p className="flex min-w-0 items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[14px]">
-          <Check size={13} strokeWidth={2} className="shrink-0 text-success" />
+          <Check size={13} strokeWidth={2} className="shrink-0 text-success-text" />
           <span className="shrink-0 font-mono">{made.commit}</span>
           <span className="min-w-0 truncate">{made.subject}</span>
         </p>
       ) : null}
       {reviewError === undefined ? null : (
-        <p role="alert" className="text-meta text-error max-md:text-[14px]">
+        <p role="alert" className="text-meta text-error-text max-md:text-[14px]">
           {reviewError}
         </p>
       )}

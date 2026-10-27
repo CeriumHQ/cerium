@@ -159,7 +159,7 @@ export function NewIssueDialog({
           </div>
         )}
         {error === undefined ? null : (
-          <p role="alert" className="text-meta text-balance text-error max-md:text-[14px]">
+          <p role="alert" className="text-meta text-balance text-error-text max-md:text-[14px]">
             {error}
           </p>
         )}

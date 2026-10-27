@@ -193,7 +193,7 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
         className="max-h-60 min-h-16 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60"
       />
       {actions.error === undefined || actions.busy !== undefined ? null : (
-        <p role="alert" className="text-meta text-error">
+        <p role="alert" className="text-meta text-error-text">
           {actions.error}
         </p>
       )}

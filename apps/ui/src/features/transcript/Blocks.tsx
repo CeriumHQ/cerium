@@ -453,7 +453,7 @@ export function SpawnAsk({ call }: { call: Block<"tool"> }) {
 function AgentState({ state }: { state: ChildState }) {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1 text-caption ${state === "needsYou" ? "text-attention" : "text-fg-tertiary"}`}
+      className={`flex shrink-0 items-center gap-1 text-caption ${state === "needsYou" ? "text-attention-text" : "text-fg-tertiary"}`}
     >
       {state === "running" ? (
         <span className="relative grid size-2 place-items-center">
@@ -463,9 +463,9 @@ function AgentState({ state }: { state: ChildState }) {
       ) : state === "needsYou" ? (
         <span className="mx-px size-1.5 rounded-full bg-attention" />
       ) : state === "failed" ? (
-        <X size={11} strokeWidth={2.5} className="text-error" />
+        <X size={11} strokeWidth={2.5} className="text-error-text" />
       ) : (
-        <Check size={11} strokeWidth={2.5} className="text-success" />
+        <Check size={11} strokeWidth={2.5} className="text-success-text" />
       )}
       {{ running: "Working", needsYou: "Needs you", idle: "Done", failed: "Failed" }[state]}
     </span>

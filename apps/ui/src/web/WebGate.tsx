@@ -112,7 +112,7 @@ function SigningIn({ account }: { account: Exclude<AccountState, { _tag: "Signed
           {starting ? "Opening the sign-in page…" : "Sign in"}
         </Button>
         {shownError ? (
-          <p role="alert" className="text-body leading-relaxed text-error">
+          <p role="alert" className="text-body leading-relaxed text-error-text">
             {shownError}
           </p>
         ) : null}

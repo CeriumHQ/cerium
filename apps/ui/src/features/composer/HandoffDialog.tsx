@@ -36,7 +36,7 @@ export function LowLimitNotice({
         <Gauge
           size={13}
           strokeWidth={1.75}
-          className={`shrink-0 ${level === "critical" ? "text-error" : "text-warning"}`}
+          className={`shrink-0 ${level === "critical" ? "text-error-text" : "text-attention-text"}`}
         />
         <span className="min-w-0 truncate">
           <span className="font-medium text-fg-primary">

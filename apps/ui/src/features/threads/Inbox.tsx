@@ -726,8 +726,8 @@ function InboxRun({
   const count = (status: ThreadSummary["status"]) =>
     threads.filter((thread) => thread.status === status).length;
   const tally = [
-    { count: count("running"), label: "working", tone: "text-running" },
-    { count: count("failed"), label: "failed", tone: "text-error" },
+    { count: count("running"), label: "working", tone: "text-running-text" },
+    { count: count("failed"), label: "failed", tone: "text-error-text" },
     { count: count("idle"), label: "done", tone: "" },
   ].filter((part) => part.count > 0);
 

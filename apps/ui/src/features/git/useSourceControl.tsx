@@ -241,7 +241,9 @@ function SourceControl({
                   role="alert"
                   className="mx-3 mt-2 flex items-start gap-1 rounded-lg bg-error/10 py-1 pr-1 pl-2.5"
                 >
-                  <p className="min-w-0 flex-1 py-0.5 text-meta text-error max-md:text-[14px]">{failure}</p>
+                  <p className="min-w-0 flex-1 py-0.5 text-meta text-error-text max-md:text-[14px]">
+                    {failure}
+                  </p>
                   <IconButton
                     icon={X}
                     label="Dismiss"

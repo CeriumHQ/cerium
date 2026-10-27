@@ -318,7 +318,7 @@ export function BulkBar({
                 setConfirming(true);
               }
             }}
-            className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-error/10 hover:text-error max-md:size-8"
+            className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-error/10 hover:text-error-text max-md:size-8"
           >
             <Trash2 size={14} strokeWidth={1.75} />
           </button>

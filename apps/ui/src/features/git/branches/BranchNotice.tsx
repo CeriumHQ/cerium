@@ -3,8 +3,8 @@ import { X } from "lucide-react";
 import type { BranchControls } from "./useBranchControls.ts";
 
 const tones = {
-  error: "text-error",
-  attention: "text-attention",
+  error: "text-error-text",
+  attention: "text-attention-text",
   info: "text-fg-secondary",
 } as const;
 

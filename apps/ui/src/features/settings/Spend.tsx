@@ -107,7 +107,7 @@ export function SpendSection({
       }
     >
       {AsyncResult.isFailure(result) && report === undefined ? (
-        <SettingsCard className="px-4 py-3.5 text-body text-error">
+        <SettingsCard className="px-4 py-3.5 text-body text-error-text">
           {driven
             ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
             : "Couldn't read the usage. Try again in a moment."}

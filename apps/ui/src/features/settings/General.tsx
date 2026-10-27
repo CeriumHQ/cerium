@@ -346,7 +346,7 @@ function UpdatesSection({ updates }: { updates: Updates }) {
               {noticeVersion(status) === undefined ? (
                 <span
                   role={offline ? "alert" : "status"}
-                  className={`text-meta leading-relaxed ${offline ? "text-error" : "text-fg-tertiary"}`}
+                  className={`text-meta leading-relaxed ${offline ? "text-error-text" : "text-fg-tertiary"}`}
                 >
                   {statusText(updates)}
                   {at !== undefined ? (
@@ -423,7 +423,7 @@ function UpdateOffer({ updates }: { updates: Updates }) {
       className={`mx-2 mb-2 flex items-center gap-3 rounded-lg py-2.5 pr-2.5 pl-3 ${failed ? "bg-error/6" : "bg-accent-soft"}`}
     >
       <span
-        className={`grid size-7 shrink-0 place-items-center rounded-full ${failed ? "bg-error/15 text-error" : "bg-accent text-accent-fg"}`}
+        className={`grid size-7 shrink-0 place-items-center rounded-full ${failed ? "bg-error/15 text-error-text" : "bg-accent text-accent-fg"}`}
       >
         <Icon size={14} strokeWidth={2} aria-hidden="true" />
       </span>

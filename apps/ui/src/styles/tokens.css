@@ -64,7 +64,7 @@
 
   --fg-primary: oklch(0.96 calc(var(--tint-c) * 0.3) var(--tint-h));
   --fg-secondary: oklch(0.78 calc(var(--tint-c) * 0.6) var(--tint-h));
-  --fg-tertiary: oklch(0.6 calc(var(--tint-c) * 0.8) var(--tint-h));
+  --fg-tertiary: oklch(0.66 calc(var(--tint-c) * 0.8) var(--tint-h));
   --fg-disabled: oklch(0.46 calc(var(--tint-c) * 0.8) var(--tint-h));
 
   /* Cerium's accent is the strongest contrast available: near-white on dark. Themes colour it. */
@@ -86,11 +86,15 @@
   --frost-text: oklch(from var(--fg-primary) l c h / 0.46);
   --frost-rim: oklch(from var(--fg-primary) l c h / 0.06);
 
-  /* Status colours: the only hues in the chrome, each with one meaning. */
+  /* Status fills and text share colours in dark mode; light text needs deeper hues. */
   --status-running: oklch(0.72 0.14 245);
   --status-attention: oklch(0.83 0.15 78);
   --status-error: oklch(0.7 0.19 25);
   --status-success: oklch(0.78 0.15 152);
+  --status-running-text: var(--status-running);
+  --status-attention-text: var(--status-attention);
+  --status-success-text: var(--status-success);
+  --status-error-text: var(--status-error);
   /* A pull request merged, in the purple GitHub gives it. */
   --status-merged: oklch(0.72 0.15 305);
 
@@ -141,7 +145,7 @@
   --surface-selected: oklch(0 0 0 / 0.07);
   --surface-sunken: oklch(0 0 0 / 0.045);
 
-  --line-subtle: oklch(0 0 0 / 0.07);
+  --line-subtle: oklch(0 0 0 / 0.1);
   --line-strong: oklch(0 0 0 / 0.14);
 
   --fg-primary: oklch(0.18 calc(var(--tint-c) * 0.8) var(--tint-h));
@@ -167,6 +171,10 @@
   --status-attention: oklch(0.68 0.16 65);
   --status-error: oklch(0.56 0.21 25);
   --status-success: oklch(0.58 0.15 152);
+  --status-running-text: oklch(0.53 0.17 250);
+  --status-attention-text: oklch(0.54 0.14 62);
+  --status-success-text: oklch(0.52 0.14 152);
+  --status-error-text: oklch(0.52 0.2 25);
   --status-merged: oklch(0.52 0.19 305);
 
   --syntax-keyword: oklch(0.5 0.15 305);
@@ -202,9 +210,9 @@
   --shiki-token-comment: var(--fg-tertiary);
   --shiki-token-punctuation: var(--fg-secondary);
   --shiki-token-link: var(--syntax-function);
-  --shiki-token-inserted: var(--status-success);
-  --shiki-token-deleted: var(--status-error);
-  --shiki-token-changed: var(--status-attention);
+  --shiki-token-inserted: var(--status-success-text);
+  --shiki-token-deleted: var(--status-error-text);
+  --shiki-token-changed: var(--status-attention-text);
 }
 
 @theme inline {
@@ -235,9 +243,13 @@
   --color-scrim: var(--scrim);
 
   --color-running: var(--status-running);
+  --color-running-text: var(--status-running-text);
   --color-attention: var(--status-attention);
+  --color-attention-text: var(--status-attention-text);
   --color-error: var(--status-error);
+  --color-error-text: var(--status-error-text);
   --color-success: var(--status-success);
+  --color-success-text: var(--status-success-text);
   --color-merged: var(--status-merged);
 
   --shadow-raised: var(--shadow-raised);

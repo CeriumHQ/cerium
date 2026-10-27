@@ -36,9 +36,9 @@ function Lines({ added, removed }: { added: number | undefined; removed: number 
   if (added === undefined && removed === undefined) return null;
   return (
     <span className="shrink-0 text-meta tabular-nums">
-      {added ? <span className="text-success">+{added}</span> : null}
+      {added ? <span className="text-success-text">+{added}</span> : null}
       {added && removed ? " " : null}
-      {removed ? <span className="text-error">−{removed}</span> : null}
+      {removed ? <span className="text-error-text">−{removed}</span> : null}
     </span>
   );
 }
@@ -88,7 +88,7 @@ function Row({
         {tag === undefined ? null : (
           <span
             className={`shrink-0 rounded border px-1 text-[10.5px] leading-4 ${
-              kept ? "border-warning/40 text-warning" : "border-line-subtle text-fg-tertiary"
+              kept ? "border-attention/40 text-attention-text" : "border-line-subtle text-fg-tertiary"
             }`}
             title={kept ? "Changed since, so left as it is" : undefined}
           >
@@ -210,7 +210,7 @@ export function TurnChanges({
         </p>
       ) : null}
       {reviewError === undefined ? null : (
-        <p role="alert" className="border-t border-line-subtle px-3 py-1.5 text-meta text-error">
+        <p role="alert" className="border-t border-line-subtle px-3 py-1.5 text-meta text-error-text">
           {reviewError}
         </p>
       )}

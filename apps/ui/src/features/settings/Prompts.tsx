@@ -67,7 +67,7 @@ export function PromptSettings() {
         title="Saved prompts"
         description={
           error ? (
-            <span className="block text-error">{error}</span>
+            <span className="block text-error-text">{error}</span>
           ) : (
             "Everywhere prompts work in any thread; a project's only in its own."
           )
@@ -211,7 +211,7 @@ function PromptRow({
             aria-label={`Delete ${prompt.name}`}
             disabled={disabled}
             onClick={onRemove}
-            className={`${actionClass} hover:text-error`}
+            className={`${actionClass} hover:text-error-text`}
           >
             <X size={14} strokeWidth={1.75} />
           </Button>

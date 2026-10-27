@@ -118,7 +118,7 @@ export function ProjectPicker({
         <Combobox.Trigger
           aria-label="Project"
           className={`flex h-8 max-w-52 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
-            folder ? "text-fg-primary" : needed ? "text-attention" : "text-fg-secondary"
+            folder ? "text-fg-primary" : needed ? "text-attention-text" : "text-fg-secondary"
           }`}
         >
           {folder ? (
@@ -201,7 +201,7 @@ function ProjectItem({ project, onRemove }: { project: ProjectInfo; onRemove: ()
         <ProjectBadge folder={project.path} name={name} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate text-body ${project.missing ? "text-fg-disabled" : "text-fg-primary"}`}>
+        <span className={`truncate text-body ${project.missing ? "text-fg-tertiary" : "text-fg-primary"}`}>
           {name}
         </span>
         <span className="truncate text-caption text-fg-tertiary">

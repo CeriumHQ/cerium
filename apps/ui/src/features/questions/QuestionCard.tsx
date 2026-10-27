@@ -287,7 +287,7 @@ export function QuestionCard({
             <Tabs.List className="flex flex-wrap items-center gap-0.5">
               {questions.map((each, at) => (
                 <Tabs.Tab key={at} value={at} className={tab}>
-                  {answered[at] ? <Check size={11} strokeWidth={2.5} className="text-success" /> : null}
+                  {answered[at] ? <Check size={11} strokeWidth={2.5} className="text-success-text" /> : null}
                   {each.header ?? `Question ${at + 1}`}
                 </Tabs.Tab>
               ))}

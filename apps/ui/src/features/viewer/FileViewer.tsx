@@ -124,7 +124,7 @@ function FileBody({
       return (
         <Note action={outside}>
           <span className="block">This file isn't text or media Cerium can show.</span>
-          <span className="mt-1 block text-meta text-fg-disabled tabular-nums">{byteSize(preview.size)}</span>
+          <span className="mt-1 block text-meta text-fg-tertiary tabular-nums">{byteSize(preview.size)}</span>
         </Note>
       );
     case "Media":
@@ -350,8 +350,8 @@ export function FileViewer({
       ) : null}
       {stats && view === "diff" && side === undefined ? (
         <span className="shrink-0 font-mono text-meta tabular-nums">
-          <span className="text-success">+{stats.added}</span>{" "}
-          <span className="text-error">−{stats.removed}</span>
+          <span className="text-success-text">+{stats.added}</span>{" "}
+          <span className="text-error-text">−{stats.removed}</span>
         </span>
       ) : null}
 

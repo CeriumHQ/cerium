@@ -160,7 +160,7 @@ export function SpeedMark({
       size={size}
       strokeWidth={2}
       aria-label={speedLabel[speed]}
-      className={`shrink-0 text-attention ${speed === "ultrafast" ? "fill-current" : ""}`}
+      className={`shrink-0 text-attention-text ${speed === "ultrafast" ? "fill-current" : ""}`}
     />
   );
 }
@@ -260,7 +260,7 @@ export function MoreMenu({
                         <OptionIcon
                           size={14}
                           strokeWidth={1.75}
-                          className={`mt-0.5 shrink-0 self-start ${option.value === "fullAccess" ? "text-attention" : ""}`}
+                          className={`mt-0.5 shrink-0 self-start ${option.value === "fullAccess" ? "text-attention-text" : ""}`}
                         />
                         <span className="flex min-w-0 flex-col">
                           <span>{option.label}</span>

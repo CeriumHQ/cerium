@@ -348,8 +348,8 @@ export function SideDiff({
         )}
         {stats ? (
           <span className="ml-1 shrink-0 font-mono text-meta tabular-nums">
-            <span className="text-success">+{stats.added}</span>{" "}
-            <span className="text-error">−{stats.removed}</span>
+            <span className="text-success-text">+{stats.added}</span>{" "}
+            <span className="text-error-text">−{stats.removed}</span>
           </span>
         ) : null}
         <div className="ml-auto flex min-w-0 items-center gap-0.5">{pickActions ?? fileActions}</div>
@@ -359,7 +359,7 @@ export function SideDiff({
           role="alert"
           className="flex shrink-0 items-start gap-1 border-b border-line-subtle bg-error/10 py-1 pr-1.5 pl-3"
         >
-          <p className="min-w-0 flex-1 py-0.5 text-meta text-error">{failure}</p>
+          <p className="min-w-0 flex-1 py-0.5 text-meta text-error-text">{failure}</p>
           <IconButton icon={X} label="Dismiss" onClick={() => setFailure(undefined)} className="size-6" />
         </div>
       )}

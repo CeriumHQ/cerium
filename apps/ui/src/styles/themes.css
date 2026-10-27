@@ -43,6 +43,7 @@
   --accent-fg: oklch(0.98 0.01 75);
 
   --status-attention: oklch(0.7 0.15 95);
+  --status-attention-text: oklch(0.51 0.12 95);
 
   --syntax-keyword: oklch(0.5 0.15 35);
   --syntax-string: oklch(0.48 0.12 128);
@@ -82,6 +83,7 @@
   --accent-fg: oklch(0.98 0.03 120);
 
   --status-success: oklch(0.56 0.11 175);
+  --status-success-text: oklch(0.51 0.11 175);
 
   --syntax-keyword: oklch(0.48 0.14 128);
   --syntax-string: oklch(0.48 0.09 175);
@@ -101,6 +103,7 @@
   --lift: 0.04;
 
   --fg-primary: oklch(0.94 0.01 192);
+  --fg-tertiary: oklch(0.69 calc(var(--tint-c) * 0.8) var(--tint-h));
 
   --accent: oklch(0.86 0.09 180);
   --accent-strong: oklch(0.91 0.09 180);
@@ -118,7 +121,7 @@
   --glass-c: 0.04;
   --lift: 0.02;
 
-  --accent: oklch(0.55 0.09 198);
+  --accent: oklch(0.52 0.09 198);
   --accent-strong: oklch(0.47 0.08 200);
   --accent-fg: oklch(0.98 0.01 190);
 
@@ -139,8 +142,8 @@
   --glass-c: 0.09;
   --lift: -0.01;
 
-  --accent: oklch(0.62 0.2 264);
-  --accent-strong: oklch(0.68 0.2 264);
+  --accent: oklch(0.56 0.2 264);
+  --accent-strong: oklch(0.53 0.2 264);
   --accent-fg: oklch(0.99 0.01 264);
   --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
   --selection: color-mix(in oklab, var(--accent) 45%, transparent);
@@ -166,6 +169,7 @@
   --selection: color-mix(in oklab, var(--accent) 22%, transparent);
 
   --status-running: oklch(0.58 0.12 222);
+  --status-running-text: oklch(0.51 0.12 222);
 
   --syntax-keyword: oklch(0.48 0.18 288);
   --syntax-string: oklch(0.5 0.11 88);
@@ -205,6 +209,7 @@
   --accent-fg: oklch(0.98 0.01 355);
 
   --status-error: oklch(0.57 0.18 38);
+  --status-error-text: oklch(0.52 0.17 38);
 
   --syntax-keyword: oklch(0.5 0.17 352);
   --syntax-string: oklch(0.52 0.11 80);

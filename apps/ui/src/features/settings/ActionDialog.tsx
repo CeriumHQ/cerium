@@ -150,7 +150,7 @@ function CommandRun({
   if (failure !== undefined) {
     return (
       <div className="flex flex-col gap-2 text-meta">
-        <p className="text-error">{failure}</p>
+        <p className="text-error-text">{failure}</p>
         {command === undefined ? null : (
           <>
             <p className="text-fg-secondary">Run this in a terminal instead, then check again:</p>

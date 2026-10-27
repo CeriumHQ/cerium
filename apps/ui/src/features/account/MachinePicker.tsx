@@ -128,7 +128,7 @@ function MachineItem({
       </span>
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-body text-fg-primary group-data-disabled:opacity-50">{name}</span>
-        <span className={`truncate text-caption ${attention ? "text-attention" : "text-fg-tertiary"}`}>
+        <span className={`truncate text-caption ${attention ? "text-attention-text" : "text-fg-tertiary"}`}>
           {reachable ? <span className="sr-only">Online, </span> : null}
           {detail}
         </span>

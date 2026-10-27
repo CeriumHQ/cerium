@@ -72,7 +72,9 @@ export function AdvisorRows({
           label="Advisor model"
           hint={
             idle && picked ? (
-              <span className="text-attention">{providerName[picked.provider]} can't run right now.</span>
+              <span className="text-attention-text">
+                {providerName[picked.provider]} can't run right now.
+              </span>
             ) : undefined
           }
           className="pr-2.5"

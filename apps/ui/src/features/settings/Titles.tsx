@@ -71,7 +71,7 @@ export function TitleRows({
           label="Named by"
           hint={
             picked !== undefined && !pickedReady ? (
-              <span className="text-attention">
+              <span className="text-attention-text">
                 {providerName[picked.provider]} can't run right now, so threads keep their first line.
               </span>
             ) : undefined

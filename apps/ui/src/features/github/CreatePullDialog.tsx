@@ -173,12 +173,12 @@ export function CreatePullDialog({
           Open it as a draft
         </DialogCheck>
         {error === undefined ? null : (
-          <p role="alert" className="text-meta text-error">
+          <p role="alert" className="text-meta text-error-text">
             {error}
           </p>
         )}
         {reviewError === undefined ? null : (
-          <p role="alert" className="text-meta text-error">
+          <p role="alert" className="text-meta text-error-text">
             {reviewError}
           </p>
         )}

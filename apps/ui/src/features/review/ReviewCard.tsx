@@ -137,7 +137,11 @@ function Snippet({ finding }: { finding: ReviewFinding }) {
         >
           <span
             className={
-              line.marker === "+" ? "text-success" : line.marker === "-" ? "text-error" : "text-fg-disabled"
+              line.marker === "+"
+                ? "text-success-text"
+                : line.marker === "-"
+                  ? "text-error-text"
+                  : "text-fg-disabled"
             }
           >
             {line.marker === "-" ? "−" : line.marker}
@@ -297,7 +301,7 @@ export function ReviewCard({
         ) : null}
       </header>
       {review.state === "failed" && review.message !== undefined ? (
-        <p role="alert" className="border-t border-line-subtle px-3 py-2 text-meta text-error">
+        <p role="alert" className="border-t border-line-subtle px-3 py-2 text-meta text-error-text">
           {review.message}
         </p>
       ) : null}
@@ -341,7 +345,7 @@ export function ReviewCard({
                   <span className="min-w-0 flex-1 truncate text-meta text-fg-tertiary" title={finding.title}>
                     {finding.title}
                   </span>
-                  <span className="shrink-0 text-caption text-fg-disabled">
+                  <span className="shrink-0 text-caption text-fg-tertiary">
                     {finding.state === "sent" ? "Sent" : "Dismissed"}
                   </span>
                   <Tooltip label="Show it again with the open findings">
