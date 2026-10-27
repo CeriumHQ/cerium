@@ -13,7 +13,7 @@ import {
   type RosterModel,
   type RosterSettings,
 } from "@cerium/protocol";
-import { GripVertical, MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
 import { useRef, useState, type DragEvent } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -174,16 +174,24 @@ function HarnessRoster({
       ? members
       : drag.order.flatMap((id) => members.filter((member) => member.model.id === id));
 
-  /** A step up or down by keyboard; the handle keeps focus as its row moves. */
-  const step = (model: string, by: -1 | 1) => {
+  /**
+   * A step up or down, by the arrow keys on the handle or the buttons beside it; what was used keeps
+   * focus as its row moves, a button that has run out of room handing it to the other one.
+   */
+  const step = (model: string, by: -1 | 1, from: "handle" | "button") => {
     const target = order[order.indexOf(model) + by];
     if (target === undefined) return;
     onOrder(movedInOrder(order, model, target));
-    requestAnimationFrame(() =>
-      document
-        .querySelector<HTMLElement>(`[data-roster-handle="${CSS.escape(`${provider}/${model}`)}"]`)
-        ?.focus(),
-    );
+    requestAnimationFrame(() => {
+      const key = `${provider}/${model}`;
+      const find = (attribute: string, value: string) =>
+        document.querySelector<HTMLElement>(`[${attribute}="${CSS.escape(value)}"]:not([data-disabled])`);
+      const next =
+        from === "button"
+          ? (find("data-roster-move", `${key}:${by}`) ?? find("data-roster-move", `${key}:${-by}`))
+          : find("data-roster-handle", key);
+      next?.focus();
+    });
   };
 
   // Only this card's own drag is taken: it alone sets `drag`.
@@ -267,12 +275,13 @@ function HarnessRoster({
             use={use}
             speed={speed}
             rank={members.length > 1 ? at + 1 : undefined}
+            count={members.length}
             dragging={drag?.model === model.id}
             disabled={disabled}
             onRemove={() => onRemove(model)}
             onDescribe={(next) => onDescribe(model, next)}
             onSpeed={(next) => onSpeed(model, next)}
-            onStep={(by) => step(model.id, by)}
+            onStep={(by, from) => step(model.id, by, from)}
             onDragStart={(event) => {
               event.dataTransfer.setData(ROW_DRAG_TYPE, model.id);
               event.dataTransfer.effectAllowed = "move";
@@ -304,6 +313,7 @@ function RosterRow({
   use,
   speed,
   rank,
+  count,
   dragging,
   disabled,
   onRemove,
@@ -322,12 +332,14 @@ function RosterRow({
   speed: ModelSpeed | undefined;
   /** Its place among the harness's models; undefined when it's the only one. */
   rank: number | undefined;
+  /** How many models the harness's roster holds. */
+  count: number;
   dragging: boolean;
   disabled: boolean;
   onRemove: () => void;
   onDescribe: (use: string | undefined) => void;
   onSpeed: (speed: ModelSpeed | undefined) => void;
-  onStep: (by: -1 | 1) => void;
+  onStep: (by: -1 | 1, from: "handle" | "button") => void;
   onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
   onDragEnd: () => void;
   onDragEnter: () => void;
@@ -355,7 +367,7 @@ function RosterRow({
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`group/row flex min-h-12 items-center gap-3 py-2 pr-2.5 transition-opacity ${
+      className={`group/row flex min-h-12 items-center gap-3 py-2 pr-2.5 transition-opacity max-md:flex-wrap max-md:gap-y-1 ${
         rank === undefined ? "pl-4" : "pl-1.5"
       } ${dragging ? "opacity-40" : ""}`}
     >
@@ -372,9 +384,9 @@ function RosterRow({
             onKeyDown={(event) => {
               if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
               event.preventDefault();
-              onStep(event.key === "ArrowUp" ? -1 : 1);
+              onStep(event.key === "ArrowUp" ? -1 : 1, "handle");
             }}
-            className="group/handle relative -mr-1 grid h-8 w-6 shrink-0 cursor-grab place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring active:cursor-grabbing data-disabled:cursor-default"
+            className="group/handle relative -mr-1 grid h-8 w-6 shrink-0 cursor-grab pointer-coarse:cursor-default place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring active:cursor-grabbing data-disabled:cursor-default"
           >
             <span className="text-meta tabular-nums transition-opacity group-hover/row:opacity-0 group-focus-visible/handle:opacity-0">
               {rank}
@@ -403,7 +415,8 @@ function RosterRow({
               ref={line}
               disabled={disabled}
               onClick={() => setEditing(true)}
-              className={`-mx-1 max-w-full cursor-text self-start truncate rounded-sm px-1 text-left text-meta leading-relaxed transition-colors outline-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring ${
+              // A phone's line wraps to say it all, rather than lose it to the ellipsis.
+              className={`-mx-1 max-w-full cursor-text self-start truncate rounded-sm px-1 text-left text-meta leading-relaxed transition-colors outline-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring max-md:whitespace-normal ${
                 own ? "text-fg-secondary" : "text-fg-tertiary"
               }`}
             >
@@ -412,41 +425,72 @@ function RosterRow({
           </Tooltip>
         )}
       </div>
-      {speeds.length > 1 ? (
-        <SelectRoot
-          value={speed ?? "default"}
-          disabled={disabled}
-          onValueChange={(next) => {
-            if (next !== null) onSpeed(next === "default" ? undefined : (next as ModelSpeed));
-          }}
+      {/* Beside the line on a wide window; a line of its own under it on a phone, where it also holds the
+          buttons that move the row, which a touch screen has no handle or arrow keys for. */}
+      {speeds.length > 1 || rank !== undefined ? (
+        <div
+          className={`contents max-md:order-last max-md:flex max-md:basis-full max-md:items-center max-md:gap-1 ${
+            rank === undefined ? "" : "max-md:pl-8"
+          }`}
         >
-          <SelectTrigger label={`Speed for ${model.label}`}>
-            <SpeedMark speed={speed} />
-            <span className={speed === undefined ? "text-fg-tertiary" : ""}>
-              {speed === undefined ? "Default speed" : speedLabel[speed]}
-            </span>
-          </SelectTrigger>
-          <SelectPopup>
-            <SelectItem
-              value="default"
-              description={`${speedLabel[model.defaultSpeed ?? "standard"]}, as ${providerName[provider]} is set`}
+          {speeds.length > 1 ? (
+            <SelectRoot
+              value={speed ?? "default"}
+              disabled={disabled}
+              onValueChange={(next) => {
+                if (next !== null) onSpeed(next === "default" ? undefined : (next as ModelSpeed));
+              }}
             >
-              Default speed
-            </SelectItem>
-            {speeds.map((each) => (
-              <SelectItem key={each} value={each} description={speedHint[each]}>
-                {speedLabel[each]}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </SelectRoot>
+              <SelectTrigger label={`Speed for ${model.label}`}>
+                <SpeedMark speed={speed} />
+                <span className={speed === undefined ? "text-fg-tertiary" : ""}>
+                  {speed === undefined ? "Default speed" : speedLabel[speed]}
+                </span>
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem
+                  value="default"
+                  description={`${speedLabel[model.defaultSpeed ?? "standard"]}, as ${providerName[provider]} is set`}
+                >
+                  Default speed
+                </SelectItem>
+                {speeds.map((each) => (
+                  <SelectItem key={each} value={each} description={speedHint[each]}>
+                    {speedLabel[each]}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </SelectRoot>
+          ) : null}
+          {rank === undefined ? null : (
+            <span className="ml-auto hidden items-center max-md:flex pointer-coarse:flex">
+              {(
+                [
+                  { by: -1, label: "up", icon: ChevronUp, end: rank === 1 },
+                  { by: 1, label: "down", icon: ChevronDown, end: rank === count },
+                ] as const
+              ).map(({ by, label, icon: Icon, end }) => (
+                <Button
+                  key={label}
+                  data-roster-move={`${provider}/${model.id}:${by}`}
+                  aria-label={`Move ${model.label} ${label}`}
+                  disabled={disabled || end}
+                  onClick={() => onStep(by, "button")}
+                  className="grid size-9 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active data-disabled:opacity-30"
+                >
+                  <Icon size={16} strokeWidth={1.75} />
+                </Button>
+              ))}
+            </span>
+          )}
+        </div>
       ) : null}
       <Tooltip label="Take off the roster">
         <Button
           aria-label={`Take ${model.label} off the roster`}
           disabled={disabled}
           onClick={onRemove}
-          className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,color,background-color] group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 pointer-coarse:opacity-100"
+          className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary opacity-0 transition-[opacity,color,background-color] group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-surface-hover hover:text-fg-primary focus-visible:opacity-100 max-md:size-9 max-md:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100"
         >
           <X size={14} strokeWidth={1.75} />
         </Button>
