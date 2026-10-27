@@ -65,7 +65,7 @@ type PullTab = "conversation" | "commits" | "checks" | "files";
 const pullTabAtom = Atom.family((_id: string) => Atom.make<PullTab>("conversation").pipe(Atom.keepAlive));
 
 const toggleClass =
-  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+  "shrink-0 rounded-md px-2 py-0.5 text-meta font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
 
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
@@ -205,15 +205,16 @@ function Header({
   return (
     <header
       {...pane?.grip}
-      // A phone puts the title on a line of its own, over the tabs and buttons, which scroll when they don't fit.
-      className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-auto max-md:flex-wrap max-md:gap-y-0 max-md:pt-2.5 ${pane ? "select-none" : ""}`}
+      // A phone keeps the title and the buttons on one line, over a line of its own for the tabs, which
+      // scroll when they don't fit: a tab cut off at the edge shows there's more.
+      className={`flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-1.5 pl-3 max-md:h-auto max-md:flex-wrap max-md:gap-x-1 max-md:gap-y-0 max-md:pt-1 ${pane ? "select-none" : ""}`}
     >
       {pull ? <PullStateIcon state={pullStateOf(pull)} size={15} /> : null}
-      <span className="flex min-w-0 items-baseline gap-1.5 text-body max-md:text-[15px]">
+      <span className="flex min-w-0 items-baseline gap-1.5 text-body max-md:ml-1 max-md:flex-1 max-md:text-[15px]">
         <span className="shrink-0 text-fg-tertiary tabular-nums">#{number}</span>
         <span className="min-w-0 truncate font-medium text-fg-primary">{pull?.title ?? ""}</span>
       </span>
-      <div className="ml-auto flex shrink-0 items-center gap-1 max-md:ml-0 max-md:w-full max-md:overflow-x-auto max-md:py-1 max-md:[scrollbar-width:none]">
+      <div className="ml-auto flex shrink-0 items-center gap-1 max-md:contents">
         {tab === "files" ? (
           <ToggleGroup
             value={[layout]}
@@ -243,7 +244,7 @@ function Header({
             if (next) onTab(next.value);
           }}
           aria-label="Show"
-          className="flex items-center"
+          className="flex items-center max-md:order-last max-md:w-full max-md:overflow-x-auto max-md:py-1 max-md:[scrollbar-width:none]"
         >
           {tabs.map((each) => (
             <Toggle key={each.value} value={each.value} className={toggleClass}>
@@ -258,7 +259,7 @@ function Header({
           ))}
         </ToggleGroup>
         {onStartThread ? (
-          <span className="ml-1">
+          <span className="ml-1 max-md:ml-0 max-md:shrink-0">
             <StartThreadButton worktrees={worktrees} disabled={pull === undefined} onStart={start} />
           </span>
         ) : null}
@@ -298,7 +299,7 @@ function Header({
           label="Close"
           shortcut={useShortcut("close-tab")}
           onClick={onClose}
-          className="max-md:size-10"
+          className="max-md:size-10 max-md:shrink-0"
         />
       </div>
       {pull ? (

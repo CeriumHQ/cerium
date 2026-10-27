@@ -385,7 +385,8 @@ function FileDiff({
           setLazy(false);
         }}
         aria-expanded={open}
-        className={`sticky top-0 z-10 flex min-h-10 w-full items-center gap-2 bg-surface-raised px-3 py-2 text-left transition-colors hover:bg-surface-hover ${open ? "border-b border-line-subtle" : ""}`}
+        // A phone gives the path the width of its own line, so a long name can't crowd the status and counts below it.
+        className={`sticky top-0 z-10 flex min-h-10 w-full items-center gap-2 bg-surface-raised px-3 py-2 text-left transition-colors hover:bg-surface-hover max-md:grid max-md:grid-cols-[auto_auto_minmax(0,1fr)] max-md:gap-y-1 ${open ? "border-b border-line-subtle" : ""}`}
       >
         <ChevronRight
           size={13}
@@ -393,16 +394,18 @@ function FileDiff({
           className={`shrink-0 text-fg-tertiary transition-transform duration-200 ease-out-soft motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
         />
         <FileIcon path={file.path} className="size-4 shrink-0" />
-        <span className="flex min-w-0 items-baseline gap-0 font-mono text-meta">
-          <span className="min-w-0 truncate text-fg-tertiary">{folder}</span>
-          <span className="shrink-0 text-fg-primary">{name}</span>
-        </span>
-        {file.from === undefined ? null : (
-          <span className="min-w-0 truncate font-mono text-meta text-fg-tertiary" title={file.from}>
-            from {file.from}
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="flex min-w-0 items-baseline gap-0 font-mono text-meta">
+            <span className="min-w-0 truncate text-fg-tertiary">{folder}</span>
+            <span className="max-w-full shrink-0 truncate text-fg-primary">{name}</span>
           </span>
-        )}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-meta tabular-nums">
+          {file.from === undefined ? null : (
+            <span className="min-w-0 truncate font-mono text-meta text-fg-tertiary" title={file.from}>
+              from {file.from}
+            </span>
+          )}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-meta tabular-nums max-md:col-start-3 max-md:ml-0">
           {threads.length > 0 ? (
             <span className="text-fg-tertiary">
               {threads.length === 1 ? "1 thread" : `${threads.length} threads`}

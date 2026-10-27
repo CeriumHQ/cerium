@@ -368,7 +368,7 @@ export function MoreMenu({ children }: { children: ReactNode }) {
         <MenuTrigger>
           <Button
             aria-label="More"
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10"
+            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10 max-md:shrink-0"
           >
             <Ellipsis size={15} strokeWidth={1.75} />
           </Button>
