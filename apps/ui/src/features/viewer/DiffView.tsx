@@ -3,8 +3,10 @@ import { Button } from "@base-ui/react/button";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useCompact } from "../../app/compact.ts";
 import type { DraftCommentFile } from "../composer/draft.ts";
 import { lineRange } from "../composer/draft.ts";
+import { useCoarsePointer } from "../composer/pointer.ts";
 import { CHUNK, LINE_HEIGHT, Run } from "./CodeView.tsx";
 import { VisibleChunk } from "./VisibleChunk.tsx";
 import { useHighlight } from "./highlight.ts";
@@ -162,8 +164,9 @@ function CommentPlus({ picked, onPick }: { picked: boolean; onPick: (extend: boo
         if (event.shiftKey) event.preventDefault();
       }}
       onClick={(event) => onPick(event.shiftKey)}
-      className={`grid w-5 shrink-0 cursor-default place-items-center self-stretch text-fg-tertiary outline-none select-none transition-opacity duration-100 focus-visible:opacity-100 ${
-        picked ? "opacity-100" : "opacity-0 group-hover/line:opacity-100"
+      // A finger can't hover for it, so on a touch screen it rests in sight, a little wider to hit.
+      className={`grid w-5 shrink-0 cursor-default place-items-center self-stretch text-fg-tertiary outline-none select-none transition-opacity duration-100 focus-visible:opacity-100 pointer-coarse:w-8 ${
+        picked ? "opacity-100" : "opacity-0 group-hover/line:opacity-100 pointer-coarse:opacity-60"
       }`}
     >
       <span className={`grid size-3.5 place-items-center rounded-[3px] ${picked ? "text-accent" : ""}`}>
@@ -179,6 +182,7 @@ function CommentBox({
   onClose,
   range,
   lines,
+  touch,
 }: {
   onAdd: (text: string) => void;
   onClose: () => void;
@@ -186,6 +190,8 @@ function CommentBox({
   range: string;
   /** How many of them there are. */
   lines: number;
+  /** On a touch screen, where another line's tap adds it, which the box says. */
+  touch: boolean;
 }) {
   const field = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
@@ -196,6 +202,11 @@ function CommentBox({
         <span className="min-w-0 truncate">{range}</span>
         <span className="shrink-0 font-sans">{lines === 1 ? "1 line" : `${lines} lines`}</span>
       </div>
+      {touch ? (
+        <p className="font-sans text-meta text-fg-tertiary">
+          Tap another line to take the lines up to it. Tap the first again to start over.
+        </p>
+      ) : null}
       <textarea
         ref={field}
         aria-label="Comment"
@@ -214,14 +225,14 @@ function CommentBox({
       <div className="flex items-center justify-end gap-1">
         <Button
           onClick={onClose}
-          className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+          className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary pointer-coarse:h-9"
         >
           Cancel
         </Button>
         <Button
           onClick={() => onAdd(text)}
           disabled={text.trim() === ""}
-          className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40 pointer-coarse:h-9"
         >
           Add comment
         </Button>
@@ -335,7 +346,7 @@ function Cell({
 export function DiffView({
   hunks,
   path,
-  layout,
+  layout: chosen,
   onExpand,
   scroll = true,
   after,
@@ -359,6 +370,11 @@ export function DiffView({
   /** A run of its lines is being commented on, from the + that hovers over each one. */
   commenting?: DiffCommenting | undefined;
 }) {
+  // Two columns won't fit a phone, and the switch for them is hidden there, so a layout saved on a
+  // wider window stays that window's: the phone shows the one column.
+  const layout: DiffLayout = useCompact() ? "unified" : chosen;
+  // A finger has no Shift to extend a run with, so while one is open its next tap extends it.
+  const touch = useCoarsePointer();
   /** The box for a hunk's line, a spacer for an unchanged one; nothing while lines can't be picked. */
   const pickOf = (hunk: number, index: number, line: NumberedLine) =>
     picking === undefined ? undefined : line.kind === "context" ? (
@@ -409,8 +425,9 @@ export function DiffView({
   const pickRun = (hunk: number, index: number, extend: boolean) => {
     if (commenting === undefined) return;
     const id = runId(hunk, index);
-    if (extend && run !== undefined) {
-      const ids = new Set(run.ids);
+    if ((extend || touch) && run !== undefined) {
+      // The line the run started on takes it back to that line alone.
+      const ids = id === run.anchor ? new Set([id]) : new Set(run.ids);
       for (const each of linesBetween(hunks, run.anchor, id)) ids.add(each);
       setRun({ ids, anchor: run.anchor });
     } else {
@@ -436,6 +453,7 @@ export function DiffView({
         <CommentBox
           range={runRange}
           lines={pickedLines.length}
+          touch={touch}
           onAdd={(text) => {
             if (commenting === undefined || text.trim() === "" || pickedLines.length === 0) return;
             commenting.onAdd({
