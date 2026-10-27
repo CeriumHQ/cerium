@@ -1,0 +1,370 @@
+/*
+ * The website's tokens and chrome. The page is the app's glass laid on a dark optical bench: the same
+ * neutral ramp, tinted by the same six themes (`data-palette`, the app's own hues for dark mode), and
+ * the only colours are light: the spectrum a prism splits white into, one band per theme.
+ */
+
+@import "@fontsource-variable/red-hat-text";
+@import "@fontsource-variable/red-hat-mono";
+@import "@fontsource-variable/anybody/wdth.css";
+
+:root {
+  --tint-h: 250;
+  --tint-c: 0.006;
+  --glass-c: 0.012;
+
+  --void: oklch(0.13 var(--glass-c) var(--tint-h));
+  --void-deep: oklch(0.095 var(--glass-c) var(--tint-h));
+  --fg: oklch(0.965 calc(var(--tint-c) * 0.4) var(--tint-h));
+  --fg-2: oklch(0.79 calc(var(--tint-c) * 0.8) var(--tint-h));
+  --fg-3: oklch(0.62 calc(var(--tint-c) * 1) var(--tint-h));
+
+  /* The app's light films, raised off the glass by lightening it. */
+  --film: oklch(0.97 var(--glass-c) var(--tint-h) / 0.045);
+  --film-2: oklch(0.97 var(--glass-c) var(--tint-h) / 0.085);
+  --film-3: oklch(0.97 var(--glass-c) var(--tint-h) / 0.13);
+  --line: oklch(1 0 0 / 0.08);
+  --line-2: oklch(1 0 0 / 0.15);
+  --rim: 0 1px 0 oklch(1 0 0 / 0.09) inset;
+
+  --accent: oklch(0.96 0 0);
+  --accent-fg: oklch(0.16 0 0);
+
+  /* The spectrum, red to blue: the five tinted glasses Cerium ships beside its clear one. */
+  --sp-cranberry: oklch(0.74 0.15 356);
+  --sp-amber: oklch(0.81 0.14 68);
+  --sp-uranium: oklch(0.89 0.19 123);
+  --sp-seaglass: oklch(0.85 0.1 182);
+  --sp-cobalt: oklch(0.68 0.19 264);
+
+  --font-display: "Anybody Variable", "Red Hat Text Variable", sans-serif;
+  --font-text: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Red Hat Mono Variable", ui-monospace, "Cascadia Code", monospace;
+
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --gutter: clamp(20px, 5vw, 72px);
+
+  color-scheme: dark;
+}
+
+/* The app's own dark-mode glass for each theme. */
+[data-palette="amber"] {
+  --tint-h: 68;
+  --tint-c: 0.024;
+  --glass-c: 0.04;
+  --accent: oklch(0.8 0.13 70);
+  --accent-fg: oklch(0.22 0.04 55);
+}
+[data-palette="uranium"] {
+  --tint-h: 118;
+  --tint-c: 0.022;
+  --glass-c: 0.04;
+  --accent: oklch(0.89 0.19 123);
+  --accent-fg: oklch(0.22 0.05 125);
+}
+[data-palette="seaglass"] {
+  --tint-h: 192;
+  --tint-c: 0.02;
+  --glass-c: 0.035;
+  --accent: oklch(0.86 0.09 180);
+  --accent-fg: oklch(0.2 0.04 190);
+}
+[data-palette="cobalt"] {
+  --tint-h: 266;
+  --tint-c: 0.03;
+  --glass-c: 0.055;
+  --accent: oklch(0.7 0.17 264);
+  --accent-fg: oklch(0.98 0.01 264);
+}
+[data-palette="cranberry"] {
+  --tint-h: 352;
+  --tint-c: 0.026;
+  --glass-c: 0.045;
+  --accent: oklch(0.77 0.13 356);
+  --accent-fg: oklch(0.2 0.05 355);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--void-deep);
+  transition: background-color 900ms var(--ease-out);
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--void);
+  color: var(--fg);
+  font-family: var(--font-text);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  transition:
+    background-color 900ms var(--ease-out),
+    color 900ms var(--ease-out);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Light pools spill past the page's edges; the page itself never scrolls sideways. */
+main {
+  overflow-x: clip;
+}
+
+img,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Lenis' smooth scroll. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* ── The display face, used as material: its width axis is the one thing that moves in type. ── */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 340;
+  font-stretch: 118%;
+  letter-spacing: -0.035em;
+  line-height: 0.9;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.display [data-letter] {
+  display: inline-block;
+}
+
+.lede {
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 0.95rem + 0.4vw, 1.25rem);
+  line-height: 1.5;
+  max-width: 34ch;
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* ── Buttons ── */
+
+.button {
+  --pad: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: var(--pad);
+  border-radius: 999px;
+  font-weight: 560;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  transition:
+    background-color 200ms var(--ease-out),
+    color 200ms var(--ease-out),
+    scale 200ms var(--ease-out),
+    box-shadow 300ms var(--ease-out);
+}
+
+.button svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.button:active {
+  scale: 0.97;
+}
+
+.button-solid {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.2) inset,
+    0 10px 40px -12px color-mix(in oklab, var(--accent) 60%, transparent);
+}
+
+.button-solid:hover {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.3) inset,
+    0 14px 60px -10px color-mix(in oklab, var(--accent) 80%, transparent);
+}
+
+.button-glass {
+  background: var(--film-2);
+  color: var(--fg);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line) inset;
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+
+.button-glass:hover {
+  background: var(--film-3);
+}
+
+/* ── Top bar: a strip of the app's glass that hardens as the page scrolls under it. ── */
+
+.bar {
+  position: fixed;
+  inset: 12px 12px auto;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 8px 0 18px;
+  border-radius: 18px;
+  transition:
+    background-color 400ms var(--ease-out),
+    box-shadow 400ms var(--ease-out),
+    backdrop-filter 400ms var(--ease-out);
+}
+
+.bar[data-scrolled] {
+  background: oklch(from var(--void) calc(l + 0.03) c h / 0.62);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line) inset,
+    0 20px 50px -24px oklch(0 0 0 / 0.7);
+  backdrop-filter: blur(22px) saturate(1.5);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-weight: 560;
+  font-size: 1.1875rem;
+  letter-spacing: -0.02em;
+}
+
+.brand svg {
+  width: 24px;
+  height: 24px;
+}
+
+.bar nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.bar nav a:not(.button) {
+  padding: 8px 14px;
+  border-radius: 10px;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.bar nav a:not(.button):hover {
+  color: var(--fg);
+  background: var(--film-2);
+}
+
+.bar .button {
+  height: 40px;
+  --pad: 0 16px;
+  margin-left: 6px;
+}
+
+@media (max-width: 720px) {
+  .bar nav a.hide-narrow {
+    display: none;
+  }
+}
+
+/* ── Foot ── */
+
+.foot {
+  position: relative;
+  padding: 40px var(--gutter) 36px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px 40px;
+  align-items: end;
+  color: var(--fg-3);
+  font-size: 0.875rem;
+  border-top: 1px solid var(--line);
+}
+
+.foot nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+}
+
+.foot nav a {
+  color: var(--fg-2);
+}
+
+.foot nav a:hover {
+  color: var(--fg);
+}
+
+.foot p {
+  margin: 0;
+  max-width: 62ch;
+  text-wrap: pretty;
+}
+
+@media (max-width: 720px) {
+  .foot {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

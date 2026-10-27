@@ -12,12 +12,11 @@ and `LICENSES.chromium.html`.
 Shipped in the app, the web client and the website as web fonts, under the SIL Open Font License
 1.1 (below). Cerium uses them unmodified, as packaged by [Fontsource](https://fontsource.org).
 
-| Font            | Copyright                                                                                 | Used in                     |
-| --------------- | ----------------------------------------------------------------------------------------- | --------------------------- |
-| Anybody         | Copyright 2020 The Anybody Project Authors (https://github.com/Etcetera-Type-Co/Anybody)  | App                         |
-| Red Hat Text    | Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont) | App, artifacts, relay, site |
-| Red Hat Mono    | Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont) | App, artifacts, site        |
-| Red Hat Display | Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont) | Site                        |
+| Font         | Copyright                                                                                 | Used in                     |
+| ------------ | ----------------------------------------------------------------------------------------- | --------------------------- |
+| Anybody      | Copyright 2020 The Anybody Project Authors (https://github.com/Etcetera-Type-Co/Anybody)  | App, site                   |
+| Red Hat Text | Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont) | App, artifacts, relay, site |
+| Red Hat Mono | Copyright 2024 The Red Hat Project Authors (https://github.com/RedHatOfficial/RedHatFont) | App, artifacts, site        |
 
 ## Icons and marks
 
@@ -34,6 +33,13 @@ Shipped in the app, the web client and the website as web fonts, under the SIL O
 
 The harnesses' logos, Apple's, Windows' and Tux identify those products and remain trademarks of
 their owners. Cerium is not affiliated with or endorsed by them.
+
+## The website's scripts
+
+The website (`apps/site`) bundles three.js, Copyright © 2010-2026 three.js authors, https://threejs.org,
+and Lenis, Copyright (c) 2024 darkroom.engineering, https://github.com/darkroom-engineering/lenis, both
+under the MIT License (below); and GSAP with its ScrollTrigger plugin, Copyright GreenSock, Inc.,
+https://gsap.com, under GSAP's Standard "no charge" license, https://gsap.com/standard-license.
 
 ## SIL Open Font License 1.1
 
@@ -126,8 +132,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## MIT License
 
-Applies to Material Icon Theme, LobeHub Icons and the Feather-derived Lucide icons, each with its
-copyright line above.
+Applies to Material Icon Theme, LobeHub Icons, the Feather-derived Lucide icons, three.js and Lenis,
+each with its copyright line above.
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy

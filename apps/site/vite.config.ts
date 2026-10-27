@@ -1,13 +1,15 @@
 import { join } from "node:path";
 
-import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite-plus";
 
 // Cerium's website: the home page, /downloads/ and /privacy/, static, built to dist/. Its own port keeps
 // it clear of the UI's dev server.
 export default defineConfig({
-  plugins: [tailwindcss()],
   build: {
+    // The home page awaits its fonts at the top level.
+    target: "es2022",
+    // The hero's three.js scene is one chunk, loaded after the page is up.
+    chunkSizeWarningLimit: 600,
     rolldownOptions: {
       input: {
         home: join(import.meta.dirname, "index.html"),

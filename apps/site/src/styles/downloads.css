@@ -1,0 +1,306 @@
+@import "./base.css";
+
+.get {
+  padding: clamp(120px, 18vh, 180px) var(--gutter) clamp(80px, 12vh, 140px);
+}
+
+.get-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px 64px;
+}
+
+.get-title {
+  font-size: clamp(3.25rem, 1rem + 8vw, 9rem);
+}
+
+.get-lead {
+  display: grid;
+  gap: 24px;
+  justify-items: start;
+  max-width: 36ch;
+}
+
+/* The split: a white beam in from the left, a band down to each system's builds. */
+.split {
+  position: relative;
+  height: clamp(90px, 14vh, 160px);
+  margin: clamp(32px, 6vh, 64px) 0 0;
+}
+
+.split svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.split path {
+  fill: none;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px oklch(1 0 0 / 0.35));
+}
+
+/* Each path is one unit long (its pathLength), so a dash of 1 draws it whole. */
+.split-in {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  animation: draw 900ms var(--ease-out) 150ms forwards;
+}
+
+.split-out {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  animation: draw 1100ms var(--ease-out) 850ms forwards;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The facet the beam splits at, turning the spectrum. */
+.split-facet {
+  position: absolute;
+  left: 50%;
+  top: calc(20 / 160 * 100%);
+  width: 18px;
+  height: 18px;
+  translate: -50% -50%;
+  rotate: 45deg;
+  border-radius: 2px;
+  background: conic-gradient(
+    from var(--turn, 0deg),
+    var(--sp-cranberry),
+    var(--sp-amber),
+    var(--sp-uranium),
+    var(--sp-seaglass),
+    var(--sp-cobalt),
+    var(--sp-cranberry)
+  );
+  box-shadow:
+    0 0 14px oklch(1 0 0 / 0.5),
+    0 0 40px color-mix(in oklab, var(--sp-seaglass) 50%, transparent);
+  animation: turn 8s linear infinite;
+}
+
+@property --turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes turn {
+  to {
+    --turn: 360deg;
+  }
+}
+
+/* ── Each system, a slab of the app's glass the band lands on. ── */
+
+.systems {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 28px);
+  align-items: start;
+}
+
+.system {
+  position: relative;
+  padding: 22px 10px 10px;
+  border-radius: 24px;
+  background: var(--film);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line) inset,
+    0 40px 80px -40px oklch(0 0 0 / 0.8);
+  backdrop-filter: blur(20px);
+}
+
+/* Where the band lands: a lit rim along the slab's top edge. */
+.system::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--band), transparent);
+  box-shadow: 0 0 24px 2px color-mix(in oklab, var(--band) 60%, transparent);
+}
+
+.system header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 14px;
+  padding: 0 14px 20px;
+}
+
+.system header svg {
+  grid-row: span 2;
+  width: 30px;
+  height: 30px;
+  color: var(--fg);
+}
+
+.system h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-weight: 460;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.system header span {
+  color: var(--fg-3);
+  font-size: 0.875rem;
+}
+
+.system ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.system li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  min-height: 60px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 16px;
+  background: var(--film);
+}
+
+.system li b {
+  font-weight: 560;
+}
+
+.builds {
+  display: flex;
+  gap: 6px;
+}
+
+.builds a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px 0 14px;
+  border-radius: 12px;
+  background: var(--film-2);
+  box-shadow: var(--rim);
+  font-size: 0.875rem;
+  font-weight: 540;
+  white-space: nowrap;
+  transition:
+    background-color 150ms,
+    box-shadow 300ms var(--ease-out);
+}
+
+.builds a svg {
+  width: 16px;
+  height: 16px;
+  color: var(--fg-3);
+  transition:
+    translate 200ms var(--ease-out),
+    color 150ms;
+}
+
+.builds a:hover {
+  background: var(--film-3);
+}
+
+.builds a:hover svg {
+  translate: 0 2px;
+  color: var(--fg);
+}
+
+/* The build this machine wants, lit in its system's band. */
+.builds a[data-yours] {
+  background: color-mix(in oklab, var(--band) 20%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--band) 55%, transparent) inset,
+    0 0 28px -6px color-mix(in oklab, var(--band) 70%, transparent);
+}
+
+.builds a[data-yours] svg {
+  color: var(--band);
+}
+
+/* ── Other ways in ── */
+
+.elsewhere {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 2vw, 28px);
+  margin-top: clamp(72px, 12vh, 120px);
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.elsewhere a {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.elsewhere b {
+  font-weight: 600;
+}
+
+.elsewhere b::after {
+  content: "";
+  display: inline-block;
+  width: 0.4em;
+  height: 0.4em;
+  margin-left: 0.5em;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  rotate: 45deg;
+  translate: 0 -0.08em;
+  transition: translate 200ms var(--ease-out);
+}
+
+.elsewhere a:hover b::after {
+  translate: 3px -0.08em;
+}
+
+.elsewhere span {
+  color: var(--fg-3);
+  font-size: 0.9375rem;
+}
+
+.elsewhere code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+@media (max-width: 900px) {
+  .systems,
+  .elsewhere {
+    grid-template-columns: 1fr;
+  }
+  .split {
+    display: none;
+  }
+  .systems {
+    margin-top: 48px;
+  }
+  /* The visitor's system comes first where the slabs stack. */
+  .system[data-yours] {
+    order: -1;
+  }
+}

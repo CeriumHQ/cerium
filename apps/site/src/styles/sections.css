@@ -1,0 +1,702 @@
+/* The home page below the hero: the proof, the roster, three moves, the glass picker and the close. */
+
+/* ── The app window, as the site frames it: glass edge, deep shadow, the room's light on its rim. ── */
+
+.window {
+  margin: 0;
+  border-radius: clamp(10px, 1.2vw, 18px);
+  overflow: hidden;
+  background: var(--void-deep);
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    0 1px 0 1px oklch(1 0 0 / 0.08) inset,
+    0 50px 120px -40px oklch(0 0 0 / 0.9),
+    0 30px 60px -30px oklch(0 0 0 / 0.6);
+}
+
+.window img {
+  width: 100%;
+  height: auto;
+}
+
+/* ── Proof ── */
+
+.proof {
+  position: relative;
+  padding: clamp(80px, 14vh, 160px) var(--gutter) 0;
+}
+
+.proof-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px 48px;
+  margin-bottom: clamp(40px, 7vh, 80px);
+}
+
+.proof-title {
+  font-size: clamp(2.75rem, 1rem + 6vw, 7rem);
+}
+
+.proof-stage {
+  position: relative;
+  perspective: 1600px;
+  perspective-origin: 50% 0%;
+}
+
+.proof-stage .window {
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+
+/* The bench light the window sits in. */
+.proof-stage::before {
+  content: "";
+  position: absolute;
+  inset: 30% -10% -10%;
+  z-index: -1;
+  background: radial-gradient(50% 50% at 50% 50%, oklch(from var(--fg) l c h / 0.08), transparent 70%);
+  filter: blur(40px);
+}
+
+/* ── Roster ── */
+
+.roster {
+  --size: clamp(2.25rem, 0.6rem + 6vw, 7rem);
+  padding: clamp(120px, 22vh, 240px) var(--gutter) clamp(100px, 16vh, 180px);
+  display: grid;
+  gap: clamp(6px, 1.2vh, 14px);
+}
+
+.roster-line {
+  --stretch: 62%;
+  --lit: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.32em;
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 330;
+  font-stretch: var(--stretch);
+  font-size: var(--size);
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  white-space: nowrap;
+  color: color-mix(in oklab, var(--fg) calc(28% + var(--lit) * 72%), transparent);
+}
+
+.roster-line svg {
+  flex: none;
+  width: 0.42em;
+  height: 0.42em;
+  color: var(--band, var(--fg));
+  opacity: calc(0.25 + var(--lit) * 0.75);
+  filter: drop-shadow(0 0 calc(var(--lit) * 18px) var(--band, transparent));
+}
+
+/* The band's light runs under the line as it lights. */
+.roster-line::after {
+  content: "";
+  position: absolute;
+  left: 0.74em;
+  right: 0;
+  bottom: 0.05em;
+  height: 2px;
+  background: linear-gradient(to right, var(--band, var(--fg)), transparent 80%);
+  transform-origin: left;
+  scale: var(--lit) 1;
+  opacity: calc(var(--lit) * 0.9);
+  box-shadow: 0 0 18px var(--band, transparent);
+}
+
+.roster-end {
+  margin-top: 0.3em;
+}
+
+.roster-end::after {
+  display: none;
+}
+
+.roster-note {
+  margin: clamp(28px, 5vh, 56px) 0 0 calc(var(--size) * 0.74);
+  max-width: 44ch;
+  color: var(--fg-3);
+}
+
+/* ── Moves ── */
+
+.moves {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  gap: clamp(120px, 20vh, 220px);
+  padding: 0 var(--gutter) clamp(120px, 20vh, 220px);
+}
+
+.move {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(32px, 6vw, 96px);
+  align-items: center;
+}
+
+/* A pool of bench light under each move's picture, in the colour of whoever is at work in it. */
+.move::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -10% -4% -10% 40%;
+  background: radial-gradient(
+    45% 50% at 50% 50%,
+    color-mix(in oklab, var(--pool) 16%, transparent),
+    transparent 70%
+  );
+  filter: blur(50px);
+  pointer-events: none;
+}
+
+.move-review {
+  --pool: var(--sp-uranium);
+}
+
+.move-ci {
+  --pool: var(--accent);
+}
+
+.move-ci::before {
+  inset: -10% 40% -10% -4%;
+}
+
+.move-play {
+  --pool: var(--sp-cobalt);
+}
+
+.move-play::before {
+  inset: 20% 0 -10%;
+}
+
+.move-copy {
+  display: grid;
+  gap: 24px;
+  align-content: center;
+}
+
+.move-title {
+  font-size: clamp(2.25rem, 1rem + 3.4vw, 4.5rem);
+  font-stretch: 104%;
+  line-height: 0.96;
+}
+
+.move-ci {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+
+.move-ci .move-copy {
+  order: 2;
+}
+
+.move-play {
+  grid-template-columns: 1fr;
+}
+
+.move-play .move-copy {
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  align-items: end;
+  gap: 24px 64px;
+}
+
+/* The artifact, close up: a wide strip of the window, zoomed in on the agent's page. */
+.window-flat {
+  aspect-ratio: 2.1 / 1;
+}
+
+.window-flat img {
+  height: 100%;
+  object-fit: cover;
+  transform-origin: 57% 38%;
+  scale: var(--zoom, 1.5);
+}
+
+/* A review, drawn as the app draws one: the diff, and the other lab's note on its line. */
+.review {
+  position: relative;
+  border-radius: 20px;
+  background: var(--film);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line) inset,
+    0 40px 90px -40px oklch(0 0 0 / 0.8);
+  backdrop-filter: blur(20px);
+  font-size: 0.875rem;
+  overflow: hidden;
+}
+
+.review-file {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 20px;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--line);
+  font-weight: 520;
+}
+
+.review-path {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.review-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 7px;
+  border-radius: 999px;
+  background: var(--film-2);
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.review-by svg {
+  width: 12px;
+  height: 12px;
+  color: var(--sp-cranberry);
+}
+
+.review-stat b {
+  color: var(--sp-uranium);
+  font-weight: 560;
+}
+
+.review-stat i {
+  color: var(--sp-cranberry);
+  font-style: normal;
+}
+
+.review-code {
+  margin: 0;
+  padding: 16px 0;
+  font-family: var(--font-mono);
+  font-size: clamp(0.6875rem, 0.55rem + 0.3vw, 0.8125rem);
+  line-height: 1.9;
+  color: var(--fg-2);
+  overflow: hidden;
+}
+
+.review-code .ln {
+  display: inline-block;
+  width: 3.5em;
+  padding-right: 1em;
+  text-align: right;
+  color: var(--fg-3);
+  opacity: 0.6;
+}
+
+.review-code .add {
+  color: var(--fg);
+}
+
+.review-code .ln.add {
+  color: var(--sp-uranium);
+  opacity: 1;
+}
+
+.review-code .k {
+  color: oklch(0.79 0.1 305);
+}
+
+.review-code .s {
+  color: oklch(0.79 0.09 150);
+}
+
+.review-note {
+  margin: 0 20px 20px 3.5em;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--film-2);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px color-mix(in oklab, var(--sp-uranium) 25%, transparent) inset,
+    0 0 50px -20px color-mix(in oklab, var(--sp-uranium) 60%, transparent);
+  display: grid;
+  gap: 8px;
+}
+
+.review-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-2);
+}
+
+.review-who b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.review-who svg {
+  width: 15px;
+  height: 15px;
+  color: var(--sp-uranium);
+}
+
+.review-note p {
+  margin: 0;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.review-note code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: oklch(0 0 0 / 0.3);
+}
+
+.review-send {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--film-3);
+  font-weight: 560;
+  font-size: 0.8125rem;
+}
+
+/* A phone, standing on the bench, with the notification it just got. */
+.phone {
+  justify-self: center;
+  margin: 0;
+  width: min(300px, 70vw);
+  padding: 10px;
+  border-radius: 48px;
+  background: linear-gradient(160deg, oklch(0.3 0 0), oklch(0.16 0 0) 40%, oklch(0.22 0 0));
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    0 1px 0 1px oklch(1 0 0 / 0.12) inset,
+    0 60px 120px -40px oklch(0 0 0 / 0.95);
+  rotate: -4deg;
+}
+
+.phone img {
+  border-radius: 38px;
+  width: 100%;
+  height: auto;
+}
+
+.ping {
+  position: absolute;
+  top: 12%;
+  left: 36%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px 14px 14px;
+  border-radius: 20px;
+  background: oklch(from var(--void) calc(l + 0.08) c h / 0.7);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line-2) inset,
+    0 30px 60px -20px oklch(0 0 0 / 0.8);
+  font-size: 0.875rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.ping svg {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.ping div {
+  display: grid;
+}
+
+.ping span {
+  color: var(--fg-2);
+}
+
+/* ── Glass ── */
+
+.glass {
+  position: relative;
+  padding: 0 var(--gutter) clamp(120px, 20vh, 220px);
+}
+
+.glass-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px 48px;
+  margin-bottom: clamp(40px, 6vh, 72px);
+}
+
+.glass-title {
+  font-size: clamp(2.75rem, 1rem + 6vw, 7rem);
+}
+
+.glass-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 26px;
+  background: var(--film);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line) inset;
+}
+
+.glass-picker button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 16px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 520;
+  cursor: pointer;
+  transition:
+    background-color 200ms var(--ease-out),
+    color 200ms var(--ease-out);
+}
+
+/* Each theme's bead: a drop of its glass, lit from above. */
+.glass-picker button::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(60% 50% at 35% 28%, oklch(1 0 0 / 0.85), transparent 60%),
+    radial-gradient(100% 100% at 50% 70%, var(--bead), color-mix(in oklab, var(--bead) 35%, black));
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.18) inset,
+    0 2px 8px -2px color-mix(in oklab, var(--bead) 70%, transparent);
+  transition: scale 300ms cubic-bezier(0.3, 1.45, 0.6, 1);
+}
+
+.glass-picker button:hover {
+  color: var(--fg);
+  background: var(--film-2);
+}
+
+.glass-picker button[aria-checked="true"] {
+  color: var(--fg);
+  background: var(--film-3);
+}
+
+.glass-picker button[aria-checked="true"]::before {
+  scale: 1.12;
+}
+
+.glass-stage {
+  position: relative;
+  isolation: isolate;
+}
+
+/* What lies behind the window: in clear glass the whole spectrum, in a tinted one its own light. */
+.glass-light {
+  position: absolute;
+  inset: -5% -3% -7%;
+  z-index: -1;
+  border-radius: 40px;
+  background:
+    radial-gradient(34% 46% at 16% 30%, var(--sp-cranberry), transparent 70%),
+    radial-gradient(30% 40% at 38% 78%, var(--sp-amber), transparent 70%),
+    radial-gradient(30% 44% at 58% 22%, var(--sp-uranium), transparent 70%),
+    radial-gradient(30% 44% at 76% 70%, var(--sp-seaglass), transparent 70%),
+    radial-gradient(34% 50% at 92% 30%, var(--sp-cobalt), transparent 70%);
+  filter: blur(60px) saturate(1.2);
+  opacity: 0.95;
+  transition: opacity 900ms var(--ease-out);
+}
+
+/* Under a tinted glass, only that glass's light. */
+.glass-light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    60% 70% at 50% 50%,
+    var(--accent),
+    color-mix(in oklab, var(--accent) 30%, transparent)
+  );
+  opacity: 0;
+  transition: opacity 900ms var(--ease-out);
+}
+
+html:not([data-palette="cerium"]) .glass-light::after {
+  opacity: 1;
+}
+
+html:not([data-palette="cerium"]) .glass-light {
+  opacity: 0.5;
+}
+
+.glass-window {
+  background: oklch(0.2 0 0 / 0.25);
+}
+
+.glass-window {
+  display: grid;
+}
+
+.glass-window img {
+  grid-area: 1 / 1;
+  opacity: 0;
+  filter: blur(10px);
+  scale: 1.015;
+  transition:
+    opacity 700ms var(--ease-out),
+    filter 700ms var(--ease-out),
+    scale 900ms var(--ease-out);
+}
+
+.glass-window img[data-on] {
+  opacity: 1;
+  filter: none;
+  scale: 1;
+}
+
+/* ── Close ── */
+
+.close {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+  padding: clamp(80px, 14vh, 160px) var(--gutter) clamp(80px, 12vh, 140px);
+  overflow: hidden;
+}
+
+.close::before {
+  content: "";
+  position: absolute;
+  inset: 20% 10% 0;
+  z-index: -1;
+  background: radial-gradient(
+    50% 60% at 50% 60%,
+    color-mix(in oklab, var(--accent) 12%, transparent),
+    transparent 70%
+  );
+  filter: blur(50px);
+}
+
+.close-plans {
+  margin: 0;
+  max-width: 40ch;
+  color: var(--fg-2);
+  font-size: clamp(1.0625rem, 0.95rem + 0.4vw, 1.25rem);
+  text-wrap: balance;
+}
+
+/* The name, set as wide as the axis goes and sized to fill the page. */
+.close-word {
+  justify-self: stretch;
+  margin: 0.04em 0 0.1em;
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-stretch: 150%;
+  font-size: var(--fit, 18vw);
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+  white-space: nowrap;
+  background: linear-gradient(to bottom, var(--fg) 30%, color-mix(in oklab, var(--fg) 15%, transparent));
+  background-clip: text;
+  color: transparent;
+}
+
+.close-word > span {
+  display: inline-block;
+}
+
+/* The i's dot is the mark's facet, catching the spectrum as it turns. */
+.close-i {
+  position: relative;
+}
+
+.facet {
+  position: absolute;
+  left: 50%;
+  top: 0.1em;
+  width: 0.13em;
+  height: 0.13em;
+  translate: -50% 0;
+  rotate: 45deg;
+  border-radius: 0.012em;
+  background: conic-gradient(
+    from var(--turn, 0deg),
+    var(--sp-cranberry),
+    var(--sp-amber),
+    var(--sp-uranium),
+    var(--sp-seaglass),
+    var(--sp-cobalt),
+    var(--sp-cranberry)
+  );
+  box-shadow:
+    0 0 0.08em color-mix(in oklab, var(--sp-seaglass) 60%, transparent),
+    0 0 0.3em color-mix(in oklab, var(--sp-cobalt) 35%, transparent);
+  animation: turn 8s linear infinite;
+}
+
+@property --turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes turn {
+  to {
+    --turn: 360deg;
+  }
+}
+
+.close-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.close-small {
+  margin: 20px 0 0;
+  color: var(--fg-3);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 900px) {
+  .move,
+  .move-ci,
+  .move-play .move-copy {
+    grid-template-columns: 1fr;
+  }
+  .move-ci .move-copy {
+    order: 0;
+  }
+  .ping {
+    top: auto;
+    bottom: 6%;
+    left: 50%;
+    translate: -50% 0;
+  }
+}

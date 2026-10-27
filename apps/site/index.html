@@ -1,734 +1,357 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-palette="cerium">
+<html lang="en" data-palette="cerium">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Cerium: one thread, every agent</title>
-    <script>
-      // The web app opened here before it moved to /app/: a Home Screen app installed then, and a
-      // notification tapped open with its thread, still go straight to it.
-      (() => {
-        const query = new URLSearchParams(location.search);
-        const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-        if (installed || query.has("thread") || query.has("machine"))
-          location.replace(`/app/${location.search}${location.hash}`);
-      })();
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cerium: your coding agents, one team</title>
     <meta
       name="description"
-      content="Cerium runs Claude Code, Codex, Cursor and OpenCode side by side, so one lead agent can hand each piece of a job to the one that does it best. Free and open source, for Windows, macOS and Linux."
+      content="One prompt, a whole team: Cerium's lead agent splits the work across Claude Code, Codex, Cursor, OpenCode and Muse Code, and hands you one answer. Free and open source."
     />
-    <link rel="canonical" href="https://cerium.nonlooped.xyz/" />
+    <meta name="theme-color" content="#121316" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/" />
-    <meta property="og:title" content="Cerium: one thread, every agent" />
+    <meta property="og:title" content="Cerium: your coding agents, one team" />
     <meta
       property="og:description"
-      content="Cerium runs Claude Code, Codex, Cursor and OpenCode side by side, so one lead agent can hand each piece of a job to the one that does it best. Free and open source, for Windows, macOS and Linux."
+      content="One prompt splits across Claude Code, Codex, Cursor, OpenCode and Muse Code. One answer comes back."
     />
     <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
     <meta property="og:image:width" content="2400" />
     <meta property="og:image:height" content="1260" />
-    <meta
-      property="og:image:alt"
-      content="Cerium, with one answer coming back: the lead's account of what Claude, Codex, OpenCode and Cursor each did"
-    />
     <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://cerium.nonlooped.xyz/" />
+    <script>
+      document.documentElement.classList.add("js");
+      // The glass picked on an earlier visit, before the first paint (src/palette.ts).
+      try {
+        const saved = localStorage.getItem("cerium-site:palette");
+        if (saved) document.documentElement.dataset.palette = saved;
+      } catch {}
+    </script>
+    <script type="module" src="/src/home.ts"></script>
   </head>
   <body>
-    <!--
-      Official marks, drawn once. The harnesses' are LobeHub Icons' (MIT), as the app uses; the logos are
-      trademarks of their owners. Claude's and Windows' take their own colours where they're used.
-    -->
-    <svg width="0" height="0" class="absolute" aria-hidden="true">
-      <symbol id="mark-claude" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"
-        />
-      </symbol>
-      <symbol id="mark-openai" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          fill-rule="evenodd"
-          d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"
-        />
-      </symbol>
-      <symbol id="mark-cursor" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          fill-rule="evenodd"
-          d="M22.106 5.68L12.5.135a.998.998 0 00-.998 0L1.893 5.68a.84.84 0 00-.419.726v11.186c0 .3.16.577.42.727l9.607 5.547a.999.999 0 00.998 0l9.608-5.547a.84.84 0 00.42-.727V6.407a.84.84 0 00-.42-.726zm-.603 1.176L12.228 22.92c-.063.108-.228.064-.228-.061V12.34a.59.59 0 00-.295-.51l-9.11-5.26c-.107-.062-.063-.228.062-.228h18.55c.264 0 .428.286.296.514z"
-        />
-      </symbol>
-      <symbol id="mark-opencode" viewBox="0 0 24 24">
-        <path fill="currentColor" fill-rule="evenodd" d="M16 6H8v12h8V6zm4 16H4V2h16v20z" />
-      </symbol>
-      <symbol id="mark-windows" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M1 1h10.5v10.5H1zM12.5 1H23v10.5H12.5zM1 12.5h10.5V23H1zM12.5 12.5H23V23H12.5z"
-        />
-      </symbol>
-      <!-- Apple's logo, as Simple Icons (CC0) draws it. -->
-      <symbol id="mark-apple" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
-        />
-      </symbol>
-      <!-- Tux, as Simple Icons (CC0) draws it. -->
-      <symbol id="mark-linux" viewBox="0 0 24 24">
-        <path
-          fill="currentColor"
-          d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336zm7.159-9.074c-.435.201-.945.535-1.488.535-.542 0-.97-.267-1.28-.466-.154-.134-.28-.268-.373-.335-.164-.134-.144-.333-.074-.333.109.016.129.134.199.2.096.066.215.2.36.333.292.2.68.467 1.167.467.485 0 1.053-.267 1.398-.466.195-.135.445-.334.648-.467.156-.136.149-.267.279-.267.128.016.034.134-.147.332a8.097 8.097 0 01-.69.468zm-1.082-1.583V5.64c-.006-.02.013-.042.029-.05.074-.043.18-.027.26.004.063 0 .16.067.15.135-.006.049-.085.066-.135.066-.055 0-.092-.043-.141-.068-.052-.018-.146-.008-.163-.065zm-.551 0c-.02.058-.113.049-.166.066-.047.025-.086.068-.14.068-.05 0-.13-.02-.136-.068-.01-.066.088-.133.15-.133.08-.031.184-.047.259-.005.019.009.036.03.03.05v.02h.003z"
-        />
-      </symbol>
-      <symbol id="mark-github" viewBox="0 0 16 16">
-        <path
-          fill="currentColor"
-          d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"
-        />
-      </symbol>
-    </svg>
-
-    <header class="nav fixed inset-x-0 top-0 z-50" data-nav>
-      <nav class="mx-auto flex h-16 max-w-[1200px] items-center gap-8 px-6" aria-label="Main">
-        <a
-          href="#"
-          class="flex items-center gap-2.5 font-display text-[17px] font-semibold tracking-[-0.01em]"
-        >
-          <svg width="22" height="22" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-            <path
-              d="M34.6 13.4A15 15 0 1 0 34.6 34.6"
-              stroke="currentColor"
-              stroke-width="6"
-              stroke-linecap="round"
-            />
-            <path d="M36 19.5 40.5 24 36 28.5 31.5 24Z" fill="currentColor" />
-          </svg>
-          Cerium
-        </a>
-        <div class="ml-auto flex items-center gap-7 text-[14px] text-fg-secondary max-md:hidden">
-          <a href="#harnesses" class="hover:text-fg-primary">Harnesses</a>
-          <a href="#features" class="hover:text-fg-primary">Features</a>
-          <a href="#glass" class="hover:text-fg-primary">Themes</a>
-          <a
-            href="https://github.com/CeriumHQ/cerium"
-            class="flex items-center gap-1.5 hover:text-fg-primary"
-          >
-            <svg width="15" height="15" aria-hidden="true"><use href="#mark-github" /></svg>GitHub</a
-          >
-        </div>
-        <a href="/app/" class="text-[14px] text-fg-secondary hover:text-fg-primary max-md:ml-auto">Sign in</a>
-        <a
-          href="/download"
-          data-download
-          class="flex items-center gap-2 rounded-full bg-accent py-1.5 pr-4 pl-3.5 text-[14px] font-medium text-accent-fg"
-        >
-          <svg width="13" height="13" class="windows" aria-hidden="true"><use href="#mark-windows" /></svg
-          >Download</a
-        >
+    <header class="bar" data-bar>
+      <a class="brand" href="/" aria-label="Cerium home">
+        <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+        <span>cerium</span>
+      </a>
+      <nav aria-label="Site">
+        <a class="hide-narrow" href="#team">How it works</a>
+        <a class="hide-narrow" href="https://github.com/CeriumHQ/cerium">GitHub</a>
+        <a class="hide-narrow" href="/app/">Web app</a>
+        <a class="button button-solid" href="/downloads/" data-download>Download</a>
       </nav>
     </header>
 
     <main>
-      <section class="hero relative min-h-[100svh]" data-hero>
-        <canvas class="light" aria-hidden="true" data-light></canvas>
-        <div class="relative mx-auto flex max-w-[1200px] flex-col items-center px-6 pt-36 text-center">
-          <h1
-            class="font-display text-[clamp(3rem,8vw,6.5rem)] leading-[0.95] font-semibold tracking-[-0.035em]"
-          >
-            One thread.<br />Every agent.
+      <!-- One white beam in, five out: one prompt, a whole team. -->
+      <section class="hero" aria-labelledby="hero-title">
+        <canvas class="hero-scene" data-scene aria-hidden="true"></canvas>
+        <div class="hero-fallback" aria-hidden="true">
+          <svg><use href="/icons.svg#mark-cerium" /></svg>
+        </div>
+        <ol class="bands" aria-label="The harnesses a lead can hand work to">
+          <li data-band style="--band: var(--sp-cranberry)">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>Claude Code
+          </li>
+          <li data-band style="--band: var(--sp-amber)">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>Cursor
+          </li>
+          <li data-band style="--band: var(--sp-uranium)">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>Codex
+          </li>
+          <li data-band style="--band: var(--sp-seaglass)">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>OpenCode
+          </li>
+          <li data-band style="--band: var(--sp-cobalt)">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg>Muse Code
+          </li>
+        </ol>
+
+        <div class="hero-copy">
+          <h1 class="display hero-title" id="hero-title" data-split>
+            <span>One prompt.</span>
+            <span>A whole team.</span>
           </h1>
-          <p class="mt-7 max-w-[36rem] text-[19px] leading-[1.6] text-fg-secondary">
-            Cerium runs
-            <span class="brand"
-              ><svg class="claude" aria-hidden="true"><use href="#mark-claude" /></svg>Claude Code</span
-            >,
-            <span class="brand"
-              ><svg aria-hidden="true"><use href="#mark-openai" /></svg>Codex</span
-            >,
-            <span class="brand"
-              ><svg aria-hidden="true"><use href="#mark-cursor" /></svg>Cursor</span
-            >
-            and
-            <span class="brand"
-              ><svg aria-hidden="true"><use href="#mark-opencode" /></svg>OpenCode</span
-            >
-            side by side. Ask once, and your lead agent hands each piece to the one that does it best.
-          </p>
-          <div class="mt-9 flex flex-wrap justify-center gap-3">
-            <a
-              href="/download"
-              data-download
-              class="flex items-center gap-2.5 rounded-full bg-accent py-3 pr-6 pl-5 text-[15px] font-semibold text-accent-fg"
-            >
-              <svg width="16" height="16" class="windows" aria-hidden="true"><use href="#mark-windows" /></svg
-              >Download for <span data-download-system>Windows</span></a
-            >
-            <a
-              href="https://github.com/CeriumHQ/cerium"
-              class="glass flex items-center gap-2.5 rounded-full py-3 pr-6 pl-5 text-[15px] font-medium text-fg-primary ring-1 ring-line-strong"
-            >
-              <svg width="18" height="18" aria-hidden="true"><use href="#mark-github" /></svg>Source on
-              GitHub</a
-            >
+          <div class="hero-foot" data-rise>
+            <p class="lede">
+              A lead agent splits your job across every coding agent you use. They work at once, talk to each
+              other, and hand you one answer.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-solid" href="/downloads/" data-download>
+                <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
+                <span data-download-label>Download for Windows</span>
+              </a>
+              <a class="button button-glass" href="#team">See it work</a>
+            </div>
           </div>
-          <p class="mt-4 text-[13px] text-fg-tertiary">
-            Free and open source ·
-            <span data-mac-intel hidden
-              ><a href="/download/mac-intel" class="underline underline-offset-2 hover:text-fg-secondary"
-                >Intel Mac</a
-              >
-              ·
-            </span>
-            <a href="/downloads/" class="underline underline-offset-2 hover:text-fg-secondary"
-              >Other systems</a
-            >
+        </div>
+      </section>
+
+      <!-- The proof: the real app, rising off the bench and flattening as it comes into view. -->
+      <section class="proof" id="team" aria-labelledby="proof-title">
+        <div class="proof-head">
+          <h2 class="display proof-title" id="proof-title">Ask once.</h2>
+          <p class="lede">
+            The lead picks a harness, a model and the access each helper needs, and keeps them all in your
+            thread.
           </p>
         </div>
-        <div class="relative mx-auto mt-16 max-w-[1200px] px-6 pb-24">
-          <figure class="window glass" data-window>
+        <div class="proof-stage" data-tilt>
+          <figure class="window">
             <img
-              src="./src/media/hero.webp"
-              width="2560"
-              height="1600"
-              alt="Cerium with a Claude lead adding cancellation to a job queue while a Codex agent writes the tests, an OpenCode agent the docs and a Cursor agent reviews it for race conditions, all four working"
+              src="./src/media/footage/hero.webp"
+              width="1600"
+              height="900"
+              alt="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
             />
           </figure>
         </div>
       </section>
 
-      <section id="harnesses" class="relative scroll-mt-16" data-reveal>
-        <div class="mx-auto max-w-[1200px] px-6 pt-28 pb-36">
-          <div class="mx-auto max-w-[40rem] text-center">
-            <h2
-              class="font-display text-[clamp(2.25rem,5vw,3.75rem)] leading-[1.02] font-semibold tracking-[-0.03em]"
-            >
-              Bring the agents you already pay for.
-            </h2>
-            <p class="mx-auto mt-5 max-w-[37rem] text-[18px] leading-[1.55] text-fg-secondary">
-              Cerium drives each harness through its official SDK, on your own plan. Your keys stay with the
-              harness. Cerium never reads a harness's token or key.
-            </p>
-          </div>
-
-          <!-- One beam in, four rays out: one to each harness. -->
-          <div class="fan" aria-hidden="true">
-            <span class="fan-point"></span>
-            <svg viewBox="0 0 1200 240" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="beam" x1="600" y1="0" x2="600" y2="64" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#fff" stop-opacity="0" />
-                  <stop offset="1" stop-color="#fff" />
-                </linearGradient>
-                <linearGradient
-                  id="ray-claude"
-                  x1="600"
-                  y1="64"
-                  x2="150"
-                  y2="240"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="#fff" />
-                  <stop offset="0.45" stop-color="var(--ray-claude)" />
-                </linearGradient>
-                <linearGradient
-                  id="ray-codex"
-                  x1="600"
-                  y1="64"
-                  x2="450"
-                  y2="240"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="#fff" />
-                  <stop offset="0.45" stop-color="var(--ray-codex)" />
-                </linearGradient>
-                <linearGradient
-                  id="ray-cursor"
-                  x1="600"
-                  y1="64"
-                  x2="750"
-                  y2="240"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="#fff" />
-                  <stop offset="0.45" stop-color="var(--ray-cursor)" />
-                </linearGradient>
-                <linearGradient
-                  id="ray-opencode"
-                  x1="600"
-                  y1="64"
-                  x2="1050"
-                  y2="240"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="#fff" />
-                  <stop offset="0.45" stop-color="var(--ray-opencode)" />
-                </linearGradient>
-              </defs>
-              <g class="fan-glow">
-                <path class="fan-beam" d="M600 0V64" stroke="url(#beam)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L150 240" stroke="url(#ray-claude)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L450 240" stroke="url(#ray-codex)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L750 240" stroke="url(#ray-cursor)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L1050 240" stroke="url(#ray-opencode)" pathLength="1" />
-              </g>
-              <g class="fan-lines">
-                <path class="fan-beam" d="M600 0V64" stroke="url(#beam)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L150 240" stroke="url(#ray-claude)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L450 240" stroke="url(#ray-codex)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L750 240" stroke="url(#ray-cursor)" pathLength="1" />
-                <path class="fan-ray" d="M600 64L1050 240" stroke="url(#ray-opencode)" pathLength="1" />
-              </g>
-            </svg>
-          </div>
-
-          <ul class="roster grid grid-cols-4 max-md:grid-cols-2 max-md:gap-y-14">
-            <li class="harness" style="--ray: var(--ray-claude); --at: 0">
-              <svg width="34" height="34" class="claude" aria-hidden="true"><use href="#mark-claude" /></svg>
-              <h3>Claude Code</h3>
-              <p>Opus, Sonnet and Haiku, on your Claude plan.</p>
-            </li>
-            <li class="harness" style="--ray: var(--ray-codex); --at: 1">
-              <svg width="34" height="34" aria-hidden="true"><use href="#mark-openai" /></svg>
-              <h3>Codex</h3>
-              <p>OpenAI's models, on your ChatGPT plan.</p>
-            </li>
-            <li class="harness" style="--ray: var(--ray-cursor); --at: 2">
-              <svg width="34" height="34" aria-hidden="true"><use href="#mark-cursor" /></svg>
-              <h3>Cursor</h3>
-              <p>Composer and every model Cursor offers.</p>
-            </li>
-            <li class="harness" style="--ray: var(--ray-opencode); --at: 3">
-              <svg width="34" height="34" aria-hidden="true"><use href="#mark-opencode" /></svg>
-              <h3>OpenCode</h3>
-              <p>Any of the providers OpenCode connects.</p>
-            </li>
-          </ul>
-        </div>
+      <!-- Who does what, in the words the lead reports it. Each line widens as it crosses the middle. -->
+      <section class="roster" aria-label="How a team splits one job">
+        <p class="roster-line" data-stretch style="--band: var(--sp-cranberry)">
+          <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>
+          <span>Claude takes the lead.</span>
+        </p>
+        <p class="roster-line" data-stretch style="--band: var(--sp-uranium)">
+          <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>
+          <span>Codex writes the tests.</span>
+        </p>
+        <p class="roster-line" data-stretch style="--band: var(--sp-seaglass)">
+          <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>
+          <span>OpenCode writes the docs.</span>
+        </p>
+        <p class="roster-line" data-stretch style="--band: var(--sp-amber)">
+          <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>
+          <span>Cursor hunts for races.</span>
+        </p>
+        <p class="roster-line roster-end" data-stretch>
+          <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+          <span>You get one answer.</span>
+        </p>
+        <p class="roster-note">
+          Helpers message the lead and each other, and say so before they touch a file someone else is
+          editing.
+        </p>
       </section>
 
-      <!--
-        A real thread, start to finish: the window stays put while the steps scroll past, and its camera
-        moves to the part of each frame the step is about.
-      -->
-      <section class="story relative" aria-labelledby="story-title" data-story>
-        <div class="mx-auto max-w-[1200px] px-6 pt-12 pb-40">
-          <div class="max-w-[38rem]">
-            <h2
-              id="story-title"
-              class="font-display text-[clamp(2.25rem,5vw,3.75rem)] leading-[1.02] font-semibold tracking-[-0.03em]"
-            >
-              Hand off the whole job.
-            </h2>
-            <p class="mt-5 text-[18px] leading-[1.55] text-fg-secondary">
-              Every frame below is from one real thread in Cerium.
+      <!-- Three things a team does that one agent can't. -->
+      <section class="moves" aria-label="What the team does">
+        <article class="move move-review">
+          <div class="move-copy">
+            <h2 class="display move-title">A second opinion from another lab.</h2>
+            <p class="lede">
+              Claude wrote it? Codex reviews the diff. The reviewer never shares the author's blind spots, and
+              its findings land on the lines they're about.
             </p>
           </div>
-
-          <div class="story-grid">
-            <ol class="story-steps">
-              <li data-step="0">
-                <div>
-                  <h3>Ask once.</h3>
-                  <p>Describe the job in plain words. Name the agents you want, or let the lead choose.</p>
-                </div>
-              </li>
-              <li data-step="1">
-                <div>
-                  <h3>Four agents at once.</h3>
-                  <p>Tests to Codex, docs to OpenCode, a review to Cursor, while the lead builds it.</p>
-                </div>
-              </li>
-              <li data-step="2">
-                <div>
-                  <h3>One answer comes back.</h3>
-                  <p>The lead checks the work, runs the tests and tells you who did what.</p>
-                </div>
-              </li>
-            </ol>
-
-            <div class="story-stage-wrap">
-              <div class="story-light" aria-hidden="true">
-                <span style="--hue: var(--ray-claude)"></span>
-                <span style="--hue: var(--ray-codex)"></span>
-                <span style="--hue: var(--ray-cursor)"></span>
-                <span style="--hue: var(--ray-opencode)"></span>
+          <div class="review" aria-hidden="true">
+            <div class="review-file">
+              <span class="review-path">
+                src/queue.ts
+                <span class="review-by"
+                  ><svg><use href="/icons.svg#mark-claude" /></svg>Opus 5.5</span
+                >
+              </span>
+              <span class="review-stat"><b>+30</b> <i>−2</i></span>
+            </div>
+            <pre
+              class="review-code"
+            ><code><span class="ln">41</span>  <span class="k">if</span> (signal?.aborted) <span class="k">return</span> reject(signal.reason);
+<span class="ln add">42</span><span class="add">  signal?.addEventListener(<span class="s">"abort"</span>, onAbort, { once: <span class="k">true</span> });</span>
+<span class="ln add">43</span><span class="add">  <span class="k">this</span>.#pending.add(job);</span>
+<span class="ln">44</span>  <span class="k">this</span>.#drain();</code></pre>
+            <div class="review-note">
+              <div class="review-who">
+                <svg><use href="/icons.svg#mark-openai" /></svg>
+                <span><b>GPT-6 Luna</b> reviewing Opus 5.5</span>
               </div>
-              <figure class="story-stage window glass" data-stage>
-                <div class="story-camera" data-camera>
-                  <img
-                    src="./src/media/story-ask.webp"
-                    width="1280"
-                    height="800"
-                    loading="lazy"
-                    alt="A request to add cancellation to a job queue, with the lead starting on it"
-                    data-frame="ask"
-                  />
-                  <img
-                    src="./src/media/hero.webp"
-                    width="1280"
-                    height="800"
-                    loading="lazy"
-                    alt="The lead's three helpers in Codex, OpenCode and Cursor, all four agents working, with the agents panel open"
-                    data-frame="team"
-                  />
-                  <img
-                    src="./src/media/story-answer.webp"
-                    width="1280"
-                    height="800"
-                    loading="lazy"
-                    alt="The lead's table of who did what: Claude, Codex, OpenCode and Cursor"
-                    data-frame="answer"
-                  />
-                </div>
-              </figure>
+              <p>The listener stays attached after the job settles. Remove it in <code>finally</code>.</p>
+              <span class="review-send">Send to the agent</span>
             </div>
           </div>
+        </article>
+
+        <article class="move move-ci">
+          <div class="move-copy">
+            <h2 class="display move-title">Fixes CI while you're away.</h2>
+            <p class="lede">
+              When a check fails on a commit an agent pushed, a thread starts with the logs and your standing
+              orders. Your phone hears when it's fixed.
+            </p>
+          </div>
+          <figure class="phone">
+            <img
+              src="./src/media/feature-phone.webp"
+              width="1170"
+              height="2532"
+              loading="lazy"
+              alt="Cerium on a phone: an agent asks whether a timeout should reject or resolve, with the choices as buttons"
+            />
+          </figure>
+          <div class="ping" aria-hidden="true">
+            <svg><use href="/icons.svg#mark-cerium" /></svg>
+            <div>
+              <b>Fix failing CI</b>
+              <span>All 37 checks pass. Pushed 2c41f9e.</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="move move-play">
+          <div class="move-copy">
+            <h2 class="display move-title">Answers you can play with.</h2>
+            <p class="lede">
+              Agents draw charts, timelines and what-ifs right in the thread. Drag a slider and the page
+              reruns.
+            </p>
+          </div>
+          <figure class="window window-flat">
+            <img
+              src="./src/media/footage/artifact.webp"
+              width="1600"
+              height="900"
+              loading="lazy"
+              alt="An agent's answer as an interactive page: sliders for a job queue's rate limit and a timeline of jobs that re-plans as they move"
+            />
+          </figure>
+        </article>
+      </section>
+
+      <!-- The app's six kinds of glass. Picking one tints this page, its prism included. -->
+      <section class="glass" aria-labelledby="glass-title">
+        <div class="glass-head">
+          <h2 class="display glass-title" id="glass-title">Six kinds of glass.</h2>
+          <div class="glass-picker" role="radiogroup" aria-label="Theme" data-picker>
+            <button role="radio" aria-checked="true" data-pick="cerium" style="--bead: oklch(0.96 0 0)">
+              Cerium
+            </button>
+            <button role="radio" aria-checked="false" data-pick="amber" style="--bead: oklch(0.8 0.13 70)">
+              Amber
+            </button>
+            <button
+              role="radio"
+              aria-checked="false"
+              data-pick="uranium"
+              style="--bead: oklch(0.89 0.19 123)"
+            >
+              Uranium
+            </button>
+            <button
+              role="radio"
+              aria-checked="false"
+              data-pick="seaglass"
+              style="--bead: oklch(0.86 0.09 180)"
+            >
+              Seaglass
+            </button>
+            <button role="radio" aria-checked="false" data-pick="cobalt" style="--bead: oklch(0.66 0.19 264)">
+              Cobalt
+            </button>
+            <button
+              role="radio"
+              aria-checked="false"
+              data-pick="cranberry"
+              style="--bead: oklch(0.77 0.13 356)"
+            >
+              Cranberry
+            </button>
+          </div>
+        </div>
+        <div class="glass-stage">
+          <div class="glass-light" aria-hidden="true"></div>
+          <figure class="window glass-window" data-shots>
+            <img
+              data-shot="cerium"
+              src="./src/media/themes/cerium-dark.webp"
+              width="1600"
+              height="1000"
+              alt="Cerium in its clear Cerium theme"
+            />
+            <img
+              data-shot="amber"
+              src="./src/media/themes/amber-dark.webp"
+              width="1600"
+              height="1000"
+              loading="lazy"
+              alt="Cerium in the Amber theme"
+            />
+            <img
+              data-shot="uranium"
+              src="./src/media/themes/uranium-dark.webp"
+              width="1600"
+              height="1000"
+              loading="lazy"
+              alt="Cerium in the Uranium theme"
+            />
+            <img
+              data-shot="seaglass"
+              src="./src/media/themes/seaglass-dark.webp"
+              width="1600"
+              height="1000"
+              loading="lazy"
+              alt="Cerium in the Seaglass theme"
+            />
+            <img
+              data-shot="cobalt"
+              src="./src/media/themes/cobalt-dark.webp"
+              width="1600"
+              height="1000"
+              loading="lazy"
+              alt="Cerium in the Cobalt theme"
+            />
+            <img
+              data-shot="cranberry"
+              src="./src/media/themes/cranberry-dark.webp"
+              width="1600"
+              height="1000"
+              loading="lazy"
+              alt="Cerium in the Cranberry theme"
+            />
+          </figure>
         </div>
       </section>
 
-      <section id="features" class="relative scroll-mt-16">
-        <div class="mx-auto max-w-[1200px] px-6 pb-40">
-          <div class="max-w-[40rem]">
-            <h2
-              class="font-display text-[clamp(2.25rem,5vw,3.75rem)] leading-[1.02] font-semibold tracking-[-0.03em]"
-            >
-              Nothing to switch to.
-            </h2>
-            <p class="mt-5 text-[18px] leading-[1.55] text-fg-secondary">
-              Review the work and ship it beside the thread. Your phone picks up where your desk left off.
-            </p>
-          </div>
-
-          <div class="plate-wide">
-            <div class="plate-copy">
-              <h3>Git and GitHub, beside the thread.</h3>
-              <p>
-                Read each change as a diff, stage the lines you want and commit, then work through pull
-                requests and issues without leaving Cerium.
-              </p>
-            </div>
-            <div class="plate-media">
-              <div class="glow" aria-hidden="true"></div>
-              <figure class="window glass">
-                <img
-                  src="./src/media/feature-git.webp"
-                  width="2400"
-                  height="1500"
-                  loading="lazy"
-                  alt="The agents' change to queue.ts as a diff, beside Source control listing the project's changed files with Stage and Commit"
-                />
-              </figure>
-            </div>
-          </div>
-
-          <div class="plates">
-            <article class="plate">
-              <div class="plate-stage">
-                <div class="glow" aria-hidden="true"></div>
-                <div class="plate-pic">
-                  <div class="phone">
-                    <img
-                      src="./src/media/feature-phone.webp"
-                      width="1170"
-                      height="2532"
-                      loading="lazy"
-                      alt="Cerium on a phone, showing an agent's question with three options to pick from"
-                    />
-                  </div>
-                </div>
-              </div>
-              <h3>Answer from anywhere.</h3>
-              <p>
-                Sign in on your phone and your computers' threads come along. A notification says when an
-                agent needs you.
-              </p>
-            </article>
-            <article class="plate">
-              <div class="plate-stage">
-                <div class="glow" aria-hidden="true"></div>
-                <div class="plate-pic">
-                  <figure class="window glass artifact">
-                    <img
-                      src="./src/media/feature-artifact.webp"
-                      width="1590"
-                      height="1324"
-                      loading="lazy"
-                      alt="An agent's answer drawn as a view of the test results: 29 of 29 passed, each test file with its tests and how long each took"
-                    />
-                  </figure>
-                </div>
-              </div>
-              <h3>Answers you can see.</h3>
-              <p>Agents answer with a chart, a table or a timeline, drawn right in the conversation.</p>
-            </article>
-          </div>
-
-          <ul class="more">
-            <li>
-              <h3>Undo any turn</h3>
-              <p>Take a thread back to before any message, its files included.</p>
-            </li>
-            <li>
-              <h3>A worktree per thread</h3>
-              <p>Threads working in one project never change each other's files.</p>
-            </li>
-            <li>
-              <h3>Know what's left</h3>
-              <p>Every plan's usage in one place, with a warning before it runs out.</p>
-            </li>
-          </ul>
+      <!-- The close. -->
+      <section class="close" aria-labelledby="close-title">
+        <p class="close-plans">
+          Every agent is the real harness on your own plan. Cerium starts each one's sign-in and never reads
+          its keys.
+        </p>
+        <h2 class="close-word" id="close-title" aria-label="Cerium" data-fit>
+          <span aria-hidden="true"
+            >cer<span class="close-i">ı<i class="facet"></i></span>um</span
+          >
+        </h2>
+        <div class="close-actions">
+          <a class="button button-solid" href="/downloads/" data-download>
+            <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
+            <span data-download-label>Download for Windows</span>
+          </a>
+          <a class="button button-glass" href="/downloads/">Every platform</a>
         </div>
-      </section>
-
-      <!-- Themes: pick a glass and the window and the light behind it change to match. -->
-      <section id="glass" class="relative scroll-mt-16" data-themes>
-        <div class="mx-auto max-w-[1200px] px-6 pb-40">
-          <div class="mx-auto max-w-[40rem] text-center">
-            <h2
-              class="font-display text-[clamp(2.25rem,5vw,3.75rem)] leading-[1.02] font-semibold tracking-[-0.03em]"
-            >
-              Six kinds of glass.
-            </h2>
-            <p class="mx-auto mt-5 max-w-[32rem] text-[18px] leading-[1.55] text-fg-secondary">
-              Every theme is a glass you could hold, in light and dark.
-            </p>
-          </div>
-
-          <div class="themes-controls">
-            <div class="beads" role="group" aria-label="Theme">
-              <button type="button" aria-pressed="true" data-palette="cerium" style="--bead: oklch(0.95 0 0)">
-                Cerium
-              </button>
-              <button
-                type="button"
-                aria-pressed="false"
-                data-palette="amber"
-                style="--bead: oklch(0.8 0.13 70)"
-              >
-                Amber
-              </button>
-              <button
-                type="button"
-                aria-pressed="false"
-                data-palette="uranium"
-                style="--bead: oklch(0.89 0.19 123)"
-              >
-                Uranium
-              </button>
-              <button
-                type="button"
-                aria-pressed="false"
-                data-palette="seaglass"
-                style="--bead: oklch(0.86 0.09 180)"
-              >
-                Sea glass
-              </button>
-              <button
-                type="button"
-                aria-pressed="false"
-                data-palette="cobalt"
-                style="--bead: oklch(0.62 0.2 264)"
-              >
-                Cobalt
-              </button>
-              <button
-                type="button"
-                aria-pressed="false"
-                data-palette="cranberry"
-                style="--bead: oklch(0.77 0.13 356)"
-              >
-                Cranberry
-              </button>
-            </div>
-            <div class="mode" role="group" aria-label="Mode">
-              <button type="button" aria-pressed="true" data-mode="dark">Dark</button>
-              <button type="button" aria-pressed="false" data-mode="light">Light</button>
-            </div>
-          </div>
-          <p class="themes-line" aria-live="polite" data-line>
-            Clear glass, with your desktop showing through.
-          </p>
-
-          <div class="themes-stage">
-            <div class="glow themes-glow" aria-hidden="true" data-glow></div>
-            <figure class="window glass themes-window">
-              <img
-                src="./src/media/themes/cerium-dark.webp"
-                width="1600"
-                height="1000"
-                loading="lazy"
-                alt="Cerium in the Cerium theme, dark: a finished thread's table of who did what, with the agents panel beside it"
-                data-theme-shot
-                data-on
-              />
-              <img width="1600" height="1000" alt="" aria-hidden="true" data-theme-shot />
-            </figure>
-          </div>
-        </div>
-      </section>
-
-      <!-- The close: the four rays come back together as one beam, as the work comes back as one answer. -->
-      <section class="close relative" aria-labelledby="close-title" data-reveal>
-        <div class="mx-auto max-w-[1200px] px-6 pb-36 max-md:pb-24">
-          <div class="fan fan-merge" aria-hidden="true">
-            <span class="fan-point"></span>
-            <svg viewBox="0 0 1200 240" preserveAspectRatio="none">
-              <defs>
-                <linearGradient
-                  id="merge-claude"
-                  x1="150"
-                  y1="0"
-                  x2="600"
-                  y2="176"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="var(--ray-claude)" stop-opacity="0" />
-                  <stop offset="0.55" stop-color="var(--ray-claude)" />
-                  <stop offset="1" stop-color="#fff" />
-                </linearGradient>
-                <linearGradient
-                  id="merge-codex"
-                  x1="450"
-                  y1="0"
-                  x2="600"
-                  y2="176"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="var(--ray-codex)" stop-opacity="0" />
-                  <stop offset="0.55" stop-color="var(--ray-codex)" />
-                  <stop offset="1" stop-color="#fff" />
-                </linearGradient>
-                <linearGradient
-                  id="merge-cursor"
-                  x1="750"
-                  y1="0"
-                  x2="600"
-                  y2="176"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="var(--ray-cursor)" stop-opacity="0" />
-                  <stop offset="0.55" stop-color="var(--ray-cursor)" />
-                  <stop offset="1" stop-color="#fff" />
-                </linearGradient>
-                <linearGradient
-                  id="merge-opencode"
-                  x1="1050"
-                  y1="0"
-                  x2="600"
-                  y2="176"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="var(--ray-opencode)" stop-opacity="0" />
-                  <stop offset="0.55" stop-color="var(--ray-opencode)" />
-                  <stop offset="1" stop-color="#fff" />
-                </linearGradient>
-                <linearGradient
-                  id="merge-beam"
-                  x1="600"
-                  y1="176"
-                  x2="600"
-                  y2="240"
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0" stop-color="#fff" />
-                  <stop offset="1" stop-color="#fff" stop-opacity="0" />
-                </linearGradient>
-              </defs>
-              <g class="fan-glow">
-                <path class="fan-ray" d="M150 0L600 176" stroke="url(#merge-claude)" pathLength="1" />
-                <path class="fan-ray" d="M450 0L600 176" stroke="url(#merge-codex)" pathLength="1" />
-                <path class="fan-ray" d="M750 0L600 176" stroke="url(#merge-cursor)" pathLength="1" />
-                <path class="fan-ray" d="M1050 0L600 176" stroke="url(#merge-opencode)" pathLength="1" />
-                <path class="fan-beam" d="M600 176V240" stroke="url(#merge-beam)" pathLength="1" />
-              </g>
-              <g class="fan-lines">
-                <path class="fan-ray" d="M150 0L600 176" stroke="url(#merge-claude)" pathLength="1" />
-                <path class="fan-ray" d="M450 0L600 176" stroke="url(#merge-codex)" pathLength="1" />
-                <path class="fan-ray" d="M750 0L600 176" stroke="url(#merge-cursor)" pathLength="1" />
-                <path class="fan-ray" d="M1050 0L600 176" stroke="url(#merge-opencode)" pathLength="1" />
-                <path class="fan-beam" d="M600 176V240" stroke="url(#merge-beam)" pathLength="1" />
-              </g>
-            </svg>
-          </div>
-
-          <div class="close-copy flex flex-col items-center text-center">
-            <h2
-              id="close-title"
-              class="font-display text-[clamp(3rem,8vw,6.5rem)] leading-[0.95] font-semibold tracking-[-0.035em]"
-            >
-              Ask once.
-            </h2>
-            <p class="mt-6 max-w-[36rem] text-[19px] leading-[1.6] text-fg-secondary">
-              Bring the agents you have.<br class="max-sm:hidden" />
-              Cerium is free, open source and runs on your own machine.
-            </p>
-            <div class="mt-9 flex flex-wrap justify-center gap-3">
-              <a
-                href="/download"
-                data-download
-                class="flex items-center gap-2.5 rounded-full bg-accent py-3 pr-6 pl-5 text-[15px] font-semibold text-accent-fg"
-              >
-                <svg width="16" height="16" class="windows" aria-hidden="true">
-                  <use href="#mark-windows" /></svg
-                >Download for <span data-download-system>Windows</span></a
-              >
-              <a
-                href="https://github.com/CeriumHQ/cerium"
-                class="glass flex items-center gap-2.5 rounded-full py-3 pr-6 pl-5 text-[15px] font-medium text-fg-primary ring-1 ring-line-strong"
-              >
-                <svg width="18" height="18" aria-hidden="true"><use href="#mark-github" /></svg>Source on
-                GitHub</a
-              >
-            </div>
-          </div>
-        </div>
+        <p class="close-small">Free and open source, for Windows, macOS and Linux.</p>
       </section>
     </main>
 
-    <footer class="footer">
-      <div class="mx-auto flex max-w-[1200px] flex-wrap items-center gap-x-8 gap-y-4 px-6 pt-10">
-        <a
-          href="#"
-          class="flex items-center gap-2.5 font-display text-[15px] font-semibold tracking-[-0.01em]"
-        >
-          <svg width="18" height="18" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-            <path
-              d="M34.6 13.4A15 15 0 1 0 34.6 34.6"
-              stroke="currentColor"
-              stroke-width="6"
-              stroke-linecap="round"
-            />
-            <path d="M36 19.5 40.5 24 36 28.5 31.5 24Z" fill="currentColor" />
-          </svg>
-          Cerium
-        </a>
-        <nav class="ml-auto flex flex-wrap gap-x-7 gap-y-2 text-[14px] text-fg-secondary" aria-label="Footer">
-          <a href="/downloads/" class="hover:text-fg-primary">Downloads</a>
-          <a href="https://github.com/CeriumHQ/cerium" class="hover:text-fg-primary">GitHub</a>
-          <a href="https://github.com/CeriumHQ/cerium/releases" class="hover:text-fg-primary">Releases</a>
-          <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md" class="hover:text-fg-primary"
-            >Changelog</a
-          >
-          <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE" class="hover:text-fg-primary"
-            >Apache 2.0 license</a
-          >
-          <a href="/privacy/" class="hover:text-fg-primary">Privacy</a>
-        </nav>
-      </div>
-      <div class="mx-auto max-w-[1200px] px-6 pt-6 pb-12">
-        <p class="max-w-[44rem] text-[12.5px] leading-[1.6] text-fg-tertiary">
-          Claude Code, Codex, Cursor, OpenCode and Windows are trademarks of their owners, and Linux is Linus
-          Torvalds'. Cerium isn't made or endorsed by any of them. The harnesses' marks are drawn from LobeHub
-          Icons (MIT), Tux from Simple Icons (CC0).
-        </p>
-      </div>
+    <footer class="foot">
+      <p>
+        Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+        Anysphere or Anomaly. Open source under the
+        <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
+      </p>
+      <nav aria-label="Footer">
+        <a href="/downloads/">Downloads</a>
+        <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/CeriumHQ/cerium">GitHub</a>
+        <a href="/privacy/">Privacy</a>
+      </nav>
     </footer>
-    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

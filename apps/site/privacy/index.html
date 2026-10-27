@@ -1,13 +1,11 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-palette="cerium">
+<html lang="en" data-palette="cerium">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cerium privacy</title>
     <meta name="description" content="What Cerium keeps about you, where it lives and how to remove it." />
-    <link rel="canonical" href="https://cerium.nonlooped.xyz/privacy/" />
+    <meta name="theme-color" content="#121316" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/privacy/" />
     <meta property="og:title" content="Cerium privacy" />
@@ -15,117 +13,123 @@
       property="og:description"
       content="What Cerium keeps about you, where it lives and how to remove it."
     />
-    <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
-    <meta property="og:image:width" content="2400" />
-    <meta property="og:image:height" content="1260" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://cerium.nonlooped.xyz/privacy/" />
+    <script>
+      // The glass picked on the home page, before the first paint (src/palette.ts).
+      try {
+        const saved = localStorage.getItem("cerium-site:palette");
+        if (saved) document.documentElement.dataset.palette = saved;
+      } catch {}
+    </script>
+    <script type="module" src="/src/privacy.ts"></script>
   </head>
   <body>
-    <header>
-      <nav class="mx-auto flex h-16 max-w-[1200px] items-center gap-8 px-6" aria-label="Main">
-        <a
-          href="/"
-          class="flex items-center gap-2.5 font-display text-[17px] font-semibold tracking-[-0.01em]"
-        >
-          <svg width="22" height="22" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-            <path
-              d="M34.6 13.4A15 15 0 1 0 34.6 34.6"
-              stroke="currentColor"
-              stroke-width="6"
-              stroke-linecap="round"
-            />
-            <path d="M36 19.5 40.5 24 36 28.5 31.5 24Z" fill="currentColor" />
-          </svg>
-          Cerium
-        </a>
-        <div class="ml-auto flex items-center gap-7 text-[14px] text-fg-secondary">
-          <a href="/downloads/" class="hover:text-fg-primary">Download</a>
-          <a href="/app/" class="hover:text-fg-primary">Sign in</a>
-        </div>
+    <header class="bar" data-bar>
+      <a class="brand" href="/" aria-label="Cerium home">
+        <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+        <span>cerium</span>
+      </a>
+      <nav aria-label="Site">
+        <a class="hide-narrow" href="/app/">Web app</a>
+        <a class="button button-solid" href="/downloads/">Download</a>
       </nav>
     </header>
 
-    <main class="policy mx-auto max-w-[1200px] px-6 pt-20 pb-28">
-      <h1 class="font-display text-[clamp(2.5rem,6vw,4.25rem)] leading-[1] font-semibold tracking-[-0.035em]">
-        Privacy
-      </h1>
-      <p class="lead">
-        Cerium has no telemetry. Your threads live in a database on your machine, and each harness talks to
-        its own provider as it does without Cerium. This page covers what Cerium itself keeps or reaches out
-        for.
-      </p>
+    <main class="policy">
+      <aside class="policy-side">
+        <h1 class="display policy-title">Privacy</h1>
+        <p class="policy-date">Last updated 23 October 2026</p>
+        <nav class="policy-toc" aria-label="On this page">
+          <a href="#account">Your Cerium account</a>
+          <a href="#removing">Removing it</a>
+          <a href="#reaching-out">What the app reaches out for</a>
+          <a href="#website">This website</a>
+        </nav>
+      </aside>
 
-      <h2>Your Cerium account</h2>
-      <p>
-        Signing in is optional. It lets your phone and other machines follow your threads. Sign-in runs on
-        <a href="https://clerk.com/legal/privacy">Clerk</a>, with an email and password or with Google, GitHub
-        or X, which share your name, email address and profile picture with Clerk. Cerium never sees your
-        password.
-      </p>
-      <p>Once you're signed in, Cerium's relay at cerium.nonlooped.xyz keeps, for your account:</p>
-      <ul>
-        <li>your name, email address and profile picture from the sign-in;</li>
-        <li>
-          each device's name, platform, Cerium version and update channel, when it was last seen, and a hash
-          of its device key;
-        </li>
-        <li>
-          a copy of every thread on your signed-in machines: its messages, tool calls and their output,
-          without images;
-        </li>
-        <li>what you're drafting and when each thread was last read;</li>
-        <li>your browsers' push subscriptions, if you turn notifications on.</li>
-      </ul>
-      <p>
-        While you use Cerium from another device, the relay also passes traffic between it and your machine.
-        The relay runs on <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, which keeps its
-        request logs. None of it is sold or shared for advertising.
-      </p>
+      <article class="policy-body">
+        <p class="policy-lead">
+          Cerium has no telemetry. Your threads live in a database on your machine, and each harness talks to
+          its own provider as it does without Cerium.
+        </p>
+        <p>This page covers what Cerium itself keeps or reaches out for.</p>
 
-      <h2>Removing it</h2>
-      <p>
-        Signing a machine out, or removing it in Settings → Account, deletes its threads' copies from the
-        relay, and deleting a thread deletes its copy. To have your whole account deleted, open an issue on
-        <a href="https://github.com/CeriumHQ/cerium/issues">GitHub</a> from the address you signed in with, or
-        ask through it for a private way to reach us.
-      </p>
+        <h2 id="account">Your Cerium account</h2>
+        <p>
+          Signing in is optional. It lets your phone and other machines follow your threads. Sign-in runs on
+          <a href="https://clerk.com/legal/privacy">Clerk</a>, with an email and password or with Google,
+          GitHub or X, which share your name, email address and profile picture with Clerk. Cerium never sees
+          your password.
+        </p>
+        <p>Once you're signed in, Cerium's relay at cerium.nonlooped.xyz keeps, for your account:</p>
+        <ul>
+          <li>your name, email address and profile picture from the sign-in;</li>
+          <li>
+            each device's name, platform, Cerium version and update channel, when it was last seen, and a hash
+            of its device key;
+          </li>
+          <li>
+            a copy of every thread on your signed-in machines: its messages, tool calls and their output,
+            without images;
+          </li>
+          <li>what you're drafting and when each thread was last read;</li>
+          <li>your browsers' push subscriptions, if you turn notifications on.</li>
+        </ul>
+        <p>
+          While you use Cerium from another device, the relay also passes traffic between it and your machine.
+          The relay runs on <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, which keeps
+          its request logs. None of it is sold or shared for advertising.
+        </p>
 
-      <h2>What the app reaches out for</h2>
-      <ul>
-        <li>
-          <strong>Updates.</strong> The app checks Cerium's GitHub Releases at launch and every six hours, and
-          downloads an update only when you ask. Settings → Harnesses looks up each harness's newest version
-          on npm or GitHub.
-        </li>
-        <li>
-          <strong>Dictation.</strong> The speech model you pick downloads from Hugging Face on first use, and
-          your voice is transcribed on your machine.
-        </li>
-        <li>
-          <strong>Artifacts.</strong> Pages an agent draws can load scripts over HTTPS, such as chart
-          libraries from cdn.jsdelivr.net, so viewing one may fetch from that CDN.
-        </li>
-      </ul>
+        <h2 id="removing">Removing it</h2>
+        <p>
+          Signing a machine out, or removing it in Settings → Account, deletes its threads' copies from the
+          relay, and deleting a thread deletes its copy. To have your whole account deleted,
+          <a href="https://github.com/CeriumHQ/cerium/issues">open an issue on GitHub</a> from the address you
+          signed in with, or ask through it for a private way to reach us.
+        </p>
 
-      <h2>This website</h2>
-      <p>
-        The website runs no analytics or ads. Signing in sets Clerk's cookies, which keep you signed in.
-        Cloudflare serves the site and keeps request logs.
-      </p>
+        <h2 id="reaching-out">What the app reaches out for</h2>
+        <dl>
+          <dt>Updates</dt>
+          <dd>
+            The app checks Cerium's GitHub Releases at launch and every six hours, and downloads an update
+            only when you ask. Settings → Harnesses looks up each harness's newest version on npm or GitHub.
+          </dd>
+          <dt>Dictation</dt>
+          <dd>
+            The speech model you pick downloads from Hugging Face on first use, and your voice is transcribed
+            on your machine.
+          </dd>
+          <dt>Artifacts</dt>
+          <dd>
+            Pages an agent draws can load scripts over HTTPS, such as chart libraries from cdn.jsdelivr.net,
+            so viewing one may fetch from that CDN.
+          </dd>
+        </dl>
 
-      <p class="updated">Last updated 23 October 2026.</p>
+        <h2 id="website">This website</h2>
+        <p>
+          The website runs no analytics or ads. Signing in sets Clerk's cookies, which keep you signed in.
+          Cloudflare serves the site and keeps request logs. The glass you pick on the home page is remembered
+          in your browser only.
+        </p>
+      </article>
     </main>
 
-    <footer class="footer">
-      <div class="mx-auto max-w-[1200px] px-6 pt-6 pb-12">
-        <p class="max-w-[44rem] text-[12.5px] leading-[1.6] text-fg-tertiary">
-          Cerium is open source under the
-          <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE" class="underline underline-offset-2"
-            >Apache 2.0 license</a
-          >.
-        </p>
-      </div>
+    <footer class="foot">
+      <p>
+        Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+        Anysphere or Anomaly. Open source under the
+        <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
+      </p>
+      <nav aria-label="Footer">
+        <a href="/">Home</a>
+        <a href="/downloads/">Downloads</a>
+        <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/CeriumHQ/cerium">GitHub</a>
+      </nav>
     </footer>
-    <script type="module" src="/src/privacy.ts"></script>
   </body>
 </html>

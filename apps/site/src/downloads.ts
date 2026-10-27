@@ -1,12 +1,15 @@
-import "./styles/site.css";
+import "./styles/downloads.css";
 
+import { startChrome } from "./chrome.ts";
 import { armGuess, askProcessor, download } from "./platform.ts";
 
-// Every build, with the one the browser says fits this machine marked, and its system's card first
-// where the cards stack.
+startChrome();
+
+// Every build, with the one the browser says fits this machine marked, and its system's slab first
+// where the slabs stack.
 const mark = (arm: boolean) => {
   const path = download(arm);
-  for (const card of document.querySelectorAll("[data-system]")) card.removeAttribute("data-yours");
+  for (const system of document.querySelectorAll("[data-system]")) system.removeAttribute("data-yours");
   for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-build]")) {
     const yours = link.getAttribute("href") === path;
     link.toggleAttribute("data-yours", yours);

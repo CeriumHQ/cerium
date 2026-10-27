@@ -1,1 +1,5 @@
-import "./styles/site.css";
+import "./styles/privacy.css";
+
+import { startChrome } from "./chrome.ts";
+
+startChrome();

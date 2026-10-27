@@ -1,0 +1,202 @@
+@import "./base.css";
+
+/* ── Hero ── */
+
+.hero {
+  /* The scene's backdrop, read by the canvas so the glass refracts the page's own colour. */
+  --scene: oklch(from var(--void) calc(l - 0.01) c h);
+  position: relative;
+  height: 100svh;
+  min-height: 640px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.hero-scene,
+.hero-fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+.hero-fallback {
+  display: none;
+  place-items: center;
+  color: var(--fg);
+}
+
+.hero-fallback svg {
+  width: 30vmin;
+  height: 30vmin;
+  translate: 18vw -6vh;
+  opacity: 0.85;
+}
+
+.hero[data-no-webgl] .hero-scene {
+  display: none;
+}
+
+.hero[data-no-webgl] .hero-fallback {
+  display: grid;
+}
+
+/* The scene's edges sink into the page, and the copy gets a floor of shade to stand on. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(to top, var(--void) 0%, transparent 38%),
+    radial-gradient(120% 90% at 30% 60%, transparent 40%, oklch(from var(--void) l c h / 0.6) 100%);
+}
+
+/* Each band's harness, carried at its beam's far end. */
+.bands {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+.bands li {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  translate: -200px -200px;
+  transform: translate(-100%, -50%);
+  padding: 7px 13px 7px 10px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 520;
+  color: var(--fg);
+  white-space: nowrap;
+  background: oklch(from var(--void) l c h / 0.5);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px color-mix(in oklab, var(--band) 30%, transparent) inset,
+    0 0 30px -6px color-mix(in oklab, var(--band) 55%, transparent);
+  backdrop-filter: blur(14px) saturate(1.6);
+  opacity: 0;
+  transition:
+    opacity 700ms var(--ease-out),
+    filter 700ms var(--ease-out);
+  filter: blur(6px);
+}
+
+.bands li svg {
+  width: 15px;
+  height: 15px;
+  color: var(--band);
+}
+
+.hero[data-lit] .bands li {
+  opacity: 1;
+  filter: none;
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+
+.hero-copy {
+  position: absolute;
+  inset: auto var(--gutter) clamp(40px, 8vh, 88px);
+  display: grid;
+  gap: clamp(28px, 4vh, 44px);
+}
+
+.hero-title {
+  font-size: clamp(3.25rem, 1rem + 7.6vw, 8.75rem);
+  display: grid;
+}
+
+.hero-title > span {
+  display: block;
+  white-space: nowrap;
+}
+
+.hero-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px 48px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* The headline's letters stretch out from narrow as they sharpen, as the app's welcome does. */
+[data-split] [data-letter] {
+  opacity: 0;
+}
+
+.ready [data-split] [data-letter] {
+  animation: letter 1300ms var(--ease-out) calc(var(--i) * 28ms + 200ms) both;
+}
+
+@keyframes letter {
+  from {
+    opacity: 0;
+    font-stretch: 50%;
+    filter: blur(12px);
+    translate: 0 0.12em;
+  }
+  45% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Hidden until it rises, only where the script is there to raise it. */
+.js [data-rise] {
+  opacity: 0;
+}
+
+.ready [data-rise] {
+  animation: rise 1000ms var(--ease-out) 900ms both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    translate: 0 18px;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero {
+    min-height: 700px;
+  }
+  .hero-copy {
+    bottom: 32px;
+  }
+  .hero-title {
+    font-size: 13.4vw;
+    font-stretch: 104%;
+  }
+  .bands li {
+    font-size: 0.75rem;
+    padding: 5px 10px 5px 8px;
+    gap: 6px;
+  }
+  .bands li svg {
+    width: 12px;
+    height: 12px;
+  }
+}

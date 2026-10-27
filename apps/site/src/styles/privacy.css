@@ -1,0 +1,179 @@
+@import "./base.css";
+
+/* A reading page: the title holds its place on the left while the policy scrolls past it. */
+.policy {
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+  gap: clamp(40px, 7vw, 120px);
+  padding: clamp(120px, 18vh, 180px) var(--gutter) clamp(100px, 16vh, 160px);
+}
+
+.policy-side {
+  position: sticky;
+  top: 110px;
+  align-self: start;
+  display: grid;
+  gap: 18px;
+}
+
+/* A faint pool of split light behind the title. */
+.policy-side::before {
+  content: "";
+  position: absolute;
+  inset: -40% -30% 10% -20%;
+  z-index: -1;
+  background:
+    radial-gradient(
+      40% 40% at 30% 50%,
+      color-mix(in oklab, var(--sp-cranberry) 40%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      40% 40% at 60% 40%,
+      color-mix(in oklab, var(--sp-seaglass) 30%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      40% 40% at 50% 70%,
+      color-mix(in oklab, var(--sp-cobalt) 35%, transparent),
+      transparent 70%
+    );
+  filter: blur(70px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.policy-title {
+  font-size: clamp(3rem, 1rem + 6vw, 7.5rem);
+}
+
+.policy-date {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 0.9375rem;
+}
+
+.policy-toc {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  margin-top: 22px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line-2);
+}
+
+.policy-toc a {
+  padding: 5px 0;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  transition: color 150ms;
+}
+
+.policy-toc a:hover {
+  color: var(--fg);
+}
+
+.policy-body {
+  max-width: 64ch;
+  color: var(--fg-2);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.policy-body > :first-child {
+  margin-top: 0;
+}
+
+.policy-lead {
+  color: var(--fg);
+  font-weight: 420;
+  font-size: clamp(1.375rem, 1.05rem + 1vw, 1.875rem);
+  letter-spacing: -0.012em;
+  line-height: 1.32;
+  text-wrap: pretty;
+}
+
+.policy-body h2 {
+  margin: 2.6em 0 0.6em;
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-weight: 460;
+  font-stretch: 110%;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  scroll-margin-top: 110px;
+}
+
+.policy-body a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms;
+}
+
+.policy-body a:hover {
+  text-decoration-color: var(--fg);
+}
+
+.policy-body ul {
+  margin: 0 0 1em;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+/* Each item marked with a small facet. */
+.policy-body li {
+  position: relative;
+  padding-left: 24px;
+}
+
+.policy-body li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0.72em;
+  width: 6px;
+  height: 6px;
+  rotate: 45deg;
+  background: var(--fg-3);
+}
+
+.policy-body dl {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 18px 24px;
+  margin: 0;
+}
+
+.policy-body dt {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.policy-body dd {
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .policy {
+    grid-template-columns: 1fr;
+  }
+  .policy-side {
+    position: static;
+  }
+  .policy-toc {
+    display: none;
+  }
+  .policy-body dl {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .policy-body dd {
+    margin-bottom: 14px;
+  }
+}
