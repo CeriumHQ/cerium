@@ -57,10 +57,11 @@ export function CommandPalette({ open, onOpenChange, ...panel }: CommandPaletteP
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <Dialog.Viewport className="fixed inset-0 flex items-start justify-center px-2 pt-[12vh] pb-2 max-md:pt-[max(0.5rem,env(safe-area-inset-top))]">
+        {/* A phone's keyboard covers part of the page, so the dialog follows the part that's visible (web/viewport.ts). */}
+        <Dialog.Viewport className="fixed inset-0 flex items-start justify-center px-2 pt-[12vh] pb-2 max-md:top-[var(--app-top,0px)] max-md:bottom-auto max-md:h-[var(--app-height,100%)] max-md:pt-[max(0.5rem,env(safe-area-inset-top))] max-md:pr-[max(0.5rem,env(safe-area-inset-right))] max-md:pl-[max(0.5rem,env(safe-area-inset-left))]">
           <Dialog.Popup
             aria-label="Command palette"
-            className="flex max-h-[min(34rem,calc(100dvh-5rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale,translate] duration-150 ease-out-soft outline-none data-ending-style:-translate-y-2 data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:-translate-y-2 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
+            className="flex max-h-[min(34rem,calc(100dvh-5rem))] w-full max-md:max-h-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale,translate] duration-150 ease-out-soft outline-none data-ending-style:-translate-y-2 data-ending-style:scale-[0.98] data-ending-style:opacity-0 data-starting-style:-translate-y-2 data-starting-style:scale-[0.98] data-starting-style:opacity-0"
           >
             <PalettePanel
               {...panel}
@@ -163,7 +164,7 @@ function PalettePanel({
       ) : (
         <ScrollArea
           className="flex-1"
-          viewportClassName="max-h-[min(24rem,calc(100dvh-10rem))] max-md:max-h-[min(26rem,calc(100dvh-20rem))]"
+          viewportClassName="max-h-[min(24rem,calc(100dvh-10rem))] max-md:max-h-[min(26rem,calc(var(--app-height,100dvh)-6.5rem))]"
         >
           <Autocomplete.List className="flex flex-col p-1.5 outline-none">
             {(group: PaletteGroup) => (
