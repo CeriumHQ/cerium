@@ -9,6 +9,7 @@
 @import "./markdown.css";
 @import "./terminal.css";
 @import "./welcome.css";
+@import "./gate.css";
 
 /* Streamdown renders agent markdown; Tailwind must see the classes it uses. */
 @source "../../node_modules/streamdown/dist/*.js";

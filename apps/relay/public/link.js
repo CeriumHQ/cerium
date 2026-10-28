@@ -142,7 +142,7 @@ const appearance = {
     colorBorder: "var(--line-strong)",
     colorDanger: "var(--status-error)",
     fontFamily: "var(--font-sans)",
-    borderRadius: "9px",
+    borderRadius: "12px",
   },
   elements: {
     rootBox: { width: "100%" },
@@ -164,7 +164,10 @@ const appearance = {
     },
     header: { display: "none" },
     footer: { background: "transparent" },
+    // The website's pill.
     formButtonPrimary: {
+      height: "44px",
+      borderRadius: "999px",
       backgroundColor: "var(--cerium-accent)",
       backgroundImage: "none",
       color: "var(--cerium-accent-fg)",

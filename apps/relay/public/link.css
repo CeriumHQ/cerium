@@ -1,6 +1,8 @@
 /*
- * The relay's pages: Cerium's tokens (apps/ui/src/styles/tokens.css), following the system theme,
- * on a flat backdrop since there is no Acrylic behind a browser tab.
+ * The relay's pages, dressed as Cerium's website (apps/site/src/styles/base.css): the app's glass on a
+ * dark optical bench, the display face for headings, pill buttons, and the spectrum a prism splits
+ * white into, lit along the panel's top edge. Cerium's tokens (apps/ui/src/styles/tokens.css) follow
+ * the system theme, on a flat backdrop since there is no Acrylic behind a browser tab.
  */
 
 @font-face {
@@ -11,40 +13,67 @@
   src: url("/fonts/red-hat-text.woff2") format("woff2-variations");
 }
 
+/* Its width axis too, which the website sets its headings expanded on. */
+@font-face {
+  font-family: "Anybody Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 50% 150%;
+  src: url("/fonts/anybody.woff2") format("woff2-variations");
+}
+
 :root {
   color-scheme: dark;
-  --backdrop: oklch(0.2 0 0);
-  --surface-raised: oklch(0.245 0 0);
-  --surface-sunken: oklch(0.215 0 0);
+  --backdrop: oklch(0.13 0.012 250);
+  --backdrop-deep: oklch(0.095 0.012 250);
+  /* The app's light films, raised off the glass by lightening it. */
+  --film: oklch(0.97 0.012 250 / 0.045);
+  --film-2: oklch(0.97 0.012 250 / 0.085);
+  --rim: 0 1px 0 oklch(1 0 0 / 0.09) inset;
+  --surface-raised: oklch(0.2 0.006 250);
+  --surface-sunken: oklch(0 0 0 / 0.22);
   --surface-hover: oklch(1 0 0 / 0.05);
-  --line-subtle: oklch(1 0 0 / 0.07);
-  --line-strong: oklch(1 0 0 / 0.14);
-  --fg-primary: oklch(0.96 0 0);
-  --fg-secondary: oklch(0.78 0 0);
-  --fg-tertiary: oklch(0.6 0 0);
-  --accent: oklch(0.95 0 0);
+  --line-subtle: oklch(1 0 0 / 0.08);
+  --line-strong: oklch(1 0 0 / 0.15);
+  --fg-primary: oklch(0.965 0.002 250);
+  --fg-secondary: oklch(0.79 0.005 250);
+  --fg-tertiary: oklch(0.62 0.006 250);
+  --accent: oklch(0.96 0 0);
   --accent-strong: oklch(1 0 0);
-  --accent-fg: oklch(0.17 0 0);
+  --accent-fg: oklch(0.16 0 0);
   --focus-ring: oklch(1 0 0 / 0.55);
   --status-attention: oklch(0.83 0.15 78);
   --status-error: oklch(0.7 0.19 25);
   --status-success: oklch(0.78 0.15 152);
-  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 24px 48px -16px oklch(0 0 0 / 0.7);
+  --shadow-panel: 0 40px 80px -40px oklch(0 0 0 / 0.8);
+  /* The spectrum, red to blue: the five tinted glasses Cerium ships beside its clear one. */
+  --spectrum-1: oklch(0.74 0.15 356);
+  --spectrum-2: oklch(0.81 0.14 68);
+  --spectrum-3: oklch(0.89 0.19 123);
+  --spectrum-4: oklch(0.85 0.1 182);
+  --spectrum-5: oklch(0.68 0.19 264);
+  --font-display: "Anybody Variable", "Red Hat Text Variable", sans-serif;
   --font-sans: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --backdrop: oklch(0.93 0 0);
+    --backdrop: oklch(0.95 0.004 250);
+    --backdrop-deep: oklch(0.92 0.004 250);
+    --film: oklch(1 0 0 / 0.6);
+    --film-2: oklch(0.2 0.01 250 / 0.045);
+    --rim: 0 1px 0 oklch(1 0 0 / 0.9) inset;
     --surface-raised: oklch(0.995 0 0);
-    --surface-sunken: oklch(0.965 0 0);
+    --surface-sunken: oklch(0.2 0.01 250 / 0.04);
     --surface-hover: oklch(0 0 0 / 0.04);
     --line-subtle: oklch(0 0 0 / 0.08);
     --line-strong: oklch(0 0 0 / 0.14);
-    --fg-primary: oklch(0.18 0 0);
-    --fg-secondary: oklch(0.38 0 0);
-    --fg-tertiary: oklch(0.54 0 0);
+    --fg-primary: oklch(0.18 0.006 250);
+    --fg-secondary: oklch(0.38 0.006 250);
+    --fg-tertiary: oklch(0.54 0.006 250);
     --accent: oklch(0.2 0 0);
     --accent-strong: oklch(0.1 0 0);
     --accent-fg: oklch(0.98 0 0);
@@ -52,7 +81,12 @@
     --status-attention: oklch(0.62 0.16 65);
     --status-error: oklch(0.56 0.21 25);
     --status-success: oklch(0.55 0.15 152);
-    --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.8) inset, 0 24px 48px -20px oklch(0 0 0 / 0.25);
+    --shadow-panel: 0 40px 80px -40px oklch(0.3 0.02 250 / 0.3);
+    --spectrum-1: oklch(0.62 0.19 356);
+    --spectrum-2: oklch(0.72 0.16 64);
+    --spectrum-3: oklch(0.76 0.19 128);
+    --spectrum-4: oklch(0.68 0.12 186);
+    --spectrum-5: oklch(0.56 0.21 264);
   }
 }
 
@@ -76,6 +110,10 @@ body {
   min-height: 100%;
 }
 
+html {
+  background: var(--backdrop-deep);
+}
+
 body {
   font-family: var(--font-sans);
   font-size-adjust: ex-height 0.53;
@@ -85,64 +123,141 @@ body {
   background: var(--backdrop);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: clip;
+  min-height: 100dvh;
 }
 
-.page {
-  min-height: 100dvh;
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.bar {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: max(48px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
-  gap: 28px;
+  height: calc(56px + max(12px, env(safe-area-inset-top)));
+  padding: max(12px, env(safe-area-inset-top)) 30px 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-weight: 600;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-size-adjust: none;
+  font-stretch: 112%;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 .brand svg {
-  width: 22px;
-  height: 22px;
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: clamp(40px, 10vh, 112px) 16px max(32px, env(safe-area-inset-bottom));
+}
+
+/* A slab of the app's glass, the spectrum landing as a lit rim along its top edge. */
 .panel {
+  position: relative;
   width: 100%;
-  max-width: 400px;
-  background: var(--surface-raised);
-  border: 1px solid var(--line-subtle);
-  border-radius: 14px;
-  box-shadow: var(--shadow-overlay);
-  padding: 28px;
+  max-width: 440px;
+  padding: 38px 32px 32px;
+  border-radius: 24px;
+  background: var(--film);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line-subtle) inset,
+    var(--shadow-panel);
+  backdrop-filter: blur(20px);
+  animation: rise 700ms var(--ease-out) both;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--spectrum-1),
+    var(--spectrum-2),
+    var(--spectrum-3),
+    var(--spectrum-4),
+    var(--spectrum-5),
+    transparent
+  );
+  box-shadow: 0 0 24px 2px color-mix(in oklab, var(--spectrum-4) 40%, transparent);
+}
+
+/* The light pooling under the rim. */
+.panel::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 10%;
+  right: 10%;
+  top: -60px;
+  height: 140px;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--spectrum-5) 16%, transparent),
+    transparent
+  );
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    translate: 0 16px;
+  }
 }
 
 .panel h1 {
-  margin: 0 0 6px;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.3;
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-size: clamp(1.875rem, 1.4rem + 1.6vw, 2.375rem);
+  font-size-adjust: none;
+  font-stretch: 118%;
+  font-weight: 360;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
 .lead {
   margin: 0;
   color: var(--fg-secondary);
+  text-wrap: pretty;
 }
 
 /* The machine being connected, so the user can check it's theirs. */
 .machine {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 20px 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--line-subtle);
+  gap: 14px;
+  margin: 24px 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--film-2);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line-subtle) inset;
 }
 
 .machine svg {
@@ -164,9 +279,10 @@ body {
 
 .account {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 12px;
   margin: 0 0 16px;
   color: var(--fg-secondary);
   font-size: 13px;
@@ -179,7 +295,7 @@ body {
 }
 
 .caution {
-  margin: 0 0 20px;
+  margin: 0 0 24px;
   color: var(--fg-tertiary);
   font-size: 13px;
 }
@@ -190,20 +306,33 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 40px;
-  padding: 0 16px;
+  height: 48px;
+  padding: 0 22px;
   border: none;
-  border-radius: 9px;
+  border-radius: 999px;
   font: inherit;
   font-weight: 600;
   background: var(--accent);
   color: var(--accent-fg);
   cursor: pointer;
-  transition: background 120ms ease;
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.2) inset,
+    0 10px 40px -12px color-mix(in oklab, var(--accent) 60%, transparent);
+  transition:
+    background-color 200ms var(--ease-out),
+    box-shadow 300ms var(--ease-out),
+    scale 200ms var(--ease-out);
 }
 
 .button:hover {
   background: var(--accent-strong);
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.3) inset,
+    0 14px 60px -10px color-mix(in oklab, var(--accent) 80%, transparent);
+}
+
+.button:active {
+  scale: 0.97;
 }
 
 .button:disabled {
@@ -231,7 +360,7 @@ body {
 
 :focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 .error {
@@ -244,21 +373,27 @@ body {
 .outcome-icon {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-bottom: 14px;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 20px;
   border-radius: 999px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--line-subtle);
+  background: var(--film-2);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line-subtle) inset;
 }
 
 .outcome-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .outcome-icon.success {
   color: var(--status-success);
+  box-shadow:
+    var(--rim),
+    0 0 0 1px var(--line-subtle) inset,
+    0 0 32px -4px color-mix(in oklab, var(--status-success) 45%, transparent);
 }
 
 .outcome-icon.muted,
@@ -286,15 +421,28 @@ body {
 }
 
 .fine {
-  max-width: 400px;
+  max-width: 440px;
+  margin: 0;
   text-align: center;
   color: var(--fg-tertiary);
   font-size: 12px;
 }
 
+@media (max-width: 480px) {
+  .bar {
+    padding-inline: 22px;
+  }
+
+  .panel {
+    padding: 30px 22px 24px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .button {
+  .button,
+  .panel {
     transition: none;
+    animation: none;
   }
 
   .outcome-icon.waiting svg {

@@ -1,13 +1,13 @@
 import { AtSign, Copy, FileText, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 
-import { shellBridge } from "../../backend/shell.ts";
+import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { copyText, fileTargets } from "../transcript/menus.ts";
 
 /**
  * What the explorer offers for a file or folder, as a file chip in the transcript does: open a file in
- * its own app, show it in File Explorer, mention it in the message, copy its path or the one relative
+ * its own app, show it in the file manager, mention it in the message, copy its path or the one relative
  * to the thread's folder. For a menu opened over a row.
  */
 export function FileMenuItems({
@@ -48,7 +48,7 @@ export function FileMenuItems({
       ) : null}
       {reveal ? (
         <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
-          Show in File Explorer
+          Show in {revealPlace()}
         </MenuItem>
       ) : null}
       {canMention ? (

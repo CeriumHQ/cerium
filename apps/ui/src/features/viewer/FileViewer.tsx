@@ -18,7 +18,7 @@ import {
   refreshStatus,
   watchAtom,
 } from "../../backend/explorer.ts";
-import { shellBridge } from "../../backend/shell.ts";
+import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { useShortcut } from "../../lib/shortcuts.ts";
@@ -73,7 +73,7 @@ const toggleClass =
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
 
-/** A button offering a way out of a file the viewer can't show: its own app, or File Explorer. */
+/** A button offering a way out of a file the viewer can't show: its own app, or the file manager. */
 function OutAction({
   icon: Icon,
   label,
@@ -113,7 +113,7 @@ function FileBody({
   wrap: boolean;
   messageBox: MessageBox | undefined;
   onOpenFile: OpenFile | undefined;
-  /** Opens the file in its own app or shows it in File Explorer, where this computer can. */
+  /** Opens the file in its own app or shows it in the file manager, where this computer can. */
   outside: ReactNode;
 }) {
   if (preview === undefined) return failure === undefined ? null : <Note>{failure}</Note>;
@@ -307,7 +307,7 @@ export function FileViewer({
         {openOutside ? (
           <OutAction icon={SquareArrowOutUpRight} label="Open in its app" onClick={openOutside} />
         ) : null}
-        {reveal ? <OutAction icon={FolderOpen} label="Show in File Explorer" onClick={reveal} /> : null}
+        {reveal ? <OutAction icon={FolderOpen} label={`Show in ${revealPlace()}`} onClick={reveal} /> : null}
       </span>
     ) : null;
 

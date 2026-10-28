@@ -16,7 +16,7 @@ import {
 
 import { imageAtom, toolImageAtom } from "../backend/files.ts";
 import { drivenMachine } from "../backend/machine.ts";
-import { shellBridge } from "../backend/shell.ts";
+import { revealPlace, shellBridge } from "../backend/shell.ts";
 import {
   clampView,
   doubleTapScaleFor,
@@ -66,7 +66,7 @@ function ImageMenu({ url, name, path }: { url: string; name: string; path: strin
       {reveal || save ? <MenuSeparator /> : null}
       {reveal && path ? (
         <MenuItem icon={FolderOpen} onClick={() => void reveal(path)}>
-          Show in File Explorer
+          Show in {revealPlace()}
         </MenuItem>
       ) : null}
       {save ? (
