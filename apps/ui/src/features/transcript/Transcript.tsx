@@ -44,7 +44,7 @@ import {
   type ChildState,
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
-import { currentModel, layout, pendingRouted, showsProgress, type Item } from "./layout.ts";
+import { currentModel, layout, pendingRouted, runTimings, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import {
@@ -489,6 +489,7 @@ const TranscriptItem = memo(
             <ToolRun
               key={each.id}
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
+              timings={runTimings(each.steps)}
               live={last && activity === "running"}
               activity={activity}
               arrived={arrived.has(each.id)}

@@ -34,7 +34,7 @@ const selectionWithin = (element: HTMLElement): string => {
 const hitAt = (event: MouseEvent<HTMLElement>): Hit => {
   const target = event.target instanceof Element ? event.target.closest(`[${LINK_ATTRIBUTE}]`) : null;
   const href = target?.getAttribute(LINK_ATTRIBUTE);
-  const element = target?.querySelector<HTMLElement>("[data-streamdown='link']");
+  const element = target instanceof HTMLElement ? target : undefined;
   return {
     selection: selectionWithin(event.currentTarget),
     ...(href && element && event.currentTarget.contains(target) ? { link: { href, element } } : {}),

@@ -85,7 +85,7 @@ function SeverityDot({
 function Prose({ text }: { text: string }) {
   return text.split(/`([^`\n]+)`/).map((part, index) =>
     index % 2 === 1 ? (
-      <code key={index} data-streamdown="inline-code" className="font-mono">
+      <code key={index} data-md="inline-code" className="font-mono">
         {part}
       </code>
     ) : (

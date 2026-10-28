@@ -1,14 +1,12 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import {
   Ban,
-  Check,
   ChevronRight,
   Copy,
   ExternalLink,
   FolderOpen,
   LoaderCircle,
-  Wrench,
-  X,
+  type LucideIcon,
 } from "lucide-react";
 import { memo, useContext, useState, type ReactNode } from "react";
 
@@ -22,10 +20,11 @@ import {
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { useArrivals, useChanged } from "../../lib/motion.ts";
 import { CopyButton } from "./CopyButton.tsx";
-import { EditDiff } from "./EditDiff.tsx";
+import { EditDiff, editCounts } from "./EditDiff.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
 import type { AgentActivity } from "./model.ts";
 import { resolvePath } from "./paths.ts";
+import { STEP_HEADER, StepChevron, Took, TraceNode } from "./Trace.tsx";
 import {
   describeTool,
   exitCodeOf,
@@ -101,21 +100,29 @@ function ToolImageThumb({ image, full = false }: { image: ToolImage; full?: bool
 /** How many images a folded run previews: all of them up to this many, otherwise one fewer and a count. */
 const PREVIEWED = 4;
 
-const LABEL = "text-caption font-medium tracking-wide text-fg-tertiary uppercase";
+/** When a step began and ended; absent from a step written before the transcript kept time. */
+export interface Timing {
+  readonly startedAt?: number | undefined;
+  readonly endedAt?: number | undefined;
+}
 
 /**
- * The steps between two of the agent's messages, folded to one line that counts what they did.
- * Open while the agent is still on them, so live progress stays visible; it folds once the agent
- * moves on, unless the reader has opened or closed it themselves.
+ * The steps between two of the agent's messages, folded to one line that counts what they did and
+ * how long they took. Open while the agent is still on them, so live progress stays visible; it
+ * folds once the agent moves on, unless the reader has opened or closed it themselves. Opened, the
+ * steps show as a trace (Trace.tsx).
  */
 export function ToolRun({
   tools,
+  timings,
   live,
   activity,
   arrived = false,
   children,
 }: {
   tools: ReadonlyArray<ToolBlock>;
+  /** Each step's, its thoughts' as well as its calls'. */
+  timings: ReadonlyArray<Timing>;
   live: boolean;
   activity: AgentActivity;
   /** The run came in while the thread was open, so its line writes itself in. */
@@ -128,23 +135,42 @@ export function ToolRun({
   const images = tools.flatMap(shownImages);
   const open = toggled ?? live;
   const previewed = images.length <= PREVIEWED ? images : images.slice(0, PREVIEWED - 1);
+  const starts = timings.flatMap((step) => (step.startedAt === undefined ? [] : [step.startedAt]));
+  const ends = timings.flatMap((step) => (step.endedAt === undefined ? [] : [step.endedAt]));
+  // A run its agent is still on keeps counting; one it left off lasted until its last step ended.
+  const running = live && ends.length < timings.length;
   return (
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
-        className={`group flex max-w-full min-w-0 items-center gap-1.5 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
       >
-        <Wrench size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
-        {failed > 0 ? <span className="shrink-0 text-error-text">· {failed} failed</span> : null}
-        {interrupted > 0 ? <span className="shrink-0">· {interrupted} interrupted</span> : null}
+        <Strip tools={tools} activity={activity} />
+        <span className="flex min-w-0">
+          <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
+          {failed > 0 ? (
+            <span className="shrink-0 whitespace-pre">
+              , <span className="text-error-text">{failed} failed</span>
+            </span>
+          ) : null}
+          {interrupted > 0 ? (
+            <span className="shrink-0 whitespace-pre">, {interrupted} interrupted</span>
+          ) : null}
+        </span>
+        {starts.length > 0 && (running || ends.length > 0) ? (
+          <Took
+            startedAt={Math.min(...starts)}
+            endedAt={running ? undefined : Math.max(...ends)}
+            className="text-meta"
+          />
+        ) : null}
         <ChevronRight
           size={13}
-          className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+          className="-ml-0.5 shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
         />
       </Collapsible.Trigger>
       {/* Folded, the images the agent looked at stay in sight; open, each shows with its call. */}
       {images.length > 0 && !open ? (
-        <div className="flex gap-1.5 pt-2 pl-[19px]">
+        <div className="flex gap-1.5 pt-2">
           {previewed.map((image) => (
             <ToolImageThumb key={image.key} image={image} />
           ))}
@@ -161,31 +187,49 @@ export function ToolRun({
         </div>
       ) : null}
       <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        <div className="flex flex-col gap-3 pt-2.5">{children}</div>
+        <div data-trace className="flex flex-col pt-1.5">
+          {children}
+        </div>
       </Collapsible.Panel>
     </Collapsible.Root>
   );
 }
 
+/** A run's calls in order, a tick each in the colour of how it went: the run's shape at a glance. */
+function Strip({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
+  return (
+    <span aria-hidden className="flex h-3 w-max max-w-16 shrink-0 items-stretch gap-px">
+      {tools.map((tool) => (
+        <span
+          key={tool.id}
+          className={`max-w-[3px] min-w-px flex-[1_1_3px] rounded-full ${
+            tool.status === "error"
+              ? "bg-error-text"
+              : tool.status === "done"
+                ? "bg-fg-tertiary/55"
+                : activity === "running"
+                  ? "animate-pulse bg-running-text"
+                  : "bg-line-strong"
+          }`}
+        />
+      ))}
+    </span>
+  );
+}
+
 /**
- * Consecutive tool calls, shown as one activity card with a row per call. The card and each row
- * render again only when their calls changed: while the agent works, every streamed word and every
- * call lays its run out afresh.
+ * Consecutive tool calls, a step of the trace each. The group and each row render again only when
+ * their calls changed: while the agent works, every streamed word and every call lays its run out
+ * afresh.
  */
 export const ToolGroup = memo(
   function ToolGroup({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
-    // A call made while the card is in view writes its row in under the ones before it.
+    // A call made while the run is in view writes its row in under the ones before it.
     const arrived = useArrivals(tools.map((tool) => tool.id));
     return (
-      <div className="overflow-hidden rounded-lg border border-line-subtle">
-        {tools.map((tool, index) => (
-          <ToolRow
-            key={tool.id}
-            tool={tool}
-            divider={index > 0}
-            activity={activity}
-            arrived={arrived(tool.id)}
-          />
+      <div>
+        {tools.map((tool) => (
+          <ToolRow key={tool.id} tool={tool} activity={activity} arrived={arrived(tool.id)} />
         ))}
       </div>
     );
@@ -199,70 +243,111 @@ export const ToolGroup = memo(
 const ToolRow = memo(
   function ToolRow({
     tool,
-    divider,
     activity,
     arrived,
   }: {
     tool: ToolBlock;
-    divider: boolean;
     activity: AgentActivity;
     arrived: boolean;
   }) {
     const [open, setOpen] = useState(false);
-    const { icon: Icon, verb, detail, mono } = describeTool(tool);
+    const { icon, verb, detail, mono } = describeTool(tool);
+    const input = toolInputView(tool);
+    const counts = input?.kind === "diff" ? editCounts(input.edits) : undefined;
+    const interrupted = tool.status === "running" && activity !== "running";
     // A failed call says why on its row, so a folded run opens onto what went wrong.
     const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
     const header = (
-      <Collapsible.Trigger className="group block w-full text-left text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary">
-        <span className="flex h-7 items-center gap-2 px-2.5 max-md:h-9">
-          <Icon size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-          <span className="shrink-0 font-medium text-fg-primary">{verb}</span>
+      <Collapsible.Trigger className={STEP_HEADER}>
+        <span className="flex h-7 w-full items-center gap-2 px-1.5 max-md:h-9">
+          <span className="shrink-0 font-medium text-fg-secondary transition-colors group-hover/step:text-fg-primary">
+            {verb}
+          </span>
           {detail ? (
             <span className={`min-w-0 truncate text-fg-tertiary ${mono ? "font-mono text-meta" : ""}`}>
               {detail}
             </span>
           ) : null}
-          {tool.changedFiles.length > 0 ? (
-            <span className="shrink-0 rounded border border-line-subtle px-1.5 text-caption text-fg-secondary">
-              {tool.changedFiles.length === 1 ? "1 file" : `${tool.changedFiles.length} files`}
+          {counts ? (
+            <span className="flex shrink-0 gap-1 text-caption tabular-nums">
+              {counts.added > 0 ? <span className="text-success-text">+{counts.added}</span> : null}
+              {counts.removed > 0 ? <span className="text-error-text">−{counts.removed}</span> : null}
+            </span>
+          ) : tool.changedFiles.length > 0 ? (
+            <span className="shrink-0 text-caption text-fg-tertiary">
+              {tool.changedFiles.length === 1
+                ? "1 file changed"
+                : `${tool.changedFiles.length} files changed`}
             </span>
           ) : null}
-          <span className="ml-auto flex shrink-0 items-center gap-2">
-            <ToolStatus status={tool.status} activity={activity} />
-            <ChevronRight
-              size={13}
-              className="text-fg-tertiary opacity-0 transition-[opacity,rotate] duration-200 group-hover:opacity-100 group-data-panel-open:rotate-90 group-data-panel-open:opacity-100 pointer-coarse:opacity-100"
-            />
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            {interrupted ? (
+              <span className="text-caption text-fg-tertiary">Interrupted</span>
+            ) : tool.status === "running" || tool.endedAt !== undefined ? (
+              <Took startedAt={tool.startedAt} endedAt={tool.endedAt} />
+            ) : null}
+            <StepChevron />
           </span>
         </span>
         {reason && !open ? (
-          <span className="block truncate pr-3 pb-1.5 pl-[31px] text-meta text-error-text">{reason}</span>
+          <span className="block w-full truncate px-1.5 pb-1.5 text-meta text-error-text">{reason}</span>
         ) : null}
       </Collapsible.Trigger>
     );
     return (
       <Collapsible.Root
+        data-row
         open={open}
         onOpenChange={setOpen}
-        className={`${divider ? "border-t border-line-subtle" : ""} ${arrived ? "write-in" : ""}`}
+        className={`flex ${arrived ? "write-in" : ""}`}
       >
-        {hasToolMenu(tool) ? (
-          <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
-        ) : (
-          header
-        )}
-        <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-          <ToolBody tool={tool} />
-        </Collapsible.Panel>
+        <TraceNode>
+          <ToolNode icon={icon} status={tool.status} interrupted={interrupted} />
+        </TraceNode>
+        <div className="min-w-0 flex-1">
+          {hasToolMenu(tool) ? (
+            <ContextMenuArea menu={<ToolMenu tool={tool} />}>{header}</ContextMenuArea>
+          ) : (
+            header
+          )}
+          <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+            <ToolBody tool={tool} />
+          </Collapsible.Panel>
+        </div>
       </Collapsible.Root>
     );
   },
   (before, after) =>
-    before.divider === after.divider &&
     before.activity === after.activity &&
     before.arrived === after.arrived &&
     sameTool(before.tool, after.tool),
 );
+
+/**
+ * A call's node on the trace: what kind of call it is, or while it runs a spinner. A failed call's
+ * icon turns the error's colour; one cut off when its agent's turn ended shows it was stopped.
+ */
+function ToolNode({
+  icon: Icon,
+  status,
+  interrupted,
+}: {
+  icon: LucideIcon;
+  status: ToolBlock["status"];
+  interrupted: boolean;
+}) {
+  // A call seen finishing pops its icon in where the spinner turned.
+  const finished = useChanged(status);
+  if (interrupted) return <Ban size={12} strokeWidth={2} className="text-fg-tertiary" />;
+  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running-text" />;
+  return (
+    <Icon
+      size={13}
+      strokeWidth={1.75}
+      className={`${status === "error" ? "text-error-text" : "text-fg-tertiary"} ${finished ? "swap-in" : ""}`}
+    />
+  );
+}
 
 /**
  * A tool row's right-click menu. It renders only while open: what it copies includes the output laid
@@ -302,27 +387,6 @@ function ToolMenu({ tool }: { tool: ToolBlock }) {
   );
 }
 
-function ToolStatus({ status, activity }: { status: ToolBlock["status"]; activity: AgentActivity }) {
-  // A call seen finishing ticks itself off: its check draws in, or its cross pops in, where the
-  // spinner turned. One that had finished before it showed is simply marked.
-  const finished = useChanged(status);
-  // A call still open after its agent's turn ended was cut off, not slow.
-  if (status === "running" && activity !== "running") {
-    return (
-      <span className="flex items-center gap-1 text-caption text-fg-tertiary">
-        <Ban size={11} strokeWidth={2} />
-        Interrupted
-      </span>
-    );
-  }
-  if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running-text" />;
-  if (status === "error")
-    return <X size={13} strokeWidth={2.25} className={`text-error-text ${finished ? "swap-in" : ""}`} />;
-  return (
-    <Check size={13} strokeWidth={2.25} className={`text-success-text/80 ${finished ? "draw-check" : ""}`} />
-  );
-}
-
 /** What an opened row shows: what the call was given, then what came back. */
 function ToolBody({ tool }: { tool: ToolBlock }) {
   const input = toolInputView(tool);
@@ -331,17 +395,19 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
   const exit = exitCodeOf(output);
   const shown = exit === undefined ? output : withoutExitLine(output);
   const failed = tool.status === "error";
+  // An edit that went through says so in its own words ("The file has been updated"); its diff
+  // already shows what it did.
+  const said = input?.kind === "diff" && !failed;
   const isCommand = input?.kind === "code" && input.label === "Command";
   // A short command the row already shows whole needs no second copy.
   const { detail } = describeTool(tool);
   const saidAbove = isCommand && detail === input.text && input.text.length <= SHORT_COMMAND;
   return (
-    <div className="flex flex-col gap-2.5 px-3 pt-1 pb-3">
+    <div className="flex flex-col gap-2 pt-1 pr-1.5 pb-3 pl-2">
       {input?.kind === "diff" ? (
-        <div className="flex flex-col gap-1">
-          <span className={LABEL}>Change</span>
-          <EditDiff edits={input.edits} />
-        </div>
+        <Frame label="Change">
+          <EditDiff edits={input.edits} bare />
+        </Frame>
       ) : input?.kind === "code" ? (
         saidAbove ? null : (
           <Pane label={input.label} text={input.text} />
@@ -352,16 +418,13 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
         </p>
       ) : null}
       {images.length > 0 ? (
-        <div className="flex flex-col gap-1">
-          <span className={LABEL}>{images.length === 1 ? "Image" : "Images"}</span>
-          <div className="flex flex-wrap gap-2">
-            {images.map((image) => (
-              <ToolImageThumb key={image.key} image={image} full />
-            ))}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          {images.map((image) => (
+            <ToolImageThumb key={image.key} image={image} full />
+          ))}
         </div>
       ) : null}
-      {shown !== "" || exit !== undefined ? (
+      {said ? null : shown !== "" || exit !== undefined ? (
         <Pane
           label="Output"
           text={shown}
@@ -414,57 +477,97 @@ function Pane({
       ? (failed ? lines.slice(-FOLDED_LINES) : lines.slice(0, FOLDED_LINES)).join("\n")
       : text,
   );
-  const bar = (
-    <div
-      className={`flex items-center gap-3 border-line-subtle px-3 text-meta text-fg-tertiary ${failed ? "border-b" : "border-t"}`}
-    >
-      {folds ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-          className="-ml-1 rounded px-1 py-1.5 transition-colors hover:text-fg-primary max-md:py-2.5"
-        >
-          {expanded ? "Show fewer lines" : `Show ${hidden} ${failed ? "earlier" : "more"} lines`}
-        </button>
-      ) : null}
-      {clipped && (expanded || !folds) ? (
-        <span className="py-1.5">Cut at {MAX_CHARACTERS.toLocaleString("en-US")} characters</span>
-      ) : null}
-    </div>
-  );
+  const controls =
+    folds || clipped ? (
+      <>
+        {folds ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            className="-mx-1 rounded px-1 py-1.5 transition-colors hover:text-fg-primary max-md:py-2.5"
+          >
+            {expanded ? "Show fewer lines" : `Show ${hidden} ${failed ? "earlier" : "more"} lines`}
+          </button>
+        ) : null}
+        {clipped && (expanded || !folds) ? (
+          <span className="py-1.5">Cut at {MAX_CHARACTERS.toLocaleString("en-US")} characters</span>
+        ) : null}
+      </>
+    ) : null;
+  // A failure's earlier lines are above what it shows, so its controls sit in the header; the rest
+  // of a long output is below, so its controls sit under it.
   return (
-    <div className="group/pane flex flex-col gap-1">
-      <div className="flex min-h-6 items-center gap-2">
-        <span className={LABEL}>{label}</span>
+    <Frame
+      label={label}
+      badge={badge}
+      failed={failed}
+      copy={text === "" ? undefined : text}
+      aside={failed ? controls : null}
+    >
+      {text === "" ? null : (
+        <>
+          <pre
+            className={`scroll-thin overflow-auto px-3 pb-2 font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
+          >
+            {shown}
+          </pre>
+          {!failed && controls ? (
+            <div className="flex items-center gap-3 border-t border-line-subtle px-3 text-caption text-fg-tertiary">
+              {controls}
+            </div>
+          ) : null}
+        </>
+      )}
+    </Frame>
+  );
+}
+
+/**
+ * The recessed card a call's input or output sits in, as a reply's code blocks do: what it holds
+ * named in its header, with a copy button beside it on hover.
+ */
+function Frame({
+  label,
+  badge,
+  failed = false,
+  copy,
+  aside = null,
+  children,
+}: {
+  label: string;
+  badge?: string | undefined;
+  failed?: boolean;
+  copy?: string | undefined;
+  /** Controls at the header's end, before the copy button. */
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`group/pane overflow-hidden rounded-lg border bg-surface-sunken ${failed ? "border-error/25" : "border-line-subtle"}`}
+    >
+      <div className="flex h-7 items-center gap-2 pr-1 pl-3 text-caption text-fg-tertiary">
+        <span>{label}</span>
         {badge ? (
           <span
-            className={`rounded px-1.5 text-caption tabular-nums ${failed ? "bg-error/10 text-error-text" : "bg-surface-hover text-fg-secondary"}`}
+            className={`rounded px-1.5 tabular-nums ${failed ? "bg-error/12 text-error-text" : "bg-surface-hover text-fg-secondary"}`}
           >
             {badge}
           </span>
         ) : null}
-        {text === "" ? null : (
-          <CopyButton
-            text={text}
-            label={`Copy ${label.toLowerCase()}`}
-            className="ml-auto opacity-0 group-focus-within/pane:opacity-100 group-hover/pane:opacity-100 pointer-coarse:opacity-100"
-          />
-        )}
+        <span className="ml-auto flex items-center gap-3">
+          {aside}
+          {copy === undefined ? null : (
+            <CopyButton
+              text={copy}
+              label={`Copy ${label.toLowerCase()}`}
+              className="opacity-0 group-focus-within/pane:opacity-100 group-hover/pane:opacity-100 pointer-coarse:opacity-100"
+            />
+          )}
+        </span>
       </div>
-      {text === "" ? null : (
-        <div
-          className={`overflow-hidden rounded-lg border bg-surface-window ${failed ? "border-error/30" : "border-line-subtle"}`}
-        >
-          {failed && (folds || clipped) ? bar : null}
-          <pre
-            className={`scroll-thin overflow-auto px-3 py-2 font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
-          >
-            {shown}
-          </pre>
-          {!failed && (folds || clipped) ? bar : null}
-        </div>
-      )}
+      {children}
     </div>
   );
 }

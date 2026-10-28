@@ -34,7 +34,6 @@ import {
   X,
 } from "lucide-react";
 import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { CustomRendererProps } from "streamdown";
 
 import { artifactFilesAtom, renderArtifact, type ArtifactFile } from "../../backend/files.ts";
 import { shellBridge } from "../../backend/shell.ts";
@@ -98,7 +97,8 @@ const themeSnapshot = (): string => {
 };
 
 /** An agent's HTML visual: drawn once its code fence closes, with a placeholder while it streams. */
-export function Artifact({ code, isIncomplete }: CustomRendererProps) {
+/** An artifact's code fence; `isIncomplete` while the agent is still writing it. */
+export function Artifact({ code, isIncomplete }: { code: string; isIncomplete: boolean }) {
   const title = artifactTitle(code);
   if (isIncomplete) return <Drawing title={title} />;
   return <ArtifactView key={code} code={code} title={title} />;

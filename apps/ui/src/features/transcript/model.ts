@@ -47,7 +47,16 @@ export type TranscriptBlock =
       readonly waiting?: true;
     }
   | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
-  | { readonly kind: "reasoning"; readonly id: string; readonly text: string; readonly streaming: boolean }
+  | {
+      readonly kind: "reasoning";
+      readonly id: string;
+      readonly text: string;
+      readonly streaming: boolean;
+      /** When the agent began thinking: its first words, or else the event before them. */
+      readonly startedAt?: number;
+      /** When it finished, once it has. */
+      readonly endedAt?: number;
+    }
   | {
       readonly kind: "tool";
       readonly id: string;
@@ -56,6 +65,9 @@ export type TranscriptBlock =
       readonly output?: unknown;
       readonly status: "running" | "done" | "error";
       readonly changedFiles: ReadonlyArray<string>;
+      /** When the call started, and when it came back, once it has. */
+      readonly startedAt?: number;
+      readonly endedAt?: number;
     }
   | {
       readonly kind: "spawn";
@@ -95,6 +107,9 @@ export type TranscriptBlock =
       };
       /** The files the turn changed, once its snapshot after it is in. */
       readonly changes?: TurnChanges;
+      /** When the turn took its input and when it ended, for how long it worked. */
+      readonly startedAt?: number;
+      readonly endedAt?: number;
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string }
   /**
@@ -221,6 +236,10 @@ export const buildTranscript = (
    */
   let answering = false;
   let compacting = false;
+  /** When the turn in progress took its input. */
+  let turnStartedAt: number | undefined;
+  /** When the event before this one happened, which a thought with no streamed words began after. */
+  let previousAt: number | undefined;
 
   const upsert = (key: string, block: TranscriptBlock) => {
     const index = indexOf.get(key);
@@ -320,6 +339,7 @@ export const buildTranscript = (
       case "TurnInput":
         turnId = payload.turnId;
         answering = true;
+        turnStartedAt ??= at;
         payload.items.forEach((item, index) => {
           const key = `${id}:${index}`;
           // A message keeps the key it had while queued.
@@ -343,13 +363,25 @@ export const buildTranscript = (
       }
       case "ReasoningDelta": {
         const key = `reasoning:${payload.messageId}`;
-        const text = withDelta(existing(key, "reasoning")?.text, payload);
-        if (text !== undefined) upsert(key, { kind: "reasoning", id: key, text, streaming: true });
+        const thought = existing(key, "reasoning");
+        const text = withDelta(thought?.text, payload);
+        const startedAt = thought?.startedAt ?? previousAt ?? at;
+        if (text !== undefined) {
+          upsert(key, { kind: "reasoning", id: key, text, streaming: true, startedAt });
+        }
         break;
       }
       case "ReasoningCompleted": {
         const key = `reasoning:${payload.messageId}`;
-        upsert(key, { kind: "reasoning", id: key, text: payload.text, streaming: false });
+        const startedAt = existing(key, "reasoning")?.startedAt ?? previousAt ?? at;
+        upsert(key, {
+          kind: "reasoning",
+          id: key,
+          text: payload.text,
+          streaming: false,
+          startedAt,
+          endedAt: at,
+        });
         break;
       }
       case "ToolCallStarted": {
@@ -361,6 +393,7 @@ export const buildTranscript = (
           input: payload.input,
           status: "running",
           changedFiles: [],
+          startedAt: at,
         });
         break;
       }
@@ -368,7 +401,12 @@ export const buildTranscript = (
         const key = `tool:${payload.callId}`;
         const started = existing(key, "tool");
         if (started !== undefined) {
-          upsert(key, { ...started, output: payload.output, status: payload.isError ? "error" : "done" });
+          upsert(key, {
+            ...started,
+            output: payload.output,
+            status: payload.isError ? "error" : "done",
+            endedAt: at,
+          });
         }
         break;
       }
@@ -451,6 +489,7 @@ export const buildTranscript = (
         if (!answering && compacting) {
           compacting = false;
           lastUsage = undefined;
+          turnStartedAt = undefined;
           break;
         }
         answering = false;
@@ -462,8 +501,11 @@ export const buildTranscript = (
           id: `turnEnd:${id}`,
           stopReason: payload.stopReason,
           ...(lastUsage ? { usage: lastUsage } : {}),
+          ...(turnStartedAt === undefined ? {} : { startedAt: turnStartedAt }),
+          endedAt: at,
         });
         lastUsage = undefined;
+        turnStartedAt = undefined;
         break;
       case "TurnFilesChanged": {
         const key = `turn:${payload.turnId}`;
@@ -497,6 +539,7 @@ export const buildTranscript = (
       default:
         break;
     }
+    previousAt = at;
   }
   return blocks;
 };

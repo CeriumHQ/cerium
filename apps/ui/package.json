@@ -31,9 +31,14 @@
     "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "rehype-raw": "7.0.0",
+    "rehype-sanitize": "6.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
     "scheduler": "0.28.0",
     "shiki": "4.5.0",
-    "streamdown": "2.7.0"
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
@@ -45,6 +50,8 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "babel-plugin-react-compiler": "1.0.0",
+    "rehype-stringify": "10.0.1",
+    "remark-rehype": "11.1.2",
     "tailwindcss": "4.3.3"
   }
 }

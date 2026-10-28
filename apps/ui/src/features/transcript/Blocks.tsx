@@ -41,7 +41,9 @@ import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import type { RoutedDecision, TranscriptBlock } from "./model.ts";
+import { duration } from "./push.ts";
 import { attachmentImageKey } from "./tools.ts";
+import { STEP_HEADER, StepChevron, Took, TraceNode } from "./Trace.tsx";
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
@@ -392,23 +394,39 @@ export function ImportedFrom({ block }: { block: Block<"imported"> }) {
   );
 }
 
+/** A thought, as a step of its run's trace (Trace.tsx), or alone where no call follows it. */
 export function Reasoning({ block }: { block: Block<"reasoning"> }) {
   return (
-    <Collapsible.Root>
-      <Collapsible.Trigger className="group flex items-center gap-1.5 text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
-        <Brain size={13} strokeWidth={1.75} />
-        {block.streaming ? <span className="text-shimmer">Thinking…</span> : "Thought"}
-        <ChevronRight
-          size={13}
-          className="transition-transform duration-200 group-data-panel-open:rotate-90"
-        />
-      </Collapsible.Trigger>
-      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
-        {/* Reasoning is written as markdown too: paragraphs, lists and bold run-in headings. */}
-        <div className="mt-1.5 border-l border-line-strong pl-3 select-text">
-          <Markdown text={block.text} streaming={block.streaming} compact />
-        </div>
-      </Collapsible.Panel>
+    <Collapsible.Root data-row className="flex">
+      <TraceNode>
+        <Brain size={13} strokeWidth={1.75} className="text-fg-tertiary" />
+      </TraceNode>
+      <div className="min-w-0 flex-1">
+        <Collapsible.Trigger className={STEP_HEADER}>
+          <span className="flex h-7 w-full items-center gap-2 px-1.5 max-md:h-9">
+            {block.streaming ? (
+              <span className="text-shimmer font-medium">Thinking</span>
+            ) : (
+              <span className="font-medium text-fg-secondary transition-colors group-hover/step:text-fg-primary">
+                Thought
+              </span>
+            )}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              <Took
+                startedAt={block.startedAt}
+                endedAt={block.streaming ? undefined : (block.endedAt ?? block.startedAt)}
+              />
+              <StepChevron />
+            </span>
+          </span>
+        </Collapsible.Trigger>
+        <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+          {/* Reasoning is written as markdown too: paragraphs, lists and bold run-in headings. */}
+          <div className="pt-0.5 pr-1.5 pb-3 pl-2 select-text">
+            <Markdown text={block.text} streaming={block.streaming} compact />
+          </div>
+        </Collapsible.Panel>
+      </div>
     </Collapsible.Root>
   );
 }
@@ -621,10 +639,16 @@ export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: str
     block.usage !== undefined && block.usage.inputTokens + block.usage.outputTokens > 0
       ? block.usage
       : undefined;
+  // A turn over in a moment needs no clock.
+  const worked =
+    block.startedAt !== undefined && block.endedAt !== undefined && block.endedAt - block.startedAt >= 1_000
+      ? duration(block.endedAt - block.startedAt)
+      : undefined;
   if (usage === undefined && text === "" && stopped === undefined) return null;
   return (
     <div className="flex min-h-6 items-center gap-2.5 text-caption text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
+      {worked === undefined ? null : <span>Worked {worked}</span>}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">
           <stopped.Icon size={11} strokeWidth={2} />
