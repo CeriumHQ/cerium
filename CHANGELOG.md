@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop: Electron is updated to 44.9.1 to address a security alert.
+
 ### Added
 
 - Old threads are slimmed: once nothing has happened in a thread for a week, its screenshots are removed, and the space goes back to the disk. Those were most of a long-used database; messages, tool calls and their text output stay whole, and a removed screenshot shows as "Image removed" in its call. Settings → General → Slim old threads picks after a day, 3 days, a week, 2 weeks or 30 days, or never. It runs a minute after the backend starts, every six hours and soon after the setting changes, a few tool results at a time, so the app carries on meanwhile; the first time a lot is freed the database file is rewritten once, on a thread of its own, and in small steps from then on. A thread that picks up again is slimmed again once it goes quiet.
