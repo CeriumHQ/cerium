@@ -44,6 +44,8 @@ export const statusText = (updates: Updates): string => {
       return `Downloading ${versionLabel(status.version)}…`;
     case "ready":
       return `${versionLabel(status.version)} is ready. It installs when you restart or quit.`;
+    case "installing":
+      return `Restarting to install ${versionLabel(status.version)}…`;
     case "unreachable":
       return status.reason === "unpublished"
         ? `No ${channelLabel[updates.channel].toLowerCase()} releases to update from yet.`
@@ -70,15 +72,28 @@ export const checkedLabel = (at: number, now: number): string => {
   return `Checked ${hours} hour${hours === 1 ? "" : "s"} ago`;
 };
 
-/** A channel can't change while an update is downloading or waiting to install. */
+/** A channel can't change while an update is downloading, waiting to install or installing. */
 export const channelLocked = (status: UpdateStatus) =>
-  status.kind === "downloading" || status.kind === "ready";
+  status.kind === "downloading" || status.kind === "ready" || status.kind === "installing";
 
-/** The launch notice speaks up once there is something to install, until the user dismisses it. */
-export const noticeVersion = (status: UpdateStatus): string | undefined =>
+/** The release on offer, from the check that found it to the restart that installs it. */
+export const offerVersion = (status: UpdateStatus): string | undefined =>
   status.kind === "available" ||
   status.kind === "downloading" ||
   status.kind === "ready" ||
+  status.kind === "installing" ||
   status.kind === "failed"
     ? status.version
     : undefined;
+
+/**
+ * The launch notice speaks up once there is something for the user to do, until they dismiss it: an
+ * update that downloads by itself says nothing before it's ready to install.
+ */
+export const noticeVersion = (updates: Updates): string | undefined => {
+  const { status } = updates;
+  const unattended = updates.autoDownload && !updates.manual;
+  return unattended && (status.kind === "available" || status.kind === "downloading")
+    ? undefined
+    : offerVersion(status);
+};

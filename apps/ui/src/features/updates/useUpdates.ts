@@ -16,3 +16,20 @@ export function useUpdates(): Updates | undefined {
   }, []);
   return updates;
 }
+
+/**
+ * Restarts into the downloaded update. While agents are working it holds back and `confirming`
+ * says so, until the user restarts anyway or lets it wait.
+ */
+export function useRestartToUpdate() {
+  const [confirming, setConfirming] = useState(false);
+  const restart = (anyway = false) => {
+    void shellBridge()
+      ?.installUpdate?.(anyway)
+      .then(
+        (result) => setConfirming(result === "working"),
+        () => setConfirming(false),
+      );
+  };
+  return { confirming, restart, cancel: () => setConfirming(false) };
+}

@@ -16,7 +16,7 @@ export function Notice({
 }: {
   tone: "attention" | "error" | "update";
   children: ReactNode;
-  onDismiss?: () => void;
+  onDismiss?: (() => void) | undefined;
   clamp?: boolean;
 }) {
   const Icon = tone === "error" ? CircleAlert : tone === "update" ? CircleArrowUp : TriangleAlert;

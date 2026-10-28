@@ -1,5 +1,5 @@
 import { app, BrowserWindow, shell } from "electron";
-import electronUpdater from "electron-updater";
+import electronUpdater, { type BaseUpdater } from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -9,10 +9,16 @@ import { diskImageUrl, updatesInPlace } from "./macUpdates.ts";
 
 // Updating Cerium from within. The installed app follows one release
 // channel's GitHub Releases through electron-updater: stable's latest release, or the newest
-// nightly. The UI shows what this module reports and asks it to check, download and install;
-// nothing downloads until the user asks. It checks at launch and every few hours, so a window that
-// lives in the tray still hears of updates. When the releases can't be reached (offline, or not
-// published where the app can read them) it says so and offers nothing to install.
+// nightly. The UI shows what this module reports and asks it to check, download and install. An
+// update a check finds downloads at once unless the user turned that off, so restarting is all it
+// waits for. It checks at launch and every few hours, so a window that lives in the tray still hears
+// of updates. When the releases can't be reached (offline, or not published where the app can read
+// them) it says so and offers nothing to install.
+//
+// On Windows the update installs once Cerium has stopped, the backend included, so the installer
+// neither waits for its processes nor kills them, and it runs with its window: a progress page that
+// says Cerium is updating and closes by itself (build/installer.nsh), whether Cerium quit or
+// restarted for it.
 
 const { autoUpdater } = electronUpdater;
 
@@ -26,6 +32,8 @@ export type UpdateStatus =
   | { readonly kind: "available"; readonly version: string }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
   | { readonly kind: "ready"; readonly version: string }
+  /** Cerium is closing to restart into the downloaded update. */
+  | { readonly kind: "installing"; readonly version: string }
   /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
   | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
   | { readonly kind: "failed"; readonly version: string };
@@ -41,7 +49,12 @@ export interface Updates {
    * one opens its disk image in the browser.
    */
   readonly manual: boolean;
+  /** An update downloads as soon as a check finds it; off, each waits for the user to start it. */
+  readonly autoDownload: boolean;
 }
+
+/** What asking to restart into the update did: `working` when agents would stop and it wasn't forced. */
+export type InstallResult = "started" | "working" | "unavailable";
 
 export const isUpdateChannel = (value: unknown): value is UpdateChannel =>
   value === "stable" || value === "nightly";
@@ -96,8 +109,20 @@ const reportUpdateFailure = (phase: "check" | "download", error: unknown) => {
   });
 };
 
-export const startUpdater = () => {
+const windows = process.platform === "win32";
+
+/** What the updater needs from the rest of the shell (main.ts). */
+export interface UpdaterHost {
+  /** Whether agents are working on this computer, which restarting would stop. */
+  readonly working: () => boolean;
+  /** Stops the backend, its finalizers run; quitting waits for the same stop. */
+  readonly stopBackend: () => Promise<void>;
+}
+
+export const startUpdater = (host: UpdaterHost) => {
   const preferenceFile = join(app.getPath("userData"), "update-channel");
+  /** Holds `manual` once the user turned automatic downloads off. */
+  const downloadPreferenceFile = join(app.getPath("userData"), "update-download");
   const logFile = join(app.getPath("logs"), "updater.log");
   mkdirSync(app.getPath("logs"), { recursive: true });
   const log =
@@ -121,6 +146,13 @@ export const startUpdater = () => {
   };
 
   let channel = readChannel();
+  let autoDownload = (() => {
+    try {
+      return readFileSync(downloadPreferenceFile, "utf8").trim() !== "manual";
+    } catch {
+      return true;
+    }
+  })();
   // On Linux, an AppImage updates by electron-updater swapping the file its runtime names in APPIMAGE,
   // and a .deb or .rpm by installing the next package with the system's package manager, which asks
   // for the user's password (linuxInstall.ts). Anything else, a build run from a folder, doesn't.
@@ -141,6 +173,7 @@ export const startUpdater = () => {
     buildChannel: buildChannel(),
     status,
     manual,
+    autoDownload,
   });
   const set = (next: UpdateStatus) => {
     status = next;
@@ -149,9 +182,17 @@ export const startUpdater = () => {
   };
 
   autoUpdater.logger = { info: log("info"), warn: log("warn"), error: log("error"), debug: () => undefined };
+  // Downloads start here, so the status knows who started each.
   autoUpdater.autoDownload = false;
-  // A downloaded update the user didn't restart for installs as Cerium quits.
-  autoUpdater.autoInstallOnAppQuit = true;
+  // A downloaded update the user didn't restart for installs as Cerium quits: on Windows from
+  // installOnExit, once the backend has stopped, and elsewhere through electron-updater's own handler.
+  autoUpdater.autoInstallOnAppQuit = !windows;
+  // electron-updater emits each failure before rethrowing it, and an emitter nobody listens to throws
+  // it instead. An install that couldn't start (the package manager's password prompt declined, say)
+  // leaves the update waiting for a restart again.
+  autoUpdater.on("error", () => {
+    if (status.kind === "installing") set({ kind: "ready", version: status.version });
+  });
 
   /** Points electron-updater at the channel's feed. */
   const follow = (next: UpdateChannel) => {
@@ -165,22 +206,23 @@ export const startUpdater = () => {
   };
   follow(channel);
 
+  /** Downloading, downloaded or installing: that build is what there is to offer until it installs. */
+  const settled = () =>
+    status.kind === "downloading" || status.kind === "ready" || status.kind === "installing";
+
   let checking: Promise<void> | undefined;
   const check = (): Promise<void> => {
-    if (!updatable) return Promise.resolve();
-    // Downloading or downloaded: that build is what there is to offer until it installs.
-    if (status.kind === "downloading" || status.kind === "ready") return Promise.resolve();
+    if (!updatable || settled()) return Promise.resolve();
     if (checking !== undefined) return checking;
     set({ kind: "checking" });
     checking = autoUpdater
       .checkForUpdates()
       .then(
-        (result) =>
-          set(
-            result?.isUpdateAvailable === true
-              ? { kind: "available", version: result.updateInfo.version }
-              : { kind: "current", checkedAt: Date.now() },
-          ),
+        (result) => {
+          if (result?.isUpdateAvailable !== true) return set({ kind: "current", checkedAt: Date.now() });
+          set({ kind: "available", version: result.updateInfo.version });
+          if (autoDownload && !manual) void download("background");
+        },
         (error: unknown) => {
           if (!offline(error)) reportUpdateFailure("check", error);
           set({ kind: "unreachable", reason: reasonFor(error), checkedAt: Date.now() });
@@ -196,7 +238,11 @@ export const startUpdater = () => {
     if (status.kind === "downloading") set({ ...status, percent: progress.percent });
   });
 
-  const download = async (): Promise<void> => {
+  /**
+   * Downloads the update a check found. One the user started fails visibly; one that started by
+   * itself and lost the network goes back to waiting, and the next check starts it again.
+   */
+  const download = async (origin: "user" | "background" = "user"): Promise<void> => {
     if (status.kind !== "available" && status.kind !== "failed") return;
     const { version } = status;
     if (manual) {
@@ -209,8 +255,11 @@ export const startUpdater = () => {
       set({ kind: "ready", version });
     } catch (error) {
       log("error")(error);
-      if (!offline(error)) reportUpdateFailure("download", error);
-      set({ kind: "failed", version });
+      const lostNetwork = offline(error);
+      if (!lostNetwork) reportUpdateFailure("download", error);
+      set(
+        origin === "background" && lostNetwork ? { kind: "available", version } : { kind: "failed", version },
+      );
     }
   };
 
@@ -227,7 +276,7 @@ export const startUpdater = () => {
     },
     /** Saves the user's channel and looks for its newest build. */
     setChannel: async (next: UpdateChannel): Promise<Updates> => {
-      if (next !== channel && status.kind !== "downloading" && status.kind !== "ready") {
+      if (next !== channel && !settled()) {
         channel = next;
         writeFileSync(preferenceFile, next);
         follow(next);
@@ -235,14 +284,37 @@ export const startUpdater = () => {
       }
       return snapshot();
     },
-    download,
+    /** Saves whether updates download by themselves, and starts one that is waiting when turned on. */
+    setAutoDownload: (on: boolean): Updates => {
+      autoDownload = on;
+      writeFileSync(downloadPreferenceFile, on ? "auto" : "manual");
+      set(status);
+      if (on && !manual && status.kind === "available") void download("background");
+      return snapshot();
+    },
+    download: () => download("user"),
     /**
-     * Quits and runs the downloaded installer silently, on macOS puts the new app in the old one's
-     * place, or on Linux puts the new AppImage in the old one's place or installs the new package,
-     * then starts the new build.
+     * Restarts into the downloaded update, unless agents are working and the user hasn't said to
+     * stop them. On Windows Cerium stops first, its window saying so, and the installer runs once it
+     * has (installOnExit). On macOS electron-updater puts the new app in the old one's place, and on
+     * Linux the new AppImage or package; then the new build starts.
      */
-    install: () => {
-      if (status.kind === "ready") autoUpdater.quitAndInstall(true, true);
+    install: (anyway: boolean): InstallResult => {
+      if (status.kind !== "ready") return "unavailable";
+      if (!anyway && host.working()) return "working";
+      set({ kind: "installing", version: status.version });
+      if (windows) void host.stopBackend().then(() => app.quit());
+      else autoUpdater.quitAndInstall(true, true);
+      return "started";
+    },
+    /**
+     * Runs the downloaded update's installer as Cerium exits on Windows, once the backend has
+     * stopped: with its window, which starts Cerium again when Cerium restarted for the update. Its
+     * processes are gone by then, so it neither waits for them nor kills them.
+     */
+    installOnExit: () => {
+      if (!windows || (status.kind !== "ready" && status.kind !== "installing")) return;
+      (autoUpdater as BaseUpdater).install(false, status.kind === "installing");
     },
   };
 };

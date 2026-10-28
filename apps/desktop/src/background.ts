@@ -139,5 +139,7 @@ export const backgroundMode = (options: {
       syncBlocker();
     },
     signedIn: () => presence.signedIn,
+    /** Whether agents are working, as the main window last said. */
+    working: () => presence.working,
   };
 };

@@ -106,10 +106,15 @@ export interface ShellBridge {
   readonly checkForUpdates?: () => Promise<Updates>;
   /** Follows another channel and checks it at once. */
   readonly setUpdateChannel?: (channel: UpdateChannel) => Promise<Updates>;
+  /** Whether updates download as soon as a check finds them. */
+  readonly setAutoDownload?: (on: boolean) => Promise<Updates>;
   /** Downloads the update a check found; progress arrives through `onUpdatesChange`. */
   readonly downloadUpdate?: () => Promise<void>;
-  /** Quits, installs the downloaded update and starts it. */
-  readonly installUpdate?: () => Promise<void>;
+  /**
+   * Quits, installs the downloaded update and starts it, unless agents are working and not
+   * `anyway`: then nothing happens and it says `working`.
+   */
+  readonly installUpdate?: (anyway?: boolean) => Promise<InstallResult>;
   /** Calls back whenever what the updater knows changes; returns how to stop. */
   readonly onUpdatesChange?: (listener: (updates: Updates) => void) => () => void;
   /**
@@ -216,6 +221,8 @@ export type UpdateStatus =
   | { readonly kind: "available"; readonly version: string }
   | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
   | { readonly kind: "ready"; readonly version: string }
+  /** Cerium is closing to restart into the downloaded update. */
+  | { readonly kind: "installing"; readonly version: string }
   /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
   | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
   | { readonly kind: "failed"; readonly version: string };
@@ -228,7 +235,12 @@ export interface Updates {
   readonly status: UpdateStatus;
   /** This build can't install updates itself: downloading one opens it in the browser. */
   readonly manual: boolean;
+  /** An update downloads as soon as a check finds it; off, each waits for the user to start it. */
+  readonly autoDownload: boolean;
 }
+
+/** What asking to restart into the update did: `working` when agents would stop and it wasn't forced. */
+export type InstallResult = "started" | "working" | "unavailable";
 
 declare global {
   interface Window {
