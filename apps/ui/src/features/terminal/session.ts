@@ -101,7 +101,8 @@ export class TerminalSession {
       fontSize: FONT_SIZE,
       lineHeight: 1.3,
       scrollback: SCROLLBACK,
-      macOptionIsMeta: true,
+      // Option types the Mac's own characters (`#`, `@`, `[` on many layouts), as in Terminal.app.
+      macOptionIsMeta: false,
       smoothScrollDuration: 0,
       theme: readTheme(),
       ...(options.windowsBuild === undefined

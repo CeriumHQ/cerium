@@ -10,6 +10,7 @@ import {
   parseBinding,
   SHORTCUTS,
   shortcutDef,
+  typesInField,
 } from "../src/lib/shortcuts.ts";
 
 const press = (
@@ -146,6 +147,32 @@ describe("conflictsFor", () => {
     expect(conflictsFor(defaultBindings(), "new-thread")).toEqual([]);
     const aliased = { ...defaultBindings(), "toggle-sidebar": "Ctrl M" };
     expect(conflictsFor(aliased, "toggle-sidebar")).toEqual(["dictate"]);
+  });
+});
+
+describe("defaultBindings", () => {
+  it("keeps the Mac app off keys macOS keeps or types with", () => {
+    const windows = defaultBindings(false);
+    const mac = defaultBindings(true);
+    expect(windows["go-to-tab"]).toBe("Alt 1");
+    expect(mac["go-to-tab"]).toBe("Control 1");
+    expect(windows["open-tasks"]).toBe("Ctrl Shift 3");
+    expect(mac["open-tasks"]).toBe("Ctrl Alt 3");
+    expect(mac["new-thread"]).toBe(windows["new-thread"]);
+    for (const id of Object.keys(mac) as ReadonlyArray<keyof typeof mac>) {
+      expect(conflictsFor(mac, id, true)).toEqual([]);
+    }
+  });
+});
+
+describe("typesInField", () => {
+  it("leaves an Option-layer character to the field", () => {
+    expect(typesInField(press("#", "Digit3", { alt: true }), true)).toBe(true);
+  });
+  it("takes the press outside a field, or when Alt writes the digit", () => {
+    expect(typesInField(press("#", "Digit3", { alt: true }), false)).toBe(false);
+    expect(typesInField(press("3", "Digit3", { alt: true }), true)).toBe(false);
+    expect(typesInField(press("3", "Digit3", { ctrl: true }), true)).toBe(false);
   });
 });
 
