@@ -37,11 +37,18 @@
     color: var(--fg-primary);
     text-wrap: balance;
   }
+  /* A reply's top headings speak in the app's own display face, as its pages' titles do. */
+  .md :where(h1, h2) {
+    font-family: var(--font-display);
+    font-size-adjust: none;
+    font-stretch: 112%;
+    letter-spacing: 0.005em;
+  }
   .md :where(h1) {
     font-size: 1.3em;
   }
   .md :where(h2) {
-    font-size: 1.14em;
+    font-size: 1.12em;
   }
   .md :where(h3, h4, h5, h6) {
     font-size: 1em;
@@ -116,14 +123,15 @@
 
   /* Task lists: the box is the marker. */
   .md :where(li.task-list-item) {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6em;
+    position: relative;
     margin-left: -1.35em;
+    padding-left: 1.65em;
     list-style: none;
   }
   .md :where(li.task-list-item) > [data-md="task"] {
-    translate: 0 0.15em;
+    position: absolute;
+    top: 0.3em;
+    left: 0;
   }
   .md :where(li.task-list-item:has(> [data-md="task"][data-done])) {
     color: var(--fg-secondary);
@@ -142,7 +150,7 @@
   .md :where([data-md="alert"]) {
     --alert: var(--status-running);
     --alert-text: var(--status-running-text);
-    border: 1px solid color-mix(in oklab, var(--alert) 24%, transparent);
+    border: 1px solid color-mix(in oklab, var(--alert) 17%, transparent);
     border-radius: 0.625rem;
     background: color-mix(in oklab, var(--alert) 7%, transparent);
     padding: 0.65em 0.95em 0.75em;

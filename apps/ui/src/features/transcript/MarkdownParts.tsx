@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 
+import { FileIcon } from "../../components/FileIcon.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LineText } from "../viewer/CodeView.tsx";
 import { useHighlight } from "../viewer/highlight.ts";
@@ -193,6 +194,28 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   plaintext: "Text",
 };
 
+/** Languages whose files go by another extension, for the file icon a code block wears. */
+const LANGUAGE_FILES: Readonly<Record<string, string>> = {
+  typescript: "x.ts",
+  javascript: "x.js",
+  shell: "x.sh",
+  shellscript: "x.sh",
+  bash: "x.sh",
+  zsh: "x.sh",
+  console: "x.sh",
+  powershell: "x.ps1",
+  pwsh: "x.ps1",
+  python: "x.py",
+  ruby: "x.rb",
+  rust: "x.rs",
+  markdown: "x.md",
+  csharp: "x.cs",
+  kotlin: "x.kt",
+  dockerfile: "Dockerfile",
+  docker: "Dockerfile",
+  patch: "x.diff",
+};
+
 /** Shell sessions: their copy leaves out the `$ ` prompts, which a terminal would refuse. */
 const SHELLS = new Set(["sh", "bash", "shell", "shellscript", "zsh", "console", "ps1", "powershell", "pwsh"]);
 
@@ -225,7 +248,10 @@ export function CodeBlock({ node }: Part<"pre">) {
   const name = LANGUAGE_NAMES[language] ?? language;
   return (
     <div data-md="code-block" className="group/code relative">
-      <div className="flex h-8 items-center gap-2 pr-1.5 pl-3.5">
+      <div className="flex h-8 items-center gap-1.5 pr-1.5 pl-3">
+        {name === "" ? null : (
+          <FileIcon path={LANGUAGE_FILES[language] ?? `x.${language}`} className="size-3.5 opacity-90" />
+        )}
         <span className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">{name}</span>
         <CopyButton
           text={copied}
