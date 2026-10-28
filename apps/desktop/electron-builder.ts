@@ -46,6 +46,12 @@ export default {
   // The backend's npm packages come along as @cerium/backend's dependencies. Its own code is bundled
   // into dist/backend.mjs, so Cerium's TypeScript packages stay out, and so do the Claude Agent SDK's
   // bundled `claude` binaries: Cerium always runs the user's own.
+  //
+  // Every file installed is a file an update removes, unpacks and copies again, so what never runs
+  // stays out too: the packages' type declarations, source maps and TypeScript sources (Node won't
+  // strip types under node_modules), more than half of their files. So does the build tooling
+  // @sentry/node depends on for its bundler plugins (`@sentry/node/bundler-plugin/*`), which Cerium
+  // never imports: the Sentry CLI and a native JavaScript parser.
   files: [
     "dist/**",
     "package.json",
@@ -57,6 +63,8 @@ export default {
     { from: "../../packages/store/migrations", to: "migrations" },
     "!node_modules/@cerium/**",
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+    "!node_modules/**/*.{ts,cts,mts,tsx,map}",
+    "!node_modules/{@sentry/bundler-plugins,sentry,oxc-parser,@oxc-parser}/**",
   ],
   // main.ts loads the UI from ../../ui/dist beside dist/, which is resources/ui/dist once packaged.
   // Cerium's own Apache-2.0 license goes along, as the license asks of every copy distributed, and so
