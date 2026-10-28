@@ -13,6 +13,7 @@ All notable changes to Cerium are recorded here. The format follows
 - CI: a pull request that adds or updates only the web UI's, the website's or the relay's dependencies packages for Windows x64 alone, in about 3 minutes instead of 7, since none of those dependencies changes what the other platforms' packages carry.
 - CI: packaging leaves out the relay's and the website's dependencies, Cloudflare's runtime among them, which no package carries.
 - CI: the Intel Mac app is packaged on an Apple silicon runner, which had been the slowest job in most runs at 6 to 10 minutes on Intel, and its smoke test starts it through Rosetta. It carries only Intel's native packages, as before.
+- CI: the Linux AppImage, .deb and .rpm are packed side by side instead of one after another, and the .rpm's smoke test in Fedora runs alongside the other two.
 
 ### Added
 

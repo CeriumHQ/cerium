@@ -2,11 +2,14 @@
 // package the same system for different processors each write that system's update file under the
 // same name (latest.yml or nightly.yml from both Windows runners), so the files those runners share
 // are merged: one update file listing every processor's package, from which electron-updater picks
-// the one whose name carries its own processor (apps/desktop/electron-builder.ts).
+// the one whose name carries its own processor (apps/desktop/electron-builder.ts). The Linux runners
+// join the update files of the packages they pack side by side the same way
+// (.github/actions/package).
 //
 // Usage: node scripts/merge-update-files.ts <from> <to>
-// <from> holds one folder per runner's package artifact; every file in them is moved to <to>, which
-// on the same disk takes no time where copying the packages took half a minute.
+// <from> holds one folder per runner's package artifact, or per Linux package; every file in them is
+// moved to <to>, which on the same disk takes no time where copying the packages took half a minute.
+// The folders are read in order of their names, which lists a merged file's packages in that order.
 
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -56,7 +59,8 @@ if (import.meta.main) {
     process.exit(2);
   }
   const byName = new Map<string, string[]>();
-  for (const folder of readdirSync(from, { withFileTypes: true })) {
+  const folders = readdirSync(from, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+  for (const folder of folders) {
     if (!folder.isDirectory()) continue;
     for (const name of readdirSync(join(from, folder.name))) {
       byName.set(name, [...(byName.get(name) ?? []), join(from, folder.name, name)]);

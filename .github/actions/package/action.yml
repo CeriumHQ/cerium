@@ -111,7 +111,10 @@ runs:
     # it signs ad hoc (apps/desktop/electron-builder.ts). A pull request's build (GITHUB_BASE_REF set)
     # always signs ad hoc, which takes no secret. electron-builder signs nothing for one unless
     # CSC_FOR_PULL_REQUEST says to, which left Electron's own signature on a bundle it no longer
-    # matched and the smoke test's codesign check refused it.
+    # matched and the smoke test's codesign check refused it. On Linux the AppImage, the .deb and the
+    # .rpm pack side by side, where one after another took two minutes, each in a folder of its own
+    # since each marks its unpacked app with its own package type. Their update files are then joined
+    # into the one a single run writes, the AppImage's first (scripts/merge-update-files.ts).
     - name: Package
       shell: bash
       run: |
@@ -127,8 +130,33 @@ runs:
         fi
         # electron-builder refuses half a notarization key.
         if [ -z "${APPLE_API_KEY:-}" ]; then unset APPLE_API_KEY_ID APPLE_API_ISSUER; fi
-        bun run --cwd apps/desktop package ${ARCH:+"--$ARCH"} ||
-          { sleep 10 && bun run --cwd apps/desktop package ${ARCH:+"--$ARCH"}; }
+        package() { bun run --cwd apps/desktop package ${ARCH:+"--$ARCH"} "$@"; }
+        if [ "$RUNNER_OS" != Linux ]; then
+          package || { sleep 10 && package; }
+          exit 0
+        fi
+        targets=(AppImage deb rpm)
+        pids=()
+        for target in "${targets[@]}"; do
+          package --linux "$target" -c.directories.output="out/$target" > "$RUNNER_TEMP/package-$target.log" 2>&1 &
+          pids+=("$!")
+        done
+        failed=0
+        for i in "${!targets[@]}"; do
+          if wait "${pids[$i]}"; then
+            echo "::group::${targets[$i]}" && cat "$RUNNER_TEMP/package-${targets[$i]}.log" && echo "::endgroup::"
+          else
+            failed=1
+            cat "$RUNNER_TEMP/package-${targets[$i]}.log"
+            echo "::error::Packing the ${targets[$i]} failed."
+          fi
+        done
+        [ "$failed" = 0 ]
+        for target in "${targets[@]}"; do
+          mkdir -p "$RUNNER_TEMP/linux/$target"
+          find "apps/desktop/out/$target" -maxdepth 1 -type f ! -name 'builder-*' -exec mv -t "$RUNNER_TEMP/linux/$target" {} +
+        done
+        node scripts/merge-update-files.ts "$RUNNER_TEMP/linux" apps/desktop/out
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         COMPRESSION: ${{ inputs.compression }}
@@ -143,13 +171,14 @@ runs:
     # installed first and started as the system's package manager left it: its AppArmor profile is what
     # lets Chromium's sandbox into the unprivileged user namespaces Ubuntu's AppArmor otherwise keeps
     # from it. Then the AppImage, unpacked since the runner has no FUSE to mount it with, which only
-    # sandboxes itself once those namespaces are let through. Then the .rpm, installed with dnf in the
-    # Fedora container started above, which checks its dependencies resolve there, and started by a
-    # user of its own,
+    # sandboxes itself once those namespaces are let through. Meanwhile the .rpm, installed with dnf in
+    # the Fedora container started above, which checks its dependencies resolve there, and started by
+    # a user of its own,
     # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
-    # would keep the sandbox out of the namespaces a Fedora desktop lets it into. All run on a virtual
-    # display. On macOS the app starts from its disk image, once its signature checks out. A report is
-    # printed again when a start fails, in case the Windows app's own output went nowhere.
+    # would keep the sandbox out of the namespaces a Fedora desktop lets it into, and leave it apart
+    # from the runner's. All run on a virtual display. On macOS the app starts from its disk image,
+    # once its signature checks out. A report is printed again when a start fails, in case the Windows
+    # app's own output went nowhere.
     - name: Smoke test
       shell: bash
       run: |
@@ -179,25 +208,35 @@ runs:
           smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
           hdiutil detach "$mount" > /dev/null
         else
+          (
+            for _ in $(seq 300); do [ -s "$RUNNER_TEMP/fedora-ready" ] && break; sleep 1; done
+            if [ "$(cat "$RUNNER_TEMP/fedora-ready" 2>/dev/null)" != 0 ]; then
+              cat "$RUNNER_TEMP/fedora.log"
+              echo "::error::The Fedora container didn't start."
+              exit 1
+            fi
+            docker exec fedora bash -euo pipefail -c '
+                dnf install -y -q /desktop/out/cerium-*.rpm
+                useradd -m user
+                su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+              status=$?
+              cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
+              exit "$status"
+            }
+          ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
+          rpm=$!
           sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
-          for _ in $(seq 300); do [ -s "$RUNNER_TEMP/fedora-ready" ] && break; sleep 1; done
-          if [ "$(cat "$RUNNER_TEMP/fedora-ready" 2>/dev/null)" != 0 ]; then
-            cat "$RUNNER_TEMP/fedora.log"
-            echo "::error::The Fedora container didn't start."
-            exit 1
-          fi
-          docker exec fedora bash -euo pipefail -c '
-              dnf install -y -q /desktop/out/cerium-*.rpm
-              useradd -m user
-              su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+          if wait "$rpm"; then
+            echo "::group::The .rpm in Fedora" && cat "$RUNNER_TEMP/rpm-smoke-test.log" && echo "::endgroup::"
+          else
             status=$?
-            cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
+            cat "$RUNNER_TEMP/rpm-smoke-test.log"
             exit "$status"
-          }
+          fi
         fi
       env:
         VERSION: ${{ inputs.version }}
