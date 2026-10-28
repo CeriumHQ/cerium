@@ -1,12 +1,13 @@
 name: Package the app
 description: >-
   Builds the desktop shell and the UI it loads, and packages them for the runner's platform and
-  processor, or the one `arch` names, into apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file;
-  on Linux the AppImage, the .deb, the .rpm and their update file; on macOS the disk image, the zip
-  updates install from and their update file, signed with a Developer ID and notarized when the
-  certificate and API key are given, else signed ad hoc. Then starts what was packaged with
-  --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the .deb as well, and
-  uploads the packages as the `package-<OS>-<arch>` artifact.
+  processor, or the one `arch` names, into apps/desktop/out: on Windows the unsigned installer, its
+  blockmap and its update file; on Linux the AppImage, the .deb, the .rpm and their update file; on
+  macOS the disk image, the zip updates install from and their update file, signed with a Developer
+  ID and notarized when the certificate and API key are given, else signed ad hoc. Then starts what
+  was packaged with --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the
+  .deb as well, and uploads the packages as the `package-<OS>-<arch>` artifact, or to the draft
+  release `release` names, with their update file as the `update-files-<OS>-<arch>` artifact.
 
 inputs:
   version:
@@ -25,6 +26,17 @@ inputs:
       is packaged on Apple silicon, several times faster than on an Intel runner, from an install
       with both processors' native packages (.github/actions/setup's `cpu`), and started through
       Rosetta. Empty packages for the runner's own.
+    required: false
+    default: ""
+  release:
+    description: >-
+      The tag of the draft release a push's nightly is gathered in (.github/workflows/ci.yml), to
+      upload the packages to while the smoke test runs, so publishing only adds the update files the
+      runners share and makes the release public. Empty uploads them as an artifact instead.
+    required: false
+    default: ""
+  github-token:
+    description: A token that may upload to the draft release; only the upload sees it.
     required: false
     default: ""
   sentry-dsn:
@@ -178,10 +190,21 @@ runs:
     # would keep the sandbox out of the namespaces a Fedora desktop lets it into, and leave it apart
     # from the runner's. All run on a virtual display. On macOS the app starts from its disk image,
     # once its signature checks out. A report is printed again when a start fails, in case the Windows
-    # app's own output went nowhere.
+    # app's own output went nowhere. A push's packages upload to its draft release meanwhile, with the
+    # token given to the upload alone, never to the app.
     - name: Smoke test
       shell: bash
       run: |
+        out=apps/desktop/out
+        if [ -n "$RELEASE" ]; then
+          shopt -s nullglob
+          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap})
+          GH_TOKEN="$UPLOAD_TOKEN" gh release upload "$RELEASE" "${packages[@]}" --clobber \
+            > "$RUNNER_TEMP/upload.log" 2>&1 &
+          upload=$!
+          shopt -u nullglob
+        fi
+        unset UPLOAD_TOKEN
         smoke() {
           local report="$RUNNER_TEMP/smoke-test/$1"
           shift
@@ -191,7 +214,6 @@ runs:
             exit "$status"
           }
         }
-        out=apps/desktop/out
         if [ "$RUNNER_OS" = Windows ]; then
           if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
           smoke installer "$out/$unpacked/Cerium.exe"
@@ -238,9 +260,15 @@ runs:
             exit "$status"
           fi
         fi
+        if [ -n "$RELEASE" ]; then
+          wait "$upload" || { cat "$RUNNER_TEMP/upload.log"; echo "::error::The upload to $RELEASE failed."; exit 1; }
+          echo "Uploaded ${#packages[@]} files to the draft release $RELEASE."
+        fi
       env:
         VERSION: ${{ inputs.version }}
         ARCH: ${{ inputs.arch }}
+        RELEASE: ${{ inputs.release }}
+        UPLOAD_TOKEN: ${{ inputs.github-token }}
 
     - name: Keep the smoke test's logs
       if: failure()
@@ -255,7 +283,8 @@ runs:
 
     # Stored as they are: the packages are compressed already, and zipping them again slowed the Intel
     # Mac's upload to a third of Linux's.
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+    - if: inputs.release == ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}
         compression-level: 0
@@ -268,6 +297,18 @@ runs:
           apps/desktop/out/*.dmg
           apps/desktop/out/*-mac.zip
           apps/desktop/out/*-mac.zip.blockmap
+          apps/desktop/out/latest*.yml
+          apps/desktop/out/nightly*.yml
+        if-no-files-found: error
+        retention-days: 3
+
+    # The update file publishing merges with the other processor's, the one file a draft release's
+    # runners share.
+    - if: inputs.release != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        path: |
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
         if-no-files-found: error

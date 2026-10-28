@@ -14,6 +14,7 @@ All notable changes to Cerium are recorded here. The format follows
 - CI: packaging leaves out the relay's and the website's dependencies, Cloudflare's runtime among them, which no package carries.
 - CI: the Intel Mac app is packaged on an Apple silicon runner, which had been the slowest job in most runs at 6 to 10 minutes on Intel, and its smoke test starts it through Rosetta. It carries only Intel's native packages, as before.
 - CI: the Linux AppImage, .deb and .rpm are packed side by side instead of one after another, and the .rpm's smoke test in Fedora runs alongside the other two.
+- CI: each nightly package uploads to the nightly's draft release while its smoke test runs, so publishing, the last step of every push to main, no longer fetches every package and uploads it again; it adds the shared update files and the web UI, then makes the release public.
 
 ### Added
 

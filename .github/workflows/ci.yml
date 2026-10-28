@@ -27,17 +27,21 @@ env:
 # The jobs run side by side, the packages without waiting for linting, which the pre-push hook has
 # run already (scripts/pre-push.ts); publishing waits for every check and every package.
 jobs:
-  # The commit messages, whether anything but documentation changed, and the nightly's version.
+  # The commit messages, whether anything but documentation changed, and the nightly's version, with
+  # the draft release a push's nightly is gathered in.
   plan:
     name: Plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     outputs:
       package: ${{ steps.changes.outputs.package }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
       windows: ${{ steps.changes.outputs.windows }}
       publish: ${{ steps.plan.outputs.publish }}
       version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.draft.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,6 +104,24 @@ jobs:
       - id: plan
         name: Plan the nightly
         run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER"
+      # Each package uploads to the nightly's draft as soon as it is built, which nobody but the
+      # repository's writers sees until the publish job makes it public; publishing then took a minute
+      # and more to fetch every package and upload it again. A rerun starts its draft afresh.
+      - id: draft
+        name: Start the nightly's draft release
+        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          TITLE: ${{ steps.plan.outputs.title }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
+        run: |
+          while [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = true ]; do
+            gh release delete "$TAG" --yes
+          done
+          gh release create "$TAG" --draft --prerelease --target "$COMMIT" --title "$TITLE" --notes ""
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   # The platform-independent gates, once, on the fastest and cheapest runner. Each step after setup
   # runs even when an earlier one fails, so one run reports every problem.
@@ -201,7 +223,8 @@ jobs:
   # own runner, and a pull request on Windows x64 alone unless it touches packaging (plan, above).
   # Nightlies ship these packages, packed fast (.github/actions/package). Packaging installs neither
   # the relay's dependencies nor the website's, which its builds never read: Wrangler's alone brings
-  # Cloudflare's runtime, about a hundred megabytes per platform.
+  # Cloudflare's runtime, about a hundred megabytes per platform. A push's packages upload straight to
+  # its nightly's draft release (plan, above), which takes the write permission.
   package-linux:
     name: Package (Linux ${{ matrix.arch }})
     needs: plan
@@ -214,6 +237,8 @@ jobs:
           - { arch: Arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -224,6 +249,8 @@ jobs:
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+          release: ${{ needs.plan.outputs.release }}
+          github-token: ${{ github.token }}
           compression: fast
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
@@ -238,6 +265,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.windows) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -248,6 +277,8 @@ jobs:
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+          release: ${{ needs.plan.outputs.release }}
+          github-token: ${{ github.token }}
           compression: fast
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
@@ -269,6 +300,8 @@ jobs:
           - { arch: x64, runner: macos-15, cross: x64 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -280,6 +313,8 @@ jobs:
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+          release: ${{ needs.plan.outputs.release }}
+          github-token: ${{ github.token }}
           arch: ${{ matrix.cross }}
           compression: fast
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
@@ -291,11 +326,11 @@ jobs:
           apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
 
   # A push to main that changes the app publishes its nightly once everything passed: the relay
-  # first, so it already reads what the new version sends, then the release with every package and
-  # the web UI, which installed apps update from. Runs publish one at a time, oldest first, and one
-  # waiting behind another gives way to a newer one, whose nightly carries its commits. The release
-  # plan is made again here, so a run that finishes after a later push's publishes nothing
-  # (scripts/release.ts).
+  # first, so it already reads what the new version sends, then the draft release the packages were
+  # uploaded to, with the update files the runners share and the web UI, which installed apps update
+  # from. Runs publish one at a time, oldest first, and one waiting behind another gives way to a
+  # newer one, whose nightly carries its commits. The release plan is made again here, so a run that
+  # finishes after a later push's publishes nothing (scripts/release.ts) and drops its draft.
   publish:
     name: Publish the nightly
     needs: [plan, lint, test-linux, test-windows, web, package-linux, package-windows, package-macos]
@@ -325,22 +360,26 @@ jobs:
             echo "::warning::A stable release moved this nightly from $PACKAGED to $VERSION since the run began, so the next push publishes instead."
             PUBLISH=false
           fi
+          if [ "$PUBLISH" != true ] && [ -n "$RELEASE" ]; then gh release delete "$RELEASE" --yes || true; fi
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
         env:
           PUBLISH: ${{ steps.replan.outputs.publish }}
           VERSION: ${{ steps.replan.outputs.version }}
           PACKAGED: ${{ needs.plan.outputs.version }}
-      # Each runner's packages in a folder of their own, then all in one, with the update files two
+          RELEASE: ${{ needs.plan.outputs.release }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+      # Each runner's update files in a folder of their own, then all in one, with the ones two
       # runners both wrote merged (scripts/merge-update-files.ts).
-      - name: Fetch the packages
+      - name: Fetch the update files
         if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: package-*
-          path: ${{ runner.temp }}/packages
-      - name: Gather the packages
+          pattern: update-files-*
+          path: ${{ runner.temp }}/update-files
+      - name: Merge the update files
         if: ${{ steps.plan.outputs.publish == 'true' }}
-        run: node scripts/merge-update-files.ts "$RUNNER_TEMP/packages" apps/desktop/out
+        run: node scripts/merge-update-files.ts "$RUNNER_TEMP/update-files" apps/desktop/out
       - name: Fetch the web app
         if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -360,27 +399,35 @@ jobs:
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
+      # Publishing the draft tags its commit.
       - name: Publish the nightly
         if: ${{ steps.plan.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.replan.outputs.tag }}
+          RELEASE: ${{ needs.plan.outputs.release }}
           TITLE: ${{ steps.replan.outputs.title }}
           COMMIT: ${{ steps.replan.outputs.commit }}
         run: |
-          gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
-            --target "$COMMIT" --title "$TITLE" \
-            --notes-file "$RUNNER_TEMP/notes.md" --prerelease --latest=false
+          gh release upload "$RELEASE" apps/desktop/out/*.yml apps/relay/dist/cerium-web-*.tar.gz --clobber
+          gh release edit "$RELEASE" --draft=false --prerelease --latest=false --target "$COMMIT" \
+            --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+      # Drafts from runs that never published, which a later push's nightly replaced or a failed check
+      # stopped, go once they are a few hours old, past any run still uploading to one.
       - name: Prune old nightlies
         if: ${{ steps.plan.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release list --limit 200 --json tagName,isPrerelease,publishedAt \
+          gh release list --exclude-drafts --limit 200 --json tagName,isPrerelease,publishedAt \
             --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.publishedAt) | reverse | .[].tagName' |
             tail -n +"$((NIGHTLIES_KEPT + 1))" |
             while read -r tag; do
               gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"
+            done
+          gh release list --limit 200 --json tagName,isDraft,createdAt \
+            --jq '.[] | select(.isDraft and (.tagName | test("-nightly[.]")) and (.createdAt | fromdateiso8601) < now - 6 * 3600) | .tagName' |
+            while read -r tag; do
+              gh release delete "$tag" --yes || echo "::warning::Couldn't delete the draft nightly $tag"
             done

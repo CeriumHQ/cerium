@@ -29,10 +29,11 @@ const gh = (args: ReadonlyArray<string>) => {
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
+// Drafts, which CI gathers a nightly's packages in before publishing it, aren't released yet.
 let releases: Array<{ tagName: string; isPrerelease: boolean }>;
 try {
   releases = JSON.parse(
-    gh(["release", "list", "--limit", "100", "--json", "tagName,isPrerelease"]),
+    gh(["release", "list", "--exclude-drafts", "--limit", "100", "--json", "tagName,isPrerelease"]),
   ) as typeof releases;
 } catch (error) {
   console.warn(`Couldn't list Cerium's releases, so only this checkout's web UI is served: ${String(error)}`);
