@@ -195,6 +195,40 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/*
+ * A run's trace (features/transcript/Trace.tsx): a rail through its steps' nodes, from the first
+ * step's to the last's. Each node draws the rail above and below itself, clear of its icon, since a
+ * line drawn behind the icons would show through the translucent panes.
+ */
+[data-trace] [data-row] > [data-node] {
+  --row: 1.75rem;
+
+  @media (width < 48rem) {
+    --row: 2.25rem;
+  }
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - 0.5px);
+    width: 1px;
+    background: var(--line-strong);
+  }
+  &::before {
+    top: 0;
+    height: calc(var(--row) / 2 - 9px);
+  }
+  &::after {
+    top: calc(var(--row) / 2 + 9px);
+    bottom: 0;
+  }
+}
+[data-trace] > :first-child [data-row]:first-child > [data-node]::before,
+[data-trace] > :last-child [data-row]:last-child > [data-node]::after {
+  display: none;
+}
+
 @keyframes write-in {
   from {
     clip-path: inset(-4px 100% -4px -4px);

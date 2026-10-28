@@ -6,30 +6,26 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 
 const threadId = "t1" as ThreadId;
 const leadId = "agt_lead" as AgentId;
-const start = Date.now() - 6 * 60_000;
+let clock = Date.now() - 6 * 60_000;
 let sequence = 0;
 
-const event = (payload: EventPayload): AgentEvent => {
+/** An event `after` milliseconds after the one before it. */
+const event = (payload: EventPayload, after = 1_200): AgentEvent => {
   sequence++;
-  return {
-    id: `${leadId}:${sequence}` as EventId,
-    threadId,
-    agentId: leadId,
-    sequence,
-    at: start + sequence * 4_000,
-    payload,
-  };
+  clock += after;
+  return { id: `${leadId}:${sequence}` as EventId, threadId, agentId: leadId, sequence, at: clock, payload };
 };
 
+/** A call that `took` milliseconds. */
 const tool = (
   callId: string,
   toolName: string,
   input: unknown,
   output: unknown,
-  isError = false,
+  { isError = false, took = 400 }: { isError?: boolean; took?: number } = {},
 ): ReadonlyArray<AgentEvent> => [
   event({ _tag: "ToolCallStarted", callId, toolName, input }),
-  event({ _tag: "ToolCallCompleted", callId, output, isError }),
+  event({ _tag: "ToolCallCompleted", callId, output, isError }, took),
 ];
 
 export const leadFixture = {
@@ -130,11 +126,14 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
       },
     ],
   }),
-  event({
-    _tag: "ReasoningCompleted",
-    messageId: "m1:0",
-    text: "A one-in-five failure on CI but not locally points at **timing**. The login test probably reads session state before an async write settles.\n\nI should read the test and the session store, and in parallel have scouts check open PRs so I don't duplicate work.",
-  }),
+  event(
+    {
+      _tag: "ReasoningCompleted",
+      messageId: "m1:0",
+      text: "A one-in-five failure on CI but not locally points at **timing**. The login test probably reads session state before an async write settles.\n\nI should read the test and the session store, and in parallel have scouts check open PRs so I don't duplicate work.",
+    },
+    6_400,
+  ),
   event({
     _tag: "MessageCompleted",
     messageId: "m1:1",
@@ -186,13 +185,14 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     "Bash",
     { command: "bun test src/auth --rerun-each 20", description: "Reproduce the flake with 20 reruns" },
     `Exit code 1\n${testRun}`,
-    true,
+    { isError: true, took: 14_200 },
   ),
   ...tool(
     "c5c",
     "WebFetch",
     { url: "https://bun.sh/docs/cli/test", prompt: "How does --rerun-each work?" },
     "`--rerun-each <n>` runs every test file n times, which surfaces flaky tests.",
+    { took: 2_600 },
   ),
   event({
     _tag: "MessageCompleted",
@@ -270,6 +270,15 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     "Bash",
     { command: "bun test src/auth --rerun-each 20", description: "Run auth tests 20 times" },
     " 60 pass\n 0 fail\n 120 expect() calls\nRan 60 tests across 1 file. [2.91s]",
+    { took: 9_800 },
+  ),
+  event(
+    {
+      _tag: "ReasoningCompleted",
+      messageId: "m3:r",
+      text: "All 20 reruns pass. Before pushing I'll confirm the open PRs haven't moved since the scouts looked.",
+    },
+    3_200,
   ),
   ...tool(
     "c9",
@@ -282,9 +291,9 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     "Bash",
     { command: "git push origin HEAD" },
     "fatal: no upstream configured for branch 'fix/session-race'",
-    true,
+    { isError: true, took: 1_600 },
   ),
-  event({ _tag: "MessageCompleted", messageId: "m3:1", text: explanation }),
+  event({ _tag: "MessageCompleted", messageId: "m3:1", text: explanation }, 21_000),
   event({
     _tag: "TurnFilesChanged",
     turnId: "turn2",
