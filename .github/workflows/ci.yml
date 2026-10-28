@@ -34,6 +34,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       package: ${{ steps.changes.outputs.package }}
+      everywhere: ${{ steps.changes.outputs.everywhere }}
+      windows: ${{ steps.changes.outputs.windows }}
       publish: ${{ steps.plan.outputs.publish }}
       version: ${{ steps.plan.outputs.version }}
     steps:
@@ -56,6 +58,7 @@ jobs:
         name: Find what changed
         run: |
           package=true
+          everywhere=true
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git diff --name-only "$BASE...$HEAD")
             app=$(grep -vE '\.md$|^LICENSE$|^\.github/(media|ISSUE_TEMPLATE)/' <<<"$changed" || true)
@@ -64,8 +67,25 @@ jobs:
               package=false
               echo "Only documentation changed, so nothing is packaged or published."
             fi
+            # A pull request packages only for Windows x64, the main platform, unless it changes the
+            # desktop shell, the dependencies or how packages are built; main packages everywhere
+            # before its nightly ships.
+            packaging=$(grep -E '^apps/desktop/|(^|/)package\.json$|^bun\.lock$|^\.github/(actions/(setup|package)/|workflows/ci\.yml$)' <<<"$changed" || true)
+            if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "$packaging" ]; then
+              everywhere=false
+              echo "Nothing that packaging reads changed, so only Windows x64 is packaged."
+            fi
           fi
-          echo "package=$package" >> "$GITHUB_OUTPUT"
+          if [ "$everywhere" = true ]; then
+            windows='[{"arch":"x64","runner":"windows-latest"},{"arch":"Arm64","runner":"windows-11-arm"}]'
+          else
+            windows='[{"arch":"x64","runner":"windows-latest"}]'
+          fi
+          {
+            echo "package=$package"
+            echo "everywhere=$everywhere"
+            echo "windows=$windows"
+          } >> "$GITHUB_OUTPUT"
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -169,12 +189,13 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
 
-  # Every change that reaches the app is packaged and started on every platform, on each processor's
-  # own runner. Nightlies ship these packages, packed fast (.github/actions/package).
+  # Every change that reaches main is packaged and started on every platform, on each processor's
+  # own runner, and a pull request on Windows x64 alone unless it touches packaging (plan, above).
+  # Nightlies ship these packages, packed fast (.github/actions/package).
   package-linux:
     name: Package (Linux ${{ matrix.arch }})
     needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
+    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -202,9 +223,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { arch: x64, runner: windows-latest }
-          - { arch: Arm64, runner: windows-11-arm }
+        include: ${{ fromJSON(needs.plan.outputs.windows) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -225,7 +244,7 @@ jobs:
   package-macos:
     name: Package (macOS ${{ matrix.arch }})
     needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
+    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     strategy:
       fail-fast: false
       matrix:
