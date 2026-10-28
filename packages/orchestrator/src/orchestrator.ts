@@ -24,6 +24,7 @@ import {
   type EffortRouted,
   type EventId,
   type EventPayload,
+  type FromAgent,
   type FromUser,
   type InputItem,
   type LeadHandedOff,
@@ -297,6 +298,7 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "SpawnApprovalResolved",
   "MessageQueued",
   "MessageWithdrawn",
+  "MessageHeld",
   "TurnInput",
   "MessageCompleted",
   "SessionStarted",
@@ -539,7 +541,17 @@ export class Orchestrator extends Context.Service<
       callerId: AgentId,
       request: ThreadRequest,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
-    sendMessage(callerId: AgentId, to: AgentId, text: string): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Delivers an agent's message. One to another thread's lead waits for that lead's next turn,
+     * unless the sender asks for a `reply` or answers one the receiver asked for: then, as within a
+     * thread, it starts the receiver's turn once it is idle. Resolves with whether it waits.
+     */
+    sendMessage(
+      callerId: AgentId,
+      to: AgentId,
+      text: string,
+      options?: { readonly reply?: boolean },
+    ): Effect.Effect<{ readonly held: boolean }, OrchestratorError>;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
      * Puts a question to the thread's advisor, starting one on the model the user picked when none
@@ -689,9 +701,15 @@ export class Orchestrator extends Context.Service<
 
       /**
        * Notices each agent hears with its next turn, whatever starts it, rather than starting one: a
-       * dismissed question isn't worth waking an agent whose cache may long have gone cold.
+       * dismissed question, or another thread's heads-up, isn't worth waking an agent whose context may
+       * hold hundreds of thousands of tokens.
        */
       const heldNotices = new Map<AgentId, Array<InputItem>>();
+      /**
+       * The other threads' leads each lead asked with `reply`, whose next message to it starts its turn
+       * rather than waiting: the answer it ended its turn to wait for.
+       */
+      const awaitedReplies = new Map<AgentId, Set<AgentId>>();
       /** Each thread's live advisor. */
       const advisors = new Map<ThreadId, Runtime>();
       /** The agents waiting on each advisor's answers, in the order they asked. */
@@ -2156,6 +2174,7 @@ export class Orchestrator extends Context.Service<
           leadRequests.delete(rt.info.id);
           // A resumed session finds what it hadn't heard in the thread's history.
           heldNotices.delete(rt.info.id);
+          awaitedReplies.delete(rt.info.id);
           yield* setState(rt, "stopped").pipe(Effect.ignore);
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
@@ -2271,6 +2290,8 @@ export class Orchestrator extends Context.Service<
         const unansweredQuestions = new Set<string>();
         const expiredAt = new Map<string, number>();
         const dismissedAt = new Map<string, number>();
+        // Other threads' heads-ups no turn has delivered yet still wait for its next one.
+        const heldMessages = new Map<string, FromAgent>();
         let lastTurnAt = -1;
         for (const [index, { payload }] of history.entries()) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
@@ -2293,15 +2314,21 @@ export class Orchestrator extends Context.Service<
             undelivered.set(payload.message.id, payload.message);
           }
           if (payload._tag === "MessageWithdrawn") undelivered.delete(payload.messageId);
+          if (payload._tag === "MessageHeld" && payload.message.id !== undefined) {
+            heldMessages.set(payload.message.id, payload.message);
+          }
           if (payload._tag === "TurnInput") {
-            for (const item of payload.items)
+            for (const item of payload.items) {
               if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
+              if (item._tag === "FromAgent" && item.id) heldMessages.delete(item.id);
+            }
           }
           // Every message queued before a rewind went with the turns it replaced.
           if (payload._tag === "ConversationRewound") undelivered.clear();
         }
         // Forgotten before the new session can be reached, so a late answer finds nothing to allow.
         for (const requestId of unansweredSpawns.keys()) pendingSpawns.delete(requestId);
+        if (heldMessages.size > 0) heldNotices.set(agentId, [...heldMessages.values()]);
         const rt = yield* startRuntime(
           info,
           directory,
@@ -3752,6 +3779,7 @@ export class Orchestrator extends Context.Service<
           callerId: AgentId,
           to: AgentId,
           text: string,
+          options: { readonly reply?: boolean } = {},
         ) {
           const from = yield* runtime(callerId);
           const stopped = notFound(
@@ -3787,7 +3815,27 @@ export class Orchestrator extends Context.Service<
             });
           }
           yield* spendBudget(`${callerId}->${to}`, to);
-          yield* deliver(to, { _tag: "FromAgent", agentId: callerId, threadId: from.info.threadId, text });
+          const message = {
+            _tag: "FromAgent",
+            agentId: callerId,
+            threadId: from.info.threadId,
+            text,
+          } as const;
+          // Within a thread agents wait on each other's messages. Across threads most are heads-ups the
+          // receiver can read with its next turn; a turn started for one rereads its whole context.
+          const answers = awaitedReplies.get(to)?.delete(callerId) === true;
+          if (crossThread && options.reply === true) {
+            awaitedReplies.set(callerId, (awaitedReplies.get(callerId) ?? new Set()).add(to));
+          }
+          if (!crossThread || options.reply === true || answers) {
+            yield* deliver(to, message);
+            return { held: false };
+          }
+          const held: FromAgent = { ...message, id: yield* makeId("msg") };
+          // Recorded first, so the receiver's thread shows it and a resumed session still hears it.
+          yield* emit(recipient, { _tag: "MessageHeld", message: held });
+          heldNotices.set(to, [...(heldNotices.get(to) ?? []), held]);
+          return { held: true };
         }),
 
         askAdvisor: Effect.fn("Orchestrator.askAdvisor")(function* (callerId: AgentId, question: string) {
