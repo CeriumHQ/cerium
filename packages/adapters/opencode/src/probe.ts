@@ -1,4 +1,4 @@
-import { compareVersions, HarnessFailure, parseVersion } from "@cerium/harness";
+import { compareVersions, findOnPath, HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -30,20 +30,12 @@ export const bunShimTarget = (shim: Uint8Array): string | undefined => {
  * so stopping Cerium's server stops OpenCode itself.
  */
 export const findOpenCodeExecutable = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const windows = process.platform === "win32";
   const exists = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
-  const candidates = yield* spawner
-    .lines(
-      windows ? ChildProcess.make("where", ["opencode"]) : ChildProcess.make("which", ["-a", "opencode"]),
-    )
-    .pipe(
-      Effect.map((lines) => lines.map((line) => line.trim()).filter((line) => line !== "")),
-      Effect.orElseSucceed((): ReadonlyArray<string> => []),
-    );
+  const candidates = yield* findOnPath("opencode");
 
   for (const candidate of candidates) {
     if (!windows) return Option.some(candidate);
