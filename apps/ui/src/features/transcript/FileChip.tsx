@@ -1,7 +1,7 @@
 import { AtSign, Copy, FolderOpen } from "lucide-react";
 import { createContext, useContext } from "react";
 
-import { shellBridge } from "../../backend/shell.ts";
+import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { baseName } from "../../components/fileIcons/index.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
@@ -30,7 +30,7 @@ export function SkillChip({ name }: { name: string }) {
 
 /**
  * A file or folder named in the conversation: its type's icon and its name, the full path on hover.
- * Clicking shows it in File Explorer when the shell can; right-click for its menu.
+ * Clicking shows it in the file manager when the shell can; right-click for its menu.
  */
 export function FileChip({
   path,
@@ -61,7 +61,7 @@ export function FileChip({
         {suffix}
       </span>
       {reveal && location ? (
-        <span className="text-caption text-fg-tertiary">Click to show in File Explorer</span>
+        <span className="text-caption text-fg-tertiary">Click to show in {revealPlace()}</span>
       ) : null}
     </span>
   );
@@ -89,7 +89,7 @@ export function FileChip({
         <>
           {reveal ? (
             <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
-              Show in File Explorer
+              Show in {revealPlace()}
             </MenuItem>
           ) : null}
           {mention && messageBox ? (
