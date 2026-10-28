@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - Desktop: Electron is updated to 44.9.1 to address a security alert.
+- CI: the commit message check reads only the subject of a pull request's squash merge, whose body GitHub fills with the branch's already-checked commits.
 
 ### Added
 

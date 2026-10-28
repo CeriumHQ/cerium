@@ -4,7 +4,9 @@
 //
 // Usage: node scripts/check-commits.ts <base> [head]
 // Checks base..head, or only head when base is empty, all zeros (a new branch) or not in the history.
-// Merge commits and commits authored by bots (Dependabot) are skipped.
+// Merge commits and commits authored by bots (Dependabot) are skipped. A pull request's squash merge,
+// which GitHub commits, is held to its subject only: GitHub fills its body with the branch's commits,
+// which the pull request's own run already checked.
 
 import { execFileSync } from "node:child_process";
 
@@ -28,13 +30,19 @@ const inHistory = (rev: string): boolean => {
 };
 
 const range = inHistory(base) ? [`${base}..${head}`] : ["-1", head];
-const commits = git("log", "--format=%H%x00%P%x00%ae%x00%B%x1e", ...range)
+const commits = git("log", "--format=%H%x00%P%x00%ae%x00%ce%x00%B%x1e", ...range)
   .split("\x1e")
   .map((record) => record.replace(/^\n/, ""))
   .filter((record) => record !== "")
   .map((record) => {
-    const [hash = "", parents = "", email = "", message = ""] = record.split("\0");
-    return { hash, parents: parents.split(" ").filter(Boolean), email, lines: message.trimEnd().split("\n") };
+    const [hash = "", parents = "", email = "", committer = "", message = ""] = record.split("\0");
+    return {
+      hash,
+      parents: parents.split(" ").filter(Boolean),
+      email,
+      squashMerge: committer === "noreply@github.com",
+      lines: message.trimEnd().split("\n"),
+    };
   });
 
 const annotate = process.env["GITHUB_ACTIONS"] === "true";
@@ -43,7 +51,7 @@ const escape = (text: string): string =>
 
 let checked = 0;
 let failed = 0;
-for (const { hash, parents, email, lines } of commits) {
+for (const { hash, parents, email, squashMerge, lines } of commits) {
   if (parents.length > 1 || botAuthor.test(email)) continue;
   checked++;
   const [subject = "", ...rest] = lines;
@@ -51,7 +59,7 @@ for (const { hash, parents, email, lines } of commits) {
   if (!subjectPattern.test(subject)) {
     problems.push(`the subject must read \`type(scope): summary\` with a type from: ${types.join(", ")}`);
   }
-  const extra = rest.find((line) => line.trim() !== "");
+  const extra = squashMerge ? undefined : rest.find((line) => line.trim() !== "");
   if (extra !== undefined) {
     problems.push(`only the subject line is allowed, with no body or trailers (found "${extra.trim()}")`);
   }
