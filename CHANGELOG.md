@@ -25,6 +25,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 - Catching the cloud copy up uploads four threads at once instead of one after another, each waiting on the relay's answer to every batch, and goes most recently active first, in rounds of two seconds: a new message goes up within a few seconds while a long history is still catching up, instead of after all of it.
 
+- A video, a sound or an image in the file viewer plays from this computer's backend in the byte ranges the page asks for, so it starts at once and seeking skips ahead: a 128 MB video was sent whole over the RPC socket as 171 MB of base64 and held twice in memory before it played, and now plays at once. Another machine's files still come over its connection, as before.
+
+- The file explorer reads a folder's git status at most once a second while its files churn, one read at a time with one more after it for what changed meanwhile, instead of starting a whole `git status` for every 300 ms batch of changes and cancelling the one still running.
+
 - A thread's Preview docks in the thread's own pane, to the right of the conversation, instead of opening as a pane or tab of its own. Each thread keeps its own: switching threads shows that thread's browser, or none, and coming back finds the page as it was, across a reload too. The seam between them drags to size it (double-click puts it back to half), remembered across launches; a pane too narrow for both lets the page cover the conversation. The titlebar's Preview and the command palette show and hide it, keeping its page for the thread's agents; its X closes the page. An agent opening a page shows its thread's Preview, there or whenever the thread next shows. A session that kept a Preview tab comes back to its thread.
 
 - The effort router's settings show Spent this month and Estimated by month end, projected from the current month's usage rate. Both start fresh each calendar month; an open settings page refreshes at rollover and every minute. These replace the explanatory footer and all-time total.

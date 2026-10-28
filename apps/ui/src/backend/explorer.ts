@@ -1,5 +1,5 @@
 import type { FilesChanged } from "@cerium/rpc";
-import { Cause, Effect, Option, Schedule, Stream } from "effect";
+import { Cause, Clock, Effect, Option, Schedule, Stream } from "effect";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import {
@@ -10,7 +10,7 @@ import {
   type Listed,
   type Row,
 } from "../features/files/model.ts";
-import { Backend, connectionEpochAtom } from "./client.ts";
+import { Backend, connectionEpochAtom, localMediaUrl } from "./client.ts";
 
 // The file explorer's reads of the driven machine's disk. Each is an atom keyed by the folder it reads
 // (`root`, the thread's folder, then the path in it, on separate lines), and each starts over when
@@ -35,13 +35,33 @@ export const listingAtom = Atom.family((id: string) => {
     .pipe(Atom.setIdleTTL("2 minutes"));
 });
 
-/** What git says differs from the last commit under `root`. */
+/** The least time between two reads of a folder's git status, in milliseconds. */
+const STATUS_SPACING = 1_000;
+
+/**
+ * What git says differs from the last commit under `root`. Each read is a whole `git status`, and
+ * while files churn a batch of changes comes every 300 ms: one read runs at a time, bumps during it
+ * make one more after it, and a read waits until `STATUS_SPACING` after the last, so a slow status
+ * finishes instead of being restarted by every batch. A read that fails is tried again shortly,
+ * keeping the last status meanwhile.
+ */
 export const statusAtom = Atom.family((root: string) =>
   Backend.runtime
     .atom((get) => {
       get(connectionEpochAtom);
-      get(versionAtoms(key("status", root)));
-      return Backend.use((client) => client("FileStatuses", { root }));
+      const statuses = Backend.use((client) => client("FileStatuses", { root }));
+      let readAt = Number.NEGATIVE_INFINITY;
+      const read = Effect.gen(function* () {
+        const wait = readAt + STATUS_SPACING - (yield* Clock.currentTimeMillis);
+        if (wait > 0) yield* Effect.sleep(wait);
+        readAt = yield* Clock.currentTimeMillis;
+        return yield* statuses;
+      });
+      return get.stream(versionAtoms(key("status", root))).pipe(
+        Stream.buffer({ capacity: 1, strategy: "sliding" }),
+        Stream.mapEffect(() => read),
+        Stream.retry(Schedule.spaced("5 seconds")),
+      );
     })
     .pipe(Atom.setIdleTTL("2 minutes")),
 );
@@ -80,7 +100,7 @@ export const diffAtom = Atom.family((id: string) => {
     .pipe(Atom.setIdleTTL("1 minute"));
 });
 
-/** How far a media file has been read; `url` plays or shows it once every byte is in. */
+/** How far a media file has been read; `url` plays or shows it once it can. */
 export interface MediaLoad {
   readonly received: number;
   readonly url?: string;
@@ -101,14 +121,16 @@ export const mediaAtom = Atom.family((id: string) => {
   return Backend.runtime
     .atom((get) => {
       get(connectionEpochAtom);
-      get(versionAtoms(key("file", key(root, path))));
+      const version = get(versionAtoms(key("file", key(root, path))));
       const parts: Array<Uint8Array<ArrayBuffer>> = [];
       let received = 0;
       let url: string | undefined;
       get.addFinalizer(() => {
         if (url !== undefined) URL.revokeObjectURL(url);
       });
-      return Stream.unwrap(
+      // This computer's own files play from its backend as they load; another machine's come
+      // over RPC, whole, before they show.
+      const overRpc = Stream.unwrap(
         Backend.use((client) => Effect.succeed(client("ReadFileBytes", { root, path }))),
       ).pipe(
         Stream.map(({ data }): MediaLoad => {
@@ -123,6 +145,11 @@ export const mediaAtom = Atom.family((id: string) => {
             parts.length = 0;
             return { received, url };
           }),
+        ),
+      );
+      return Stream.unwrap(
+        Effect.map(localMediaUrl(root, path, version), (direct) =>
+          direct === undefined ? overRpc : Stream.succeed<MediaLoad>({ received: 0, url: direct }),
         ),
       );
     })

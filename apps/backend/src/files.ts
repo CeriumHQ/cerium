@@ -405,6 +405,14 @@ export class Files extends Context.Service<
     read(root: string, path: string): Effect.Effect<FilePreview, FilesError>;
     /** A media file's bytes under `root`, in pieces. */
     readBytes(root: string, path: string): Stream.Stream<FileBytes, FilesError>;
+    /** Where a media file under `root` is on disk, its size and its type, for serving it in ranges. */
+    media(
+      root: string,
+      path: string,
+    ): Effect.Effect<
+      { readonly target: string; readonly size: number; readonly mediaType: string },
+      FilesError
+    >;
     /**
      * A changed file against the last commit; `from` is where it was before a rename, `context` the
      * unchanged lines around each change.
@@ -588,6 +596,18 @@ export class Files extends Context.Service<
           : ({ _tag: "Text", text, size, truncated } satisfies FilePreview);
       });
 
+      const media = Effect.fn("Files.media")(function* (root: string, relative: string) {
+        const file = yield* fileAt(root, relative);
+        if (file === undefined)
+          return yield* new FilesError({ message: "This file isn't on disk any more." });
+        const kind = mediaOf(file.target);
+        if (kind === undefined)
+          return yield* new FilesError({ message: "That isn't an image, a sound or a video." });
+        if (file.size > MAX_MEDIA_BYTES)
+          return yield* new FilesError({ message: "This file is too large to open here." });
+        return { target: file.target, size: file.size, mediaType: kind.mediaType };
+      });
+
       const readBytes = (root: string, relative: string) =>
         Stream.unwrap(
           Effect.gen(function* () {
@@ -746,7 +766,7 @@ export class Files extends Context.Service<
           }),
         );
 
-      return Files.of({ list, statuses, read, readBytes, diff, watch });
+      return Files.of({ list, statuses, read, readBytes, media, diff, watch });
     }),
   );
 }

@@ -38,6 +38,7 @@ import { Git } from "./git.ts";
 import { GitBranches } from "./gitBranches.ts";
 import { GitChanges } from "./gitChanges.ts";
 import { History } from "./history.ts";
+import { mediaRoutes } from "./media.ts";
 import { requireToken, rpcRoutes, tunnelRpcServer } from "./rpc.ts";
 import { Projects } from "./project.ts";
 import { projectScriptsLayer } from "./projectScripts.ts";
@@ -112,6 +113,7 @@ export const backendLayer = (options: BackendOptions) => {
       BusRoutes,
       rpcRoutes(options.token),
       remoteRoutes(requireToken(options.token)),
+      mediaRoutes(requireToken(options.token)),
       // Other devices driving this machine through the relay.
       tunnelRpcServer.pipe(Layer.provide(TunnelSocketServer)),
     ),
