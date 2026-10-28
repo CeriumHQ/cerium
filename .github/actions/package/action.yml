@@ -1,7 +1,7 @@
 name: Package the app
 description: >-
   Builds the desktop shell and the UI it loads, and packages them for the runner's platform and
-  processor into apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file;
+  processor, or the one `arch` names, into apps/desktop/out: on Windows the unsigned installer, its blockmap and its update file;
   on Linux the AppImage, the .deb, the .rpm and their update file; on macOS the disk image, the zip
   updates install from and their update file, signed with a Developer ID and notarized when the
   certificate and API key are given, else signed ad hoc. Then starts what was packaged with
@@ -19,6 +19,14 @@ inputs:
       (apps/desktop/electron-builder.ts), so each installs and updates the same way: for nightlies and
       for runs that only check the packaging.
     required: true
+  arch:
+    description: >-
+      The processor to package for, `x64` or `arm64`, when it isn't the runner's: the Intel Mac app
+      is packaged on Apple silicon, several times faster than on an Intel runner, from an install
+      with both processors' native packages (.github/actions/setup's `cpu`), and started through
+      Rosetta. Empty packages for the runner's own.
+    required: false
+    default: ""
   sentry-dsn:
     description: >-
       Where the packaged app sends its anonymous crash reports (apps/desktop/src/crashReports.ts),
@@ -86,7 +94,7 @@ runs:
           ~/.cache/electron-builder
           ~/Library/Caches/electron
           ~/Library/Caches/electron-builder
-        key: electron-builder-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
+        key: electron-builder-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
     # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild, which the x64
     # image already has.
@@ -119,10 +127,12 @@ runs:
         fi
         # electron-builder refuses half a notarization key.
         if [ -z "${APPLE_API_KEY:-}" ]; then unset APPLE_API_KEY_ID APPLE_API_ISSUER; fi
-        bun run --cwd apps/desktop package || { sleep 10 && bun run --cwd apps/desktop package; }
+        bun run --cwd apps/desktop package ${ARCH:+"--$ARCH"} ||
+          { sleep 10 && bun run --cwd apps/desktop package ${ARCH:+"--$ARCH"}; }
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         COMPRESSION: ${{ inputs.compression }}
+        ARCH: ${{ inputs.arch }}
         MAC_CERTIFICATE: ${{ inputs.mac-certificate }}
         MAC_CERTIFICATE_PASSWORD: ${{ inputs.mac-certificate-password }}
         APPLE_API_KEY_CONTENTS: ${{ inputs.apple-api-key }}
@@ -157,6 +167,11 @@ runs:
           if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
           smoke installer "$out/$unpacked/Cerium.exe"
         elif [ "$RUNNER_OS" = macOS ]; then
+          # An Intel app packaged on Apple silicon starts through Rosetta, installed when the runner
+          # lacks it.
+          if [ "$ARCH" = x64 ] && ! arch -x86_64 /usr/bin/true 2> /dev/null; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
           # The app as the disk image holds it, mounted read-only as a user's Mac would.
           mount="$RUNNER_TEMP/cerium-dmg"
           hdiutil attach "$out"/Cerium-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
@@ -186,12 +201,13 @@ runs:
         fi
       env:
         VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
 
     - name: Keep the smoke test's logs
       if: failure()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: smoke-test-${{ runner.os }}-${{ runner.arch }}
+        name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}
         path: |
           ${{ runner.temp }}/smoke-test/*/smoke-test.log
           ${{ runner.temp }}/smoke-test/*/logs
@@ -202,7 +218,7 @@ runs:
     # Mac's upload to a third of Linux's.
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: package-${{ runner.os }}-${{ runner.arch }}
+        name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}
         compression-level: 0
         path: |
           apps/desktop/out/*.exe

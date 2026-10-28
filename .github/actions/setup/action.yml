@@ -11,6 +11,13 @@ inputs:
       packages' scripts. Empty installs the whole workspace.
     required: false
     default: ""
+  cpu:
+    description: >-
+      Installs the native packages built for these processors too (`bun install --cpu`, `*` for
+      all), for a job that packages the app for a processor other than the runner's. Empty installs
+      the runner's own.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -48,9 +55,10 @@ runs:
         read -ra patterns <<<"$FILTER"
         filters=()
         for pattern in "${patterns[@]}"; do filters+=(--filter "$pattern"); done
-        bun install --frozen-lockfile "${filters[@]}"
+        bun install --frozen-lockfile "${filters[@]}" ${CPU:+--cpu="$CPU"}
       env:
         FILTER: ${{ inputs.filter }}
+        CPU: ${{ inputs.cpu }}
         # Bun's package cache goes on the checkout's disk. Its default home on Windows is on C:, which
         # is much slower than the D: the checkout is on, and Bun can't hard-link packages across the
         # two, so installing there took several times as long. The cache isn't kept between runs:

@@ -252,9 +252,11 @@ jobs:
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
-  # Apple silicon and Intel Macs each on a runner of their own processor. The repository's Developer
-  # ID certificate and notarization key sign the app when it has them, which a pull request from a
-  # fork never sees; without them it is signed ad hoc.
+  # The Apple silicon and Intel Mac apps, both packaged on Apple silicon: an Intel runner took twice
+  # as long and more, and the Intel app only needs Intel's native packages installed beside the
+  # runner's (.github/actions/package). The repository's Developer ID certificate and notarization
+  # key sign the app when it has them, which a pull request from a fork never sees; without them it
+  # is signed ad hoc.
   package-macos:
     name: Package (macOS ${{ matrix.arch }})
     needs: plan
@@ -264,7 +266,7 @@ jobs:
       matrix:
         include:
           - { arch: Arm64, runner: macos-15 }
-          - { arch: x64, runner: macos-15-intel }
+          - { arch: x64, runner: macos-15, cross: x64 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -274,9 +276,11 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           filter: "!@cerium/relay !@cerium/site"
+          cpu: ${{ matrix.cross && '*' || '' }}
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+          arch: ${{ matrix.cross }}
           compression: fast
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}

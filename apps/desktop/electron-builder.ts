@@ -1,10 +1,14 @@
-import type { Configuration } from "electron-builder";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { Arch, type AfterPackContext, type Configuration } from "electron-builder";
 
 // Packages the desktop shell and its backend for the platform and processor it runs on: an unsigned
 // installer on Windows, an AppImage, a .deb and an .rpm on Linux, a disk image on macOS, each for x64
 // or Arm64. Each
 // processor packages on its own runner, since the native modules' prebuilt binaries come from npm
-// packages Bun installs only for the processor it runs on. The release workflows set CERIUM_VERSION
+// packages Bun installs only for the processor it runs on; the Intel Mac app is the exception, packaged
+// on Apple silicon from an install with both processors' (dropOtherMacProcessor, below). The release
+// workflows set CERIUM_VERSION
 // from scripts/release.ts; without it this builds at the package's own version. Stable and nightly
 // builds are the same app: a nightly's version (`-nightly.n<run>`) is all that tells them apart, and
 // the updater follows whichever channel the user picks.
@@ -25,6 +29,48 @@ const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
  * somewhat larger, and installed the same way.
  */
 const fastPacking = process.env["ELECTRON_BUILDER_COMPRESSION_LEVEL"] !== undefined;
+
+/**
+ * Takes the npm packages built for the other Mac processor out of a packed Mac app, before it is
+ * signed. The Intel app is packaged on Apple silicon from an install with both processors' native
+ * packages (.github/actions/package), so each of them arrives beside its counterpart and the app
+ * keeps only its own processor's. One without a counterpart stops packaging, since the app would
+ * start without its native code.
+ */
+const dropOtherMacProcessor = (context: AfterPackContext) => {
+  if (context.electronPlatformName !== "darwin") return;
+  const own = Arch[context.arch];
+  const other = own === "x64" ? "arm64" : own === "arm64" ? "x64" : undefined;
+  if (other === undefined) return;
+  const suffix = `-darwin-${other}`;
+  const dropped: string[] = [];
+  const visit = (modules: string) => {
+    if (!existsSync(modules)) return;
+    for (const entry of readdirSync(modules, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const names = entry.name.startsWith("@")
+        ? readdirSync(join(modules, entry.name), { withFileTypes: true })
+            .filter((scoped) => scoped.isDirectory())
+            .map((scoped) => `${entry.name}/${scoped.name}`)
+        : [entry.name];
+      for (const name of names) {
+        if (!name.endsWith(suffix)) {
+          visit(join(modules, name, "node_modules"));
+          continue;
+        }
+        const counterpart = `${name.slice(0, -suffix.length)}-darwin-${own}`;
+        if (!existsSync(join(modules, counterpart))) {
+          throw new Error(`The ${own} Mac app has ${name} without ${counterpart} to take its place.`);
+        }
+        rmSync(join(modules, name), { recursive: true });
+        dropped.push(name);
+      }
+    }
+  };
+  const app = `${context.packager.appInfo.productFilename}.app`;
+  visit(join(context.appOutDir, app, "Contents", "Resources", "app", "node_modules"));
+  if (dropped.length > 0) console.log(`  • left out the ${other} Mac packages ${dropped.join(", ")}`);
+};
 
 export default {
   appId: "app.cerium.desktop",
@@ -158,6 +204,7 @@ export default {
     },
   },
   dmg: { artifactName: "Cerium-${version}-${arch}.${ext}" },
+  afterPack: dropOtherMacProcessor,
   // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
   // channel's update file beside the installer, latest.yml or nightly.yml (latest-linux.yml or
   // nightly-linux.yml beside the Linux packages, latest-linux-arm64.yml beside Arm64's,
