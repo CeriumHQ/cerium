@@ -98,7 +98,7 @@ describe("edited messages", () => {
         },
       ),
     );
-    expect(queued).toEqual({ messages: [], behindTurn: false });
+    expect(queued).toEqual({ messages: [], behindTurn: false, held: [] });
   });
 });
 

@@ -100,12 +100,17 @@ runs:
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
     # the certificate in CSC_LINK and notarizes with the key file APPLE_API_KEY names; without them
-    # it signs ad hoc (apps/desktop/electron-builder.ts).
+    # it signs ad hoc (apps/desktop/electron-builder.ts). A pull request's build (GITHUB_BASE_REF set)
+    # always signs ad hoc, which takes no secret. electron-builder signs nothing for one unless
+    # CSC_FOR_PULL_REQUEST says to, which left Electron's own signature on a bundle it no longer
+    # matched and the smoke test's codesign check refused it.
     - name: Package
       shell: bash
       run: |
         if [ "$COMPRESSION" = fast ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
-        if [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CERTIFICATE" ]; then
+        if [ "$RUNNER_OS" = macOS ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+          export CSC_FOR_PULL_REQUEST=true
+        elif [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CERTIFICATE" ]; then
           export CSC_LINK="$MAC_CERTIFICATE" CSC_KEY_PASSWORD="$MAC_CERTIFICATE_PASSWORD"
           if [ -n "$APPLE_API_KEY_CONTENTS" ]; then
             printf '%s' "$APPLE_API_KEY_CONTENTS" > "$RUNNER_TEMP/apple-api-key.p8"

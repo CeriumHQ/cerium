@@ -39,7 +39,13 @@ export type TranscriptBlock =
       /** Whether the message reached the agent, so the user can edit it and send it again. */
       readonly delivered?: true;
     }
-  | { readonly kind: "notice"; readonly id: string; readonly item: Exclude<InputItem, { _tag: "FromUser" }> }
+  | {
+      readonly kind: "notice";
+      readonly id: string;
+      readonly item: Exclude<InputItem, { _tag: "FromUser" }>;
+      /** Another thread's message that waits for the agent's next turn. */
+      readonly waiting?: true;
+    }
   | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
   | { readonly kind: "reasoning"; readonly id: string; readonly text: string; readonly streaming: boolean }
   | {
@@ -495,26 +501,47 @@ export const buildTranscript = (
   return blocks;
 };
 
-/** The user's messages Cerium took but hasn't delivered, and whether they wait behind a running turn. */
+type NoticeBlock = Extract<TranscriptBlock, { kind: "notice" }>;
+
+/**
+ * The user's messages Cerium took but hasn't delivered, and whether they wait behind a running turn;
+ * and other threads' messages waiting for the agent's next turn.
+ */
 export interface QueuedMessages {
   readonly messages: ReadonlyArray<UserBlock>;
   /** Otherwise they wait for the agent's session to start, or for its next one. */
   readonly behindTurn: boolean;
+  readonly held: ReadonlyArray<NoticeBlock>;
 }
 
 export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessages => {
   const queued = new Map<string, UserBlock>();
+  const held = new Map<string, { readonly block: NoticeBlock; readonly sequence: number }>();
   let turnOpen = false;
-  for (const { payload } of events) {
+  for (const { payload, sequence } of events) {
     switch (payload._tag) {
       case "MessageQueued":
         if (payload.message.id !== undefined) {
           queued.set(payload.message.id, userBlock(payload.message, payload.message.id));
         }
         break;
+      case "MessageHeld":
+        if (payload.message.id !== undefined) {
+          const block: NoticeBlock = {
+            kind: "notice",
+            id: payload.message.id,
+            item: payload.message,
+            waiting: true,
+          };
+          held.set(payload.message.id, { block, sequence });
+        }
+        break;
       case "TurnInput":
         turnOpen = true;
-        for (const item of payload.items) if (item._tag === "FromUser" && item.id) queued.delete(item.id);
+        for (const item of payload.items) {
+          if (item._tag === "FromUser" && item.id) queued.delete(item.id);
+          if (item._tag === "FromAgent" && item.id) held.delete(item.id);
+        }
         break;
       case "TurnCompleted":
         turnOpen = false;
@@ -522,16 +549,22 @@ export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessage
       case "MessageWithdrawn":
         queued.delete(payload.messageId);
         break;
-      // Every message queued before a rewind went with the turns it replaced.
+      // Every message queued before a rewind went with the turns it replaced, and so did those
+      // held during them.
       case "ConversationRewound":
         queued.clear();
+        for (const [id, each] of held) if (each.sequence >= payload.fromSequence) held.delete(id);
         turnOpen = false;
         break;
       default:
         break;
     }
   }
-  return { messages: [...queued.values()], behindTurn: turnOpen };
+  return {
+    messages: [...queued.values()],
+    behindTurn: turnOpen,
+    held: [...held.values()].map(({ block }) => block),
+  };
 };
 
 /**

@@ -16,7 +16,8 @@ export const BusHttpServer = NodeHttpServer.layer(createServer, { host: "127.0.0
 const INSTRUCTIONS = [
   "Cerium's own tools.",
   "Agents: spawn and stop agents in your thread (spawn_agent, list_agents, kill_agent), and message them or" +
-    " another thread's lead (send_message, list_threads), before changing files they work on or to ask what they know." +
+    " another thread's lead (send_message, list_threads), before changing files they work on or to ask what they know;" +
+    " another thread's lead reads a message with its next turn unless you ask for a reply." +
     " A lead answers its children's permission requests with answer_permission, and starts threads for the" +
     " user with create_thread when asked.",
   "Advisor: ask_advisor puts a question to the user's advisor model when you are stuck; its answer arrives as a message.",

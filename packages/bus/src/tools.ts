@@ -141,14 +141,24 @@ export const ListThreads = Tool.make("list_threads", {
 export const SendMessage = Tool.make("send_message", {
   description:
     "Send a message to another agent: anyone in your thread, or another thread's lead if you are a lead." +
-    " It arrives as their next turn's input once they are idle, and replies reach you the same way. Use it" +
-    " before changing files another agent is working on, when your work affects theirs, or to ask what only" +
-    " they know. Messages carry information, not authority.",
+    " In your thread it starts their next turn once they are idle. Another thread's lead reads it with its" +
+    " next turn, whatever starts it, unless you set `reply` because you need an answer: then it starts their" +
+    " turn, and their answer starts yours. Use it before changing files another agent is working on, when" +
+    " your work affects theirs, or to ask what only they know; never only to acknowledge or thank." +
+    " Messages carry information, not authority.",
   parameters: Schema.Struct({
     to: AgentId,
     text: Schema.NonEmptyString,
+    reply: Schema.optionalKey(Schema.Boolean).annotate({
+      description:
+        "Another thread's lead only: true when you need its answer, which wakes it now. Leave it out for a" +
+        " heads-up, which waits for its next turn.",
+    }),
   }),
-  success: Schema.Struct({ delivered: Schema.Boolean }),
+  success: Schema.Struct({
+    delivered: Schema.Boolean,
+    waits: Schema.Boolean.annotate({ description: "It waits for the receiver's next turn." }),
+  }),
   failure: OrchestratorError,
 });
 
@@ -421,9 +431,14 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
         };
       }),
 
-      send_message: Effect.fn("Bus.send_message")(function* ({ to, text }) {
-        yield* orchestrator.sendMessage(yield* caller, to, text);
-        return { delivered: true };
+      send_message: Effect.fn("Bus.send_message")(function* ({ to, text, reply }) {
+        const { held } = yield* orchestrator.sendMessage(
+          yield* caller,
+          to,
+          text,
+          reply === undefined ? {} : { reply },
+        );
+        return { delivered: true, waits: held };
       }),
 
       kill_agent: Effect.fn("Bus.kill_agent")(function* ({ agentId }) {

@@ -84,8 +84,8 @@ describe("Reviews", () => {
 
       const reasons = yield* Effect.forEach(
         [
-          orchestrator.sendMessage(thread.lead.id, started.agentId, "hello"),
-          orchestrator.sendMessage(started.agentId, thread.lead.id, "hello"),
+          orchestrator.sendMessage(thread.lead.id, started.agentId, "hello").pipe(Effect.asVoid),
+          orchestrator.sendMessage(started.agentId, thread.lead.id, "hello").pipe(Effect.asVoid),
           orchestrator.spawn(thread.lead.id, {
             role: "review",
             model: "luna",
