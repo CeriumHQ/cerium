@@ -109,7 +109,9 @@ jobs:
           compression: maximum
           sentry-dsn: ${{ vars.SENTRY_DSN }}
 
-  # Signed with the repository's Developer ID and notarized when it has them, else signed ad hoc.
+  # Both packaged on Apple silicon, the Intel app too, on the runner the nightlies use
+  # (.github/workflows/ci.yml). Signed with the repository's Developer ID and notarized when it has
+  # them, else signed ad hoc.
   package-macos:
     name: Package (macOS ${{ matrix.arch }})
     needs: plan
@@ -117,9 +119,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - { arch: Arm64, runner: macos-15 }
-          - { arch: x64, runner: macos-15-intel }
-    runs-on: ${{ matrix.runner }}
+          - { arch: Arm64 }
+          - { arch: x64, cross: x64 }
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,9 +129,12 @@ jobs:
           ref: ${{ needs.plan.outputs.commit }}
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          cpu: ${{ matrix.cross && '*' || '' }}
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
+          arch: ${{ matrix.cross }}
           compression: maximum
           sentry-dsn: ${{ vars.SENTRY_DSN }}
           mac-certificate: ${{ secrets.MAC_CERTIFICATE }}
