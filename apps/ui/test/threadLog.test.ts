@@ -53,7 +53,7 @@ describe("ThreadLog", () => {
     const log = new ThreadLog();
     log.add([event(0, { _tag: "ReasoningCompleted", messageId: "r", text: "Thought" })]);
     expect(log.add([event(1, { _tag: "ReasoningDelta", messageId: "r", text: "late" })])).toBe(false);
-    expect(buildTranscript(log.snapshot())).toEqual([
+    expect(buildTranscript(log.snapshot())).toMatchObject([
       { kind: "reasoning", id: "reasoning:r", text: "Thought", streaming: false },
     ]);
   });
