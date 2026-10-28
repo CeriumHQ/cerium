@@ -5,7 +5,7 @@ import { Notice } from "../../app/Notice.tsx";
 import { shellBridge } from "../../backend/shell.ts";
 import { Reveal } from "../../components/Reveal.tsx";
 import { noticeVersion, releaseNotesUrl, versionLabel } from "./model.ts";
-import { useUpdates } from "./useUpdates.ts";
+import { useRestartToUpdate, useUpdates } from "./useUpdates.ts";
 
 /** The version whose notice was dismissed, for as long as this window lives. */
 let dismissedVersion: string | undefined;
@@ -15,15 +15,18 @@ const linkClass =
 
 /**
  * Says so when the channel the user follows has a newer Cerium, from the check the shell runs at
- * launch (and every few hours after), and takes it from download to restart without opening
- * settings. Dismissed, it stays away until a newer version turns up.
+ * launch (and every few hours after), and takes it to restart without opening settings: from the
+ * download when updates wait to be started, from ready when they download by themselves. Dismissed,
+ * it stays away until a newer version turns up, or until Cerium restarts for it.
  */
 export function UpdateNotice() {
   const updates = useUpdates();
   const [dismissed, setDismissed] = useState(dismissedVersion);
-  const version = updates && noticeVersion(updates.status);
+  const { confirming, restart, cancel } = useRestartToUpdate();
+  const version = updates && noticeVersion(updates);
+  const installing = updates?.status.kind === "installing";
   // It drops in under the titlebar, and folds back up once dismissed.
-  if (updates === undefined || version === undefined || version === dismissed) {
+  if (updates === undefined || version === undefined || (version === dismissed && !installing)) {
     return (
       <Reveal shift={-6} className="shrink-0">
         {null}
@@ -40,8 +43,24 @@ export function UpdateNotice() {
 
   return (
     <Reveal shift={-6} className="shrink-0">
-      <Notice tone={status.kind === "failed" ? "error" : "update"} onDismiss={dismiss}>
-        {status.kind === "available" ? (
+      <Notice
+        tone={status.kind === "failed" ? "error" : "update"}
+        onDismiss={installing ? undefined : dismiss}
+      >
+        {status.kind === "installing" ? (
+          <>Restarting to install {versionLabel(version)}…</>
+        ) : status.kind === "ready" && confirming ? (
+          <>
+            Restarting stops the agents that are working.{" "}
+            <button type="button" onClick={() => restart(true)} className={linkClass}>
+              Restart anyway
+            </button>
+            <span className="text-fg-tertiary"> · </span>
+            <button type="button" onClick={cancel} className={linkClass}>
+              Not now
+            </button>
+          </>
+        ) : status.kind === "available" ? (
           <>
             {versionLabel(version)} is available.{" "}
             <button type="button" onClick={() => void bridge?.downloadUpdate?.()} className={linkClass}>
@@ -68,7 +87,7 @@ export function UpdateNotice() {
         ) : status.kind === "ready" ? (
           <>
             {versionLabel(version)} is ready.{" "}
-            <button type="button" onClick={() => void bridge?.installUpdate?.()} className={linkClass}>
+            <button type="button" onClick={() => restart()} className={linkClass}>
               Restart to update
             </button>
           </>

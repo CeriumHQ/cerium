@@ -27,13 +27,13 @@ import {
   channelLocked,
   checkedAt,
   checkedLabel,
-  noticeVersion,
+  offerVersion,
   releaseNotesUrl,
   statusText,
   versionLabel,
   versionParts,
 } from "../updates/model.ts";
-import { useUpdates } from "../updates/useUpdates.ts";
+import { useRestartToUpdate, useUpdates } from "../updates/useUpdates.ts";
 import { whatsNewOpenAtom } from "../whatsnew/state.ts";
 import { SettingsList, SettingsPage, SettingsRow, SettingsSection, SettingsSwitch } from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
@@ -316,7 +316,10 @@ function useMinute() {
   return now;
 }
 
-/** The installed version and where the updater stands, and the channel it follows. Nothing downloads unasked. */
+/**
+ * The installed version and where the updater stands, the channel it follows, and whether updates
+ * download by themselves.
+ */
 function UpdatesSection({ updates }: { updates: Updates }) {
   const openWhatsNew = useAtomSet(whatsNewOpenAtom);
   const now = useMinute();
@@ -343,7 +346,7 @@ function UpdatesSection({ updates }: { updates: Updates }) {
                   {installed.build !== undefined ? ` ${installed.build}` : null}
                 </span>
               </span>
-              {noticeVersion(status) === undefined ? (
+              {offerVersion(status) === undefined ? (
                 <span
                   role={offline ? "alert" : "status"}
                   className={`text-meta leading-relaxed ${offline ? "text-error-text" : "text-fg-tertiary"}`}
@@ -402,6 +405,20 @@ function UpdatesSection({ updates }: { updates: Updates }) {
             </SelectRoot>
           )}
         />
+        {/* A Mac build that can't install updates itself has nothing to download ahead. */}
+        {status.kind === "unsupported" || updates.manual ? null : (
+          <SettingsRow
+            label="Download automatically"
+            hint="Updates download in the background, ready for your next restart."
+            control={(labelledBy) => (
+              <SettingsSwitch
+                checked={updates.autoDownload}
+                onCheckedChange={(on) => void bridge?.setAutoDownload?.(on)}
+                labelledBy={labelledBy}
+              />
+            )}
+          />
+        )}
       </SettingsList>
     </SettingsSection>
   );
@@ -411,11 +428,13 @@ function UpdatesSection({ updates }: { updates: Updates }) {
 function UpdateOffer({ updates }: { updates: Updates }) {
   const { status } = updates;
   const bridge = shellBridge();
-  const version = noticeVersion(status);
+  const { confirming, restart, cancel } = useRestartToUpdate();
+  const version = offerVersion(status);
   if (version === undefined) return null;
   const failed = status.kind === "failed";
+  const restarting = status.kind === "installing";
   const name = versionLabel(version);
-  const Icon = failed ? CircleAlert : status.kind === "ready" ? RotateCw : ArrowDown;
+  const Icon = failed ? CircleAlert : status.kind === "ready" || restarting ? RotateCw : ArrowDown;
 
   return (
     <div
@@ -425,7 +444,12 @@ function UpdateOffer({ updates }: { updates: Updates }) {
       <span
         className={`grid size-7 shrink-0 place-items-center rounded-full ${failed ? "bg-error/15 text-error-text" : "bg-accent text-accent-fg"}`}
       >
-        <Icon size={14} strokeWidth={2} aria-hidden="true" />
+        <Icon
+          size={14}
+          strokeWidth={2}
+          aria-hidden="true"
+          className={restarting ? "animate-spin" : undefined}
+        />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-body font-medium text-fg-primary" title={version}>
@@ -435,7 +459,9 @@ function UpdateOffer({ updates }: { updates: Updates }) {
               ? `Downloading ${name}`
               : status.kind === "ready"
                 ? `${name} is ready`
-                : `Couldn't download ${name}`}
+                : restarting
+                  ? `Restarting to install ${name}`
+                  : `Couldn't download ${name}`}
         </span>
         {status.kind === "downloading" ? (
           <Progress.Root value={Math.floor(status.percent)} aria-label={`Downloading ${name}`}>
@@ -448,8 +474,12 @@ function UpdateOffer({ updates }: { updates: Updates }) {
           </Progress.Root>
         ) : (
           <span className="truncate text-meta text-fg-tertiary">
-            {status.kind === "ready" ? (
+            {status.kind === "ready" && confirming ? (
+              "Restarting stops the agents that are working."
+            ) : status.kind === "ready" ? (
               "Installs when you restart or quit."
+            ) : restarting ? (
+              "Cerium opens again when it's done."
             ) : status.kind === "available" && updates.manual ? (
               "Downloads in your browser; drag it into Applications."
             ) : failed ? (
@@ -472,8 +502,15 @@ function UpdateOffer({ updates }: { updates: Updates }) {
         <RowButton tone="primary" onClick={() => void bridge?.downloadUpdate?.()}>
           {failed ? "Try again" : updates.manual ? "Download" : "Update"}
         </RowButton>
+      ) : status.kind === "ready" && confirming ? (
+        <span className="flex shrink-0 items-center gap-1.5">
+          <RowButton onClick={cancel}>Not now</RowButton>
+          <RowButton tone="primary" onClick={() => restart(true)}>
+            Restart anyway
+          </RowButton>
+        </span>
       ) : status.kind === "ready" ? (
-        <RowButton tone="primary" onClick={() => void bridge?.installUpdate?.()}>
+        <RowButton tone="primary" onClick={() => restart()}>
           Restart to update
         </RowButton>
       ) : null}

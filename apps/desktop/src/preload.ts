@@ -65,8 +65,9 @@ contextBridge.exposeInMainWorld("cerium", {
   checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke("cerium:check-for-updates"),
   setUpdateChannel: (channel: "stable" | "nightly"): Promise<unknown> =>
     ipcRenderer.invoke("cerium:set-update-channel", channel),
+  setAutoDownload: (on: boolean): Promise<unknown> => ipcRenderer.invoke("cerium:set-auto-download", on),
   downloadUpdate: (): Promise<void> => ipcRenderer.invoke("cerium:download-update"),
-  installUpdate: (): Promise<void> => ipcRenderer.invoke("cerium:install-update"),
+  installUpdate: (anyway?: boolean): Promise<unknown> => ipcRenderer.invoke("cerium:install-update", anyway),
   onUpdatesChange: (listener: (updates: unknown) => void): (() => void) => {
     const forward = (_event: unknown, updates: unknown) => listener(updates);
     ipcRenderer.on("cerium:updates", forward);

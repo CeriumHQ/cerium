@@ -73,6 +73,16 @@ let backendStarting: Promise<void> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
 let mainWindow: BrowserWindow | undefined;
 
+/** Stops the backend once, for quitting and for restarting into an update alike. */
+let backendStop: Promise<void> | undefined;
+let backendStopped = false;
+const stopBackend = (): Promise<void> =>
+  (backendStop ??= (backend?.stop() ?? Promise.resolve()).then(() => {
+    backendStopped = true;
+  }));
+/** Windows is signing the user out or shutting down. */
+let sessionEnding = false;
+
 const windows = process.platform === "win32";
 const mac = process.platform === "darwin";
 const linux = process.platform === "linux";
@@ -305,6 +315,9 @@ const createWindow = () => {
   window.on("close", (event) => {
     if (background.interceptClose()) event.preventDefault();
   });
+  window.on("session-end", () => {
+    sessionEnding = true;
+  });
   window.on("closed", () => {
     browserPreviews.closeAll();
     mainWindow = undefined;
@@ -392,8 +405,14 @@ ipcMain.handle("cerium:check-for-updates", () => updater?.check());
 ipcMain.handle("cerium:set-update-channel", (_event, channel: unknown) =>
   isUpdateChannel(channel) ? updater?.setChannel(channel) : updater?.updates(),
 );
+ipcMain.handle("cerium:set-auto-download", (_event, on: unknown) =>
+  typeof on === "boolean" ? updater?.setAutoDownload(on) : updater?.updates(),
+);
 ipcMain.handle("cerium:download-update", () => updater?.download());
-ipcMain.handle("cerium:install-update", () => updater?.install());
+ipcMain.handle(
+  "cerium:install-update",
+  (_event, anyway: unknown) => updater?.install(anyway === true) ?? "unavailable",
+);
 
 /** Where the UI connects to the backend this shell runs; nothing in development. */
 ipcMain.handle("cerium:backend-connection", async () => {
@@ -542,7 +561,7 @@ void app.whenReady().then(() => {
       }),
     );
   }
-  updater = startUpdater();
+  updater = startUpdater({ working: background.working, stopBackend });
   // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
   // gets its groups from what a right-click was on now.
   session.defaultSession.setSpellCheckerEnabled(false);
@@ -578,13 +597,16 @@ void app.whenReady().then(() => {
 
 app.on("window-all-closed", () => app.quit());
 
-// Quitting waits for the backend to shut down, so it closes its harness sessions and database.
-let backendStopped = false;
+// Quitting waits for the backend to shut down, so it closes its harness sessions and database. On
+// Windows the downloaded update's installer starts then (updater.ts), unless Windows itself is
+// shutting down, which would stop it partway: the update installs another time.
 app.on("will-quit", (event) => {
-  if (backend === undefined || backendStopped) return;
-  event.preventDefault();
-  void backend.stop().then(() => {
-    backendStopped = true;
-    app.quit();
-  });
+  if (backend !== undefined && !backendStopped) {
+    event.preventDefault();
+    // Quitting again waits for this quit to be over: Electron drops one asked for while it's still
+    // under way, as a stop that had already finished would ask.
+    void stopBackend().then(() => setImmediate(() => app.quit()));
+    return;
+  }
+  if (!sessionEnding) updater?.installOnExit();
 });

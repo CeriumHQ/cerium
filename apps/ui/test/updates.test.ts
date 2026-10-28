@@ -5,6 +5,7 @@ import {
   channelLocked,
   checkedLabel,
   noticeVersion,
+  offerVersion,
   releaseNotesUrl,
   statusText,
   versionParts,
@@ -16,6 +17,7 @@ const updates = (status: UpdateStatus, extra: Partial<Updates> = {}): Updates =>
   buildChannel: "stable",
   status,
   manual: false,
+  autoDownload: false,
   ...extra,
 });
 
@@ -88,15 +90,41 @@ describe("checkedLabel", () => {
 
 describe("the launch notice and the channel lock", () => {
   it("speaks up only once there is something to install", () => {
-    expect(noticeVersion({ kind: "current", checkedAt: 0 })).toBeUndefined();
-    expect(noticeVersion({ kind: "unreachable", reason: "offline", checkedAt: 0 })).toBeUndefined();
-    expect(noticeVersion({ kind: "available", version: "0.5.0" })).toBe("0.5.0");
-    expect(noticeVersion({ kind: "ready", version: "0.5.0" })).toBe("0.5.0");
+    expect(noticeVersion(updates({ kind: "current", checkedAt: 0 }))).toBeUndefined();
+    expect(noticeVersion(updates({ kind: "unreachable", reason: "offline", checkedAt: 0 }))).toBeUndefined();
+    expect(noticeVersion(updates({ kind: "available", version: "0.5.0" }))).toBe("0.5.0");
+    expect(noticeVersion(updates({ kind: "ready", version: "0.5.0" }))).toBe("0.5.0");
   });
 
-  it("keeps the channel while an update downloads or waits to install", () => {
+  it("waits for an update that downloads by itself to be ready", () => {
+    const auto = { autoDownload: true };
+    expect(noticeVersion(updates({ kind: "available", version: "0.5.0" }, auto))).toBeUndefined();
+    expect(
+      noticeVersion(updates({ kind: "downloading", version: "0.5.0", percent: 40 }, auto)),
+    ).toBeUndefined();
+    expect(noticeVersion(updates({ kind: "ready", version: "0.5.0" }, auto))).toBe("0.5.0");
+    expect(noticeVersion(updates({ kind: "failed", version: "0.5.0" }, auto))).toBe("0.5.0");
+  });
+
+  it("offers a build that downloads in the browser even with automatic downloads on", () => {
+    const manualMac = { autoDownload: true, manual: true };
+    expect(noticeVersion(updates({ kind: "available", version: "0.5.0" }, manualMac))).toBe("0.5.0");
+  });
+
+  it("keeps showing the update while Cerium restarts for it", () => {
+    expect(offerVersion({ kind: "installing", version: "0.5.0" })).toBe("0.5.0");
+    expect(noticeVersion(updates({ kind: "installing", version: "0.5.0" }, { autoDownload: true }))).toBe(
+      "0.5.0",
+    );
+    expect(statusText(updates({ kind: "installing", version: "0.5.0" }))).toBe(
+      "Restarting to install Cerium 0.5.0…",
+    );
+  });
+
+  it("keeps the channel while an update downloads, waits to install or installs", () => {
     expect(channelLocked({ kind: "downloading", version: "0.5.0", percent: 10 })).toBe(true);
     expect(channelLocked({ kind: "ready", version: "0.5.0" })).toBe(true);
+    expect(channelLocked({ kind: "installing", version: "0.5.0" })).toBe(true);
     expect(channelLocked({ kind: "available", version: "0.5.0" })).toBe(false);
   });
 });
