@@ -232,6 +232,16 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
 const isStep = (item: Item) =>
   item.kind === "tools" || (item.kind === "block" && item.block.kind === "reasoning");
 
+/** When each of a run's steps began and ended: its calls' and its thoughts'. */
+export const runTimings = (steps: ReadonlyArray<Item>) =>
+  steps.flatMap<{ readonly startedAt?: number; readonly endedAt?: number }>((step) =>
+    step.kind === "tools"
+      ? step.tools
+      : step.kind === "block" && step.block.kind === "reasoning"
+        ? [step.block]
+        : [],
+  );
+
 /** Folds each stretch of tool calls, and the reasoning between them, into one run. */
 const fold = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
   const folded: Array<Item> = [];

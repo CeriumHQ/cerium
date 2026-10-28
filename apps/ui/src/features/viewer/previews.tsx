@@ -3,7 +3,6 @@ import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { DefaultComponents } from "streamdown";
 
 import { mediaAtom, mediaKey, previewAtom, previewKey } from "../../backend/explorer.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
@@ -11,7 +10,7 @@ import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import type { OpenFile } from "../files/model.ts";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
-import { Markdown } from "../transcript/Markdown.tsx";
+import { Markdown, type MarkdownImageProps } from "../transcript/Markdown.tsx";
 import { byteSize } from "./model.ts";
 
 // How the viewer shows a file as it renders, rather than as its text: Markdown, a web page, an SVG,
@@ -213,7 +212,7 @@ export const relativeTarget = (src: string, path: string): string | undefined =>
   return parts.length === 0 ? undefined : parts.join("/");
 };
 
-/** A path hardening percent-encoded, as it is on disk. */
+/** A path markdown percent-encoded, as it is on disk. */
 const folderPath = (encoded: string): string => {
   try {
     return decodeURIComponent(encoded);
@@ -293,8 +292,8 @@ export function MarkdownPreview({
   messageBox: MessageBox | undefined;
   onOpenFile: OpenFile | undefined;
 }) {
-  // Relative images and links reach the renderer as `/` and their path in the folder, which
-  // hardening keeps.
+  // Relative images and links reach the image and link components as `/` and their path in the
+  // folder, percent-encoded as markdown leaves addresses.
   const resolve = (address: string) => {
     const target = relativeTarget(address, path);
     return target === undefined ? undefined : `/${target}`;
@@ -303,7 +302,7 @@ export function MarkdownPreview({
     typeof address === "string" && address.startsWith("/") && !address.startsWith("//")
       ? folderPath(address.slice(1))
       : undefined;
-  const image: DefaultComponents["img"] = ({ src, alt, width, height }) => {
+  const image = ({ src, alt, width, height }: MarkdownImageProps) => {
     if (typeof src !== "string") return null;
     const shown = { alt: alt ?? "", width, height };
     const target = inFolder(src);

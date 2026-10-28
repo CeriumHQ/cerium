@@ -39,14 +39,20 @@ if (WEB || document.documentElement.dataset["shell"] === "browser") followKeyboa
 // The desktop shell reports what threw, anonymously and as the user allows (features/crash/report.ts).
 reportUnhandled();
 
-createRoot(
+const root = createRoot(
   document.getElementById("root")!,
   renderErrorHandlers((boundary) => boundary instanceof CrashGuard && boundary.props.fallback === AppCrash),
-).render(
-  <StrictMode>
-    {/* A view that throws while drawing takes its pane down at most (App's own guards), else the window. */}
-    <CrashGuard fallback={AppCrash}>
-      <App />
-    </CrashGuard>
-  </StrictMode>,
 );
+// The dev server's `?playground` draws the transcript from a fixture instead (src/dev/Playground.tsx).
+if (import.meta.env.DEV && new URLSearchParams(location.search).has("playground")) {
+  void import("./dev/Playground.tsx").then(({ Playground }) => root.render(<Playground />));
+} else {
+  root.render(
+    <StrictMode>
+      {/* A view that throws while drawing takes its pane down at most (App's own guards), else the window. */}
+      <CrashGuard fallback={AppCrash}>
+        <App />
+      </CrashGuard>
+    </StrictMode>,
+  );
+}

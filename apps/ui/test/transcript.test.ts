@@ -2,7 +2,8 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 import { describe, expect, it } from "@effect/vitest";
 
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
-import { currentModel, layout, pendingRouted } from "../src/features/transcript/layout.ts";
+import { editCounts } from "../src/features/transcript/EditDiff.tsx";
+import { currentModel, layout, pendingRouted, runTimings } from "../src/features/transcript/layout.ts";
 import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -16,6 +17,35 @@ const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEv
   }));
 
 describe("buildTranscript", () => {
+  it("times tool calls, thoughts and turns by their events", () => {
+    const blocks = buildTranscript(
+      events(
+        { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "Go" }] },
+        { _tag: "ReasoningCompleted", messageId: "r", text: "Hmm" },
+        { _tag: "ToolCallStarted", callId: "c", toolName: "Bash", input: {} },
+        { _tag: "ToolCallStarted", callId: "d", toolName: "Bash", input: {} },
+        { _tag: "ToolCallCompleted", callId: "c", output: "", isError: false },
+        { _tag: "TurnCompleted", stopReason: "completed" },
+      ),
+    );
+    // A thought with no streamed words began after the event before it.
+    expect(blocks.find((block) => block.kind === "reasoning")).toMatchObject({ startedAt: 0, endedAt: 1 });
+    expect(blocks.find((block) => block.id === "tool:c")).toMatchObject({ startedAt: 2, endedAt: 4 });
+    expect(blocks.find((block) => block.id === "tool:d")).not.toHaveProperty("endedAt");
+    expect(blocks.at(-1)).toMatchObject({ kind: "turnEnd", startedAt: 0, endedAt: 5 });
+    // A run times its thoughts along with its calls.
+    const run = layout(blocks).find((item) => item.kind === "run");
+    expect(run?.kind === "run" ? runTimings(run.steps) : []).toEqual([
+      expect.objectContaining({ kind: "reasoning", startedAt: 0, endedAt: 1 }),
+      expect.objectContaining({ id: "tool:c", startedAt: 2, endedAt: 4 }),
+      expect.objectContaining({ id: "tool:d", startedAt: 3 }),
+    ]);
+  });
+
+  it("counts the lines an edit removes and adds", () => {
+    expect(editCounts([{ before: "a\nb\nc", after: "a\nB\nB2\nc" }])).toEqual({ added: 2, removed: 1 });
+  });
+
   it("grows a streaming message from deltas until its completion replaces it", () => {
     const streaming = buildTranscript(
       events(
@@ -157,7 +187,7 @@ describe("buildTranscript", () => {
   it("turns delivered inputs into user messages and notices, and closes turns with their usage", () => {
     const blocks = buildTranscript(transcriptFixture);
     const kinds = blocks.map((block) => block.kind);
-    expect(kinds[0]).toBe("user");
+    expect(kinds.slice(0, 2)).toEqual(["model", "user"]);
     expect(kinds.filter((kind) => kind === "notice")).toHaveLength(2);
     expect(kinds.filter((kind) => kind === "spawn")).toHaveLength(2);
     expect(blocks.find((block) => block.kind === "turnEnd")).toMatchObject({
