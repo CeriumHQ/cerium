@@ -7,9 +7,10 @@ import {
   withoutImages,
   type AgentEvent,
   type ThreadId,
+  type ThreadOverview,
 } from "@cerium/protocol";
 import { Store } from "@cerium/store";
-import { Deferred, Effect, Layer, PubSub, Queue, Schema, Stream } from "effect";
+import { Clock, Deferred, Effect, Layer, PubSub, Queue, Schema, Stream } from "effect";
 
 // Synced threads. While signed in, this machine keeps the cloud copy of
 // its threads current: each thread's overview when it changes, and its events but streamed text, in
@@ -24,6 +25,16 @@ const SETTLE_FOR = "1 second";
 const ACCEPT_WITHIN = "20 seconds";
 /** Events read from the store at a time. */
 const PAGE = 200;
+/**
+ * Threads uploading at once. Each waits on the relay's answer to every batch, most of it the trip
+ * there and back, so a few at once catch up several times faster.
+ */
+const UPLOADS = 4;
+/**
+ * How long a round goes on starting batches. Catching up on a long history takes many rounds, each
+ * starting from the threads active last, so a new message goes up within a few seconds meanwhile.
+ */
+const ROUND_BUDGET = 2_000;
 /** Strings longer than this are cut in the cloud copy of an event too big for one batch. */
 const LONG_STRING = 50_000;
 
@@ -46,6 +57,10 @@ export const cloudEvent = (event: AgentEvent): UiEvent => {
           : value;
   return { ...ui, payload: cut(ui.payload) as UiEvent["payload"] };
 };
+
+/** When something last happened in a thread, as its overview says: the thread or one of its agents changed. */
+export const lastActive = (overview: ThreadOverview): number =>
+  Math.max(overview.thread.updatedAt, ...overview.agents.map((agent) => agent.updatedAt));
 
 /** Events split into batches the relay can store, each under `MAX_SYNC_BATCH_BYTES`. */
 export const batches = (events: ReadonlyArray<UiEvent>): Array<Array<UiEvent>> => {
@@ -85,12 +100,21 @@ export const CloudCopy = Layer.effectDiscard(
 
     const overviews = orchestrator.threadOverviews;
 
-    /** Sends a thread's events from where the cloud's copy ends, a batch at a time. */
-    const upload = Effect.fn("CloudCopy.upload")(function* (threadId: ThreadId, from: number) {
+    /**
+     * Sends a thread's events from where the cloud's copy ends, a batch at a time, starting none past
+     * `deadline`. Resolves whether it stopped for the deadline with events left to send.
+     */
+    const upload = Effect.fn("CloudCopy.upload")(function* (
+      threadId: ThreadId,
+      from: number,
+      deadline: number,
+    ) {
       let start = from;
       while (true) {
+        if ((yield* Clock.currentTimeMillis) >= deadline) return true;
         const page = yield* store.listSyncedEvents(threadId, start, PAGE);
         for (const batch of batches(page.map(cloudEvent))) {
+          if ((yield* Clock.currentTimeMillis) >= deadline) return true;
           const answer = yield* Deferred.make<number>();
           accepted.set(threadId, answer);
           yield* account.send({ _tag: "SyncEvents", threadId, start, events: batch });
@@ -99,11 +123,11 @@ export const CloudCopy = Layer.effectDiscard(
           );
           accepted.delete(threadId);
           // No answer, or the relay has fewer than it was sent (a gap): try again next round.
-          if (count < start + batch.length) return;
+          if (count < start + batch.length) return false;
           start = count;
         }
         // A page short of full was the last; asking again would only read an empty one.
-        if (page.length < PAGE) return;
+        if (page.length < PAGE) return false;
       }
     });
 
@@ -137,10 +161,17 @@ export const CloudCopy = Layer.effectDiscard(
       }
 
       const counts = yield* store.countSyncedEvents;
-      for (const overview of local) {
-        const id = overview.thread.id;
-        if ((counts.get(id) ?? 0) > (known.get(id) ?? 0)) yield* upload(id, known.get(id) ?? 0);
-      }
+      const behind = local
+        .filter((overview) => (counts.get(overview.thread.id) ?? 0) > (known.get(overview.thread.id) ?? 0))
+        .toSorted((a, b) => lastActive(b) - lastActive(a));
+      const deadline = (yield* Clock.currentTimeMillis) + ROUND_BUDGET;
+      const cut = yield* Effect.forEach(
+        behind,
+        ({ thread }) => upload(thread.id, known.get(thread.id) ?? 0, deadline),
+        { concurrency: UPLOADS },
+      );
+      // What the budget left goes up in the next round, after whatever happens meanwhile.
+      if (cut.some(Boolean)) yield* Queue.offer(kick, undefined);
     }).pipe(Effect.ignore);
 
     // What the relay says about uploads: where the cloud's copy ends, and what it took.
