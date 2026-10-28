@@ -31,6 +31,19 @@ export const pushedRanges = (input: string): Pushed[] =>
 export const touchesWorkflows = (paths: readonly string[]): boolean =>
   paths.some((path) => path.startsWith(".github/"));
 
+/**
+ * The environment without the repository git hands its hooks (`git rev-parse --local-env-vars`).
+ * From a linked worktree its GIT_DIR is absolute, and the tests' own throwaway repositories would
+ * resolve to it instead of themselves.
+ */
+export const withoutRepository = (
+  env: NodeJS.ProcessEnv,
+  localVars: readonly string[],
+): NodeJS.ProcessEnv => {
+  const local = new Set(localVars);
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !local.has(name)));
+};
+
 if (import.meta.main) {
   const root = join(import.meta.dirname, "..");
   const git = (...args: string[]): string =>
@@ -44,12 +57,13 @@ if (import.meta.main) {
       return false;
     }
   };
+  const env = withoutRepository(process.env, git("rev-parse", "--local-env-vars").split(/\r?\n/));
   // `> label` and `< label: passed|failed` bracket each check: Cerium's `push` tool shows them as steps.
   const run = (label: string, command: string, args: readonly string[]): boolean => {
     console.log(`\n> ${label}`);
     // The shell finds bun however it's installed (bun.exe, or a .cmd shim on Windows).
     const shell = command !== process.execPath;
-    const ok = spawnSync(command, args, { cwd: root, stdio: "inherit", shell }).status === 0;
+    const ok = spawnSync(command, args, { cwd: root, stdio: "inherit", shell, env }).status === 0;
     console.log(`< ${label}: ${ok ? "passed" : "failed"}`);
     return ok;
   };

@@ -69,6 +69,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Internal: a push from a linked worktree passes the pre-push hook's tests. Git hands its hooks the repository they run for, which from a worktree is an absolute `GIT_DIR`, and the git tests' throwaway repositories resolved to it instead of themselves: 76 failed, and the rest wrote their settings (`core.bare`, `user.name`, `core.hooksPath`), branches and a tag into the real repository. The hook's checks now run without git's repository variables.
+
 - The website leads a phone to the web app. On a phone or tablet, the home page's main buttons say "Open the web app" and open `/app/`, where they offered the Windows installer, and the top bar of the home and privacy pages keeps its Web app link on a narrow screen instead of hiding it; on the narrowest phones the bar shows Cerium's mark without its name so the link fits beside Download. `/downloads/` still offers the builds.
 - A thread's Preview page no longer shows over Settings, Tasks, GitHub or Automations: the page, which sits over the window in a view of its own, now leaves the moment its thread's view is covered, and steps aside for a side panel floating over the thread.
 - On a phone, the rail's usage rings no longer run off the bottom edge (at 320 px only the first showed): when the places and the rings can't share the row, the rings stack above the places; held sideways they still share it.
