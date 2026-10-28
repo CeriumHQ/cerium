@@ -76,10 +76,16 @@ export const EffortRouterSettings = Schema.Struct({
    * `lead`, it runs at its lead's current level.
    */
   children: withFallback(Schema.Literals(["router", "lead"]), "router"),
+  /**
+   * The level a turn runs at when the router can't decide: no answer in time, none it could use, or
+   * one too unsure. A model without it takes its next level up, or its highest. Read as `high` from
+   * settings saved before it.
+   */
+  fallback: withFallback(ReasoningEffort, "high").pipe(Schema.withDecodingDefaultKey(Effect.succeed("high"))),
 });
 export type EffortRouterSettings = typeof EffortRouterSettings.Type;
 
-const defaultEffortRouter: EffortRouterSettings = { enabled: false, children: "router" };
+const defaultEffortRouter: EffortRouterSettings = { enabled: false, children: "router", fallback: "high" };
 
 /** A model on the roster, with what a lead should use it for and the speed it runs at. */
 export const RosterModel = Schema.Struct({

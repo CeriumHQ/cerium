@@ -4,6 +4,7 @@ import {
   clipContext,
   effortState,
   selectEffort,
+  supportedLevel,
   supportedProbabilities,
   validProbabilities,
   type EffortAnswer,
@@ -17,29 +18,30 @@ const question: EffortQuestion = {
 };
 const answer = (probabilities: number[], extra: Partial<EffortAnswer> = {}): EffortAnswer => ({
   probabilities,
-  confidence: 0.1,
+  confidence: 0.7,
   ...extra,
 });
 
 describe("effort policy replay", () => {
-  it("does not treat distribution confidence as accuracy", () => {
-    expect(selectEffort(question, answer([0.05, 0.1, 0.85]), "low", "medium")).toEqual({
-      effort: "high",
-      accepted: true,
+  it("runs at the lowest level likely enough to do, leaning up when the answer is spread", () => {
+    expect(selectEffort(question, answer([0.05, 0.1, 0.85]), "low", "medium")).toEqual({ effort: "high" });
+    expect(selectEffort(question, answer([0.7, 0.2, 0.1]), "high", "medium")).toEqual({ effort: "low" });
+    expect(selectEffort(question, answer([0.45, 0.3, 0.25]), "high", "medium")).toEqual({
+      effort: "medium",
     });
   });
-  it("needs stronger evidence to downgrade", () => {
-    expect(selectEffort(question, answer([0.7, 0.2, 0.1]), "high", "medium")).toEqual({
-      effort: "high",
-      accepted: false,
-    });
-    expect(selectEffort(question, answer([0.85, 0.1, 0.05]), "high", "medium")).toEqual({
-      effort: "low",
-      accepted: true,
-    });
+  it("comes down from a high level as readily as it goes up to one", () => {
+    // Answers the decision model gave live, which v2 kept at Extra high for wanting 80% on one level.
+    const five = { ...question, levels: ["low", "medium", "high", "xhigh", "max"] as const };
+    const pick = (probabilities: number[]) =>
+      selectEffort(five, answer(probabilities, { confidence: 0.6 }), "xhigh", "high").effort;
+    expect(pick([0.11, 0.07, 0.75, 0.07, 0])).toBe("high");
+    expect(pick([0.64, 0.19, 0.17, 0, 0])).toBe("low");
+    expect(pick([0.56, 0.16, 0.26, 0.01, 0])).toBe("medium");
+    expect(pick([0.03, 0.01, 0.39, 0.55, 0.02])).toBe("xhigh");
   });
-  it.each([{ failed: true }, { toolErrors: 1 }, { stopReason: "steered" }, { stopReason: "maxTurns" }])(
-    "preserves recovery effort for %j",
+  it.each([{ failed: true }, { stopReason: "error" }, { stopReason: "maxTurns" }])(
+    "keeps the level after a failed turn: %j",
     (facts) => {
       const recovery = {
         ...question,
@@ -48,13 +50,38 @@ describe("effort policy replay", () => {
           previousTurn: { toolCalls: 1, seconds: 1, filesChanged: 0, failed: false, ...facts },
         },
       };
-      expect(selectEffort(recovery, answer([0.9, 0.05, 0.05]), "high", "medium").effort).toBe("high");
+      expect(selectEffort(recovery, answer([0.9, 0.05, 0.05]), "high", "medium")).toEqual({
+        effort: "high",
+        kept: "recovering",
+      });
     },
   );
-  it("uses the stable baseline when a follow-up has no identifiable task", () => {
+  it.each([{ toolErrors: 2 }, { stopReason: "steered" }, { stopReason: "interrupted" }])(
+    "lowers the level after a turn that didn't fail: %j",
+    (facts) => {
+      const after = {
+        ...question,
+        state: {
+          ...question.state,
+          previousTurn: { toolCalls: 1, seconds: 1, filesChanged: 0, failed: false, ...facts },
+        },
+      };
+      expect(selectEffort(after, answer([0.9, 0.05, 0.05]), "high", "medium").effort).toBe("low");
+    },
+  );
+  it("runs at the fallback when the decision model can't tell", () => {
     expect(
       selectEffort(question, answer([0.95, 0.04, 0.01], { contextSufficient: 0.1 }), "low", "medium"),
-    ).toEqual({ effort: "medium", accepted: false });
+    ).toEqual({ effort: "medium", kept: "fallback" });
+    expect(selectEffort(question, answer([0.4, 0.3, 0.3], { confidence: 0.2 }), "high", "medium")).toEqual({
+      effort: "medium",
+      kept: "unsure",
+    });
+  });
+  it("takes the fallback's next level up, or the model's highest", () => {
+    expect(supportedLevel(["low", "medium", "high"], "minimal")).toBe("low");
+    expect(supportedLevel(["low", "high"], "medium")).toBe("high");
+    expect(supportedLevel(["low", "medium", "high"], "max")).toBe("high");
   });
   it("rejects malformed distributions rather than selecting low", () => {
     for (const probabilities of [

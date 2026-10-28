@@ -13,7 +13,7 @@ describe("offline effort evaluation", () => {
       { encoding: "utf8" },
     );
     const result = JSON.parse(output);
-    expect(result.policyVersion).toBe("effort-v2");
+    expect(result.policyVersion).toBe("effort-v3");
     expect(result.report.map((row: { acceptable: number }) => row.acceptable)).toEqual([1, 0, 0]);
     expect(
       result.report.every(

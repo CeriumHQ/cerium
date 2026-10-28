@@ -9,8 +9,15 @@ import { Context, Duration, Effect, Layer, Schema } from "effect";
 export const DECISION_TIMEOUT = Duration.millis(1500);
 
 /** Recorded with each decision so offline evaluation can identify the policy it ran. */
-export const POLICY_VERSION = "effort-v2";
+export const POLICY_VERSION = "effort-v3";
 export const DIFFICULTY_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** A turn runs at the lowest level the decision model finds at least this likely to be enough. */
+export const ENOUGH = 0.6;
+/** Below this confidence the decision model can't tell, and the turn runs at the user's fallback. */
+export const CONFIDENCE_FLOOR = 0.4;
+/** Below this, the decision model couldn't tell what the turn asks for: the fallback again. */
+export const CONTEXT_FLOOR = 0.3;
 
 /** How much of the turn, and of each earlier exchange, the decision model reads. */
 export const TURN_CHARS = 4_000;
@@ -126,31 +133,42 @@ export const supportedProbabilities = (
   return result;
 };
 
-/** Pure and replayable. Thresholds are starting policy values, not calibrated accuracy claims. */
+/** `level` on a model that offers `levels`: the lowest one at least as high, else its highest. */
+export const supportedLevel = (
+  levels: readonly [ReasoningEffort, ...Array<ReasoningEffort>],
+  level: ReasoningEffort,
+): ReasoningEffort =>
+  levels.find((each) => DIFFICULTY_LEVELS.indexOf(each) >= DIFFICULTY_LEVELS.indexOf(level)) ??
+  levels[levels.length - 1] ??
+  levels[0];
+
+/**
+ * The level a turn runs at, from the decision model's answer: the lowest level it finds at least
+ * `ENOUGH` likely to do, so a spread answer leans up rather than down. Where it can't tell, the
+ * user's `fallback`; right after a turn that failed, never below the level that turn ran at. Pure and
+ * replayable; the thresholds are starting values, not calibrated accuracy claims.
+ */
 export const selectEffort = (
   question: EffortQuestion,
   answer: EffortAnswer,
   current: ReasoningEffort | undefined,
-  baseline: ReasoningEffort,
-): { effort: ReasoningEffort; accepted: boolean } => {
-  const top = likeliest(question.levels, answer.probabilities);
-  if (top === undefined || !validProbabilities(answer.probabilities, question.levels.length))
-    return { effort: baseline, accepted: false };
-  const probability = answer.probabilities[question.levels.indexOf(top)] ?? 0;
-  const downgrade = current !== undefined && question.levels.indexOf(top) < question.levels.indexOf(current);
+  fallback: ReasoningEffort,
+): { effort: ReasoningEffort; kept?: "unsure" | "fallback" | "recovering" } => {
+  const { levels } = question;
+  if (!validProbabilities(answer.probabilities, levels.length)) return { effort: fallback, kept: "unsure" };
+  if ((answer.contextSufficient ?? 1) < CONTEXT_FLOOR) return { effort: fallback, kept: "fallback" };
+  if (answer.confidence < CONFIDENCE_FLOOR) return { effort: fallback, kept: "unsure" };
+  let enough = 0;
+  const picked =
+    levels.find((_, index) => (enough += answer.probabilities[index] ?? 0) >= ENOUGH) ??
+    levels[levels.length - 1] ??
+    fallback;
+  const previous = question.state.previousTurn;
   const recovering =
-    question.state.previousTurn?.failed === true ||
-    (question.state.previousTurn?.toolErrors ?? 0) > 0 ||
-    ["interrupted", "steered", "maxTurns"].includes(question.state.previousTurn?.stopReason ?? "");
-  if ((answer.contextSufficient ?? 1) < 0.6)
-    return {
-      effort:
-        current && question.levels.indexOf(current) > question.levels.indexOf(baseline) ? current : baseline,
-      accepted: false,
-    };
-  if (probability < (downgrade ? 0.8 : 0.55) || (downgrade && recovering))
-    return { effort: current ?? baseline, accepted: false };
-  return { effort: top, accepted: true };
+    previous?.failed === true || previous?.stopReason === "error" || previous?.stopReason === "maxTurns";
+  if (recovering && current !== undefined && levels.indexOf(picked) < levels.indexOf(current))
+    return { effort: current, kept: "recovering" };
+  return { effort: picked };
 };
 
 /**

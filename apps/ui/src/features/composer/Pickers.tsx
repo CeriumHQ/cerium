@@ -3,6 +3,8 @@ import { Menu } from "@base-ui/react/menu";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { AccessMode, HarnessLimit, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import {
   Ellipsis,
   Eye,
@@ -24,8 +26,17 @@ import {
   MenuRadioItem,
   MenuSeparator,
 } from "../../components/ui/Menu.tsx";
+import { settingsAtom } from "../../backend/atoms.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { accessOptions, effortHint, effortLabel, MAX_AGENTS, speedHint, speedLabel } from "./models.ts";
+import {
+  accessOptions,
+  effortHint,
+  effortLabel,
+  fallbackFor,
+  MAX_AGENTS,
+  speedHint,
+  speedLabel,
+} from "./models.ts";
 
 // The message box's own controls beside the model menu (ModelPicker.tsx): the effort row inside that
 // menu, and the menu of what's seldom changed (access, several models at once).
@@ -98,11 +109,20 @@ export const offersChoice = (choice: EffortChoice | undefined): choice is Effort
  * the model and its effort are one decision in one menu.
  */
 export function EffortRow({ choice, model }: { readonly choice: EffortChoice; readonly model: string }) {
+  // Auto says the level it falls back to, so where an unsure turn's level comes from isn't a mystery.
+  const settings = useAtomValue(settingsAtom);
+  const fallback = AsyncResult.isSuccess(settings)
+    ? fallbackFor(choice.levels, settings.value.effortRouter.fallback)
+    : undefined;
+  const hint =
+    choice.value === "auto" && fallback !== undefined
+      ? `Picks each turn, or ${effortLabel[fallback]} if unsure`
+      : effortHint[choice.value];
   return (
     <div className="shrink-0 border-t border-line-subtle px-2.5 pt-2 pb-2.5">
       <div className="flex items-baseline justify-between gap-3 px-0.5 pb-1.5 text-caption">
         <span className="truncate text-fg-tertiary">Effort for {model}</span>
-        <span className="shrink-0 text-fg-secondary">{effortHint[choice.value]}</span>
+        <span className="shrink-0 text-fg-secondary">{hint}</span>
       </div>
       <ToggleGroup
         value={[choice.value]}

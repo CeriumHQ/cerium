@@ -142,8 +142,11 @@ export interface SnapshotLines {
 export class Checkpoints extends Context.Service<
   Checkpoints,
   {
-    /** Saves the files in `folder` as they are now; resolves with the snapshot's id. */
-    save(folder: string): Effect.Effect<string, CheckpointError>;
+    /**
+     * Saves the files in `folder` as they are now; resolves with the snapshot's id. With `reuse`, the
+     * last snapshot serves when nothing in the folder is known to have changed since it was taken.
+     */
+    save(folder: string, options?: { readonly reuse?: boolean }): Effect.Effect<string, CheckpointError>;
     /** The files that differ between two snapshots of `folder`. */
     changes(
       folder: string,

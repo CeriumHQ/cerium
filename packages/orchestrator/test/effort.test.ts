@@ -1,5 +1,5 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import type { AgentEvent, AgentId, ModelInfo } from "@cerium/protocol";
+import type { AgentEvent, AgentId, ModelInfo, ReasoningEffort } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
@@ -59,9 +59,13 @@ const sure = (level: (typeof levels)[number], confidence = 0.9, costUsd = 0.0000
   costUsd,
 });
 
-const turnRouter = (enabled: boolean, children: "router" | "lead" = "router") =>
+const turnRouter = (
+  enabled: boolean,
+  children: "router" | "lead" = "router",
+  fallback: ReasoningEffort = "high",
+) =>
   Effect.gen(function* () {
-    yield* (yield* UserSettings).update({ effortRouter: { enabled, children } });
+    yield* (yield* UserSettings).update({ effortRouter: { enabled, children, fallback } });
   });
 
 const startAutoLead = (modelId: string) =>
@@ -109,34 +113,64 @@ describe("effortState", () => {
 });
 
 describe("Orchestrator effort routing", () => {
-  it.live("carries pending work and tool errors into recovery, and records a replayable posterior", () => {
+  it.live(
+    "carries pending work and tool errors to the decision model, and records a replayable posterior",
+    () => {
+      const fake = makeFakeAdapter("claude", {
+        todos: [[{ text: "Repair the parser", status: "inProgress" }]],
+        work: () => [{ _tag: "ToolCallCompleted", callId: "failed", output: "check failed", isError: true }],
+      });
+      const { decider, asked } = scripted([sure("high"), sure("low")]);
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const store = yield* Store;
+        const { waitFor } = yield* recordEvents;
+        yield* turnRouter(true);
+        const { lead } = yield* startAutoLead("opus");
+        const task =
+          "Investigate the parser's subtle dependency bug and implement a fix that preserves the existing serialization behavior.";
+        yield* orchestrator.sendUserMessage(lead.id, task);
+        yield* waitFor(turnsCompleted(1, lead.id));
+        yield* orchestrator.sendUserMessage(lead.id, "Continue");
+        yield* waitFor(turnsCompleted(2, lead.id));
+        assert.include(asked[1]?.state.task ?? "", task);
+        assert.deepStrictEqual(asked[1]?.state.pending, ["Repair the parser"]);
+        assert.strictEqual(asked[1]?.state.previousTurn?.toolErrors, 1);
+        assert.strictEqual(asked[1]?.state.previousTurn?.failed, false);
+        const decision = routed(yield* store.listEvents(lead.id), lead.id)[1];
+        // A failed tool call alone isn't a failed turn: the level comes down.
+        assert.strictEqual(decision?.effort, "low");
+        assert.strictEqual(decision?.kept, undefined);
+        assert.strictEqual(decision?.policyVersion, "effort-v3");
+        assert.deepStrictEqual(decision?.probabilities, sure("low").probabilities);
+        assert.deepStrictEqual(decision?.question, asked[1]);
+      }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
+    },
+  );
+
+  it.live("doesn't lower the level right after a failed turn", () => {
     const fake = makeFakeAdapter("claude", {
-      todos: [[{ text: "Repair the parser", status: "inProgress" }]],
-      work: () => [{ _tag: "ToolCallCompleted", callId: "failed", output: "check failed", isError: true }],
+      work: (text) =>
+        text.includes("parser")
+          ? [{ _tag: "AgentError", kind: "crash", message: "The harness stopped.", retryable: true }]
+          : [],
     });
-    const { decider, asked } = scripted([sure("high"), sure("low")]);
+    const { decider } = scripted([sure("high"), sure("low")]);
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const store = yield* Store;
       const { waitFor } = yield* recordEvents;
       yield* turnRouter(true);
       const { lead } = yield* startAutoLead("opus");
-      const task =
-        "Investigate the parser's subtle dependency bug and implement a fix that preserves the existing serialization behavior.";
-      yield* orchestrator.sendUserMessage(lead.id, task);
+      yield* orchestrator.sendUserMessage(lead.id, "Repair the parser");
       yield* waitFor(turnsCompleted(1, lead.id));
-      yield* orchestrator.sendUserMessage(lead.id, "Continue");
+      yield* orchestrator.sendUserMessage(lead.id, "Try again");
       yield* waitFor(turnsCompleted(2, lead.id));
-      assert.include(asked[1]?.state.task ?? "", task);
-      assert.deepStrictEqual(asked[1]?.state.pending, ["Repair the parser"]);
-      assert.strictEqual(asked[1]?.state.previousTurn?.toolErrors, 1);
-      assert.strictEqual(asked[1]?.state.previousTurn?.failed, false);
       const decision = routed(yield* store.listEvents(lead.id), lead.id)[1];
-      assert.strictEqual(decision?.effort, "high");
-      assert.strictEqual(decision?.proposedEffort, "low");
-      assert.strictEqual(decision?.policyVersion, "effort-v2");
-      assert.deepStrictEqual(decision?.probabilities, sure("low").probabilities);
-      assert.deepStrictEqual(decision?.question, asked[1]);
+      assert.deepStrictEqual(
+        [decision?.effort, decision?.kept, decision?.proposedEffort],
+        ["high", "recovering", "low"],
+      );
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
   });
 
@@ -191,27 +225,38 @@ describe("Orchestrator effort routing", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
   });
 
-  it.live("keeps the level when the decision model is unsure or fails", () => {
+  it.live("runs at the user's fallback when the decision model is unsure or fails", () => {
     const fake = makeFakeAdapter("claude");
     const { decider } = scripted([sure("high", 0.3), "OpenRouter didn't accept the key."]);
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const store = yield* Store;
       const { waitFor } = yield* recordEvents;
-      yield* turnRouter(true);
+      // The model offers no Minimal, so the fallback takes the next level up.
+      yield* turnRouter(true, "router", "minimal");
       const { lead } = yield* startAutoLead("opus");
       yield* orchestrator.sendUserMessage(lead.id, "one");
       yield* waitFor(turnsCompleted(1, lead.id));
       yield* orchestrator.sendUserMessage(lead.id, "two");
       yield* waitFor(turnsCompleted(2, lead.id));
 
-      assert.deepStrictEqual(fake.sessions[0]?.switches, []);
+      assert.deepStrictEqual(fake.sessions[0]?.switches, [{ effort: "low" }]);
       const decisions = routed(yield* store.listEvents(lead.id), lead.id);
       assert.deepStrictEqual(
-        decisions.map(({ effort, kept, detail }) => ({ effort, kept, detail })),
+        decisions.map(({ effort, kept, baselineEffort, detail }) => ({
+          effort,
+          kept,
+          baselineEffort,
+          detail,
+        })),
         [
-          { effort: "medium", kept: "unsure", detail: undefined },
-          { effort: "medium", kept: "failed", detail: "OpenRouter didn't accept the key." },
+          { effort: "low", kept: "unsure", baselineEffort: "low", detail: undefined },
+          {
+            effort: "low",
+            kept: "failed",
+            baselineEffort: "low",
+            detail: "OpenRouter didn't accept the key.",
+          },
         ],
       );
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);

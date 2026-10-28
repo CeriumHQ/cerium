@@ -461,12 +461,15 @@ export type LeadHandedOff = typeof LeadHandedOff.Type;
 
 /**
  * The effort router's word on the turn about to start, for an agent set to Auto: the level the turn
- * runs at. Without `kept`, the router picked it; with it, routing used a fallback or kept a level:
+ * runs at. Without `kept`, the router picked it; with it, the agent kept its level or the turn ran at
+ * the user's fallback (`baselineEffort`):
  * - `cache`: its model starts the prompt cache over when effort changes, so only a new session's
- *   first turn is routed.
- * - `unsure`: the posterior did not meet the policy threshold, or the agent was recovering.
- * - `fallback`: context was missing, so the model's stable baseline was used.
+ *   first turn is routed. The level is kept.
+ * - `recovering`: the last turn failed, so the level isn't lowered. The level is kept.
+ * - `unsure`: the decision model couldn't tell which level the turn needs.
+ * - `fallback`: it couldn't tell what the turn asks for.
  * - `timeout`, `failed`: no answer in time, or no usable one (`detail` says why).
+ * Before `effort-v3`, `unsure`, `timeout` and `failed` kept the level too.
  */
 export const EffortRouted = Schema.TaggedStruct("EffortRouted", {
   /** Optional on older events. The bounded input and posterior make policy replay possible. */
@@ -476,6 +479,7 @@ export const EffortRouted = Schema.TaggedStruct("EffortRouted", {
   probabilities: Schema.optionalKey(Schema.Array(Schema.Finite)),
   question: Schema.optionalKey(Schema.Unknown),
   beforeEffort: Schema.optionalKey(ReasoningEffort),
+  /** The level the turn runs at when the router can't decide: the user's fallback, on this model. */
   baselineEffort: Schema.optionalKey(ReasoningEffort),
   proposedEffort: Schema.optionalKey(ReasoningEffort),
   taskType: Schema.optionalKey(Schema.String),
@@ -483,7 +487,10 @@ export const EffortRouted = Schema.TaggedStruct("EffortRouted", {
   /** Absent when the agent kept its harness's own default level. */
   effort: Schema.optionalKey(ReasoningEffort),
   kept: Schema.optionalKey(
-    withFallback(Schema.Literals(["cache", "unsure", "timeout", "failed", "fallback"]), "failed"),
+    withFallback(
+      Schema.Literals(["cache", "recovering", "unsure", "timeout", "failed", "fallback"]),
+      "failed",
+    ),
   ),
   /** Concentration of the decision model's distribution, not probability of correctness. */
   confidence: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),

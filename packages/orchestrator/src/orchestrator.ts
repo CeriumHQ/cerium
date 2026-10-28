@@ -72,6 +72,7 @@ import {
   POLICY_VERSION,
   clipContext,
   selectEffort,
+  supportedLevel,
   validProbabilities,
   DECISION_TIMEOUT,
   EffortDecider,
@@ -1220,13 +1221,16 @@ export class Orchestrator extends Context.Service<
       const savesFiles = (info: AgentInfo) =>
         threadModes.get(info.threadId) === "work" && info.access !== "readOnly";
 
-      /** A snapshot of the agent's thread's folder now; none when it can't change files or saving failed. */
-      const snapshotFor = (info: AgentInfo) => {
+      /**
+       * A snapshot of the agent's thread's folder now; none when it can't change files or saving failed.
+       * With `reuse`, the last one serves when nothing in the folder changed since it was taken.
+       */
+      const snapshotFor = (info: AgentInfo, reuse = false) => {
         const folder = threadDirectories.get(info.threadId);
         const saved =
           !savesFiles(info) || folder === undefined
             ? Effect.succeedNone
-            : checkpoints.save(folder).pipe(
+            : checkpoints.save(folder, { reuse }).pipe(
                 Effect.tapError((error) =>
                   Effect.logWarning(`Couldn't snapshot ${folder}: ${error.message}`),
                 ),
@@ -1310,8 +1314,9 @@ export class Orchestrator extends Context.Service<
           const startedAt = yield* Clock.currentTimeMillis;
           rt.turn = yield* Deferred.make<void>();
           const turnId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
-          // The folder as it was before the turn, which restoring to before its messages goes back to.
-          const files = yield* snapshotFor(rt.info);
+          // The folder as it was before the turn, which restoring to before its messages goes back to:
+          // usually as the last turn left it, so that snapshot serves and the turn starts at once.
+          const files = yield* snapshotFor(rt.info, true);
           if (files !== undefined) yield* beginWork(rt.info);
           yield* emit(rt, { _tag: "TurnInput", items, turnId, ...(files === undefined ? {} : { files }) });
           const extras = yield* turnExtras(rt, items);
@@ -1490,8 +1495,9 @@ export class Orchestrator extends Context.Service<
       /**
        * On an agent set to Auto, the effort router picks the effort of the turn about to start, and
        * the thread records what it decided. A model that starts its prompt cache over when effort
-       * changes is routed only on a new session's first turn. Whatever goes wrong, the turn keeps its
-       * level and goes ahead.
+       * changes is routed only on a new session's first turn. Where the decision model can't decide,
+       * the turn runs at the user's fallback level; whatever else goes wrong, it keeps its level and
+       * goes ahead.
        */
       const routeEffort = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
         Effect.gen(function* () {
@@ -1509,22 +1515,30 @@ export class Orchestrator extends Context.Service<
           if (model === undefined || lowest === undefined || higher.length === 0) return;
           const levels = [lowest, ...higher] as const;
           const current = rt.info.effort ?? model.defaultEffort;
-          const baseline =
-            model.defaultEffort && levels.includes(model.defaultEffort)
-              ? model.defaultEffort
-              : (levels.find((level) => ["medium", "high", "xhigh", "max"].includes(level)) ??
-                higher.at(-1) ??
-                lowest);
-          const kept = (reason: NonNullable<EffortRouted["kept"]>, extra: Partial<EffortRouted> = {}) =>
-            Effect.sync(() => {
-              rt.effortDecision = {
-                _tag: "EffortRouted",
-                ...(current ? { effort: current } : {}),
-                kept: reason,
-                ...extra,
-              };
+          // Where the router can't decide, the turn runs at the user's fallback, as near as the model has.
+          const fallback = supportedLevel(levels, (yield* settings.get).effortRouter.fallback);
+          /** The turn runs at `effort`, which the agent keeps until the router picks another. */
+          const runAt = (effort: ReasoningEffort, decision: Omit<EffortRouted, "_tag" | "effort">) =>
+            Effect.gen(function* () {
+              if (effort !== rt.info.effort) {
+                const updatedAt = yield* Clock.currentTimeMillis;
+                yield* store
+                  .updateAgent(rt.info.id, { effort, updatedAt })
+                  .pipe(Effect.mapError(unavailable));
+                rt.info = { ...rt.info, effort, updatedAt };
+              }
+              rt.effortDecision = { _tag: "EffortRouted", effort, ...decision };
             });
-          if (model.cacheSafeEffort !== true && !rt.fresh) return yield* kept("cache");
+          const fallBack = (kept: "timeout" | "failed", extra: Partial<EffortRouted>) =>
+            runAt(fallback, { kept, baselineEffort: fallback, ...extra });
+          if (model.cacheSafeEffort !== true && !rt.fresh) {
+            rt.effortDecision = {
+              _tag: "EffortRouted",
+              ...(current ? { effort: current } : {}),
+              kept: "cache",
+            };
+            return;
+          }
 
           const history = yield* store.listEvents(rt.info.id, {
             tags: ["TurnInput", "TodosUpdated", "ConversationRewound"],
@@ -1603,12 +1617,24 @@ export class Orchestrator extends Context.Service<
             .decide(question)
             .pipe(Effect.timeoutOption(DECISION_TIMEOUT), Effect.result);
           const ms = (yield* Clock.currentTimeMillis) - startedAt;
-          if (Result.isFailure(asked)) return yield* kept("failed", { ms, detail: asked.failure.message });
-          if (Option.isNone(asked.success)) return yield* kept("timeout", { ms });
+          if (Result.isFailure(asked))
+            return yield* fallBack("failed", { ms, detail: asked.failure.message });
+          if (Option.isNone(asked.success)) return yield* fallBack("timeout", { ms });
           const answer = asked.success.value;
-          const spent = {
+          const cost = answer.costUsd === undefined ? {} : { costUsd: answer.costUsd };
+          const top = likeliest(levels, answer.probabilities);
+          if (top === undefined || !validProbabilities(answer.probabilities, levels.length))
+            return yield* fallBack("failed", {
+              ms,
+              ...cost,
+              detail: "The answer contained invalid probabilities.",
+            });
+          const selected = selectEffort(question, answer, current, fallback);
+          yield* runAt(selected.effort, {
             policyVersion: POLICY_VERSION,
-            baselineEffort: baseline,
+            ...(selected.kept === undefined ? {} : { kept: selected.kept }),
+            proposedEffort: top,
+            baselineEffort: fallback,
             question,
             levels: [...levels],
             probabilities: [...answer.probabilities],
@@ -1620,28 +1646,8 @@ export class Orchestrator extends Context.Service<
               : { contextSufficient: answer.contextSufficient }),
             ms,
             confidence: Math.min(1, Math.max(0, answer.confidence)),
-            ...(answer.costUsd === undefined ? {} : { costUsd: answer.costUsd }),
-          };
-          const top = likeliest(levels, answer.probabilities);
-          if (top === undefined || !validProbabilities(answer.probabilities, levels.length))
-            return yield* kept("failed", { ms, detail: "The answer contained invalid probabilities." });
-          const selected = selectEffort(question, answer, current, baseline);
-          if (selected.effort !== rt.info.effort) {
-            const updatedAt = yield* Clock.currentTimeMillis;
-            yield* store
-              .updateAgent(rt.info.id, { effort: selected.effort, updatedAt })
-              .pipe(Effect.mapError(unavailable));
-            rt.info = { ...rt.info, effort: selected.effort, updatedAt };
-          }
-          rt.effortDecision = {
-            _tag: "EffortRouted",
-            effort: selected.effort,
-            proposedEffort: top,
-            ...(!selected.accepted
-              ? { kept: selected.effort === current ? ("unsure" as const) : ("fallback" as const) }
-              : {}),
-            ...spent,
-          };
+            ...cost,
+          });
         }).pipe(
           Effect.catchCause((cause) => Effect.logWarning(`Couldn't route ${rt.info.id}'s effort`, cause)),
         );

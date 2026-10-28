@@ -524,23 +524,31 @@ const stoppedNote = {
   maxTurns: { text: "Stopped at the turn limit", Icon: Ban },
 } as const;
 
-/** Why the effort router left the level where it was. */
+/** Why the effort router didn't pick the level itself. */
 const keptReason = (routed: RoutedDecision): string => {
   switch (routed.kept) {
-    case "fallback":
-      return "The task context was insufficient; used the model's baseline effort";
     case "cache":
       return "Changing it would restart this model's prompt cache";
+    case "recovering":
+      return "The last turn failed, so the level doesn't drop";
+    case "fallback":
+      return "The router couldn't tell what this turn asks for";
     case "unsure":
-      return routed.confidence === undefined
-        ? "The router wasn't sure enough"
-        : "The evidence did not meet the routing policy's threshold";
+      return "The router couldn't tell which level this turn needs";
     case "timeout":
       return "The router didn't answer in time";
     default:
       return routed.detail ?? "The router couldn't decide";
   }
 };
+
+/** The turn ran at the user's fallback level, rather than keeping the one it had. */
+const fellBack = (routed: RoutedDecision): boolean =>
+  routed.kept !== undefined &&
+  routed.kept !== "cache" &&
+  routed.kept !== "recovering" &&
+  routed.baselineEffort !== undefined &&
+  routed.effort === routed.baselineEffort;
 
 /** The level the effort router ran a turn at, with how it decided under the pointer. */
 export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
@@ -560,11 +568,14 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
           <span className="font-medium">
             {routed.kept === undefined
               ? `Picked ${level}`
-              : routed.kept === "fallback"
-                ? `Used baseline ${level}`
+              : fellBack(routed)
+                ? `Fell back to ${level}`
                 : `Kept ${level}`}
           </span>
           {routed.kept === undefined ? null : <span className="text-fg-secondary">{keptReason(routed)}</span>}
+          {fellBack(routed) ? (
+            <span className="text-fg-tertiary">Set the fallback in Settings → Agents</span>
+          ) : null}
           {facts.length > 0 ? (
             <span className="text-fg-tertiary tabular-nums">{facts.join(" · ")}</span>
           ) : null}
