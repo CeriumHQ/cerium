@@ -11,6 +11,10 @@ export const linux = /Linux/.test(userAgent) && !/Android/.test(userAgent);
 export const mac = /Macintosh/.test(userAgent) && navigator.maxTouchPoints < 2;
 const windows = /Windows/.test(userAgent);
 
+/** A phone or tablet, which runs none of the builds but can drive a computer through the web app. */
+export const handheld =
+  /Android|iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && navigator.maxTouchPoints > 1);
+
 /** The system the download buttons name, where it isn't Windows. */
 export const system = linux
   ? { mark: "#mark-linux", name: "Linux" }

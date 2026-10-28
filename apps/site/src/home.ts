@@ -35,7 +35,7 @@ const split = (root: HTMLElement) => {
   root.setAttribute("aria-label", [...root.children].map((line) => line.textContent).join(" "));
 };
 
-const lenis = startChrome();
+const lenis = startChrome({ appOnHandheld: true });
 lenis?.on("scroll", () => ScrollTrigger.update());
 for (const root of document.querySelectorAll<HTMLElement>("[data-split]")) split(root);
 

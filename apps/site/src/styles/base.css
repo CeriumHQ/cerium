@@ -282,6 +282,7 @@ html.lenis body {
 }
 
 .brand svg {
+  flex: none;
   width: 24px;
   height: 24px;
 }
@@ -296,6 +297,7 @@ html.lenis body {
 .bar nav a:not(.button) {
   padding: 8px 14px;
   border-radius: 10px;
+  white-space: nowrap;
   color: var(--fg-2);
   font-size: 0.9375rem;
   transition:
@@ -316,6 +318,23 @@ html.lenis body {
 
 @media (max-width: 720px) {
   .bar nav a.hide-narrow {
+    display: none;
+  }
+}
+
+/* The web app's link stays beside Download on a phone, the smallest of which keep only the mark. */
+@media (max-width: 400px) {
+  .bar nav a:not(.button) {
+    padding: 8px 10px;
+  }
+
+  .bar .button {
+    margin-left: 2px;
+  }
+}
+
+@media (max-width: 340px) {
+  .brand span {
     display: none;
   }
 }

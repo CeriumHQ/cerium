@@ -65,6 +65,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- The website leads a phone to the web app. On a phone or tablet, the home page's main buttons say "Open the web app" and open `/app/`, where they offered the Windows installer, and the top bar of the home and privacy pages keeps its Web app link on a narrow screen instead of hiding it; on the narrowest phones the bar shows Cerium's mark without its name so the link fits beside Download. `/downloads/` still offers the builds.
 - A thread's Preview page no longer shows over Settings, Tasks, GitHub or Automations: the page, which sits over the window in a view of its own, now leaves the moment its thread's view is covered, and steps aside for a side panel floating over the thread.
 - On a phone, the rail's usage rings no longer run off the bottom edge (at 320 px only the first showed): when the places and the rings can't share the row, the rings stack above the places; held sideways they still share it.
 - The search palette shows its results on a short screen. A phone's results area was sized to the screen less 20 rem, which left none at 320 px high; it now follows the part of the screen that shows, the keyboard taken out, and keeps clear of a notch.
