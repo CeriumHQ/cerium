@@ -285,7 +285,11 @@ jobs:
 
   # The Apple silicon and Intel Mac apps, both packaged on Apple silicon: an Intel runner took twice
   # as long and more, and the Intel app only needs Intel's native packages installed beside the
-  # runner's (.github/actions/package). The repository's Developer ID certificate and notarization
+  # runner's (.github/actions/package). They run on the runner the repository's MAC_RUNNER variable
+  # names, else the standard one. The larger macos-15-xlarge skips the minutes the standard one's
+  # queue held them and halves both jobs, the Intel app's start through Rosetta most, but it is
+  # billed by the minute, public repository or not, and a job for it isn't started while the
+  # organization has no budget for it. The repository's Developer ID certificate and notarization
   # key sign the app when it has them, which a pull request from a fork never sees; without them it
   # is signed ad hoc.
   package-macos:
@@ -296,9 +300,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: Arm64, runner: macos-15 }
-          - { arch: x64, runner: macos-15, cross: x64 }
-    runs-on: ${{ matrix.runner }}
+          - { arch: Arm64 }
+          - { arch: x64, cross: x64 }
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 30
     permissions:
       contents: write
