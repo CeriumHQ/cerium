@@ -2,6 +2,7 @@ import { CheckpointError, Checkpoints, type SnapshotChange, type SnapshotLines }
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { createHash, randomUUID } from "node:crypto";
+import { statSync, watch as watchFolder } from "node:fs";
 
 import { DIFF_BYTES } from "./files.ts";
 
@@ -23,6 +24,29 @@ export const DEFAULT_EXCLUDES: ReadonlyArray<string> = [
   "target/",
 ];
 
+const EXCLUDED = new Set(DEFAULT_EXCLUDES.map((pattern) => pattern.replace(/\/$/, "")));
+
+const segmentsOf = (relative: string) => relative.split(/[\\/]/).filter((part) => part !== "");
+
+/**
+ * Whether the watcher can leave `relative`, a path under a snapshotted folder, and everything below
+ * it unwatched: the folder's own repository and the folders every snapshot leaves out.
+ */
+export const snapshotSkips = (relative: string): boolean => {
+  const segments = segmentsOf(relative);
+  return segments[0] === ".git" || segments.some((part) => EXCLUDED.has(part));
+};
+
+/**
+ * Whether a change the OS reports at `relative` under a snapshotted folder can't alter its next
+ * snapshot: it lies inside what `snapshotSkips` leaves out. An excluded folder's own entry counts as
+ * a change, as a file can share its name.
+ */
+export const outsideSnapshots = (relative: string): boolean => {
+  const segments = segmentsOf(relative);
+  return segments[0] === ".git" || segments.slice(0, -1).some((part) => EXCLUDED.has(part));
+};
+
 /**
  * How long a turn waits for its snapshot before starting without one. A folder's first save reads
  * every file, so it can take longer; it carries on, and the next save is quick.
@@ -33,6 +57,15 @@ const WAIT_TIMEOUT = "15 seconds";
 const RUN_TIMEOUT = "5 minutes";
 
 type Pending = Deferred.Deferred<string, CheckpointError>;
+
+/** What a folder's watcher has seen since its last save began, and that save's snapshot. */
+interface Watched {
+  /** Something in the folder changed since the last save began, or the watcher can't say. */
+  dirty: boolean;
+  /** The last save's snapshot, once it finished. */
+  tree?: string;
+  readonly close: () => void;
+}
 
 /**
  * Git's settings for the snapshot store: files kept byte for byte, Windows' long paths allowed, and
@@ -124,6 +157,61 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
        * on two saves at most.
        */
       const saves = new Map<string, { running?: Pending; next?: Pending }>();
+      /**
+       * Each saved folder's watcher, by store. A save with nothing changed since the last began serves
+       * that one's snapshot without running git: most turns start where the last one left the folder.
+       */
+      const watched = new Map<string, Watched>();
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          for (const entry of watched.values()) entry.close();
+          watched.clear();
+        }),
+      );
+
+      /** `folder`'s watcher, started on its first save; none while the OS can't watch it. */
+      const watchedFolder = (store: string, folder: string): Watched | undefined => {
+        const existing = watched.get(store);
+        if (existing !== undefined) return existing;
+        try {
+          let close = () => {};
+          const entry: Watched = { dirty: true, close: () => close() };
+          const watcher = watchFolder(
+            folder,
+            { recursive: true, persistent: false, ignore: snapshotSkips },
+            (event, name) => {
+              if (entry.dirty) return;
+              // A report without a name may be an overflow: anything could have changed.
+              if (name === null) {
+                entry.dirty = true;
+                return;
+              }
+              const relative = name.toString();
+              if (outsideSnapshots(relative)) return;
+              // Windows says a folder changed when git merely reads it; a change inside one names
+              // what changed in it too.
+              if (
+                event === "change" &&
+                statSync(path.join(folder, relative), { throwIfNoEntry: false })?.isDirectory() === true
+              ) {
+                return;
+              }
+              entry.dirty = true;
+            },
+          );
+          close = () => watcher.close();
+          // A watcher that fails can't say what changed any more; the next save starts another.
+          watcher.on("error", () => {
+            entry.dirty = true;
+            entry.close();
+            if (watched.get(store) === entry) watched.delete(store);
+          });
+          watched.set(store, entry);
+          return entry;
+        } catch {
+          return undefined;
+        }
+      };
 
       /** Where `folder`'s snapshots are kept: a name from its path, the same however it is spelled. */
       const storeOf = (folder: string) => {
@@ -297,7 +385,21 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
 
       /** Runs `pending`'s save apart from its waiters, then the one queued behind it. */
       const launch = (store: string, folder: string, pending: Pending): Effect.Effect<void> =>
-        run(store, folder).pipe(
+        Effect.suspend(() => {
+          // What changes from here on may or may not make it into this save, so it counts against it.
+          const entry = watchedFolder(store, folder);
+          if (entry !== undefined) {
+            entry.dirty = false;
+            delete entry.tree;
+          }
+          return run(store, folder).pipe(
+            Effect.tap((tree) =>
+              Effect.sync(() => {
+                if (entry !== undefined) entry.tree = tree;
+              }),
+            ),
+          );
+        }).pipe(
           Deferred.into(pending),
           // Whatever became of it, even cut short, the queue moves on.
           Effect.ensuring(
@@ -312,10 +414,23 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
           Effect.asVoid,
         );
 
-      const save = Effect.fn("Checkpoints.save")(function* (folder: string) {
+      const save = Effect.fn("Checkpoints.save")(function* (
+        folder: string,
+        options: { readonly reuse?: boolean } = {},
+      ) {
         const store = storeOf(folder);
         const state = saves.get(store) ?? {};
         saves.set(store, state);
+        const entry = watched.get(store);
+        if (
+          options.reuse === true &&
+          entry?.tree !== undefined &&
+          !entry.dirty &&
+          state.running === undefined &&
+          state.next === undefined
+        ) {
+          return entry.tree;
+        }
         // A save queued behind the running one starts after this call, so it holds the files as they
         // are now or later: it serves this caller too.
         let pending = state.next;

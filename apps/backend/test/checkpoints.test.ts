@@ -144,6 +144,52 @@ describe("Checkpoints", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  // Live: the watcher's reports come in real time.
+  it.live("serves a reusing save from the last snapshot until something in the folder changes", () =>
+    Effect.gen(function* () {
+      const { fs, path, folder, home, write } = yield* setup;
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      let runs = 0;
+      const counted = ChildProcessSpawner.make((command) => {
+        runs += 1;
+        return spawner.spawn(command);
+      });
+      const checkpoints = Context.get(
+        yield* Layer.build(checkpointsLayer({ directory: path.join(home, "counted") })).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, counted),
+        ),
+        Checkpoints,
+      );
+      // The OS reports changes a moment after they happen.
+      const settle = Effect.sleep("300 millis");
+      const first = yield* checkpoints.save(folder, { reuse: true });
+      yield* settle;
+      const ran = runs;
+      assert.strictEqual(yield* checkpoints.save(folder, { reuse: true }), first);
+      assert.strictEqual(runs, ran);
+
+      // What snapshots leave out doesn't count as a change.
+      yield* write("node_modules/dep/index.js", "upgraded\n");
+      yield* write(".git/scratch", "git's own\n");
+      yield* settle;
+      assert.strictEqual(yield* checkpoints.save(folder, { reuse: true }), first);
+      assert.strictEqual(runs, ran);
+
+      yield* write("src/a.ts", "changed\n");
+      yield* settle;
+      const second = yield* checkpoints.save(folder, { reuse: true });
+      assert.notStrictEqual(second, first);
+      yield* fs.remove(path.join(folder, "src/b.ts"));
+      yield* settle;
+      const third = yield* checkpoints.save(folder, { reuse: true });
+      assert.notStrictEqual(third, second);
+      // A save that doesn't ask to reuse always reads the folder.
+      const before = runs;
+      assert.strictEqual(yield* checkpoints.save(folder), third);
+      assert.isAbove(runs, before);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("leaves the folder's own repository untouched", () =>
     Effect.gen(function* () {
       const { folder, write, checkpoints, spawner } = yield* setup;
