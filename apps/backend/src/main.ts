@@ -27,6 +27,7 @@ import { join, resolve } from "node:path";
 import { DEFAULT_RELAY_URL } from "@cerium/account";
 import { thisInstallation, thisMachine } from "./device.ts";
 import { backendFailed, messageChain, type BackendFailed } from "./failure.ts";
+import { forgetGitRepository } from "./gitRepositoryVariables.ts";
 import { crashReport, reportLogger } from "./reports.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
@@ -45,6 +46,11 @@ const channel: Channel = channelFlag === "stable" || channelFlag === "nightly" ?
 const appVersion = flag("app-version") ?? "dev";
 const token = randomBytes(32).toString("hex");
 mkdirSync(dataDirectory, { recursive: true });
+
+// Each project's git, and the harnesses' and terminals' started here, finds its repository from its
+// own folder: a GIT_DIR from whatever started the backend (a hook, `git rebase --exec`) would put
+// every project's git on that one repository.
+forgetGitRepository(process.env);
 
 // Stopping goes through runMain's signal handling, so the backend's finalizers run. A PATH the user's
 // shell gave differently from the one this started on, which the shell asks for meanwhile, is what
