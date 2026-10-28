@@ -8,6 +8,7 @@
 @import "./markdown.css";
 @import "./terminal.css";
 @import "./welcome.css";
+@import "./gate.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

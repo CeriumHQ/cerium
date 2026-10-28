@@ -10,6 +10,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 
+import { usesCommandKey } from "./keys.ts";
 import { remember, stored } from "./storage.ts";
 
 export const SHORTCUT_GROUPS = ["General", "Threads", "Panels", "Tabs"] as const;
@@ -23,6 +24,11 @@ export interface ShortcutDef {
   readonly group: ShortcutGroup;
   /** The default keys, spelled as lib/keys.ts reads them ("Ctrl Shift G"). */
   readonly defaultKeys: string;
+  /**
+   * The default in the Mac desktop app, where "Ctrl" is ⌘, when `defaultKeys` would land on keys
+   * macOS keeps for itself (⌘⇧3 takes a screenshot) or types with (⌥3 is `#` on a British layout).
+   */
+  readonly macKeys?: string;
   /** Shown instead of the keys where one binding stands for several (digit families). */
   readonly displayKeys?: string;
   /** Other words that find it in Settings → Keyboard. */
@@ -61,12 +67,17 @@ export const SHORTCUTS: ReadonlyArray<ShortcutDef> = [
   }),
   def("switch-to-work", "Switch to Work", "General", "Ctrl Shift 1", { keywords: "mode home" }),
   def("switch-to-chat", "Switch to Chat", "General", "Ctrl Shift 2", { keywords: "mode" }),
-  def("open-tasks", "Open tasks", "General", "Ctrl Shift 3", { keywords: "todo list rail" }),
+  def("open-tasks", "Open tasks", "General", "Ctrl Shift 3", {
+    keywords: "todo list rail",
+    macKeys: "Ctrl Alt 3",
+  }),
   def("open-github", "Open GitHub", "General", "Ctrl Shift 4", {
     keywords: "pull requests issues rail",
+    macKeys: "Ctrl Alt 4",
   }),
   def("open-automations", "Open automations", "General", "Ctrl Shift 5", {
     keywords: "schedule trigger cron rail",
+    macKeys: "Ctrl Alt 5",
   }),
   def("zoom-in", "Make everything larger", "General", "Ctrl +", { keywords: "zoom scale bigger" }),
   def("zoom-out", "Make everything smaller", "General", "Ctrl −", { keywords: "zoom scale" }),
@@ -101,6 +112,7 @@ export const SHORTCUTS: ReadonlyArray<ShortcutDef> = [
   def("previous-tab", "Previous tab", "Tabs", "Control Shift Tab", { keywords: "tabs step back" }),
   def("go-to-tab", "Go to a tab, 9 being the last", "Tabs", "Alt 1", {
     displayKeys: "Alt 1–9",
+    macKeys: "Control 1",
     keywords: "tabs digits",
     family: "digit19",
   }),
@@ -127,9 +139,16 @@ export type ShortcutId = (typeof SHORTCUTS)[number]["id"];
 const byId = new Map(SHORTCUTS.map((each) => [each.id, each]));
 export const shortcutDef = (id: string): ShortcutDef | undefined => byId.get(id);
 
+/** A shortcut's default keys on this platform: its Mac ones in the Mac desktop app. */
+export const defaultKeysOf = (each: ShortcutDef, mac = usesCommandKey()): string =>
+  (mac ? each.macKeys : undefined) ?? each.defaultKeys;
+
 /** The bindings with nothing rebound. */
-export const defaultBindings = (): Record<ShortcutId, string> =>
-  Object.fromEntries(SHORTCUTS.map((each) => [each.id, each.defaultKeys])) as Record<ShortcutId, string>;
+export const defaultBindings = (mac = usesCommandKey()): Record<ShortcutId, string> =>
+  Object.fromEntries(SHORTCUTS.map((each) => [each.id, defaultKeysOf(each, mac)])) as Record<
+    ShortcutId,
+    string
+  >;
 
 const STORAGE_KEY = "cerium:shortcuts:v1";
 
@@ -174,7 +193,7 @@ export const shortcutBindingsAtom: Atom.Writable<Record<ShortcutId, string>> = A
 
 /** One shortcut's keys outside React, from the bindings map. */
 export const bindingFor = (bindings: Record<ShortcutId, string>, id: ShortcutId): string =>
-  bindings[id] ?? byId.get(id)?.defaultKeys ?? "";
+  bindings[id] ?? (byId.has(id) ? defaultKeysOf(byId.get(id) as ShortcutDef) : "");
 
 /** One shortcut's keys in React, following the user's rebinds. */
 export const useShortcut = (id: ShortcutId): string => bindingFor(useAtomValue(shortcutBindingsAtom), id);
@@ -329,6 +348,24 @@ export const matchesFamily = (event: KeyPress, binding: string, mac: boolean): b
   if (event.shiftKey !== parsed.shift) return false;
   return /^Digit[0-9]$/.test(event.code);
 };
+
+/**
+ * Whether `event` types a character into a text field rather than pressing a shortcut: Alt alone
+ * with a key that writes something other than itself, as a Mac's Option layer does (⌥3 is `#` on a
+ * British layout, `[` is ⌥5 on a German one). Elsewhere Alt with a digit writes the digit, or
+ * nothing.
+ */
+export const typesInField = (event: KeyPress, inField: boolean): boolean =>
+  inField &&
+  event.altKey &&
+  !event.ctrlKey &&
+  !event.metaKey &&
+  event.key.length === 1 &&
+  !/^[0-9]$/.test(event.key);
+
+/** Whether `target` takes typing: a text field, or editable content such as the message box. */
+export const isField = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea"));
 
 /**
  * The binding `event` would set, spelled canonically ("Ctrl Shift G"), or undefined when the press

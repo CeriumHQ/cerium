@@ -1,4 +1,4 @@
-import { HarnessFailure, parseVersion } from "@cerium/harness";
+import { findOnPath, HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { MspError } from "@muse-code/sdk";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
@@ -20,17 +20,11 @@ const RELEASE = /^[0-9]+\.[0-9]+\.[0-9]+-R[0-9]+(\.[0-9]+)?$/;
  * binary's own stdio, so it is resolved from the launcher's `.muse-version`.
  */
 export const findMuseExecutable = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const windows = process.platform === "win32";
 
-  const candidates = yield* spawner
-    .lines(windows ? ChildProcess.make("where", ["muse"]) : ChildProcess.make("which", ["-a", "muse"]))
-    .pipe(
-      Effect.map((lines) => lines.map((line) => line.trim()).filter((line) => line !== "")),
-      Effect.orElseSucceed((): ReadonlyArray<string> => []),
-    );
+  const candidates = yield* findOnPath("muse");
 
   const exists = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false));
   for (const candidate of candidates) {

@@ -264,10 +264,12 @@ import { usesCommandKey } from "../lib/keys.ts";
 import {
   bindingFor,
   isCapturingBinding,
+  isField,
   matchesBinding,
   matchesFamily,
   shortcutBindingsAtom,
   type ShortcutId,
+  typesInField,
 } from "../lib/shortcuts.ts";
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
@@ -1693,6 +1695,9 @@ function Workspace() {
     if (matchesFamily(event, keys("go-to-tab"), mac)) {
       const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
       if (digit === undefined || settingsOpen || searchOpen || compact) return;
+      // A Mac's Option layer types with these keys (⌥3 is `#` on a British layout), and in a field
+      // the character wins.
+      if (typesInField(event, isField(event.target))) return;
       tabs.goTo(Number(digit));
       event.preventDefault();
       return;

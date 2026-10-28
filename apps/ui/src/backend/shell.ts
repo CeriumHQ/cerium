@@ -258,6 +258,12 @@ export const onWindows = (): boolean => window.cerium?.platform === "win32";
 export const onMac = (): boolean => document.documentElement.dataset["platform"] === "darwin";
 
 /**
+ * Where revealing a file shows it, by the system's own name, for "Show in …": File Explorer, Finder,
+ * or on Linux, whose desktops each have a file manager of their own, its folder.
+ */
+export const revealPlace = (): string => (onMac() ? "Finder" : onWindows() ? "File Explorer" : "its folder");
+
+/**
  * The shell's bridge. While the window drives another machine, what reaches this computer's
  * files is left out: a path from that machine means nothing here, so files are shown and picked on
  * that machine itself, and attachments travel as bytes.

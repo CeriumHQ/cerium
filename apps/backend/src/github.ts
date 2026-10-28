@@ -1,4 +1,4 @@
-import { parseVersion } from "@cerium/harness";
+import { findOnPath, parseVersion } from "@cerium/harness";
 import {
   GitHubError,
   type GitHubAccount,
@@ -9,7 +9,7 @@ import {
   type MergeMethod,
   type RepositoryPermission,
 } from "@cerium/rpc";
-import { Cache, Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import { Cache, Context, Effect, Exit, FileSystem, Layer, Option, Path, Queue, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { json, text } from "./githubConversation.ts";
@@ -333,11 +333,13 @@ export class GitHub extends Context.Service<
     git(cwd: string, args: ReadonlyArray<string>): Effect.Effect<RunResult, GitHubError>;
   }
 >()("cerium/backend/GitHub") {
-  /** Requires `ChildProcessSpawner`. */
+  /** Requires `ChildProcessSpawner`, `FileSystem` and `Path`. */
   static readonly layer = Layer.effect(
     GitHub,
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
       const windows = process.platform === "win32";
 
       const missing = () =>
@@ -379,17 +381,15 @@ export class GitHub extends Context.Service<
       /** Where `gh` is installed, looked for again a minute later (or at once after it wasn't found). */
       const executables = yield* Cache.makeWith(
         (program: "gh") =>
-          spawn(windows ? "where" : "which", [program]).pipe(
-            Effect.map(({ stdout, code }) => {
-              const found = stdout
-                .split("\n")
-                .map((line) => line.trim())
-                .filter((line) => line !== "");
+          findOnPath(program).pipe(
+            Effect.map((found) => {
               // `where` lists every match; the shims beside a real `gh.exe` don't run here.
               const path = windows ? found.find((line) => /\.exe$/i.test(line)) : found[0];
-              return code === 0 && path !== undefined ? Option.some(path) : Option.none<string>();
+              return path !== undefined ? Option.some(path) : Option.none<string>();
             }),
-            Effect.orElseSucceed(() => Option.none<string>()),
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, pathService),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
           ),
         {
           capacity: 1,

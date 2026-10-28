@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { memo, useContext, useState, type ReactNode } from "react";
 
-import { shellBridge } from "../../backend/shell.ts";
+import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import {
   FileImageThumb,
   ImageThumb,
@@ -367,7 +367,7 @@ function ToolMenu({ tool }: { tool: ToolBlock }) {
       ) : null}
       {reveal && location ? (
         <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
-          Show in File Explorer
+          Show in {revealPlace()}
         </MenuItem>
       ) : null}
       {plan.url ? (

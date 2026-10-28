@@ -1,4 +1,4 @@
-import { HarnessFailure, parseVersion } from "@cerium/harness";
+import { findOnPath, HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -21,17 +21,11 @@ const decodeCliAuthStatus = Schema.decodeUnknownEffect(Schema.fromJsonString(Cli
  * the real executable (or the JS entry point) behind it.
  */
 export const findClaudeExecutable = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const windows = process.platform === "win32";
 
-  const candidates = yield* spawner
-    .lines(windows ? ChildProcess.make("where", ["claude"]) : ChildProcess.make("which", ["-a", "claude"]))
-    .pipe(
-      Effect.map((lines) => lines.map((line) => line.trim()).filter((line) => line !== "")),
-      Effect.orElseSucceed((): ReadonlyArray<string> => []),
-    );
+  const candidates = yield* findOnPath("claude");
 
   for (const candidate of candidates) {
     const extension = path.extname(candidate).toLowerCase();
