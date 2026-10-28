@@ -83,6 +83,7 @@ All notable changes to Cerium are recorded here. The format follows
 - The run scoreboard's per-thread Archive button stays in sight on a touch screen instead of being hidden.
 - Dialogs (confirm, hand off, restore, clone, forms, harness actions) are never taller than the part of the screen that shows, scroll when they are, and centre in it with the keyboard open. An expanded artifact on a phone takes the screen's width less 16 px instead of leaving about 190 px at 320.
 - A phone turned sideways keeps the lists, the thread and its message box, the pages and the rail off the notch and the rounded corners.
+- Internal: the tests can no longer act on a real repository. Every test process starts without git's repository variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the rest of `git rev-parse --local-env-vars`), so a `bun run verify` run under them leaves alone the repository they name. A pre-push hook in a linked worktree exports an absolute `GIT_DIR`, and the git tests used to set that repository's `core.bare`, user and `core.hooksPath` and add branches, a tag and a worktree to it; under a throwaway `GIT_DIR` they now leave it byte for byte as it was. The backend also drops these variables when it starts, so each project's git, harness and terminal finds the repository from its own folder rather than one named by whatever started Cerium.
 
 ### Removed
 
