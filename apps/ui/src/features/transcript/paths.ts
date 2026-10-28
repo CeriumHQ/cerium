@@ -17,10 +17,33 @@ const LINE = /(?::(\d+)(?::\d+)?|#L(\d+)(?:-L?\d+)?)$/;
 
 const isAbsolute = (path: string) => /^(?:[a-z]:[\\/]|[\\/]{2}|\/)/i.test(path);
 
-/** `path` on disk, when it can be told: absolute already, or relative to the thread's folder. */
+/**
+ * The home folder `folder` sits in, by the systems' own layouts: `/Users/<name>` on a Mac,
+ * `/home/<name>` (or Fedora Atomic's `/var/home/<name>`) and `/root` on Linux, `C:\Users\<name>` on
+ * Windows. The backend may be another machine's, so the UI can't ask its own.
+ */
+const homeOf = (folder: string): string | undefined =>
+  /^(?:\/Users\/[^/]+|(?:\/var)?\/home\/[^/]+|\/root|[a-z]:[\\/]Users[\\/][^\\/]+)(?=[\\/]|$)/i.exec(
+    folder,
+  )?.[0];
+
+/**
+ * `path` on disk, when it can be told: absolute already, under the home folder (`~/…`) the thread's
+ * folder is in, or relative to the thread's folder.
+ */
 export const resolvePath = (path: string, folder: string | undefined): string | undefined => {
   if (isAbsolute(path)) return path;
   if (folder === undefined) return undefined;
+  if (/^~(?:[\\/]|$)/.test(path)) {
+    const home = homeOf(folder);
+    if (home === undefined) return undefined;
+    const separator = home.includes("\\") ? "\\" : "/";
+    const rest = path
+      .slice(1)
+      .replace(/^[\\/]+/, "")
+      .replaceAll(/[\\/]/g, separator);
+    return rest === "" ? home : `${home}${separator}${rest}`;
+  }
   const separator = folder.includes("\\") ? "\\" : "/";
   const relative = path.replace(/^\.[\\/]/, "").replaceAll(/[\\/]/g, separator);
   return `${folder.replace(/[\\/]+$/, "")}${separator}${relative}`;

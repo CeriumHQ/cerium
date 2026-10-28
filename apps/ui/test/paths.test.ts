@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { pathReference } from "../src/features/transcript/paths.ts";
+import { pathReference, resolvePath } from "../src/features/transcript/paths.ts";
 
 describe("pathReference", () => {
   it("recognises files by their extension or name", () => {
@@ -60,5 +60,26 @@ describe("pathReference", () => {
       "/",
     ];
     expect(codes.filter((code) => pathReference(code) !== undefined)).toEqual([]);
+  });
+});
+
+describe("resolvePath", () => {
+  it("puts a home-relative path in the home folder the thread's folder is in", () => {
+    expect(resolvePath("~/notes/todo.md", "/Users/ada/code/app")).toBe("/Users/ada/notes/todo.md");
+    expect(resolvePath("~/.zshrc", "/home/ada/app")).toBe("/home/ada/.zshrc");
+    expect(resolvePath("~/x", "/var/home/ada/app")).toBe("/var/home/ada/x");
+    expect(resolvePath("~/Desktop/a.txt", "C:\\Users\\Ada\\app")).toBe("C:\\Users\\Ada\\Desktop\\a.txt");
+    expect(resolvePath("~", "/home/ada/app")).toBe("/home/ada");
+  });
+
+  it("can't tell a home-relative path outside a home folder", () => {
+    expect(resolvePath("~/x", "/srv/app")).toBeUndefined();
+    expect(resolvePath("~/x", undefined)).toBeUndefined();
+  });
+
+  it("keeps absolute paths and joins relative ones to the folder", () => {
+    expect(resolvePath("/etc/hosts", "/home/ada/app")).toBe("/etc/hosts");
+    expect(resolvePath("./src/a.ts", "/home/ada/app/")).toBe("/home/ada/app/src/a.ts");
+    expect(resolvePath("src/a.ts", "C:\\app")).toBe("C:\\app\\src\\a.ts");
   });
 });
