@@ -3,8 +3,6 @@ import { Menu } from "@base-ui/react/menu";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { AccessMode, HarnessLimit, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
-import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
 import {
   Ellipsis,
   Eye,
@@ -17,7 +15,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import {
   MenuCheckboxItem,
@@ -26,17 +24,8 @@ import {
   MenuRadioItem,
   MenuSeparator,
 } from "../../components/ui/Menu.tsx";
-import { settingsAtom } from "../../backend/atoms.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import {
-  accessOptions,
-  effortHint,
-  effortLabel,
-  fallbackFor,
-  MAX_AGENTS,
-  speedHint,
-  speedLabel,
-} from "./models.ts";
+import { accessOptions, effortHint, effortLabel, MAX_AGENTS, speedHint, speedLabel } from "./models.ts";
 
 // The message box's own controls beside the model menu (ModelPicker.tsx): the effort row inside that
 // menu, and the menu of what's seldom changed (access, several models at once).
@@ -72,9 +61,8 @@ export const chipEffortLabel: Record<ReasoningEffort | "auto", string> = {
   auto: "Auto",
 };
 
-/** The effort row's labels, short enough for Auto and six levels to sit side by side. */
-const segmentLabel: Record<ReasoningEffort | "auto", string> = {
-  auto: "Auto",
+/** The effort row's labels, short enough for six levels to sit side by side beside Auto. */
+const segmentLabel: Record<ReasoningEffort, string> = {
   minimal: "Min",
   low: "Low",
   medium: "Med",
@@ -83,70 +71,79 @@ const segmentLabel: Record<ReasoningEffort | "auto", string> = {
   max: "Max",
 };
 
-/** One pick of how hard a model thinks: a level it offers, or Auto for the effort router to pick. */
+/** How hard a model thinks, as a chip names it: a level, or Auto for the effort router to pick. */
 export type EffortPick = ReasoningEffort | "auto";
 
 /** What the model menu offers for the picked model's effort. */
 export interface EffortChoice {
   /** The levels on offer, weakest first. */
   readonly levels: ReadonlyArray<ReasoningEffort>;
-  readonly value: EffortPick;
-  /** The effort router is on, so Auto leads the levels. */
-  readonly auto: boolean;
-  readonly onPick: (effort: EffortPick) => void;
+  /** The level picked; on Auto, the one a turn falls back to where the router can't decide. */
+  readonly value: ReasoningEffort;
+  readonly onPick: (effort: ReasoningEffort) => void;
+  /** While the effort router is on: Auto, switched on and off beside the levels. */
+  readonly auto?: { readonly on: boolean; readonly onToggle: (on: boolean) => void };
 }
 
-/** Every pick the row offers, in order: Auto first when the router is on. */
-export const effortSteps = (choice: EffortChoice): ReadonlyArray<EffortPick> =>
-  choice.auto ? ["auto", ...choice.levels] : choice.levels;
-
-/** Whether there's anything to pick: one level and no router leaves nothing. */
+/** Whether there's anything to pick: a model with one level leaves nothing, Auto included. */
 export const offersChoice = (choice: EffortChoice | undefined): choice is EffortChoice =>
-  choice !== undefined && effortSteps(choice).length > 1;
+  choice !== undefined && choice.levels.length > 1;
+
+/** The menu's search keeps focus, so typing and the arrow keys carry on after a click. */
+const keepFocus = (event: MouseEvent) => event.preventDefault();
 
 /**
- * The model menu's foot: how hard the picked model thinks, one segment per level and Auto first, so
- * the model and its effort are one decision in one menu.
+ * The model menu's foot: how hard the picked model thinks, one segment per level, so the model and
+ * its effort are one decision in one menu. Auto switches on beside them; the picked level then shows
+ * dashed, standing by for the turns the router can't decide.
  */
 export function EffortRow({ choice, model }: { readonly choice: EffortChoice; readonly model: string }) {
-  // Auto says the level it falls back to, so where an unsure turn's level comes from isn't a mystery.
-  const settings = useAtomValue(settingsAtom);
-  const fallback = AsyncResult.isSuccess(settings)
-    ? fallbackFor(choice.levels, settings.value.effortRouter.fallback)
-    : undefined;
-  const hint =
-    choice.value === "auto" && fallback !== undefined
-      ? `Picks each turn, or ${effortLabel[fallback]} if unsure`
-      : effortHint[choice.value];
+  const auto = choice.auto?.on === true;
   return (
     <div className="shrink-0 border-t border-line-subtle px-2.5 pt-2 pb-2.5">
       <div className="flex items-baseline justify-between gap-3 px-0.5 pb-1.5 text-caption">
         <span className="truncate text-fg-tertiary">Effort for {model}</span>
-        <span className="shrink-0 text-fg-secondary">{hint}</span>
+        <span className="shrink-0 text-fg-secondary">{effortHint[auto ? "auto" : choice.value]}</span>
       </div>
-      <ToggleGroup
-        value={[choice.value]}
-        onValueChange={(value) => {
-          const next = value[0] as EffortPick | undefined;
-          if (next !== undefined) choice.onPick(next);
-        }}
-        aria-label={`Effort for ${model}`}
-        className="flex gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
-      >
-        {effortSteps(choice).map((step) => (
+      <div className="flex gap-1">
+        {choice.auto ? (
           <Toggle
-            key={step}
-            value={step}
-            aria-label={chipEffortLabel[step]}
-            // The menu's search keeps focus, so typing and the arrow keys carry on after a click.
-            onMouseDown={(event) => event.preventDefault()}
-            className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-[7px] text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
+            pressed={auto}
+            onPressedChange={choice.auto.onToggle}
+            aria-label="Auto"
+            onMouseDown={keepFocus}
+            className="flex h-8 shrink-0 items-center gap-1 rounded-[9px] bg-surface-sunken px-2.5 text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-accent data-pressed:font-medium data-pressed:text-accent-fg max-md:h-10"
           >
-            {step === "auto" ? <Route size={11} strokeWidth={2} /> : null}
-            {segmentLabel[step]}
+            <Route size={11} strokeWidth={2} />
+            Auto
           </Toggle>
-        ))}
-      </ToggleGroup>
+        ) : null}
+        <ToggleGroup
+          value={[choice.value]}
+          onValueChange={(value) => {
+            const next = value[0] as ReasoningEffort | undefined;
+            if (next !== undefined) choice.onPick(next);
+          }}
+          aria-label={auto ? `Effort for ${model} when Auto can't decide` : `Effort for ${model}`}
+          className="flex min-w-0 flex-1 gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+        >
+          {choice.levels.map((level) => (
+            <Toggle
+              key={level}
+              value={level}
+              aria-label={chipEffortLabel[level]}
+              onMouseDown={keepFocus}
+              className={`flex h-7 min-w-0 flex-1 items-center justify-center rounded-[7px] text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring max-md:h-9 ${
+                auto
+                  ? "data-pressed:text-fg-secondary data-pressed:outline-1 data-pressed:-outline-offset-1 data-pressed:outline-line-strong data-pressed:outline-dashed"
+                  : "data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)]"
+              }`}
+            >
+              {segmentLabel[level]}
+            </Toggle>
+          ))}
+        </ToggleGroup>
+      </div>
     </div>
   );
 }

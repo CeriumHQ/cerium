@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { defaultSettings, ReasoningEffort } from "@cerium/protocol";
+import { defaultSettings } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Route, Users } from "lucide-react";
@@ -14,7 +14,6 @@ import {
 import { machineAtom } from "../../backend/machine.ts";
 import { WEB } from "../../backend/target.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { effortHint, effortLabel } from "../composer/models.ts";
 import { messageOf } from "../terminal/model.ts";
 import { SettingsList, SettingsRow, SettingsSection, SettingsSwitch, SettingsTag } from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
@@ -171,30 +170,6 @@ export function EffortRouterSetting() {
             ) : null
           }
         />
-        {router.enabled ? (
-          <SettingsRow
-            label="When it can't decide"
-            hint="No answer in time, or too unsure to pick"
-            className="pr-2.5"
-            control={() => (
-              <SelectRoot
-                value={router.fallback}
-                onValueChange={(next) => next !== null && saveRouter({ ...router, fallback: next })}
-              >
-                <SelectTrigger label="Effort when the router can't decide">
-                  <span className="font-medium text-fg-primary">{effortLabel[router.fallback]}</span>
-                </SelectTrigger>
-                <SelectPopup>
-                  {ReasoningEffort.literals.map((level) => (
-                    <SelectItem key={level} value={level} description={effortHint[level]}>
-                      {effortLabel[level]}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </SelectRoot>
-            )}
-          />
-        ) : null}
         {router.enabled ? (
           <SettingsRow
             label="Agents a lead starts"

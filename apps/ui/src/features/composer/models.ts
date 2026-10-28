@@ -102,18 +102,6 @@ export const effortFor = (
     ? effort
     : (model.defaultEffort ?? model.efforts.at(-1));
 
-/**
- * The level a model runs at where the effort router can't decide: the user's `fallback`, else the
- * model's next level up, else its highest. The backend's rule too (`supportedLevel`).
- */
-export const fallbackFor = (
-  levels: ReadonlyArray<ReasoningEffort>,
-  fallback: ReasoningEffort,
-): ReasoningEffort | undefined => {
-  const order = effortOrder();
-  return levels.find((level) => order.indexOf(level) >= order.indexOf(fallback)) ?? levels.at(-1);
-};
-
 const speedOrder = (): ReadonlyArray<ModelSpeed> => Object.keys(speedLabel) as Array<ModelSpeed>;
 
 /** Every speed any of `models` runs at, slowest first: what one pick for all of them chooses from. */

@@ -59,23 +59,20 @@ const sure = (level: (typeof levels)[number], confidence = 0.9, costUsd = 0.0000
   costUsd,
 });
 
-const turnRouter = (
-  enabled: boolean,
-  children: "router" | "lead" = "router",
-  fallback: ReasoningEffort = "high",
-) =>
+const turnRouter = (enabled: boolean, children: "router" | "lead" = "router") =>
   Effect.gen(function* () {
-    yield* (yield* UserSettings).update({ effortRouter: { enabled, children, fallback } });
+    yield* (yield* UserSettings).update({ effortRouter: { enabled, children } });
   });
 
-const startAutoLead = (modelId: string) =>
+/** A lead on Auto, which falls back to `effort`. */
+const startAutoLead = (modelId: string, effort: ReasoningEffort = "medium") =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
     return yield* orchestrator.createThread({
       title: "Test",
       mode: "work",
       cwd: ".",
-      lead: { provider: "claude", model: modelId, effort: "medium", autoEffort: true, access: "auto" },
+      lead: { provider: "claude", model: modelId, effort, autoEffort: true, access: "auto" },
     });
   });
 
@@ -220,47 +217,55 @@ describe("Orchestrator effort routing", () => {
       assert.strictEqual(asked[1]?.state.turn.text.includes("redesign"), true);
       assert.lengthOf(asked[1]?.state.recent ?? [], 1);
       assert.strictEqual(asked[1]?.state.previousTurn?.failed, false);
+      // The router's levels hold for the session; the level picked for the agent stays its own.
       const agent = yield* orchestrator.agent(lead.id);
-      assert.deepStrictEqual([agent.effort, agent.autoEffort], ["high", true]);
+      assert.deepStrictEqual([agent.effort, agent.autoEffort], ["medium", true]);
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
   });
 
-  it.live("runs at the user's fallback when the decision model is unsure or fails", () => {
-    const fake = makeFakeAdapter("claude");
-    const { decider } = scripted([sure("high", 0.3), "OpenRouter didn't accept the key."]);
-    return Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator;
-      const store = yield* Store;
-      const { waitFor } = yield* recordEvents;
-      // The model offers no Minimal, so the fallback takes the next level up.
-      yield* turnRouter(true, "router", "minimal");
-      const { lead } = yield* startAutoLead("opus");
-      yield* orchestrator.sendUserMessage(lead.id, "one");
-      yield* waitFor(turnsCompleted(1, lead.id));
-      yield* orchestrator.sendUserMessage(lead.id, "two");
-      yield* waitFor(turnsCompleted(2, lead.id));
+  it.live(
+    "falls back to the picked level, not the last one, when the decision model is unsure or fails",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      const { decider } = scripted([sure("low"), sure("high", 0.3), "OpenRouter didn't accept the key."]);
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const store = yield* Store;
+        const { waitFor } = yield* recordEvents;
+        yield* turnRouter(true);
+        const { lead } = yield* startAutoLead("opus", "medium");
+        for (const [count, text] of [
+          [1, "one"],
+          [2, "two"],
+          [3, "three"],
+        ] as const) {
+          yield* orchestrator.sendUserMessage(lead.id, text);
+          yield* waitFor(turnsCompleted(count, lead.id));
+        }
 
-      assert.deepStrictEqual(fake.sessions[0]?.switches, [{ effort: "low" }]);
-      const decisions = routed(yield* store.listEvents(lead.id), lead.id);
-      assert.deepStrictEqual(
-        decisions.map(({ effort, kept, baselineEffort, detail }) => ({
-          effort,
-          kept,
-          baselineEffort,
-          detail,
-        })),
-        [
-          { effort: "low", kept: "unsure", baselineEffort: "low", detail: undefined },
-          {
-            effort: "low",
-            kept: "failed",
-            baselineEffort: "low",
-            detail: "OpenRouter didn't accept the key.",
-          },
-        ],
-      );
-    }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
-  });
+        assert.deepStrictEqual(fake.sessions[0]?.switches, [{ effort: "low" }, { effort: "medium" }]);
+        const decisions = routed(yield* store.listEvents(lead.id), lead.id);
+        assert.deepStrictEqual(
+          decisions.map(({ effort, kept, baselineEffort, detail }) => ({
+            effort,
+            kept,
+            baselineEffort,
+            detail,
+          })),
+          [
+            { effort: "low", kept: undefined, baselineEffort: "medium", detail: undefined },
+            { effort: "medium", kept: "unsure", baselineEffort: "medium", detail: undefined },
+            {
+              effort: "medium",
+              kept: "failed",
+              baselineEffort: "medium",
+              detail: "OpenRouter didn't accept the key.",
+            },
+          ],
+        );
+      }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
+    },
+  );
 
   it.live("routes only a new session's first turn on a model that restarts its cache", () => {
     const fake = makeFakeAdapter("claude");
@@ -289,7 +294,7 @@ describe("Orchestrator effort routing", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
   });
 
-  it.live("does nothing while the router is off, and a picked effort takes the agent off Auto", () => {
+  it.live("does nothing while the router is off, and Auto turns on and off apart from the level", () => {
     const fake = makeFakeAdapter("claude");
     const { decider, asked } = scripted([sure("low")]);
     return Effect.gen(function* () {
@@ -300,10 +305,13 @@ describe("Orchestrator effort routing", () => {
       yield* waitFor(turnsCompleted(1, lead.id));
       assert.lengthOf(asked, 0);
 
+      // A level picked on Auto is the one it falls back to; Auto stays on.
       const picked = yield* orchestrator.switchModel(lead.id, { model: "opus", effort: "high" });
-      assert.deepStrictEqual([picked.effort, picked.autoEffort], ["high", undefined]);
-      const auto = yield* orchestrator.switchModel(lead.id, { model: "opus", autoEffort: true });
-      assert.deepStrictEqual([auto.effort, auto.autoEffort], ["high", true]);
+      assert.deepStrictEqual([picked.effort, picked.autoEffort], ["high", true]);
+      const off = yield* orchestrator.switchModel(lead.id, { model: "opus", autoEffort: false });
+      assert.deepStrictEqual([off.effort, off.autoEffort], ["high", undefined]);
+      const on = yield* orchestrator.switchModel(lead.id, { model: "opus", autoEffort: true });
+      assert.deepStrictEqual([on.effort, on.autoEffort], ["high", true]);
     }).pipe(Effect.provide(testLayer([fake.adapter], { models, decider })), Effect.scoped);
   });
 

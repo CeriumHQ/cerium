@@ -573,9 +573,7 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
                 : `Kept ${level}`}
           </span>
           {routed.kept === undefined ? null : <span className="text-fg-secondary">{keptReason(routed)}</span>}
-          {fellBack(routed) ? (
-            <span className="text-fg-tertiary">Set the fallback in Settings → Agents</span>
-          ) : null}
+          {fellBack(routed) ? <span className="text-fg-tertiary">The level picked beside Auto</span> : null}
           {facts.length > 0 ? (
             <span className="text-fg-tertiary tabular-nums">{facts.join(" · ")}</span>
           ) : null}

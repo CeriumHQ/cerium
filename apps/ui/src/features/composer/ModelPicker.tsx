@@ -19,7 +19,6 @@ import {
   chipClass,
   chipEffortLabel,
   EffortRow,
-  effortSteps,
   offersChoice,
   offersSpeed,
   SpeedMark,
@@ -390,7 +389,7 @@ function MenuPopup({
     // Alt and left or right steps the effort, wherever the search's caret is.
     if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight") && offersChoice(effort)) {
       event.preventDefault();
-      const steps = effortSteps(effort);
+      const steps = effort.levels;
       const at = steps.indexOf(effort.value) + (event.key === "ArrowLeft" ? -1 : 1);
       const next = steps[Math.max(0, Math.min(steps.length - 1, at))];
       if (next !== undefined && next !== effort.value) effort.onPick(next);

@@ -232,6 +232,11 @@ interface Runtime {
   turnToolErrors: number;
   turnStopReason: string | undefined;
   effortDecision: EffortRouted | undefined;
+  /**
+   * On Auto, the level the effort router runs its turns at, in place of the level picked for it
+   * (`info.effort`), which stays the one it falls back to.
+   */
+  routedEffort: ReasoningEffort | undefined;
   readonly turnFiles: Set<string>;
   /**
    * The provider's message last stored with one of its events. A message makes several events (an
@@ -1414,7 +1419,12 @@ export class Orchestrator extends Context.Service<
        */
       const applyModel = (rt: Runtime, session: AgentSession) =>
         Effect.gen(function* () {
-          const wanted = choiceOf(rt.info);
+          // On Auto, the level the router set for this turn stands in for the one picked.
+          const wantedOf = (): ModelChoice => ({
+            ...choiceOf(rt.info),
+            ...(rt.routedEffort === undefined ? {} : { effort: rt.routedEffort }),
+          });
+          const wanted = wantedOf();
           const switched = Effect.gen(function* () {
             if (wanted.model !== rt.applied.model) {
               yield* session
@@ -1444,7 +1454,7 @@ export class Orchestrator extends Context.Service<
               Effect.gen(function* () {
                 yield* emit(rt, { _tag: "AgentError", kind: "unknown", message, retryable: false });
                 // A pick made while this one was being applied stands, for the next turn to try.
-                const now = choiceOf(rt.info);
+                const now = wantedOf();
                 if (
                   now.model === wanted.model &&
                   now.effort === wanted.effort &&
@@ -1452,6 +1462,10 @@ export class Orchestrator extends Context.Service<
                 ) {
                   yield* recordModel(rt.info, rt, {
                     ...rt.applied,
+                    // A level the router set was never the user's pick, which stays as it was.
+                    ...(rt.routedEffort !== undefined && rt.info.effort !== undefined
+                      ? { effort: rt.info.effort }
+                      : {}),
                     ...(rt.info.autoEffort ? { autoEffort: true } : {}),
                   });
                 }
@@ -1495,13 +1509,14 @@ export class Orchestrator extends Context.Service<
       /**
        * On an agent set to Auto, the effort router picks the effort of the turn about to start, and
        * the thread records what it decided. A model that starts its prompt cache over when effort
-       * changes is routed only on a new session's first turn. Where the decision model can't decide,
-       * the turn runs at the user's fallback level; whatever else goes wrong, it keeps its level and
-       * goes ahead.
+       * changes is routed only on a new session's first turn. The level picked for the agent is the
+       * one it falls back to where the decision model can't decide; the router's levels hold for its
+       * session only. Whatever else goes wrong, the turn runs at the picked level and goes ahead.
        */
       const routeEffort = (rt: Runtime, items: readonly [InputItem, ...Array<InputItem>]) =>
         Effect.gen(function* () {
           rt.effortDecision = undefined;
+          rt.routedEffort = undefined;
           if (rt.info.autoEffort !== true || !(yield* routerOn)) return;
           const models = yield* (catalog.models ?? Effect.succeed([])).pipe(
             Effect.timeoutOption("3 seconds"),
@@ -1514,24 +1529,21 @@ export class Orchestrator extends Context.Service<
           // Nothing to pick between.
           if (model === undefined || lowest === undefined || higher.length === 0) return;
           const levels = [lowest, ...higher] as const;
-          const current = rt.info.effort ?? model.defaultEffort;
-          // Where the router can't decide, the turn runs at the user's fallback, as near as the model has.
-          const fallback = supportedLevel(levels, (yield* settings.get).effortRouter.fallback);
-          /** The turn runs at `effort`, which the agent keeps until the router picks another. */
+          // The level its session runs at: the last turn's.
+          const current = rt.applied.effort ?? rt.info.effort ?? model.defaultEffort;
+          // Where the router can't decide, the turn runs at the level picked for the agent, as near as
+          // the model has.
+          const fallback = supportedLevel(levels, rt.info.effort ?? model.defaultEffort ?? "high");
+          /** The turn runs at `effort`, for this turn only; the picked level stays as it is. */
           const runAt = (effort: ReasoningEffort, decision: Omit<EffortRouted, "_tag" | "effort">) =>
-            Effect.gen(function* () {
-              if (effort !== rt.info.effort) {
-                const updatedAt = yield* Clock.currentTimeMillis;
-                yield* store
-                  .updateAgent(rt.info.id, { effort, updatedAt })
-                  .pipe(Effect.mapError(unavailable));
-                rt.info = { ...rt.info, effort, updatedAt };
-              }
+            Effect.sync(() => {
+              rt.routedEffort = effort;
               rt.effortDecision = { _tag: "EffortRouted", effort, ...decision };
             });
           const fallBack = (kept: "timeout" | "failed", extra: Partial<EffortRouted>) =>
             runAt(fallback, { kept, baselineEffort: fallback, ...extra });
           if (model.cacheSafeEffort !== true && !rt.fresh) {
+            if (current !== undefined && levels.includes(current)) rt.routedEffort = current;
             rt.effortDecision = {
               _tag: "EffortRouted",
               ...(current ? { effort: current } : {}),
@@ -1858,6 +1870,7 @@ export class Orchestrator extends Context.Service<
             turnToolErrors: 0,
             turnStopReason: undefined,
             effortDecision: undefined,
+            routedEffort: undefined,
             turnFiles: new Set(),
             storedRaw: undefined,
           };
@@ -1998,7 +2011,10 @@ export class Orchestrator extends Context.Service<
           const { children } = (yield* settings.get).effortRouter;
           const follows = request.effort === undefined && lead.info.autoEffort === true && (yield* routerOn);
           const autoEffort = follows && children === "router";
-          const effort = follows && children === "lead" ? (lead.info.effort ?? target.effort) : target.effort;
+          const effort =
+            follows && children === "lead"
+              ? (lead.routedEffort ?? lead.info.effort ?? target.effort)
+              : target.effort;
           const child: AgentInfo = {
             id: (yield* makeId("agt")) as AgentId,
             threadId: lead.info.threadId,
@@ -3128,9 +3144,8 @@ export class Orchestrator extends Context.Service<
               // No effort for the same model keeps the one it has, which its session also keeps.
               const { effort, model } =
                 picked.effort === undefined && picked.model === current.model ? current : picked;
-              // Picking an effort takes the agent off Auto; otherwise it stays as it is.
-              const autoEffort =
-                picked.autoEffort ?? (picked.effort === undefined && current.autoEffort === true);
+              // Auto stays as it is unless named: on it, a picked effort is the one it falls back to.
+              const autoEffort = picked.autoEffort ?? current.autoEffort === true;
               // Likewise no speed for the same model keeps its speed, as a client before speeds asks.
               const speed =
                 picked.speed === undefined && picked.model === current.model ? current.speed : picked.speed;

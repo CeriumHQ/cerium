@@ -1,6 +1,11 @@
 import { Button } from "@base-ui/react/button";
 import { Select as BaseSelect } from "@base-ui/react/select";
-import { OFFERED_PROVIDERS, type ProviderId, type ThreadOverview } from "@cerium/protocol";
+import {
+  OFFERED_PROVIDERS,
+  type ProviderId,
+  type ReasoningEffort,
+  type ThreadOverview,
+} from "@cerium/protocol";
 import type { AutomationRun, AutomationView } from "@cerium/rpc";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -364,12 +369,10 @@ export function AutomationDetail({
 
   const model = pickModel(models, shownDraft.model ?? "", available);
   const limit = accessLimit(harnesses, model ? [model] : []);
-  const effort: EffortPick | undefined =
-    model === undefined || model.efforts.length === 0
-      ? undefined
-      : shownDraft.autoEffort && routerOn
-        ? "auto"
-        : effortFor(model, shownDraft.effort);
+  const level =
+    model === undefined || model.efforts.length === 0 ? undefined : effortFor(model, shownDraft.effort);
+  const auto = shownDraft.autoEffort === true && routerOn;
+  const effort: EffortPick | undefined = level === undefined ? undefined : auto ? "auto" : level;
   const worktrees = branch !== undefined;
   const result = inputOf({ ...shownDraft, worktree: shownDraft.worktree && worktrees }, model);
   const dirty = edited(shownDraft, view?.automation);
@@ -575,16 +578,15 @@ export function AutomationDetail({
                 }
                 providers={OFFERED_PROVIDERS}
                 available={available}
-                {...(model !== undefined && effort !== undefined
+                {...(model !== undefined && level !== undefined && effort !== undefined
                   ? {
                       effort: {
                         levels: model.efforts,
-                        value: effort,
-                        auto: routerOn,
-                        onPick: (picked: EffortPick) =>
-                          edit(
-                            picked === "auto" ? { autoEffort: true } : { effort: picked, autoEffort: false },
-                          ),
+                        value: level,
+                        onPick: (picked: ReasoningEffort) => edit({ effort: picked }),
+                        ...(routerOn
+                          ? { auto: { on: auto, onToggle: (on: boolean) => edit({ autoEffort: on }) } }
+                          : {}),
                       },
                       effortShown: effort,
                     }

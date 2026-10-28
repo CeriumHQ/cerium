@@ -524,10 +524,10 @@ export function Composer({
     setDefaultModel(value);
     pickForDraft({ model: value });
   };
-  /** A level picked by hand, which takes the draft off Auto. */
+  /** A level picked by hand: on Auto, the one the thread falls back to. */
   const setEffort = (value: ReasoningEffort) => {
     setDefaultEffort(value);
-    pickForDraft({ effort: value, ...(routerOn ? { autoEffort: false } : {}) });
+    pickForDraft({ effort: value });
   };
   const setSpeed = (value: ModelSpeed) => {
     setDefaultSpeed(value);
@@ -988,14 +988,17 @@ export function Composer({
     threadModel && threadEffort && switchesEffort
       ? {
           levels: threadModel.efforts,
-          value: threadAuto ? "auto" : threadEffort,
-          auto: routerOn,
-          onPick: (next) =>
-            switchLead(
-              next === "auto"
-                ? { model: threadModel.id, autoEffort: true }
-                : { model: threadModel.id, effort: next, ...(threadAuto ? { autoEffort: false } : {}) },
-            ),
+          value: threadEffort,
+          onPick: (next) => switchLead({ model: threadModel.id, effort: next, autoEffort: threadAuto }),
+          ...(routerOn
+            ? {
+                auto: {
+                  on: threadAuto,
+                  onToggle: (on: boolean) =>
+                    switchLead({ model: threadModel.id, effort: threadEffort, autoEffort: on }),
+                },
+              }
+            : {}),
         }
       : undefined;
   // A speed picked keeps the lead's effort, and Auto.
@@ -1072,7 +1075,7 @@ export function Composer({
       )
     ) : null;
 
-  // A new thread's model and effort, the same chip; a level picked by hand takes it off Auto.
+  // A new thread's model and effort, the same chip; on Auto, the level picked is its fallback.
   const newEffortShown: EffortPick | undefined = activeEffort
     ? autoEffort
       ? "auto"
@@ -1081,9 +1084,11 @@ export function Composer({
   const newEffortChoice: EffortChoice | undefined = activeEffort
     ? {
         levels: efforts,
-        value: autoEffort ? "auto" : activeEffort,
-        auto: routerOn,
-        onPick: (next) => (next === "auto" ? pickForDraft({ autoEffort: true }) : setEffort(next)),
+        value: activeEffort,
+        onPick: setEffort,
+        ...(routerOn
+          ? { auto: { on: autoEffort, onToggle: (on: boolean) => pickForDraft({ autoEffort: on }) } }
+          : {}),
       }
     : undefined;
   const newSpeedChoice: SpeedChoice = { speeds, value: activeSpeed ?? "standard", onPick: setSpeed };
