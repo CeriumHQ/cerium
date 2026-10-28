@@ -7,6 +7,7 @@ import {
   Brain,
   Check,
   ChevronRight,
+  Clock,
   CornerDownRight,
   FoldVertical,
   Pencil,
@@ -189,6 +190,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
     item._tag === "ChildFinishedTurn" ? "finished" : item._tag === "FromAgent" ? "wrote" : "notice";
   const text = item.text.trim();
   const preview = previewLine(text);
+  const waiting = block.waiting ? <WaitingMark /> : null;
 
   // A one-liner reads best as it is; anything longer folds behind its first line.
   if (preview === text) {
@@ -198,6 +200,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
         <p className="min-w-0 text-fg-tertiary select-text">
           <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}
         </p>
+        {waiting}
       </MessageMenuArea>
     );
   }
@@ -205,17 +208,20 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   return (
     <MessageMenuArea text={text}>
       <Collapsible.Root>
-        <Collapsible.Trigger className="group flex w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
-          <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
-          <span className="shrink-0">
-            <span className="font-medium text-fg-secondary">{from}</span> {verb}
-          </span>
-          <span className="min-w-0 truncate group-data-panel-open:hidden">{preview}</span>
-          <ChevronRight
-            size={13}
-            className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
-          />
-        </Collapsible.Trigger>
+        <div className="flex items-center gap-2">
+          <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
+            <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
+            <span className="shrink-0">
+              <span className="font-medium text-fg-secondary">{from}</span> {verb}
+            </span>
+            <span className="min-w-0 truncate group-data-panel-open:hidden">{preview}</span>
+            <ChevronRight
+              size={13}
+              className="shrink-0 transition-transform duration-200 group-data-panel-open:rotate-90"
+            />
+          </Collapsible.Trigger>
+          {waiting}
+        </div>
         <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
           <div className="mt-2 ml-[5.5px] border-l border-line-strong pl-[14px] select-text">
             <Markdown text={text} streaming={false} compact />
@@ -223,6 +229,21 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
         </Collapsible.Panel>
       </Collapsible.Root>
     </MessageMenuArea>
+  );
+}
+
+/** Another thread's message the agent reads with its next turn: it started none of its own. */
+function WaitingMark() {
+  return (
+    <Tooltip label="Read with the agent's next turn" side="top">
+      <button
+        type="button"
+        className="mt-px inline-flex h-[18px] shrink-0 cursor-default items-center gap-1 self-start rounded-full border border-line-subtle px-1.5 text-caption text-fg-tertiary"
+      >
+        <Clock size={11} strokeWidth={1.75} />
+        Waiting
+      </button>
+    </Tooltip>
   );
 }
 

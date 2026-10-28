@@ -209,7 +209,10 @@ export function Transcript({
   }, [spawned]);
   // Messages waiting for the agent's session read as sent, with its progress below them. Ones that
   // wait behind a running turn, or for an ended agent to start again, wait in the message box.
-  const shown = holdsQueue(queued, activity) ? blocks : [...blocks, ...queued.messages];
+  // Other threads' messages for its next turn show where they came in.
+  const shown = holdsQueue(queued, activity)
+    ? [...blocks, ...queued.held]
+    : [...blocks, ...queued.held, ...queued.messages];
   const { viewport, following, toEnd } = useStickToBottom(
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );

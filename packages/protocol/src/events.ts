@@ -291,6 +291,16 @@ export const FromUser = Schema.TaggedStruct("FromUser", {
 });
 export type FromUser = typeof FromUser.Type;
 
+/** A message another agent sent with `send_message`, or the advisor's answer. */
+export const FromAgent = Schema.TaggedStruct("FromAgent", {
+  /** Given when Cerium holds the message, so its `TurnInput` can be matched to its `MessageHeld`. */
+  id: Schema.optionalKey(Schema.NonEmptyString),
+  agentId: AgentId,
+  threadId: ThreadId,
+  text: Schema.String,
+});
+export type FromAgent = typeof FromAgent.Type;
+
 /** Something Cerium delivered to an agent as the start of a turn. */
 export const InputItem = Schema.Union([
   FromUser,
@@ -300,11 +310,7 @@ export const InputItem = Schema.Union([
     /** The child's final message of the turn, truncated to the delivery size cap. */
     text: Schema.String,
   }),
-  Schema.TaggedStruct("FromAgent", {
-    agentId: AgentId,
-    threadId: ThreadId,
-    text: Schema.String,
-  }),
+  FromAgent,
   Schema.TaggedStruct("SystemNotice", {
     text: Schema.String,
     /** The question whose answer this notice tells the agent; the thread shows the answer on the question. */
@@ -412,6 +418,14 @@ export const MessageQueued = Schema.TaggedStruct("MessageQueued", {
 /** The user took back a queued message before the agent took it; no turn delivers it. */
 export const MessageWithdrawn = Schema.TaggedStruct("MessageWithdrawn", {
   messageId: Schema.NonEmptyString,
+});
+
+/**
+ * Another thread's lead's message, recorded the moment Cerium takes it. It waits for this lead's next
+ * turn, whatever starts it, instead of starting one; the `TurnInput` that delivers it carries the same id.
+ */
+export const MessageHeld = Schema.TaggedStruct("MessageHeld", {
+  message: FromAgent,
 });
 
 export const AgentSpawned = Schema.TaggedStruct("AgentSpawned", {
@@ -567,6 +581,7 @@ export const EventPayload = Schema.Union([
   FilesRestored,
   MessageQueued,
   MessageWithdrawn,
+  MessageHeld,
   AgentSpawned,
   AgentStateChanged,
   ModelChanged,

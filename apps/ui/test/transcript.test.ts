@@ -177,6 +177,7 @@ describe("queuedMessages", () => {
     expect(queuedMessages(waiting)).toEqual({
       messages: [{ kind: "user", id: "msg_1", text: "Fix the build", attachments: [], mentions: [] }],
       behindTurn: false,
+      held: [],
     });
     expect(buildTranscript(waiting)).toEqual([]);
 
@@ -212,6 +213,32 @@ describe("queuedMessages", () => {
       { _tag: "MessageQueued", message: second },
     );
     expect(queuedMessages(afterTurn).behindTurn).toBe(false);
+  });
+
+  it("shows another thread's message as waiting until a turn delivers it, once", () => {
+    const headsUp = {
+      _tag: "FromAgent",
+      id: "msg_3",
+      agentId: "other" as AgentId,
+      threadId: "elsewhere" as ThreadId,
+      text: "I'm editing notes.md",
+    } as const;
+    const waiting = events({ _tag: "MessageHeld", message: headsUp });
+    expect(queuedMessages(waiting).held).toEqual([
+      { kind: "notice", id: "msg_3", item: headsUp, waiting: true },
+    ]);
+    expect(buildTranscript(waiting)).toEqual([]);
+
+    const delivered = events(
+      { _tag: "MessageHeld", message: headsUp },
+      { _tag: "TurnInput", items: [headsUp, first] },
+    );
+    expect(queuedMessages(delivered).held).toEqual([]);
+    expect(buildTranscript(delivered)).toMatchObject([
+      { kind: "notice", item: { id: "msg_3" } },
+      { kind: "user", id: "msg_1" },
+    ]);
+    expect(buildTranscript(delivered)[0]).not.toHaveProperty("waiting");
   });
 });
 
