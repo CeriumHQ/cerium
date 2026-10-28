@@ -65,6 +65,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- The website's download buttons gave out the newest nightly instead of the newest stable release: every nightly deployed the relay, and the relay's `/download` redirects named whichever version deployed last. They now always name the newest stable release (found from the repository's releases at deploy time, or GitHub's latest-release page if none can be read). The README's release badge and Download links follow the latest stable release too, and its install notes, the downloads page and `SECURITY.md` describe nightlies as an opt-in channel for trying changes early.
+
 - The website leads a phone to the web app. On a phone or tablet, the home page's main buttons say "Open the web app" and open `/app/`, where they offered the Windows installer, and the top bar of the home and privacy pages keeps its Web app link on a narrow screen instead of hiding it; on the narrowest phones the bar shows Cerium's mark without its name so the link fits beside Download. `/downloads/` still offers the builds.
 - A thread's Preview page no longer shows over Settings, Tasks, GitHub or Automations: the page, which sits over the window in a view of its own, now leaves the moment its thread's view is covered, and steps aside for a side panel floating over the thread.
 - On a phone, the rail's usage rings no longer run off the bottom edge (at 320 px only the first showed): when the places and the rings can't share the row, the rings stack above the places; held sideways they still share it.
