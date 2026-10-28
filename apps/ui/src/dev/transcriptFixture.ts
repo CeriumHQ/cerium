@@ -60,8 +60,8 @@ const testRun = [
   "✓ login > stores the session cookie [12.40ms]",
   "✗ login > reads the refreshed session [31.02ms]",
   "  expect(received).toBe(expected)",
-  "  Expected: \"tok_b81\"",
-  "  Received: \"tok_a07\"",
+  '  Expected: "tok_b81"',
+  '  Received: "tok_a07"',
   "      at <anonymous> (src/auth/auth.spec.ts:38:27)",
   "✓ logout > clears the cookie [3.11ms]",
   "",
@@ -168,7 +168,12 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     model: "Muse Spark 1.3",
     access: "readOnly",
   }),
-  ...tool("c3", "Read", { file_path: "src/auth/auth.spec.ts" }, "     1\timport { login } from './login';\n     2\t…84 lines…"),
+  ...tool(
+    "c3",
+    "Read",
+    { file_path: "src/auth/auth.spec.ts" },
+    "     1\timport { login } from './login';\n     2\t…84 lines…",
+  ),
   ...tool(
     "c4",
     "Grep",
@@ -272,7 +277,13 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     { owner: "acme", repo: "web", state: "open" },
     '[{"number":412,"title":"Restyle the login form"},{"number":418,"title":"Narrow OAuth scopes"}]',
   ),
-  ...tool("c10", "Bash", { command: "git push origin HEAD" }, "fatal: no upstream configured for branch 'fix/session-race'", true),
+  ...tool(
+    "c10",
+    "Bash",
+    { command: "git push origin HEAD" },
+    "fatal: no upstream configured for branch 'fix/session-race'",
+    true,
+  ),
   event({ _tag: "MessageCompleted", messageId: "m3:1", text: explanation }),
   event({
     _tag: "TurnFilesChanged",
@@ -292,7 +303,8 @@ export const transcriptFixture: ReadonlyArray<AgentEvent> = [
     trigger: "auto",
     tokensBefore: 182_000,
     tokensAfter: 21_400,
-    summary: "The user asked to fix a flaky login test. The cause was an un-awaited cookie write in `refreshSession()`; it is fixed and passes 20 reruns locally.",
+    summary:
+      "The user asked to fix a flaky login test. The cause was an un-awaited cookie write in `refreshSession()`; it is fixed and passes 20 reruns locally.",
   }),
   event({ _tag: "ModelChanged", model: "Opus 5.5", effort: "medium" }),
   event({

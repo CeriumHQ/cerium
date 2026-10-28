@@ -1,218 +1,293 @@
 /*
- * Agent markdown, rendered by Streamdown, sized for a 14px conversation column. Streamdown's own
- * utilities are written for documents (30px headings, boxed code and tables), so these rules restyle
- * its parts through the `data-streamdown` attributes it puts on each one. They stay unlayered so they
- * win over those utilities.
+ * Agent markdown (features/transcript/Markdown.tsx), set for a conversation column: prose at the
+ * reading size, the work it shows (code, tables) set into the column, and colour only where it means
+ * something (an alert's kind, a diff's lines). The elements are Cerium's own components; these rules
+ * lay out the prose between them. They sit in the components layer, so a component's own utilities
+ * still win.
  */
 
-[data-streamdown^="heading-"] {
-  margin-block: 1.25rem 0;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.35;
-  color: var(--fg-primary);
-}
-[data-streamdown="heading-1"] {
-  font-size: 18px;
-}
-[data-streamdown="heading-2"] {
-  font-size: 16px;
-}
-[data-streamdown="heading-3"] {
-  font-size: 14px;
-}
-[data-streamdown="heading-4"],
-[data-streamdown="heading-5"],
-[data-streamdown="heading-6"] {
-  font-size: 14px;
-  color: var(--fg-secondary);
-}
-/* A heading reads as the start of what follows it. */
-[data-streamdown^="heading-"] + :not([data-streamdown^="heading-"]) {
-  margin-top: 0.375rem;
-}
-[data-streamdown^="heading-"]:first-child {
-  margin-top: 0;
-}
-:is([data-streamdown="code-block"], [data-streamdown="table-wrapper"], [data-artifact]):first-child {
-  margin-top: 0;
-}
+@layer components {
+  .md {
+    --md-gap: 0.85em;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--fg-primary);
+    overflow-wrap: break-word;
+  }
+  /* Markdown inside another block: a child agent's report, a thought, a compaction's summary. */
+  .md-compact {
+    --md-gap: 0.7em;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--fg-secondary);
+  }
 
-[data-streamdown="unordered-list"],
-[data-streamdown="ordered-list"] {
-  list-style-position: outside;
-  padding-left: 1.25em;
-}
-[data-streamdown="list-item"] {
-  padding-block: 0.125rem;
-}
-[data-streamdown="list-item"]::marker {
-  color: var(--fg-tertiary);
-}
-[data-streamdown="list-item"] > :is([data-streamdown="unordered-list"], [data-streamdown="ordered-list"]) {
-  margin-top: 0.125rem;
-  padding-left: 1.25em;
-}
+  .md > * + * {
+    margin-top: var(--md-gap);
+  }
+  .md :where(li) > :where(p + *, ul, ol) {
+    margin-top: 0.35em;
+  }
 
-[data-streamdown="blockquote"] {
-  margin-bottom: 0;
-  border-left: 2px solid var(--line-strong);
-  padding-left: 0.875rem;
-  font-style: normal;
-  color: var(--fg-secondary);
-}
+  /* Headings rank by weight first and size a little: a reply's sections, not a document's chapters. */
+  .md :where(h1, h2, h3, h4, h5, h6) {
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.008em;
+    color: var(--fg-primary);
+    text-wrap: balance;
+  }
+  .md :where(h1) {
+    font-size: 1.3em;
+  }
+  .md :where(h2) {
+    font-size: 1.14em;
+  }
+  .md :where(h3, h4, h5, h6) {
+    font-size: 1em;
+  }
+  .md :where(h4, h5, h6) {
+    color: var(--fg-secondary);
+  }
+  .md > :where(* + h1, * + h2, * + h3, * + h4, * + h5, * + h6) {
+    margin-top: 1.6em;
+  }
+  /* A heading reads as the start of what follows it. */
+  .md > :where(h1, h2, h3, h4, h5, h6) + * {
+    margin-top: 0.4em;
+  }
 
-[data-streamdown="horizontal-rule"] {
-  margin-block: 1.25rem 0;
-  border-color: var(--line-subtle);
-}
+  .md :where(strong) {
+    font-weight: 600;
+    color: var(--fg-primary);
+  }
+  .md :where(del) {
+    color: var(--fg-tertiary);
+  }
+  .md :where(p) {
+    text-wrap: pretty;
+  }
 
-[data-streamdown="link"] {
-  font-weight: inherit;
-  color: var(--fg-primary);
-  text-decoration-color: var(--fg-tertiary);
-  text-underline-offset: 3px;
-  transition: text-decoration-color 150ms;
-}
-[data-streamdown="link"]:hover {
-  text-decoration-color: var(--fg-primary);
-}
+  .md :where([data-md="link"]) {
+    color: var(--fg-primary);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in oklab, var(--fg-tertiary) 70%, transparent);
+    text-underline-offset: 0.22em;
+    transition: text-decoration-color 150ms;
+  }
+  .md :where(a[data-md="link"]:hover) {
+    text-decoration-color: var(--fg-primary);
+  }
+  /* A link with nowhere it can open: its address is in the message menu. */
+  .md :where([data-md="link"][data-dead]) {
+    text-decoration-style: dotted;
+  }
 
-/* Inline code sits at the text's size: monospace at full size towers over the words around it. */
-[data-streamdown="inline-code"] {
-  border: 1px solid var(--line-subtle);
-  border-radius: 0.3125rem;
-  background: var(--surface-hover);
-  padding: 0.0625rem 0.3125rem;
-  font-size: 0.857em;
-}
+  /* Inline code at the text's own size: monospace at full size towers over the words around it. */
+  :where([data-md="inline-code"]) {
+    border-radius: 0.3125rem;
+    background: color-mix(in oklab, var(--fg-primary) 8%, transparent);
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--fg-primary);
+  }
 
-/* Code blocks: one recessed card, the language and copy button in a slim header. */
-[data-streamdown="code-block"] {
-  gap: 0;
-  margin-block: 1rem 0;
-  overflow: hidden;
-  border: 1px solid var(--line-subtle);
-  border-radius: 0.625rem;
-  background: var(--surface-sunken);
-  padding: 0;
-}
-[data-streamdown="code-block-header"] {
-  height: 2rem;
-  border-bottom: 1px solid var(--line-subtle);
-  padding-inline: 0.75rem;
-  font-size: 11px;
-  color: var(--fg-tertiary);
-}
-[data-streamdown="code-block-header"] > span {
-  margin-left: 0;
-}
-[data-streamdown="code-block"] > :has(> [data-streamdown="code-block-actions"]) {
-  top: 0.25rem;
-  right: 0.375rem;
-}
-[data-streamdown="code-block-actions"] {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  backdrop-filter: none;
-}
-[data-streamdown="code-block-actions"] button {
-  border-radius: 0.375rem;
-  color: var(--fg-tertiary);
-}
-[data-streamdown="code-block-actions"] button:hover {
-  background: var(--surface-hover);
-  color: var(--fg-primary);
-}
-[data-streamdown="code-block-body"] {
-  /* A long listing scrolls in place rather than pushing the conversation a screen down. */
-  max-height: 32rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0.625rem 0.875rem;
-  font-size: 12px;
-  line-height: 1.6;
-}
-/* A fence with no language has nothing for a header to say: the copy button floats over its corner
-   while the block is hovered or focused, and always on touch screens. */
-[data-streamdown="code-block"][data-language=""] > [data-streamdown="code-block-header"] {
-  display: none;
-}
-[data-streamdown="code-block"][data-language=""] > :has(> [data-streamdown="code-block-actions"]) {
-  opacity: 0;
-  transition: opacity 150ms;
-}
-[data-streamdown="code-block"][data-language=""]:is(:hover, :focus-within)
-  > :has(> [data-streamdown="code-block-actions"]) {
-  opacity: 1;
-}
-@media (pointer: coarse) {
-  [data-streamdown="code-block"][data-language=""] > :has(> [data-streamdown="code-block-actions"]) {
-    opacity: 1;
+  .md :where(ul, ol) {
+    padding-left: 1.35em;
+  }
+  .md :where(ul) {
+    list-style-type: disc;
+  }
+  .md :where(ul ul) {
+    list-style-type: circle;
+  }
+  .md :where(ol) {
+    list-style-type: decimal;
+  }
+  .md :where(li + li) {
+    margin-top: 0.3em;
+  }
+  .md :where(li)::marker {
+    color: var(--fg-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Task lists: the box is the marker. */
+  .md :where(li.task-list-item) {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    margin-left: -1.35em;
+    list-style: none;
+  }
+  .md :where(li.task-list-item) > [data-md="task"] {
+    translate: 0 0.15em;
+  }
+  .md :where(li.task-list-item:has(> [data-md="task"][data-done])) {
+    color: var(--fg-secondary);
+  }
+
+  .md :where(blockquote) {
+    border-left: 2px solid var(--line-strong);
+    padding-left: 0.9em;
+    color: var(--fg-secondary);
+  }
+  .md :where(blockquote) > * + * {
+    margin-top: 0.5em;
+  }
+
+  /* GitHub's alerts (`> [!NOTE]`), in the hue of what they say. */
+  .md :where([data-md="alert"]) {
+    --alert: var(--status-running);
+    --alert-text: var(--status-running-text);
+    border: 1px solid color-mix(in oklab, var(--alert) 24%, transparent);
+    border-radius: 0.625rem;
+    background: color-mix(in oklab, var(--alert) 7%, transparent);
+    padding: 0.65em 0.95em 0.75em;
+  }
+  .md :where([data-md="alert"]) > * + * {
+    margin-top: 0.4em;
+  }
+  .md :where([data-alert="tip"]) {
+    --alert: var(--status-success);
+    --alert-text: var(--status-success-text);
+  }
+  .md :where([data-alert="important"]) {
+    --alert: var(--status-merged);
+    --alert-text: var(--status-merged);
+  }
+  .md :where([data-alert="warning"]) {
+    --alert: var(--status-attention);
+    --alert-text: var(--status-attention-text);
+  }
+  .md :where([data-alert="caution"]) {
+    --alert: var(--status-error);
+    --alert-text: var(--status-error-text);
+  }
+  .md :where([data-md="alert-title"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    font-size: 0.93em;
+    font-weight: 600;
+    color: var(--alert-text);
+  }
+
+  .md :where(hr) {
+    margin-block: 1.6em;
+    border: 0;
+    border-top: 1px solid var(--line-subtle);
+  }
+  .md > :where(hr) + * {
+    margin-top: 0;
+  }
+
+  /* Code blocks: one recessed card, its language and copy button above the code. */
+  .md :where([data-md="code-block"]) {
+    overflow: hidden;
+    border: 1px solid var(--line-subtle);
+    border-radius: 0.625rem;
+    background: var(--surface-sunken);
+  }
+  .md :where(:not([data-md="code-block"]) + [data-md="code-block"], [data-md="code-block"] + *) {
+    margin-top: calc(var(--md-gap) * 1.25);
+  }
+
+  /* Tables: rows ruled lightly, the header set apart by its weight and a firmer rule. */
+  .md :where([data-md="table"] table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.93em;
+    font-variant-numeric: tabular-nums;
+  }
+  .md :where([data-md="table"] th) {
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.45em 1em 0.5em 0;
+    text-align: left;
+    font-size: 0.93em;
+    font-weight: 500;
+    color: var(--fg-secondary);
+    white-space: nowrap;
+  }
+  .md :where([data-md="table"] td) {
+    border-bottom: 1px solid var(--line-subtle);
+    padding: 0.5em 1em 0.5em 0;
+    vertical-align: top;
+  }
+  .md :where([data-md="table"] :is(th, td):last-child) {
+    padding-right: 0;
+  }
+  .md :where([data-md="table"] tr:last-child td) {
+    border-bottom: 0;
+  }
+
+  .md :where([data-md="image"]) {
+    max-width: 100%;
+    max-height: 28rem;
+    border: 1px solid var(--line-subtle);
+    border-radius: 0.625rem;
+  }
+
+  .md :where(kbd) {
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 0.3125rem;
+    padding: 0 0.35em;
+    font-family: var(--font-sans);
+    font-size: 0.86em;
+  }
+
+  /* Footnotes: the notes under a reply, a step quieter than it. */
+  .md :where(section.footnotes) {
+    border-top: 1px solid var(--line-subtle);
+    padding-top: 0.75em;
+    font-size: 0.9em;
+    color: var(--fg-secondary);
+  }
+  .md :where(section.footnotes h2) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .md :where(sup a) {
+    color: var(--fg-tertiary);
+    text-decoration: none;
   }
 }
-[data-streamdown="code-block"][data-language=""] [data-streamdown="code-block-actions"] {
-  border-radius: 0.375rem;
-  background: var(--surface-overlay);
+
+/*
+ * A word an agent just wrote: it comes out of a blur, lit for a moment as it lands, and cools to the
+ * text's own colour, so the edge where the agent is writing glows faintly as it moves along.
+ */
+.ink {
+  animation: ink 620ms var(--ease-out-soft) both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
-/* Tables: one card with a tinted header row; the copy and fullscreen controls appear on hover. */
-[data-streamdown="table-wrapper"] {
-  position: relative;
-  gap: 0;
-  margin-block: 1rem 0;
-  overflow: hidden;
-  border: 1px solid var(--line-subtle);
-  border-radius: 0.625rem;
-  background: transparent;
-  padding: 0;
-}
-[data-streamdown="table-wrapper"] > :first-child:not(:has(table)) {
-  position: absolute;
-  top: 0.3125rem;
-  right: 0.375rem;
-  z-index: 1;
-  border-radius: 0.375rem;
-  background: var(--surface-overlay);
-  opacity: 0;
-  transition: opacity 150ms;
-}
-[data-streamdown="table-wrapper"]:is(:hover, :focus-within) > :first-child:not(:has(table)) {
-  opacity: 1;
-}
-[data-streamdown="table-wrapper"] > :has(> table) {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-[data-streamdown="table-header"] {
-  background: var(--surface-hover);
-}
-[data-streamdown="table-header-cell"] {
-  padding: 0.4375rem 0.75rem;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fg-secondary);
-}
-[data-streamdown="table-cell"] {
-  padding: 0.4375rem 0.75rem;
-  font-size: 13px;
-}
-
-/* Task list items: the checkbox is the marker. */
-[data-streamdown="list-item"]:has(> input[type="checkbox"]) {
-  list-style: none;
-  margin-left: -1.25em;
-}
-[data-streamdown="list-item"] > input[type="checkbox"] {
-  margin-right: 0.5em;
-  accent-color: var(--fg-secondary);
+@keyframes ink {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+  }
+  35% {
+    opacity: 1;
+    filter: blur(0);
+    text-shadow: 0 0 10px color-mix(in oklab, var(--fg-primary) 45%, transparent);
+  }
+  to {
+    text-shadow: 0 0 10px transparent;
+  }
 }
 
 /* Thin, quiet scrollbars on blocks that scroll inside the conversation: code, tables, tool output. */
-:is([data-streamdown="code-block-body"], [data-streamdown="table-wrapper"] > :has(> table), .scroll-thin) {
+.scroll-thin {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }

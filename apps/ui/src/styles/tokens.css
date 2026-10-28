@@ -256,16 +256,6 @@
   --shadow-overlay: var(--shadow-overlay);
   --shadow-film: var(--shadow-film);
 
-  /* Names Streamdown's markdown components style with, mapped onto Cerium's tokens. */
-  --color-background: var(--surface-panel);
-  --color-foreground: var(--fg-primary);
-  --color-muted: var(--surface-hover);
-  --color-muted-foreground: var(--fg-tertiary);
-  --color-border: var(--line-subtle);
-  --color-sidebar: var(--surface-raised);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--accent-fg);
-
   --font-sans: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Red Hat Mono Variable", ui-monospace, "Cascadia Code", monospace;
   /* Set large and expanded, for the one question a new thread asks (app/EmptyThread.tsx). */

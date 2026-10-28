@@ -2,7 +2,7 @@ import type { Mention } from "@cerium/protocol";
 
 import { relativePath, resolvePath } from "./paths.ts";
 
-/** Marks a rendered link with its address, which Streamdown's own link button doesn't carry. */
+/** Marks a rendered link with its address, for the message menu's link items. */
 export const LINK_ATTRIBUTE = "data-link";
 
 export const copyText = (text: string) => void navigator.clipboard.writeText(text).catch(() => undefined);

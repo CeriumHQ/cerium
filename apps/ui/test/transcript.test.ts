@@ -157,7 +157,7 @@ describe("buildTranscript", () => {
   it("turns delivered inputs into user messages and notices, and closes turns with their usage", () => {
     const blocks = buildTranscript(transcriptFixture);
     const kinds = blocks.map((block) => block.kind);
-    expect(kinds[0]).toBe("user");
+    expect(kinds.slice(0, 2)).toEqual(["model", "user"]);
     expect(kinds.filter((kind) => kind === "notice")).toHaveLength(2);
     expect(kinds.filter((kind) => kind === "spawn")).toHaveLength(2);
     expect(blocks.find((block) => block.kind === "turnEnd")).toMatchObject({

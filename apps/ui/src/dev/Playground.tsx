@@ -23,7 +23,12 @@ const streamed = (characters: number): ReadonlyArray<AgentEvent> => {
   });
   return [
     at(1, { _tag: "PermissionResolved", requestId: "c11", decision: "allow", scope: "once" }),
-    at(2, { _tag: "ToolCallCompleted", callId: "c11", output: "branch 'fix/session-race' set up", isError: false }),
+    at(2, {
+      _tag: "ToolCallCompleted",
+      callId: "c11",
+      output: "branch 'fix/session-race' set up",
+      isError: false,
+    }),
     at(3, { _tag: "MessageDelta", messageId: "stream", text: explanation.slice(0, characters) }),
   ];
 };

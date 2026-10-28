@@ -5,13 +5,9 @@
 @import "@fontsource-variable/anybody/wdth.css";
 @import "./tokens.css";
 @import "./themes.css";
-@import "streamdown/styles.css";
 @import "./markdown.css";
 @import "./terminal.css";
 @import "./welcome.css";
-
-/* Streamdown renders agent markdown; Tailwind must see the classes it uses. */
-@source "../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -245,26 +241,6 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
 @keyframes fade-in {
   from {
     opacity: 0;
-  }
-}
-
-/*
- * A word an agent just wrote (Streamdown's `animated`, as `sd-ink`): it comes out of a blur, lit for a
- * moment as it lands, and cools to the text's own colour, so the edge where the agent is writing glows
- * faintly as it moves along.
- */
-@keyframes sd-ink {
-  from {
-    opacity: 0;
-    filter: blur(5px);
-  }
-  35% {
-    opacity: 1;
-    filter: blur(0);
-    text-shadow: 0 0 10px color-mix(in oklab, var(--fg-primary) 45%, transparent);
-  }
-  to {
-    text-shadow: 0 0 10px transparent;
   }
 }
 
