@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "@effect/vitest";
 
-import { palettes } from "../src/features/settings/palettes.ts";
+import { desktopPalette, palettes } from "../src/features/settings/palettes.ts";
 
 const themes = readFileSync(new URL("../src/styles/themes.css", import.meta.url), "utf8");
 
@@ -18,7 +18,7 @@ describe("palettes", () => {
   });
 
   // Cerium is the tokens' own defaults; every other palette tints them and recolours the accent.
-  it.each(palettes.filter((palette) => palette.id !== "cerium"))(
+  it.each([...palettes.filter((palette) => palette.id !== "cerium"), desktopPalette])(
     "$label sets its tint, and its accent in both modes",
     ({ id }) => {
       expect(block(`[data-palette="${id}"]`)).toContain("--tint-h:");
@@ -40,7 +40,7 @@ describe("palettes", () => {
   it("are all listed for Settings", () => {
     const styled = [...themes.matchAll(/\[data-palette="([\w-]+)"\] \{/g)].map((match) => match[1]);
     expect(new Set(styled)).toEqual(
-      new Set(palettes.map((palette) => palette.id).filter((id) => id !== "cerium")),
+      new Set([...palettes.map((palette) => palette.id).filter((id) => id !== "cerium"), desktopPalette.id]),
     );
   });
 });

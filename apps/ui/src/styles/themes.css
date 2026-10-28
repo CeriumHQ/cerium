@@ -92,6 +92,46 @@
   --syntax-parameter: oklch(0.5 0.07 80);
 }
 
+/* Forest: Waldglas, blown in the woods from beech ash. Moss-green glass and a leaf accent, with amber in the code. */
+[data-palette="forest"] {
+  --tint-h: 155;
+}
+
+[data-palette="forest"][data-theme="dark"] {
+  --tint-c: 0.024;
+  --glass-c: 0.065;
+
+  --accent: oklch(0.8 0.14 152);
+  --accent-strong: oklch(0.86 0.13 152);
+  --accent-fg: oklch(0.22 0.04 155);
+
+  --status-success: oklch(0.8 0.11 185);
+
+  --syntax-keyword: oklch(0.8 0.12 150);
+  --syntax-string: oklch(0.84 0.1 95);
+  --syntax-constant: oklch(0.8 0.1 55);
+  --syntax-function: oklch(0.8 0.08 215);
+  --syntax-parameter: oklch(0.84 0.05 30);
+}
+
+[data-palette="forest"][data-theme="light"] {
+  --tint-c: 0.024;
+  --glass-c: 0.045;
+
+  --accent: oklch(0.5 0.13 152);
+  --accent-strong: oklch(0.43 0.12 152);
+  --accent-fg: oklch(0.98 0.02 150);
+
+  --status-success: oklch(0.56 0.1 190);
+  --status-success-text: oklch(0.5 0.1 190);
+
+  --syntax-keyword: oklch(0.47 0.13 150);
+  --syntax-string: oklch(0.5 0.11 88);
+  --syntax-constant: oklch(0.54 0.13 50);
+  --syntax-function: oklch(0.48 0.1 228);
+  --syntax-parameter: oklch(0.5 0.08 25);
+}
+
 /* Sea glass: frosted by the tide. Paler, softer glass in aqua, with coral and sand in the code. */
 [data-palette="seaglass"] {
   --tint-h: 192;
@@ -178,6 +218,45 @@
   --syntax-parameter: oklch(0.5 0.1 305);
 }
 
+/* Amethyst: desert glass the sun has turned violet through its manganese, with mint in the code. */
+[data-palette="amethyst"] {
+  --tint-h: 302;
+}
+
+[data-palette="amethyst"][data-theme="dark"] {
+  --tint-c: 0.032;
+  --glass-c: 0.075;
+
+  --accent: oklch(0.76 0.13 302);
+  --accent-strong: oklch(0.83 0.11 302);
+  --accent-fg: oklch(0.21 0.05 302);
+
+  --status-merged: oklch(0.74 0.15 338);
+
+  --syntax-keyword: oklch(0.78 0.13 305);
+  --syntax-string: oklch(0.84 0.09 160);
+  --syntax-constant: oklch(0.82 0.1 70);
+  --syntax-function: oklch(0.8 0.08 250);
+  --syntax-parameter: oklch(0.84 0.05 350);
+}
+
+[data-palette="amethyst"][data-theme="light"] {
+  --tint-c: 0.022;
+  --glass-c: 0.045;
+
+  --accent: oklch(0.5 0.17 302);
+  --accent-strong: oklch(0.43 0.16 302);
+  --accent-fg: oklch(0.98 0.01 302);
+
+  --status-merged: oklch(0.52 0.19 338);
+
+  --syntax-keyword: oklch(0.48 0.17 305);
+  --syntax-string: oklch(0.48 0.11 155);
+  --syntax-constant: oklch(0.54 0.13 55);
+  --syntax-function: oklch(0.48 0.12 255);
+  --syntax-parameter: oklch(0.5 0.08 350);
+}
+
 /* Cranberry: gold-ruby glass. Plum glass and a rose accent, with the gold in the code. */
 [data-palette="cranberry"] {
   --tint-h: 352;
@@ -216,4 +295,52 @@
   --syntax-constant: oklch(0.55 0.13 42);
   --syntax-function: oklch(0.5 0.12 295);
   --syntax-parameter: oklch(0.5 0.08 15);
+}
+
+/*
+ * Desktop: the user's own glass. The wallpaper tints it and the system's accent colour is the accent,
+ * set at this mode's lightness, with any status hue the accent would be mistaken for turned from it.
+ * The shell reads them and features/settings/desktopColors.ts sets the --desktop-* properties on the
+ * root as they change, so this block only says how much of each colour each mode takes.
+ */
+[data-palette="desktop"] {
+  --tint-h: var(--desktop-tint-h, 0);
+}
+
+[data-palette="desktop"][data-theme="dark"] {
+  --tint-c: min(var(--desktop-tint-c, 0) * 0.4, 0.026);
+  --glass-c: min(var(--desktop-tint-c, 0), 0.07);
+
+  --accent: oklch(0.78 min(var(--desktop-accent-c, 0), 0.15) var(--desktop-accent-h, 0));
+  --accent-strong: oklch(0.85 min(var(--desktop-accent-c, 0), 0.13) var(--desktop-accent-h, 0));
+  --accent-fg: oklch(0.21 min(var(--desktop-accent-c, 0) * 0.3, 0.05) var(--desktop-accent-h, 0));
+
+  --status-running: oklch(0.72 0.14 calc(245 + var(--desktop-running-turn, 0)));
+  --status-attention: oklch(0.83 0.15 calc(78 + var(--desktop-attention-turn, 0)));
+  --status-error: oklch(0.7 0.19 calc(25 + var(--desktop-error-turn, 0)));
+  --status-success: oklch(0.78 0.15 calc(152 + var(--desktop-success-turn, 0)));
+
+  --syntax-keyword: oklch(0.79 0.1 var(--desktop-accent-h, 305));
+  --syntax-function: oklch(0.81 0.08 calc(var(--desktop-accent-h, 165) + 60));
+}
+
+[data-palette="desktop"][data-theme="light"] {
+  --tint-c: min(var(--desktop-tint-c, 0) * 0.4, 0.024);
+  --glass-c: min(var(--desktop-tint-c, 0) * 0.75, 0.05);
+
+  --accent: oklch(0.52 min(var(--desktop-accent-c, 0), 0.17) var(--desktop-accent-h, 0));
+  --accent-strong: oklch(0.45 min(var(--desktop-accent-c, 0), 0.16) var(--desktop-accent-h, 0));
+  --accent-fg: oklch(0.98 min(var(--desktop-accent-c, 0) * 0.1, 0.01) var(--desktop-accent-h, 0));
+
+  --status-running: oklch(0.56 0.17 calc(250 + var(--desktop-running-turn, 0)));
+  --status-attention: oklch(0.68 0.16 calc(65 + var(--desktop-attention-turn, 0)));
+  --status-error: oklch(0.56 0.21 calc(25 + var(--desktop-error-turn, 0)));
+  --status-success: oklch(0.58 0.15 calc(152 + var(--desktop-success-turn, 0)));
+  --status-running-text: oklch(0.53 0.17 calc(250 + var(--desktop-running-turn, 0)));
+  --status-attention-text: oklch(0.54 0.14 calc(62 + var(--desktop-attention-turn, 0)));
+  --status-success-text: oklch(0.52 0.14 calc(152 + var(--desktop-success-turn, 0)));
+  --status-error-text: oklch(0.52 0.2 calc(25 + var(--desktop-error-turn, 0)));
+
+  --syntax-keyword: oklch(0.5 0.15 var(--desktop-accent-h, 305));
+  --syntax-function: oklch(0.5 0.11 calc(var(--desktop-accent-h, 175) + 60));
 }

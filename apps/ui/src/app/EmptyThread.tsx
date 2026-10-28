@@ -128,7 +128,9 @@ export function EmptyThread({
     });
     sized.observe(surface);
     const themed = new MutationObserver(measure);
-    themed.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
+    themed.observe(document.documentElement, {
+      attributeFilter: ["data-theme", "data-palette", "data-desktop"],
+    });
     document.fonts.addEventListener("loadingdone", measure);
     let density = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     const rescaled = () => {

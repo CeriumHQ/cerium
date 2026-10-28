@@ -82,6 +82,10 @@ export interface ShellBridge {
   readonly setTheme?: (theme: "system" | "dark" | "light") => Promise<boolean>;
   /** Calls back whenever the system's colours turn dark or light; returns how to stop. */
   readonly onDarkColorsChange?: (listener: (dark: boolean) => void) => () => void;
+  /** The colours the Desktop theme takes from the system's accent and the wallpaper. */
+  readonly desktopColors?: () => Promise<unknown>;
+  /** Calls back whenever the accent or the wallpaper changes, with the new colours; returns how to stop. */
+  readonly onDesktopColorsChange?: (listener: (colors: unknown) => void) => () => void;
   /** Scales the whole window by `factor` (1 is 100%), caption buttons included. */
   readonly setZoom?: (factor: number) => void;
   /** The launch screen has painted in the user's theme, so the shell may show the window. */

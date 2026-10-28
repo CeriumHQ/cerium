@@ -45,7 +45,7 @@ export function TerminalView({
     const observer = new MutationObserver(() => session.setTheme());
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-palette"],
+      attributeFilter: ["data-theme", "data-palette", "data-desktop"],
     });
     return () => observer.disconnect();
   }, [session]);

@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useLayoutEffect, useSyncExternalStore } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
+import { desktopProperties, useDesktopColors } from "./desktopColors.ts";
 import { paletteAtom } from "./palettes.ts";
 import type { Theme } from "./preferences.ts";
 
@@ -22,7 +23,7 @@ export const themeSettled = new Promise<void>((resolve) => {
 
 /**
  * Keeps the page on the chosen theme, following the operating system while it's "system", and in the
- * chosen palette. Applied before paint, so the window never flashes the other theme. In the desktop
+ * chosen palette, with the desktop's colours at hand for the Desktop one. Applied before paint, so the window never flashes the other theme. In the desktop
  * shell, the system also draws the caption buttons to match (on Windows, tints the glass too), and
  * says what "system" currently means.
  */
@@ -31,6 +32,16 @@ export const useTheme = (theme: Theme) => {
   useLayoutEffect(() => {
     document.documentElement.dataset["palette"] = palette;
   }, [palette]);
+
+  // The Desktop theme's colours, which `data-desktop` announces to whatever reads the tokens once.
+  const desktop = useDesktopColors();
+  useLayoutEffect(() => {
+    if (desktop === undefined) return;
+    const root = document.documentElement;
+    const properties = desktopProperties(desktop);
+    for (const [name, value] of Object.entries(properties)) root.style.setProperty(name, value);
+    root.dataset["desktop"] = Object.values(properties).join(" ");
+  }, [desktop]);
 
   useLayoutEffect(() => {
     const follows = theme === "system";
