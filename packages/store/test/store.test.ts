@@ -135,6 +135,11 @@ describe("Store", () => {
       yield* store.createThread(thread);
       yield* store.createAgent(lead);
       yield* store.appendEvents([{ ...event(0), raw: { harness: "c" } }, shot(1, "one")]);
+      assert.strictEqual(raws(), 0, "harness payloads aren't kept");
+      // As an older version kept them.
+      const legacy = new DatabaseSync(filename);
+      legacy.exec(`UPDATE events SET raw = '{"harness":"old"}'`);
+      legacy.close();
 
       assert.strictEqual(yield* store.slimThreads(11), 0, "not quiet since then");
       assert.strictEqual(yield* store.slimThreads(100), 1);
@@ -152,7 +157,30 @@ describe("Store", () => {
         Option.getOrThrow(yield* store.findToolCompletion(thread.id, "two")).payload,
         removed("two"),
       );
-      yield* store.reclaimSpace;
+      yield* store.reclaimSpace({ rewrite: true });
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
+  it.effect("drops the harness payloads an older version kept, from every thread", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-raw-")), "events.db");
+    const sql = (statement: string) => {
+      const db = new DatabaseSync(filename);
+      const row = db.prepare(statement).get();
+      db.close();
+      return row === undefined ? undefined : Object.values(row)[0];
+    };
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      yield* store.createThread(thread);
+      yield* store.createAgent(lead);
+      // More than one step's worth.
+      yield* store.appendEvents(Array.from({ length: 600 }, (_, index) => event(index)));
+      const legacy = new DatabaseSync(filename);
+      legacy.exec(`UPDATE events SET raw = '{"harness":"old"}' WHERE sequence % 2 = 0`);
+      legacy.close();
+      assert.strictEqual(yield* store.dropHarnessPayloads, 300);
+      assert.strictEqual(sql("SELECT count(*) FROM events WHERE raw IS NOT NULL"), 0);
+      assert.strictEqual(yield* store.dropHarnessPayloads, 0);
+      assert.lengthOf(yield* store.listThreadEvents(thread.id), 600);
     }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
   });
   it.effect("hands freed space back to the disk, rewriting the file once and in steps after", () => {
@@ -164,9 +192,14 @@ describe("Store", () => {
       return Object.values(row ?? {})[0];
     };
     const fill = (from: number) =>
-      Array.from({ length: 40 }, (_, index) => ({
+      Array.from({ length: 40 }, (_, index): AgentEvent => ({
         ...event(from + index),
-        raw: { harness: "r".repeat(1_000_000) },
+        payload: {
+          _tag: "ToolCallCompleted",
+          callId: `call-${from + index}`,
+          output: { content: [{ type: "image", mimeType: "image/png", data: "r".repeat(1_000_000) }] },
+          isError: false,
+        },
       }));
     return Effect.gen(function* () {
       const store = yield* Store;
@@ -175,14 +208,19 @@ describe("Store", () => {
       yield* store.appendEvents(fill(0));
       yield* store.slimThreads(1_000);
       assert.isAbove(Number(pragma("freelist_count")), 4096);
-      yield* store.reclaimSpace;
+      // Not while the app is busy: the rewrite stays due.
+      assert.isTrue(yield* store.reclaimSpace({ rewrite: false }));
+      assert.strictEqual(pragma("auto_vacuum"), 0);
+      assert.isFalse(yield* store.reclaimSpace({ rewrite: true }));
       assert.strictEqual(pragma("auto_vacuum"), 2);
       assert.strictEqual(pragma("freelist_count"), 0);
+      // The store's own connection carries on after the rewrite.
+      assert.lengthOf(yield* store.listThreadEvents(thread.id), 40);
 
       yield* store.appendEvents(fill(100));
       yield* store.slimThreads(1_000);
       assert.isAbove(Number(pragma("freelist_count")), 0);
-      yield* store.reclaimSpace;
+      assert.isFalse(yield* store.reclaimSpace({ rewrite: false }));
       assert.strictEqual(pragma("freelist_count"), 0);
     }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
   });

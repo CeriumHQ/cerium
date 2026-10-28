@@ -10,12 +10,13 @@ import {
   type ThreadMode,
 } from "@cerium/protocol";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, max, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, max, notInArray, sql } from "drizzle-orm";
 import * as SqliteDrizzle from "drizzle-orm/effect-sqlite-node";
 import { migrate } from "drizzle-orm/effect-sqlite-node/migrator";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Reactivity } from "effect/reactivity";
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 
 import { agents, events, projects, settings, threads, uiEvents } from "./schema.ts";
 
@@ -30,6 +31,36 @@ const RECLAIM_STEP = 1024;
 
 /** The free pages worth rewriting the whole file for, the first time: 16 MiB, a quarter of it at least. */
 const REWRITE_FREE = 4096;
+
+/**
+ * Events a slimming transaction rewrites at most: a screenshot's row can be megabytes, and the one
+ * connection serves nothing else meanwhile.
+ */
+const SLIM_STEP = 8;
+
+/**
+ * Events whose harness payload one statement drops at most: some were megabytes each. On a 90,000
+ * event store, 16 kept each step to tens of milliseconds; 256 made some take 190.
+ */
+const DROP_STEP = 16;
+
+/**
+ * Rewrites a database file on a thread of its own, so the backend's event loop runs on: `node:sqlite`
+ * blocks the thread it runs on, and rewriting a gigabytes-large file takes tens of seconds.
+ */
+const REWRITE_WORKER = `
+const { workerData } = require("node:worker_threads");
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(workerData.filename);
+try {
+  db.exec("PRAGMA busy_timeout = 5000");
+  db.exec("PRAGMA auto_vacuum = INCREMENTAL");
+  db.exec("VACUUM");
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+} finally {
+  db.close();
+}
+`;
 
 /** Streamed text: the cloud copy keeps the completed message instead (`isStreamDelta`). */
 const STREAM_DELTAS = ["MessageDelta", "ReasoningDelta"];
@@ -242,11 +273,17 @@ export class Store extends Context.Service<
      */
     slimThreads(before: number): Effect.Effect<number, StoreError>;
     /**
-     * Hands the space that slimming and deleting freed back to the disk. The first time there's much
-     * of it, rewrites the whole file once (`VACUUM`), which turns on giving space back in small steps
-     * from then on.
+     * Drops the harness payloads older versions kept beside each event, which nothing reads back, a
+     * few hundred rows at a time. Resolves how many events it dropped them from.
      */
-    readonly reclaimSpace: Effect.Effect<void, StoreError>;
+    readonly dropHarnessPayloads: Effect.Effect<number, StoreError>;
+    /**
+     * Hands the space that slimming and deleting freed back to the disk. The first time there's much
+     * of it, rewrites the whole file once (`VACUUM`, on a thread of its own), which turns on giving
+     * space back in small steps from then on; only with `rewrite`, as other queries wait for it.
+     * Resolves whether that rewrite is due but wasn't allowed.
+     */
+    reclaimSpace(options: { readonly rewrite: boolean }): Effect.Effect<boolean, StoreError>;
   }
 >()("cerium/store/Store") {
   /** `migrationsFolder` defaults to the migrations shipped with this package. */
@@ -310,47 +347,114 @@ export class Store extends Context.Service<
             .values<[number]>(sql.raw(`PRAGMA ${name}`))
             .pipe(Effect.map((rows) => Number(rows[0]?.[0] ?? 0)));
 
+        /**
+         * Drops harness payloads `DROP_STEP` events at a time, in `thread` or every thread, letting the
+         * app's own queries in between. Resolves how many events it dropped them from.
+         */
+        const dropRaw = (thread?: string) =>
+          Effect.gen(function* () {
+            let after = 0;
+            let dropped = 0;
+            for (;;) {
+              // Walked by rowid, so each step starts where the last stopped instead of at the top.
+              const rows = yield* db.values<[number]>(sql`
+                SELECT rowid FROM events
+                WHERE rowid > ${after} AND raw IS NOT NULL
+                  ${thread === undefined ? sql`` : sql`AND thread_id = ${thread}`}
+                ORDER BY rowid LIMIT ${DROP_STEP}
+              `);
+              const last = rows.at(-1)?.[0];
+              if (last === undefined) return dropped;
+              yield* db.run(sql`
+                UPDATE events SET raw = NULL
+                WHERE rowid IN (${sql.join(
+                  rows.map(([rowid]) => sql`${rowid}`),
+                  sql`, `,
+                )})
+              `);
+              dropped += rows.length;
+              after = last;
+              yield* Effect.yieldNow;
+            }
+          });
+
         /** Slims a thread's events, up to its last at `last`. */
         const slimThread = (id: string, last: number) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
-              // Found by id first, then read one at a time: a thread's screenshots can be most of a gigabyte.
-              const pictured = yield* tx
-                .select({ id: events.id })
-                .from(events)
-                .where(
-                  and(
-                    eq(events.threadId, id),
-                    eq(events.tag, "ToolCallCompleted"),
-                    sql`instr(${events.payload}, '"type":"image"') > 0`,
+          Effect.gen(function* () {
+            // A few tool results at a time, found and rewritten: a thread's screenshots can be most of
+            // a gigabyte, and the one connection serves nothing else while it reads and writes them.
+            let after = 0;
+            for (;;) {
+              const rows = yield* db.values<[number, string, number]>(sql`
+                SELECT rowid, id, instr(payload, '"type":"image"') > 0 FROM events
+                WHERE thread_id = ${id} AND tag = 'ToolCallCompleted' AND rowid > ${after}
+                ORDER BY rowid LIMIT ${SLIM_STEP}
+              `);
+              const last = rows.at(-1)?.[0];
+              if (last === undefined) break;
+              after = last;
+              const pictured = rows.filter(([, , imaged]) => imaged === 1);
+              if (pictured.length > 0)
+                yield* db.transaction((tx) =>
+                  Effect.forEach(
+                    pictured,
+                    ([, eventId]) =>
+                      Effect.gen(function* () {
+                        const [stored] = yield* tx
+                          .select({ payload: events.payload })
+                          .from(events)
+                          .where(eq(events.id, eventId));
+                        const payload = stored?.payload as { readonly output?: unknown } | undefined;
+                        if (payload === undefined) return;
+                        const output = withImagesRemoved(payload.output);
+                        if (output === payload.output) return;
+                        // No image is left to leave out, so the compact view holds the same payload.
+                        const slim = { ...payload, output };
+                        yield* tx.update(events).set({ payload: slim }).where(eq(events.id, eventId));
+                        yield* tx.update(uiEvents).set({ payload: slim }).where(eq(uiEvents.id, eventId));
+                      }),
+                    { discard: true },
                   ),
                 );
-              yield* Effect.forEach(
-                pictured,
-                (row) =>
-                  Effect.gen(function* () {
-                    const [stored] = yield* tx
-                      .select({ payload: events.payload })
-                      .from(events)
-                      .where(eq(events.id, row.id));
-                    const payload = stored?.payload as { readonly output?: unknown } | undefined;
-                    if (payload === undefined) return;
-                    const output = withImagesRemoved(payload.output);
-                    if (output === payload.output) return;
-                    // No image is left to leave out, so the compact view holds the same payload.
-                    const slim = { ...payload, output };
-                    yield* tx.update(events).set({ payload: slim }).where(eq(events.id, row.id));
-                    yield* tx.update(uiEvents).set({ payload: slim }).where(eq(uiEvents.id, row.id));
-                  }),
-                { discard: true },
+              // The queries that queued meanwhile go first.
+              yield* Effect.yieldNow;
+            }
+            yield* dropRaw(id);
+            // Marked last: a pass cut short is taken up again by the next.
+            yield* db.update(threads).set({ slimmedAt: last }).where(eq(threads.id, id));
+          });
+
+        /**
+         * Rewrites the whole file (`REWRITE_WORKER`) while holding the connection, so no query of the
+         * app's own meets the rewrite's lock: they wait their turn without blocking the event loop.
+         */
+        const rewrite = Effect.scoped(
+          Effect.gen(function* () {
+            yield* client.reserve;
+            yield* Effect.callback<void, StoreError>((resume) => {
+              const worker = new Worker(REWRITE_WORKER, {
+                eval: true,
+                workerData: { filename: options.filename },
+              });
+              worker.once("error", (cause) =>
+                resume(Effect.fail(new StoreError({ message: "Could not rewrite the database", cause }))),
               );
-              yield* tx
-                .update(events)
-                .set({ raw: null })
-                .where(and(eq(events.threadId, id), isNotNull(events.raw)));
-              yield* tx.update(threads).set({ slimmedAt: last }).where(eq(threads.id, id));
-            }),
-          );
+              worker.once("exit", (code) =>
+                resume(
+                  code === 0
+                    ? Effect.void
+                    : Effect.fail(
+                        new StoreError({
+                          message: `The database rewrite stopped with code ${code}`,
+                          cause: code,
+                        }),
+                      ),
+                ),
+              );
+              return Effect.promise(() => worker.terminate());
+            });
+          }),
+        );
 
         return Store.of({
           createThread: (thread) =>
@@ -466,7 +570,8 @@ export class Store extends Context.Service<
                             at: event.at,
                             tag: event.payload._tag,
                             payload: event.payload,
-                            raw: event.raw ?? null,
+                            // The harness's own payload stays out: nothing reads it back, and it was
+                            // twice the size of the rest of the database.
                           });
                           const { raw: _raw, ...compact } = withoutImages(event);
                           yield* tx.insert(uiEvents).values(compact);
@@ -727,25 +832,33 @@ export class Store extends Context.Service<
                 return quiet.length;
               }),
             ),
-          reclaimSpace: query(
-            "Could not reclaim space",
-            Effect.gen(function* () {
-              let free = yield* pragma("freelist_count");
-              if ((yield* pragma("auto_vacuum")) === INCREMENTAL) {
-                // A step at a time, so the app's own reads and writes go on between them.
-                while (free > 0) {
-                  yield* db.values(sql.raw(`PRAGMA incremental_vacuum(${RECLAIM_STEP})`));
-                  free = yield* pragma("freelist_count");
+          dropHarnessPayloads: query("Could not drop harness payloads", dropRaw()),
+          reclaimSpace: ({ rewrite: allowed }) =>
+            query(
+              "Could not reclaim space",
+              Effect.gen(function* () {
+                let free = yield* pragma("freelist_count");
+                if ((yield* pragma("auto_vacuum")) === INCREMENTAL) {
+                  // A step at a time, so the app's own reads and writes go on between them.
+                  while (free > 0) {
+                    yield* db.values(sql.raw(`PRAGMA incremental_vacuum(${RECLAIM_STEP})`));
+                    free = yield* pragma("freelist_count");
+                    yield* Effect.yieldNow;
+                  }
+                  yield* db.values(sql`PRAGMA wal_checkpoint(TRUNCATE)`);
+                  return false;
                 }
-              } else {
                 // Rewriting the file costs about what it keeps: worth it once a good share is free.
-                if (free < REWRITE_FREE || free * 4 < (yield* pragma("page_count"))) return;
-                yield* db.run(sql`PRAGMA auto_vacuum = INCREMENTAL`);
-                yield* db.run(sql`VACUUM`);
-              }
-              yield* db.values(sql`PRAGMA wal_checkpoint(TRUNCATE)`);
-            }),
-          ),
+                if (free < REWRITE_FREE || free * 4 < (yield* pragma("page_count"))) return false;
+                if (!allowed) return true;
+                // An in-memory database can't be opened from another thread; it is small anyway.
+                if (options.filename === ":memory:") {
+                  yield* db.run(sql`PRAGMA auto_vacuum = INCREMENTAL`);
+                  yield* db.run(sql`VACUUM`);
+                } else yield* rewrite;
+                return false;
+              }),
+            ),
         });
       }),
     );
