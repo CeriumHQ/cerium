@@ -238,7 +238,7 @@ export class Reviews extends Context.Service<
           const reviewer =
             picked ?? (lead === undefined ? undefined : defaultReviewer(yield* catalog.entries, lead));
           if (reviewer === undefined) {
-            return yield* failed("Put a model on your roster in Settings → Agents to review with.");
+            return yield* failed("Put a model on your roster in Settings → Roster to review with.");
           }
           const { files, label } = yield* diffOf(target);
           const reviewable = files.filter((file) => file.binary || file.hunks.length > 0);

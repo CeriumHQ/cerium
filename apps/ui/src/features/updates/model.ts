@@ -1,6 +1,6 @@
 import type { UpdateChannel, Updates, UpdateStatus } from "../../backend/shell.ts";
 
-// What Settings → General's Updates and the launch notice say about the shell's updater
+// What Settings → Updates and the launch notice say about the shell's updater
 // (apps/desktop/src/updater.ts).
 
 export const channelLabel: Record<UpdateChannel, string> = { stable: "Stable", nightly: "Nightly" };

@@ -12,7 +12,7 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
 import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
 import { accountLabel } from "./harnessModel.ts";
-import { SettingsPage } from "./parts.tsx";
+import { SettingsNote, SettingsPage } from "./parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
 /** Each provider's harness by the name its makers give it. */
@@ -70,13 +70,13 @@ export function HarnessSettings() {
       }
     >
       {failed ? (
-        <p className="rounded-xl border border-line-subtle px-4 py-3.5 text-body text-error-text">
+        <SettingsNote tone="error">
           {machine
             ? `Couldn't reach ${machine}. Check again once it's connected.`
             : "Couldn't check the harnesses. Try again in a moment."}
-        </p>
+        </SettingsNote>
       ) : (
-        <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
+        <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
           {OFFERED_PROVIDERS.map((provider) => (
             <li key={provider}>
               <HarnessRow

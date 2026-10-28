@@ -3,7 +3,7 @@ import { defaultSettings } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Route, Users } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import {
   effortRouterStatusAtom,
@@ -15,7 +15,16 @@ import { machineAtom } from "../../backend/machine.ts";
 import { WEB } from "../../backend/target.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { messageOf } from "../terminal/model.ts";
-import { SettingsList, SettingsRow, SettingsSection, SettingsSwitch, SettingsTag } from "./parts.tsx";
+import {
+  SettingsCard,
+  SettingsList,
+  SettingsNote,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitch,
+  SettingsTag,
+} from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
@@ -31,7 +40,7 @@ const childrenLabel = { router: "Auto", lead: "Lead's level" } as const;
  * desktop app of the computer whose agents use it; another device sees that there is one, and can
  * remove it.
  */
-export function EffortRouterSetting() {
+export function EffortRouterSettings() {
   const status = useAtomValue(effortRouterStatusAtom);
   const refreshStatus = useAtomRefresh(effortRouterStatusAtom);
   const refreshSettings = useAtomRefresh(settingsAtom);
@@ -65,7 +74,13 @@ export function EffortRouterSetting() {
   }, [refreshStatus, monthEndsAt]);
 
   // A machine too old for the router has nothing to show.
-  if (AsyncResult.isFailure(status)) return null;
+  if (AsyncResult.isFailure(status)) {
+    return (
+      <EffortRouterPage>
+        <SettingsNote>Update Cerium on that computer to use the effort router.</SettingsNote>
+      </EffortRouterPage>
+    );
+  }
   const known = AsyncResult.isSuccess(status) ? status.value : undefined;
   const key = known?.key;
   const local = !WEB && machine === undefined;
@@ -104,22 +119,11 @@ export function EffortRouterSetting() {
   };
 
   return (
-    <SettingsSection
-      title={
-        <>
-          Effort router
-          <SettingsTag>Experimental</SettingsTag>
-        </>
-      }
-    >
+    <EffortRouterPage>
       <SettingsList>
         <SettingsRow
           label="Pick effort automatically"
-          hint={
-            key === undefined && !router.enabled
-              ? "Add an OpenRouter key first."
-              : "Before each turn of an agent on Auto, a decision model picks its effort."
-          }
+          hint={key === undefined && !router.enabled ? "Needs an OpenRouter key" : undefined}
           error={routerError}
           control={(labelledBy) => (
             <SettingsSwitch
@@ -130,6 +134,31 @@ export function EffortRouterSetting() {
             />
           )}
         />
+        {router.enabled ? (
+          <SettingsRow
+            label="Agents a lead starts"
+            hint="When the lead names no effort for them"
+            className="pr-2.5"
+            control={() => (
+              <SelectRoot
+                value={router.children}
+                onValueChange={(next) => next !== null && saveRouter({ ...router, children: next })}
+              >
+                <SelectTrigger label="Effort of agents a lead starts">
+                  {childrenLabel[router.children]}
+                </SelectTrigger>
+                <SelectPopup>
+                  <SelectItem value="router" icon={Route} description="The router picks their effort too">
+                    {childrenLabel.router}
+                  </SelectItem>
+                  <SelectItem value="lead" icon={Users} description="They run at the lead's current level">
+                    {childrenLabel.lead}
+                  </SelectItem>
+                </SelectPopup>
+              </SelectRoot>
+            )}
+          />
+        ) : null}
         <SettingsRow
           label="OpenRouter key"
           hint={
@@ -170,51 +199,42 @@ export function EffortRouterSetting() {
             ) : null
           }
         />
-        {router.enabled ? (
-          <SettingsRow
-            label="Agents a lead starts"
-            hint="When the lead names no effort for them"
-            className="pr-2.5"
-            control={() => (
-              <SelectRoot
-                value={router.children}
-                onValueChange={(next) => next !== null && saveRouter({ ...router, children: next })}
-              >
-                <SelectTrigger label="Effort of agents a lead starts">
-                  <span className="font-medium text-fg-primary">{childrenLabel[router.children]}</span>
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="router" icon={Route} description="The router picks their effort too">
-                    {childrenLabel.router}
-                  </SelectItem>
-                  <SelectItem value="lead" icon={Users} description="They run at the lead's current level">
-                    {childrenLabel.lead}
-                  </SelectItem>
-                </SelectPopup>
-              </SelectRoot>
-            )}
-          />
-        ) : null}
-        <div className="px-4 py-4">
-          <dl className="grid grid-cols-2 gap-4">
+      </SettingsList>
+      <SettingsSection title="This month" description="At this month's usage rate. Both reset each month.">
+        <SettingsCard>
+          <dl className="grid grid-cols-2 gap-4 px-4 py-3.5">
             <div>
-              <dt className="text-meta text-fg-secondary">Spent this month</dt>
-              <dd className="mt-1 text-lg font-medium tabular-nums text-fg-primary">
+              <dt className="text-meta text-fg-tertiary">Spent</dt>
+              <dd className="mt-0.5 text-reading tabular-nums text-fg-primary">
                 {known ? spent(known.monthUsd) : "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-meta text-fg-secondary">Estimated by month end</dt>
-              <dd className="mt-1 text-lg font-medium tabular-nums text-fg-primary">
+              <dt className="text-meta text-fg-tertiary">Estimated by month end</dt>
+              <dd className="mt-0.5 text-reading tabular-nums text-fg-primary">
                 {known?.projectedMonthUsd === undefined ? "—" : spent(known.projectedMonthUsd)}
               </dd>
             </div>
           </dl>
-          <p className="mt-2 text-meta text-fg-tertiary">
-            At this month's usage rate. Both reset each month.
-          </p>
-        </div>
-      </SettingsList>
-    </SettingsSection>
+        </SettingsCard>
+      </SettingsSection>
+    </EffortRouterPage>
+  );
+}
+
+function EffortRouterPage({ children }: { children: ReactNode }) {
+  return (
+    <SettingsPage
+      perMachine
+      title={
+        <>
+          Effort router
+          <SettingsTag>Experimental</SettingsTag>
+        </>
+      }
+      description="Before each turn of an agent on Auto, a decision model picks its reasoning effort, through your own OpenRouter key."
+    >
+      {children}
+    </SettingsPage>
   );
 }

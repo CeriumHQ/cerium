@@ -14,7 +14,7 @@ import {
   type RosterSettings,
 } from "@cerium/protocol";
 import { ChevronDown, ChevronUp, GripVertical, MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
-import { useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
@@ -26,7 +26,7 @@ import { TitleField } from "../threads/Rename.tsx";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { readyProviders } from "./ModelGroups.tsx";
-import { SettingsCard, SettingsSection } from "./parts.tsx";
+import { SettingsCard } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
 /** How long a model's line may be: a phrase for the lead to pick by, not instructions. */
@@ -43,9 +43,12 @@ const emptyRoster: RosterSettings = { models: [], edited: [] };
 export function RosterSection({
   models,
   harnesses,
+  empty,
 }: {
   models: ReadonlyArray<ModelInfo>;
   harnesses: ReadonlyArray<HarnessIndicator>;
+  /** Shown while no harness that can run offers a model. */
+  empty: ReactNode;
 }) {
   const { value: roster, saved, save, error } = useSetting("roster", emptyRoster);
   const ready = readyProviders(harnesses);
@@ -54,7 +57,7 @@ export function RosterSection({
   const providers = harnesses.flatMap(({ provider }) =>
     offered.some((model) => model.provider === provider) ? [provider] : [],
   );
-  if (providers.length === 0) return null;
+  if (providers.length === 0) return empty;
 
   /** The harness's list as it stands, ready to change: the user's own, or Cerium's picks. */
   const listOf = (provider: ProviderId): ReadonlyArray<RosterModel> =>
@@ -65,16 +68,8 @@ export function RosterSection({
     save(withHarnessRoster(roster, provider, next));
 
   return (
-    <SettingsSection
-      title="Roster"
-      description={
-        <>
-          The models a lead starts without asking you, first choice first, and what it uses each for. It asks
-          before starting any other.
-          {error ? <span className="block text-error-text">{error}</span> : null}
-        </>
-      }
-    >
+    <>
+      {error ? <p className="-mt-4 text-meta text-error-text">{error}</p> : null}
       <div className="flex flex-col gap-3">
         {providers.map((provider) => {
           const list = listOf(provider);
@@ -125,7 +120,7 @@ export function RosterSection({
           );
         })}
       </div>
-    </SettingsSection>
+    </>
   );
 }
 
@@ -400,7 +395,7 @@ function RosterRow({
         </Tooltip>
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-body font-medium text-fg-primary">{model.label}</span>
+        <span className="truncate text-body text-fg-primary">{model.label}</span>
         {editing ? (
           <TitleField
             title={use}

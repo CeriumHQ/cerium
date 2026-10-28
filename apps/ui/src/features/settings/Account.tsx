@@ -47,7 +47,7 @@ import {
   thisDevice,
 } from "../account/model.ts";
 import { TitleField } from "../threads/Rename.tsx";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsCard, SettingsNote, SettingsPage } from "./parts.tsx";
 
 type SignedIn = Extract<AccountState, { _tag: "SignedIn" }>;
 
@@ -62,7 +62,7 @@ export function AccountSettings() {
 
   return (
     <SettingsPage
-      title="Account"
+      title="Sign-in"
       description={
         WEB
           ? "Sign in to the same account here and on your computer to use its agents from this device."
@@ -78,9 +78,51 @@ export function AccountSettings() {
       ) : (
         <SignInCard account={account} />
       )}
-      {account?._tag === "SignedIn" && thisDevice(account) !== undefined ? (
-        <DevicesSection account={account} />
-      ) : null}
+    </SettingsPage>
+  );
+}
+
+/** Every device signed in to the account; signed out, the way to the sign-in. */
+export function DeviceSettings({ onOpen }: { onOpen?: () => void }) {
+  const result = useAtomValue(accountAtom);
+  const account = AsyncResult.isSuccess(result) ? result.value : undefined;
+  // Offline, the list is the last one the relay sent: who's online is unknown, and nothing can change.
+  const live = account?._tag === "SignedIn" && account.connection === "online";
+  return (
+    <SettingsPage
+      title="Devices"
+      description={
+        account?._tag !== "SignedIn"
+          ? undefined
+          : live
+            ? "Everywhere you're signed in. To add a device, sign in to this account on it."
+            : "As this computer last saw them. They update when it's back online."
+      }
+    >
+      {account === undefined ? (
+        <SettingsNote>Checking…</SettingsNote>
+      ) : account._tag === "SignedIn" && thisDevice(account) !== undefined ? (
+        <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
+          {orderedDevices(account).map((device) => (
+            <li key={device.id}>
+              <DeviceRow device={device} self={device.id === account.deviceId} live={live} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <SettingsNote>
+          Sign in to reach this {selfNoun} from your other devices.{" "}
+          {onOpen ? (
+            <button
+              type="button"
+              onClick={onOpen}
+              className="text-fg-secondary underline-offset-2 hover:underline"
+            >
+              Sign in
+            </button>
+          ) : null}
+        </SettingsNote>
+      )}
     </SettingsPage>
   );
 }
@@ -284,30 +326,7 @@ function QuietButton({
   );
 }
 
-/** Every device of the account, with what this one may do to each. */
-function DevicesSection({ account }: { account: SignedIn }) {
-  // Offline, the list is the last one the relay sent: who's online is unknown, and nothing can change.
-  const live = account.connection === "online";
-  return (
-    <SettingsSection
-      title="Devices"
-      description={
-        live
-          ? "Everywhere you're signed in. To add a device, sign in to this account on it."
-          : "As this computer last saw them. They update when it's back online."
-      }
-    >
-      <ul className="divide-y divide-line-subtle rounded-xl border border-line-subtle">
-        {orderedDevices(account).map((device) => (
-          <li key={device.id}>
-            <DeviceRow device={device} self={device.id === account.deviceId} live={live} />
-          </li>
-        ))}
-      </ul>
-    </SettingsSection>
-  );
-}
-
+/** One device of the account, with what this one may do to it. */
 function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; live: boolean }) {
   const rename = useAtomSet(renameDevice, { mode: "promise" });
   const remove = useAtomSet(removeDevice, { mode: "promise" });

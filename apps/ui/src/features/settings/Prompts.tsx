@@ -11,7 +11,7 @@ import { savedProjectsAtom } from "../../backend/projects.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { PromptDialog, type PromptDraft } from "../composer/PromptDialog.tsx";
 import { newPrompt, scopeLabel, usePrompts } from "../composer/prompts.ts";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
+import { SettingsCard, SettingsNote, SettingsPage, SettingsSection } from "./parts.tsx";
 
 /** The first backend that keeps saved prompts; an older one has nowhere to save them. */
 const PROMPTS_VERSION = 37;
@@ -51,9 +51,7 @@ export function PromptSettings() {
   if (drivenVersion !== undefined && drivenVersion < PROMPTS_VERSION) {
     return (
       <SettingsPage title="Prompts">
-        <p className="rounded-xl border border-line-subtle px-4 py-3 text-body text-fg-tertiary">
-          Update Cerium on that computer to use saved prompts.
-        </p>
+        <SettingsNote>Update Cerium on that computer to use saved prompts.</SettingsNote>
       </SettingsPage>
     );
   }
@@ -84,9 +82,9 @@ export function PromptSettings() {
         }
       >
         {prompts.length === 0 ? (
-          <p className="rounded-xl border border-line-subtle px-4 py-3 text-body text-fg-tertiary">
+          <SettingsNote>
             No saved prompts yet. Keep one from a message's menu, or start one here.
-          </p>
+          </SettingsNote>
         ) : (
           <SettingsCard className="flex flex-col divide-y divide-line-subtle">
             {prompts.map((prompt, index) => (

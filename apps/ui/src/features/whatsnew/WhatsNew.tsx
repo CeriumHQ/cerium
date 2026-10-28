@@ -18,7 +18,7 @@ const KINDS: Record<Kind, { readonly icon: LucideIcon; readonly label: string }>
 /**
  * The changes in CHANGELOG.md, one headline each with its detail folded under it. The ones this
  * computer hadn't seen when the window opened come first, marked; the rest follow a page at a time.
- * It opens after an update and from the command palette and Settings → General; Esc and the backdrop
+ * It opens after an update and from the command palette and Settings → Updates; Esc and the backdrop
  * close it.
  */
 export function WhatsNew({
