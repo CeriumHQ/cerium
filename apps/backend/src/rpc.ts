@@ -497,7 +497,7 @@ export const Handlers = MachineRpcs.toLayer(
             .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
           if (started === undefined) {
             return yield* new CeriumError({
-              message: `No ${kind} command is set for this project. Set one in Settings → Source control.`,
+              message: `No ${kind} command is set for this project. Set one in Settings → Git & GitHub.`,
             });
           }
           const label = SCRIPT_LABEL[kind];

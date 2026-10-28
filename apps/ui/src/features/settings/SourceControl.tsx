@@ -1,23 +1,15 @@
 import type { ProjectInfo } from "@cerium/protocol";
 import type { ProjectScripts } from "@cerium/rpc";
-import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Cause } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { FolderGit2, GitBranchPlus } from "lucide-react";
 import { useState } from "react";
 
 import { savedProjectsAtom } from "../../backend/projects.ts";
 import { projectScriptsAtom, setProjectScripts } from "../../backend/scripts.ts";
-import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { GitHubRow } from "../github/GitHubSettings.tsx";
 import { RowButton } from "./ToolRow.tsx";
-import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
-import { workplaceAtom } from "./preferences.ts";
-
-const workplaces = {
-  local: { label: "Local", description: "In the project's folder, on its branch" },
-  worktree: { label: "Worktree", description: "A branch of its own, in a worktree" },
-} as const;
+import { SettingsCard, SettingsList, SettingsNote, SettingsPage, SettingsSection } from "./parts.tsx";
 
 const fieldClass =
   "h-8 w-full min-w-0 rounded-lg border border-line-strong bg-transparent px-2.5 text-body text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary";
@@ -28,45 +20,21 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 const SOURCE = { saved: "Saved", project: ".cerium.toml", guessed: "Cerium's guess" } as const;
 
 /**
- * Git and GitHub: where a new work thread in a git project runs, and the machine's GitHub CLI, which
- * pull requests and issues go through. A project's scripts are here too: the setup command its new
- * worktrees run, and the run command a thread's Run button starts.
+ * Git and GitHub: the machine's GitHub CLI, which pull requests and issues go through, and a
+ * project's scripts: the setup command its new worktrees run, and the run command a thread's Run
+ * button starts. Where a new work thread runs is with the rest of a new thread's defaults.
  */
 export function SourceControlSettings() {
-  const [workplace, setWorkplace] = useAtom(workplaceAtom);
   return (
-    <SettingsPage
-      perMachine
-      title="Source control"
-      description="Pull requests and issues go through GitHub's own CLI, which keeps its sign-in."
-    >
-      <SettingsList>
-        <SettingsRow
-          label="New work threads run"
-          hint={`${workplaces[workplace].description}. The message box changes it for one thread.`}
-          className="pr-2.5"
-          control={() => (
-            <SelectRoot value={workplace} onValueChange={(next) => next !== null && setWorkplace(next)}>
-              <SelectTrigger label="Where new work threads run">
-                <span className="font-medium text-fg-primary">{workplaces[workplace].label}</span>
-              </SelectTrigger>
-              <SelectPopup>
-                <SelectItem value="local" icon={FolderGit2} description={workplaces.local.description}>
-                  {workplaces.local.label}
-                </SelectItem>
-                <SelectItem
-                  value="worktree"
-                  icon={GitBranchPlus}
-                  description={workplaces.worktree.description}
-                >
-                  {workplaces.worktree.label}
-                </SelectItem>
-              </SelectPopup>
-            </SelectRoot>
-          )}
-        />
-        <GitHubRow />
-      </SettingsList>
+    <SettingsPage perMachine title="Git & GitHub">
+      <SettingsSection
+        title="GitHub"
+        description="Pull requests and issues go through GitHub's own CLI, which keeps its sign-in."
+      >
+        <SettingsList>
+          <GitHubRow />
+        </SettingsList>
+      </SettingsSection>
       <ProjectScriptsSection />
     </SettingsPage>
   );
@@ -87,12 +55,12 @@ function ProjectScriptsSection() {
   return (
     <SettingsSection
       title="Project scripts"
-      description="What a work thread in a project runs: setup installs what it needs when a worktree is made, run keeps the project going. What isn't saved here comes from the project's .cerium.toml, else a guess Cerium makes in its place."
+      description="Setup runs when a worktree is made; Run keeps the project going. Unsaved, each comes from the project's .cerium.toml, or Cerium's guess."
     >
       {projects.length === 0 ? (
-        <p className="rounded-xl border border-line-subtle px-4 py-3 text-body text-fg-tertiary">
-          No projects yet: open a folder in a new work thread, and its commands are set here.
-        </p>
+        <SettingsNote>
+          No projects yet. Open a folder in a new work thread to set its commands here.
+        </SettingsNote>
       ) : (
         <ProjectScriptFields key={shown} project={shown!} onSaved={refreshProjects} />
       )}
@@ -159,13 +127,13 @@ function ProjectScriptFields({
 
   if (AsyncResult.isFailure(resolved)) {
     return (
-      <p className="rounded-xl border border-line-subtle px-4 py-3 text-body text-fg-tertiary">
+      <SettingsNote>
         Cerium's backend on this machine couldn't read the project: {messageOf(Cause.squash(resolved.cause))}.
-      </p>
+      </SettingsNote>
     );
   }
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line-subtle px-4 py-3">
+    <SettingsCard className="flex flex-col gap-3 px-4 py-3">
       <div className="grid gap-2.5 sm:grid-cols-2">
         {(["setup", "run"] as const).map((kind) => {
           const text = kind === "setup" ? setup : run;
@@ -211,7 +179,7 @@ function ProjectScriptFields({
           {nameOf(project)}
         </span>
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 

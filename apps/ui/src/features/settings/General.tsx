@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 
 import { accountAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
-import { WEB } from "../../backend/target.ts";
 import {
   onMac,
   onWindows,
@@ -35,57 +34,89 @@ import {
 } from "../updates/model.ts";
 import { useRestartToUpdate, useUpdates } from "../updates/useUpdates.ts";
 import { whatsNewOpenAtom } from "../whatsnew/state.ts";
-import { SettingsList, SettingsPage, SettingsRow, SettingsSection, SettingsSwitch } from "./parts.tsx";
+import {
+  SettingsList,
+  SettingsNote,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitch,
+} from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
-// The desktop's own settings: how this computer starts and shows Cerium, dictation, and updates.
-
-export function GeneralSettings() {
-  const updates = useUpdates();
-  const openWelcome = useAtomSet(welcomeOpenAtom);
-  return (
-    <SettingsPage
-      title="General"
-      action={
-        // The welcome a desktop opens with on its first run, again: its themes, harnesses and account.
-        WEB ? undefined : (
-          <Button
-            onClick={() => openWelcome(true)}
-            className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-          >
-            Welcome tour
-          </Button>
-        )
-      }
-    >
-      <ThisComputerSection />
-      <DictationSection />
-      {updates ? <UpdatesSection updates={updates} /> : null}
-    </SettingsPage>
-  );
-}
+// The desktop's own pages: how this computer starts Cerium and keeps its threads, dictation, updates
+// and Discord.
 
 /**
- * Starting at login, signed in; Discord's Rich Presence and slimming old threads while it's this
- * computer's window; crash reports.
+ * Starting at login, signed in; slimming old threads while it's this computer's window; crash
+ * reports. The welcome a desktop opens with on its first run is a click away again.
  */
-function ThisComputerSection() {
+export function GeneralSettings() {
+  const openWelcome = useAtomSet(welcomeOpenAtom);
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), () => undefined);
   const local = useAtomValue(machineAtom) === undefined;
   // Closing the window keeps a signed-in Cerium in the tray, which a start at login opens to.
   const startup = account?._tag === "SignedIn" && shellBridge()?.startAtLogin !== undefined;
-  const reports = shellBridge()?.crashReports !== undefined;
-  if (!startup && !local && !reports) return null;
   return (
-    <SettingsSection title="This computer">
-      <SettingsList>
-        {startup ? <StartAtLoginRow /> : null}
-        {local ? <DiscordRows /> : null}
-        {local ? <SlimThreadsRow /> : null}
-        {reports ? <CrashReportsRow /> : null}
-      </SettingsList>
-    </SettingsSection>
+    <SettingsPage
+      title="General"
+      action={
+        <Button
+          onClick={() => openWelcome(true)}
+          className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+        >
+          Welcome tour
+        </Button>
+      }
+    >
+      {startup ? (
+        <SettingsSection title="Startup">
+          <SettingsList>
+            <StartAtLoginRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
+      {local ? (
+        <SettingsSection title="Storage">
+          <SettingsList>
+            <SlimThreadsRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
+      <CrashReportsSection />
+    </SettingsPage>
+  );
+}
+
+/** Discord's Rich Presence, while the window is this computer's: another machine's Discord isn't in front of the user. */
+export function DiscordSettings() {
+  const driven = useAtomValue(machineAtom);
+  return (
+    <SettingsPage
+      title="Discord"
+      description="Your Discord status shows agents at work, through Discord on this computer."
+    >
+      {driven === undefined ? (
+        <SettingsList>
+          <DiscordRows />
+        </SettingsList>
+      ) : (
+        <SettingsNote>
+          Discord shows this computer's agents. Switch back to it from {driven.name} to change this.
+        </SettingsNote>
+      )}
+    </SettingsPage>
+  );
+}
+
+/** The installed version, the updater, and where it takes its releases from. */
+export function UpdateSettings() {
+  const updates = useUpdates();
+  return (
+    <SettingsPage title="Updates">
+      {updates ? <UpdatesSection updates={updates} /> : <SettingsNote>Checking…</SettingsNote>}
+    </SettingsPage>
   );
 }
 
@@ -137,7 +168,7 @@ function SlimThreadsRow() {
  * Anonymous crash reports from this computer (apps/desktop/src/crashReports.ts), on until turned off;
  * absent from builds that send none, such as development's.
  */
-function CrashReportsRow() {
+function CrashReportsSection() {
   const bridge = shellBridge();
   const [state, setState] = useState<CrashReportsState>();
 
@@ -151,13 +182,17 @@ function CrashReportsRow() {
     void bridge?.setCrashReports?.(enabled).then(setState, () => setState({ ...state, enabled: !enabled }));
   };
   return (
-    <SettingsRow
-      label="Send crash reports"
-      hint="Anonymous: what failed and where. Never messages, files or paths."
-      control={(labelledBy) => (
-        <SettingsSwitch checked={state.enabled} onCheckedChange={change} labelledBy={labelledBy} />
-      )}
-    />
+    <SettingsSection title="Privacy">
+      <SettingsList>
+        <SettingsRow
+          label="Send crash reports"
+          hint="Anonymous: what failed and where. Never messages, files or paths."
+          control={(labelledBy) => (
+            <SettingsSwitch checked={state.enabled} onCheckedChange={change} labelledBy={labelledBy} />
+          )}
+        />
+      </SettingsList>
+    </SettingsSection>
   );
 }
 
@@ -247,7 +282,7 @@ function DiscordRows() {
 const languageName = (code: string) => speechLanguages.find(([each]) => each === code)?.[1] ?? code;
 
 /** Dictation's language and speech model; the microphone button sits in every message box. */
-function DictationSection() {
+export function DictationSettings() {
   const [language, setLanguage] = useAtom(dictationLanguageAtom);
   const [model, setModel] = useAtom(dictationModelAtom);
   const downloaded = useAtomValue(downloadedModelsAtom);
@@ -255,7 +290,7 @@ function DictationSection() {
     downloaded.includes(id) ? "Downloaded" : `About ${speechModel(id).size} MB`;
 
   return (
-    <SettingsSection
+    <SettingsPage
       title="Dictation"
       description="OpenAI's Whisper turns speech into text on this computer. Its model downloads once, the first time you dictate."
     >
@@ -297,7 +332,7 @@ function DictationSection() {
           )}
         />
       </SettingsList>
-    </SettingsSection>
+    </SettingsPage>
   );
 }
 
@@ -332,95 +367,93 @@ function UpdatesSection({ updates }: { updates: Updates }) {
   const offline = status.kind === "unreachable" && status.reason === "offline";
 
   return (
-    <SettingsSection title="Updates">
-      <SettingsList>
-        <div className="flex flex-col">
-          <div className="flex min-h-14 items-center gap-4 px-4 py-3">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="flex items-center gap-2" title={updates.version}>
-                <span className="text-body font-medium text-fg-primary tabular-nums">
-                  Cerium {installed.release}
-                </span>
-                <span className="rounded-md bg-surface-hover px-1.5 py-px text-meta font-medium text-fg-secondary tabular-nums">
-                  {channelLabel[updates.buildChannel]}
-                  {installed.build !== undefined ? ` ${installed.build}` : null}
-                </span>
+    <SettingsList>
+      <div className="flex flex-col">
+        <div className="flex min-h-14 items-center gap-4 px-4 py-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="flex items-center gap-2" title={updates.version}>
+              <span className="text-body font-medium text-fg-primary tabular-nums">
+                Cerium {installed.release}
               </span>
-              {offerVersion(status) === undefined ? (
-                <span
-                  role={offline ? "alert" : "status"}
-                  className={`text-meta leading-relaxed ${offline ? "text-error-text" : "text-fg-tertiary"}`}
-                >
-                  {statusText(updates)}
-                  {at !== undefined ? (
-                    <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span>
-                  ) : null}
-                </span>
-              ) : null}
-            </div>
-            <span className="flex shrink-0 items-center gap-1.5">
-              <Button
-                onClick={() => openWhatsNew(true)}
-                className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-              >
-                What's new
-              </Button>
-              {status.kind === "current" || status.kind === "unreachable" || status.kind === "checking" ? (
-                <Button
-                  onClick={() => void bridge?.checkForUpdates?.()}
-                  disabled={status.kind === "checking"}
-                  className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
-                >
-                  <RefreshCw
-                    size={12}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                    className={status.kind === "checking" ? "animate-spin" : undefined}
-                  />
-                  {status.kind === "checking" ? "Checking" : "Check now"}
-                </Button>
-              ) : null}
+              <span className="rounded-md bg-surface-hover px-1.5 py-px text-meta font-medium text-fg-secondary tabular-nums">
+                {channelLabel[updates.buildChannel]}
+                {installed.build !== undefined ? ` ${installed.build}` : null}
+              </span>
             </span>
+            {offerVersion(status) === undefined ? (
+              <span
+                role={offline ? "alert" : "status"}
+                className={`text-meta leading-relaxed ${offline ? "text-error-text" : "text-fg-tertiary"}`}
+              >
+                {statusText(updates)}
+                {at !== undefined ? (
+                  <span className="text-fg-tertiary"> {checkedLabel(at, now)}.</span>
+                ) : null}
+              </span>
+            ) : null}
           </div>
-          <UpdateOffer updates={updates} />
-        </div>
-        <SettingsRow
-          label="Channel"
-          hint={locked ? "Finish the update first, then you can switch." : channelHint[updates.channel]}
-          className="pr-2.5"
-          control={() => (
-            <SelectRoot
-              value={updates.channel}
-              onValueChange={(next) => next !== null && void bridge?.setUpdateChannel?.(next)}
-              disabled={locked || status.kind === "unsupported"}
+          <span className="flex shrink-0 items-center gap-1.5">
+            <Button
+              onClick={() => openWhatsNew(true)}
+              className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
             >
-              <SelectTrigger label="Update channel">{channelLabel[updates.channel]}</SelectTrigger>
-              <SelectPopup>
-                {(["stable", "nightly"] as const).map((id) => (
-                  <SelectItem key={id} value={id} description={channelHint[id]}>
-                    {channelLabel[id]}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </SelectRoot>
+              What's new
+            </Button>
+            {status.kind === "current" || status.kind === "unreachable" || status.kind === "checking" ? (
+              <Button
+                onClick={() => void bridge?.checkForUpdates?.()}
+                disabled={status.kind === "checking"}
+                className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={12}
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className={status.kind === "checking" ? "animate-spin" : undefined}
+                />
+                {status.kind === "checking" ? "Checking" : "Check now"}
+              </Button>
+            ) : null}
+          </span>
+        </div>
+        <UpdateOffer updates={updates} />
+      </div>
+      <SettingsRow
+        label="Channel"
+        hint={locked ? "Finish the update first, then you can switch." : channelHint[updates.channel]}
+        className="pr-2.5"
+        control={() => (
+          <SelectRoot
+            value={updates.channel}
+            onValueChange={(next) => next !== null && void bridge?.setUpdateChannel?.(next)}
+            disabled={locked || status.kind === "unsupported"}
+          >
+            <SelectTrigger label="Update channel">{channelLabel[updates.channel]}</SelectTrigger>
+            <SelectPopup>
+              {(["stable", "nightly"] as const).map((id) => (
+                <SelectItem key={id} value={id} description={channelHint[id]}>
+                  {channelLabel[id]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </SelectRoot>
+        )}
+      />
+      {/* A Mac build that can't install updates itself has nothing to download ahead. */}
+      {status.kind === "unsupported" || updates.manual ? null : (
+        <SettingsRow
+          label="Download automatically"
+          hint="Updates download in the background, ready for your next restart."
+          control={(labelledBy) => (
+            <SettingsSwitch
+              checked={updates.autoDownload}
+              onCheckedChange={(on) => void bridge?.setAutoDownload?.(on)}
+              labelledBy={labelledBy}
+            />
           )}
         />
-        {/* A Mac build that can't install updates itself has nothing to download ahead. */}
-        {status.kind === "unsupported" || updates.manual ? null : (
-          <SettingsRow
-            label="Download automatically"
-            hint="Updates download in the background, ready for your next restart."
-            control={(labelledBy) => (
-              <SettingsSwitch
-                checked={updates.autoDownload}
-                onCheckedChange={(on) => void bridge?.setAutoDownload?.(on)}
-                labelledBy={labelledBy}
-              />
-            )}
-          />
-        )}
-      </SettingsList>
-    </SettingsSection>
+      )}
+    </SettingsList>
   );
 }
 

@@ -1616,12 +1616,12 @@ function Workspace() {
       keywords: "bring sessions claude code codex opencode muse history resume",
       run: () => openImport(true),
     },
-    ...settingsPages.map(({ id, label, icon }): PaletteCommand => ({
+    ...settingsPages.map(({ id, label, icon, group }): PaletteCommand => ({
       id: `settings-${id}`,
       group: "Settings",
       label,
       icon,
-      keywords: "settings",
+      keywords: `settings ${group.toLowerCase()}`,
       run: () => openSettings(id),
     })),
   ];

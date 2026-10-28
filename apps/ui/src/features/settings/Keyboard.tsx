@@ -112,7 +112,7 @@ export function KeyboardSettings() {
           control={() => (
             <SelectRoot value={sendKey} onValueChange={(next) => next !== null && setSendKey(next)}>
               <SelectTrigger label="Send messages with">
-                <span className="font-medium text-fg-primary">{keyLabel(sendKeys[sendKey].send)}</span>
+                <span>{keyLabel(sendKeys[sendKey].send)}</span>
               </SelectTrigger>
               <SelectPopup>
                 {(Object.keys(sendKeys) as ReadonlyArray<SendKey>).map((key) => (
@@ -148,7 +148,7 @@ export function KeyboardSettings() {
           ) : undefined
         }
       >
-        <label className="flex h-9 items-center gap-2 rounded-lg border border-line-subtle bg-surface-raised px-2.5 text-body text-fg-secondary focus-within:border-line-strong">
+        <label className="flex h-8 items-center gap-2 rounded-lg border border-line-subtle bg-surface-sunken px-2.5 text-body text-fg-secondary focus-within:border-line-strong">
           <Search size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" aria-hidden />
           <input
             value={query}

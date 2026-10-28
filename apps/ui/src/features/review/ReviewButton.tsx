@@ -86,7 +86,7 @@ export function ReviewButton({
 
   const label =
     chosen === undefined
-      ? "Put a model on your roster in Settings → Agents to review with"
+      ? "Put a model on your roster in Settings → Roster to review with"
       : running
         ? `${chosen.label} is reviewing`
         : `Have ${chosen.label} on ${providerName[chosen.reviewer.provider]} review these changes`;

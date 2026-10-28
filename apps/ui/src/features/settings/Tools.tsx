@@ -86,9 +86,7 @@ export function AdvisorRows({
               >
                 <SelectTrigger label="Advisor model">
                   {picked ? <ProviderLogo provider={picked.provider} size={13} /> : null}
-                  <span className="font-medium text-fg-primary">
-                    {model?.label ?? picked?.model ?? "Choose"}
-                  </span>
+                  <span>{model?.label ?? picked?.model ?? "Choose"}</span>
                 </SelectTrigger>
                 <SelectPopup>
                   <ModelGroups models={models} harnesses={harnesses} />

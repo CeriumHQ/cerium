@@ -34,8 +34,8 @@ export function ToolRow({
   readonly menu?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span className="relative grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-primary">
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">
         <span className={dim ? "opacity-35 grayscale" : undefined}>{mark}</span>
         {newer === undefined ? null : (
           <span
@@ -46,7 +46,7 @@ export function ToolRow({
         )}
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-reading font-medium text-fg-primary">{name}</span>
+        <span className="truncate text-body text-fg-primary">{name}</span>
         <span
           className={`truncate text-meta ${tone === "attention" ? "text-attention-text" : "text-fg-tertiary"}`}
         >

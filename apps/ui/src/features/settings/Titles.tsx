@@ -88,13 +88,13 @@ export function TitleRows({
                 {picked === undefined ? (
                   <>
                     {automatic ? <ProviderLogo provider={automatic.provider} size={13} /> : null}
-                    <span className="font-medium text-fg-primary">Automatic</span>
+                    <span>Automatic</span>
                     {automatic ? <span className="text-fg-tertiary">{automatic.label}</span> : null}
                   </>
                 ) : (
                   <>
                     <ProviderLogo provider={picked.provider} size={13} />
-                    <span className="font-medium text-fg-primary">{pickedInfo?.label ?? picked.model}</span>
+                    <span>{pickedInfo?.label ?? picked.model}</span>
                   </>
                 )}
               </SelectTrigger>

@@ -102,7 +102,7 @@ export class OfferedModels extends Context.Service<
 }
 
 /**
- * The catalog leads spawn from without asking: the roster (Settings → Agents) applied to what the
+ * The catalog leads spawn from without asking: the roster (Settings → Roster) applied to what the
  * harnesses offer now, read afresh each time, so a roster change or a harness signed in reaches the
  * next spawn.
  */

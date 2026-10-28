@@ -360,10 +360,10 @@ const describeChanges = ({ uncommitted, unmerged }: WorktreeChanges, base: strin
 /** What the lead hears when the worktree was made: what setup runs there, or that none is set. */
 const setupNote = (ran: ScriptStarted | undefined): string =>
   ran === undefined
-    ? "No setup command is set for this project, so the worktree may lack what it needs. Ask the user to set one in Settings → Source control, or install what's missing yourself."
+    ? "No setup command is set for this project, so the worktree may lack what it needs. Ask the user to set one in Settings → Git & GitHub, or install what's missing yourself."
     : ran._tag === "Ran"
       ? `The project's setup (\`${ran.script}\`) is running in this thread's terminal. Wait for the notice of it finishing or failing before relying on what it installs.`
-      : `Cerium guesses the setup \`${ran.script}\` for this project, but a guess never runs by itself. Ask the user to confirm it in Settings → Source control (or press Setup); until then, wait for what it looks for.`;
+      : `Cerium guesses the setup \`${ran.script}\` for this project, but a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub (or press Setup); until then, wait for what it looks for.`;
 
 /** What the lead hears when a script's run is over. */
 const endedNote = (ended: ScriptEnded): string => {

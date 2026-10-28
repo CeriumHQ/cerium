@@ -220,7 +220,7 @@ export const projectScriptsLayer = Layer.effect(
           return auto === true
             ? undefined
             : yield* new ScriptsError({
-                message: `No ${kind} command is set for ${path.basename(project)}; set one in Settings → Source control.`,
+                message: `No ${kind} command is set for ${path.basename(project)}; set one in Settings → Git & GitHub.`,
               });
         }
         const started = yield* terminals

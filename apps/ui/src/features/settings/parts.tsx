@@ -1,14 +1,17 @@
 import { Switch } from "@base-ui/react/switch";
 import { useAtomValue } from "@effect/atom-react";
 import { Monitor } from "lucide-react";
-import { useId, type ReactNode } from "react";
+import { createContext, use, useId, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyCaps } from "../../lib/keys.ts";
 
+/** The sidebar heading the open page sits under, which its header names over the title. */
+export const SettingsPlace = createContext<string | undefined>(undefined);
+
 /**
- * A settings category: its title, a line on what it covers when the title doesn't say, and an action
+ * A settings page: its title, a line on what it covers when the title doesn't say, and an action
  * for the whole page, over its sections. Settles in when opened. `perMachine` pages show the driven
  * machine's settings, and say which while it isn't this one.
  */
@@ -19,13 +22,15 @@ export function SettingsPage({
   perMachine = false,
   children,
 }: {
-  title: string;
+  /** The page's name, with a tag beside it when it needs one. */
+  title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   perMachine?: boolean;
   children: ReactNode;
 }) {
   const driven = useAtomValue(machineAtom);
+  const group = use(SettingsPlace);
   const badge =
     perMachine && driven ? (
       <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-meta font-medium text-fg-primary">
@@ -35,19 +40,20 @@ export function SettingsPage({
     ) : null;
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex max-w-[42rem] flex-col gap-8 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] transition-[opacity,translate] md:gap-10 md:px-10 md:pt-12 md:pb-20 duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
+      <div className="mx-auto flex max-w-[42rem] flex-col gap-7 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] transition-[opacity,translate] md:gap-8 md:px-10 md:pt-10 md:pb-20 duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
         {/* The narrow window's top bar already names the page, so there the header may be empty. */}
-        <header className={`flex flex-col gap-1.5 ${description || badge || action ? "" : "max-md:hidden"}`}>
+        <header className={`flex flex-col gap-1 ${description || badge || action ? "" : "max-md:hidden"}`}>
+          {group ? <span className="text-meta text-fg-tertiary max-md:hidden">{group}</span> : null}
           {/* The title is hidden there, so the row stays only for what sits beside it. */}
           <div className={`flex min-h-7 items-center gap-2.5 ${badge || action ? "" : "max-md:hidden"}`}>
-            <h1 className="text-[20px] font-semibold tracking-tight text-fg-primary max-md:hidden">
+            <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-fg-primary max-md:hidden">
               {title}
             </h1>
             {badge}
             {action ? <div className="ml-auto flex shrink-0 items-center">{action}</div> : null}
           </div>
           {description ? (
-            <p className="max-w-md text-body leading-relaxed text-fg-tertiary">{description}</p>
+            <p className="max-w-lg text-body leading-relaxed text-fg-tertiary">{description}</p>
           ) : null}
         </header>
         {children}
@@ -69,10 +75,10 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-2.5">
       <div className="flex items-end gap-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 className="flex items-center gap-2 text-reading font-medium text-fg-primary">{title}</h2>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h2 className="flex items-center gap-2 text-body font-medium text-fg-primary">{title}</h2>
           {description ? <p className="text-meta leading-relaxed text-fg-tertiary">{description}</p> : null}
         </div>
         {action}
@@ -102,9 +108,9 @@ export function SettingsRow({
 }) {
   const labelId = useId();
   return (
-    <div className={`flex min-h-12 items-center gap-4 px-4 py-2.5 ${className ?? ""}`}>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span id={labelId} className="text-body font-medium text-fg-primary">
+    <div className={`flex min-h-11 items-center gap-4 px-4 py-2 ${className ?? ""}`}>
+      <div className="flex min-w-0 flex-1 flex-col gap-px">
+        <span id={labelId} className="text-body text-fg-primary">
           {label}
         </span>
         {hint ? <span className="text-meta leading-relaxed text-fg-tertiary">{hint}</span> : null}
@@ -118,6 +124,23 @@ export function SettingsRow({
 /** A card of settings rows, a hairline between each. */
 export function SettingsList({ children }: { children: ReactNode }) {
   return <SettingsCard className="flex flex-col divide-y divide-line-subtle">{children}</SettingsCard>;
+}
+
+/** A quiet line in place of a page's settings: why there are none, or what to do first. */
+export function SettingsNote({
+  tone = "quiet",
+  children,
+}: {
+  tone?: "quiet" | "error";
+  children: ReactNode;
+}) {
+  return (
+    <SettingsCard
+      className={`px-4 py-3.5 text-body leading-relaxed ${tone === "error" ? "text-error-text" : "text-fg-tertiary"}`}
+    >
+      {children}
+    </SettingsCard>
+  );
 }
 
 /** A small tag beside a heading, such as "Experimental". */
@@ -147,16 +170,20 @@ export function SettingsSwitch({
       onCheckedChange={onCheckedChange}
       disabled={disabled}
       aria-labelledby={labelledBy}
-      className="relative mt-0.5 flex h-5 w-9 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
+      className="relative flex h-4.5 w-8 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
     >
-      <Switch.Thumb className="size-4 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-4 data-checked:bg-accent-fg" />
+      <Switch.Thumb className="size-3.5 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3.5 data-checked:bg-accent-fg" />
     </Switch.Root>
   );
 }
 
-/** A bordered card that groups settings or previews. */
+/** A card that groups settings or previews: a faint fill inside a hairline. */
 export function SettingsCard({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-xl border border-line-subtle ${className ?? ""}`}>{children}</div>;
+  return (
+    <div className={`rounded-lg border border-line-subtle bg-surface-pane ${className ?? ""}`}>
+      {children}
+    </div>
+  );
 }
 
 /** A keyboard key, or a combination of them, drawn as keycaps that can be shown pressed. */

@@ -121,7 +121,7 @@ function TextSizeRow() {
       control={() => (
         <SelectRoot value={textSize} onValueChange={(next) => next !== null && setTextSize(next)}>
           <SelectTrigger label="Conversation text size">
-            <span className="font-medium text-fg-primary">{current?.label}</span>
+            <span>{current?.label}</span>
             <span className="text-fg-tertiary tabular-nums">{current?.px}px</span>
           </SelectTrigger>
           <SelectPopup>
@@ -185,7 +185,7 @@ function ScaleRow() {
           onValueChange={(next) => setScale(scales.find((each) => String(each) === next) ?? 100)}
         >
           <SelectTrigger label="Window scale">
-            <span className="font-medium text-fg-primary tabular-nums">{scale}%</span>
+            <span className="tabular-nums">{scale}%</span>
           </SelectTrigger>
           <SelectPopup>
             {scales.map((each) => (
