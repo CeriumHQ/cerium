@@ -69,6 +69,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- CI: a pull request's Mac app is signed ad hoc, so its packaging check passes. electron-builder signs nothing for a pull request unless told to, which left Electron's own signature on a bundle it no longer matched, and the smoke test's `codesign --verify` refused it; a pull request now signs ad hoc whatever certificate the repository has, so its build holds no secret and waits on no notarization.
+
 - Internal: a push from a linked worktree passes the pre-push hook's tests. Git hands its hooks the repository they run for, which from a worktree is an absolute `GIT_DIR`, and the git tests' throwaway repositories resolved to it instead of themselves: 76 failed, and the rest wrote their settings (`core.bare`, `user.name`, `core.hooksPath`), branches and a tag into the real repository. The hook's checks now run without git's repository variables.
 
 - The website leads a phone to the web app. On a phone or tablet, the home page's main buttons say "Open the web app" and open `/app/`, where they offered the Windows installer, and the top bar of the home and privacy pages keeps its Web app link on a narrow screen instead of hiding it; on the narrowest phones the bar shows Cerium's mark without its name so the link fits beside Download. `/downloads/` still offers the builds.
