@@ -4,7 +4,8 @@
 // well; a browser driving a desktop moves to the build of that desktop's version. The website is
 // apps/site/dist, which `bun run --cwd apps/site build` makes. Earlier releases' builds come from
 // dist/builds, which scripts/builds.ts fills. Wrangler runs this before `dev` and `deploy`, and it
-// writes `_headers` for every build's page and `_redirects` for the installer's download.
+// writes `_headers` for every build's page and `_redirects` for the installer's download, which
+// names the newest stable release even when a nightly is what deploys.
 //
 // Usage: node scripts/assets.ts
 
@@ -66,5 +67,9 @@ writeFileSync(
   `${JSON.stringify({ versions: builds.map((build) => build.version) })}\n`,
 );
 writeFileSync(join(out, "_headers"), headers);
-writeFileSync(join(out, "_redirects"), redirects(root));
+const stableFile = join(fetched, "stable.txt");
+writeFileSync(
+  join(out, "_redirects"),
+  redirects(root, existsSync(stableFile) ? readFileSync(stableFile, "utf8").trim() : undefined),
+);
 console.log(`Web UI builds: ${builds.map((build) => build.version).join(", ") || "none"}.`);

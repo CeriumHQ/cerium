@@ -11,7 +11,7 @@
 <h3>Your coding agents, working as one team.</h3>
 
 <p>
-  <a href="https://github.com/CeriumHQ/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/CeriumHQ/cerium?include_prereleases&style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
+  <a href="https://github.com/CeriumHQ/cerium/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/CeriumHQ/cerium?style=flat-square&label=release&color=f2f2f2&labelColor=1c1c1c" /></a>
   <a href="https://github.com/CeriumHQ/cerium/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/CeriumHQ/cerium/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1c1c1c" /></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-f2f2f2?style=flat-square&labelColor=1c1c1c" /></a>
   <img alt="Platforms: Windows, macOS and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-0078D4?style=flat-square&labelColor=1c1c1c" />
@@ -28,7 +28,7 @@
 Ask once. A lead agent splits the job across Claude Code, Codex, Cursor, OpenCode and Muse Code, the
 helpers work in parallel and talk to each other, and you get one answer back.
 
-[**Download**](https://github.com/CeriumHQ/cerium/releases) ·
+[**Download**](https://github.com/CeriumHQ/cerium/releases/latest) ·
 [Website](https://cerium.nonlooped.xyz) ·
 [Build from source](#build-from-source)
 
@@ -145,7 +145,7 @@ injects into every session, so every agent stays visible in the thread.
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/releases):
+Download the [latest stable release](https://github.com/CeriumHQ/cerium/releases/latest):
 
 - **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC. The
   installer isn't code-signed yet, so SmartScreen warns that it "protected your PC": choose More info,
@@ -158,8 +158,11 @@ Download the latest build from [Releases](https://github.com/CeriumHQ/cerium/rel
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
   needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
 
-Cerium is in early development and ships **nightly** builds; it updates itself on the channel you
-pick in Settings → Updates.
+Stable releases are tested and come out when something worth shipping has landed. Cerium also
+publishes **nightly** builds of every change as it lands, marked as pre-releases on the
+[Releases](https://github.com/CeriumHQ/cerium/releases) page. They are for trying things early and can
+ship rough edges, so most people should stay on stable. The app updates itself on the channel you pick
+in Settings → Updates.
 
 ## Privacy
 

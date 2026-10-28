@@ -2,12 +2,13 @@
 // desktops still run. Each release carries its build as
 // `cerium-web-<version>.tar.gz`; the newest ones are kept, up to MAX_BUILDS. Needs the GitHub CLI,
 // signed in or given GH_TOKEN, and reads the repository from GH_REPO or the checkout's remote.
-// Without it, a deploy serves only this checkout's build, and says so.
+// Without it, a deploy serves only this checkout's build, and says so. It also leaves the newest
+// stable release's version in dist/builds/stable.txt, which the website's downloads follow.
 //
 // Usage: node scripts/builds.ts
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,15 +29,19 @@ const gh = (args: ReadonlyArray<string>) => {
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-let releases: Array<{ tagName: string }>;
+let releases: Array<{ tagName: string; isPrerelease: boolean }>;
 try {
-  releases = JSON.parse(gh(["release", "list", "--limit", "100", "--json", "tagName"])) as Array<{
-    tagName: string;
-  }>;
+  releases = JSON.parse(
+    gh(["release", "list", "--limit", "100", "--json", "tagName,isPrerelease"]),
+  ) as typeof releases;
 } catch (error) {
   console.warn(`Couldn't list Cerium's releases, so only this checkout's web UI is served: ${String(error)}`);
   process.exit(0);
 }
+
+// The website's downloads name the newest stable release, never a nightly (scripts/layout.ts).
+const stable = releases.find((release) => !release.isPrerelease)?.tagName.replace(/^v/, "");
+if (stable !== undefined) writeFileSync(join(out, "stable.txt"), stable);
 
 const downloads = mkdtempSync(join(tmpdir(), "cerium-web-"));
 let kept = 0;

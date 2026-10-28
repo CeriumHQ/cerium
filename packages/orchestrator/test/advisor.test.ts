@@ -118,8 +118,8 @@ describe("Advisor", () => {
       const reasons = yield* Effect.forEach(
         [
           orchestrator.askAdvisor(advisorId, "asking myself"),
-          orchestrator.sendMessage(advisorId, thread.lead.id, "let me do it"),
-          orchestrator.sendMessage(thread.lead.id, advisorId, "around the tool"),
+          orchestrator.sendMessage(advisorId, thread.lead.id, "let me do it").pipe(Effect.asVoid),
+          orchestrator.sendMessage(thread.lead.id, advisorId, "around the tool").pipe(Effect.asVoid),
           orchestrator.spawn(advisorId, { role: "worker", model: "scout", prompt: "work" }),
           orchestrator.spawn(thread.lead.id, { role: "advisor", model: "scout", prompt: "impostor" }),
         ],

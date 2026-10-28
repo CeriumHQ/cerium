@@ -619,11 +619,107 @@ describe("Orchestrator", () => {
       });
 
       const last = threads.at(-1)!;
-      yield* orchestrator.sendMessage(threads[0]!.lead.id, last.lead.id, "are you done?");
+      yield* orchestrator.sendMessage(threads[0]!.lead.id, last.lead.id, "are you done?", { reply: true });
       yield* waitFor((events) =>
         events.find(
           (event) => event.agentId === last.lead.id && event.payload._tag === "PermissionRequested",
         ),
+      );
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("holds another thread's heads-up for its lead's next turn, whatever starts it", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { seen, waitFor } = yield* recordEvents;
+      const first = yield* startWorkThread;
+      const second = yield* startWorkThread;
+      const child = yield* orchestrator.spawn(second.lead.id, {
+        role: "scout",
+        model: "scout",
+        prompt: "go",
+      });
+      const childId = child._tag === "Spawned" ? child.agentId : ("" as AgentId);
+      yield* waitFor((events) => turnInputs(events, second.lead.id).at(0));
+
+      const sent = yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "I'm editing notes.md");
+      assert.isTrue(sent.held);
+      const held = yield* waitFor((events) =>
+        events.find((event) => event.agentId === second.lead.id && event.payload._tag === "MessageHeld"),
+      );
+      const heldId = held.payload._tag === "MessageHeld" ? held.payload.message.id : undefined;
+      assert.isDefined(heldId);
+      // Long past the batch window, the lead has taken only its child's report.
+      yield* Effect.sleep("150 millis");
+      const before = turnInputs(seen, second.lead.id);
+      assert.isFalse(before.flat().some((item) => item._tag === "FromAgent"));
+
+      // Within a thread, a message still starts a turn.
+      assert.isFalse((yield* orchestrator.sendMessage(childId, second.lead.id, "found it")).held);
+      const next = yield* waitFor((events) =>
+        turnInputs(events, second.lead.id).find((turn) =>
+          turn.some((item) => item._tag === "FromAgent" && item.agentId === childId),
+        ),
+      );
+      assert.deepStrictEqual(
+        next.map((item) => item._tag),
+        ["FromAgent", "FromAgent"],
+      );
+      assert.strictEqual(next[0]?._tag === "FromAgent" ? next[0].id : undefined, heldId);
+    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
+  });
+
+  it.live("wakes another thread's lead for a message that asks a reply, and the asker for the answer", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const first = yield* startWorkThread;
+      const second = yield* startWorkThread;
+      const fromAgent = (agentId: AgentId, text: string) =>
+        waitFor((events) =>
+          turnInputs(events, agentId).find((turn) =>
+            turn.some((item) => item._tag === "FromAgent" && item.text === text),
+          ),
+        );
+
+      const asked = yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "are you on notes.md?", {
+        reply: true,
+      });
+      assert.isFalse(asked.held);
+      yield* fromAgent(second.lead.id, "are you on notes.md?");
+
+      assert.isFalse((yield* orchestrator.sendMessage(second.lead.id, first.lead.id, "no, go ahead")).held);
+      yield* fromAgent(first.lead.id, "no, go ahead");
+      // The answer was the one awaited; what follows is a heads-up again.
+      assert.isTrue((yield* orchestrator.sendMessage(second.lead.id, first.lead.id, "done now")).held);
+    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
+  });
+
+  it.live("keeps a held message for a lead whose session stopped, for the turn it resumes with", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const first = yield* startWorkThread;
+      const second = yield* startWorkThread;
+      yield* orchestrator.sendUserMessage(second.lead.id, "start");
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === second.lead.id && event.payload._tag === "TurnCompleted"),
+      );
+
+      yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "I'm editing notes.md");
+      yield* orchestrator.stopAgent(second.lead.id);
+      yield* orchestrator.sendUserMessage(second.lead.id, "back");
+      const resumed = yield* waitFor((events) =>
+        turnInputs(events, second.lead.id).find((turn) =>
+          turn.some((item) => item._tag === "FromUser" && item.text === "back"),
+        ),
+      );
+      assert.deepStrictEqual(
+        resumed.map((item) => item._tag),
+        ["FromAgent", "FromUser"],
       );
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });

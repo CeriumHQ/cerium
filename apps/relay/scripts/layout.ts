@@ -21,6 +21,9 @@ export const APP_PATH = "/app/";
 /** The repository the installers are published to (apps/desktop/electron-builder.ts). */
 const RELEASES = "https://github.com/CeriumHQ/cerium/releases/download";
 
+/** GitHub's page for the latest release, which nightlies (published as pre-releases) never are. */
+const LATEST = "https://github.com/CeriumHQ/cerium/releases/latest";
+
 /** Each download's path under `/download`, and the file it names, as electron-builder names it. */
 const downloads = (version: string): ReadonlyArray<readonly [string, string]> => [
   ["", `Cerium-Setup-${version}-x64.exe`],
@@ -35,19 +38,28 @@ const downloads = (version: string): ReadonlyArray<readonly [string, string]> =>
   ["/mac-intel", `Cerium-${version}-x64.dmg`],
 ];
 
+/** Nightlies carry `-nightly.n<run>` in their version (scripts/release.ts). */
+export const isNightly = (version: string): boolean => version.includes("-nightly.");
+
 /**
- * The relay's `_redirects`: `/download` fetches the Windows installer of the version deployed with
- * it, and the paths below it the Arm64 installer, each Linux package and the Mac's disk images (Apple
+ * The relay's `_redirects`: `/download` fetches the Windows installer of the newest stable release,
+ * and the paths below it the Arm64 installer, each Linux package and the Mac's disk images (Apple
  * silicon's at `/mac`, Intel's at `/mac-intel`), which the release workflows publish alongside
- * (apps/desktop/electron-builder.ts).
+ * (apps/desktop/electron-builder.ts). Nightlies deploy the relay too but are for people who pick
+ * that channel, so the website never offers one: a stable deploy names its own version, a nightly's
+ * the newest stable scripts/builds.ts found, and where there is none, the downloads go to the
+ * releases page's latest stable.
  */
-export const redirects = (root: WebBuild | undefined): string => {
+export const redirects = (root: WebBuild | undefined, stable?: string): string => {
   if (root === undefined) return "";
-  const release = `${RELEASES}/v${root.version}`;
-  return [
-    ...downloads(root.version).map(([path, file]) => `/download${path} ${release}/${file} 302`),
-    "",
-  ].join("\n");
+  const version = isNightly(root.version) ? stable : root.version;
+  if (version === undefined) {
+    return [...downloads("").map(([path]) => `/download${path} ${LATEST} 302`), ""].join("\n");
+  }
+  const release = `${RELEASES}/v${version}`;
+  return [...downloads(version).map(([path, file]) => `/download${path} ${release}/${file} 302`), ""].join(
+    "\n",
+  );
 };
 
 /**
