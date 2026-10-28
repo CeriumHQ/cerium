@@ -1,0 +1,111 @@
+/*
+ * The web client's gate (web/WebGate.tsx), dressed as Cerium's website: its headline's letters stretch
+ * out from narrow as the welcome's do, the rest rises after it, and one beam of white light comes in
+ * from the left, turns at a spinning facet and goes on as the spectrum, a band for each of the
+ * computers this device reaches.
+ */
+
+[data-gate] {
+  --gate-gutter: clamp(20px, 5vw, 72px);
+}
+
+[data-gate] [data-letter] {
+  display: inline-block;
+  animation: welcome-letter 1150ms var(--ease-out-soft) calc(var(--i) * 26ms + 60ms) both;
+}
+
+[data-gate] [data-reveal] {
+  animation: welcome-rise 900ms var(--ease-out-soft) calc(var(--d) * 90ms + 220ms) both;
+}
+
+/* Each path is one unit long (its pathLength), so a dash of 1 draws it whole. */
+.gate-beam path {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+
+.gate-beam-in {
+  stroke: url(#gate-beam-in);
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--fg-primary) 40%, transparent));
+  animation: gate-draw 900ms var(--ease-out-soft) 150ms forwards;
+}
+
+.gate-band {
+  filter: drop-shadow(0 0 7px var(--band));
+  animation: gate-draw 1100ms var(--ease-out-soft) calc(850ms + var(--n) * 60ms) forwards;
+}
+
+@keyframes gate-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* While it reaches for the account, the bands breathe, one after another. */
+[data-gate-state="connecting"] .gate-band {
+  animation:
+    gate-draw 1100ms var(--ease-out-soft) calc(850ms + var(--n) * 60ms) forwards,
+    gate-breathe 1400ms ease-in-out calc(var(--n) * 140ms) infinite alternate;
+}
+
+@keyframes gate-breathe {
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* The facet the beam splits at, turning the spectrum. */
+.gate-facet {
+  width: 18px;
+  height: 18px;
+  translate: -50% -50%;
+  rotate: 45deg;
+  border-radius: 2px;
+  background: conic-gradient(
+    from var(--gate-turn, 0deg),
+    var(--spectrum-1),
+    var(--spectrum-2),
+    var(--spectrum-3),
+    var(--spectrum-4),
+    var(--spectrum-5),
+    var(--spectrum-1)
+  );
+  box-shadow:
+    0 0 14px color-mix(in oklab, var(--fg-primary) 45%, transparent),
+    0 0 40px color-mix(in oklab, var(--spectrum-4) 50%, transparent);
+  animation:
+    welcome-rise 600ms var(--ease-out-soft) 700ms both,
+    gate-turn 8s linear infinite;
+}
+
+@property --gate-turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes gate-turn {
+  to {
+    --gate-turn: 360deg;
+  }
+}
+
+/* Without motion, the light is simply there and the words fade in. */
+@media (prefers-reduced-motion: reduce) {
+  [data-gate] :is([data-letter], [data-reveal]) {
+    animation: launch-fade 300ms ease-out both;
+  }
+
+  .gate-beam path,
+  [data-gate-state="connecting"] .gate-band {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .gate-facet {
+    animation: none;
+  }
+}
