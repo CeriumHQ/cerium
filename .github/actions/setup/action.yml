@@ -1,13 +1,14 @@
 name: Set up the workspace
 description: >-
-  Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile, or only one
-  package's. On Windows it first turns off Defender's real-time scanning.
+  Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile, or only some
+  packages'. On Windows it first turns off Defender's real-time scanning.
 
 inputs:
   filter:
     description: >-
-      Installs only this workspace package's dependencies (`bun install --filter`), for a job that
-      runs one package's scripts. Empty installs the whole workspace.
+      Installs only the dependencies of the workspace packages these space-separated patterns match
+      (`bun install --filter`, where `!` leaves a package out), for a job that runs only some
+      packages' scripts. Empty installs the whole workspace.
     required: false
     default: ""
 
@@ -43,7 +44,11 @@ runs:
     # Installing also runs the root `prepare` script, which patches the Effect diagnostics into
     # TypeScript and Oxlint.
     - shell: bash
-      run: bun install --frozen-lockfile ${FILTER:+--filter "$FILTER"}
+      run: |
+        read -ra patterns <<<"$FILTER"
+        filters=()
+        for pattern in "${patterns[@]}"; do filters+=(--filter "$pattern"); done
+        bun install --frozen-lockfile "${filters[@]}"
       env:
         FILTER: ${{ inputs.filter }}
         # Bun's package cache goes on the checkout's disk. Its default home on Windows is on C:, which

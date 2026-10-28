@@ -68,9 +68,17 @@ jobs:
               echo "Only documentation changed, so nothing is packaged or published."
             fi
             # A pull request packages only for Windows x64, the main platform, unless it changes the
-            # desktop shell, the dependencies or how packages are built; main packages everywhere
-            # before its nightly ships.
-            packaging=$(grep -E '^apps/desktop/|(^|/)package\.json$|^bun\.lock$|^\.github/(actions/(setup|package)/|workflows/ci\.yml$)' <<<"$changed" || true)
+            # desktop shell, the dependencies packages carry or how packages are built; main packages
+            # everywhere before its nightly ships. The web UI bundles its dependencies into the same
+            # JavaScript on every platform and the website's and the relay's aren't packaged, so a
+            # lockfile that changed along with only their manifests leaves the packages as they were.
+            packaging=$(grep -E '^apps/desktop/|^\.github/(actions/(setup|package)/|workflows/ci\.yml$)' <<<"$changed" || true)
+            manifests=$(grep -E '(^|/)package\.json$' <<<"$changed" || true)
+            carried=$(grep -vE '^apps/(ui|site|relay)/package\.json$' <<<"$manifests" || true)
+            lockfile=$(grep -xF bun.lock <<<"$changed" || true)
+            if [ -n "$carried" ] || { [ -n "$lockfile" ] && [ -z "$manifests" ]; }; then
+              packaging+="$carried$lockfile"
+            fi
             if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "$packaging" ]; then
               everywhere=false
               echo "Nothing that packaging reads changed, so only Windows x64 is packaged."
@@ -191,7 +199,9 @@ jobs:
 
   # Every change that reaches main is packaged and started on every platform, on each processor's
   # own runner, and a pull request on Windows x64 alone unless it touches packaging (plan, above).
-  # Nightlies ship these packages, packed fast (.github/actions/package).
+  # Nightlies ship these packages, packed fast (.github/actions/package). Packaging installs neither
+  # the relay's dependencies nor the website's, which its builds never read: Wrangler's alone brings
+  # Cloudflare's runtime, about a hundred megabytes per platform.
   package-linux:
     name: Package (Linux ${{ matrix.arch }})
     needs: plan
@@ -209,6 +219,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
@@ -231,6 +243,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
@@ -258,6 +272,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
