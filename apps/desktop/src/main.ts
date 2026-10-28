@@ -12,6 +12,7 @@ import {
   type IpcMainEvent,
   type Rectangle,
 } from "electron";
+import { existsSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
@@ -34,6 +35,7 @@ import {
   rememberedPath,
   rememberPath,
   sessionEnvironment,
+  withLocale,
   withShellPath,
 } from "./shellPath.ts";
 import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
@@ -533,7 +535,11 @@ const launchBackend = async () => {
     backend = startBackend(process.env);
     return;
   }
-  const env = sessionEnvironment();
+  const env = mac
+    ? withLocale(sessionEnvironment(), app.getSystemLocale(), (name) =>
+        existsSync(join("/usr/share/locale", name)),
+      )
+    : sessionEnvironment();
   const file = join(app.getPath("userData"), SHELL_PATH_FILE);
   const remembered = rememberedPath(file);
   const asked = loginShellPath(env).then((path) => {
