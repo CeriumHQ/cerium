@@ -7,7 +7,8 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { keyLabel } from "../../lib/keys.ts";
 import { useShortcut } from "../../lib/shortcuts.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { paletteAtom, palettes, type Palette } from "./palettes.ts";
+import { useDesktopColors } from "./desktopColors.ts";
+import { desktopPalette, paletteAtom, palettes, type Palette } from "./palettes.ts";
 import { SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
 import {
   scaleAtom,
@@ -31,6 +32,11 @@ const modes: Record<Theme, { label: string; icon: LucideIcon }> = {
 export function AppearanceSettings() {
   const [palette, setPalette] = useAtom(paletteAtom);
   const shown = useShownTheme();
+  // The Desktop theme, once the shell has read the desktop's colours, beside the clear glass: nine
+  // themes in rows of three, or the eight glasses in rows of four where the shell can't.
+  const desktop = useDesktopColors();
+  const [clear, ...tinted] = palettes;
+  const options = desktop === undefined ? palettes : [clear, desktopPalette, ...tinted];
   return (
     <SettingsPage title="Appearance">
       <SettingsSection title="Theme" action={<ModePicker />}>
@@ -38,9 +44,9 @@ export function AppearanceSettings() {
           value={palette}
           onValueChange={(value) => setPalette(value as Palette)}
           aria-label="Theme"
-          className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3"
+          className={`grid grid-cols-2 gap-x-3 gap-y-4 ${desktop === undefined ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
         >
-          {palettes.map((option) => (
+          {options.map((option) => (
             <Radio.Root
               key={option.id}
               value={option.id}
@@ -49,7 +55,11 @@ export function AppearanceSettings() {
               className="group flex flex-col gap-2.5 rounded-xl text-left outline-none"
             >
               <span className="relative block aspect-[16/10] overflow-hidden rounded-xl ring-1 ring-line-strong transition-[box-shadow] duration-150 group-hover:ring-fg-tertiary group-focus-visible:ring-2 group-focus-visible:ring-focus-ring group-data-checked:ring-2 group-data-checked:ring-accent">
-                <WindowSample palette={option.id} theme={shown} />
+                <WindowSample
+                  palette={option.id}
+                  theme={shown}
+                  wallpaper={option.id === desktopPalette.id ? desktop?.thumbnail : undefined}
+                />
               </span>
               <span className="flex items-center gap-2 px-0.5 text-body text-fg-secondary group-data-checked:font-medium group-data-checked:text-fg-primary">
                 <span className="grid size-3.5 place-items-center rounded-full border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
@@ -203,12 +213,26 @@ function ScaleRow() {
 /**
  * A miniature of Cerium's window drawn with the given palette's own tokens in the given mode: the
  * glass, the sidebar and the conversation panel with a message, a line of code in the palette's
- * colours, and the composer with its accent.
+ * colours, and the composer with its accent. Given the wallpaper, it sits on it, frosted, as the
+ * window does on the desktop.
  */
-function WindowSample({ palette, theme }: { palette: Palette; theme: "dark" | "light" }) {
+function WindowSample({
+  palette,
+  theme,
+  wallpaper,
+}: {
+  palette: Palette;
+  theme: "dark" | "light";
+  wallpaper?: string | undefined;
+}) {
   return (
-    <span data-palette={palette} data-theme={theme} className="absolute inset-0 block bg-backdrop p-2.5 pb-0">
-      <span className="flex h-full flex-col overflow-hidden rounded-t-md border border-b-0 border-line-strong bg-surface-window shadow-overlay">
+    <span
+      data-palette={palette}
+      data-theme={theme}
+      style={wallpaper === undefined ? undefined : { backgroundImage: `url("${wallpaper}")` }}
+      className="absolute inset-0 block bg-backdrop bg-cover bg-center p-2.5 pb-0"
+    >
+      <span className="flex h-full flex-col overflow-hidden rounded-t-md border border-b-0 border-line-strong bg-surface-window shadow-overlay backdrop-blur-md">
         <span className="flex h-3.5 shrink-0 items-center gap-1 px-1.5">
           <span className="size-1.5 rounded-full bg-fg-primary" />
           <span className="h-1 w-5 rounded-full bg-fg-tertiary/60" />

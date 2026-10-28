@@ -19,6 +19,7 @@ import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin 
 import { startBackend } from "./backend.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
+import { desktopTheme } from "./desktopTheme.ts";
 import {
   isBadgeRequest,
   isNotificationRequest,
@@ -502,6 +503,11 @@ ipcMain.handle("cerium:set-theme", (_event, theme: unknown) => {
   if (theme === "system" || theme === "dark" || theme === "light") nativeTheme.themeSource = theme;
   return nativeTheme.shouldUseDarkColors;
 });
+
+const desktop = desktopTheme();
+
+/** The colours the Desktop theme takes from the system's accent and the wallpaper (desktopTheme.ts). */
+ipcMain.handle("cerium:desktop-colors", () => desktop.colors());
 
 /** The scale the user picked in the UI, 1 being 100%; the page sends it before its window shows. */
 ipcMain.on("cerium:set-zoom", (event, factor: unknown) => {

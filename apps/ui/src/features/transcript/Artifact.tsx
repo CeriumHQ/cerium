@@ -69,10 +69,15 @@ const rememberHeight = (code: string, height: number) => {
   if (heights.size > 200) heights.delete(heights.keys().next().value!);
 };
 
-/** Changes to the mode (`data-theme`) or the palette, which together decide the window's colours. */
+/**
+ * Changes to the mode (`data-theme`), the palette or the desktop's colours (`data-desktop`), which
+ * together decide the window's colours.
+ */
 const subscribeTheme = (onChange: () => void) => {
   const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
+  observer.observe(document.documentElement, {
+    attributeFilter: ["data-theme", "data-palette", "data-desktop"],
+  });
   return () => observer.disconnect();
 };
 
@@ -86,7 +91,7 @@ let readTheme: { readonly under: string; readonly snapshot: string } | undefined
  */
 const themeSnapshot = (): string => {
   const { dataset } = document.documentElement;
-  const under = `${dataset["theme"]}:${dataset["palette"]}`;
+  const under = `${dataset["theme"]}:${dataset["palette"]}:${dataset["desktop"]}`;
   if (readTheme?.under !== under) {
     const style = getComputedStyle(document.documentElement);
     const mode = dataset["theme"] === "light" ? "light" : "dark";

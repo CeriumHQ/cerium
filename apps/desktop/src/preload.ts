@@ -4,7 +4,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // tells the page it is running inside Cerium's shell and where the shell's backend listens, or why
 // it stopped (with a restart and the logs folder), offers
 // the native dialogs it can't open, and passes on the theme the system should draw the window's glass
-// and caption buttons in, and the scale it is drawn at. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
+// and caption buttons in, and the scale it is drawn at. It hands the page the desktop's accent and
+// wallpaper colours for the Desktop theme. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
 // the file manager or opens it in its own app, none of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page reports whether the
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
@@ -46,6 +47,12 @@ contextBridge.exposeInMainWorld("cerium", {
     const forward = (_event: unknown, dark: unknown) => listener(dark === true);
     ipcRenderer.on("cerium:dark-colors", forward);
     return () => ipcRenderer.off("cerium:dark-colors", forward);
+  },
+  desktopColors: (): Promise<unknown> => ipcRenderer.invoke("cerium:desktop-colors"),
+  onDesktopColorsChange: (listener: (colors: unknown) => void): (() => void) => {
+    const forward = (_event: unknown, colors: unknown) => listener(colors);
+    ipcRenderer.on("cerium:desktop-colors", forward);
+    return () => ipcRenderer.off("cerium:desktop-colors", forward);
   },
   setZoom: (factor: number): void => ipcRenderer.send("cerium:set-zoom", factor),
   windowReady: (): void => ipcRenderer.send("cerium:window-ready"),

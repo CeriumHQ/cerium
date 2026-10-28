@@ -5,7 +5,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useRef, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 
-import { paletteAtom, palettes, type Palette } from "../../settings/palettes.ts";
+import { paletteAtom, paletteLabel, palettes, type Palette } from "../../settings/palettes.ts";
 import { themeAtom, themes, type Theme } from "../../settings/preferences.ts";
 import { useShownTheme } from "../../settings/theme.ts";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
@@ -19,9 +19,16 @@ const GLASSES: Record<Palette, { readonly kind: string; readonly light: string }
   },
   amber: { kind: "Bottle glass", light: "Brown bottle glass with honey in the light." },
   uranium: { kind: "Vaseline glass", light: "Olive in daylight, glowing chartreuse under a lamp." },
+  forest: {
+    kind: "Waldglas",
+    light: "Blown in the woods from beech ash: moss green, with amber in the code.",
+  },
   seaglass: { kind: "Tide-frosted", light: "Frosted by the tide: aqua, with coral and sand in the code." },
   cobalt: { kind: "Smalt blue", light: "Deep blue bottle glass, with gold in the code." },
+  amethyst: { kind: "Sun-purpled", light: "Desert glass the sun turned violet, with mint in the code." },
   cranberry: { kind: "Gold ruby", light: "Plum glass and a rose accent, with gold in the code." },
+  // Settings offers it beside the glasses; the welcome only names it when it's already the choice.
+  desktop: { kind: "Your own", light: "Tinted by your wallpaper, in your system's accent colour." },
 };
 
 const MODES: Record<Theme, { readonly label: string; readonly icon: LucideIcon }> = {
@@ -103,8 +110,7 @@ export function Glass({ number, titleId }: StepProps) {
             key={palette}
             className="min-h-[3lh] animate-[launch-fade_500ms_ease-out_both] text-reading leading-relaxed text-fg-secondary"
           >
-            <span className="text-fg-primary">{palettes.find((each) => each.id === palette)?.label}.</span>{" "}
-            {GLASSES[palette].light}
+            <span className="text-fg-primary">{paletteLabel(palette)}.</span> {GLASSES[palette].light}
           </p>
           <RadioGroup
             value={theme}
@@ -148,7 +154,7 @@ export function Glass({ number, titleId }: StepProps) {
           aria-label="Theme"
           onPointerMove={tilt}
           onPointerLeave={untilt}
-          className="relative grid h-[clamp(168px,34vh,300px)] grid-cols-6 gap-[clamp(10px,1.4vw,22px)]"
+          className="relative grid h-[clamp(168px,34vh,300px)] grid-cols-8 gap-[clamp(8px,1.1vw,18px)]"
         >
           {palettes.map((option, index) => (
             <Reveal key={option.id} order={4 + index * 0.6} className="min-w-0">
@@ -157,7 +163,7 @@ export function Glass({ number, titleId }: StepProps) {
                 nativeButton
                 onPointerDown={remember}
                 render={<button type="button" aria-label={`${option.label}: ${GLASSES[option.id].kind}`} />}
-                style={{ "--px": (index - 2.5) / 2.5 } as CSSProperties}
+                style={{ "--px": (index - 3.5) / 3.5 } as CSSProperties}
                 className="group relative block size-full rounded-[clamp(14px,1.6vw,24px)] text-left outline-none"
               >
                 <Pane palette={option.id} theme={shown} label={option.label} kind={GLASSES[option.id].kind} />
@@ -200,10 +206,10 @@ function Pane({
       <span className="absolute top-[clamp(10px,1.1vw,16px)] right-[clamp(10px,1.1vw,16px)] grid size-4 place-items-center rounded-full border border-fg-primary/30 transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
         <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
       </span>
-      <span className="relative truncate font-display text-[clamp(14px,1.35vw,20px)] font-light tracking-tight font-stretch-expanded [font-size-adjust:none]">
+      <span className="relative truncate font-display text-[clamp(13px,1.15vw,20px)] font-light tracking-tight font-stretch-semi-expanded [font-size-adjust:none]">
         {label}
       </span>
-      <span className="relative mt-1 truncate font-mono text-[10px] tracking-[0.12em] text-fg-tertiary uppercase group-data-checked:text-fg-secondary">
+      <span className="relative mt-1 line-clamp-2 font-mono text-[10px] leading-snug tracking-[0.08em] text-fg-tertiary uppercase group-data-checked:text-fg-secondary">
         {kind}
       </span>
     </span>

@@ -65,7 +65,9 @@ export function GlassMark({
     sized.observe(target);
     // The theme and its glass can change from the welcome itself.
     const themed = new MutationObserver(() => renderer.recolor(colorsOf(target)));
-    themed.observe(document.documentElement, { attributeFilter: ["data-theme", "data-palette"] });
+    themed.observe(document.documentElement, {
+      attributeFilter: ["data-theme", "data-palette", "data-desktop"],
+    });
     const point = (event: PointerEvent) => {
       const box = target.getBoundingClientRect();
       renderer.point(
