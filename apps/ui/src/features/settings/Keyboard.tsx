@@ -7,6 +7,7 @@ import {
   bindingFor,
   conflictsFor,
   defaultBindings,
+  defaultKeysOf,
   eventToBinding,
   setCapturingBinding,
   SHORTCUT_GROUPS,
@@ -43,7 +44,7 @@ export function KeyboardSettings() {
   const [query, setQuery] = useState("");
   const [capturing, setCapturing] = useState<ShortcutId | undefined>(undefined);
   const [conflict, setConflict] = useState<Conflict | undefined>(undefined);
-  const rebound = SHORTCUTS.filter((each) => bindings[each.id] !== each.defaultKeys).length;
+  const rebound = SHORTCUTS.filter((each) => bindings[each.id] !== defaultKeysOf(each)).length;
 
   // While a row listens for its new keys, the window's own shortcuts stay out of the way.
   useEffect(() => {
@@ -88,7 +89,7 @@ export function KeyboardSettings() {
     const each = shortcutDef(id);
     if (each === undefined) return false;
     const haystack =
-      `${each.label} ${each.group} ${each.keywords ?? ""} ${bindingFor(bindings, each.id)} ${keyLabel(each.displayKeys ?? each.defaultKeys)}`.toLowerCase();
+      `${each.label} ${each.group} ${each.keywords ?? ""} ${bindingFor(bindings, each.id)} ${keyLabel(each.displayKeys ?? defaultKeysOf(each))}`.toLowerCase();
     return words.every((word) => haystack.includes(word));
   };
 
@@ -168,7 +169,8 @@ export function KeyboardSettings() {
               <SettingsCard className="divide-y divide-line-subtle">
                 {rows.map((each) => {
                   const keys = bindingFor(bindings, each.id);
-                  const changed = keys !== each.defaultKeys;
+                  const defaults = defaultKeysOf(each);
+                  const changed = keys !== defaults;
                   const waiting = capturing === each.id;
                   // The row being rebound asks what to do; the rows already on those keys are marked.
                   const disputed = conflict?.id === each.id;
@@ -189,7 +191,7 @@ export function KeyboardSettings() {
                         </span>
                         {each.fixed ? (
                           <span className="flex shrink-0 items-center gap-2">
-                            <Keys keys={each.displayKeys ?? each.defaultKeys} size="sm" />
+                            <Keys keys={each.displayKeys ?? defaults} size="sm" />
                             <span className="w-12 text-right text-meta text-fg-tertiary">Built-in</span>
                           </span>
                         ) : (
@@ -198,11 +200,11 @@ export function KeyboardSettings() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setBindings({ ...bindings, [each.id]: each.defaultKeys });
+                                  setBindings({ ...bindings, [each.id]: defaults });
                                   setConflict(undefined);
                                 }}
                                 aria-label={`Reset ${each.label}`}
-                                title={`Back to ${keyLabel(each.defaultKeys)}`}
+                                title={`Back to ${keyLabel(defaults)}`}
                                 className="rounded-md px-1.5 py-1 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
                               >
                                 Reset

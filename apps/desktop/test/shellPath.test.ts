@@ -8,6 +8,7 @@ import {
   pathBetweenMarks,
   rememberedPath,
   rememberPath,
+  withLocale,
   withoutAppImage,
   withShellPath,
 } from "../src/shellPath.ts";
@@ -51,6 +52,29 @@ describe("withoutAppImage", () => {
 
   it("leaves a folder that only starts like the AppImage's", () => {
     expect(withoutAppImage({ PATH: `${appDir}-other/bin` }, appDir)).toEqual({ PATH: `${appDir}-other/bin` });
+  });
+});
+
+describe("withLocale", () => {
+  const known = new Set(["en_GB.UTF-8", "de_DE.UTF-8", "zh_CN.UTF-8"]);
+  const hasLocale = (name: string) => known.has(name);
+
+  it("names the system's language and region in UTF-8", () => {
+    expect(withLocale({ PATH: "/usr/bin" }, "en-GB", hasLocale)).toEqual({
+      PATH: "/usr/bin",
+      LANG: "en_GB.UTF-8",
+    });
+    expect(withLocale({}, "zh-Hans-CN", hasLocale)["LANG"]).toBe("zh_CN.UTF-8");
+  });
+
+  it("falls back to US English for a locale macOS lacks or a language alone", () => {
+    expect(withLocale({}, "eo-001", hasLocale)["LANG"]).toBe("en_US.UTF-8");
+    expect(withLocale({}, "de", hasLocale)["LANG"]).toBe("en_US.UTF-8");
+  });
+
+  it("leaves a locale the environment already names", () => {
+    const env = { LC_ALL: "C.UTF-8" };
+    expect(withLocale(env, "de-DE", hasLocale)).toBe(env);
   });
 });
 

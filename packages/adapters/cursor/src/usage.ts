@@ -1,6 +1,4 @@
-import { tmpdir } from "node:os";
-
-import { HarnessFailure, type SubscriptionReport } from "@cerium/harness";
+import { findOnPath, HarnessFailure, scratchFolder, type SubscriptionReport } from "@cerium/harness";
 import type { Terminal } from "@xterm/headless";
 import { Clock, Deferred, Duration, Effect, Exit, FileSystem, Option, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -41,16 +39,10 @@ interface Cli {
 
 /** The user's `cursor-agent`, as the program and arguments that start it. */
 const findCli = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const windows = process.platform === "win32";
-  const candidates = yield* spawner
-    .lines(ChildProcess.make(windows ? "where" : "which", ["cursor-agent"]))
-    .pipe(
-      Effect.map((lines) => lines.map((line) => line.trim()).filter((line) => line !== "")),
-      Effect.orElseSucceed((): ReadonlyArray<string> => []),
-    );
+  const candidates = yield* findOnPath("cursor-agent");
   for (const candidate of candidates) {
     if (!windows || path.extname(candidate).toLowerCase() === ".exe") {
       return Option.some<Cli>({ file: candidate, args: [] });
@@ -117,13 +109,9 @@ export const readCursorUsage = Effect.fn("CursorAdapter.usage")(function* () {
       "Cursor reports its limits through its CLI. Install it and sign in with `cursor-agent login` to see them here.",
     );
   }
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  // A folder of its own, so the workspace trust the CLI records is for this one folder only.
-  const cwd = path.join(tmpdir(), "cerium-cursor-usage");
-  yield* fs
-    .makeDirectory(cwd, { recursive: true })
-    .pipe(Effect.mapError(failure("Couldn't prepare the Cursor CLI's folder")));
+  // A folder of its own, so the workspace trust the CLI records is for this one folder only, and one
+  // no other user can put a `.cursor` folder in.
+  const cwd = yield* scratchFolder("cursor", "cerium-cursor-usage");
 
   const native = yield* loadTerminal;
   const terminal = yield* Effect.acquireRelease(

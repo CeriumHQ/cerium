@@ -67,6 +67,29 @@ export const sessionEnvironment = (): NodeJS.ProcessEnv => {
   return appDir ? withoutAppImage(process.env, appDir) : { ...process.env };
 };
 
+/**
+ * `env` with a UTF-8 locale when it names none, as a Mac app's has: launchd starts it without LANG,
+ * so the terminals' shells and every program they and the harnesses run would be in the C locale,
+ * printing accented letters and emoji as escapes. The system's language and region, when macOS has
+ * that locale (`hasLocale`), else US English, as Terminal.app falls back to.
+ */
+export const withLocale = (
+  env: NodeJS.ProcessEnv,
+  systemLocale: string,
+  hasLocale: (name: string) => boolean,
+): NodeJS.ProcessEnv => {
+  if (env["LANG"] || env["LC_ALL"] || env["LC_CTYPE"]) return env;
+  // "en-GB", or "zh-Hans-CN" with its script between.
+  const parts = systemLocale.split(/[-_]/);
+  const language = parts[0]?.toLowerCase() ?? "";
+  const region = parts.length > 1 ? parts.at(-1)?.toUpperCase() : undefined;
+  const named =
+    /^[a-z]{2,3}$/.test(language) && region !== undefined && /^[A-Z]{2}$/.test(region)
+      ? `${language}_${region}.UTF-8`
+      : undefined;
+  return { ...env, LANG: named !== undefined && hasLocale(named) ? named : "en_US.UTF-8" };
+};
+
 /** `env` with the shell's `path` ahead of its own PATH; `env` itself without one. */
 export const withShellPath = (env: NodeJS.ProcessEnv, path: string | undefined): NodeJS.ProcessEnv =>
   path === undefined ? env : { ...env, PATH: mergePaths(path, env["PATH"] ?? "") };

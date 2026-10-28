@@ -1,7 +1,12 @@
-import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import {
+  HarnessUnavailable,
+  scratchFolder,
+  shareProbe,
+  type HarnessAdapter,
+  type SessionOptions,
+} from "@cerium/harness";
 import { Context, Effect, FileSystem, Layer, Path, RcRef } from "effect";
 import { ChildProcessSpawner } from "effect/process";
-import { tmpdir } from "node:os";
 
 import { completeWithOpenCode } from "./complete.ts";
 import { forkOpenCodeSession } from "./fork.ts";
@@ -32,11 +37,15 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
       )(yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path>());
 
       // Probing, listing models and skills and completing all talk to one server, started on first use
-      // and stopped once nothing has needed it for a while. Its folder is the system's temp folder, so
-      // no project's configuration loads; sessions start servers of their own.
+      // and stopped once nothing has needed it for a while. Its folder is one of the user's own outside
+      // any project, so no project's configuration loads; sessions start servers of their own.
       let executable = "";
+      const scratch = scratchFolder("opencode").pipe(Effect.provide(platform));
       const shared = yield* RcRef.make({
-        acquire: Effect.suspend(() => openHost(executable, { cwd: tmpdir() })).pipe(Effect.provide(platform)),
+        acquire: scratch.pipe(
+          Effect.flatMap((cwd) => openHost(executable, { cwd })),
+          Effect.provide(platform),
+        ),
         idleTimeToLive: SHARED_IDLE,
       });
       const withServer = <A, E>(
@@ -93,7 +102,9 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
         probe: probes.fresh,
         listModels: ready.pipe(
           Effect.flatMap((executablePath) =>
-            withServer(executablePath, (client) => readCatalog(client, tmpdir())),
+            withServer(executablePath, (client) =>
+              scratch.pipe(Effect.flatMap((folder) => readCatalog(client, folder))),
+            ),
           ),
           Effect.map(({ rows, defaultRow }) => toModelInfos(rows, defaultRow)),
         ),
