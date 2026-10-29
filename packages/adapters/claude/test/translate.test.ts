@@ -263,12 +263,38 @@ describe("ClaudeTranslator edge cases", () => {
     });
   });
 
-  it("maps rejected rate limits to a retryable error", () => {
-    const [event] = new ClaudeTranslator().translate({
+  it("maps a rejected rate limit to a limit with its reset time, once", () => {
+    const translator = new ClaudeTranslator();
+    const rejected = {
       type: "rate_limit_event",
-      rate_limit_info: { status: "rejected", rateLimitType: "five_hour" },
+      rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1_900_000_000 },
+    } as unknown as SDKMessage;
+    const errored = {
+      type: "assistant",
+      error: "rate_limit",
+      parent_tool_use_id: null,
+      message: { id: "msg_1", content: [] },
+    } as unknown as SDKMessage;
+    expect(translator.translate(rejected).map((event) => event.payload)).toEqual([
+      {
+        _tag: "LimitReached",
+        provider: "claude",
+        window: "5-hour",
+        resetsAt: 1_900_000_000_000,
+        message: "Claude 5-hour limit reached",
+      },
+    ]);
+    expect(translator.translate(errored)).toEqual([]);
+  });
+
+  it("reports the limit from the error alone when no rejection came first", () => {
+    const [event] = new ClaudeTranslator().translate({
+      type: "assistant",
+      error: "rate_limit",
+      parent_tool_use_id: null,
+      message: { id: "msg_1", content: [] },
     } as unknown as SDKMessage);
-    expect(event?.payload).toMatchObject({ _tag: "AgentError", kind: "rateLimit", retryable: true });
+    expect(event?.payload).toMatchObject({ _tag: "LimitReached", provider: "claude" });
   });
 
   it("starts the session once although Claude Code repeats init every turn", () => {

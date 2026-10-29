@@ -449,7 +449,7 @@ export const errorPayload = (error: Pick<StructuredError, "type" | "message">): 
     case "provider.rate-limit":
       return { _tag: "AgentError", kind: "rateLimit", message: error.message, retryable: true };
     case "provider.quota":
-      return { _tag: "AgentError", kind: "rateLimit", message: error.message, retryable: false };
+      return { _tag: "LimitReached", provider: "opencode", message: error.message };
     case "provider.transport":
     case "provider.timeout":
     case "provider.internal":

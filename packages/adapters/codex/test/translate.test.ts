@@ -273,10 +273,41 @@ describe("CodexTranslator edge cases", () => {
       turnCompleted("u1", "failed", error),
     ]);
     expect(payloads).toEqual([
-      { _tag: "AgentError", kind: "rateLimit", message: "Usage limit reached", retryable: true },
+      { _tag: "LimitReached", provider: "codex", message: "Usage limit reached" },
       { _tag: "UsageReported", inputTokens: 0, outputTokens: 0 },
       { _tag: "TurnCompleted", stopReason: "error" },
     ]);
+  });
+
+  it("tells when the limit that ran out resets, from the limits Codex last reported", () => {
+    const error = {
+      message: "Usage limit reached",
+      codexErrorInfo: "usageLimitExceeded",
+      additionalDetails: null,
+    };
+    const snapshot = (primary: number, secondary: number) => ({
+      limitId: "codex",
+      limitName: null,
+      normalModelSlug: null,
+      primary: { usedPercent: primary, windowDurationMins: 300, resetsAt: 1_900_000_000 },
+      secondary: { usedPercent: secondary, windowDurationMins: 10_080, resetsAt: 1_900_100_000 },
+      credits: null,
+      individualLimit: null,
+      spendControlReached: null,
+      planType: null,
+      rateLimitReachedType: null,
+    });
+    const payloads = run(startedTranslator(), [
+      notification("account/rateLimits/updated", { rateLimits: snapshot(100, 40) }),
+      notification("error", { threadId: "t1", turnId: "u1", error, willRetry: false }),
+    ]);
+    expect(payloads[0]).toEqual({
+      _tag: "LimitReached",
+      provider: "codex",
+      window: "5-hour",
+      resetsAt: 1_900_000_000_000,
+      message: "Usage limit reached",
+    });
   });
 
   it("skips errors Codex retries itself, and maps lost logins to AuthRequired", () => {
