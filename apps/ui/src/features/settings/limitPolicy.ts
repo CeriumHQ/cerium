@@ -29,5 +29,5 @@ export const limitLabel: Record<LimitPolicy, string> = {
   off: "Stop",
 };
 
-/** The policy threads follow until they choose one. */
+/** The policy threads follow until they choose their own. */
 export const DEFAULT_LIMIT_POLICY: LimitPolicy = "wait";

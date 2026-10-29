@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Usage-limit policy helpers have a distinct filename from the Limits settings page, so their TypeScript declarations build together on Windows.
 - Settings → Usage is now two pages under Providers: Limits, with each harness's limit cards, and Tokens, with the tokens and cost agents used. Each has its own Refresh and "Updated" time, and the rail's usage rings open Limits.
 - The model menu sets the model's effort and speed in a panel beside its list instead of stacking them under it, so it no longer runs off the top of the window. Each effort sits on its own row, weakest first, with bars that rise with it. On a phone the panel goes under the list, with Auto beside the levels. Several at once moves into the menu as a switch at its foot, showing how many models are picked while it's on, so a chat can start several models too. The access button beside it now shows the access picked, Auto included, and its menu lists just the three modes, with no heading or descriptions. It explains a greyed-out mode only when there is one.
 - On a phone, the message box's project and branch shorten to fit, the branch first, instead of sliding under the model chip.

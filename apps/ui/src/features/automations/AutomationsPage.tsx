@@ -50,7 +50,7 @@ import { accessLimit, accessOptions, effortFor, modelKey, pickModel, useModels }
 import { chipClass, type EffortPick } from "../composer/Pickers.tsx";
 import { ProjectPicker, useLatestProject } from "../composer/ProjectPicker.tsx";
 import { projectName } from "../composer/projectList.ts";
-import { limitLabel, limitPolicies } from "../settings/limits.ts";
+import { limitLabel, limitPolicies } from "../settings/limitPolicy.ts";
 import { accessAtom, effortAtom, modelAtom } from "../settings/preferences.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import {

@@ -48,7 +48,7 @@ import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
-import { DEFAULT_LIMIT_POLICY } from "../features/settings/limits.ts";
+import { DEFAULT_LIMIT_POLICY } from "../features/settings/limitPolicy.ts";
 import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";

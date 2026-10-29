@@ -19,7 +19,7 @@ import type { MouseEvent, ReactNode } from "react";
 
 import { MenuRadioGroup, MenuRadioItem } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { limitLabel, limitPolicies } from "../settings/limits.ts";
+import { limitLabel, limitPolicies } from "../settings/limitPolicy.ts";
 import { accessOptions, effortHint, effortLabel, speedHint, speedLabel } from "./models.ts";
 
 // The message box's own controls beside the model menu (ModelPicker.tsx): the effort, speed and

@@ -46,7 +46,7 @@ import {
 } from "./parts.tsx";
 import { editorAtom } from "./preferences.ts";
 import { RowButton } from "./ToolRow.tsx";
-import { DEFAULT_LIMIT_POLICY, limitLabel, limitPolicies } from "./limits.ts";
+import { DEFAULT_LIMIT_POLICY, limitLabel, limitPolicies } from "./limitPolicy.ts";
 import { useSetting } from "./useSetting.ts";
 
 // The desktop's own pages: how this computer starts Cerium and keeps its threads, dictation, updates
