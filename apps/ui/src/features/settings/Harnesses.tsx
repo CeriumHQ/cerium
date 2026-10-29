@@ -1,18 +1,23 @@
 import { Button } from "@base-ui/react/button";
 import { OFFERED_PROVIDERS, type HarnessSetup, type HarnessStatus, type ProviderId } from "@cerium/protocol";
 import type { CommandTerminal, HarnessCommand } from "@cerium/rpc";
-import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Download, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
-import { closeTerminal, runHarnessCommand } from "../../backend/terminals.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
-import { fittedSize } from "../terminal/session.ts";
-import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
+import {
+  ActionDialog,
+  CommandDialog,
+  CommandTerminalView,
+  CopyableCommand,
+  useStartCommand,
+} from "./ActionDialog.tsx";
+import { useHarnessUpdates, type HarnessUpdate } from "./harnessUpdates.ts";
 import { SettingsNote, SettingsPage } from "./parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
@@ -103,56 +108,26 @@ export function HarnessSettings() {
 }
 
 /**
- * Updates every harness that has a newer release, one after another, each in the dialog's terminal as
- * its own command runs. The harnesses are checked again once the last has ended.
+ * Starts every harness with a newer release updating at once, each in its own row. Gone once each
+ * one is updating or has updated.
  */
 function UpdateAll({ targets, onChanged }: { targets: ReadonlyArray<Installed>; onChanged: () => void }) {
-  const run = useAtomSet(runHarnessCommand, { mode: "promise" });
-  const close = useAtomSet(closeTerminal, { mode: "promise" });
-  const [flow, setFlow] = useState<{
-    readonly queue: ReadonlyArray<Installed>;
-    readonly at: number;
-    readonly started: Promise<CommandTerminal>;
-  }>();
-  const current = flow?.queue[flow.at];
-
-  const start = (queue: ReadonlyArray<Installed>, at: number) => {
-    const target = queue[at];
-    if (target === undefined) return;
-    // The command that just ended has no more to show.
-    void flow?.started.then((terminal) => close({ payload: { id: terminal.id } })).catch(() => undefined);
-    setFlow({
-      queue,
-      at,
-      started: run({ payload: { provider: target.provider, action: "update", size: fittedSize() } }),
-    });
-  };
-
+  const updates = useHarnessUpdates(onChanged);
+  const waiting = targets.filter((target) => {
+    const state = updates.of(target.provider)?.state;
+    return state === undefined || state === "failed";
+  });
+  if (waiting.length === 0) return null;
   return (
-    <>
-      <Button
-        onClick={() => start(targets, 0)}
-        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong"
-      >
-        <Download size={13} strokeWidth={1.75} />
-        Update all
-      </Button>
-      <CommandDialog
-        started={flow?.started}
-        onClose={() => setFlow(undefined)}
-        title={current === undefined ? "Update harnesses" : `Update ${harnessName[current.provider]}`}
-        description={
-          flow === undefined || current === undefined
-            ? ""
-            : `Harness ${flow.at + 1} of ${flow.queue.length}. Each updates itself below, one after another.`
-        }
-        command={current?.updateCommand}
-        onFinished={() => {
-          if (flow !== undefined && flow.at + 1 < flow.queue.length) start(flow.queue, flow.at + 1);
-          else onChanged();
-        }}
-      />
-    </>
+    <Button
+      onClick={() => {
+        for (const target of waiting) updates.start(target.provider, target.version);
+      }}
+      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong"
+    >
+      <Download size={13} strokeWidth={1.75} />
+      {waiting.length === targets.length ? "Update all" : `Update ${waiting.length} more`}
+    </Button>
   );
 }
 
@@ -168,8 +143,9 @@ export const installUrl = (status: Extract<HarnessStatus, { _tag: "HarnessMissin
   /https:\/\/[^\s,]+/.exec(status.installHint)?.[0].replace(/[.;:)]+$/u, "");
 
 /**
- * What an installed harness offers to do about itself, signing in, its one-time setup and updating,
- * and the dialogs those open. Settings → Harnesses and the welcome lay them out each their own way.
+ * What an installed harness offers to do about itself, signing in and its one-time setup, and the
+ * dialogs those open. Settings → Harnesses and the welcome lay them out each their own way; updating
+ * happens in Settings' row itself (`useHarnessUpdates`).
  */
 export function useHarnessFlows(status: Installed, onChanged: () => void) {
   const { provider, auth, setup } = status;
@@ -179,7 +155,6 @@ export function useHarnessFlows(status: Installed, onChanged: () => void) {
   const running = (action: HarnessCommand) =>
     typeof flow === "object" && flow.action === action ? flow.started : undefined;
   const name = harnessName[provider];
-  const newer = status.latestVersion;
   const close = (open: boolean) => {
     if (!open) setFlow(undefined);
   };
@@ -187,7 +162,6 @@ export function useHarnessFlows(status: Installed, onChanged: () => void) {
     signIn: () =>
       auth._tag === "LoggedOut" && auth.browserLogin === true ? setFlow("browserSignIn") : run("login"),
     setUp: () => setFlow("setup"),
-    update: () => run("update"),
     dialogs: (
       <>
         {auth._tag === "LoggedOut" && auth.browserLogin ? (
@@ -207,20 +181,6 @@ export function useHarnessFlows(status: Installed, onChanged: () => void) {
             title={`Sign in to ${name}`}
             description={`${name}'s own sign-in runs below. Follow its steps; ${name} keeps what it creates, and Cerium never reads it.`}
             command={auth._tag === "LoggedOut" ? auth.loginCommand : undefined}
-            onFinished={onChanged}
-          />
-        )}
-        {status.updateCommand === undefined ? null : (
-          <CommandDialog
-            started={running("update")}
-            onClose={() => setFlow(undefined)}
-            title={`Update ${name}`}
-            description={
-              newer === undefined
-                ? `${name} updates itself below.`
-                : `${name} updates itself to ${newer} below.`
-            }
-            command={status.updateCommand}
             onFinished={onChanged}
           />
         )}
@@ -286,32 +246,65 @@ function InstalledRow({
   local: boolean;
   onChanged: () => void;
 }) {
-  const { auth, setup } = status;
+  const { auth, setup, provider } = status;
   const flows = useHarnessFlows(status, onChanged);
+  const updates = useHarnessUpdates(onChanged);
+  const stored = updates.of(provider);
+  // An update the harness has since reported past is done with.
+  const update = stored?.state === "updated" && status.version !== stored.from ? undefined : stored;
+  const [outputShown, setOutputShown] = useState(false);
   const newer = status.latestVersion;
   const signedOut = auth._tag === "LoggedOut";
+  const version = (
+    <span className="font-mono tabular-nums">
+      {newer === undefined ? `v${status.version}` : `v${status.version} → v${newer}`}
+    </span>
+  );
   return (
     <>
       <ToolRow
-        mark={<ProviderLogo provider={status.provider} size={16} />}
-        name={harnessName[status.provider]}
+        mark={<ProviderLogo provider={provider} size={16} />}
+        name={harnessName[provider]}
         dim={signedOut}
-        tone={signedOut || setup ? "attention" : "quiet"}
+        tone={
+          update?.state === "failed" || (update === undefined && (signedOut || setup)) ? "attention" : "quiet"
+        }
         detail={
-          signedOut ? (
+          update?.state === "running" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshCw size={11} strokeWidth={2} className="animate-spin" />
+              {newer === undefined ? "Updating…" : `Updating to v${newer}…`}
+            </span>
+          ) : update?.state === "updated" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Check size={12} strokeWidth={2.25} className="text-success-text" />
+              Updated
+            </span>
+          ) : update?.state === "failed" ? (
+            "Update failed"
+          ) : signedOut ? (
             "Not signed in"
           ) : setup ? (
             "Needs setup"
           ) : (
-            <span className="font-mono tabular-nums">
-              {newer === undefined ? `v${status.version}` : `v${status.version} → v${newer}`}
-            </span>
+            version
           )
         }
         action={
           <>
-            {newer !== undefined && status.updateCommand !== undefined ? (
-              <RowButton onClick={flows.update}>Update</RowButton>
+            {update?.state === "running" || update?.state === "failed" ? (
+              <>
+                {update.failure === undefined ? (
+                  <OutputToggle shown={outputShown} onToggle={() => setOutputShown(!outputShown)} />
+                ) : null}
+                {update.state === "running" ? (
+                  <RowButton onClick={() => updates.stop(provider)}>Stop</RowButton>
+                ) : (
+                  <RowButton onClick={() => updates.start(provider, status.version)}>Try again</RowButton>
+                )}
+              </>
+            ) : update === undefined && newer !== undefined && status.updateCommand !== undefined ? (
+              <RowButton onClick={() => updates.start(provider, status.version)}>Update</RowButton>
             ) : null}
             {signedOut ? (
               <RowButton tone="primary" onClick={flows.signIn}>
@@ -328,8 +321,92 @@ function InstalledRow({
           <InstalledMenu version={status.version} newer={newer} path={status.executablePath} local={local} />
         }
       />
+      {update === undefined || update.state === "updated" ? null : (
+        <UpdateOutput
+          update={update}
+          shown={outputShown}
+          command={status.updateCommand}
+          onEnded={(code) => updates.ended(provider, update, code)}
+        />
+      )}
       {flows.dialogs}
     </>
+  );
+}
+
+function OutputToggle({ shown, onToggle }: { shown: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      onClick={onToggle}
+      aria-label={shown ? "Hide output" : "Show output"}
+      aria-expanded={shown}
+      className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary aria-expanded:text-fg-primary"
+    >
+      <ChevronDown
+        size={15}
+        strokeWidth={1.75}
+        className={`transition-transform duration-150 ease-out-soft ${shown ? "rotate-180" : ""}`}
+      />
+    </Button>
+  );
+}
+
+/**
+ * An update's command under its row: its terminal while the output is shown, or why it didn't start.
+ * The terminal is followed while hidden too, to hear when the command ends.
+ */
+function UpdateOutput({
+  update,
+  shown,
+  command,
+  onEnded,
+}: {
+  update: HarnessUpdate;
+  shown: boolean;
+  command: string | undefined;
+  onEnded: (code: number | undefined) => void;
+}) {
+  // Held with the run it came from, so a retry never hears the last run's terminal end.
+  const [started, setStarted] = useState<{ run: Promise<CommandTerminal>; terminal: CommandTerminal }>();
+  const terminal = started?.run === update.started ? started.terminal : undefined;
+  useEffect(() => {
+    let current = true;
+    update.started.then(
+      (each) => {
+        if (current) setStarted({ run: update.started, terminal: each });
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [update.started]);
+
+  if (update.failure !== undefined) {
+    return (
+      <div className="flex flex-col gap-2 px-4 pb-3 pl-14 text-meta">
+        <p className="text-error-text">{update.failure}</p>
+        {command === undefined ? null : (
+          <>
+            <p className="text-fg-secondary">Run this in a terminal instead, then check again:</p>
+            <CopyableCommand text={command} />
+          </>
+        )}
+      </div>
+    );
+  }
+  if (terminal === undefined) return null;
+  return (
+    <div className={shown ? "px-4 pb-3" : "hidden"}>
+      <div className="h-56 overflow-hidden rounded-lg border border-line-subtle bg-surface-window">
+        <CommandTerminalView
+          key={terminal.id}
+          sessionKey={`${terminal.id}:${terminal.windowsBuild ?? ""}`}
+          shown={shown}
+          onEnded={onEnded}
+        />
+      </div>
+    </div>
   );
 }
 

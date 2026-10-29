@@ -81,9 +81,9 @@ export class TerminalSession {
   #onFirstFit: (() => void) | undefined;
   /** Settles when the emulator first has a size from a container, so output can be drawn at it. */
   readonly sized: Promise<void>;
-  /** Settles when the shell ends, or the terminal closes. */
-  readonly ended: Promise<void>;
-  #onEnded: (() => void) | undefined;
+  /** Settles when the shell ends, with its exit code, or the terminal closes (no code). */
+  readonly ended: Promise<number | undefined>;
+  #onEnded: ((code: number | undefined) => void) | undefined;
   /** The font is loaded: the emulator measures its cells with it, so it opens only then. */
   #fontLoaded = false;
   readonly #font: Promise<unknown>;
@@ -280,11 +280,11 @@ export class TerminalSession {
   }
 
   /** The shell ended: nothing more can be typed into it, and its cursor goes. */
-  end() {
+  end(code?: number) {
     if (this.#ended || this.#disposed) return;
     this.#ended = true;
     this.terminal.write("\x1b[?25l");
-    this.#onEnded?.();
+    this.#onEnded?.(code);
   }
 
   setTheme(theme: ITheme = readTheme()) {

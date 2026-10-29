@@ -176,12 +176,19 @@ function CommandRun({
   );
 }
 
-function CommandTerminalView({
+/**
+ * A command terminal's emulator, following the command while it's mounted. `shown` false keeps
+ * following it, to hear when it ends, without drawing it.
+ */
+export function CommandTerminalView({
   sessionKey,
   onEnded,
+  shown = true,
 }: {
   readonly sessionKey: string;
-  readonly onEnded: () => void;
+  /** With the command's exit code; none when the terminal was closed. */
+  readonly onEnded: (code: number | undefined) => void;
+  readonly shown?: boolean;
 }) {
   const result = useAtomValue(commandSessionAtom(sessionKey));
   const session = AsyncResult.isSuccess(result) ? result.value : undefined;
@@ -190,18 +197,26 @@ function CommandTerminalView({
 
   useLayoutEffect(() => {
     const element = container.current;
-    if (session === undefined || element === null) return;
+    if (session === undefined || element === null || !shown) return;
     return session.mount(element);
-  }, [session]);
+  }, [session, shown]);
 
   useEffect(() => {
-    if (session === undefined) return;
+    if (session === undefined || !shown) return;
     let current = true;
     void session.sized.then(() => {
       if (current) session.focus();
     });
-    void session.ended.then(() => {
-      if (current) ended();
+    return () => {
+      current = false;
+    };
+  }, [session, shown]);
+
+  useEffect(() => {
+    if (session === undefined) return;
+    let current = true;
+    void session.ended.then((code) => {
+      if (current) ended(code);
     });
     session.setTheme();
     const observer = new MutationObserver(() => session.setTheme());
