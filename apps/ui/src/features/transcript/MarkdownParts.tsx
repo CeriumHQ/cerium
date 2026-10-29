@@ -16,6 +16,7 @@ import { LineText } from "../viewer/CodeView.tsx";
 import { useHighlight } from "../viewer/highlight.ts";
 import { Artifact } from "./Artifact.tsx";
 import { CopyButton } from "./CopyButton.tsx";
+import { codePreview, fenceText } from "./markdownBlocks.ts";
 import { FileChip, SkillChip } from "./FileChip.tsx";
 import { Formula } from "./MarkdownMath.tsx";
 import { Diagram } from "./MarkdownMermaid.tsx";
@@ -242,7 +243,6 @@ const FOLD_SLACK = 6;
  */
 export function CodeBlock({ node }: Part<"pre">) {
   const unfinished = useContext(Unfinished);
-  const [expanded, setExpanded] = useState(false);
   const code = node?.children?.find((child) => child.tagName === "code");
   const classes = code?.properties?.["className"];
   const language =
@@ -251,17 +251,36 @@ export function CodeBlock({ node }: Part<"pre">) {
       ?.slice("language-".length)
       .toLowerCase() ?? "";
   const text = textOf(code).replace(/\n$/, "");
+  return <FencedCode text={text} language={language} unfinished={unfinished} />;
+}
+
+/** The same code view for parsed Markdown and a fence still arriving over the stream. */
+export function FencedCode({
+  text,
+  language,
+  unfinished,
+  indent = 0,
+  raw = false,
+}: {
+  text: string;
+  language: string;
+  unfinished: boolean;
+  indent?: number;
+  raw?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
   const drawn = language === "mermaid" || language === "math";
   const highlighted = useHighlight(
     unfinished || language === "" || drawn ? undefined : text,
     `snippet.${language}`,
   );
-  if (language === ARTIFACT_LANGUAGE) return <Artifact code={text} isIncomplete={unfinished} />;
-  const lines = text.split("\n");
+  const bounded = unfinished ? codePreview(text) : text;
+  const preview = raw ? fenceText(bounded, indent) : bounded;
+  if (language === ARTIFACT_LANGUAGE) return <Artifact code={preview} isIncomplete={unfinished} />;
+  const lines = preview.split("\n");
   const folds = !unfinished && lines.length > FOLDED_LINES + FOLD_SLACK;
   const shown = folds && !expanded ? lines.slice(0, FOLDED_LINES) : lines;
   const diff = language === "diff" || language === "patch";
-  const copied = SHELLS.has(language) ? text.replace(/^\$ /gm, "") : text;
   const name = LANGUAGE_NAMES[language] ?? language;
   const view = (note?: string) => (
     <div data-md="code-block" className="group/code relative">
@@ -272,7 +291,10 @@ export function CodeBlock({ node }: Part<"pre">) {
         <span className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">{name}</span>
         {note === undefined ? null : <span className="shrink-0 text-caption text-fg-tertiary">{note}</span>}
         <CopyButton
-          text={copied}
+          text={() => {
+            const full = raw ? fenceText(text, indent) : text;
+            return SHELLS.has(language) ? full.replace(/^\$ /gm, "") : full;
+          }}
           label="Copy code"
           className={
             name === ""
@@ -294,6 +316,9 @@ export function CodeBlock({ node }: Part<"pre">) {
           ))}
         </code>
       </pre>
+      {bounded.length < text.length ? (
+        <div className="px-3.5 pb-2 text-meta text-fg-tertiary">More code is being written…</div>
+      ) : null}
       {folds ? (
         <button
           type="button"
@@ -310,7 +335,7 @@ export function CodeBlock({ node }: Part<"pre">) {
     return <Diagram source={text} unfinished={unfinished} fallback={view("Couldn't draw this")} />;
   }
   if (language === "math") {
-    return <Formula source={text} display unfinished={unfinished} fallback={view("Couldn't read this")} />;
+    return <Formula source={preview} display unfinished={unfinished} fallback={view("Couldn't read this")} />;
   }
   return view();
 }

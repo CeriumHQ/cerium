@@ -8,7 +8,14 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
-import { closeOpenSyntax, openFence, splitBlocks } from "../src/features/transcript/markdownBlocks.ts";
+import {
+  closeOpenSyntax,
+  codePreview,
+  fenceText,
+  openFence,
+  splitBlocks,
+  streamingFence,
+} from "../src/features/transcript/markdownBlocks.ts";
 import { rehypeAlerts, rehypeInk, remarkDollarGuard } from "../src/features/transcript/markdownPlugins.ts";
 
 const html = (markdown: string, ...plugins: Array<() => (tree: never) => void>) =>
@@ -54,6 +61,51 @@ describe("splitBlocks", () => {
 
   it("gives empty text one empty block", () => {
     expect(splitBlocks("")).toEqual([""]);
+  });
+
+  it("extends fences across batches and matches a complete parse at every character", () => {
+    for (const text of [
+      "Fence test.\n\n````ts\nline\n```\n  ```` \n\nAfter.\n\n[docs]: https://example.com\n",
+      "Tilde test.\n\n~~~text\na\n~~~oops\n~~~\n\nNext.",
+      "Math test.\n\n$$\nx^2\n$$\n\nNext.",
+      "Invalid closer.\n\n```ts\na\n``` x\n    ```\n``\n```\n\nNext.",
+    ]) {
+      for (let end = 1; end <= text.length; end++) {
+        const source = text.slice(0, end);
+        const tree = unified().use(remarkParse).use(remarkGfm).use(remarkMath).parse(source);
+        const starts = tree.children.map((node) => node.position!.start.offset!);
+        if (starts.length > 0) starts[0] = 0;
+        const expected =
+          starts.length === 0
+            ? [source]
+            : starts.map((start, index) => source.slice(start, starts[index + 1]));
+        expect(splitBlocks(source)).toEqual(expected);
+      }
+    }
+  });
+
+  it("keeps the whole body available while bounding a streaming code preview", () => {
+    let text = "Large preview.\n\n```ts\n";
+    for (let batch = 0; batch < 100; batch++) {
+      text += "const value = 123;\n".repeat(100);
+      splitBlocks(text);
+    }
+    const block = splitBlocks(text).at(-1)!;
+    const fence = streamingFence(block)!;
+    expect(fence.language).toBe("ts");
+    expect(fence.text.split("\n")).toHaveLength(10_000);
+    expect(codePreview(fence.text).split("\n")).toHaveLength(20);
+    expect(codePreview("x".repeat(100_000))).toHaveLength(16_384);
+    const closed = splitBlocks(`${text}\`\`\``).at(-1)!;
+    expect(streamingFence(closed)).toBeUndefined();
+    expect(openFence(closed)).toBe(false);
+  });
+
+  it("preserves fenced indentation, decoded language names and Windows line endings", () => {
+    const block = splitBlocks("  ```c&#43;&#43;\r\n  int value;\r\n   value++;\r\n")[0]!;
+    const fence = streamingFence(block)!;
+    expect(fence.language).toBe("c++");
+    expect(fenceText(fence.text, fence.indent)).toBe("int value;\n value++;");
   });
 });
 

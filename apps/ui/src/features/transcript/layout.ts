@@ -55,6 +55,13 @@ export type Item =
       readonly files?: number;
     };
 
+/** Arrays belong to this invocation until the finished layout is returned read-only. */
+type BuildingItem =
+  | Exclude<Item, { kind: "input" | "tools" | "spawns" }>
+  | { kind: "input"; id: string; blocks: Array<TranscriptBlock> }
+  | { kind: "tools"; id: string; tools: Array<Block<"tool">> }
+  | { kind: "spawns"; id: string; spawns: Array<Block<"spawn">> };
+
 // Every update asks these of every call; most are a harness's own tools, which the prefix rules out
 // before the pattern runs.
 const isSpawnCall = (block: TranscriptBlock): block is ToolBlock =>
@@ -117,7 +124,7 @@ const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Transcri
 
 /** Turns blocks into display items: user inputs, and grouped tools and spawns. */
 export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => {
-  const items: Array<Item> = [];
+  const items: Array<BuildingItem> = [];
   // What the agent has said since the user last spoke: what its end-of-response button copies.
   let said: Array<string> = [];
   // The harness the agent runs on, for a switch to another model.
@@ -163,7 +170,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     }
     if (block.kind === "user") {
       said = [];
-      if (last?.kind === "input") items[items.length - 1] = { ...last, blocks: [...last.blocks, block] };
+      if (last?.kind === "input") last.blocks.push(block);
       else items.push({ kind: "input", id: block.id, blocks: [block] });
       continue;
     }
@@ -179,12 +186,10 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     } else if (block.kind === "tool" && block.status !== "error" && isPushCall(block)) {
       items.push({ kind: "push", id: block.id, call: block });
     } else if (block.kind === "tool") {
-      if (previous?.kind === "tools")
-        items[items.length - 1] = { ...previous, tools: [...previous.tools, block] };
+      if (previous?.kind === "tools") previous.tools.push(block);
       else items.push({ kind: "tools", id: block.id, tools: [block] });
     } else if (block.kind === "spawn") {
-      if (previous?.kind === "spawns")
-        items[items.length - 1] = { ...previous, spawns: [...previous.spawns, block] };
+      if (previous?.kind === "spawns") previous.spawns.push(block);
       else items.push({ kind: "spawns", id: block.id, spawns: [block] });
     } else if (block.kind === "turnEnd") {
       items.push({

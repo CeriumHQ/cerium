@@ -7,9 +7,10 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { PluggableList } from "unified";
 
-import { closeOpenSyntax, openFence, splitBlocks } from "./markdownBlocks.ts";
+import { closeOpenSyntax, openFence, splitBlocks, streamingFence } from "./markdownBlocks.ts";
 import {
   Link,
+  FencedCode,
   Mentions,
   parts,
   Unfinished,
@@ -111,6 +112,8 @@ const Block = memo(function Block({
         a: (props) => folder.link(props) ?? <Link {...props} />,
       }
     : parts;
+  const fence = writing ? streamingFence(source) : undefined;
+  if (fence !== undefined) return <FencedCode {...fence} unfinished />;
   return (
     <Unfinished value={writing && openFence(source)}>
       <ReactMarkdown

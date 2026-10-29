@@ -38,6 +38,26 @@ const turnEnd = (id: string, stopReason = "completed"): TranscriptBlock => ({
 });
 
 describe("layout", () => {
+  it("groups long consecutive stretches without changing their order, ids or earlier layouts", () => {
+    const calls = Array.from({ length: 10_000 }, (_, index) => tool(String(index), "Read"));
+    const first = layout(calls);
+    const next = layout([...calls, tool("last", "Read")]);
+    const run = first[0];
+    expect(run?.kind).toBe("run");
+    if (run?.kind !== "run") return;
+    const group = run.steps[0];
+    expect(run.id).toBe("run:tool:0");
+    expect(group?.kind).toBe("tools");
+    if (group?.kind !== "tools") return;
+    expect(group.id).toBe("tool:0");
+    expect(group.tools).toEqual(calls);
+    expect(next).not.toEqual(first);
+    expect(group.tools).toHaveLength(10_000);
+    expect(layout([user("one"), user("two")])).toEqual([
+      { kind: "input", id: "one", blocks: [user("one"), user("two")] },
+    ]);
+  });
+
   it("puts the text each response said on its end", () => {
     const items = layout([
       user("u1"),

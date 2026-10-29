@@ -47,7 +47,13 @@ export function Playground() {
   // `&at=600` holds the stream at its 600th character, for a screenshot of a reply mid-write.
   const held = search.has("at") ? Number(search.get("at")) : undefined;
   const streaming = search.has("stream") || search.has("diagrams") || held !== undefined;
-  const reply = search.has("diagrams") ? diagrams : explanation;
+  const fence = search.get("fence");
+  const reply =
+    fence === null
+      ? search.has("diagrams")
+        ? diagrams
+        : explanation
+      : `Large streaming fence.\n\n\`\`\`${fence}\n${"const value = 123;\n".repeat(10_000)}\`\`\`\n\nFinished.`;
   const [characters, setCharacters] = useState(held ?? (streaming ? 0 : reply.length));
   useEffect(() => {
     if (!streaming || held !== undefined) return;

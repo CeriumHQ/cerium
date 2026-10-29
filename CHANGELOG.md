@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Large code fences stream as a bounded preview and extend without reparsing their earlier lines. Closing a fence restores the full highlighted, foldable code, diagram, math or artifact; copying keeps its entire text.
+- Consecutive tool calls, agent cards and user inputs group in linear time, so a long run no longer spends progressively longer copying its earlier rows.
 - Thread history has bounded compact pages and a durable append cursor for reconnect catch-up, including late imports and tied event timestamps. Old compact rows are filled only as their pages are read, in small resumable transactions. Cloud reads can page within individual uploads; legacy full-history RPCs remain available for older clients and whole-history consumers.
 - Editing and restoring messages, undoing or redoing turn files, and side questions read only the event kinds they use, keeping screenshot and tool output out of their history queries. Restoring reuses its planning history and reads only additions before rewinding.
 - Usage-limit policy helpers have a distinct filename from the Limits settings page, so their TypeScript declarations build together on Windows.

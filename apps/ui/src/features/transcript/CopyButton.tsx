@@ -11,7 +11,7 @@ export function CopyButton({
   label = "Copy",
   className = "",
 }: {
-  text: string;
+  text: string | (() => string);
   /** What it copies, for its accessible name: "Copy command". */
   label?: string;
   className?: string;
@@ -22,7 +22,7 @@ export function CopyButton({
       aria-label={copied ? "Copied" : label}
       title={copied ? "Copied" : label}
       onClick={() => {
-        copyText(text);
+        copyText(typeof text === "function" ? text() : text);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}

@@ -9,21 +9,83 @@ import { unified } from "unified";
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
-/** Where each top-level block of `text` starts. */
-const blockStarts = (text: string, from = 0): Array<number> => {
+interface ClosingLine {
+  readonly indent: number;
+  readonly marks: number;
+  readonly trailing: boolean;
+}
+
+interface FenceTail {
+  readonly marker: string;
+  readonly body: number;
+  readonly language: string;
+  readonly indent: number;
+  /** Only a possible closing line is retained; a long code line costs no more on the next append. */
+  readonly line: ClosingLine | undefined;
+}
+
+interface Split {
+  readonly starts: ReadonlyArray<number>;
+  readonly fence?: FenceTail;
+}
+
+const closing = (line: ClosingLine | undefined, marker: string): boolean =>
+  line !== undefined && line.marks >= marker.length;
+
+/** Scans appended characters once, including a closing marker arriving across several batches. */
+const advanceFence = (text: string, from: number, fence: FenceTail) => {
+  let line = fence.line;
+  for (let index = from; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === "\n") {
+      if (closing(line, fence.marker)) return { end: index + 1 };
+      line = { indent: 0, marks: 0, trailing: false };
+    } else if (line !== undefined) {
+      if (char === fence.marker[0] && !line.trailing) line = { ...line, marks: line.marks + 1 };
+      else if (char === " " && line.marks === 0 && line.indent < 3)
+        line = { ...line, indent: line.indent + 1 };
+      else if ((char === " " || char === "\t" || char === "\r") && line.marks > 0)
+        line = { ...line, trailing: true };
+      else line = undefined;
+    }
+  }
+  return { fence: { ...fence, line } };
+};
+
+/** Where each top-level block starts, and whether the last one is a fence we can extend directly. */
+const blockStarts = (text: string, from = 0, keepLeading = true): Split => {
   const tree = parser.parse(text.slice(from));
   const starts = tree.children.flatMap((node) => {
     const offset = node.position?.start.offset;
     return offset === undefined ? [] : [offset + from];
   });
   // Text before the first block (blank lines) belongs to it.
-  if (starts.length > 0) starts[0] = from;
-  return starts.length > 0 ? starts : [from];
+  if (starts.length > 0 && keepLeading) starts[0] = from;
+  const last = tree.children.at(-1);
+  const offset = last?.position?.start.offset;
+  if ((last?.type === "code" || last?.type === "math") && offset !== undefined) {
+    const start = offset + from;
+    const end = text.indexOf("\n", start);
+    const opening = /^ {0,3}(`{3,}|~{3,}|\${2,})([^\n]*)$/.exec(text.slice(start, end));
+    if (end !== -1 && opening !== null) {
+      const tail = advanceFence(text, end + 1, {
+        marker: opening[1]!,
+        body: end + 1,
+        language: last.type === "math" ? "math" : (last.lang?.toLowerCase() ?? ""),
+        indent: start - (text.lastIndexOf("\n", start - 1) + 1),
+        line: { indent: 0, marks: 0, trailing: false },
+      });
+      if (tail.fence !== undefined) return { starts, fence: tail.fence };
+    }
+  }
+  return { starts: starts.length > 0 ? starts : keepLeading ? [from] : [] };
 };
 
 /** The texts already split, by the text, for a reply that grows: its earlier blocks stay as they were. */
-const splits = new Map<string, ReadonlyArray<number>>();
+const splits = new Map<string, Split>();
+const fences = new Map<string, FenceTail>();
 const KEPT = 24;
+let recent: { readonly text: string; readonly split: Split } | undefined;
 
 /**
  * `text` as its top-level blocks, each with the blank lines after it. A text that grew from one
@@ -31,26 +93,82 @@ const KEPT = 24;
  * change: a reply streaming in costs the length of its last block, not of the whole reply.
  */
 export const splitBlocks = (text: string): ReadonlyArray<string> => {
-  let starts = splits.get(text);
-  if (starts === undefined) {
-    let grown: { readonly text: string; readonly starts: ReadonlyArray<number> } | undefined;
-    for (const [earlier, earlierStarts] of splits) {
-      if (text.startsWith(earlier) && (grown === undefined || earlier.length > grown.text.length)) {
-        grown = { text: earlier, starts: earlierStarts };
+  let grown = recent !== undefined && text.startsWith(recent.text) ? recent : undefined;
+  let split = recent?.text === text ? recent.split : grown === undefined ? splits.get(text) : undefined;
+  if (split === undefined) {
+    if (grown === undefined) {
+      for (const [earlier, earlierSplit] of splits) {
+        if (text.startsWith(earlier) && (grown === undefined || earlier.length > grown.text.length)) {
+          grown = { text: earlier, split: earlierSplit };
+        }
       }
     }
-    const from = grown?.starts.at(-1) ?? 0;
-    starts = [...(grown?.starts.slice(0, -1) ?? []), ...blockStarts(text, from)];
-    splits.set(text, starts);
+    if (grown?.split.fence !== undefined) {
+      const tail = advanceFence(text, grown.text.length, grown.split.fence);
+      if (tail.fence !== undefined) split = { starts: grown.split.starts, fence: tail.fence };
+      else {
+        const after = blockStarts(text, tail.end, false);
+        split = { ...after, starts: [...grown.split.starts, ...after.starts] };
+      }
+    } else {
+      const from = grown?.split.starts.at(-1) ?? 0;
+      const after = blockStarts(text, from);
+      split = { ...after, starts: [...(grown?.split.starts.slice(0, -1) ?? []), ...after.starts] };
+    }
+    splits.set(text, split);
     if (splits.size > KEPT) splits.delete(splits.keys().next().value!);
   }
-  return starts.map((start, index) => text.slice(start, starts[index + 1] ?? text.length));
+  recent = { text, split };
+  return split.starts.map((start, index) => {
+    const block = text.slice(start, split.starts[index + 1] ?? text.length);
+    if (index === split.starts.length - 1 && split.fence !== undefined) {
+      fences.set(block, { ...split.fence, body: split.fence.body - start });
+      if (fences.size > KEPT) fences.delete(fences.keys().next().value!);
+    }
+    return block;
+  });
+};
+
+/** An unfinished top-level fence, without sending its growing body through Markdown again. */
+export const streamingFence = (
+  block: string,
+):
+  | { readonly text: string; readonly language: string; readonly indent: number; readonly raw: true }
+  | undefined => {
+  const fence = fences.get(block);
+  return fence === undefined || closing(fence.line, fence.marker)
+    ? undefined
+    : {
+        text: block.slice(fence.body).replace(/\r?\n$/, ""),
+        language: fence.language,
+        indent: fence.indent,
+        raw: true,
+      };
+};
+
+/** CommonMark removes up to the opening fence's indentation and normalizes line endings. */
+export const fenceText = (text: string, indent: number): string =>
+  text.replace(/\r\n?/g, "\n").replace(new RegExp(`^ {0,${indent}}`, "gm"), "");
+
+/** A bounded preview even for a fence containing one enormous line. Copy still uses the full text. */
+export const codePreview = (text: string): string => {
+  const prefix = text.slice(0, 16_384);
+  let end = 0;
+  for (let line = 0; line < 20; line++) {
+    const next = prefix.indexOf("\n", end);
+    if (next === -1) return prefix;
+    if (line === 19) return prefix.slice(0, next);
+    end = next + 1;
+  }
+  return prefix;
 };
 
 const FENCE = /^ {0,3}(`{3,}|~{3,}|\${2,})/;
 
 /** Whether `block` opens a fenced code block, or a `$$` math block, it doesn't close yet. */
 export const openFence = (block: string): boolean => {
+  const known = fences.get(block);
+  if (known !== undefined) return !closing(known.line, known.marker);
   let open: string | undefined;
   for (const line of block.split("\n")) {
     const marker = FENCE.exec(line)?.[1];
