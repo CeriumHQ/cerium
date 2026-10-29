@@ -78,14 +78,6 @@
   /* Dims the window behind a modal dialog. */
   --scrim: oklch(0 0 0 / 0.45);
 
-  /*
-   * A new thread's frosted glass (app/frost.ts): the haze over the window, the question seen through
-   * it, and the fog piled up at the edge of a wipe, each in the theme's tint.
-   */
-  --frost-haze: oklch(from var(--fg-primary) l c h / 0.05);
-  --frost-text: oklch(from var(--fg-primary) l c h / 0.46);
-  --frost-rim: oklch(from var(--fg-primary) l c h / 0.06);
-
   /* Status fills and text share colours in dark mode; light text needs deeper hues. */
   --status-running: oklch(0.72 0.14 245);
   --status-attention: oklch(0.83 0.15 78);
@@ -171,11 +163,6 @@
   --selection: color-mix(in oklab, var(--accent) 16%, transparent);
   --focus-ring: color-mix(in oklab, var(--accent) 55%, transparent);
   --scrim: oklch(0 0 0 / 0.2);
-
-  /* Light frost is milky: it whitens the glass where dark frost greys it. */
-  --frost-haze: oklch(from var(--window) 0.99 c h / 0.5);
-  --frost-text: oklch(from var(--fg-primary) l c h / 0.34);
-  --frost-rim: oklch(from var(--window) 0.99 c h / 0.6);
 
   --status-running: oklch(0.56 0.17 250);
   --status-attention: oklch(0.68 0.16 65);

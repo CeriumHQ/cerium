@@ -479,6 +479,10 @@ export interface ToolMenuPlan {
   readonly copy?: { readonly label: string; readonly text: string };
   /** A file the call names, as written (it may be relative). */
   readonly path?: string;
+  /** `path` is a folder. */
+  readonly folder?: true;
+  /** The line of `path` the call starts at, from 1: where a read began. */
+  readonly line?: number;
   /** An https page the call fetched. */
   readonly url?: string;
   /** What the Output panel shows. */
@@ -499,12 +503,16 @@ export const toolMenuPlan = (tool: ToolBlock): ToolMenuPlan => {
   const named = (file: string | undefined) =>
     file ? { copy: { label: "Copy path", text: file }, path: file } : copyInput();
   switch (toolKinds[tool.toolName]) {
-    case "read":
+    case "read": {
+      const offset = numberField(input, "offset");
+      return { ...named(path), ...(path && offset !== undefined ? { line: offset + 1 } : {}), ...output };
+    }
     case "edit":
     case "write":
     case "delete":
-    case "list":
       return { ...named(path), ...output };
+    case "list":
+      return { ...named(path), ...(path ? { folder: true as const } : {}), ...output };
     case "patch": {
       const files = patchedFiles(input);
       return { ...(files.length === 1 ? named(files[0]) : copyInput()), ...output };

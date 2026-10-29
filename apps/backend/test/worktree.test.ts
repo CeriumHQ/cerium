@@ -2,12 +2,49 @@ import { Worktrees } from "@cerium/orchestrator";
 import type { ThreadId } from "@cerium/protocol";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Exit, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { Terminals } from "../src/terminal.ts";
 import { Git } from "../src/git.ts";
 import { countStatus, worktreeSlug, worktreesLayer } from "../src/worktree.ts";
+import { includeList } from "../src/worktreeInclude.ts";
+
+describe("includeList", () => {
+  it("matches names at any depth, and paths with a slash from the root", () => {
+    const list = includeList([".env", ".env.*", "/AGENTS.md", "# a comment", ""]);
+    expect(list.includes(".env", false)).toBe(true);
+    expect(list.includes("apps/web/.env.local", false)).toBe(true);
+    expect(list.includes("AGENTS.md", false)).toBe(true);
+    expect(list.includes("node_modules/vite-plus/AGENTS.md", false)).toBe(false);
+    expect(list.includes("# a comment", false)).toBe(false);
+  });
+
+  it("takes a folder whole, folders only when the line ends in a slash, and lets later lines take back", () => {
+    const list = includeList(["/vendor/effect/", "dist/", "build", "secrets/*.json", "!secrets/public.json"]);
+    expect(list.includes("vendor/effect", true)).toBe(true);
+    expect(list.includes("vendor/effect/src/index.ts", false)).toBe(true);
+    expect(list.includes("vendor", true)).toBe(false);
+    expect(list.includes("apps/ui/dist", true)).toBe(true);
+    expect(list.includes("dist", false)).toBe(false);
+    expect(list.includes("build", false)).toBe(true);
+    expect(list.includes("secrets/key.json", false)).toBe(true);
+    expect(list.includes("secrets/public.json", false)).toBe(false);
+    expect(list.includes("secrets/deep/key.json", false)).toBe(false);
+  });
+
+  it("looks into an ignored folder only when a line with a slash names something in it", () => {
+    const list = includeList(["/.claude/skills/", "/.claude/settings.json", ".env"]);
+    expect(list.reachesInto(".claude")).toBe(true);
+    expect(list.reachesInto(".claude/worktrees")).toBe(false);
+    expect(list.reachesInto("node_modules")).toBe(false);
+    expect(list.includes(".claude/skills/a/SKILL.md", false)).toBe(true);
+    // `**` can reach anywhere.
+    const deep = includeList(["**/fixtures/*.env"]);
+    expect(deep.reachesInto("node_modules")).toBe(true);
+    expect(deep.includes("packages/a/fixtures/test.env", false)).toBe(true);
+  });
+});
 
 describe("worktreeSlug", () => {
   it("names a worktree after the first words of its thread's title", () => {
@@ -76,12 +113,15 @@ const setup = Effect.gen(function* () {
   yield* write(repo, "app/.env.local", "KEY=app\n");
   yield* write(repo, "dist/out.js", "built\n");
   yield* write(repo, "secrets.json", "{}\n");
-  const worktrees = yield* Effect.provide(
+  const service = yield* Layer.build(worktreesLayer({ directory: home }));
+  const planned = Context.get(service, Worktrees);
+  /** Plans a worktree and checks it out, as a new thread does behind it. */
+  const create = (project: string, name: string) =>
     Effect.gen(function* () {
-      return yield* Worktrees;
-    }),
-    worktreesLayer({ directory: home }),
-  );
+      const made = yield* planned.plan(project, name);
+      return { ...made, copied: yield* planned.checkOut(made.worktree) };
+    });
+  const worktrees = { ...planned, create };
   return { fs, path, repo, home, write, worktrees };
 });
 
@@ -134,6 +174,23 @@ describe("Worktrees", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
+  it.effect("looks into an ignored folder only for what a line names in it, and never into the rest", () =>
+    Effect.gen(function* () {
+      const { fs, path, repo, write, worktrees } = yield* setup;
+      yield* write(repo, ".gitignore", ".env\n.claude/\nnode_modules/\n");
+      yield* write(repo, ".worktreeinclude", "/.claude/skills/\n/.claude/settings.json\n.env\n");
+      yield* write(repo, ".claude/skills/review/SKILL.md", "skill\n");
+      yield* write(repo, ".claude/settings.json", "{}\n");
+      yield* write(repo, ".claude/worktrees/other/file.txt", "another checkout\n");
+      yield* write(repo, "node_modules/pkg/.env", "a package's own\n");
+      const { worktree, copied } = yield* worktrees.create(repo, "Skills");
+      assert.deepStrictEqual(copied, [".claude/settings.json", ".claude/skills/", ".env"]);
+      assert.isTrue(yield* fs.exists(path.join(worktree.root, ".claude", "skills", "review", "SKILL.md")));
+      assert.isFalse(yield* fs.exists(path.join(worktree.root, ".claude", "worktrees")));
+      assert.isFalse(yield* fs.exists(path.join(worktree.root, "node_modules")));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
   it.effect("never copies over a file the worktree has, an ignored one committed anyway included", () =>
     Effect.gen(function* () {
       const { fs, path, repo, write, worktrees } = yield* setup;
@@ -183,6 +240,8 @@ describe("Worktrees", () => {
         const { worktree } = yield* worktrees.create(repo, "Nothing");
         yield* worktrees.remove("thr_nothing" as ThreadId, worktree);
         assert.strictEqual((yield* git(repo, "branch", "--list", worktree.branch)).trim(), "");
+        // Git forgot it as soon as its folder moved aside.
+        assert.notInclude(yield* git(repo, "worktree", "list"), worktree.root.replaceAll("\\", "/"));
         yield* worktrees.restore(worktree);
         assert.isTrue(yield* fs.exists(worktree.root));
         assert.strictEqual((yield* git(worktree.root, "branch", "--show-current")).trim(), worktree.branch);
@@ -193,11 +252,11 @@ describe("Worktrees", () => {
     Effect.gen(function* () {
       const { fs, worktrees } = yield* setup;
       const plain = yield* fs.makeTempDirectoryScoped();
-      const outside = yield* Effect.exit(worktrees.create(plain, "x"));
+      const outside = yield* Effect.exit(worktrees.plan(plain, "x"));
       assert.isTrue(Exit.isFailure(outside));
       assert.include(String(outside), "isn't in a git repository");
       yield* git(plain, "init", "-q", "-b", "main");
-      const empty = yield* Effect.exit(worktrees.create(plain, "x"));
+      const empty = yield* Effect.exit(worktrees.plan(plain, "x"));
       assert.include(String(empty), "has no commits yet");
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );

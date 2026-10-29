@@ -1,4 +1,5 @@
-import { CeriumError, type TerminalId } from "@cerium/rpc";
+import type { ProviderId } from "@cerium/protocol";
+import { CeriumError, type HarnessCommand, type TerminalId, type TerminalSize } from "@cerium/rpc";
 import { Effect, Option, Queue, Schedule, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -29,6 +30,16 @@ export const restartTerminal = Backend.mutation("RestartTerminal");
 export const closeTerminal = Backend.mutation("CloseTerminal");
 /** Runs a harness's own sign-in or update in a terminal of no thread, for Settings. */
 export const runHarnessCommand = Backend.mutation("RunHarnessCommand");
+
+/**
+ * `runHarnessCommand` as an atom for each harness, so updates started together each get their own
+ * terminal: one shared mutation interrupts each start with the next and answers them all with the last.
+ */
+export const harnessCommandAtom = Atom.family((provider: ProviderId) =>
+  Backend.runtime.fn<{ readonly action: HarnessCommand; readonly size: TerminalSize }>()(({ action, size }) =>
+    Backend.use((client) => client("RunHarnessCommand", { provider, action, size })),
+  ),
+);
 
 /** How long an emulator is kept after nothing shows it, so going back to its thread finds it as it was. */
 const KEPT = "3 minutes";
@@ -127,7 +138,7 @@ const follow = (id: TerminalId, windowsBuild: number | undefined) =>
                   break;
                 case "Exit":
                   finished = true;
-                  session.end();
+                  session.end(each.code);
                   break;
               }
             }

@@ -39,8 +39,9 @@ function glyph(art: ReactNode) {
 
 /**
  * Each page's glyph: a slider with its knobs, a person, a ping, a prism, a fan of agents, a slash, a
- * frame, a branch, a gauge, keycaps, a microphone, a turning arrow, a pen, a ranked list, a plug, a
- * fork in the road, a screen beside a phone and a speech bubble.
+ * frame, four blocks round a hub, a book, a branch, a gauge, keycaps, a microphone, a turning arrow, a
+ * pen, a ranked list, a plug, a fork in the road, a screen beside a phone, a speech bubble and a
+ * bubble with a spark leaping from it.
  */
 export const settingsGlyphs: Record<
   | "general"
@@ -50,6 +51,8 @@ export const settingsGlyphs: Record<
   | "agents"
   | "prompts"
   | "harnesses"
+  | "mcp"
+  | "skills"
   | "sourceControl"
   | "usage"
   | "keyboard"
@@ -60,7 +63,8 @@ export const settingsGlyphs: Record<
   | "advisor"
   | "router"
   | "devices"
-  | "discord",
+  | "discord"
+  | "assistants",
   ComponentType<GlyphProps>
 > = {
   general: glyph(
@@ -107,6 +111,23 @@ export const settingsGlyphs: Record<
     <>
       <path d="M3.5 8V6.5a3 3 0 0 1 3-3H8M16 3.5h1.5a3 3 0 0 1 3 3V8M20.5 16v1.5a3 3 0 0 1-3 3H16M8 20.5H6.5a3 3 0 0 1-3-3V16" />
       <path d={facet(12, 12, 3)} className="fill-accent stroke-none" />
+    </>,
+  ),
+  mcp: glyph(
+    <>
+      <rect x="3" y="3" width="5" height="5" rx="1.5" />
+      <rect x="16" y="3" width="5" height="5" rx="1.5" />
+      <rect x="3" y="16" width="5" height="5" rx="1.5" />
+      <rect x="16" y="16" width="5" height="5" rx="1.5" />
+      <path d="M8 8l2 2M16 8l-2 2M8 16l2-2M16 16l-2-2" />
+      <path d={facet(12, 12, 2.5)} className="fill-accent stroke-none" />
+    </>,
+  ),
+  skills: glyph(
+    <>
+      <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H17v15H6.5A1.5 1.5 0 0 0 5 19.5z" />
+      <path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19V6" />
+      <path d={facet(11, 10.5, 2.5)} className="fill-accent stroke-none" />
     </>,
   ),
   sourceControl: glyph(
@@ -178,6 +199,13 @@ export const settingsGlyphs: Record<
     <>
       <path d="M5 4.5h14A1.5 1.5 0 0 1 20.5 6v8.5A1.5 1.5 0 0 1 19 16h-7l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 5 4.5Z" />
       <path d={facet(12, 10.25, 2.5)} className="fill-accent stroke-none" />
+    </>,
+  ),
+  assistants: glyph(
+    <>
+      <path d="M13.5 6.5H5A1.5 1.5 0 0 0 3.5 8v7.5A1.5 1.5 0 0 0 5 17h2.5v3l4-3H17a1.5 1.5 0 0 0 1.5-1.5V12" />
+      <path d="M8 11.5h5" />
+      <path d={facet(18, 6, 2.75)} className="fill-accent stroke-none" />
     </>,
   ),
 };

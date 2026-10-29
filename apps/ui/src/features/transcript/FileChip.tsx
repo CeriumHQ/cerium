@@ -1,4 +1,4 @@
-import { AtSign, Copy, FolderOpen } from "lucide-react";
+import { AtSign, Copy, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
@@ -7,6 +7,7 @@ import { baseName } from "../../components/fileIcons/index.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useMessageBox } from "../composer/messageBox.ts";
+import { useEditor } from "../editor/useEditor.ts";
 import { copyText, fileTargets } from "./menus.ts";
 
 /** The thread's folder, which the relative paths in its transcript are relative to. */
@@ -41,8 +42,16 @@ export function FileChip({
   folder: boolean;
   line?: number | undefined;
 }) {
-  const { location, relative, mention } = fileTargets(path, folder, useContext(WorkspaceFolder));
+  const workspace = useContext(WorkspaceFolder);
+  const { location, relative, mention } = fileTargets(path, folder, workspace);
   const reveal = shellBridge()?.revealPath;
+  // A file opens in the user's editor, at its line; a folder, or a machine with no editor, shows it.
+  const editor = useEditor();
+  const openInEditor =
+    folder || location === undefined || editor.open === undefined
+      ? undefined
+      : () => editor.open?.(location, line, workspace);
+  const activate = openInEditor ?? (reveal && location ? () => void reveal(location) : undefined);
   const messageBox = useMessageBox();
   const suffix = line === undefined ? "" : `:${line}`;
   const content = (
@@ -60,17 +69,19 @@ export function FileChip({
         {path}
         {suffix}
       </span>
-      {reveal && location ? (
-        <span className="text-caption text-fg-tertiary">Click to show in {revealPlace()}</span>
+      {activate ? (
+        <span className="text-caption text-fg-tertiary">
+          {openInEditor ? `Click to open in ${editor.editor?.label}` : `Click to show in ${revealPlace()}`}
+        </span>
       ) : null}
     </span>
   );
   const chip = (
     <Tooltip label={label} side="top">
-      {reveal && location ? (
+      {activate ? (
         <button
           type="button"
-          onClick={() => void reveal(location)}
+          onClick={activate}
           className={`${chipClass} cursor-pointer transition-colors hover:bg-surface-active data-popup-open:bg-surface-active`}
         >
           {content}
@@ -82,11 +93,16 @@ export function FileChip({
   );
   // Everything the menu offers needs to know where the file is.
   if (location === undefined) return chip;
-  const act = reveal || (mention && messageBox);
+  const act = reveal || openInEditor || (mention && messageBox);
   return (
     <ContextMenuArea
       menu={
         <>
+          {openInEditor ? (
+            <MenuItem icon={SquareArrowOutUpRight} onClick={openInEditor}>
+              Open in {editor.editor?.label}
+            </MenuItem>
+          ) : null}
           {reveal ? (
             <MenuItem icon={FolderOpen} onClick={() => void reveal(location)}>
               Show in {revealPlace()}

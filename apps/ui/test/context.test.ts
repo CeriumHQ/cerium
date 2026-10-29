@@ -107,7 +107,7 @@ describe("a compaction in the transcript", () => {
     });
   });
 
-  it("leaves a compaction the user asked for without a response footer or header of its own", () => {
+  it("leaves a compaction the user asked for without a response footer of its own", () => {
     const blocks = buildTranscript(
       events(
         input("t1"),
@@ -129,12 +129,10 @@ describe("a compaction in the transcript", () => {
     ]);
     expect(layout(blocks).map((item) => item.kind)).toEqual([
       "input",
-      "header",
       "block",
       "turnEnd",
       "block",
       "input",
-      "header",
       "turnEnd",
     ]);
   });

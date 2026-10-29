@@ -20,6 +20,7 @@ import { startBackend } from "./backend.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
 import { desktopTheme } from "./desktopTheme.ts";
+import { listEditors, openInEditor } from "./editors.ts";
 import {
   isBadgeRequest,
   isNotificationRequest,
@@ -476,6 +477,14 @@ ipcMain.handle("cerium:open-microphone-settings", async () => {
 
 /** Opens a file the explorer lists in its own app (openPath.ts). */
 ipcMain.handle("cerium:open-path", (_event, target: unknown) => openPath(target));
+
+/** The editors installed here, and opening a file in one at a line (editors.ts). */
+ipcMain.handle("cerium:editors", (_event, fresh: unknown) => listEditors(fresh === true));
+ipcMain.handle(
+  "cerium:open-in-editor",
+  (_event, id: unknown, file: unknown, line: unknown, folder: unknown) =>
+    openInEditor(id, file, line, folder),
+);
 
 /** Opens an artifact as a page of its own in the user's browser (openHtml.ts). */
 ipcMain.handle("cerium:open-html", (_event, html: unknown, name: unknown) => openHtml(html, name));

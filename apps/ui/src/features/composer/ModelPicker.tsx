@@ -18,20 +18,23 @@ import { findModels, modelKey } from "./models.ts";
 import {
   chipClass,
   chipEffortLabel,
-  EffortRow,
+  EffortLadder,
   offersChoice,
   offersSpeed,
+  SeveralSwitch,
   SpeedMark,
-  SpeedRow,
+  SpeedSwitch,
   type EffortChoice,
   type EffortPick,
+  type SeveralChoice,
   type SpeedChoice,
 } from "./Pickers.tsx";
 
 // The model menu in the message box: a rail down its side holds the starred models and a tab per
 // harness, a search spans every harness's models, and Ctrl and a digit picks one of the first ten
-// rows. Its foot picks the model's speed and effort, so the model, how fast it's served and how hard
-// it thinks are one control. It picks one model, or several for multi agent.
+// rows. A panel on its other side picks the model's effort and speed, so the model, how hard it
+// thinks and how fast it's served are one control. It picks one model, or several for multi agent,
+// which its foot switches on.
 
 /** What the model picker's trigger shows: the model in use, which the list may not offer any more. */
 export interface ShownModel {
@@ -69,6 +72,8 @@ interface MenuProps {
   readonly speed?: SpeedChoice | undefined;
   /** The speed the trigger marks after the effort, past standard. */
   readonly speedShown?: ModelSpeed | undefined;
+  /** Several models at once, switched on and off at the menu's foot; absent where it can't be. */
+  readonly several?: SeveralChoice | undefined;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -253,21 +258,19 @@ export function ModelPicker({
 
 /**
  * Multi agent: picks the models a new thread's first message goes to, a thread each, side by side.
- * At least one stays picked, and no more than `max`.
+ * At least one stays picked, and no more than `max`; switching several off at the foot goes back to
+ * the first one picked.
  */
 export function ModelsPicker({
   chosen,
   max,
   onPick,
-  onSingle,
   ...menu
 }: MenuProps & {
   /** The models picked, in the order picked. */
   readonly chosen: ReadonlyArray<ModelInfo>;
   readonly max: number;
   readonly onPick: (keys: ReadonlyArray<string>) => void;
-  /** Turns multi agent off, back to the first model picked. */
-  readonly onSingle: () => void;
 }) {
   const keys = chosen.map(modelKey);
   const browse = useBrowse(menu, chosen[0] && { provider: chosen[0].provider, key: keys[0] });
@@ -323,21 +326,7 @@ export function ModelsPicker({
         full={keys.length >= max}
         chosen={keys}
         onShortcut={(key) => pick(keys.includes(key) ? keys.filter((each) => each !== key) : [...keys, key])}
-        count={
-          <>
-            <span className="tabular-nums">
-              {keys.length} of {max}, a thread each
-            </span>
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={onSingle}
-              className="-my-0.5 ml-auto rounded-md px-1.5 py-0.5 text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-            >
-              Just one
-            </button>
-          </>
-        }
+        picked={{ picked: keys.length, max }}
       />
     </Combobox.Root>
   );
@@ -359,8 +348,10 @@ function MenuPopup({
   multiple = false,
   full = false,
   chosen,
+  several,
   onShortcut,
   count,
+  picked,
 }: MenuProps & {
   readonly browse: Browse;
   /** The model the effort row names. */
@@ -371,8 +362,10 @@ function MenuPopup({
   readonly chosen?: ReadonlyArray<string>;
   /** Picks, or in multi agent flips, the row a Ctrl digit names. */
   readonly onShortcut: (key: string) => void;
-  /** Multi agent's count, at the menu's foot. */
+  /** An open thread's context and compacting, at the menu's foot. */
   readonly count?: ReactNode;
+  /** Multi agent's count, beside its switch at the menu's foot. */
+  readonly picked?: { readonly picked: number; readonly max: number };
 }) {
   const tabs: ReadonlyArray<Tab> = ["favorites", ...providers];
   const waits = (key: string) => full && chosen?.includes(key) !== true;
@@ -410,90 +403,104 @@ function MenuPopup({
       : browse.tab && !available.has(browse.tab)
         ? `${providerName[browse.tab]} isn't ready. Settings → Harnesses says why.`
         : "No models listed yet";
+  const tunes = offersChoice(effort) || offersSpeed(speed);
+  // With a rail or a side panel the menu keeps one height, so switching tab or model doesn't move it.
+  const fixed = browse.railed || tunes;
   return (
     <Combobox.Portal>
       <Combobox.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
         <Combobox.Popup
           aria-label="Models"
-          className="flex w-96 max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
+          className={`flex max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 ${tunes ? "w-[35rem]" : "w-96"} ${fixed ? "md:h-[min(23rem,calc(var(--available-height)-0.5rem))]" : ""}`}
         >
           {browse.railed ? <Rail tabs={tabs} available={available} browse={browse} /> : null}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="mx-2.5 flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle transition-colors focus-within:border-accent">
-              <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-              <Combobox.Input
-                placeholder="Search models"
-                aria-label="Search models"
-                onKeyDown={onKeyDown}
-                className="h-full min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
-              />
-            </div>
-            {/* With a rail, the list keeps one height, so switching tab doesn't move the menu. */}
-            <ScrollArea
-              className={browse.railed ? "h-[min(17rem,calc(var(--available-height)-6rem))]" : ""}
-              viewportClassName={`scroll-py-1 ${browse.railed ? "" : "max-h-[min(17rem,calc(var(--available-height)-4rem))]"}`}
-            >
-              <Combobox.Empty>
-                <p className="px-3 py-5 text-center text-meta leading-relaxed text-fg-tertiary">{empty}</p>
-              </Combobox.Empty>
-              <Combobox.List className="p-1.5 empty:p-0">
-                {(group: ModelGroup) => (
-                  <Combobox.Group key={group.value} items={group.items}>
-                    <Combobox.Collection>
-                      {(key: string) => {
-                        const model = browse.byKey.get(key);
-                        const at = browse.order.indexOf(key);
-                        return model ? (
-                          <ModelRow
-                            key={key}
-                            model={model}
-                            browse={browse}
-                            multiple={multiple}
-                            disabled={waits(key)}
-                            {...(at >= 0 && at < 10 ? { shortcut: `Ctrl ${(at + 1) % 10}` } : {})}
-                          />
-                        ) : null;
-                      }}
-                    </Combobox.Collection>
-                  </Combobox.Group>
-                )}
-              </Combobox.List>
-            </ScrollArea>
-            {note ? (
-              <p className="border-t border-line-subtle px-2.5 py-1.5 text-caption text-fg-tertiary">
-                {note}
-              </p>
-            ) : null}
-            {count ? (
-              <div className="flex items-center gap-2 border-t border-line-subtle px-2.5 py-1.5 text-caption text-fg-tertiary">
-                {count}
+          <div className="flex min-w-0 flex-1 max-md:flex-col">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="mx-2.5 flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle transition-colors focus-within:border-accent">
+                <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+                <Combobox.Input
+                  placeholder="Search models"
+                  aria-label="Search models"
+                  onKeyDown={onKeyDown}
+                  className="h-full min-w-0 flex-1 bg-transparent text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[15px]"
+                />
               </div>
-            ) : null}
-            {offersSpeed(speed) ? (
-              <SpeedRow
-                choice={{
-                  ...speed,
-                  // The effort row below still waits; a model without one is done with its speed.
-                  onPick: (next) => {
-                    speed.onPick(next);
-                    if (!multiple && !offersChoice(effort)) browse.setOpen(false);
-                  },
-                }}
-                model={label ?? "it"}
-              />
-            ) : null}
-            {offersChoice(effort) ? (
-              <EffortRow
-                choice={{
-                  ...effort,
-                  // An effort picked here finishes the choice the model began.
-                  onPick: (next) => {
-                    effort.onPick(next);
-                    if (!multiple) browse.setOpen(false);
-                  },
-                }}
-                model={label ?? "it"}
-              />
+              <ScrollArea
+                className={
+                  fixed
+                    ? "h-[min(15rem,calc(var(--available-height)-14rem))] md:h-auto md:min-h-0 md:flex-1"
+                    : ""
+                }
+                viewportClassName={`scroll-py-1 ${fixed ? "" : "max-h-[min(17rem,calc(var(--available-height)-4rem))]"}`}
+              >
+                <Combobox.Empty>
+                  <p className="px-3 py-5 text-center text-meta leading-relaxed text-fg-tertiary">{empty}</p>
+                </Combobox.Empty>
+                <Combobox.List className="p-1.5 empty:p-0">
+                  {(group: ModelGroup) => (
+                    <Combobox.Group key={group.value} items={group.items}>
+                      <Combobox.Collection>
+                        {(key: string) => {
+                          const model = browse.byKey.get(key);
+                          const at = browse.order.indexOf(key);
+                          return model ? (
+                            <ModelRow
+                              key={key}
+                              model={model}
+                              browse={browse}
+                              multiple={multiple}
+                              disabled={waits(key)}
+                              {...(at >= 0 && at < 10 ? { shortcut: `Ctrl ${(at + 1) % 10}` } : {})}
+                            />
+                          ) : null;
+                        }}
+                      </Combobox.Collection>
+                    </Combobox.Group>
+                  )}
+                </Combobox.List>
+              </ScrollArea>
+              {note ? (
+                <p className="border-t border-line-subtle px-3 py-1.5 text-caption text-fg-tertiary">
+                  {note}
+                </p>
+              ) : null}
+              {count ? (
+                <div className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-caption text-fg-tertiary">
+                  {count}
+                </div>
+              ) : null}
+              {several ? <SeveralSwitch choice={several} count={picked} /> : null}
+            </div>
+            {/* How hard and how fast the model picked runs: beside the list, or under it on a phone. */}
+            {tunes ? (
+              <div className="flex w-48 shrink-0 flex-col overflow-y-auto overscroll-contain border-l border-line-subtle bg-surface-sunken/40 max-md:w-auto max-md:border-t max-md:border-l-0">
+                {offersChoice(effort) ? (
+                  <EffortLadder
+                    choice={{
+                      ...effort,
+                      // An effort picked here finishes the choice the model began.
+                      onPick: (next) => {
+                        effort.onPick(next);
+                        if (!multiple) browse.setOpen(false);
+                      },
+                    }}
+                    model={label ?? "it"}
+                  />
+                ) : null}
+                {offersSpeed(speed) ? (
+                  <SpeedSwitch
+                    choice={{
+                      ...speed,
+                      // A model without an effort to pick is done with its speed.
+                      onPick: (next) => {
+                        speed.onPick(next);
+                        if (!multiple && !offersChoice(effort)) browse.setOpen(false);
+                      },
+                    }}
+                    model={label ?? "it"}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
         </Combobox.Popup>

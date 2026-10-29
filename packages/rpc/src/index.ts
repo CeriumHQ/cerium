@@ -4,6 +4,7 @@ import {
   AccountState,
   AccountTasks,
   AccountThreads,
+  ConnectedAssistant,
   AgentId,
   AgentInfo,
   Attachment,
@@ -59,6 +60,7 @@ import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
 import { AutomationRpcs } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
+import { HubRpcs } from "./hub.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
 import { ImportRpcs } from "./imports.ts";
@@ -73,6 +75,7 @@ export * from "./files.ts";
 export * from "./git.ts";
 export * from "./gitBranches.ts";
 export * from "./github.ts";
+export * from "./hub.ts";
 export * from "./githubIssues.ts";
 export * from "./history.ts";
 export * from "./imports.ts";
@@ -90,7 +93,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 41;
+export const RPC_VERSION = 44;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -353,7 +356,7 @@ export const MachineRpcs = RpcGroup.make(
   /**
    * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps nothing:
    * no event, no message in the lead's session, no effect on its turn. `earlier` holds the side
-   * questions already asked in the same pop-over, so a follow-up has them. Since `RPC_VERSION` 41.
+   * questions already asked in the same pop-over, so a follow-up has them. Since `RPC_VERSION` 44.
    */
   Rpc.make("AskSideQuestion", {
     payload: {
@@ -406,6 +409,17 @@ export const MachineRpcs = RpcGroup.make(
       discardWork: Schema.optionalKey(Schema.Boolean),
     },
     success: Schema.Struct({ ...ThreadInfo.fields, teardown: Schema.optionalKey(TeardownReport) }),
+    error: CeriumError,
+  }),
+  /**
+   * Starts a thread that goes on from `threadId` in its folder and worktree, with a lead on the same
+   * harness and model, and archives the old one; refused while its agents work or wait on the user.
+   * Answers with the new thread and `brief`, the first message Cerium wrote for it from the old
+   * thread's events and git, without asking a model, for the user to edit and send. Since `RPC_VERSION` 41.
+   */
+  Rpc.make("ContinueThread", {
+    payload: { threadId: ThreadId },
+    success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo, brief: Schema.String }),
     error: CeriumError,
   }),
   /**
@@ -686,6 +700,7 @@ export const MachineRpcs = RpcGroup.make(
   GitRpcs,
   GitHubRpcs,
   IssueRpcs,
+  HubRpcs,
 );
 
 /**
@@ -704,6 +719,16 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("RenameDevice", { payload: { deviceId: DeviceId, name: DeviceName }, error: CeriumError }),
   /** Removes a device from the account, signing it out. */
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
+  /**
+   * The assistants connected to the account from outside Cerium (Grok, ChatGPT and others), and the
+   * MCP address the user adds to one to connect it.
+   */
+  Rpc.make("ListAssistants", {
+    success: Schema.Struct({ url: Schema.String, assistants: Schema.Array(ConnectedAssistant) }),
+    error: CeriumError,
+  }),
+  /** Disconnects one of them: its tokens stop working at once. */
+  Rpc.make("DisconnectAssistant", { payload: { id: Schema.NonEmptyString }, error: CeriumError }),
   /**
    * Every thread of the account and what has been seen of them, now and after every change.
    * Empty while this device isn't signed in.

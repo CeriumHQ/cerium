@@ -4,6 +4,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithCodex } from "./complete.ts";
 import { forkCodexThread } from "./fork.ts";
+import { makeCodexHub } from "./hub.ts";
 import { codexManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listCodexModels, listCodexSkills } from "./models.ts";
 import { probeCodex } from "./probe.ts";
@@ -87,6 +88,7 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
             Effect.flatMap((executablePath) => readCodexSession(executablePath, session)),
             Effect.provide(platform),
           ),
+        hub: makeCodexHub(ready, platform),
         startSession,
       });
     }),

@@ -9,10 +9,12 @@ import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings, DeviceSettings } from "./Account.tsx";
 import { AdvisorSettings, RosterSettings, ThreadSettings } from "./Agents.tsx";
+import { AssistantSettings } from "./Assistants.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
+import { McpSettings, SkillsSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { SettingsPlace, SettingsProject } from "./parts.tsx";
@@ -34,9 +36,12 @@ export type SettingsCategory =
   | "prompts"
   | "effortRouter"
   | "harnesses"
+  | "mcp"
+  | "skills"
   | "usage"
   | "sourceControl"
   | "discord"
+  | "assistants"
   | "account"
   | "devices";
 
@@ -99,6 +104,8 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
     label: "Providers",
     pages: [
       ...page("harnesses", "Harnesses", "Installed CLIs and sign-ins", settingsGlyphs.harnesses),
+      ...page("mcp", "MCP servers", "Servers across harnesses", settingsGlyphs.mcp),
+      ...page("skills", "Skills", "Skills across harnesses", settingsGlyphs.skills),
       ...page("usage", "Usage", "Limits and spend", settingsGlyphs.usage),
     ],
   },
@@ -112,6 +119,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
         settingsGlyphs.sourceControl,
       ),
       ...page("discord", "Discord", "Activity status", settingsGlyphs.discord, desktop),
+      ...page("assistants", "Remote MCP", "Manage threads from other apps", settingsGlyphs.assistants),
     ],
   },
   {
@@ -166,12 +174,20 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["effortRouter", "OpenRouter key"],
     ["harnesses", "Installed CLIs"],
     ["harnesses", "Sign-ins"],
+    ["mcp", "MCP servers"],
+    ["mcp", "Server tools"],
+    ["mcp", "Add a server to another harness"],
+    ["skills", "Skills"],
+    ["skills", "Add a skill to another harness"],
     ["usage", "Limits"],
     ["usage", "Tokens & cost"],
     ["usage", "Free resets"],
     ["sourceControl", "GitHub CLI"],
     ["sourceControl", "Project scripts"],
     ["discord", "Show activity on Discord"],
+    ["assistants", "Allow remote MCP"],
+    ["assistants", "MCP server address"],
+    ["assistants", "Connected apps"],
     ["account", "Sign in"],
     ["account", "Sign out"],
     ["devices", "Devices"],
@@ -418,12 +434,18 @@ function SettingsContent({
       return <EffortRouterSettings />;
     case "harnesses":
       return <HarnessSettings />;
+    case "mcp":
+      return <McpSettings />;
+    case "skills":
+      return <SkillsSettings />;
     case "usage":
       return <UsageSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
     case "sourceControl":
       return <SourceControlSettings />;
     case "discord":
       return <DiscordSettings />;
+    case "assistants":
+      return <AssistantSettings {...open("account")} />;
     case "account":
       return <AccountSettings />;
     case "devices":

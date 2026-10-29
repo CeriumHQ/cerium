@@ -25,7 +25,7 @@ export const STEER_VERSION = 19;
 export const WITHDRAW_VERSION = 26;
 
 /** The `RPC_VERSION` that brought `AskSideQuestion`; an older machine can't answer side questions. */
-export const SIDE_QUESTION_VERSION = 41;
+export const SIDE_QUESTION_VERSION = 44;
 
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
@@ -39,6 +39,8 @@ export type TranscriptBlock =
       readonly mentions: ReadonlyArray<Mention>;
       /** The title of the thread whose lead wrote this for the user when it started this thread. */
       readonly writtenIn?: string;
+      /** The assistant outside Cerium the user had send this, such as Grok. */
+      readonly sentVia?: string;
       /** Whether the message reached the agent, so the user can edit it and send it again. */
       readonly delivered?: true;
     }
@@ -193,6 +195,7 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
   attachments: item.attachments ?? [],
   mentions: item.mentions ?? [],
   ...(item.writtenBy ? { writtenIn: item.writtenBy.threadTitle } : {}),
+  ...(item.sentVia ? { sentVia: item.sentVia.assistant } : {}),
 });
 
 /**

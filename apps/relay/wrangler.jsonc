@@ -14,7 +14,8 @@
   "assets": {
     "directory": "./dist/assets",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"],
+    // Assistants' MCP endpoint and OAuth, and the metadata that points at them (src/assistants.ts).
+    "run_worker_first": ["/api/*", "/mcp", "/oauth/*", "/.well-known/*"],
   },
   "durable_objects": {
     "bindings": [
@@ -32,6 +33,7 @@
     { "name": "ADDRESS_LIMIT", "namespace_id": "4103", "simple": { "limit": 100, "period": 10 } },
     { "name": "DEVICE_LIMIT", "namespace_id": "4104", "simple": { "limit": 30, "period": 10 } },
     { "name": "CONNECT_LIMIT", "namespace_id": "4105", "simple": { "limit": 10, "period": 60 } },
+    { "name": "ASSISTANT_LIMIT", "namespace_id": "4106", "simple": { "limit": 30, "period": 10 } },
   ],
   // The Account object's SQL migrations (migrations/migrations.js) are bundled as text.
   "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],

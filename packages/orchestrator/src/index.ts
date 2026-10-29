@@ -12,6 +12,12 @@ export {
   type EffortQuestion,
   type EffortState,
 } from "./effort.ts";
+export {
+  CONTINUATION_PREFACE,
+  continuationBrief,
+  type ContinuationContext,
+  type ContinuationPullRequest,
+} from "./continuation.ts";
 export { OrchestratorError } from "./errors.ts";
 export { importedEvents, SessionImports, type ImportOptions } from "./imports.ts";
 export { CONDENSE_INSTRUCTIONS, condensePrompt, handoffBrief } from "./handoff.ts";
@@ -23,7 +29,9 @@ export {
   type ProjectRunState,
 } from "./projectRun.ts";
 export {
+  defaultAssistantModel,
   Orchestrator,
+  type AssistantThreadRequest,
   type CreateThreadInput,
   type HandoffTarget,
   type ModelChoice,

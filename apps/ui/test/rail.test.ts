@@ -1,7 +1,8 @@
 import type { ProviderUsage } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { usageRings } from "../src/app/railModel.ts";
+import { badgeLabel, badgeNote, railBadges, usageRings } from "../src/app/railModel.ts";
+import type { ThreadSummary } from "../src/features/threads/model.ts";
 
 const now = Date.UTC(2026, 9, 25, 12);
 
@@ -25,35 +26,16 @@ const codex: ProviderUsage = {
 };
 
 describe("usageRings", () => {
-  it("gives each limit an arc in the harness's order, leaving a spending cap out", () => {
+  it("shows the limit with the least left, leaving a spending cap out", () => {
     const [ring] = usageRings([claude], new Set(["claude"]));
-    expect(ring?.arcs).toEqual([
-      { label: "Current session", left: 60 },
-      { label: "Weekly", left: 30 },
-    ]);
+    expect(ring?.label).toBe("Weekly");
     expect(ring?.left).toBe(30);
     expect(ring?.plan).toBe("max");
     expect(ring?.meters).toHaveLength(3);
   });
 
-  it("fills each arc with what's left of its own limit", () => {
-    expect(usageRings([codex], new Set(["codex"]))[0]?.arcs[0]?.left).toBe(8);
-  });
-
-  it("keeps the tightest of the rest as the last arc past three limits", () => {
-    const many: ProviderUsage = {
-      _tag: "Subscribed",
-      provider: "claude",
-      meters: [
-        { label: "Current session", usedPercent: 10 },
-        { label: "Weekly · All models", usedPercent: 20 },
-        { label: "Weekly · Opus", usedPercent: 30 },
-        { label: "Weekly · Sonnet", usedPercent: 80 },
-      ],
-      checkedAt: now,
-    };
-    const labels = usageRings([many], new Set(["claude"]))[0]?.arcs.map((arc) => arc.label);
-    expect(labels).toEqual(["Current session", "Weekly · All models", "Weekly · Sonnet"]);
+  it("shows a harness's only limit", () => {
+    expect(usageRings([codex], new Set(["codex"]))[0]?.left).toBe(8);
   });
 
   it("shows only harnesses that can run threads, and none that couldn't be read", () => {
@@ -69,5 +51,64 @@ describe("usageRings", () => {
       checkedAt: now,
     };
     expect(usageRings([capped], new Set(["cursor"]))[0]?.left).toBe(75);
+  });
+});
+
+const thread = (id: string, fields: Partial<ThreadSummary> = {}): ThreadSummary => ({
+  id,
+  title: id,
+  mode: "work",
+  status: "idle",
+  providers: ["claude"],
+  unread: false,
+  updatedAt: now - 1000,
+  ...fields,
+});
+
+describe("railBadges", () => {
+  it("counts the inbox's unread work threads and those waiting on the user", () => {
+    const badges = railBadges(
+      [
+        thread("read"),
+        thread("unread", { unread: true }),
+        thread("approval", { status: "awaitingApproval" }),
+        thread("failed", { status: "failed", unread: true }),
+        thread("failedSeen", { status: "failed" }),
+      ],
+      now,
+    );
+    expect(badges.home).toEqual({ count: 3, waiting: 2 });
+    expect(badges.chat).toBeUndefined();
+  });
+
+  it("leaves out threads archived or put off, unless they wait on the user", () => {
+    const badges = railBadges(
+      [
+        thread("archived", { unread: true, archivedAt: now - 10 }),
+        thread("later", { unread: true, laterUntil: now + 1000 }),
+        thread("laterAsking", { status: "awaitingApproval", laterUntil: now + 1000 }),
+        thread("back", { unread: true, laterUntil: now - 1000 }),
+      ],
+      now,
+    );
+    expect(badges.home).toEqual({ count: 2, waiting: 1 });
+  });
+
+  it("counts the chats waiting for an approval, and nothing when all is quiet", () => {
+    expect(
+      railBadges(
+        [thread("asking", { mode: "chat", status: "awaitingApproval" }), thread("idle", { mode: "chat" })],
+        now,
+      ),
+    ).toEqual({ chat: { count: 1, waiting: 1 } });
+    expect(railBadges([thread("read")], now)).toEqual({});
+  });
+
+  it("says what it counts", () => {
+    expect(badgeNote({ count: 3, waiting: 1 })).toBe("2 unread · 1 needs you");
+    expect(badgeNote({ count: 2, waiting: 2 })).toBe("2 need you");
+    expect(badgeNote({ count: 4, waiting: 0 })).toBe("4 unread");
+    expect(badgeLabel(9)).toBe("9");
+    expect(badgeLabel(12)).toBe("9+");
   });
 });

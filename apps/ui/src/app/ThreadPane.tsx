@@ -293,7 +293,7 @@ export function ThreadPane({
                     folder={viewed.thread.cwd}
                     threadId={viewed.thread.id}
                     focused={focused}
-                    agent={{ provider: lead.provider, model: leadModel }}
+                    agent={{ provider: lead.provider }}
                     modelName={(model, provider) => modelLabel(models, provider, model)}
                     {...(cloud ? {} : { messageBox: box })}
                     activity={leadActivity}
@@ -354,7 +354,6 @@ export function ThreadPane({
             {viewed && lead ? null : loading ? null : (
               <EmptyThread
                 mode={mode}
-                draftKey={draftKey}
                 {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
                 onSeat={setSeat}
               />

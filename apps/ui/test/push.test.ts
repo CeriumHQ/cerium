@@ -159,8 +159,8 @@ describe("layout", () => {
   it("shows a push as its own item, outside the run of tool calls around it", () => {
     const read: ToolBlock = { ...call(), id: "tool:0", toolName: "Read", status: "done" };
     const items = layout([read, call({ status: "done" }), { ...read, id: "tool:2" }]);
-    expect(items.map((item) => item.kind)).toEqual(["header", "run", "push", "run"]);
+    expect(items.map((item) => item.kind)).toEqual(["run", "push", "run"]);
     const refused = layout([call({ status: "error", output: "Your last push is still running." })]);
-    expect(refused.map((item) => item.kind)).toEqual(["header", "run"]);
+    expect(refused.map((item) => item.kind)).toEqual(["run"]);
   });
 });

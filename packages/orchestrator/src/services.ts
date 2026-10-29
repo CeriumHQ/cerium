@@ -82,8 +82,6 @@ export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Worktree
 export interface NewWorktree {
   readonly worktree: ThreadWorktree;
   readonly cwd: string;
-  /** The git-ignored files copied in from the project (`.worktreeinclude`), relative to the worktree's root. */
-  readonly copied?: ReadonlyArray<string>;
 }
 
 /** Git worktrees threads run in, so threads in one project keep out of each other's files. */
@@ -91,11 +89,16 @@ export class Worktrees extends Context.Service<
   Worktrees,
   {
     /**
-     * Checks the repository `project` is in out into a worktree of its own, on a new branch named after
-     * `name`, from the branch checked out there; the git-ignored files its include list names are
-     * copied in.
+     * Picks a worktree for the repository `project` is in, on a new branch named after `name`, from the
+     * branch checked out there. Quick: nothing is checked out until `checkOut`, and the name is kept
+     * from other plans until then.
      */
-    create(project: string, name: string): Effect.Effect<NewWorktree, WorktreeError>;
+    plan(project: string, name: string): Effect.Effect<NewWorktree, WorktreeError>;
+    /**
+     * Checks a planned worktree out, copying in the git-ignored files its include list names;
+     * resolves with those files, relative to its root.
+     */
+    checkOut(worktree: ThreadWorktree): Effect.Effect<ReadonlyArray<string>, WorktreeError>;
     /** What the worktree holds that its base doesn't. */
     changes(worktree: ThreadWorktree): Effect.Effect<WorktreeChanges, WorktreeError>;
     /**
@@ -109,7 +112,8 @@ export class Worktrees extends Context.Service<
 >()("cerium/orchestrator/Worktrees") {
   /** For builds and tests without git: no thread gets a worktree. */
   static readonly unavailable = Layer.succeed(Worktrees, {
-    create: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),
+    plan: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),
+    checkOut: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),
     changes: () => Effect.succeed({ uncommitted: 0, unmerged: 0 }),
     remove: () => Effect.void,
     restore: () => Effect.fail(new WorktreeError({ message: "Worktrees aren't available here." })),

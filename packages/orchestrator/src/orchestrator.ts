@@ -15,6 +15,7 @@ import {
   narrowAccess,
   REVIEWER_ROLE,
   type AccessMode,
+  type AssistantOrigin,
   type AdvisorSettings,
   type AgentEvent,
   type Attachment,
@@ -147,6 +148,8 @@ export interface CreateThreadInput {
 export interface UserMessageExtras {
   readonly attachments?: ReadonlyArray<Attachment>;
   readonly mentions?: ReadonlyArray<Mention>;
+  /** The assistant outside Cerium the user had send it. */
+  readonly sentVia?: AssistantOrigin;
 }
 
 /** What a lead asks for through `spawn_agent`. */
@@ -159,6 +162,29 @@ export interface SpawnRequest {
   readonly access?: AccessMode;
   readonly prompt: string;
 }
+
+/**
+ * What an assistant outside Cerium asks for on the user's behalf (assistants.ts in @cerium/protocol):
+ * a work thread in `cwd`, or a chat without one.
+ */
+export interface AssistantThreadRequest {
+  readonly assistant: string;
+  /** The new lead's first message, which it takes as the user's request. */
+  readonly prompt: string;
+  /** A project folder; a chat without one. */
+  readonly cwd?: string;
+  /** Named from the prompt without one, like a thread the user starts. */
+  readonly title?: string;
+  /** A catalog alias or model id; the first model of the roster without one. */
+  readonly model?: string;
+  /** Whether it runs in a worktree of its own; only a work thread can. */
+  readonly worktree?: boolean;
+  readonly access: AccessMode;
+}
+
+/** The model an assistant's thread starts on without naming one: the roster's first, its harness's favourite. */
+export const defaultAssistantModel = (entries: ReadonlyArray<CatalogEntry>): CatalogEntry | undefined =>
+  entries.find((entry) => entry.priority === 1) ?? entries[0];
 
 /** What a lead asks for through `create_thread`: a thread of the user's in its own folder. */
 export interface ThreadRequest {
@@ -560,6 +586,16 @@ export class Orchestrator extends Context.Service<
       options?: PutAwayOptions,
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
+     * Starts a thread that goes on from `threadId` in its folder, under its title, with a lead on the
+     * same harness, model, effort and access, and archives the old one. A worktree passes to the new
+     * thread whole, so archiving the old one leaves it be. The new lead's session starts fresh and
+     * takes no message: the user sends the first, the brief `continuationBrief` writes. Refused while
+     * the old thread's agents work or wait on the user, like archiving.
+     */
+    continueThread(
+      threadId: ThreadId,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    /**
      * Puts a thread off until `until`, when it comes back to the user's inbox; `undefined` brings it
      * back now. Archiving a thread ends its wait.
      */
@@ -591,6 +627,14 @@ export class Orchestrator extends Context.Service<
     startThread(
       callerId: AgentId,
       request: ThreadRequest,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    /**
+     * Starts a thread for the user at an assistant's request, whose lead begins on the prompt as the
+     * user's message, marked as sent through that assistant. Assistants together start as many
+     * threads as `threadBudget` lets agents.
+     */
+    startAssistantThread(
+      request: AssistantThreadRequest,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     /**
      * Delivers an agent's message. One to another thread's lead waits for that lead's next turn,
@@ -732,6 +776,8 @@ export class Orchestrator extends Context.Service<
       const threadModes = new Map<ThreadId, ThreadMode>();
       /** The worktree of each live thread that runs in one, for its agents' instructions. */
       const threadWorktrees = new Map<ThreadId, ThreadWorktree>();
+      /** New threads' worktrees still being checked out, each done when its checkout ends. */
+      const checkouts = new Map<ThreadId, Deferred.Deferred<void, OrchestratorError>>();
       const pendingSpawns = new Map<string, { readonly leadId: AgentId; readonly request: SpawnRequest }>();
       /** Send times per `from->to` pair, for the message budget. */
       const sentMessages = new Map<string, Array<number>>();
@@ -1834,8 +1880,10 @@ export class Orchestrator extends Context.Service<
             ],
             { concurrency: 3 },
           );
+          // What was held for it while its session started (a new worktree's setup) comes along.
+          const taken = advisor ? items : withHeld(rt.info.id, items);
           const told: readonly [InputItem, ...Array<InputItem>] =
-            brief === undefined ? items : [brief, ...items];
+            brief === undefined ? taken : [brief, ...taken];
           yield* rt.turnPermit.withPermits(1)(
             Effect.gen(function* () {
               yield* applyModel(rt, session);
@@ -1924,12 +1972,17 @@ export class Orchestrator extends Context.Service<
 
       /**
        * Makes an agent live at once, so it takes messages straight away; its harness session starts
-       * behind it, and a failure to start is told in its transcript.
+       * behind it, after `prepare` (a new worktree's checkout), and a failure to start is told in its
+       * transcript.
        */
       const startRuntime = (
         info: AgentInfo,
         cwd: string,
-        options: { readonly initial?: InputItem; readonly resume?: string } = {},
+        options: {
+          readonly initial?: InputItem;
+          readonly resume?: string;
+          readonly prepare?: Effect.Effect<void, OrchestratorError>;
+        } = {},
       ) =>
         Effect.gen(function* () {
           const adapter = adapters.get(info.provider);
@@ -2034,8 +2087,12 @@ export class Orchestrator extends Context.Service<
               );
             }),
           );
+          const prepared = yield* Deferred.make<void, OrchestratorError>();
           yield* Effect.forkIn(
-            start.pipe(
+            (options.prepare ?? Effect.void).pipe(
+              Deferred.into(prepared),
+              Effect.andThen(Deferred.await(prepared)),
+              Effect.andThen(start),
               Effect.catch((error) =>
                 Effect.gen(function* () {
                   rt.ended = true;
@@ -2052,7 +2109,12 @@ export class Orchestrator extends Context.Service<
             scope,
           );
           // A folder's first snapshot reads every file in it; taken now, the first turn's is quick.
-          if (savesFiles(info)) yield* Effect.forkIn(snapshotFor(info), scope);
+          if (savesFiles(info)) {
+            yield* Effect.forkIn(
+              Deferred.await(prepared).pipe(Effect.andThen(snapshotFor(info)), Effect.ignore),
+              scope,
+            );
+          }
           yield* Effect.forkIn(turnLoop(rt), scope);
           if (options.initial !== undefined) yield* Queue.offer(rt.inbox, options.initial);
           return rt;
@@ -2284,6 +2346,9 @@ export class Orchestrator extends Context.Service<
         cwd: string,
         options: PutAwayOptions,
       ) {
+        // A checkout still under way finishes first, or git is left with half a worktree.
+        const making = checkouts.get(threadId);
+        if (making !== undefined) yield* Effect.exit(Deferred.await(making));
         if (options.discardWork !== true) {
           const changes = yield* worktrees.changes(worktree).pipe(Effect.mapError(refusedWorktree));
           if (changes.uncommitted > 0 || changes.unmerged > 0) {
@@ -2307,6 +2372,49 @@ export class Orchestrator extends Context.Service<
         yield* worktrees.remove(threadId, worktree).pipe(Effect.mapError(refusedWorktree));
         threadWorktrees.delete(threadId);
       });
+
+      /** Runs the project's setup in a worktree just checked out: it starts empty of what setup installs. */
+      const setUp = (threadId: ThreadId, worktree: ThreadWorktree, cwd: string) =>
+        scripts
+          .start({ kind: "setup", threadId, project: worktree.project, cwd, auto: true })
+          .pipe(Effect.option);
+
+      /**
+       * Checks a new thread's worktree out behind its lead, whose session waits for it, so the thread
+       * shows at once; then setup runs there, and the lead hears with its first turn what runs and
+       * what was copied in.
+       */
+      const makeWorktree = (threadId: ThreadId, leadId: AgentId, { worktree, cwd }: NewWorktree) =>
+        Effect.gen(function* () {
+          const copied = yield* worktrees.checkOut(worktree).pipe(
+            // Stopping the lead meanwhile waits for it rather than leave git half a worktree.
+            Effect.uninterruptible,
+            Effect.mapError(
+              (error) =>
+                new OrchestratorError({
+                  reason: "unavailable",
+                  message: `Couldn't make the thread's worktree: ${error.message}`,
+                }),
+            ),
+          );
+          const started = yield* setUp(threadId, worktree, cwd);
+          const notice: InputItem = {
+            _tag: "SystemNotice",
+            text:
+              setupNote(Option.getOrUndefined(started)) +
+              copiedNote(copied) +
+              portsNote(yield* scripts.ports(threadId)),
+          };
+          heldNotices.set(leadId, [...(heldNotices.get(leadId) ?? []), notice]);
+        });
+
+      /** Puts back a thread's worktree whose folder is gone (Cerium quit while making it, or the user deleted it). */
+      const ensureWorktree = (threadId: ThreadId, worktree: ThreadWorktree, cwd: string) =>
+        Effect.gen(function* () {
+          if (yield* fs.exists(worktree.root).pipe(Effect.orElseSucceed(() => true))) return;
+          yield* worktrees.restore(worktree).pipe(Effect.mapError(refusedWorktree));
+          yield* setUp(threadId, worktree, cwd);
+        });
 
       /** The folder a thread's agents run in: the work thread's own, or a chat's private one. */
       const threadDirectory = (thread: ThreadInfo) =>
@@ -2419,13 +2527,14 @@ export class Orchestrator extends Context.Service<
         // Forgotten before the new session can be reached, so a late answer finds nothing to allow.
         for (const requestId of unansweredSpawns.keys()) pendingSpawns.delete(requestId);
         if (heldMessages.size > 0) heldNotices.set(agentId, [...heldMessages.values()]);
-        const rt = yield* startRuntime(
-          info,
-          directory,
-          info.providerSessionId === undefined || startsAnew(history)
+        const rt = yield* startRuntime(info, directory, {
+          ...(info.providerSessionId === undefined || startsAnew(history)
             ? {}
-            : { resume: info.providerSessionId },
-        );
+            : { resume: info.providerSessionId }),
+          ...(thread.worktree === undefined
+            ? {}
+            : { prepare: ensureWorktree(thread.id, thread.worktree, directory) }),
+        });
         yield* Effect.forEach(
           unanswered,
           (requestId) => emit(rt, { _tag: "PermissionResolved", requestId, decision: "deny", scope: "once" }),
@@ -3086,7 +3195,11 @@ export class Orchestrator extends Context.Service<
         Effect.catchCause((cause) => Effect.logWarning("Couldn't close the questions left open", cause)),
       );
 
-      const createThread = Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
+      /** With `adopted`, the thread takes over that worktree, which `cwd` is in, instead of making one. */
+      const createThread = Effect.fn("Orchestrator.createThread")(function* (
+        input: CreateThreadInput,
+        adopted?: ThreadWorktree,
+      ) {
         if (input.mode === "work" && input.cwd === undefined) {
           return yield* new OrchestratorError({
             reason: "invalid",
@@ -3095,9 +3208,10 @@ export class Orchestrator extends Context.Service<
         }
         const createdAt = yield* now;
         const threadId = (yield* makeId("thr")) as ThreadId;
+        // Only picked here: the checkout runs behind the thread, so it shows at once.
         const isolated: NewWorktree | undefined =
-          input.mode === "work" && input.cwd !== undefined && input.worktree === true
-            ? yield* worktrees.create(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
+          adopted === undefined && input.mode === "work" && input.cwd !== undefined && input.worktree === true
+            ? yield* worktrees.plan(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
             : undefined;
         const directory =
           isolated?.cwd ??
@@ -3109,7 +3223,7 @@ export class Orchestrator extends Context.Service<
           title: input.title,
           mode: input.mode,
           ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
-          ...(isolated ? { worktree: isolated.worktree } : {}),
+          ...(isolated ? { worktree: isolated.worktree } : adopted ? { worktree: adopted } : {}),
           ...(input.runId ? { runId: input.runId } : {}),
           createdAt,
           updatedAt: createdAt,
@@ -3140,36 +3254,30 @@ export class Orchestrator extends Context.Service<
         };
         yield* Effect.all([store.createThread(thread), store.createAgent(lead)], { discard: true }).pipe(
           Effect.mapError(unavailable),
-          // A worktree no thread records would never be removed.
-          Effect.onError(() =>
-            isolated ? worktrees.remove(threadId, isolated.worktree).pipe(Effect.ignore) : Effect.void,
-          ),
         );
         threadDirectories.set(threadId, directory);
         threadModes.set(threadId, input.mode);
-        if (isolated) threadWorktrees.set(threadId, isolated.worktree);
-        untitled.set(threadId, input.title);
-        yield* startRuntime(lead, directory);
-        // Setup makes the worktree usable, run in the thread's own terminal; the lead hears what runs
-        // with its first turn, and what became of it when the command ends.
-        if (isolated !== undefined) {
-          const started = yield* scripts
-            .start({
-              kind: "setup",
-              threadId,
-              project: isolated.worktree.project,
-              cwd: isolated.cwd,
-              auto: true,
-            })
-            .pipe(Effect.option);
-          yield* deliver(lead.id, {
-            _tag: "SystemNotice",
-            text:
-              setupNote(Option.getOrUndefined(started)) +
-              copiedNote(isolated.copied) +
-              portsNote(yield* scripts.ports(threadId)),
-          });
+        // A thread that continues another keeps its title.
+        if (adopted === undefined) untitled.set(threadId, input.title);
+        if (adopted !== undefined) {
+          threadWorktrees.set(threadId, adopted);
+          yield* startRuntime(lead, directory, { prepare: ensureWorktree(threadId, adopted, directory) });
+          return { thread, lead };
         }
+        if (isolated === undefined) {
+          yield* startRuntime(lead, directory);
+          return { thread, lead };
+        }
+        threadWorktrees.set(threadId, isolated.worktree);
+        const checkedOut = yield* Deferred.make<void, OrchestratorError>();
+        checkouts.set(threadId, checkedOut);
+        yield* startRuntime(lead, directory, {
+          prepare: makeWorktree(threadId, lead.id, isolated).pipe(
+            Deferred.into(checkedOut),
+            Effect.andThen(Deferred.await(checkedOut)),
+            Effect.ensuring(Effect.sync(() => checkouts.delete(threadId))),
+          ),
+        });
         return { thread, lead };
       });
 
@@ -3183,7 +3291,7 @@ export class Orchestrator extends Context.Service<
         extras: UserMessageExtras & Pick<FromUser, "writtenBy"> = {},
         options: { readonly rewindBefore?: string } = {},
       ) => {
-        const { attachments = [], mentions = [], writtenBy } = extras;
+        const { attachments = [], mentions = [], writtenBy, sentVia } = extras;
         if (text.trim() === "" && attachments.length === 0) {
           return Effect.fail(new OrchestratorError({ reason: "invalid", message: "The message is empty." }));
         }
@@ -3198,6 +3306,7 @@ export class Orchestrator extends Context.Service<
               ...(attachments.length > 0 ? { attachments } : {}),
               ...(mentions.length > 0 ? { mentions } : {}),
               ...(writtenBy ? { writtenBy } : {}),
+              ...(sentVia ? { sentVia } : {}),
             };
             // Recorded before it waits on the session or a running turn, so the user sees it at once.
             yield* emit(rt, { _tag: "MessageQueued", message });
@@ -3222,6 +3331,7 @@ export class Orchestrator extends Context.Service<
           acceptUserMessage(agentId, text, {
             ...(extras.attachments ? { attachments: extras.attachments } : {}),
             ...(extras.mentions ? { mentions: extras.mentions } : {}),
+            ...(extras.sentVia ? { sentVia: extras.sentVia } : {}),
           }),
 
         editMessage: (agentId, messageId, text, extras = {}) =>
@@ -3708,24 +3818,62 @@ export class Orchestrator extends Context.Service<
             if (archived) {
               yield* removeWorktree(thread.id, thread.worktree, thread.cwd ?? thread.worktree.root, options);
             } else {
-              yield* worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
-              // A restored worktree starts empty of what setup installs, so it runs again, whether
-              // or not the thread's lead is listening; the terminal shows its output.
-              yield* scripts
-                .start({
-                  kind: "setup",
-                  threadId,
-                  project: thread.worktree.project,
-                  cwd: thread.cwd ?? thread.worktree.root,
-                  auto: true,
-                })
-                .pipe(Effect.ignore);
+              // Setup runs again whether or not the thread's lead is listening; the terminal shows it.
+              yield* ensureWorktree(threadId, thread.worktree, thread.cwd ?? thread.worktree.root);
             }
           }
           return yield* updateThread(
             threadId,
             archived ? { archivedAt: yield* now, laterUntil: null } : { archivedAt: null },
           );
+        }),
+
+        continueThread: Effect.fn("Orchestrator.continueThread")(function* (threadId: ThreadId) {
+          if (working(threadId) || waitsOnUser(threadId)) {
+            return yield* notAllowed(
+              "A thread can't be continued while its agents are working or waiting on you.",
+            );
+          }
+          const thread = yield* threadInfo(threadId);
+          if (thread.archivedAt !== undefined) {
+            return yield* notAllowed("Restore this thread before continuing it.");
+          }
+          const lead = (yield* store.listAgents(threadId).pipe(Effect.mapError(unavailable))).find(
+            (agent) => agent.parentId === undefined && agent.role === LEAD_ROLE,
+          );
+          if (lead === undefined) return yield* notFound(`Thread ${threadId} has no lead.`);
+          // A checkout still under way finishes first, so the worktree passes on whole.
+          const making = checkouts.get(threadId);
+          if (making !== undefined) yield* Effect.exit(Deferred.await(making));
+          const started = yield* createThread(
+            {
+              title: thread.title,
+              mode: thread.mode,
+              ...(thread.cwd === undefined ? {} : { cwd: thread.cwd }),
+              lead: {
+                provider: lead.provider,
+                model: lead.model,
+                ...(lead.effort ? { effort: lead.effort } : {}),
+                ...(lead.autoEffort ? { autoEffort: true } : {}),
+                ...(lead.speed ? { speed: lead.speed } : {}),
+                access: lead.access,
+              },
+            },
+            thread.worktree,
+          );
+          // The old thread's sessions end, and it lets go of the worktree its successor now holds.
+          yield* Effect.forEach(
+            [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+            stopRuntime,
+            { discard: true },
+          );
+          threadWorktrees.delete(threadId);
+          yield* updateThread(threadId, {
+            archivedAt: yield* now,
+            laterUntil: null,
+            ...(thread.worktree === undefined ? {} : { worktree: null }),
+          });
+          return started;
         }),
 
         setThreadLater: (threadId: ThreadId, until: number | undefined) =>
@@ -3894,6 +4042,64 @@ export class Orchestrator extends Context.Service<
           if (title !== undefined) untitled.delete(started.thread.id);
           yield* acceptUserMessage(started.lead.id, request.prompt, {
             writtenBy: { agentId: callerId, threadId: origin.id, threadTitle: origin.title },
+          });
+          return started;
+        }),
+
+        startAssistantThread: Effect.fn("Orchestrator.startAssistantThread")(function* (
+          request: AssistantThreadRequest,
+        ) {
+          const title = request.title?.trim() || undefined;
+          if (title !== undefined && title.length > MAX_THREAD_TITLE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `A title is 1 to ${MAX_THREAD_TITLE} characters; leave it out to have the thread named from its prompt.`,
+            });
+          }
+          const entries = yield* catalog.entries;
+          const first = defaultAssistantModel(entries);
+          const target =
+            request.model === undefined
+              ? first === undefined
+                ? undefined
+                : resolveTarget(entries, { model: first.alias })
+              : resolveTarget(entries, { model: request.model });
+          if (target === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message:
+                request.model === undefined
+                  ? "No harness is signed in on this computer, so no thread can start there."
+                  : `"${request.model}" isn't a model this computer offers. list_models names the ones it does.`,
+            });
+          }
+          if (!adapters.has(target.provider)) {
+            return yield* new OrchestratorError({
+              reason: "unavailable",
+              message: `No ${target.provider} adapter is installed.`,
+            });
+          }
+          yield* spend(
+            "assistants",
+            config.threadBudget,
+            (recent) =>
+              `Assistants have started ${recent} threads on this computer recently, the most allowed. Try again later.`,
+          );
+          const work = request.cwd !== undefined;
+          const started = yield* createThread({
+            title: title ?? (work ? "New thread" : "New chat"),
+            mode: work ? "work" : "chat",
+            ...(work ? { cwd: request.cwd } : {}),
+            worktree: work && request.worktree === true,
+            lead: {
+              ...target,
+              ...((yield* routerOn) ? { autoEffort: true } : {}),
+              access: request.access,
+            },
+          });
+          if (title !== undefined) untitled.delete(started.thread.id);
+          yield* acceptUserMessage(started.lead.id, request.prompt, {
+            sentVia: { assistant: request.assistant },
           });
           return started;
         }),

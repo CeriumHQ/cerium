@@ -10,9 +10,9 @@ import {
   Clock,
   CornerDownRight,
   FoldVertical,
+  MessageSquareShare,
   Pencil,
   RotateCcw,
-  Route,
   Split,
   Workflow,
   X,
@@ -127,6 +127,14 @@ export function UserMessage({
             <Split size={12} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">
               Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
+            </span>
+          </p>
+        )}
+        {block.sentVia === undefined ? null : (
+          <p className="flex max-w-full min-w-0 items-center gap-1.5 text-meta text-fg-tertiary">
+            <MessageSquareShare size={12} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">
+              Sent from <span className="font-medium text-fg-secondary">{block.sentVia}</span>
             </span>
           </p>
         )}
@@ -589,8 +597,8 @@ const fellBack = (routed: RoutedDecision): boolean =>
   routed.baselineEffort !== undefined &&
   routed.effort === routed.baselineEffort;
 
-/** The level the effort router ran a turn at, with how it decided under the pointer. */
-export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
+/** The level the effort router ran a turn at, in its footer, with how it decided under the pointer. */
+function RoutedEffort({ routed }: { routed: RoutedDecision }) {
   const level = routed.effort === undefined ? "" : effortLabel[routed.effort];
   const facts = [
     routed.kept === undefined && routed.confidence !== undefined
@@ -606,10 +614,10 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
         <span className="flex flex-col gap-0.5">
           <span className="font-medium">
             {routed.kept === undefined
-              ? `Picked ${level}`
+              ? `Auto picked ${level}`
               : fellBack(routed)
-                ? `Fell back to ${level}`
-                : `Kept ${level}`}
+                ? `Auto fell back to ${level}`
+                : `Auto kept ${level}`}
           </span>
           {routed.kept === undefined ? null : <span className="text-fg-secondary">{keptReason(routed)}</span>}
           {fellBack(routed) ? <span className="text-fg-tertiary">The level picked beside Auto</span> : null}
@@ -619,9 +627,8 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
         </span>
       }
     >
-      <Button className="-mx-1 flex h-5 items-center gap-1 rounded-md px-1 transition-colors hover:text-fg-secondary">
-        <Route size={11} strokeWidth={2} />
-        Auto · {level}
+      <Button className="-mx-1 rounded-sm px-1 transition-colors hover:text-fg-secondary">
+        {level} effort
       </Button>
     </Tooltip>
   );
@@ -631,7 +638,16 @@ export function RoutedEffort({ routed }: { routed: RoutedDecision }) {
  * The end of a response: a button that copies it, and what the turn cost. The transcript shows it
  * under the latest response, and under earlier ones while the pointer is over them.
  */
-export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: string }) {
+export function TurnFooter({
+  block,
+  text,
+  routed,
+}: {
+  block: Block<"turnEnd">;
+  text: string;
+  /** What the effort router decided for the turn, for an agent on Auto. */
+  routed?: RoutedDecision | undefined;
+}) {
   const stopped =
     block.stopReason in stoppedNote ? stoppedNote[block.stopReason as keyof typeof stoppedNote] : undefined;
   // A turn stopped before the model answered reports nothing used, which isn't worth a line.
@@ -644,11 +660,12 @@ export function TurnFooter({ block, text }: { block: Block<"turnEnd">; text: str
     block.startedAt !== undefined && block.endedAt !== undefined && block.endedAt - block.startedAt >= 1_000
       ? duration(block.endedAt - block.startedAt)
       : undefined;
-  if (usage === undefined && text === "" && stopped === undefined) return null;
+  if (usage === undefined && text === "" && stopped === undefined && routed === undefined) return null;
   return (
     <div className="flex min-h-6 items-center gap-2.5 text-caption text-fg-tertiary tabular-nums">
       {text === "" ? null : <CopyButton text={text} label="Copy response" className="-ml-1.5" />}
       {worked === undefined ? null : <span>Worked {worked}</span>}
+      {routed === undefined ? null : <RoutedEffort routed={routed} />}
       {stopped === undefined ? null : (
         <span className="flex items-center gap-1">
           <stopped.Icon size={11} strokeWidth={2} />

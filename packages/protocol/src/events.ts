@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { AssistantOrigin } from "./assistants.ts";
 import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { withFallback } from "./compat.ts";
 import { AgentId, EpochMillis, EventId, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
@@ -288,6 +289,8 @@ export const FromUser = Schema.TaggedStruct("FromUser", {
   writtenBy: Schema.optionalKey(
     Schema.Struct({ agentId: AgentId, threadId: ThreadId, threadTitle: Schema.String }),
   ),
+  /** The assistant the user asked to send this, from outside Cerium (assistants.ts). */
+  sentVia: Schema.optionalKey(AssistantOrigin),
 });
 export type FromUser = typeof FromUser.Type;
 

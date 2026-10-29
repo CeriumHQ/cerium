@@ -99,3 +99,25 @@ export const push = sqliteTable("push", {
   kinds: text("kinds").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/**
+ * Assistants the user allowed into the account from outside Cerium, one OAuth grant each (oauth.ts).
+ * Only hashes of its code and tokens are kept. A grant waits with a code until the assistant redeems
+ * it for tokens; one never redeemed is dropped once its code expires.
+ */
+export const assistants = sqliteTable("assistants", {
+  id: text("id").primaryKey(),
+  /** What the assistant calls itself. */
+  name: text("name").notNull(),
+  clientId: text("client_id").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  createdAt: integer("created_at").notNull(),
+  lastUsedAt: integer("last_used_at"),
+  codeHash: text("code_hash"),
+  /** PKCE's S256 challenge the code was asked with. */
+  codeChallenge: text("code_challenge"),
+  codeExpiresAt: integer("code_expires_at"),
+  accessHash: text("access_hash"),
+  accessExpiresAt: integer("access_expires_at"),
+  refreshHash: text("refresh_hash"),
+});

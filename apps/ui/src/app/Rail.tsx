@@ -18,10 +18,11 @@ import { SlidingHighlight } from "../components/SlidingHighlight.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { harnessName } from "../features/settings/Harnesses.tsx";
 import { leftLabel, planName, resetLabel } from "../features/settings/usageModel.ts";
+import type { ThreadSummary } from "../features/threads/model.ts";
 import type { HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { bindingFor, shortcutBindingsAtom, type ShortcutId } from "../lib/shortcuts.ts";
 import { useMinute } from "../lib/useMinute.ts";
-import { usageRings, type UsageRing } from "./railModel.ts";
+import { badgeLabel, badgeNote, railBadges, usageRings, type UsageRing } from "./railModel.ts";
 
 /**
  * Where the rail goes: the work inbox, the chats, the user's own tasks, GitHub's pull requests and
@@ -42,6 +43,8 @@ interface RailProps {
   readonly view: RailView;
   readonly onSelect: (view: RailView) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
+  /** Every thread the sidebar knows, for the counts on Home and Chat. */
+  readonly threads: ReadonlyArray<ThreadSummary>;
   /** Settings → Usage, where a ring's limits are laid out in full. */
   readonly onOpenUsage: () => void;
   /** The places the driven machine can't serve, left off the rail. */
@@ -52,17 +55,20 @@ interface RailProps {
 
 /**
  * The window's places, as icons down its left edge, over a ring per subscribed harness showing what's
- * left of its tightest limit. Settings carries a dot while a harness waits to be signed in or set up.
+ * left of its tightest limit. Home and Chat count what's new or waiting on the user, and Settings
+ * carries a dot while a harness waits to be signed in or set up.
  */
 export function Rail({
   view,
   onSelect,
   harnesses,
+  threads,
   onOpenUsage,
   hidden = [],
   orientation = "vertical",
 }: RailProps) {
   const vertical = orientation === "vertical";
+  const badges = railBadges(threads, useMinute());
   const places = useRef<HTMLElement>(null);
   const bindings = useAtomValue(shortcutBindingsAtom);
   // The backend reports every adapter it has, so all "unsupported" is the list before its first answer.
@@ -92,15 +98,16 @@ export function Rail({
         <SlidingHighlight within={places} active={view} className="rounded-lg bg-surface-selected" />
         {shown.map(({ view: id, label, icon: Icon, shortcut }) => {
           const active = id === view;
+          const badge = id === "home" || id === "chat" ? badges[id] : undefined;
           return (
             <Tooltip
               key={id}
-              label={label}
+              label={badge ? `${label} · ${badgeNote(badge)}` : label}
               shortcut={bindingFor(bindings, shortcut)}
               side={vertical ? "right" : "top"}
             >
               <Button
-                aria-label={label}
+                aria-label={badge ? `${label}, ${badgeNote(badge)}` : label}
                 aria-current={active ? "page" : undefined}
                 {...(active ? { "data-highlight-active": "" } : {})}
                 onClick={() => onSelect(id)}
@@ -111,6 +118,20 @@ export function Rail({
                 }`}
               >
                 <Icon size={18} strokeWidth={1.75} />
+                {badge ? (
+                  <span
+                    aria-hidden
+                    // A badge that turns urgent pops in again at its new colour, as a thread's status dot does.
+                    key={badge.waiting > 0 ? "waiting" : "unread"}
+                    className={`absolute top-0.5 right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[9.5px] leading-none font-semibold tabular-nums transition-[scale] duration-300 ease-pop starting:scale-0 max-md:top-1 max-md:right-1 ${
+                      badge.waiting > 0
+                        ? "bg-attention text-fg-primary dark:text-accent-fg"
+                        : "bg-accent text-accent-fg"
+                    }`}
+                  >
+                    {badgeLabel(badge.count)}
+                  </span>
+                ) : null}
                 {id === "settings" && waiting ? (
                   <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
                 ) : null}
@@ -154,7 +175,7 @@ function UsageRings({
           <Button
             aria-label={`${harnessName[ring.provider]}: ${Math.round(ring.left)}% left`}
             onClick={onOpen}
-            className="grid size-9 place-items-center rounded-lg transition-colors duration-150 hover:bg-surface-hover max-md:size-11"
+            className="group grid size-9 place-items-center rounded-lg transition-colors duration-150 hover:bg-surface-hover max-md:size-11"
           >
             <Ring ring={ring} />
           </Button>
@@ -165,52 +186,54 @@ function UsageRings({
 }
 
 const SIZE = 30;
-/** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
-const bands = { 1: [2.5, 0], 2: [2.5, 1], 3: [2, 0.5] } as const;
-
-/** Green while most of a limit is left, amber below half, red once under a fifth. */
-const arcColor = (left: number) =>
-  left > 50 ? "var(--color-success)" : left >= 20 ? "var(--color-attention)" : "var(--color-error)";
+const STROKE = 2;
+const RADIUS = SIZE / 2 - STROKE / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /**
- * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
- * as its limit runs down.
+ * A limit is quiet, in the rail's own grey, while there's plenty of it; it takes a colour only once it
+ * needs the eye: amber under a quarter left, red under a tenth.
+ */
+const arcTone = (left: number) =>
+  left >= 25
+    ? { stroke: "stroke-fg-tertiary group-hover:stroke-fg-secondary", fill: "bg-fg-tertiary" }
+    : left >= 10
+      ? { stroke: "stroke-attention", fill: "bg-attention" }
+      : { stroke: "stroke-error", fill: "bg-error" };
+
+/**
+ * The harness's mark inside one arc, its tightest limit, emptying clockwise from the top as that limit
+ * runs down over a faint track of the whole; the tooltip lists the rest.
  */
 function Ring({ ring }: { ring: UsageRing }) {
-  const [stroke, gap] = bands[Math.min(ring.arcs.length, 3) as 1 | 2 | 3];
   return (
     <span className="relative grid size-[30px] place-items-center">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0 -rotate-90">
-        {ring.arcs.map((arc, index) => {
-          const radius = SIZE / 2 - stroke / 2 - index * (stroke + gap);
-          const circumference = 2 * Math.PI * radius;
-          return (
-            <g key={arc.label}>
-              <circle
-                cx={SIZE / 2}
-                cy={SIZE / 2}
-                r={radius}
-                fill="none"
-                strokeWidth={stroke}
-                className="stroke-line-strong"
-              />
-              <circle
-                cx={SIZE / 2}
-                cy={SIZE / 2}
-                r={radius}
-                fill="none"
-                stroke={arcColor(arc.left)}
-                strokeWidth={stroke}
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference * (1 - arc.left / 100)}
-                className="transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft"
-              />
-            </g>
-          );
-        })}
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          className="stroke-line-strong"
+        />
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={CIRCUMFERENCE * (1 - ring.left / 100)}
+          className={`${arcTone(ring.left).stroke} transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft`}
+        />
       </svg>
-      <ProviderLogo provider={ring.provider} size={ring.arcs.length > 2 ? 12 : 14} />
+      <ProviderLogo
+        provider={ring.provider}
+        size={14}
+        className="text-fg-secondary transition-colors duration-150 group-hover:text-fg-primary"
+      />
     </span>
   );
 }
@@ -223,16 +246,13 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
         {ring.plan ? <span className="font-normal text-fg-tertiary"> · {planName(ring.plan)}</span> : null}
       </span>
       {ring.meters.map((meter) => {
-        const arc = ring.arcs.find(({ label }) => label === meter.label);
+        const drawn = meter.label === ring.label;
         return (
           <span key={meter.label} className="flex flex-col">
             <span className="flex justify-between gap-6 tabular-nums">
               <span className="flex items-center gap-1.5 text-fg-secondary">
-                {/* The arc's colour, so a row finds its arc; a limit without an arc keeps the gap. */}
-                <span
-                  className="size-2 rounded-full"
-                  style={arc === undefined ? undefined : { backgroundColor: arcColor(arc.left) }}
-                />
+                {/* The ring's colour on the limit it draws; the others keep the gap. */}
+                <span className={`size-2 rounded-full ${drawn ? arcTone(ring.left).fill : ""}`} />
                 {meter.label}
               </span>
               {leftLabel(meter)}

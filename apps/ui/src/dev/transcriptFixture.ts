@@ -117,6 +117,7 @@ export const explanation = [
 
 export const transcriptFixture: ReadonlyArray<AgentEvent> = [
   event({ _tag: "SessionStarted", provider: "claude", providerSessionId: "s1", model: "Opus 5.5" }),
+  event({ _tag: "EffortRouted", effort: "high", confidence: 0.82, ms: 640, costUsd: 0.00003 }, 0),
   event({
     _tag: "TurnInput",
     items: [

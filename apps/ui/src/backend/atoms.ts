@@ -367,6 +367,11 @@ export const settingsAtom = Backend.runtime.atom((get) => {
  * Whether the driven machine has an OpenRouter key for the effort router, and what its decisions
  * cost. Re-read after a reconnect; a machine too old for the router fails it.
  */
+/** The assistants connected to the account, and the address they connect to; read again on refresh. */
+export const assistantsAtom = LocalBackend.runtime.atom(
+  LocalBackend.use((client) => client("ListAssistants", undefined)),
+);
+
 export const effortRouterStatusAtom = Backend.runtime.atom((get) => {
   get(connectionEpochAtom);
   return Backend.use((client) => client("EffortRouterStatus", undefined));
@@ -532,6 +537,7 @@ export const stopThread = Backend.runtime.fn<{ readonly payload: { readonly thre
 export const renameThread = Backend.mutation("RenameThread");
 export const setThreadArchived = Backend.mutation("SetThreadArchived");
 export const setThreadLater = Backend.mutation("SetThreadLater");
+export const continueThread = Backend.mutation("ContinueThread");
 export const deleteThread = Backend.mutation("DeleteThread");
 export const updateSettings = Backend.mutation("UpdateSettings");
 export const removeEffortRouterKey = Backend.mutation("RemoveEffortRouterKey");
@@ -543,6 +549,7 @@ export const cancelSignIn = LocalBackend.mutation("CancelSignIn");
 export const signOut = LocalBackend.mutation("SignOut");
 export const renameDevice = LocalBackend.mutation("RenameDevice");
 export const removeDevice = LocalBackend.mutation("RemoveDevice");
+export const disconnectAssistant = LocalBackend.mutation("DisconnectAssistant");
 export const markThreadsRead = LocalBackend.mutation("MarkThreadsRead");
 export const saveDrafts = LocalBackend.mutation("SaveDrafts");
 export const saveTasks = LocalBackend.mutation("SaveTasks");

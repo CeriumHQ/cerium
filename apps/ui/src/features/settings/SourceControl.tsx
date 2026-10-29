@@ -122,7 +122,7 @@ function ProjectScriptsSection() {
 }
 
 /** Which project the card edits: a menu of the saved ones, or just the name while there is only one. */
-function ProjectSelect({
+export function ProjectSelect({
   projects,
   shown,
   onPick,

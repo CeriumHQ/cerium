@@ -21,6 +21,7 @@ const limiters = (allowed = 3): Limiters => ({
   ADDRESS_LIMIT: limiter(allowed * 10),
   DEVICE_LIMIT: limiter(allowed),
   CONNECT_LIMIT: limiter(allowed),
+  ASSISTANT_LIMIT: limiter(allowed),
 });
 
 const credential = (deviceId: string) => ({
