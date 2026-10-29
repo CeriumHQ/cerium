@@ -64,6 +64,8 @@ export const deviceHandlers = <W, N, K, B>(own: {
         SignOut: () => account.signOut.pipe(Effect.mapError(refuse)),
         RenameDevice: ({ deviceId, name }) => account.rename(deviceId, name).pipe(Effect.mapError(refuse)),
         RemoveDevice: ({ deviceId }) => account.remove(deviceId).pipe(Effect.mapError(refuse)),
+        ListAssistants: () => account.assistants.pipe(Effect.mapError(refuse)),
+        DisconnectAssistant: ({ id }) => account.disconnectAssistant(id).pipe(Effect.mapError(refuse)),
         WatchAccountThreads: () => cloud.accountThreads,
         CloudThreadEvents: ({ machine, threadId }) =>
           cloud.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),

@@ -363,6 +363,12 @@ body {
   outline-offset: 3px;
 }
 
+/* Saying no to an assistant, under the button that allows it. */
+.cancel {
+  display: block;
+  margin: 16px auto 0;
+}
+
 .error {
   margin: 14px 0 0;
   color: var(--status-error);

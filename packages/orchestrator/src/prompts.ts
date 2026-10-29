@@ -30,6 +30,10 @@ const renderItem = (item: InputItem): string => {
             " thread for them, and it wrote the message below as their request. You can reach that lead with" +
             " `send_message`."
           : "",
+        item.sentVia
+          ? `${PREFIX} The user sent the message below through ${item.sentVia.assistant}, an assistant outside` +
+            " Cerium, which wrote it for them; they follow your work here."
+          : "",
         item.text,
         attached.length > 0 ? ["Attached files:", ...attached].join("\n") : "",
       ]

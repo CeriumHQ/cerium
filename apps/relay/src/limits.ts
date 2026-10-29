@@ -21,6 +21,8 @@ export interface Limiters {
   readonly DEVICE_LIMIT: RateLimit;
   /** A device opening its live connection. */
   readonly CONNECT_LIMIT: RateLimit;
+  /** A connected assistant's calls to the MCP endpoint, per assistant. */
+  readonly ASSISTANT_LIMIT: RateLimit;
 }
 
 type Limiter = keyof Limiters;
@@ -32,6 +34,7 @@ export const PERIODS: Record<Limiter, 10 | 60> = {
   ADDRESS_LIMIT: 10,
   DEVICE_LIMIT: 10,
   CONNECT_LIMIT: 60,
+  ASSISTANT_LIMIT: 10,
 };
 
 interface Check {
@@ -43,7 +46,7 @@ interface Check {
 const deviceOf = (request: Request, resource: string | undefined): Credential | undefined =>
   resource === "connect"
     ? credentialFromProtocols(request.headers.get("Sec-WebSocket-Protocol"))
-    : resource === "sync" || resource === "devices"
+    : resource === "sync" || resource === "devices" || resource === "assistants"
       ? parseCredential(bearer(request) ?? "")
       : undefined;
 

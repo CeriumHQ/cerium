@@ -10,6 +10,7 @@ import {
   Clock,
   CornerDownRight,
   FoldVertical,
+  MessageSquareShare,
   Pencil,
   RotateCcw,
   Split,
@@ -126,6 +127,14 @@ export function UserMessage({
             <Split size={12} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">
               Started from <span className="font-medium text-fg-secondary">{block.writtenIn}</span>
+            </span>
+          </p>
+        )}
+        {block.sentVia === undefined ? null : (
+          <p className="flex max-w-full min-w-0 items-center gap-1.5 text-meta text-fg-tertiary">
+            <MessageSquareShare size={12} strokeWidth={1.75} className="shrink-0" />
+            <span className="truncate">
+              Sent from <span className="font-medium text-fg-secondary">{block.sentVia}</span>
             </span>
           </p>
         )}

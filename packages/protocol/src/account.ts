@@ -1,5 +1,6 @@
 import { Option, Schema, Struct } from "effect";
 
+import { AssistantMessage, AssistantNotice } from "./assistants.ts";
 import { DeviceId, EpochMillis } from "./ids.ts";
 import { NotificationKind, PushMessage } from "./push.ts";
 import { SyncMessage, SyncNotice } from "./sync.ts";
@@ -218,10 +219,11 @@ export type TunnelPeer = typeof TunnelPeer.Type;
  */
 const More = Schema.optionalKey(Schema.Boolean);
 
-/** What a device sends its relay socket, besides `ping`: tunnel frames, sync and push. */
+/** What a device sends its relay socket, besides `ping`: tunnel frames, sync, push and assistants. */
 export const DeviceMessage = Schema.Union([
   ...SyncMessage.members,
   ...PushMessage.members,
+  ...AssistantMessage.members,
   /** One RPC frame for the other end, as text, or a piece of one. */
   Schema.TaggedStruct("Send", { to: TunnelAddress, channel: ChannelId, data: Schema.String, more: More }),
   /** This end of the channel is done. */
@@ -255,6 +257,7 @@ export const RelayMessage = Schema.Union([
   }),
   Schema.TaggedStruct("Gone", { connection: ConnectionId }),
   ...SyncNotice.members,
+  ...AssistantNotice.members,
 ]);
 export type TunnelMessage = Extract<
   RelayMessage,

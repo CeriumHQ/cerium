@@ -15,6 +15,7 @@ import {
 } from "@cerium/protocol";
 
 import type { Outcome } from "./account.ts";
+import { assistantApproval, assistantRoute } from "./assistants.ts";
 import { clerkUser } from "./clerk.ts";
 import { vapidKeys, type Env } from "./env.ts";
 import { bearer, json, param, readBody, refuse, refusedSocket } from "./http.ts";
@@ -24,7 +25,7 @@ export { Account } from "./account.ts";
 export { Link } from "./link.ts";
 
 // Cerium's relay. Static files (the sign-in page) are served from
-// public/; everything under /api comes here. Each account is one `Account` object and each pending
+// public/; everything under /api comes here, and assistants' MCP and OAuth routes (assistants.ts). Each account is one `Account` object and each pending
 // sign-in one `Link` object; this Worker only checks requests and routes them.
 
 const answer = (outcome: Outcome): Response =>
@@ -126,6 +127,23 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       : refuse(events.ok ? 500 : events.status, events.ok ? "Couldn't read that thread." : events.message);
   }
 
+  // The approval page an assistant sends the user to.
+  if (resource === "oauth" && action === undefined) return assistantApproval(request, env, id);
+
+  // The account's connected assistants, which any of its devices lists and disconnects.
+  if (resource === "assistants") {
+    const credential = parseCredential(bearer(request) ?? "");
+    if (credential === undefined) return refuse(401, "This device isn't signed in.");
+    const account = accountStub(env, credential);
+    if (id === undefined && action === undefined && method === "GET") {
+      const listed = await account.listAssistants(credential);
+      return "assistants" in listed ? json(listed) : answer(listed);
+    }
+    if (id !== undefined && action === undefined && method === "DELETE")
+      return answer(await account.disconnectAssistant(credential, id));
+    return refuse(405, "Not allowed.");
+  }
+
   // Renaming and removing devices.
   if (resource === "devices" && id !== undefined) {
     const credential = parseCredential(bearer(request) ?? "");
@@ -149,7 +167,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
 export default {
   async fetch(request, env) {
     try {
-      return await route(request, env);
+      return (await assistantRoute(request, env)) ?? (await route(request, env));
     } catch (error) {
       console.error(error);
       return refuse(500, "Cerium's relay hit a problem. Try again in a moment.");

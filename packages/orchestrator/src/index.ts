@@ -29,7 +29,9 @@ export {
   type ProjectRunState,
 } from "./projectRun.ts";
 export {
+  defaultAssistantModel,
   Orchestrator,
+  type AssistantThreadRequest,
   type CreateThreadInput,
   type HandoffTarget,
   type ModelChoice,

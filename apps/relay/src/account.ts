@@ -9,7 +9,11 @@ import {
   RELAY_PROTOCOL,
   type AccountId,
   type AccountProfile,
+  type AssistantMessage,
+  type AssistantRequest,
+  type AssistantResult,
   type ConfirmLinkRequest,
+  type ConnectedAssistants,
   type ConnectionId,
   type Credential,
   type DeviceDraft,
@@ -26,7 +30,7 @@ import {
   type ThreadId,
 } from "@cerium/protocol";
 import { DurableObject } from "cloudflare:workers";
-import { and, asc, eq, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import { Option, Schema } from "effect";
@@ -36,6 +40,15 @@ import { leftBehind, stateFor, type DeviceRow } from "./devices.ts";
 import { vapidKeys, type Env } from "./env.ts";
 import { refusedSocket, signOut } from "./http.ts";
 import {
+  handleMcp,
+  THREAD_MESSAGES,
+  threadMessages,
+  threadSummary,
+  type AssistantDesk,
+  type Computer,
+  type ThreadSummary,
+} from "./mcp.ts";
+import {
   isShowing,
   kindsOf,
   notificationBody,
@@ -44,6 +57,18 @@ import {
   type Presence,
   type PushRow,
 } from "./notify.ts";
+import {
+  ACCESS_TTL_S,
+  CODE_TTL_MS,
+  formatToken,
+  oauthError,
+  SCOPE,
+  siteOf,
+  verifiesChallenge,
+  type GrantToken,
+  type OAuthError,
+  type Tokens,
+} from "./oauth.ts";
 import * as tables from "./schema.ts";
 import { accountDraftsJson, accountTasksJson, accountThreadsJson, appendBatch } from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
@@ -63,8 +88,23 @@ export type Outcome =
 const done: Outcome = { ok: true };
 const refused = (status: number, message: string): Outcome => ({ ok: false, status, message });
 
-/** What each device socket carries through hibernation: who it is, and what its window shows. */
-type Attachment = Live & Presence;
+/**
+ * What each device socket carries through hibernation: who it is, what its window shows, and for a
+ * desktop, whether it takes assistants' calls.
+ */
+type Attachment = Live & Presence & { readonly assistants?: boolean };
+
+/** The most of a thread's stored events one `read_thread` parses, in characters. */
+const MAX_READ_BYTES = 4_000_000;
+
+/** How long an assistant's call waits for the desktop's answer. */
+const ASSISTANT_CALL_MS = 25_000;
+
+/** A desktop's answer an assistant's call waits on, with the connection it was asked on. */
+interface PendingCall {
+  readonly connection: string;
+  readonly settle: (result: AssistantResult) => void;
+}
 
 /** How long a push service keeps a notification for a phone that's off or out of reach. */
 const PUSH_TTL_S = 24 * 60 * 60;
@@ -89,6 +129,8 @@ export class Account extends DurableObject<Env> {
   private readonly db: DrizzleSqliteDODatabase;
   /** The devices table while the object is awake; every write drops it. */
   private cached: Array<DeviceRow> | undefined;
+  /** Assistants' calls waiting on a desktop, by call id; they live only as long as their request. */
+  private readonly pending = new Map<string, PendingCall>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -251,6 +293,9 @@ export class Account extends DurableObject<Env> {
       case "PushSubscribe":
       case "PushUnsubscribe":
         return this.push(socket, self, frame);
+      case "OfferAssistants":
+      case "AssistantReply":
+        return this.assistantMessage(socket, self, frame);
       default:
         return this.sync(socket, self, frame);
     }
@@ -563,6 +608,7 @@ export class Account extends DurableObject<Env> {
           connection: self.connection,
           connectedAt: self.connectedAt,
           visible: message.visible,
+          ...(self.assistants === true ? { assistants: true } : {}),
           ...(message.viewing === undefined
             ? {}
             : { viewing: threadKey(message.viewing.machine, message.viewing.threadId) }),
@@ -734,6 +780,11 @@ export class Account extends DurableObject<Env> {
   private closed(socket: WebSocket) {
     const attachment = this.attachment(socket);
     if (attachment === undefined) return;
+    for (const [id, call] of this.pending) {
+      if (call.connection !== attachment.connection) continue;
+      this.pending.delete(id);
+      call.settle({ _tag: "Refused", message: "The computer went offline before it answered." });
+    }
     this.touch(attachment.deviceId);
     this.broadcast(socket);
     // Channels with this connection end with it.
@@ -760,5 +811,290 @@ export class Account extends DurableObject<Env> {
       }
       send(socket, stateFor(self, rows, online, profile, attachment.connection, notifications));
     }
+  }
+
+  // ---- Assistants ----------------------------------------------------------------------------
+
+  /** A desktop saying whether it takes assistants' calls, or answering one. */
+  private assistantMessage(socket: WebSocket, self: Attachment, message: AssistantMessage) {
+    const sender = this.row(self.deviceId);
+    if (sender?.kind !== "desktop") return;
+    switch (message._tag) {
+      case "OfferAssistants": {
+        const { assistants: _, ...rest } = self;
+        socket.serializeAttachment({
+          ...rest,
+          ...(message.enabled ? { assistants: true } : {}),
+        } satisfies Attachment);
+        return;
+      }
+      case "AssistantReply": {
+        const call = this.pending.get(message.id);
+        // Only the connection that was asked answers.
+        if (call === undefined || call.connection !== self.connection) return;
+        this.pending.delete(message.id);
+        call.settle(message.result);
+        return;
+      }
+    }
+  }
+
+  /**
+   * The user allowed an assistant in, on the approval page: a new grant, waiting with the code the
+   * assistant redeems for its tokens. Grants whose code was never redeemed go.
+   */
+  async approveAssistant(
+    accountId: AccountId,
+    client: { readonly id: string; readonly name: string },
+    redirectUri: string,
+    codeChallenge: string,
+  ): Promise<GrantToken> {
+    const now = Date.now();
+    const { assistants } = tables;
+    this.db
+      .delete(assistants)
+      .where(and(isNull(assistants.accessHash), lt(assistants.codeExpiresAt, now)))
+      .run();
+    const token: GrantToken = { accountId, grantId: randomToken(12), secret: randomToken(32) };
+    this.db
+      .insert(assistants)
+      .values({
+        id: token.grantId,
+        name: client.name,
+        clientId: client.id,
+        redirectUri,
+        createdAt: now,
+        codeHash: await hashSecret(token.secret),
+        codeChallenge,
+        codeExpiresAt: now + CODE_TTL_MS,
+      })
+      .run();
+    return token;
+  }
+
+  /** Fresh tokens for a grant, which replace any it had. */
+  private async issue(accountId: AccountId, grantId: string): Promise<Tokens> {
+    const access = { accountId, grantId, secret: randomToken(32) };
+    const refresh = { accountId, grantId, secret: randomToken(32) };
+    this.db
+      .update(tables.assistants)
+      .set({
+        accessHash: await hashSecret(access.secret),
+        accessExpiresAt: Date.now() + ACCESS_TTL_S * 1000,
+        refreshHash: await hashSecret(refresh.secret),
+        codeHash: null,
+        codeChallenge: null,
+        codeExpiresAt: null,
+      })
+      .where(eq(tables.assistants.id, grantId))
+      .run();
+    return {
+      access_token: formatToken("access", access),
+      token_type: "Bearer",
+      expires_in: ACCESS_TTL_S,
+      refresh_token: formatToken("refresh", refresh),
+      scope: SCOPE,
+    };
+  }
+
+  private grant(grantId: string) {
+    return this.db.select().from(tables.assistants).where(eq(tables.assistants.id, grantId)).get();
+  }
+
+  /** The assistant redeems the code its approval handed it, proving it asked with PKCE. */
+  async redeemAssistant(
+    code: GrantToken,
+    clientId: string,
+    redirectUri: string | undefined,
+    verifier: string,
+  ): Promise<Tokens | OAuthError> {
+    const row = this.grant(code.grantId);
+    const invalid = oauthError("invalid_grant", "That code isn't valid, or was used or expired already.");
+    if (row === undefined || row.codeHash === null || row.codeChallenge === null) return invalid;
+    if ((row.codeExpiresAt ?? 0) < Date.now() || (await hashSecret(code.secret)) !== row.codeHash)
+      return invalid;
+    if (row.clientId !== clientId)
+      return oauthError("invalid_grant", "That code was issued to another client.");
+    if (redirectUri !== undefined && redirectUri !== row.redirectUri)
+      return oauthError("invalid_grant", "The redirect_uri isn't the one the code was asked with.");
+    if (!(await verifiesChallenge(verifier, row.codeChallenge)))
+      return oauthError("invalid_grant", "The code_verifier doesn't match the code_challenge.");
+    return this.issue(code.accountId, row.id);
+  }
+
+  /** New tokens for a refresh token, which stops working once used. */
+  async refreshAssistant(refresh: GrantToken, clientId: string | undefined): Promise<Tokens | OAuthError> {
+    const row = this.grant(refresh.grantId);
+    if (
+      row === undefined ||
+      row.refreshHash === null ||
+      (await hashSecret(refresh.secret)) !== row.refreshHash
+    )
+      return oauthError("invalid_grant", "That refresh token isn't valid. Connect the assistant again.");
+    if (clientId !== undefined && clientId !== row.clientId)
+      return oauthError("invalid_grant", "That refresh token was issued to another client.");
+    return this.issue(refresh.accountId, row.id);
+  }
+
+  /**
+   * A message to the MCP endpoint, from the assistant `access` belongs to: the JSON-RPC answer as
+   * JSON, none when there is nothing to answer, or `unauthorized` when the token isn't one (any more).
+   */
+  async assistantMcp(
+    access: GrantToken,
+    body: unknown,
+  ): Promise<{ readonly answer: string | undefined } | "unauthorized"> {
+    const row = this.grant(access.grantId);
+    if (
+      row === undefined ||
+      row.accessHash === null ||
+      (row.accessExpiresAt ?? 0) < Date.now() ||
+      (await hashSecret(access.secret)) !== row.accessHash
+    )
+      return "unauthorized";
+    const now = Date.now();
+    // Written once a minute at most: every call of a busy assistant needn't write.
+    if ((row.lastUsedAt ?? 0) < now - 60_000)
+      this.db
+        .update(tables.assistants)
+        .set({ lastUsedAt: now })
+        .where(eq(tables.assistants.id, row.id))
+        .run();
+    const answer = await handleMcp(body, this.desk(row.name));
+    return { answer: answer === undefined ? undefined : JSON.stringify(answer) };
+  }
+
+  /** What an assistant's tools reach in this account. */
+  private desk(assistant: string): AssistantDesk {
+    return {
+      computers: () => this.computers(),
+      threads: () => this.threadSummaries(),
+      messages: (machine, threadId) => {
+        const thread = this.db
+          .select({ overview: tables.threads.overview })
+          .from(tables.threads)
+          .where(this.threadOf(machine, threadId))
+          .get();
+        if (thread === undefined) return [];
+        // The latest batches hold the latest messages: read back from the end until there are
+        // enough, or as much as one reading may parse.
+        let events: Array<unknown> = [];
+        let read = 0;
+        let messages = threadMessages(thread.overview, events);
+        for (let offset = 0; messages.length < THREAD_MESSAGES && read < MAX_READ_BYTES; offset += 4) {
+          const batches = this.db
+            .select({ events: tables.eventBatches.events })
+            .from(tables.eventBatches)
+            .where(this.batchesOf(machine, threadId))
+            .orderBy(desc(tables.eventBatches.start))
+            .limit(4)
+            .offset(offset)
+            .all();
+          if (batches.length === 0) break;
+          for (const batch of batches) {
+            read += batch.events.length;
+            try {
+              events = [...(JSON.parse(batch.events) as Array<unknown>), ...events];
+            } catch {
+              // A batch that isn't JSON holds nothing to read.
+            }
+          }
+          messages = threadMessages(thread.overview, events);
+        }
+        return messages;
+      },
+      call: (computer, request) => this.callDesktop(computer, assistant, request),
+    };
+  }
+
+  private computers(): ReadonlyArray<Computer> {
+    const live = this.live();
+    return this.rows()
+      .filter((row) => row.kind === "desktop")
+      .map((row) => {
+        const sockets = live.filter(({ attachment }) => attachment.deviceId === row.id);
+        return {
+          id: row.id as DeviceId,
+          name: row.name,
+          online: sockets.length > 0,
+          takesAssistants: sockets.some(({ attachment }) => attachment.assistants === true),
+        };
+      });
+  }
+
+  private threadSummaries(): ReadonlyArray<ThreadSummary> {
+    const { machine, overview } = tables.threads;
+    return this.db
+      .select({ machine, overview })
+      .from(tables.threads)
+      .all()
+      .flatMap((row) => threadSummary(row.machine as DeviceId, row.overview) ?? []);
+  }
+
+  /** Asks the desktop's newest connection that takes assistants, and waits for its answer. */
+  private callDesktop(
+    computer: Computer,
+    assistant: string,
+    request: AssistantRequest,
+  ): Promise<AssistantResult> {
+    const target = this.live()
+      .filter(({ attachment }) => attachment.deviceId === computer.id && attachment.assistants === true)
+      .toSorted((a, b) => b.attachment.connectedAt - a.attachment.connectedAt)[0];
+    if (target === undefined)
+      return Promise.resolve({
+        _tag: "Refused",
+        message: `${computer.name} stopped taking assistants' calls.`,
+      });
+    const id = randomToken(16);
+    return new Promise<AssistantResult>((resolve) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        resolve({
+          _tag: "Refused",
+          message: `${computer.name} didn't answer in time. Its Cerium may need updating, or be busy.`,
+        });
+      }, ASSISTANT_CALL_MS);
+      this.pending.set(id, {
+        connection: target.attachment.connection,
+        settle: (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+      });
+      send(target.socket, { _tag: "AssistantCall", id, assistant, request });
+    });
+  }
+
+  /** The account's connected assistants, for a device's Settings. */
+  async listAssistants(credential: Credential): Promise<Outcome | ConnectedAssistants> {
+    const reader = this.row(credential.deviceId);
+    if (reader === undefined || !(await this.verify(reader, credential))) {
+      return refused(401, "This device isn't signed in to the account.");
+    }
+    const rows = this.db
+      .select()
+      .from(tables.assistants)
+      .where(isNotNull(tables.assistants.refreshHash))
+      .orderBy(asc(tables.assistants.createdAt))
+      .all();
+    return {
+      assistants: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        site: siteOf(row.redirectUri),
+        connectedAt: row.createdAt,
+        ...(row.lastUsedAt === null ? {} : { lastUsedAt: row.lastUsedAt }),
+      })),
+    };
+  }
+
+  /** Disconnects an assistant: its tokens stop working at once. */
+  async disconnectAssistant(credential: Credential, grantId: string): Promise<Outcome> {
+    const actor = this.row(credential.deviceId);
+    if (actor === undefined || !(await this.verify(actor, credential))) {
+      return refused(401, "This device isn't signed in to the account.");
+    }
+    const removed = this.db.delete(tables.assistants).where(eq(tables.assistants.id, grantId)).run();
+    return removed.rowsWritten > 0 ? done : refused(404, "That assistant isn't connected anymore.");
   }
 }

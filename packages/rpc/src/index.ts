@@ -4,6 +4,7 @@ import {
   AccountState,
   AccountTasks,
   AccountThreads,
+  ConnectedAssistant,
   AgentId,
   AgentInfo,
   Attachment,
@@ -92,7 +93,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 42;
+export const RPC_VERSION = 43;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -702,6 +703,16 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("RenameDevice", { payload: { deviceId: DeviceId, name: DeviceName }, error: CeriumError }),
   /** Removes a device from the account, signing it out. */
   Rpc.make("RemoveDevice", { payload: { deviceId: DeviceId }, error: CeriumError }),
+  /**
+   * The assistants connected to the account from outside Cerium (Grok, ChatGPT and others), and the
+   * MCP address the user adds to one to connect it.
+   */
+  Rpc.make("ListAssistants", {
+    success: Schema.Struct({ url: Schema.String, assistants: Schema.Array(ConnectedAssistant) }),
+    error: CeriumError,
+  }),
+  /** Disconnects one of them: its tokens stop working at once. */
+  Rpc.make("DisconnectAssistant", { payload: { id: Schema.NonEmptyString }, error: CeriumError }),
   /**
    * Every thread of the account and what has been seen of them, now and after every change.
    * Empty while this device isn't signed in.
