@@ -757,14 +757,35 @@ describe("Store", () => {
         yield* store.saveProject("C:/b", 2);
         yield* store.saveProject("C:/a", 3);
         assert.deepStrictEqual(yield* store.listProjects, [
-          { path: "C:/a", addedAt: 1, usedAt: 3, setup: null, run: null, teardown: null },
-          { path: "C:/b", addedAt: 2, usedAt: 2, setup: null, run: null, teardown: null },
+          { path: "C:/a", addedAt: 1, usedAt: 3, setup: null, run: null, teardown: null, actions: null },
+          { path: "C:/b", addedAt: 2, usedAt: 2, setup: null, run: null, teardown: null, actions: null },
         ]);
 
         yield* store.removeProject("C:/a");
         assert.deepStrictEqual(
           (yield* store.listProjects).map((project) => project.path),
           ["C:/b"],
+        );
+      }),
+    ),
+  );
+
+  it.effect("keeps a project's saved named commands apart from its setup and run", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const actions = [{ name: "Test", command: "bun test" }];
+        yield* store.writeProjectScripts("C:/a", { setup: "bun install", run: null, actions });
+        // Leaving `actions` out leaves what was saved; null defers to the project's file again.
+        yield* store.writeProjectScripts("C:/a", { setup: "pnpm install", run: "bun run dev" });
+        assert.deepStrictEqual(
+          (yield* store.listProjects).map(({ setup, run, actions: saved }) => ({ setup, run, saved })),
+          [{ setup: "pnpm install", run: "bun run dev", saved: actions }],
+        );
+        yield* store.writeProjectScripts("C:/a", { setup: null, run: null, actions: null });
+        assert.deepStrictEqual(
+          (yield* store.listProjects).map((project) => project.actions),
+          [null],
         );
       }),
     ),

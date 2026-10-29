@@ -10,6 +10,9 @@ import { keyCaps } from "../../lib/keys.ts";
 /** The sidebar heading the open page sits under, which its header names over the title. */
 export const SettingsPlace = createContext<string | undefined>(undefined);
 
+/** The folder of the thread Settings was opened from, for the pages that open on its project. */
+export const SettingsProject = createContext<string | undefined>(undefined);
+
 /**
  * A settings page: its title, a line on what it covers when the title doesn't say, and an action
  * for the whole page, over its sections. Settles in when opened. `perMachine` pages show the driven

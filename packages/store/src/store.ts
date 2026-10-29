@@ -112,6 +112,8 @@ export interface StoredProject {
   readonly run: string | null;
   /** The user's teardown command here; null defers to the project's own `.cerium.toml`. */
   readonly teardown: string | null;
+  /** The user's named commands here, replacing the file's `[actions]` whole; null defers to it. */
+  readonly actions: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
 }
 
 /** The commands of a project the user stored; one left out stays as it was, `null` defers again. */
@@ -119,6 +121,7 @@ export interface ProjectScriptsPatch {
   readonly setup?: string | null;
   readonly run?: string | null;
   readonly teardown?: string | null;
+  readonly actions?: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
 }
 
 /** A thread whose messages match a search, and the passage around its best match in pieces. */
@@ -272,7 +275,8 @@ export class Store extends Context.Service<
     saveProject(path: string, usedAt: number): Effect.Effect<void, StoreError>;
     /**
      * Stores a project's own setup, run and teardown commands, over what its `.cerium.toml` holds
-     * (`""` turns one off). Saves the folder as a project if it wasn't one.
+     * (`""` turns one off), and its named commands (`null` defers to the file again). Saves the
+     * folder as a project if it wasn't one.
      */
     writeProjectScripts(path: string, scripts: ProjectScriptsPatch): Effect.Effect<void, StoreError>;
     /** Forgets a project folder; its threads keep it. */
@@ -833,7 +837,15 @@ export class Store extends Context.Service<
               "Could not save the project",
               db
                 .insert(projects)
-                .values({ path, addedAt: usedAt, usedAt, setup: null, run: null, teardown: null })
+                .values({
+                  path,
+                  addedAt: usedAt,
+                  usedAt,
+                  setup: null,
+                  run: null,
+                  teardown: null,
+                  actions: null,
+                })
                 .onConflictDoUpdate({ target: projects.path, set: { usedAt } }),
             ),
           writeProjectScripts: (path, scripts) => {
@@ -842,6 +854,7 @@ export class Store extends Context.Service<
               ...(scripts.setup === undefined ? {} : { setup: scripts.setup }),
               ...(scripts.run === undefined ? {} : { run: scripts.run }),
               ...(scripts.teardown === undefined ? {} : { teardown: scripts.teardown }),
+              ...(scripts.actions === undefined ? {} : { actions: scripts.actions }),
             };
             const now = Date.now();
             const insert = db.insert(projects).values({
@@ -851,6 +864,7 @@ export class Store extends Context.Service<
               setup: scripts.setup ?? null,
               run: scripts.run ?? null,
               teardown: scripts.teardown ?? null,
+              actions: scripts.actions ?? null,
             });
             return query(
               "Could not save the project's scripts",

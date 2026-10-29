@@ -6,6 +6,7 @@ import { Effect, Exit, Layer, Stream } from "effect";
 import {
   Orchestrator,
   ProjectScripts,
+  ScriptsError,
   Worktrees,
   WorktreeError,
   type ScriptStarted,
@@ -22,6 +23,8 @@ const fakeScripts = (calls: Array<string>, state: { started?: ScriptStarted; tor
         calls.push(`start ${kind}`);
         return state.started;
       }),
+    startAction: () => Effect.fail(new ScriptsError({ message: "No actions here." })),
+    writeFile: () => Effect.void,
     ended: Stream.empty,
     teardown: ({ cwd }) =>
       Effect.sync(() => {

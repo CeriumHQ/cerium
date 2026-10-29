@@ -22,14 +22,26 @@ export const ResolvedScript = Schema.Struct({
 });
 export type ResolvedScript = typeof ResolvedScript.Type;
 
+/** One of a project's named commands (Test, Lint, Migrate): never guessed, so `from` is `saved` or `project`. */
+export const ResolvedAction = Schema.Struct({
+  name: Schema.String,
+  text: Schema.String,
+  from: ScriptSource,
+});
+export type ResolvedAction = typeof ResolvedAction.Type;
+
 /**
  * A project's setup, run and teardown commands, as they'd run; absent when nothing offers one.
- * `teardown` since `RPC_VERSION` 39.
+ * `teardown` since `RPC_VERSION` 39. `actions` are its named commands, in the order they run in
+ * menus; they all come from the same side, the user's saved list when they have one (empty when they
+ * turned the project's off), else the project's `[actions]`, absent when it has none. Since
+ * `RPC_VERSION` 40.
  */
 export const ProjectScripts = Schema.Struct({
   setup: Schema.optionalKey(ResolvedScript),
   run: Schema.optionalKey(ResolvedScript),
   teardown: Schema.optionalKey(ResolvedScript),
+  actions: Schema.optionalKey(Schema.Array(ResolvedAction)),
 });
 export type ProjectScripts = typeof ProjectScripts.Type;
 
@@ -47,6 +59,45 @@ export type TeardownReport = typeof TeardownReport.Type;
 /** Which of a project's commands runs in a terminal of the thread's own. */
 export const ScriptKind = Schema.Literals(["setup", "run"]);
 export type ScriptKind = typeof ScriptKind.Type;
+
+/** One named command as the user saves it, or as `.cerium.toml`'s `[actions]` holds it. */
+export const ActionCommand = Schema.Struct({ name: Schema.String, command: Schema.String });
+export type ActionCommand = typeof ActionCommand.Type;
+
+/** How long the field for an action's name lets it be: the name labels a terminal's tab and a menu's row. */
+export const ACTION_NAME_MAX = 32;
+
+/** The names an action can't take: the project's own scripts, which label their terminals already. */
+const RESERVED_ACTION_NAMES = ["setup", "run", "teardown"];
+
+/**
+ * Why `name` can't name one of a project's actions, written for the user, or undefined when it can.
+ * `others` are the project's other actions' names, which it has to differ from, ignoring case.
+ */
+export const actionNameProblem = (name: string, others: ReadonlyArray<string>): string | undefined => {
+  const trimmed = name.trim();
+  if (trimmed === "") return "Give it a name.";
+  for (let at = 0; at < trimmed.length; at++) {
+    const code = trimmed.charCodeAt(at);
+    if (code < 0x20 || code === 0x7f) return "No control characters.";
+  }
+  const lower = trimmed.toLowerCase();
+  if (RESERVED_ACTION_NAMES.includes(lower)) return `${trimmed} is a script of its own.`;
+  if (others.some((other) => other.trim().toLowerCase() === lower)) return "That name is taken.";
+  return undefined;
+};
+
+/** The first problem a list of actions has with its names, written for the user, or undefined when it has none. */
+export const actionListProblem = (actions: ReadonlyArray<{ readonly name: string }>): string | undefined => {
+  for (const [at, { name }] of actions.entries()) {
+    const problem = actionNameProblem(
+      name,
+      actions.slice(0, at).map((each) => each.name),
+    );
+    if (problem !== undefined) return name.trim() === "" ? problem : `${name.trim()}: ${problem}`;
+  }
+  return undefined;
+};
 
 /** What one command serves: `project` is the folder the user picked the project by. */
 export const ScriptRpcs = RpcGroup.make(
@@ -67,6 +118,28 @@ export const ScriptRpcs = RpcGroup.make(
       setup: Schema.optionalKey(Schema.NullOr(Schema.String)),
       run: Schema.optionalKey(Schema.NullOr(Schema.String)),
       teardown: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      /**
+       * The user's own named commands, which replace the project's `[actions]` whole; `null` defers to
+       * the file again, absent leaves what was saved. Since `RPC_VERSION` 40.
+       */
+      actions: Schema.optionalKey(Schema.NullOr(Schema.Array(ActionCommand))),
+    },
+    error: CeriumError,
+  }),
+  /**
+   * Writes the commands into the project's `.cerium.toml` so its team shares them: its `[scripts]`
+   * setup, run and teardown (an empty one is taken out; an absent teardown stays as the file has it)
+   * and its `[actions]`, creating the file when there is none and keeping the rest of it as it is.
+   * The user's own saved commands for the project, which the file would be shadowed by, are cleared.
+   * Since `RPC_VERSION` 40.
+   */
+  Rpc.make("WriteProjectScriptsFile", {
+    payload: {
+      path: Schema.NonEmptyString,
+      setup: Schema.String,
+      run: Schema.String,
+      teardown: Schema.optionalKey(Schema.String),
+      actions: Schema.Array(ActionCommand),
     },
     error: CeriumError,
   }),
@@ -77,6 +150,15 @@ export const ScriptRpcs = RpcGroup.make(
    */
   Rpc.make("RunProjectScript", {
     payload: { threadId: ThreadId, kind: ScriptKind, size: TerminalSize },
+    success: TerminalInfo,
+    error: CeriumError,
+  }),
+  /**
+   * Starts one of the project's named commands in a terminal of the work thread's own, whose tab
+   * shows its name; running it again replaces its terminal. Since `RPC_VERSION` 40.
+   */
+  Rpc.make("RunProjectAction", {
+    payload: { threadId: ThreadId, name: Schema.NonEmptyString, size: TerminalSize },
     success: TerminalInfo,
     error: CeriumError,
   }),

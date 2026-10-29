@@ -37,6 +37,9 @@ export const SCRIPT_VERSION = 29;
  */
 export const SCRIPT_BOOT_VERSION = 39;
 
+/** The `RPC_VERSION` that brought a project's named actions and writing its `.cerium.toml`; an older machine has neither. */
+export const ACTIONS_VERSION = 40;
+
 /** Whose terminals the drawer shows: a work thread's, or a project's while a new thread is written there. */
 export type TerminalOwner = { readonly threadId: string } | { readonly project: string };
 
@@ -108,18 +111,26 @@ export const shownTerminal = (
 /** What a terminal that runs one of a project's scripts is labelled, by the kind of script. */
 export const SCRIPT_LABEL = { setup: "Setup", run: "Run" } as const;
 
-/** An owner's terminal running one of its project's scripts (`Setup`, `Run`), if it has one. The
- * newest wins: the same script's terminal takes the last one's place, which then lingers, and a
- * run that ended stays shown in the drawer until its kind starts again. */
-export const scriptTerminalOf = (
+/** An owner's terminal running a project script under `label`: the name of one of its actions (Test,
+ * Lint), or what a setup or run is labelled. The newest wins: the same script's terminal takes the
+ * last one's place, which then lingers, and a run that ended stays shown in the drawer until its
+ * script starts again. */
+export const labelledTerminalOf = (
   terminals: ReadonlyArray<TerminalInfo>,
   owner: TerminalOwner,
-  kind: keyof typeof SCRIPT_LABEL,
+  label: string,
 ): TerminalInfo | undefined => {
   const theirs = terminalsOf(terminals, owner);
   for (let at = theirs.length - 1; at >= 0; at--) {
     const each = theirs[at];
-    if (each?.script === SCRIPT_LABEL[kind]) return each;
+    if (each?.script === label) return each;
   }
   return undefined;
 };
+
+/** An owner's terminal running one of its project's scripts (`Setup`, `Run`), if it has one. */
+export const scriptTerminalOf = (
+  terminals: ReadonlyArray<TerminalInfo>,
+  owner: TerminalOwner,
+  kind: keyof typeof SCRIPT_LABEL,
+): TerminalInfo | undefined => labelledTerminalOf(terminals, owner, SCRIPT_LABEL[kind]);

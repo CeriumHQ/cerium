@@ -22,11 +22,20 @@ export interface ResolvedScript {
   readonly from: ScriptSource;
 }
 
-/** A project's setup, run and teardown commands; any is absent when nothing offers it. */
+/** One of a project's named commands (Test, Lint, Migrate): saved or the project's own, never guessed. */
+export interface ResolvedAction extends ResolvedScript {
+  readonly name: string;
+}
+
+/**
+ * A project's setup, run and teardown commands; any is absent when nothing offers it. `actions` are
+ * its named commands: the user's saved list when they have one, else the project's `[actions]`.
+ */
 export interface ResolvedScripts {
   readonly setup?: ResolvedScript;
   readonly run?: ResolvedScript;
   readonly teardown?: ResolvedScript;
+  readonly actions?: ReadonlyArray<ResolvedAction>;
 }
 
 /** Which of a project's commands runs in a terminal of the thread's own. */
@@ -81,6 +90,32 @@ export class ProjectScripts extends Context.Service<
       readonly size?: { readonly cols: number; readonly rows: number };
       readonly auto?: boolean;
     }): Effect.Effect<ScriptStarted | undefined, ScriptsError>;
+    /**
+     * Runs one of the project's named commands for a work thread, in a terminal of the thread's own
+     * in `cwd` whose tab shows its name; the same name's terminal there is replaced. Its end isn't
+     * reported (`ended`): the user started it, and watches it. Refused when the project has no
+     * action of that name. Resolves the command that ran.
+     */
+    startAction(options: {
+      readonly name: string;
+      readonly threadId: ThreadId;
+      readonly project: string;
+      readonly cwd: string;
+      readonly size?: { readonly cols: number; readonly rows: number };
+    }): Effect.Effect<ResolvedAction, ScriptsError>;
+    /**
+     * Writes the commands into the project's `.cerium.toml` (setup, run and teardown, an empty one
+     * taken out and an absent teardown left as it is, and the named actions), making the file if there
+     * is none and keeping the rest of it. What the user saved for the project on this machine is
+     * cleared, so the file is what resolves.
+     */
+    writeFile(options: {
+      readonly project: string;
+      readonly setup: string;
+      readonly run: string;
+      readonly teardown?: string;
+      readonly actions: ReadonlyArray<{ readonly name: string; readonly command: string }>;
+    }): Effect.Effect<void, ScriptsError>;
     /** How each run ends, started at the thread's creation or on demand. */
     readonly ended: Stream.Stream<ScriptEnded>;
     /**
@@ -104,6 +139,8 @@ export class ProjectScripts extends Context.Service<
   static readonly unavailable = Layer.succeed(ProjectScripts, {
     resolve: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
     start: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
+    startAction: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
+    writeFile: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
     ended: Stream.empty,
     teardown: () => Effect.succeed(undefined),
     ports: () => Effect.succeed(undefined),
