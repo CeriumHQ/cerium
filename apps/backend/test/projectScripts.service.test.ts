@@ -175,6 +175,31 @@ describe("ProjectScripts served", () => {
   });
 });
 
+describe("ProjectScripts waiting callers", () => {
+  it.live("leaves the news to the lead when the caller that waited gave up", () => {
+    const { spawned, provide } = stack();
+    return provide(
+      Effect.gen(function* () {
+        const scripts = yield* ProjectScripts;
+        const cwd = yield* project;
+        const served = yield* collect(scripts.served);
+        const starting = yield* scripts
+          .start({ kind: "run", threadId: thread, project: cwd, cwd, settleWithin: "30 seconds" })
+          .pipe(Effect.forkChild);
+        yield* settle;
+        yield* Fiber.interrupt(starting);
+        spawned[0]?.print("Local: http://localhost:5173/\r\n");
+        yield* settle;
+        assert.deepStrictEqual(
+          served.seen.map((each) => each.url),
+          ["http://localhost:5173/"],
+        );
+        yield* Fiber.interrupt(served.fiber);
+      }),
+    );
+  });
+});
+
 describe("ProjectScripts ended", () => {
   it.live(
     "carries the end of a failed script's output as plain text, and nothing of one that finished",

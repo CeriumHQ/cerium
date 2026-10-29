@@ -310,10 +310,15 @@ export const projectScriptsLayer = Layer.effect(
           const claim = yield* Deferred.make<void>();
           claims.set(started.id, claim);
           // Its first news arrives here if it comes in time; later, the thread's lead hears it.
+          // A caller that gives up (its tool call was cancelled) leaves no claim to swallow the news.
           yield* Deferred.await(claim).pipe(
             Effect.timeoutOrElse({ duration: settleWithin, orElse: () => Effect.void }),
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (claims.get(started.id) === claim) claims.delete(started.id);
+              }),
+            ),
           );
-          if (claims.get(started.id) === claim) claims.delete(started.id);
         }
         return { _tag: "Ran", script: one.text, from: one.from } satisfies ScriptStarted;
       }),
