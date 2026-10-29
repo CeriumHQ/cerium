@@ -4,7 +4,9 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { checkpointsLayer, parseNameStatus, parseNumstat } from "../src/checkpoints.ts";
+import { createHash } from "node:crypto";
+
+import { checkpointsLayer, maintainCheckpoints, parseNameStatus, parseNumstat } from "../src/checkpoints.ts";
 import { DIFF_BYTES } from "../src/files.ts";
 
 describe("parseNameStatus", () => {
@@ -127,7 +129,7 @@ describe("Checkpoints", () => {
       const { folder, home, write, checkpoints, fs, path } = yield* setup;
       const first = yield* checkpoints.save(folder);
       // A git stopped mid-save by an older Cerium left the store's index locked.
-      const [store] = yield* fs.readDirectory(home);
+      const [store] = (yield* fs.readDirectory(home)).filter((name) => name !== "shared");
       yield* fs.writeFileString(path.join(home, store ?? "", "index.lock"), "");
       yield* write("src/a.ts", "changed\n");
       const trees = yield* Effect.all(
@@ -187,6 +189,160 @@ describe("Checkpoints", () => {
       const before = runs;
       assert.strictEqual(yield* checkpoints.save(folder), third);
       assert.isAbove(runs, before);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps what several folders hold once, in the store they share", () =>
+    Effect.gen(function* () {
+      const { folder, home, checkpoints, fs, path, read } = yield* setup;
+      // Another worktree of the same repository: the same files.
+      const other = yield* fs.makeTempDirectoryScoped();
+      yield* fs.copy(folder, other);
+      const looseIn = (objects: string) =>
+        Effect.gen(function* () {
+          const prefixes = (yield* fs.readDirectory(objects)).filter((name) => /^[0-9a-f]{2}$/.test(name));
+          let count = 0;
+          for (const prefix of prefixes)
+            count += (yield* fs.readDirectory(path.join(objects, prefix))).length;
+          return count;
+        });
+      const shared = path.join(home, "shared", "objects");
+
+      const mine = yield* checkpoints.save(folder);
+      const kept = yield* looseIn(shared);
+      assert.isAbove(kept, 0);
+      assert.strictEqual(yield* checkpoints.save(other), mine);
+      assert.strictEqual(yield* looseIn(shared), kept);
+      // Neither folder's own store keeps an object.
+      for (const name of (yield* fs.readDirectory(home)).filter((name) => name !== "shared")) {
+        assert.strictEqual(yield* looseIn(path.join(home, name, "objects")), 0);
+      }
+
+      yield* fs.writeFileString(path.join(other, "src/a.ts"), "theirs\n");
+      const theirs = yield* checkpoints.save(other);
+      yield* checkpoints.restore(other, mine, ["src/a.ts"]);
+      assert.strictEqual(yield* fs.readFileString(path.join(other, "src/a.ts")), "one\r\n");
+      assert.deepStrictEqual(yield* checkpoints.changes(other, mine, theirs), [
+        { path: "src/a.ts", change: "modified" },
+      ]);
+      assert.strictEqual(yield* read("src/a.ts"), "one\r\n");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "reads an older Cerium's store, then moves its objects to the shared one and still reads them",
+    () =>
+      Effect.gen(function* () {
+        const { folder, home, write, read, checkpoints, fs, path, spawner } = yield* setup;
+        // An older Cerium kept the folder's objects in its own store.
+        const resolved = path.resolve(folder);
+        const store = path.join(
+          home,
+          createHash("sha256")
+            .update(process.platform === "win32" ? resolved.toLowerCase() : resolved)
+            .digest("hex")
+            .slice(0, 20),
+        );
+        const oldGit = (args: ReadonlyArray<string>) =>
+          spawner.string(
+            ChildProcess.make(
+              "git",
+              [`--git-dir=${store}`, `--work-tree=${folder}`, "-c", "core.autocrlf=false", ...args],
+              { cwd: folder, env: { GIT_INDEX_FILE: path.join(store, "index") }, extendEnv: true },
+            ),
+          );
+        yield* spawner.string(ChildProcess.make("git", ["init", "--quiet", "--bare", store], { cwd: home }));
+        yield* fs.writeFileString(path.join(store, "info", "exclude"), "node_modules/\n");
+        yield* oldGit(["add", "--all", "--", "."]);
+        const old = (yield* oldGit(["write-tree"])).trim();
+
+        yield* write("src/a.ts", "changed\n");
+        const now = yield* checkpoints.save(folder);
+        assert.deepStrictEqual(yield* checkpoints.changes(folder, old, now), [
+          { path: "src/a.ts", change: "modified" },
+        ]);
+
+        yield* maintainCheckpoints({ directory: home });
+        // Nothing but where to find them is left in the folder's own store.
+        assert.deepStrictEqual(yield* fs.readDirectory(path.join(store, "objects")), ["info"]);
+        assert.deepStrictEqual(yield* checkpoints.changes(folder, old, now), [
+          { path: "src/a.ts", change: "modified" },
+        ]);
+        yield* checkpoints.restore(folder, old, ["src/a.ts"]);
+        assert.strictEqual(yield* read("src/a.ts"), "one\r\n");
+        // Git run on the store by hand, or by an older Cerium, still finds them.
+        assert.strictEqual((yield* oldGit(["cat-file", "-t", old])).trim(), "tree");
+        assert.strictEqual((yield* oldGit(["cat-file", "-t", now])).trim(), "tree");
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("packs the shared store without losing a snapshot no ref points at", () =>
+    Effect.gen(function* () {
+      const { folder, home, write, read, checkpoints, fs, path } = yield* setup;
+      const objects = path.join(home, "shared", "objects");
+      const maintain = maintainCheckpoints({ directory: home, looseLimit: 1, packLimit: 3 });
+      const packs = () =>
+        fs
+          .readDirectory(path.join(objects, "pack"))
+          .pipe(Effect.map((names) => names.filter((name) => name.endsWith(".pack")).length));
+      const trees: Array<string> = [];
+      for (const version of ["v1", "v2", "v3"]) {
+        yield* write("src/a.ts", `${version}\n`);
+        trees.push(yield* checkpoints.save(folder));
+        yield* maintain;
+        // Every loose object went into a pack.
+        assert.deepStrictEqual(
+          (yield* fs.readDirectory(objects)).filter((name) => /^[0-9a-f]{2}$/.test(name)).length,
+          0,
+        );
+      }
+      // Three packs were made into one.
+      assert.strictEqual(yield* packs(), 1);
+      // What an earlier pass was stopped in the middle of goes once it's old, never while git may still
+      // be writing it.
+      const leftover = (name: string, hoursAgo: number) =>
+        Effect.gen(function* () {
+          const file = path.join(objects, "pack", name);
+          yield* fs.writeFileString(file, "");
+          const then = new Date(Date.now() - hoursAgo * 3_600_000);
+          yield* fs.utimes(file, then, then);
+          return file;
+        });
+      const stale = [
+        yield* leftover(`pack-${"a".repeat(40)}.pack`, 2),
+        yield* leftover(`pack-${"a".repeat(40)}.rev`, 2),
+        yield* leftover("tmp_pack_stale", 2),
+      ];
+      const fresh = [yield* leftover(`pack-${"b".repeat(40)}.pack`, 0), yield* leftover("tmp_pack_fresh", 0)];
+      yield* maintain;
+      assert.strictEqual(yield* packs(), 2);
+      for (const file of stale) assert.isFalse(yield* fs.exists(file));
+      for (const file of fresh) assert.isTrue(yield* fs.exists(file));
+
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, trees[0]!, trees[2]!), [
+        { path: "src/a.ts", change: "modified" },
+      ]);
+      yield* checkpoints.restore(folder, trees[0]!, ["src/a.ts"]);
+      assert.strictEqual(yield* read("src/a.ts"), "v1\n");
+      assert.strictEqual(yield* checkpoints.save(folder), trees[0]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("leaves an older store's objects where they are when the shared store can't take them all", () =>
+    Effect.gen(function* () {
+      const { folder, home, checkpoints, fs, path } = yield* setup;
+      const tree = yield* checkpoints.save(folder);
+      const [name] = (yield* fs.readDirectory(home)).filter((entry) => entry !== "shared");
+      const own = path.join(home, name!, "objects");
+      // A damaged object in the folder's own store, as an older Cerium might have left one.
+      yield* fs.makeDirectory(path.join(own, "ab"));
+      const damaged = path.join(own, "ab", "c".repeat(38));
+      yield* fs.writeFileString(damaged, "not an object");
+
+      yield* maintainCheckpoints({ directory: home });
+      assert.isTrue(yield* fs.exists(damaged));
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, tree, tree), []);
+      assert.strictEqual(yield* checkpoints.save(folder), tree);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 

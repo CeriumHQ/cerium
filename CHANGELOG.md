@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Snapshots of work threads' folders keep their files in one object store instead of one per folder, so a file several worktrees of a repository share is stored once, and that store is packed in the background instead of growing by a file per version. A minute after the app starts, older per-folder stores move into it, each one's own copies removed only once the shared store holds every object; nothing is pruned, so every message can still be restored, and git run on a folder's store by hand still reads it. On one machine's 13 stores, 233 MB became 46 MB.
 - Cloud uploads walk indexed event pages from their last acknowledged event, translating the relay's existing count cursor once on reconnect. Large histories avoid repeated OFFSET scans and sorts, while retries, legacy streamed deltas and database rewrites keep their place.
 - Large code fences stream as a bounded preview and extend without reparsing their earlier lines. Closing a fence restores the full highlighted, foldable code, diagram, math or artifact; copying keeps its entire text.
 - Consecutive tool calls, agent cards and user inputs group in linear time, so a long run no longer spends progressively longer copying its earlier rows.
