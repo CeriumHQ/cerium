@@ -1,1 +1,5 @@
 * text=auto eol=lf
+
+# Pull requests all add entries under Unreleased: keep both sides' lines instead of conflicting.
+# GitHub's merge button ignores this; it applies to local merges and rebases.
+CHANGELOG.md merge=union

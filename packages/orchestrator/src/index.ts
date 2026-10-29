@@ -72,5 +72,6 @@ export {
   type TeardownFailure,
   type ThreadPorts,
 } from "./scripts.ts";
+export { SideQuestions, SIDE_INSTRUCTIONS, sideInstructions, type SideExchange } from "./sideQuestion.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

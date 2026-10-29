@@ -506,6 +506,7 @@ export const restoreBefore = Backend.mutation("RestoreBefore");
 export const switchModel = Backend.mutation("SwitchModel");
 export const handOffLead = Backend.mutation("HandOffLead");
 export const compactAgent = Backend.mutation("CompactAgent");
+export const askSideQuestion = Backend.mutation("AskSideQuestion");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");
 export const resolveSpawnApproval = Backend.mutation("ResolveSpawnApproval");

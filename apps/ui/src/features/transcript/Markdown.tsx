@@ -2,8 +2,9 @@ import { mentionToken, type Mention } from "@cerium/protocol";
 import { memo, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { PluggableList } from "unified";
 
 import { closeOpenSyntax, openFence, splitBlocks } from "./markdownBlocks.ts";
@@ -15,7 +16,13 @@ import {
   type MarkdownImageProps,
   type MarkdownLinkProps,
 } from "./MarkdownParts.tsx";
-import { rehypeAlerts, rehypeFolderAddresses, rehypeInk, remarkTypedBreaks } from "./markdownPlugins.ts";
+import {
+  rehypeAlerts,
+  rehypeFolderAddresses,
+  rehypeInk,
+  remarkDollarGuard,
+  remarkTypedBreaks,
+} from "./markdownPlugins.ts";
 
 export type { MarkdownImageProps, MarkdownLinkProps } from "./MarkdownParts.tsx";
 
@@ -30,11 +37,19 @@ export interface MarkdownFolder {
 
 /**
  * HTML an agent writes is kept to what GitHub would show: the sanitizer's own list, which drops
- * scripts, styles, frames, forms and event handlers.
+ * scripts, styles, frames, forms and event handlers. Math keeps the classes that tell its inline
+ * form from its display form.
  */
-const sanitize: PluggableList = [rehypeRaw, [rehypeSanitize, defaultSchema]];
+const schema: Schema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [["className", /^language-./, "math-inline", "math-display"]],
+  },
+};
+const sanitize: PluggableList = [rehypeRaw, [rehypeSanitize, schema]];
 
-const agentRemark: PluggableList = [remarkGfm];
+const agentRemark: PluggableList = [remarkGfm, remarkMath, remarkDollarGuard];
 const userRemark: PluggableList = [remarkGfm, remarkTypedBreaks];
 
 /** A reference link's definition (`[docs]: https://…`), which the links using it need in the same block. */

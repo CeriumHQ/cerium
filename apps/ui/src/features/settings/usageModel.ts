@@ -1,4 +1,4 @@
-// How Settings → Usage words a harness's meters. How a meter is graded, paced and worded is shared
+// How Settings → Limits words a harness's meters. How a meter is graded, paced and worded is shared
 // with the backend's limit warnings, so it lives in packages/protocol/src/usage.ts.
 export {
   leftLabel,

@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useTheme } from "../features/settings/theme.ts";
 import { buildTranscript, queuedMessages } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
-import { explanation, leadFixture, transcriptFixture } from "./transcriptFixture.ts";
+import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcriptFixture.ts";
 
 // The transcript on its own, drawn from the fixture, for building and screenshotting its components
 // without running an agent: `?playground` in the dev server. `&working` approves the waiting push and
-// leaves it running; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
+// leaves it running; `&diagrams` swaps the explaining reply for one with a diagram and math; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
 // holds it at its nth character.
 
 const last = transcriptFixture.at(-1)!;
@@ -24,7 +24,7 @@ const after = (sequence: number, payload: AgentEvent["payload"]): AgentEvent => 
 const approved = after(1, { _tag: "PermissionResolved", requestId: "c11", decision: "allow", scope: "once" });
 
 /** The explaining reply, streamed in again as a new turn, a few characters every frame. */
-const streamed = (characters: number): ReadonlyArray<AgentEvent> => {
+const streamed = (reply: string, characters: number): ReadonlyArray<AgentEvent> => {
   return [
     approved,
     after(2, {
@@ -33,7 +33,10 @@ const streamed = (characters: number): ReadonlyArray<AgentEvent> => {
       output: "branch 'fix/session-race' set up",
       isError: false,
     }),
-    after(3, { _tag: "MessageDelta", messageId: "stream", text: explanation.slice(0, characters) }),
+    after(3, { _tag: "MessageDelta", messageId: "stream", text: reply.slice(0, characters) }),
+    ...(characters >= reply.length
+      ? [after(4, { _tag: "MessageCompleted", messageId: "stream", text: reply })]
+      : []),
   ];
 };
 
@@ -43,15 +46,16 @@ export function Playground() {
   const search = new URLSearchParams(location.search);
   // `&at=600` holds the stream at its 600th character, for a screenshot of a reply mid-write.
   const held = search.has("at") ? Number(search.get("at")) : undefined;
-  const streaming = search.has("stream") || held !== undefined;
-  const [characters, setCharacters] = useState(held ?? (streaming ? 0 : explanation.length));
+  const streaming = search.has("stream") || search.has("diagrams") || held !== undefined;
+  const reply = search.has("diagrams") ? diagrams : explanation;
+  const [characters, setCharacters] = useState(held ?? (streaming ? 0 : reply.length));
   useEffect(() => {
     if (!streaming || held !== undefined) return;
-    const timer = setInterval(() => setCharacters((count) => Math.min(explanation.length, count + 9)), 40);
+    const timer = setInterval(() => setCharacters((count) => Math.min(reply.length, count + 9)), 40);
     return () => clearInterval(timer);
-  }, [streaming, held]);
+  }, [streaming, held, reply]);
   const events = streaming
-    ? [...transcriptFixture, ...streamed(characters)]
+    ? [...transcriptFixture, ...streamed(reply, characters)]
     : search.has("working")
       ? [...transcriptFixture, approved]
       : transcriptFixture;

@@ -73,7 +73,8 @@ export const exchanges = (live: ReadonlyArray<AgentEvent>): ReadonlyArray<Exchan
   return turns.filter((turn) => turn.input !== "" || turn.reply !== undefined);
 };
 
-const entryOf = (turn: Exchange) =>
+/** One turn as told word for word: what came in, and the agent's last message of it. */
+export const entryOf = (turn: Exchange) =>
   [
     `[Input]\n${clip(turn.input, VERBATIM_MESSAGE)}`,
     ...(turn.reply === undefined ? [] : [`[You]\n${clip(turn.reply, VERBATIM_MESSAGE)}`]),

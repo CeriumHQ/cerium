@@ -45,8 +45,8 @@ interface RailProps {
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
   /** Every thread the sidebar knows, for the counts on Home and Chat. */
   readonly threads: ReadonlyArray<ThreadSummary>;
-  /** Settings → Usage, where a ring's limits are laid out in full. */
-  readonly onOpenUsage: () => void;
+  /** Settings → Limits, where a ring's limits are laid out in full. */
+  readonly onOpenLimits: () => void;
   /** The places the driven machine can't serve, left off the rail. */
   readonly hidden?: ReadonlyArray<RailView>;
   /** A column down the window's edge, or a row along a phone's foot. */
@@ -63,7 +63,7 @@ export function Rail({
   onSelect,
   harnesses,
   threads,
-  onOpenUsage,
+  onOpenLimits,
   hidden = [],
   orientation = "vertical",
 }: RailProps) {
@@ -140,7 +140,7 @@ export function Rail({
           );
         })}
       </nav>
-      <UsageRings ready={ready} vertical={vertical} onOpen={onOpenUsage} />
+      <UsageRings ready={ready} vertical={vertical} onOpen={onOpenLimits} />
     </div>
   );
 }

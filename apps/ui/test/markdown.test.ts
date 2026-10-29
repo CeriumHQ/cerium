@@ -3,12 +3,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "@effect/vitest";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
 import { closeOpenSyntax, openFence, splitBlocks } from "../src/features/transcript/markdownBlocks.ts";
-import { rehypeAlerts, rehypeInk } from "../src/features/transcript/markdownPlugins.ts";
+import { rehypeAlerts, rehypeInk, remarkDollarGuard } from "../src/features/transcript/markdownPlugins.ts";
 
 const html = (markdown: string, ...plugins: Array<() => (tree: never) => void>) =>
   String(
@@ -63,6 +64,12 @@ describe("openFence", () => {
     expect(openFence("````md\n```\ninner\n```\n")).toBe(true);
     expect(openFence("~~~\nx\n~~~")).toBe(false);
     expect(openFence("Just text with ``` in it")).toBe(false);
+  });
+
+  it("tells a `$$` math block still being written from a closed one", () => {
+    expect(openFence("$$\nx^2")).toBe(true);
+    expect(openFence("$$\nx^2\n$$")).toBe(false);
+    expect(openFence("$$ x^2 $$")).toBe(false);
   });
 });
 
@@ -130,5 +137,34 @@ describe("rehypeInk", () => {
     const animation = /\.ink\s*\{[^}]*?animation:\s*([^;]+);/.exec(css)?.[1];
     expect(animation).toMatch(/\bbackwards\b/);
     expect(animation).not.toMatch(/\b(both|forwards)\b/);
+  });
+});
+
+describe("math", () => {
+  const math = (markdown: string) =>
+    String(
+      unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkMath)
+        .use(remarkDollarGuard as never)
+        .use(remarkRehype)
+        .use(rehypeStringify)
+        .processSync(markdown),
+    );
+
+  it("reads `$…$` as inline math and `$$…$$` as display math", () => {
+    expect(math("Then $x^2$ holds.")).toContain('<code class="language-math math-inline">x^2</code>');
+    expect(math("$$\nx^2\n$$")).toContain("math-display");
+  });
+
+  it("leaves prose about money as text", () => {
+    expect(math("It costs $5 or $6 to run.")).toBe("<p>It costs $5 or $6 to run.</p>");
+    expect(math("From $5-$6 a month.")).not.toContain("math-inline");
+    expect(math("Pay $ x $ now.")).not.toContain("math-inline");
+  });
+
+  it("keeps a fenced math block as a code block of its own language", () => {
+    expect(math("```math\nx^2\n```")).toContain('class="language-math"');
   });
 });

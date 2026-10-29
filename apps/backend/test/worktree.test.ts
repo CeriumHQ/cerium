@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+
 import { Worktrees } from "@cerium/orchestrator";
 import type { ThreadId } from "@cerium/protocol";
 import { NodeServices } from "@effect/platform-node";
@@ -246,6 +248,32 @@ describe("Worktrees", () => {
         assert.isTrue(yield* fs.exists(worktree.root));
         assert.strictEqual((yield* git(worktree.root, "branch", "--show-current")).trim(), worktree.branch);
       }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.live(
+    "lets go of a worktree a process still runs in at once, and deletes its folder once it ends",
+    () =>
+      Effect.gen(function* () {
+        const { fs, repo, worktrees } = yield* setup;
+        const { worktree } = yield* worktrees.create(repo, "Held");
+        // A dev server left running in the folder, which Windows won't let it move while it does.
+        const held = spawn(process.execPath, ["-e", "setTimeout(() => {}, 2500)"], {
+          cwd: worktree.root,
+          stdio: "ignore",
+        });
+        const ended = new Promise((resolve) => held.once("exit", resolve));
+        const started = Date.now();
+        yield* worktrees.remove("thr_held" as ThreadId, worktree);
+        assert.isBelow(Date.now() - started, 2400);
+        assert.strictEqual((yield* git(repo, "branch", "--list", worktree.branch)).trim(), "");
+        assert.notInclude(yield* git(repo, "worktree", "list"), worktree.root.replaceAll("\\", "/"));
+        // Restoring waits for the folder to go, then checks the branch out afresh.
+        yield* Effect.promise(() => ended);
+        yield* worktrees.restore(worktree);
+        assert.strictEqual((yield* git(worktree.root, "branch", "--show-current")).trim(), worktree.branch);
+        assert.isTrue(yield* fs.exists(worktree.root));
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+    20_000,
   );
 
   it.effect("refuses a folder outside git, and a repository without commits", () =>

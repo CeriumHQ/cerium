@@ -65,6 +65,9 @@ export const SHORTCUTS: ReadonlyArray<ShortcutDef> = [
   def("dictate", "Start or stop dictating in the message box", "General", "Control M", {
     keywords: "microphone speech voice",
   }),
+  def("side-question", "Ask a side question about the thread", "Threads", "Ctrl Shift /", {
+    keywords: "btw aside quick question popover",
+  }),
   def("switch-to-work", "Switch to Work", "General", "Ctrl Shift 1", { keywords: "mode home" }),
   def("switch-to-chat", "Switch to Chat", "General", "Ctrl Shift 2", { keywords: "mode" }),
   def("open-tasks", "Open tasks", "General", "Ctrl Shift 3", {
