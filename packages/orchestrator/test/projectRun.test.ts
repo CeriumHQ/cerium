@@ -210,30 +210,57 @@ describe("Orchestrator.projectRun", () => {
 });
 
 describe("Orchestrator script notices", () => {
-  it.live("tells the lead where the run serves, and why a script failed", () => {
+  const noticeTexts = (events: ReadonlyArray<AgentEvent>, agentId: AgentId) =>
+    inputsOf(events, agentId).flatMap((item) => (item._tag === "SystemNotice" ? [item.text] : []));
+  const turnsOf = (events: ReadonlyArray<AgentEvent>, agentId: AgentId) =>
+    events.filter((event) => event.agentId === agentId && event.payload._tag === "TurnInput").length;
+
+  const address = (threadId: ThreadId): ScriptServed => ({
+    threadId,
+    kind: "run",
+    script: "bun run dev",
+    url: "http://localhost:5173/",
+  });
+
+  it.live("holds the run's news for an idle lead's next turn, the latest replacing the earlier", () => {
     const fake = makeFakeAdapter("claude");
     const puppet = puppetScripts(confirmed);
     return Effect.gen(function* () {
-      const { waitFor } = yield* recordEvents;
+      const orchestrator = yield* Orchestrator;
+      const { seen, waitFor } = yield* recordEvents;
       const { thread, lead } = yield* startThread();
       yield* Effect.sleep(Duration.millis(30));
       const threadId = thread.id as ThreadId;
 
-      const address: ScriptServed = {
-        threadId,
-        kind: "run",
-        script: "bun run dev",
-        url: "http://localhost:5173/",
-      };
-      PubSub.publishUnsafe(puppet.served, address);
-      const serving = yield* waitFor((events) =>
-        inputsOf(events, lead.id).find(
-          (item) => item._tag === "SystemNotice" && item.text.includes("serving at"),
-        ),
+      PubSub.publishUnsafe(puppet.served, address(threadId));
+      yield* Effect.sleep(Duration.millis(100));
+      assert.strictEqual(turnsOf(seen, lead.id), 0, "a run that serves wakes nobody");
+
+      PubSub.publishUnsafe(puppet.ended, { threadId, kind: "run", script: "bun run dev", code: 3 });
+      yield* Effect.sleep(Duration.millis(100));
+      assert.strictEqual(turnsOf(seen, lead.id), 0, "nor does one that fails");
+
+      yield* orchestrator.sendUserMessage(lead.id, "carry on");
+      yield* waitFor((events) => (turnsOf(events, lead.id) > 0 ? true : undefined));
+      const heard = noticeTexts(seen, lead.id);
+      assert.strictEqual(heard.length, 1, "what the failure says replaces what the serving said");
+      assert.include(heard[0], "exit code 3");
+      assert.include(heard[0], "its terminal shows why");
+      assert.deepStrictEqual(
+        inputsOf(seen, lead.id).map((item) => item._tag),
+        ["SystemNotice", "FromUser"],
       );
-      const serves = serving._tag === "SystemNotice" ? serving.text : "";
-      assert.include(serves, "http://localhost:5173/");
-      assert.include(serves, "browser_open");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { scripts: puppet.layer })), Effect.scoped);
+  });
+
+  it.live("tells an idle lead at once when its setup ends, with why it failed", () => {
+    const fake = makeFakeAdapter("claude");
+    const puppet = puppetScripts(confirmed);
+    return Effect.gen(function* () {
+      const { seen, waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startThread();
+      yield* Effect.sleep(Duration.millis(30));
+      const threadId = thread.id as ThreadId;
 
       PubSub.publishUnsafe(puppet.ended, {
         threadId,
@@ -242,22 +269,37 @@ describe("Orchestrator script notices", () => {
         code: 1,
         output: "error: 404 not found",
       });
-      const failure = yield* waitFor((events) =>
-        inputsOf(events, lead.id).find(
-          (item) => item._tag === "SystemNotice" && item.text.includes("failed"),
-        ),
-      );
-      const failed = failure._tag === "SystemNotice" ? failure.text : "";
+      yield* waitFor((events) => (noticeTexts(events, lead.id).length > 0 ? true : undefined));
+      const [failed] = noticeTexts(seen, lead.id);
+      assert.include(failed, "setup");
       assert.include(failed, "exit code 1");
       assert.include(failed, "error: 404 not found");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { scripts: puppet.layer })), Effect.scoped);
+  });
 
-      PubSub.publishUnsafe(puppet.ended, { threadId, kind: "run", script: "bun run dev", code: 3 });
-      const bare = yield* waitFor((events) =>
-        inputsOf(events, lead.id).find(
-          (item) => item._tag === "SystemNotice" && item.text.includes("exit code 3"),
+  it.live("tells a lead that is mid-turn as any notice, where the run serves", () => {
+    const fake = makeFakeAdapter("claude", { turnDuration: Duration.millis(300) });
+    const puppet = puppetScripts(confirmed);
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { seen, waitFor } = yield* recordEvents;
+      const { thread, lead } = yield* startThread();
+      const threadId = thread.id as ThreadId;
+      yield* orchestrator.sendUserMessage(lead.id, "build it");
+      yield* waitFor((events) =>
+        events.find(
+          (event) =>
+            event.agentId === lead.id &&
+            event.payload._tag === "AgentStateChanged" &&
+            event.payload.state === "running",
         ),
       );
-      assert.include(bare._tag === "SystemNotice" ? bare.text : "", "its terminal shows why");
+
+      PubSub.publishUnsafe(puppet.served, address(threadId));
+      yield* waitFor((events) => (noticeTexts(events, lead.id).length > 0 ? true : undefined));
+      const [serving] = noticeTexts(seen, lead.id);
+      assert.include(serving, "serving at http://localhost:5173/");
+      assert.include(serving, "browser_open");
     }).pipe(Effect.provide(testLayer([fake.adapter], { scripts: puppet.layer })), Effect.scoped);
   });
 });

@@ -767,22 +767,36 @@ export class Orchestrator extends Context.Service<
       const acceptPermit = yield* Semaphore.make(1);
 
       // A script's run ending reaches its thread's lead as any notice does, so it knows when the
-      // setup is through: without one, its work would race the install. So does the address a run
-      // serves at, the first time its output prints one.
-      const tellLead = (threadId: ThreadId, text: string) =>
+      // setup is through: without one, its work would race the install. The run's own news, where it
+      // serves and how it ended, wakes no idle lead: a Run the user pressed isn't worth a turn that
+      // rereads a context of hundreds of thousands of tokens. It waits for the lead's next turn, a
+      // newer one replacing an older that it would only contradict, and a lead mid-turn hears it as
+      // any notice.
+      const heldRunNotices = new WeakSet<InputItem>();
+      const tellLead = (threadId: ThreadId, text: string, options: { readonly wakes: boolean }) =>
         Effect.forEach(
           [...runtimes.values()].filter(
             (rt) => rt.info.threadId === threadId && rt.info.parentId === undefined,
           ),
-          (rt) => deliver(rt.info.id, { _tag: "SystemNotice", text }),
+          (rt) => {
+            const notice: InputItem = { _tag: "SystemNotice", text };
+            if (options.wakes || rt.info.state !== "idle") return deliver(rt.info.id, notice);
+            return Effect.sync(() => {
+              heldRunNotices.add(notice);
+              const earlier = (heldNotices.get(rt.info.id) ?? []).filter((item) => !heldRunNotices.has(item));
+              heldNotices.set(rt.info.id, [...earlier, notice]);
+            });
+          },
           { discard: true },
         );
       yield* scripts.ended.pipe(
-        Stream.runForEach((ended) => tellLead(ended.threadId, endedNote(ended))),
+        Stream.runForEach((ended) =>
+          tellLead(ended.threadId, endedNote(ended), { wakes: ended.kind !== "run" }),
+        ),
         Effect.forkIn(layerScope),
       );
       yield* scripts.served.pipe(
-        Stream.runForEach((served) => tellLead(served.threadId, servedNote(served))),
+        Stream.runForEach((served) => tellLead(served.threadId, servedNote(served), { wakes: false })),
         Effect.forkIn(layerScope),
       );
 

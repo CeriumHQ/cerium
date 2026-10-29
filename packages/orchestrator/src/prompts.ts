@@ -141,7 +141,7 @@ const running = (busServer: string) => [
   "## The project's run",
   `Start, stop, restart and read the project's dev server (and its setup) with the \`project_run\` tool (\`${busServer}\`` +
     " MCP server), not in a shell of your own: it runs in this thread's terminal, where the user sees it, and answers" +
-    " with the address it serves at and its last output. You hear when it prints its address and when it fails.",
+    " with the address it serves at and its last output. You hear when it prints its address and when it fails, with your next turn when you are idle.",
 ];
 
 /**
