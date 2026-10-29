@@ -68,7 +68,14 @@ const stack = () => {
 };
 
 const thread = "thr_a" as ThreadId;
-const settle = Effect.sleep("40 millis");
+const settle = Effect.sleep("100 millis");
+
+/** Waits for a start that runs in a fibre of its own to have opened its shell, however busy the machine is. */
+const opened = (spawned: ReadonlyArray<Puppet>, count: number) =>
+  Effect.gen(function* () {
+    for (let wait = 0; wait < 300 && spawned.length < count; wait++) yield* Effect.sleep("10 millis");
+    yield* settle;
+  });
 
 /** A work thread in a fresh folder whose project file sets `dev` as its run and `install` as its setup. */
 const project = Effect.gen(function* () {
@@ -126,7 +133,7 @@ describe("ProjectScripts served", () => {
         const starting = yield* scripts
           .start({ kind: "run", threadId: thread, project: cwd, cwd, settleWithin: "5 seconds" })
           .pipe(Effect.forkChild);
-        yield* settle;
+        yield* opened(spawned, 1);
         spawned[0]?.print("Local: http://localhost:5173/\r\n");
         yield* Fiber.join(starting);
         yield* settle;
@@ -155,7 +162,7 @@ describe("ProjectScripts served", () => {
         const quick = yield* scripts
           .start({ kind: "run", threadId: thread, project: cwd, cwd, settleWithin: "5 seconds" })
           .pipe(Effect.forkChild);
-        yield* settle;
+        yield* opened(spawned, 1);
         spawned[0]?.end(3);
         yield* Fiber.join(quick);
         yield* settle;
@@ -186,7 +193,7 @@ describe("ProjectScripts waiting callers", () => {
         const starting = yield* scripts
           .start({ kind: "run", threadId: thread, project: cwd, cwd, settleWithin: "30 seconds" })
           .pipe(Effect.forkChild);
-        yield* settle;
+        yield* opened(spawned, 1);
         yield* Fiber.interrupt(starting);
         spawned[0]?.print("Local: http://localhost:5173/\r\n");
         yield* settle;
