@@ -27,6 +27,7 @@ import {
   Columns2,
   ClipboardCopy,
   Compass,
+  CornerDownRight,
   FileDown,
   FoldVertical,
   FolderTree,
@@ -65,6 +66,7 @@ import {
   accountThreadsAtom,
   cloudEventsAtom,
   compactAgent,
+  continueThread,
   createThread,
   deleteThread,
   editMessage,
@@ -210,7 +212,12 @@ import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import { ArchiveWorktreeDialog } from "../features/threads/ArchiveWorktree.tsx";
-import { LATER_VERSION, type ThreadSummary } from "../features/threads/model.ts";
+import {
+  canArchive,
+  CONTINUE_VERSION,
+  LATER_VERSION,
+  type ThreadSummary,
+} from "../features/threads/model.ts";
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
@@ -852,6 +859,7 @@ function Workspace() {
   const [stopAllOpen, setStopAllOpen] = useState(false);
   const rename = useAtomSet(renameThread, { mode: "promise" });
   const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
+  const continueIn = useAtomSet(continueThread, { mode: "promise" });
   const putOff = useAtomSet(setThreadLater, { mode: "promise" });
   const remove = useAtomSet(deleteThread, { mode: "promise" });
   const save = useAtomSet(saveProject, { mode: "promise" });
@@ -898,6 +906,37 @@ function Workspace() {
       tabs.drop(threadId);
       return true;
     });
+
+  /**
+   * Continues a thread in a new one on the same model, folder and worktree, which takes its tab and
+   * pane with the brief Cerium wrote in its message box, for the user to edit and send. The old thread
+   * is archived.
+   */
+  const continueFresh = (threadId: string): Promise<boolean> =>
+    attempt(
+      continueIn({ payload: { threadId: threadId as ThreadId } }).then(({ thread, brief }) => {
+        registry.set(
+          draftsAtom,
+          withDraft(registry.get(draftsAtom), thread.id, () => ({
+            segments: [{ kind: "text", text: brief }],
+            attachments: [],
+          })),
+        );
+        tabs.started(threadId, thread.id);
+        setPanesByMode((all) => {
+          const stored = all[thread.mode];
+          return stored === undefined
+            ? all
+            : { ...all, [thread.mode]: renameKey(stored, threadId, thread.id) };
+        });
+        showThreads();
+        setOpenThread((open) => ({ ...open, [thread.mode]: thread.id }));
+        setPane("main");
+        refreshThreads();
+        requestAnimationFrame(focusComposer);
+      }),
+    );
+  const canContinue = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= CONTINUE_VERSION;
 
   const indicators: ReadonlyArray<HarnessIndicator> = OFFERED_PROVIDERS.map((provider) => {
     const status = harnesses.find((candidate) => candidate.provider === provider);
@@ -1425,6 +1464,24 @@ function Workspace() {
       if (viewedLead) void attempt(compactLead({ payload: { agentId: viewedLead.id } }));
     },
   };
+  const continueCommand: PaletteCommand = {
+    // The open thread of this machine's, between turns, in a new thread that starts small.
+    id: "continue-thread",
+    group: "Actions",
+    label: "Continue in new thread",
+    icon: CornerDownRight,
+    keywords: "context handoff fresh tokens compact",
+    when:
+      selectedSummary !== undefined &&
+      cloudSelected === undefined &&
+      canContinue &&
+      selectedSummary.elsewhere === undefined &&
+      selectedSummary.archivedAt === undefined &&
+      canArchive(selectedSummary),
+    run: () => {
+      if (selectedSummary) void continueFresh(selectedSummary.id);
+    },
+  };
   const settingsCommand: PaletteCommand = {
     id: "settings",
     group: "Actions",
@@ -1455,6 +1512,7 @@ function Workspace() {
     },
     findCommand,
     compactCommand,
+    continueCommand,
     {
       id: "export-markdown",
       group: "Actions",
@@ -1690,13 +1748,14 @@ function Workspace() {
   ];
 
   /**
-   * The palette's actions the message box's `/` list offers: new thread, find in thread, compacting
-   * and settings. Each keeps its own `when`, so the list shows what runs here.
+   * The palette's actions the message box's `/` list offers: new thread, find in thread, compacting,
+   * continuing in a new thread and settings. Each keeps its own `when`, so the list shows what runs here.
    */
   const slashCommands: ReadonlyArray<PaletteCommand> = [
     newThreadCommand,
     findCommand,
     compactCommand,
+    continueCommand,
     settingsCommand,
   ];
 
@@ -2541,6 +2600,7 @@ function Workspace() {
                   }),
               }
             : {})}
+          {...(canContinue ? { onContinue: continueFresh } : {})}
           {...(openInWindow ? { onOpenWindow: openInWindow } : {})}
           open={tabs.tabs.map((tab) => tab.key)}
           searchOpen={searchOpen}

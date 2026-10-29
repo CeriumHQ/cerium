@@ -8,6 +8,7 @@ import {
   type EventPayload,
   type ThreadId,
   type ThreadMode,
+  type ThreadWorktree,
 } from "@cerium/protocol";
 import { SqliteClient } from "@effect/sql-sqlite-node";
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, max, notInArray, sql } from "drizzle-orm";
@@ -100,6 +101,8 @@ export interface ThreadPatch {
   readonly title?: string;
   readonly archivedAt?: number | null;
   readonly laterUntil?: number | null;
+  /** Null when the thread hands its worktree to the thread that continues it. */
+  readonly worktree?: ThreadWorktree | null;
 }
 
 export interface StoredProject {

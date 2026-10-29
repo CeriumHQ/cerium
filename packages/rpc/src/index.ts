@@ -90,7 +90,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 40;
+export const RPC_VERSION = 41;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -390,6 +390,17 @@ export const MachineRpcs = RpcGroup.make(
       discardWork: Schema.optionalKey(Schema.Boolean),
     },
     success: Schema.Struct({ ...ThreadInfo.fields, teardown: Schema.optionalKey(TeardownReport) }),
+    error: CeriumError,
+  }),
+  /**
+   * Starts a thread that goes on from `threadId` in its folder and worktree, with a lead on the same
+   * harness and model, and archives the old one; refused while its agents work or wait on the user.
+   * Answers with the new thread and `brief`, the first message Cerium wrote for it from the old
+   * thread's events and git, without asking a model, for the user to edit and send. Since `RPC_VERSION` 41.
+   */
+  Rpc.make("ContinueThread", {
+    payload: { threadId: ThreadId },
+    success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo, brief: Schema.String }),
     error: CeriumError,
   }),
   /**
