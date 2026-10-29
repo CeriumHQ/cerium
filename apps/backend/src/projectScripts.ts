@@ -214,8 +214,11 @@ export const projectScriptsLayer = Layer.effect(
               ...(printed ? { output: printed } : {}),
             });
           }
+          // Who's gone is read from the terminals as they are now: this list may be older than a run
+          // started while a failed script's output was being read.
+          const present = yield* terminals.list;
           for (const [id, one] of [...waiting]) {
-            if (!all.some((info) => info.id === id)) {
+            if (!present.some((info) => info.id === id)) {
               waiting.delete(id);
               if (!settle(id)) PubSub.publishUnsafe(ended, { ...one, code: undefined });
             }

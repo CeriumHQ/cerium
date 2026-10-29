@@ -1,9 +1,10 @@
 import { ProjectScripts, type ScriptEnded, type ScriptServed } from "@cerium/orchestrator";
 import type { ThreadId } from "@cerium/protocol";
+import type { TerminalId, TerminalInfo } from "@cerium/rpc";
 import { Store } from "@cerium/store";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PubSub, Scope, Stream } from "effect";
 
 import { projectScriptsLayer } from "../src/projectScripts.ts";
 import { Terminals } from "../src/terminal.ts";
@@ -309,5 +310,70 @@ describe("ProjectScripts status", () => {
         assert.isUndefined(yield* scripts.status(thread, "run", 10));
       }),
     );
+  });
+});
+
+describe("ProjectScripts watching a slow read", () => {
+  it.live("doesn't take a run started while a failure's output is read for one that is gone", () => {
+    let current: ReadonlyArray<TerminalInfo> = [];
+    let opened = 0;
+    const lists = Effect.runSync(PubSub.unbounded<ReadonlyArray<TerminalInfo>>());
+    const gate = Effect.runSync(Deferred.make<void>());
+    const show = (next: ReadonlyArray<TerminalInfo>) => {
+      current = next;
+      PubSub.publishUnsafe(lists, next);
+    };
+    const info = (id: string, script: string, exitCode?: number): TerminalInfo => ({
+      id: id as TerminalId,
+      threadId: thread,
+      shell: script,
+      cwd: "/",
+      openedAt: 0,
+      run: 1,
+      script,
+      ...(exitCode === undefined ? {} : { exitCode }),
+    });
+    // Only what the project scripts use of the terminals; what a failed script printed is held back until the gate opens.
+    const terminals = Layer.succeed(Terminals, {
+      changes: Stream.fromPubSub(lists),
+      served: Stream.empty,
+      list: Effect.sync(() => current),
+      output: () => Deferred.await(gate).pipe(Effect.as({ text: "boom" })),
+      openScript: (_thread: ThreadId, script: string) =>
+        Effect.sync(() => {
+          const one = info(`term_${++opened}`, script);
+          show([...current.filter((each) => each.script !== script), one]);
+          return one;
+        }),
+      close: () => Effect.void,
+    } as unknown as Terminals["Service"]);
+    const layer = projectScriptsLayer.pipe(
+      Layer.provideMerge(terminals),
+      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Store.layer({ filename: ":memory:" })),
+    );
+    return Effect.gen(function* () {
+      const scripts = yield* ProjectScripts;
+      const cwd = yield* project;
+      const { seen, fiber } = yield* collect(scripts.ended);
+      yield* scripts.start({ kind: "setup", threadId: thread, project: cwd, cwd });
+      // The setup fails, and its output is being read when the run starts: the list that told of the
+      // failure is older than the run, which isn't gone for not being on it.
+      show([info("term_1", "Setup", 1)]);
+      yield* settle;
+      yield* scripts.start({ kind: "run", threadId: thread, project: cwd, cwd });
+      yield* Deferred.succeed(gate, undefined);
+      yield* settle;
+      show([info("term_1", "Setup", 1), info("term_2", "Run", 0)]);
+      yield* settle;
+      assert.deepStrictEqual(
+        seen.map((each) => [each.kind, each.code]),
+        [
+          ["setup", 1],
+          ["run", 0],
+        ],
+      );
+      yield* Fiber.interrupt(fiber);
+    }).pipe(Effect.provide(layer), Effect.scoped);
   });
 });
