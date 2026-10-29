@@ -23,9 +23,12 @@ const fakeScripts = (calls: Array<string>, state: { started?: ScriptStarted; tor
         calls.push(`start ${kind}`);
         return state.started;
       }),
+    stop: () => Effect.succeed(false),
+    status: () => Effect.undefined,
     startAction: () => Effect.fail(new ScriptsError({ message: "No actions here." })),
     writeFile: () => Effect.void,
     ended: Stream.empty,
+    served: Stream.empty,
     teardown: ({ cwd }) =>
       Effect.sync(() => {
         calls.push(`teardown ${cwd}`);

@@ -6,7 +6,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, Scope, Stream } from "effect";
 import { homedir } from "node:os";
 
-import { MAX_PER_THREAD, Terminals } from "../src/terminal.ts";
+import { MAX_PER_THREAD, reachableUrl, Terminals, type TerminalServed } from "../src/terminal.ts";
 import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
 import { openScreen } from "../src/terminalScreen.ts";
 import { ThreadEnv } from "../src/threadEnv.ts";
@@ -568,6 +568,134 @@ describe("Terminals input and lifecycle", () => {
         assert.deepStrictEqual(counts, ["", "running", "4", ""]);
       }),
     );
+  });
+});
+
+describe("Terminals.output", () => {
+  it.live("reads the last lines as plain text, colours and rewritten lines applied", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        spawned[0]?.print(
+          "\u001b[32mready\u001b[0m in 120 ms\r\nprogress 10%\rprogress 100%\r\n\r\nlast line\r\n\r\n",
+        );
+        const all = yield* terminals.output(id, 50);
+        assert.strictEqual(all.text, "ready in 120 ms\nprogress 100%\n\nlast line");
+        assert.strictEqual((yield* terminals.output(id, 2)).text, "\nlast line");
+        assert.isUndefined(all.url);
+      }),
+    );
+  });
+
+  it.live("joins a line the terminal wrapped, and reads a terminal whose shell has ended", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), { cols: 10, rows: 5 });
+        spawned[0]?.print("0123456789abcdef\r\nnext\r\n");
+        spawned[0]?.end(1);
+        assert.strictEqual((yield* terminals.output(id, 2)).text, "0123456789abcdef\nnext");
+      }),
+    );
+  });
+
+  it.live("gives the first local address the output printed, reachable from a browser", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        yield* workThread("thr_a");
+        const { id } = yield* terminals.open(at("thr_a"), size);
+        spawned[0]?.print("listening on http://0.0.0.0:3000/\r\nalso http://localhost:3001\r\n");
+        assert.strictEqual((yield* terminals.output(id, 10)).url, "http://localhost:3000/");
+      }),
+    );
+  });
+
+  it.live("refuses a terminal that has closed", () => {
+    const { provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const error = yield* terminals.output("term_none" as TerminalId, 10).pipe(Effect.flip);
+        assert.strictEqual(error.message, "That terminal has closed.");
+      }),
+    );
+  });
+});
+
+describe("Terminals.served", () => {
+  const collect = (terminals: Terminals["Service"]) =>
+    Effect.gen(function* () {
+      const seen: Array<TerminalServed> = [];
+      const fiber = yield* terminals.served.pipe(
+        Stream.runForEach((event) => Effect.sync(() => void seen.push(event))),
+        Effect.forkChild,
+      );
+      yield* settle;
+      return { seen, fiber };
+    });
+
+  it.live("tells a script's first address once per run, and again after the run starts over", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const cwd = yield* workThread("thr_a");
+        const { seen, fiber } = yield* collect(terminals);
+        const { id } = yield* terminals.openScript(at("thr_a"), "Run", shell, cwd, size);
+        spawned[0]?.print("VITE ready\r\n  Local: http://localhost:5173/\r\n");
+        spawned[0]?.print("and http://localhost:5174/ too\r\n");
+        yield* settle;
+        assert.deepStrictEqual(seen, [
+          { id, threadId: "thr_a", script: "Run", url: "http://localhost:5173/" },
+        ]);
+
+        spawned[0]?.end(0);
+        yield* terminals.restart(id, size);
+        spawned[1]?.print("Local: http://localhost:5173/\r\n");
+        yield* settle;
+        assert.strictEqual(seen.length, 2);
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+  });
+
+  it.live("leaves plain shells alone, and finds an address cut across two pieces of output", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const cwd = yield* workThread("thr_a");
+        const { seen, fiber } = yield* collect(terminals);
+        yield* terminals.open(at("thr_a"), size);
+        spawned[0]?.print("http://localhost:4000\r\n");
+        yield* terminals.openScript(at("thr_a"), "Run", shell, cwd, size);
+        spawned[1]?.print("at http://local");
+        yield* settle;
+        spawned[1]?.print("host:4000/app\r\n");
+        yield* settle;
+        assert.deepStrictEqual(
+          seen.map((event) => event.url),
+          ["http://localhost:4000/app"],
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+  });
+});
+
+describe("reachableUrl", () => {
+  it("opens a server that listens everywhere at the machine's own name, and leaves other addresses", () => {
+    assert.strictEqual(reachableUrl("http://0.0.0.0:3000/x"), "http://localhost:3000/x");
+    assert.strictEqual(reachableUrl("https://0.0.0.0"), "https://localhost");
+    assert.strictEqual(reachableUrl("http://127.0.0.1:8080"), "http://127.0.0.1:8080");
+    assert.strictEqual(reachableUrl("http://localhost:5173/"), "http://localhost:5173/");
   });
 });
 

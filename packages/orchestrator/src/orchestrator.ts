@@ -105,8 +105,17 @@ import {
 } from "./services.ts";
 import { UserSettings } from "./settings.ts";
 import {
+  runAnswer,
+  runLines,
+  START_WAITS_FOR,
+  type ProjectRunAnswer,
+  type ProjectRunRequest,
+} from "./projectRun.ts";
+import {
   ProjectScripts,
   type ScriptEnded,
+  ScriptsError,
+  type ScriptServed,
   type ScriptStarted,
   type TeardownFailure,
   type ThreadPorts,
@@ -392,15 +401,19 @@ const portsNote = (ports: ThreadPorts | undefined): string =>
     ? ""
     : ` This thread's ports are ${ports.first}–${ports.last}. Its scripts and terminals have the environment variable CERIUM_PORT set to ${ports.first}, and CERIUM_ROOT_PATH to the project's own checkout: use CERIUM_PORT, and the ports after it, for any dev server, test server or database you start, so threads running in this project don't collide.`;
 
-/** What the lead hears when a script's run is over. */
+/** What the lead hears when a script's run is over; a failure comes with the last of what it printed. */
 const endedNote = (ended: ScriptEnded): string => {
   const what = `The project's ${ended.kind} (\`${ended.script}\`)`;
-  return ended.code === 0
-    ? `${what} finished.`
-    : ended.code === undefined
-      ? `${what} stopped (its terminal was closed).`
-      : `${what} failed with exit code ${ended.code}; its terminal shows why.`;
+  if (ended.code === 0) return `${what} finished.`;
+  if (ended.code === undefined) return `${what} stopped (its terminal was closed).`;
+  return ended.output === undefined
+    ? `${what} failed with exit code ${ended.code}; its terminal shows why.`
+    : `${what} failed with exit code ${ended.code}. The end of its output:\n\`\`\`\n${ended.output}\n\`\`\``;
 };
+
+/** What the lead hears when the project's run prints the address it serves at. */
+const servedNote = (served: ScriptServed): string =>
+  `The project's ${served.kind} (\`${served.script}\`) is serving at ${served.url}. Open it in your thread's browser with \`browser_open\` to check it, or read its output with \`project_run\`.`;
 
 export class Orchestrator extends Context.Service<
   Orchestrator,
@@ -648,6 +661,17 @@ export class Orchestrator extends Context.Service<
       request: { readonly toolName: string; readonly summary: string; readonly input: unknown },
     ): Effect.Effect<PermissionDecision, OrchestratorError>;
     /**
+     * Starts, stops or restarts the caller's thread's project run (or setup) in the thread's own
+     * terminal, or reads how it stands, with its last lines of output. Starting asks like a command
+     * does (`requestApproval`), and runs only a command the user confirmed, never a guess; a start
+     * waits briefly for the run to print its address or end, and tells the caller instead of the
+     * lead. Refused for an advisor, a reviewer, and a thread with no project folder.
+     */
+    projectRun(
+      callerId: AgentId,
+      request: ProjectRunRequest,
+    ): Effect.Effect<ProjectRunAnswer, OrchestratorError>;
+    /**
      * Every persisted event in a thread, in order. With `streamed`, each block still streaming follows
      * them as one delta holding its text so far, in its first delta's place: streamed text is never
      * stored, and a reader joining mid-reply would otherwise start it partway through.
@@ -766,17 +790,36 @@ export class Orchestrator extends Context.Service<
       const acceptPermit = yield* Semaphore.make(1);
 
       // A script's run ending reaches its thread's lead as any notice does, so it knows when the
-      // setup is through: without one, its work would race the install.
+      // setup is through: without one, its work would race the install. The run's own news, where it
+      // serves and how it ended, wakes no idle lead: a Run the user pressed isn't worth a turn that
+      // rereads a context of hundreds of thousands of tokens. It waits for the lead's next turn, a
+      // newer one replacing an older that it would only contradict, and a lead mid-turn hears it as
+      // any notice.
+      const heldRunNotices = new WeakSet<InputItem>();
+      const tellLead = (threadId: ThreadId, text: string, options: { readonly wakes: boolean }) =>
+        Effect.forEach(
+          [...runtimes.values()].filter(
+            (rt) => rt.info.threadId === threadId && rt.info.parentId === undefined,
+          ),
+          (rt) => {
+            const notice: InputItem = { _tag: "SystemNotice", text };
+            if (options.wakes || rt.info.state !== "idle") return deliver(rt.info.id, notice);
+            return Effect.sync(() => {
+              heldRunNotices.add(notice);
+              const earlier = (heldNotices.get(rt.info.id) ?? []).filter((item) => !heldRunNotices.has(item));
+              heldNotices.set(rt.info.id, [...earlier, notice]);
+            });
+          },
+          { discard: true },
+        );
       yield* scripts.ended.pipe(
         Stream.runForEach((ended) =>
-          Effect.forEach(
-            [...runtimes.values()].filter(
-              (rt) => rt.info.threadId === ended.threadId && rt.info.parentId === undefined,
-            ),
-            (rt) => deliver(rt.info.id, { _tag: "SystemNotice", text: endedNote(ended) }),
-            { discard: true },
-          ),
+          tellLead(ended.threadId, endedNote(ended), { wakes: ended.kind !== "run" }),
         ),
+        Effect.forkIn(layerScope),
+      );
+      yield* scripts.served.pipe(
+        Stream.runForEach((served) => tellLead(served.threadId, servedNote(served), { wakes: false })),
         Effect.forkIn(layerScope),
       );
 
@@ -3160,7 +3203,7 @@ export class Orchestrator extends Context.Service<
         );
       };
 
-      return Orchestrator.of({
+      const orchestrator: Orchestrator["Service"] = Orchestrator.of({
         createThread,
 
         sendUserMessage: (agentId, text, extras = {}) =>
@@ -4063,8 +4106,96 @@ export class Orchestrator extends Context.Service<
             Effect.mapError(unavailable),
           ),
 
+        projectRun: Effect.fn("Orchestrator.projectRun")(function* (callerId, request) {
+          const caller = yield* runtime(callerId);
+          if (isHelper(caller.info)) {
+            return yield* notAllowed("An advisor or reviewer doesn't run the project.");
+          }
+          const kind = request.script ?? "run";
+          const lines = runLines(request.lines);
+          const thread = yield* threadInfo(caller.info.threadId);
+          const folder = thread.cwd;
+          if (thread.mode !== "work" || folder === undefined) {
+            return yield* notAllowed("This thread has no project folder, so there is nothing to run.");
+          }
+          const project = thread.worktree?.project ?? folder;
+          const failed = (error: ScriptsError) =>
+            new OrchestratorError({ reason: "invalid", message: error.message });
+          const command = (yield* scripts.resolve(project).pipe(Effect.mapError(failed)))[kind];
+          const standing = () => scripts.status(thread.id, kind, lines);
+
+          if (request.action === "status") {
+            return runAnswer(kind, yield* standing(), { command: command?.text });
+          }
+          /** Asks as a command does; what the answer is when it isn't allowed, and nothing when it is. */
+          const refusal = Effect.fn("Orchestrator.projectRun.approve")(function* (summary: string) {
+            const decision = yield* orchestrator.requestApproval(callerId, {
+              toolName: "project_run",
+              summary,
+              input: { action: request.action, script: kind },
+            });
+            return decision.decision === "deny"
+              ? ({
+                  ...runAnswer(kind, undefined, {
+                    command: command?.text,
+                    note: decision.message ?? "The user didn't allow this.",
+                  }),
+                  state: "denied",
+                } satisfies ProjectRunAnswer)
+              : undefined;
+          });
+
+          if (request.action === "stop") {
+            const refused = yield* refusal(`Stop the project's ${kind}`);
+            if (refused !== undefined) return refused;
+            const stopped = yield* scripts.stop(thread.id, kind);
+            return runAnswer(kind, undefined, {
+              command: command?.text,
+              note: stopped ? "Stopped." : "It wasn't running.",
+            });
+          }
+
+          if (command === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `No ${kind} command is set for this project. Ask the user to set one in Settings → Git & GitHub.`,
+            });
+          }
+          if (command.from === "guessed") {
+            return yield* notAllowed(
+              `Cerium only guesses this project's ${kind} (\`${command.text}\`), and a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub, or to press ${kind === "run" ? "Run" : "Setup"}.`,
+            );
+          }
+          if (request.action === "start") {
+            const current = yield* standing();
+            if (current?.running === true) {
+              return runAnswer(kind, current, {
+                command: command.text,
+                note: `Already running, so it wasn't started again; \`restart\` runs it again.${
+                  current.url === undefined ? "" : ` Serving at ${current.url}.`
+                }`,
+              });
+            }
+          }
+          const refused = yield* refusal(
+            `${request.action === "start" ? "Start" : "Restart"} the project's ${kind}: ${command.text}`,
+          );
+          if (refused !== undefined) return refused;
+          yield* scripts
+            .start({
+              kind,
+              threadId: thread.id,
+              project,
+              cwd: folder,
+              settleWithin: START_WAITS_FOR,
+            })
+            .pipe(Effect.mapError(failed));
+          return runAnswer(kind, yield* standing(), { command: command.text });
+        }),
+
         awaitingApproval: waitsOnUser,
       });
+      return orchestrator;
     }),
   ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer)));
 }

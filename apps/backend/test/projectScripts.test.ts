@@ -115,7 +115,12 @@ const withScripts = <A, E>(
   effect.pipe(
     Effect.provide(
       projectScriptsLayer.pipe(
-        Layer.provide(Layer.succeed(Terminals, { changes: Stream.empty } as unknown as Terminals["Service"])),
+        Layer.provide(
+          Layer.succeed(Terminals, {
+            changes: Stream.empty,
+            served: Stream.empty,
+          } as unknown as Terminals["Service"]),
+        ),
         Layer.provide(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
         Layer.provideMerge(NodeServices.layer),
         Layer.provideMerge(Store.layer({ filename: ":memory:" })),

@@ -148,6 +148,7 @@ describe("Cerium MCP bus", () => {
           "add_task",
           "remove_task",
           "list_tasks",
+          "project_run",
           "push",
           "artifact_preview",
           "browser_open",
@@ -184,6 +185,13 @@ describe("Cerium MCP bus", () => {
         agents?.result?.structuredContent?.agents?.map((agent: { you: boolean }) => agent.you),
         [true, false],
       );
+
+      // The project's scripts are the backend's: without them the tool says so, and it takes only its actions.
+      const run = yield* leadClient.callTool("project_run", { action: "status" });
+      assert.isTrue(run?.result?.isError);
+      assert.include(JSON.stringify(run?.result?.content), "Scripts aren't available here.");
+      const launched = yield* leadClient.callTool("project_run", { action: "launch" });
+      assert.include(launched?.error?.message, "Invalid parameters for tool 'project_run'");
 
       const childClient = mcpClient(yield* busOf(fake, 1));
       yield* childClient.initialize;

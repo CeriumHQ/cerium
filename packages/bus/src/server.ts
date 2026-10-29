@@ -24,6 +24,8 @@ const INSTRUCTIONS = [
   "Artifacts: artifact_guide before writing your first visual, artifact_preview to look at it before you reply.",
   "Git: push instead of running `git push`, so the user follows the push and its CI checks in the thread;" +
     " the CI result reaches you as a message.",
+  "Project: project_run starts, stops, restarts and reads the project's run (its dev server) and setup in your" +
+    " thread's terminal, and answers with the address it serves at and its last output.",
   "Browser: your thread's browser, which the user watches beside the thread: browser_open a page (a dev" +
     " server's localhost URL), browser_read it, browser_act on it, browser_screenshot it, and browser_logs" +
     " for its console errors and failed requests.",

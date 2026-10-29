@@ -15,6 +15,7 @@ import { Effect, Option, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 import { HttpServerRequest } from "effect/http";
 
+import { ProjectRun } from "./projectRun.ts";
 import { Push, PushHost } from "./push.ts";
 import { BusRegistry } from "./registry.ts";
 
@@ -338,6 +339,7 @@ export const BusToolkit = Toolkit.make(
   AddTask,
   RemoveTask,
   ListTasks,
+  ProjectRun,
   Push,
 );
 
@@ -519,6 +521,10 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
           ...(title === undefined ? {} : { title }),
         });
         return { removed };
+      }),
+
+      project_run: Effect.fn("Bus.project_run")(function* (request) {
+        return yield* orchestrator.projectRun(yield* caller, request);
       }),
 
       push: Effect.fn("Bus.push")(function* (request) {
