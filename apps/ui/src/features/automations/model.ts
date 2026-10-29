@@ -1,4 +1,4 @@
-import type { AccessMode, ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, LimitPolicy, ModelInfo, ReasoningEffort } from "@cerium/protocol";
 import {
   MAX_AUTOMATION_NAME,
   type Automation,
@@ -134,6 +134,8 @@ export interface Draft {
   readonly effort: ReasoningEffort | undefined;
   readonly autoEffort: boolean;
   readonly access: AccessMode;
+  /** What each run's thread does when its harness's limit runs out; absent follows the setting. */
+  readonly onLimit: LimitPolicy | undefined;
   readonly repeat: Repeat;
   /** Past the hour, for `Hourly`. */
   readonly minute: number;
@@ -156,6 +158,7 @@ export const newDraft = (defaults: {
   effort: defaults.effort,
   autoEffort: false,
   access: defaults.access,
+  onLimit: undefined,
   repeat: "Weekdays",
   minute: 0,
   at: 9 * 60,
@@ -171,6 +174,7 @@ export const draftOf = (automation: Automation): Draft => ({
   effort: automation.lead.effort,
   autoEffort: automation.lead.autoEffort === true,
   access: automation.lead.access,
+  onLimit: automation.onLimit,
   repeat: automation.when._tag,
   minute: automation.when._tag === "Hourly" ? automation.when.minute : 0,
   at: automation.when._tag === "Daily" || automation.when._tag === "Weekdays" ? automation.when.at : 9 * 60,
@@ -215,6 +219,7 @@ export const inputOf = (
         access: draft.access,
       },
       when: whenOf(draft),
+      ...(draft.onLimit ? { onLimit: draft.onLimit } : {}),
     },
   };
 };

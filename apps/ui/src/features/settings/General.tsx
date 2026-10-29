@@ -45,6 +45,7 @@ import {
 } from "./parts.tsx";
 import { editorAtom } from "./preferences.ts";
 import { RowButton } from "./ToolRow.tsx";
+import { DEFAULT_LIMIT_POLICY, limitLabel, limitPolicies } from "./limits.ts";
 import { useSetting } from "./useSetting.ts";
 
 // The desktop's own pages: how this computer starts Cerium and keeps its threads, dictation, updates
@@ -86,6 +87,11 @@ export function GeneralSettings() {
           </SettingsList>
         </SettingsSection>
       ) : null}
+      <SettingsSection title="Usage limits">
+        <SettingsList>
+          <OnLimitRow />
+        </SettingsList>
+      </SettingsSection>
       {local ? (
         <SettingsSection title="Storage">
           <SettingsList>
@@ -95,6 +101,40 @@ export function GeneralSettings() {
       ) : null}
       <CrashReportsSection />
     </SettingsPage>
+  );
+}
+
+/**
+ * What threads do when their harness's plan or usage limit runs out mid-turn, unless a thread or an
+ * automation chooses otherwise. Applies on the machine the agents run on.
+ */
+function OnLimitRow() {
+  const { value, saved, save, error } = useSetting("limits", { onLimit: DEFAULT_LIMIT_POLICY });
+  return (
+    <SettingsRow
+      label="When a limit runs out"
+      hint={limitPolicies.find((each) => each.value === value.onLimit)?.hint ?? ""}
+      error={error}
+      control={() => (
+        <SelectRoot
+          value={value.onLimit}
+          onValueChange={(next) => {
+            const policy = limitPolicies.find((each) => each.value === next);
+            if (policy) save({ onLimit: policy.value });
+          }}
+          disabled={saved === undefined}
+        >
+          <SelectTrigger label="When a limit runs out">{limitLabel[value.onLimit]}</SelectTrigger>
+          <SelectPopup>
+            {limitPolicies.map((policy) => (
+              <SelectItem key={policy.value} value={policy.value}>
+                {limitLabel[policy.value]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
   );
 }
 

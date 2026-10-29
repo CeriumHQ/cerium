@@ -22,11 +22,13 @@ import {
   offersChoice,
   offersSpeed,
   SeveralSwitch,
+  LimitRow,
   SpeedMark,
   SpeedSwitch,
   type EffortChoice,
   type EffortPick,
   type SeveralChoice,
+  type LimitChoice,
   type SpeedChoice,
 } from "./Pickers.tsx";
 
@@ -74,6 +76,8 @@ interface MenuProps {
   readonly speedShown?: ModelSpeed | undefined;
   /** Several models at once, switched on and off at the menu's foot; absent where it can't be. */
   readonly several?: SeveralChoice | undefined;
+  /** What an open thread does when its harness's usage runs out; the menu's last row. */
+  readonly limit?: LimitChoice | undefined;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -343,6 +347,7 @@ function MenuPopup({
   note,
   effort,
   speed,
+  limit,
   label,
   browse,
   multiple = false,
@@ -470,6 +475,7 @@ function MenuPopup({
                 </div>
               ) : null}
               {several ? <SeveralSwitch choice={several} count={picked} /> : null}
+              {limit ? <LimitRow choice={limit} /> : null}
             </div>
             {/* How hard and how fast the model picked runs: beside the list, or under it on a phone. */}
             {tunes ? (

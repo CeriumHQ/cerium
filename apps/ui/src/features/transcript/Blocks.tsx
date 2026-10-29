@@ -37,6 +37,7 @@ import { providerName } from "../threads/model.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { FileChip, WorkspaceFolder } from "./FileChip.tsx";
 import { FoldedText } from "./FoldedText.tsx";
+import { limitName, limitOutcome } from "./limit.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageEditor } from "./MessageEditor.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
@@ -331,6 +332,25 @@ export function ModelSwitch({
             {settings}
           </>
         )}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The agent's harness ran out of usage: that, and while the thread waits for the limit to reset, until
+ * when, then that it went on.
+ */
+export function LimitNote({ block }: { block: Block<"limit"> }) {
+  // Read once, so the line doesn't change under the reader as the clock passes midnight.
+  const [now] = useState(() => Date.now());
+  const outcome = limitOutcome(block, now);
+  return (
+    <p className="flex items-center gap-2 text-meta text-fg-tertiary">
+      <Clock size={13} strokeWidth={1.75} className="shrink-0" />
+      <span className="min-w-0 truncate">
+        {limitName(block)}
+        {outcome ? <span className="text-fg-secondary"> · {outcome}</span> : null}
       </span>
     </p>
   );

@@ -115,6 +115,21 @@ export type TranscriptBlock =
     }
   | { readonly kind: "error"; readonly id: string; readonly message: string }
   /**
+   * The agent's harness ran out of usage, and what became of the thread: `reached` is where it
+   * stopped; `paused` that it waits to go on at `until` (the harness's reported reset when
+   * `reported`, else a guess); `resumed` that it went on, or the pause ended.
+   */
+  | {
+      readonly kind: "limit";
+      readonly id: string;
+      readonly state: "reached" | "paused" | "resumed";
+      readonly provider: ProviderId;
+      readonly window?: string;
+      readonly until?: number;
+      readonly reported?: boolean;
+      readonly by?: "reset" | "message" | "stopped";
+    }
+  /**
    * Where the harness compacted the conversation, on its own or because the user asked, with its
    * size before and after and the summary it kept, as far as the harness says.
    */
@@ -532,6 +547,40 @@ export const buildTranscript = (
             changes:
               payload.direction === "undone" ? { ...changes, undone: { kept: payload.kept } } : changes,
           });
+        }
+        break;
+      }
+      case "LimitReached":
+        blocks.push({
+          kind: "limit",
+          id: `limit:${id}`,
+          state: "reached",
+          provider: payload.provider,
+          ...(payload.window ? { window: payload.window } : {}),
+        });
+        break;
+      case "LimitPaused": {
+        const index = blocks.findLastIndex((block) => block.kind === "limit");
+        const block = blocks[index];
+        const paused = {
+          kind: "limit",
+          state: "paused",
+          provider: payload.provider,
+          ...(payload.window ? { window: payload.window } : {}),
+          until: payload.resumeAt,
+          reported: payload.reported,
+        } as const;
+        // The limit just reached and the wait it led to read as one line.
+        if (block?.kind === "limit" && block.state === "reached" && index === blocks.length - 1) {
+          blocks[index] = { ...paused, id: block.id };
+        } else blocks.push({ ...paused, id: `limit:${id}` });
+        break;
+      }
+      case "LimitResumed": {
+        const index = blocks.findLastIndex((block) => block.kind === "limit");
+        const block = blocks[index];
+        if (block?.kind === "limit" && block.state === "paused") {
+          blocks[index] = { ...block, state: "resumed", by: payload.by };
         }
         break;
       }

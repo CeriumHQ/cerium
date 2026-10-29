@@ -179,7 +179,7 @@ export const Settings = Schema.Struct({
   ),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 43). */
   assistants: AssistantSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAssistants))),
-  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 41). */
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 44). */
   limits: LimitSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultLimits))),
 });
 export type Settings = typeof Settings.Type;

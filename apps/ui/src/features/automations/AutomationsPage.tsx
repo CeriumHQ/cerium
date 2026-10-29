@@ -13,6 +13,7 @@ import {
   CalendarClock,
   ChevronDown,
   CircleX,
+  Clock,
   Eye,
   FolderGit2,
   GitBranch,
@@ -49,6 +50,7 @@ import { accessLimit, accessOptions, effortFor, modelKey, pickModel, useModels }
 import { chipClass, type EffortPick } from "../composer/Pickers.tsx";
 import { ProjectPicker, useLatestProject } from "../composer/ProjectPicker.tsx";
 import { projectName } from "../composer/projectList.ts";
+import { limitLabel, limitPolicies } from "../settings/limits.ts";
 import { accessAtom, effortAtom, modelAtom } from "../settings/preferences.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import {
@@ -613,6 +615,28 @@ export function AutomationDetail({
                     </SelectItem>
                   );
                 })}
+              </ChipSelect>
+              <ChipSelect
+                label="When a limit runs out"
+                value={shownDraft.onLimit ?? "default"}
+                shown={
+                  shownDraft.onLimit === undefined
+                    ? "Limits: as in Settings"
+                    : `Limits: ${limitLabel[shownDraft.onLimit]}`
+                }
+                icon={Clock}
+                onPick={(picked) =>
+                  edit({ onLimit: limitPolicies.find((policy) => policy.value === picked)?.value })
+                }
+              >
+                <SelectItem value="default" description="Whatever Settings says for all threads">
+                  As in Settings
+                </SelectItem>
+                {limitPolicies.map((policy) => (
+                  <SelectItem key={policy.value} value={policy.value} description={policy.hint}>
+                    {limitLabel[policy.value]}
+                  </SelectItem>
+                ))}
               </ChipSelect>
             </div>
           </Field>

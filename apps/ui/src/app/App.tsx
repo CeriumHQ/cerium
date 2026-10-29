@@ -89,6 +89,7 @@ import {
   sendMessage,
   setThreadArchived,
   setThreadLater,
+  setThreadOnLimit,
   stopAgent,
   stopThread,
   switchModel,
@@ -144,7 +145,7 @@ import {
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
 import type { MessageBox } from "../features/composer/messageBox.ts";
-import { HANDOFF_VERSION, useModels } from "../features/composer/models.ts";
+import { HANDOFF_VERSION, LIMIT_POLICY_VERSION, useModels } from "../features/composer/models.ts";
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { ScrollArea } from "../components/ui/ScrollArea.tsx";
@@ -846,6 +847,7 @@ function Workspace() {
   const revertTurn = useAtomSet(revertTurnFiles, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const compactLead = useAtomSet(compactAgent, { mode: "promise" });
+  const setOnLimit = useAtomSet(setThreadOnLimit, { mode: "promise" });
   const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
@@ -2028,6 +2030,10 @@ function Workspace() {
         : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
     compact: (agentId) => compactLead({ payload: { agentId } }),
+    setOnLimit:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LIMIT_POLICY_VERSION
+        ? (threadId, policy) => setOnLimit({ payload: { threadId, policy } })
+        : undefined,
     handOff:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION
         ? (agentId, choice) => handOffTo({ payload: { agentId, ...choice } })
