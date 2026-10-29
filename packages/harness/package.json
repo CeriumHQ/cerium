@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@cerium/protocol": "workspace:*",
-    "effect": "4.0.5"
+    "effect": "4.0.5",
+    "jsonc-parser": "3.3.1"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.5"
