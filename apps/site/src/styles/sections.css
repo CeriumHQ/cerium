@@ -368,25 +368,126 @@
   font-size: 0.8125rem;
 }
 
-/* A phone, standing on the bench, with the notification it just got. */
+/* A phone, standing on the bench, with the notification it just got. It stands upright, since a
+   tilted screenshot resamples its text soft. The frame is a metal band around a black bezel; the
+   display wears the screenshot's own backdrop, so the status bar and the inset around the shot
+   read as one screen, and nothing of the app runs under the corners. */
 .phone {
+  --phone-screen: oklch(0.205 0 0);
+  position: relative;
   justify-self: center;
   margin: 0;
-  width: min(300px, 70vw);
-  padding: 10px;
-  border-radius: 48px;
-  background: linear-gradient(160deg, oklch(0.3 0 0), oklch(0.16 0 0) 40%, oklch(0.22 0 0));
+  width: min(312px, 76vw);
+  padding: 2.5px;
+  border-radius: 54px;
+  background: linear-gradient(
+    150deg,
+    oklch(0.62 0.004 260),
+    oklch(0.32 0.004 260) 18%,
+    oklch(0.2 0.004 260) 50%,
+    oklch(0.3 0.004 260) 82%,
+    oklch(0.55 0.004 260)
+  );
   box-shadow:
-    0 0 0 1px var(--line-2),
-    0 1px 0 1px oklch(1 0 0 / 0.12) inset,
-    0 60px 120px -40px oklch(0 0 0 / 0.95);
-  rotate: -4deg;
+    0 0 0 1px oklch(0 0 0 / 0.7),
+    0 2px 6px oklch(0 0 0 / 0.5),
+    0 70px 120px -40px oklch(0 0 0 / 0.95),
+    0 30px 80px -30px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+/* The side keys: power on the right, the volume pair on the left. */
+.phone::before,
+.phone::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, oklch(0.24 0 0), oklch(0.5 0.004 260), oklch(0.24 0 0));
+}
+
+.phone::before {
+  right: -3px;
+  top: 27%;
+  height: 72px;
+}
+
+.phone::after {
+  left: -3px;
+  top: 21%;
+  height: 46px;
+  box-shadow: 0 60px 0 oklch(0.36 0.004 260);
+}
+
+.phone-bezel {
+  padding: 7px;
+  border-radius: 51.5px;
+  background: oklch(0.07 0 0);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08) inset;
+}
+
+.phone-display {
+  position: relative;
+  overflow: hidden;
+  border-radius: 44.5px;
+  padding: 0 7px 20px;
+  background: var(--phone-screen);
+}
+
+/* Glare across the glass, faint enough to leave the text alone. */
+.phone-display::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, oklch(1 0 0 / 0.07), transparent 34%);
+  pointer-events: none;
+}
+
+.phone-status {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 46px;
+  padding: 2px 22px 0;
+  color: oklch(0.97 0 0);
+  font-size: 0.875rem;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.phone-status span {
+  justify-self: center;
+}
+
+.phone-island {
+  width: 88px;
+  height: 26px;
+  border-radius: 13px;
+  background: oklch(0.03 0 0);
+}
+
+.phone-status svg {
+  justify-self: center;
+  width: 58px;
+  height: 11px;
+  fill: currentColor;
 }
 
 .phone img {
-  border-radius: 38px;
+  display: block;
   width: 100%;
   height: auto;
+}
+
+.phone-home {
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  width: 36%;
+  height: 4px;
+  translate: -50% 0;
+  border-radius: 2px;
+  background: oklch(0.97 0 0 / 0.85);
 }
 
 .ping {
@@ -410,6 +511,7 @@
 }
 
 .ping svg {
+  flex: none;
   width: 36px;
   height: 36px;
   padding: 8px;
