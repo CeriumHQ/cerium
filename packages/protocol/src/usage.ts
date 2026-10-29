@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { LenientArray } from "./compat.ts";
 import { EpochMillis, ProviderId } from "./ids.ts";
 
-// A subscription's usage limits as each harness reports them, for Settings → Usage. Cerium shows
+// A subscription's usage limits as each harness reports them, for Settings → Limits. Cerium shows
 // the harness's numbers and never estimates its own.
 
 /** How near a meter is to its limit: the provider's reading when it gives one. */
@@ -116,7 +116,7 @@ export const meterLevel = (meter: UsageMeter, pace?: Pace): MeterLevel => {
   return pace?.fast ? worse(own, "warning") : own;
 };
 
-// How meters are worded, by Settings → Usage and by the backend's limit warnings.
+// How meters are worded, by Settings → Limits and by the backend's limit warnings.
 
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
