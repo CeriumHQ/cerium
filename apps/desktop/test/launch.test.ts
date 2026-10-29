@@ -30,6 +30,13 @@ describe("launchArguments", () => {
       "fix",
     ]);
   });
+
+  it("skips a second instance's own flags before the app's folder", () => {
+    expect(launchArguments(["electron.exe", "--original-process-start-time=1", "app", "."], false)).toEqual([
+      "--original-process-start-time=1",
+      ".",
+    ]);
+  });
 });
 
 describe("parseLaunch", () => {

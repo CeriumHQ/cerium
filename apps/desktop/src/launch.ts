@@ -34,10 +34,15 @@ export const isFolder = (path: string): boolean => {
 
 /**
  * The arguments a start of Cerium was given, without the program and, in development, the app's
- * folder: `electron . <args>`.
+ * folder: `electron . <args>`. A second instance's own flags, Chromium's among them, may come before
+ * that folder, so it is the first argument that is no flag.
  */
-export const launchArguments = (argv: ReadonlyArray<string>, packaged: boolean): ReadonlyArray<string> =>
-  argv.slice(packaged ? 1 : 2);
+export const launchArguments = (argv: ReadonlyArray<string>, packaged: boolean): ReadonlyArray<string> => {
+  const rest = argv.slice(1);
+  if (packaged) return rest;
+  const app = rest.findIndex((arg) => !arg.startsWith("--"));
+  return app < 0 ? rest : rest.filter((_, index) => index !== app);
+};
 
 /**
  * What `args` ask for, from `cwd`: a link opens its thread; one folder that exists opens that folder;
