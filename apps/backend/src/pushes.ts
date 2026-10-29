@@ -223,12 +223,14 @@ export class Pushes extends Context.Service<
           if (!remotes.includes(remote)) {
             return yield* new PushError({ message: `There's no remote named ${remote}.` });
           }
-          const tracked = remote === upstreamRemote && upstreamMerge?.startsWith("refs/heads/") === true;
+          // Always the same-named branch: one cut with `git switch -c <name> origin/main` tracks main,
+          // and following that upstream pushed a feature straight to main. A push that doesn't land on
+          // the tracked branch also repoints the upstream there.
           return {
             branch,
             remote,
-            remoteBranch: tracked ? upstreamMerge.slice("refs/heads/".length) : branch,
-            upstream: upstreamRemote !== undefined,
+            remoteBranch: branch,
+            upstream: remote === upstreamRemote && upstreamMerge === `refs/heads/${branch}`,
           };
         });
 
