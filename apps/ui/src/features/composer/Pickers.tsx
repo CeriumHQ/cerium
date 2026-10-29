@@ -311,7 +311,7 @@ export function LimitRow({ choice }: { readonly choice: LimitChoice }) {
         <span className="truncate text-fg-secondary">
           {choice.inherited
             ? "Following Settings"
-            : limitPolicies.find((each) => each.value === choice.value)?.hint}
+            : limitPolicies.find((each) => each.value === choice.value)?.short}
         </span>
       </span>
       <ToggleGroup

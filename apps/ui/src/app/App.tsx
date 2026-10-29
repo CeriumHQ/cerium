@@ -2032,7 +2032,11 @@ function Workspace() {
     compact: (agentId) => compactLead({ payload: { agentId } }),
     setOnLimit:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LIMIT_POLICY_VERSION
-        ? (threadId, policy) => setOnLimit({ payload: { threadId, policy } })
+        ? (threadId, policy) =>
+            setOnLimit({ payload: { threadId, policy } }).then((thread) => {
+              refreshThreads();
+              return thread;
+            })
         : undefined,
     handOff:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION

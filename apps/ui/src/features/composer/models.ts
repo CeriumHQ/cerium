@@ -133,7 +133,7 @@ export interface ModelSwitch {
 export const HANDOFF_VERSION = 32;
 
 /** The `RPC_VERSION` that brought `SetThreadOnLimit`: an older machine's threads can't choose what a limit does. */
-export const LIMIT_POLICY_VERSION = 41;
+export const LIMIT_POLICY_VERSION = 44;
 
 /** What an open thread's lead is handed to: a model of another harness. */
 export interface HandoffChoice extends ModelSwitch {
