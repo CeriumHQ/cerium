@@ -357,6 +357,22 @@ export const MachineRpcs = RpcGroup.make(
    */
   Rpc.make("CompactAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   /**
+   * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps nothing:
+   * no event, no message in the lead's session, no effect on its turn. `earlier` holds the side
+   * questions already asked in the same pop-over, so a follow-up has them. Since `RPC_VERSION` 44.
+   */
+  Rpc.make("AskSideQuestion", {
+    payload: {
+      agentId: AgentId,
+      question: Schema.NonEmptyString,
+      earlier: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ question: Schema.String, answer: Schema.String })),
+      ),
+    },
+    success: Schema.String,
+    error: CeriumError,
+  }),
+  /**
    * Takes back one of the user's messages still queued for a lead. Answers false when the agent has
    * already taken it. Since `RPC_VERSION` 26.
    */

@@ -133,6 +133,7 @@ import {
   type TeardownFailure,
   type ThreadPorts,
 } from "./scripts.ts";
+import { SideQuestions, type SideExchange } from "./sideQuestion.ts";
 import { ThreadTitles } from "./titles.ts";
 
 export interface CreateThreadInput {
@@ -572,6 +573,16 @@ export class Orchestrator extends Context.Service<
      */
     compactAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
+     * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps
+     * nothing: no event, no message in the lead's session, no effect on its turn. `earlier` is the
+     * side questions already asked in the same pop-over.
+     */
+    askSideQuestion(
+      agentId: AgentId,
+      question: string,
+      earlier: ReadonlyArray<SideExchange>,
+    ): Effect.Effect<string, OrchestratorError>;
+    /**
      * Takes back one of the user's messages waiting for a lead, so no turn delivers it. False when the
      * agent has already taken it.
      */
@@ -781,6 +792,7 @@ export class Orchestrator extends Context.Service<
         return (yield* settings.get).effortRouter.enabled && (yield* decider.ready);
       });
       const titles = yield* ThreadTitles;
+      const sideQuestions = yield* SideQuestions;
       const condenser = yield* Condenser;
       const worktrees = yield* Worktrees;
       const checkpoints = yield* Checkpoints;
@@ -2661,10 +2673,14 @@ export class Orchestrator extends Context.Service<
           heldNotices.set(leadId, [...(heldNotices.get(leadId) ?? []), notice]);
         });
 
-      /** Puts back a thread's worktree whose folder is gone (Cerium quit while making it, or the user deleted it). */
+      /**
+       * Puts back a thread's worktree whose folder is gone (Cerium quit while making it, or the user
+       * deleted it), or is only what's left of a removal still deleting it, without its `.git` file.
+       */
       const ensureWorktree = (threadId: ThreadId, worktree: ThreadWorktree, cwd: string) =>
         Effect.gen(function* () {
-          if (yield* fs.exists(worktree.root).pipe(Effect.orElseSucceed(() => true))) return;
+          const marker = path.join(worktree.root, ".git");
+          if (yield* fs.exists(marker).pipe(Effect.orElseSucceed(() => true))) return;
           yield* worktrees.restore(worktree).pipe(Effect.mapError(refusedWorktree));
           yield* setUp(threadId, worktree, cwd);
         });
@@ -3912,6 +3928,36 @@ export class Orchestrator extends Context.Service<
           );
         }),
 
+        askSideQuestion: Effect.fn("Orchestrator.askSideQuestion")(function* (
+          agentId: AgentId,
+          question: string,
+          earlier: ReadonlyArray<SideExchange>,
+        ) {
+          const info =
+            runtimes.get(agentId)?.info ??
+            Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
+          if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+          if (info.parentId !== undefined) {
+            return yield* notAllowed("Only a thread's lead can be asked a side question.");
+          }
+          const thread = Option.getOrUndefined(
+            yield* store.getThread(info.threadId).pipe(Effect.mapError(unavailable)),
+          );
+          if (thread === undefined) return yield* notFound(`Thread ${info.threadId} does not exist.`);
+          const live = liveEvents(yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable)));
+          // A lead whose session started anew holds none of the conversation before it; the text does.
+          return yield* sideQuestions.ask({
+            provider: info.provider,
+            model: info.model,
+            cwd: threadDirectory(thread),
+            sessionId: startsAnew(live) ? undefined : info.providerSessionId,
+            working: info.state === "running" || info.state === "queued",
+            live,
+            question,
+            earlier,
+          });
+        }),
+
         // Under the accept permit, so a message being accepted can't slip between taking the inbox
         // and putting the rest back.
         withdrawMessage: (agentId: AgentId, messageId: string) =>
@@ -4684,5 +4730,5 @@ export class Orchestrator extends Context.Service<
       });
       return orchestrator;
     }),
-  ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer)));
+  ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer, SideQuestions.layer)));
 }

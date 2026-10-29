@@ -1,4 +1,5 @@
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
@@ -6,7 +7,7 @@ import { unified } from "unified";
 // being written is closed off so it reads right before its closing marks arrive. Plain functions, so
 // the tests and the renderer share them.
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
 /** Where each top-level block of `text` starts. */
 const blockStarts = (text: string, from = 0): Array<number> => {
@@ -46,14 +47,24 @@ export const splitBlocks = (text: string): ReadonlyArray<string> => {
   return starts.map((start, index) => text.slice(start, starts[index + 1] ?? text.length));
 };
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE = /^ {0,3}(`{3,}|~{3,}|\${2,})/;
 
-/** Whether `block` opens a fenced code block it doesn't close yet. */
+/** Whether `block` opens a fenced code block, or a `$$` math block, it doesn't close yet. */
 export const openFence = (block: string): boolean => {
   let open: string | undefined;
   for (const line of block.split("\n")) {
     const marker = FENCE.exec(line)?.[1];
     if (marker === undefined) continue;
+    // `$$ x = 1 $$` on one line is whole.
+    const trimmed = line.trim();
+    if (
+      open === undefined &&
+      marker[0] === "$" &&
+      trimmed.length > 2 * marker.length &&
+      trimmed.endsWith(marker)
+    ) {
+      continue;
+    }
     if (open === undefined) open = marker;
     else if (marker[0] === open[0] && marker.length >= open.length && line.trim() === marker) {
       open = undefined;

@@ -27,6 +27,40 @@ export const remarkTypedBreaks = () => (tree: MarkdownNode) => {
   visit(tree);
 };
 
+/** A node of the markdown tree, as far as `remarkDollarGuard` reads it. */
+interface MarkdownSpan extends MarkdownNode {
+  position?: { start: { offset?: number }; end: { offset?: number } };
+}
+
+/**
+ * Inline `$…$` as Pandoc reads it, so prose about money stays prose: the opening `$` must be followed
+ * by a non-space, the closing one preceded by a non-space and not followed by a digit. "costs $5 or
+ * $6" and "$5-$6" are text; "$x^2$" is math. A `$$…$$` on one line is always math. What fails the
+ * check turns back into the text it was written as.
+ */
+export const remarkDollarGuard = () => (tree: MarkdownSpan, file: { value: unknown }) => {
+  const source = String(file.value);
+  const visit = (node: MarkdownSpan) => {
+    if (node.children === undefined) return;
+    node.children = node.children.map((child: MarkdownSpan): MarkdownSpan => {
+      if (child.type !== "inlineMath") {
+        visit(child);
+        return child;
+      }
+      const start = child.position?.start.offset;
+      const end = child.position?.end.offset;
+      if (start === undefined || end === undefined) return child;
+      const raw = source.slice(start, end);
+      if (raw.startsWith("$$")) return child;
+      // The node's own value is trimmed, so the spaces are read off the source.
+      const inner = raw.slice(1, -1);
+      const plain = /^\s/.test(inner) || /\s$/.test(inner) || /\d/.test(source[end] ?? "");
+      return plain ? { type: "text", value: raw } : child;
+    });
+  };
+  visit(tree);
+};
+
 /** A node of the HTML tree markdown becomes, as far as these plugins and the components read it. */
 export interface HtmlNode {
   type: string;

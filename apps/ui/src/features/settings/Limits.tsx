@@ -2,19 +2,16 @@ import { Button } from "@base-ui/react/button";
 import type { ProviderUsage, UsageMeter, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Gauge, RefreshCw } from "lucide-react";
+import { Gauge } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
-import { spendAtom } from "../../backend/spend.ts";
 import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { harnessName } from "./Harnesses.tsx";
-import { SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
-import { SpendSection } from "./Spend.tsx";
-import type { SpendRange } from "./spendModel.ts";
+import { RefreshAction, SettingsCard, SettingsPage } from "./parts.tsx";
 import {
   evenLeft,
   leftLabel,
@@ -39,16 +36,10 @@ function useNow() {
   return now;
 }
 
-/** What's left of each subscription's limits, and the tokens and cost agents have used. */
-export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) {
+/** What's left of each subscription's limits. */
+export function LimitsSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) {
   const result = useAtomValue(usageAtom);
-  const refreshUsage = useAtomRefresh(usageAtom);
-  const [range, setRange] = useState<SpendRange>("week");
-  const refreshSpend = useAtomRefresh(spendAtom(range));
-  const refresh = () => {
-    refreshUsage();
-    refreshSpend();
-  };
+  const refresh = useAtomRefresh(usageAtom);
   const driven = useAtomValue(machineAtom);
   const now = useNow();
 
@@ -69,29 +60,11 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
   return (
     <SettingsPage
       perMachine
-      title="Usage"
-      action={
-        <div className="flex items-center gap-3">
-          {checkedAt ? (
-            <span className="text-meta text-fg-tertiary tabular-nums max-sm:hidden">
-              Updated {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            </span>
-          ) : null}
-          <Button
-            onClick={refresh}
-            disabled={checking}
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
-          >
-            <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
-            {checking ? "Checking…" : "Refresh"}
-          </Button>
-        </div>
-      }
+      title="Limits"
+      description="As each harness reports them; Cursor's come from its CLI. API keys have none, and OpenCode doesn't report its yet."
+      action={<RefreshAction updatedAt={checkedAt} checking={checking} onRefresh={refresh} />}
     >
-      <SettingsSection
-        title="Limits"
-        description="As each harness reports them; Cursor's come from its CLI. API keys have none, and OpenCode doesn't report its yet."
-      >
+      <div className="flex flex-col gap-2.5">
         {AsyncResult.isFailure(result) && snapshot === undefined ? (
           <SettingsCard className="px-4 py-3.5 text-body text-error-text">
             {driven
@@ -111,8 +84,7 @@ export function UsageSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => voi
             Where you'd be at an even pace. Stay right of it and the limit lasts until it resets.
           </p>
         ) : null}
-      </SettingsSection>
-      <SpendSection range={range} onRange={setRange} />
+      </div>
     </SettingsPage>
   );
 }

@@ -38,6 +38,7 @@ import {
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
+import type { AskSide } from "../features/composer/SideQuestion.tsx";
 import { draftStartAtom } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
@@ -134,6 +135,11 @@ export interface ThreadPaneActions {
    * can't.
    */
   readonly setOnLimit?: ((threadId: ThreadId, policy: LimitPolicy) => Promise<unknown>) | undefined;
+  /**
+   * Answers a question about a thread from its lead's conversation, keeping nothing; absent when the
+   * machine's backend can't.
+   */
+  readonly askSide?: ((agentId: AgentId, ...rest: Parameters<AskSide>) => ReturnType<AskSide>) | undefined;
   /** Hands a lead to a model of another harness; absent when the machine's backend can't. */
   readonly handOff?: ((agentId: AgentId, choice: HandoffChoice) => Promise<unknown>) | undefined;
   readonly respond: (
@@ -257,7 +263,7 @@ export function ThreadPane({
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const { attempt, restore, turnFiles, handOff } = actions;
+  const { attempt, restore, turnFiles, handOff, askSide } = actions;
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
@@ -413,6 +419,9 @@ export function ThreadPane({
                                 ),
                             },
                           }),
+                      ...(cloud || askSide === undefined
+                        ? {}
+                        : { onAskSide: (question, earlier) => askSide(lead.id, question, earlier) }),
                       ...(cloud || handOff === undefined
                         ? {}
                         : {

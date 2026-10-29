@@ -6,7 +6,7 @@ import { Backend, connectionEpochAtom } from "./client.ts";
 /**
  * The driven machine's subscribed harnesses and their usage meters: the last reading, then each
  * change as the backend reads them again. Refreshing subscribes again, which reads them now. Kept a
- * minute after Settings → Usage closes, so moving between categories doesn't ask again.
+ * minute after Settings → Limits closes, so moving between categories doesn't ask again.
  */
 export const usageAtom = Backend.runtime
   .atom((get) => {

@@ -66,6 +66,7 @@ import {
   accountThreadsAtom,
   cloudEventsAtom,
   compactAgent,
+  askSideQuestion,
   continueThread,
   createThread,
   deleteThread,
@@ -223,7 +224,12 @@ import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { openFind } from "../features/transcript/find.ts";
-import { EDIT_VERSION, STEER_VERSION, WITHDRAW_VERSION } from "../features/transcript/model.ts";
+import {
+  EDIT_VERSION,
+  SIDE_QUESTION_VERSION,
+  STEER_VERSION,
+  WITHDRAW_VERSION,
+} from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
@@ -652,14 +658,45 @@ function Workspace() {
       elsewhere: { machine: each.machine, online },
     };
   });
+  /**
+   * Threads being archived or deleted, with when: the list shows them gone at once while their
+   * agents end and their worktree goes, and puts them back if that fails.
+   */
+  const [puttingAway, setPuttingAway] = useState<
+    ReadonlyMap<string, { readonly deleting: boolean; readonly at: number; readonly done?: true }>
+  >(new Map());
+  /** Marks a thread put away (it goes once the list agrees), or shows it again when that failed. */
+  const settlePutAway = (threadId: string, done: boolean) =>
+    setPuttingAway((all) => {
+      const next = new Map(all);
+      const away = next.get(threadId);
+      if (done && away !== undefined) next.set(threadId, { ...away, done: true });
+      else next.delete(threadId);
+      return next;
+    });
+  const caughtUp = [...puttingAway].filter(([threadId, away]) => {
+    if (away.done !== true) return false;
+    const listed = [...here, ...there].find((summary) => summary.id === threadId);
+    return away.deleting ? listed === undefined : listed?.archivedAt !== undefined;
+  });
+  if (caughtUp.length > 0) {
+    setPuttingAway(
+      (all) => new Map([...all].filter(([threadId]) => !caughtUp.some(([id]) => id === threadId))),
+    );
+  }
   // A work thread is unread once it changed after the user last saw it; the open one is seen as it changes.
-  const summaries = [...here, ...there].map((summary) =>
-    summary.mode !== "work"
-      ? summary
-      : summary.id === viewed?.thread.id
-        ? { ...summary, unread: summary.id === heldUnread }
-        : { ...summary, unread: readState.isUnread(summary.id, summary.updatedAt) },
-  );
+  const summaries = [...here, ...there].flatMap((summary) => {
+    const away = puttingAway.get(summary.id);
+    if (away?.deleting === true) return [];
+    const shown = away === undefined ? summary : { ...summary, archivedAt: away.at };
+    return [
+      shown.mode !== "work"
+        ? shown
+        : shown.id === viewed?.thread.id
+          ? { ...shown, unread: shown.id === heldUnread }
+          : { ...shown, unread: readState.isUnread(shown.id, shown.updatedAt) },
+    ];
+  });
   const selectedSummary = summaries.find((summary) => summary.id === viewed?.thread.id);
   /**
    * Opens one of this computer's threads in a window of its own (threadWindow.ts): offered by the
@@ -848,6 +885,7 @@ function Workspace() {
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const compactLead = useAtomSet(compactAgent, { mode: "promise" });
   const setOnLimit = useAtomSet(setThreadOnLimit, { mode: "promise" });
+  const askSide = useAtomSet(askSideQuestion, { mode: "promise" });
   const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
@@ -893,21 +931,29 @@ function Workspace() {
     );
   };
 
+  /** Shows a thread archived or deleted at once, and closes its tab, while the machine puts it away. */
+  const putAway = (threadId: string, deleting: boolean) => {
+    setPuttingAway((all) => new Map(all).set(threadId, { deleting, at: Date.now() }));
+    tabs.drop(threadId);
+  };
+
   /**
    * Archives a thread and closes its tab; resolves whether it went.
    * `discardWork` once the user confirmed losing its worktree's work.
    */
-  const archive = (threadId: string, discardWork = false): Promise<boolean> =>
-    attempt(
+  const archive = (threadId: string, discardWork = false): Promise<boolean> => {
+    putAway(threadId, false);
+    return attempt(
       setArchived({
         payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
       }).then(({ title, teardown }) => reportTeardown(title, teardown)),
     ).then((archived) => {
+      settlePutAway(threadId, archived);
       if (!archived) return false;
       refreshThreads();
-      tabs.drop(threadId);
       return true;
     });
+  };
 
   /**
    * Continues a thread in a new one on the same model, folder and worktree, which takes its tab and
@@ -2038,6 +2084,10 @@ function Workspace() {
               return thread;
             })
         : undefined,
+    askSide:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SIDE_QUESTION_VERSION
+        ? (agentId, question, earlier) => askSide({ payload: { agentId, question, earlier } })
+        : undefined,
     handOff:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION
         ? (agentId, choice) => handOffTo({ payload: { agentId, ...choice } })
@@ -2504,7 +2554,7 @@ function Workspace() {
           }}
           harnesses={indicators}
           threads={summaries}
-          onOpenUsage={() => openSettings("usage")}
+          onOpenLimits={() => openSettings("limits")}
           hidden={[
             ...(githubOk ? [] : (["github"] as const)),
             ...(automationsOk ? [] : (["automations"] as const)),
@@ -2580,23 +2630,22 @@ function Workspace() {
           }
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
-          onDelete={(threadId): Promise<boolean> =>
-            attempt(
+          onDelete={(threadId): Promise<boolean> => {
+            const title = summaries.find((summary) => summary.id === threadId)?.title ?? "the thread";
+            putAway(threadId, true);
+            return attempt(
               remove({ payload: { threadId: threadId as ThreadId, discardWork: true } }).then((teardown) =>
-                reportTeardown(
-                  summaries.find((summary) => summary.id === threadId)?.title ?? "the thread",
-                  teardown,
-                ),
+                reportTeardown(title, teardown),
               ),
             ).then((deleted) => {
+              settlePutAway(threadId, deleted);
               if (!deleted) return false;
               registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
               previewDocks.close(threadId);
               refreshThreads();
-              tabs.drop(threadId);
               return true;
-            })
-          }
+            });
+          }}
           {...(drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LATER_VERSION
             ? {
                 onLater: (threadId: string, until: number | undefined): Promise<boolean> =>

@@ -18,6 +18,7 @@ import {
   type HarnessAdapter,
   type PermissionDecision,
   type SessionOptions,
+  type SideQuestionRequest,
   type TurnExtras,
 } from "./adapter.ts";
 
@@ -73,6 +74,8 @@ export const makeFakeAdapter = (
     readonly refuseSwitches?: boolean;
     /** The harness can fork sessions (`forks` records each request); `"fail"` refuses every fork. */
     readonly fork?: boolean | "fail";
+    /** What a copy of a session answers (`sideQuestions` records each request); `"fail"` refuses every one. Without it, the harness takes no side questions. */
+    readonly sideQuestion?: ((request: SideQuestionRequest) => string) | "fail";
     /**
      * The harness compacts when asked: a turn reporting this compaction (`compactions` counts them);
      * `"fail"` refuses every request.
@@ -83,6 +86,7 @@ export const makeFakeAdapter = (
   const sessions: Array<FakeSession> = [];
   const completions: Array<CompletionRequest> = [];
   const forks: Array<ForkRequest> = [];
+  const sideQuestions: Array<SideQuestionRequest> = [];
   const compactions = { count: 0 };
   let failuresLeft = options.failedStarts ?? 0;
   let turnsTaken = 0;
@@ -131,6 +135,18 @@ export const makeFakeAdapter = (
               return options.fork === "fail"
                 ? Effect.fail(new HarnessFailure({ provider, message: "Can't fork that.", cause: null }))
                 : Effect.succeed(`fork-${forks.length}`);
+            }),
+        }),
+    ...(options.sideQuestion === undefined
+      ? {}
+      : {
+          sideQuestion: (request: SideQuestionRequest) =>
+            Effect.suspend(() => {
+              sideQuestions.push(request);
+              const answer = options.sideQuestion;
+              return answer === "fail" || answer === undefined
+                ? Effect.fail(new HarnessFailure({ provider, message: "Can't copy that.", cause: null }))
+                : Effect.succeed(answer(request));
             }),
         }),
     startSession: (sessionOptions) =>
@@ -266,5 +282,5 @@ export const makeFakeAdapter = (
         };
       }),
   };
-  return { adapter, sessions, completions, forks, running, compactions };
+  return { adapter, sessions, completions, forks, sideQuestions, running, compactions };
 };

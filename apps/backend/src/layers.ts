@@ -143,7 +143,7 @@ export const backendLayer = (options: BackendOptions) => {
     // Keeps the cloud copy of this machine's threads current, knows the account's, and
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
     // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
-    // subscription usage for Settings → Usage. Slims threads gone quiet for the days the user chose.
+    // subscription usage for Settings → Limits. Slims threads gone quiet for the days the user chose.
     // Answers the assistants the user connected to their account, when they let them in.
     Layer.provideMerge(
       Layer.mergeAll(

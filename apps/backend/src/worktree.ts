@@ -1,6 +1,6 @@
 import { Worktrees, WorktreeError } from "@cerium/orchestrator";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
-import { Effect, FileSystem, Layer, Option, Path, Schedule, Scope, Semaphore } from "effect";
+import { Deferred, Effect, Exit, FileSystem, Layer, Option, Path, Schedule, Scope, Semaphore } from "effect";
 
 import { Git, type GitResult } from "./git.ts";
 import { Terminals } from "./terminal.ts";
@@ -191,7 +191,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       });
 
       const changes = Effect.fn("Worktrees.changes")(function* (worktree: ThreadWorktree) {
-        const uncommitted = (yield* exists(worktree.root))
+        const uncommitted = (yield* exists(path.join(worktree.root, ".git")))
           ? countStatus(
               yield* gitOk(
                 worktree.root,
@@ -219,6 +219,50 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             Effect.logWarning(`Couldn't delete ${folder}; it goes when Cerium next starts.`),
           ),
         );
+
+      /** Worktree folders still being deleted where they are, by root, which a checkout there waits for. */
+      const leaving = new Map<string, Deferred.Deferred<void>>();
+
+      /**
+       * Deletes a removed worktree's folder that couldn't be moved aside: a process still running in it
+       * (a dev server an agent left behind, say) holds it on Windows. Each pass deletes what nobody holds,
+       * then moves the rest aside once it's let go, for up to 10 minutes.
+       */
+      const clearInPlace = (root: string) =>
+        Effect.gen(function* () {
+          const done = yield* Deferred.make<void>();
+          leaving.set(root, done);
+          const aside = path.join(removing, `${path.basename(root)}-${Date.now().toString(36)}`);
+          yield* fs.rename(root, aside).pipe(
+            Effect.andThen(clear(aside)),
+            Effect.catch(() => fs.remove(root, { recursive: true, force: true })),
+            Effect.retry({ times: 200, schedule: Schedule.spaced("3 seconds") }),
+            Effect.catch(() =>
+              Effect.logWarning(`Couldn't delete ${root}: something still has files open there.`),
+            ),
+            Effect.ensuring(
+              Effect.suspend(() => {
+                if (leaving.get(root) === done) leaving.delete(root);
+                return Deferred.done(done, Exit.void);
+              }),
+            ),
+          );
+        });
+
+      /** Waits for a folder still being deleted at `root`, then clears what's left of it; fails while it's held. */
+      const vacate = Effect.fn("Worktrees.vacate")(function* (root: string) {
+        const pending = leaving.get(root);
+        if (pending !== undefined) yield* Deferred.await(pending);
+        if (!(yield* exists(root))) return;
+        yield* fs.remove(root, { recursive: true, force: true }).pipe(
+          Effect.mapError(
+            () =>
+              new WorktreeError({
+                message: `Couldn't check the worktree out again at ${root}: something still has files open there.`,
+              }),
+          ),
+        );
+      });
 
       // What a removal moved aside before Cerium last quit.
       yield* fs.readDirectory(removing).pipe(
@@ -333,7 +377,9 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             if (moved) {
               yield* Effect.forkIn(clear(aside), layerScope);
             } else {
-              yield* fs.remove(worktree.root, { recursive: true }).pipe(
+              // Something runs in it still. Without its `.git` file it's no worktree to git, which
+              // forgets it below, and the folder goes behind the thread once whatever holds it ends.
+              yield* fs.remove(path.join(worktree.root, ".git"), { force: true }).pipe(
                 Effect.mapError(
                   () =>
                     new WorktreeError({
@@ -341,6 +387,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
                     }),
                 ),
               );
+              yield* Effect.forkIn(clearInPlace(worktree.root), layerScope);
             }
           }
           // Git forgets a worktree whose folder is gone.
@@ -349,7 +396,9 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
         }),
 
         restore: Effect.fn("Worktrees.restore")(function* (worktree) {
-          if (yield* exists(worktree.root)) return;
+          // A folder without its `.git` file is what's left of a removal still under way.
+          if (yield* exists(path.join(worktree.root, ".git"))) return;
+          yield* vacate(worktree.root);
           yield* checkOut(yield* toplevelOf(worktree.project), worktree);
         }),
       });
