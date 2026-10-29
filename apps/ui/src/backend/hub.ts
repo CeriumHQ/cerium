@@ -1,5 +1,5 @@
-import type { ProviderId } from "@cerium/protocol";
-import { Atom } from "effect/reactivity";
+import type { HubHarness, ProviderId } from "@cerium/protocol";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { Backend, connectionEpochAtom } from "./client.ts";
 
@@ -30,6 +30,18 @@ export const hubStatusAtom = Atom.family((key: `${ProviderId}\u0000${string}`) =
 
 /** The key `hubStatusAtom` takes. */
 export const hubStatusKey = (provider: ProviderId, project: string) => `${provider}\u0000${project}` as const;
+
+/** Every harness's live status for a project, from each that reports one, keyed by harness. */
+export const hubStatusesAtom = Atom.family((project: string) =>
+  Atom.make((get) => {
+    const harnesses = AsyncResult.getOrElse(get(hubAtom(project)), (): ReadonlyArray<HubHarness> => []);
+    return new Map(
+      harnesses
+        .filter((harness) => harness.unavailable === undefined && harness.support.status)
+        .map((harness) => [harness.provider, get(hubStatusAtom(hubStatusKey(harness.provider, project)))]),
+    );
+  }),
+);
 
 export const setHubServer = Backend.mutation("SetHubServer");
 export const setHubTool = Backend.mutation("SetHubTool");

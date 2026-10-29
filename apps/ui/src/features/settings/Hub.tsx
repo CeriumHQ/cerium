@@ -17,14 +17,15 @@ import type {
 } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ChevronRight, RefreshCw } from "lucide-react";
-import { use, useState, type ReactNode } from "react";
+import { ChevronDown, Plus, RefreshCw } from "lucide-react";
+import { use, useId, useState, type ReactNode } from "react";
 
 import {
   copyHubServer,
   copyHubSkill,
   hubAtom,
   hubStatusAtom,
+  hubStatusesAtom,
   hubStatusKey,
   setHubServer,
   setHubSkill,
@@ -32,26 +33,45 @@ import {
 } from "../../backend/hub.ts";
 import { savedProjectsAtom } from "../../backend/projects.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { DialogCheck } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import { harnessName } from "./Harnesses.tsx";
 import {
-  SettingsCard,
-  SettingsNote,
-  SettingsPage,
-  SettingsProject,
-  SettingsSection,
-  SettingsSwitch,
-} from "./parts.tsx";
+  filterHub,
+  groupHub,
+  serverGist,
+  serverLine,
+  type HubEntry,
+  type HubGroup,
+  type HubPlace,
+} from "./hubModel.ts";
+import { SettingsCard, SettingsNote, SettingsPage, SettingsProject, SettingsSwitch } from "./parts.tsx";
 import { initialProject } from "./scriptsModel.ts";
 import { RowButton } from "./ToolRow.tsx";
 import { ProjectSelect } from "./SourceControl.tsx";
 
-// Settings → MCP & skills: each harness's MCP servers and skills for one project, as its own config
-// has them. A list first, a row's command, secrets, tools and copy on demand. Switches show only where
-// the harness itself can turn the thing off; where it can't, the section says so.
+// Settings → MCP servers and Settings → Skills: every harness's servers or skills for one project, each
+// listed once with the harnesses that have it, as their own configs say. A row opens onto each harness's
+// copy with its switch, a server's tools across harnesses, and a way to add it to the harnesses without
+// it. Switches show only where the harness itself can turn the thing off; where it can't, the row says so.
 
-type View = "servers" | "skills";
+type Kind = "servers" | "skills";
+
+const pageCopy: Record<Kind, { title: string; description: string; empty: string; search: string }> = {
+  servers: {
+    title: "MCP servers",
+    description:
+      "Every harness's servers for a project, edited in its own config. Secrets stay there: only whether one is set shows.",
+    empty: "No harness has an MCP server for this project.",
+    search: "Search servers",
+  },
+  skills: {
+    title: "Skills",
+    description: "Every harness's skills for a project, read from its own folders.",
+    empty: "No harness has a skill for this project.",
+    search: "Search skills",
+  },
+};
 
 /** The answer a harness gives when its CLI isn't there, which the page lists in one line at the end. */
 const NOT_INSTALLED = "Not installed.";
@@ -75,19 +95,19 @@ const scopeHint: Record<HubScope, string> = {
   bundled: "From the harness or a plugin",
 };
 
-const transportLabel = { stdio: "stdio", http: "HTTP", sse: "SSE" } as const;
+const placeTitle: Record<HubPlace, string> = {
+  project: "This project",
+  user: "All projects",
+  bundled: "Built-in",
+};
 
-const scopeOrder: Record<HubScope, number> = { project: 0, local: 1, user: 2, bundled: 3 };
+export const McpSettings = () => <HubSettings kind="servers" />;
+export const SkillsSettings = () => <HubSettings kind="skills" />;
 
-/** The project's own first and the harness's built-in ones last, each harness's order kept within. */
-const byScope = <T extends { readonly scope: HubScope }>(items: ReadonlyArray<T>) =>
-  items.toSorted((a, b) => scopeOrder[a.scope] - scopeOrder[b.scope]);
-
-export function HubSettings() {
+function HubSettings({ kind }: { kind: Kind }) {
   const listed = useAtomValue(savedProjectsAtom);
   const from = use(SettingsProject);
   const [picked, setPicked] = useState<string>();
-  const [view, setView] = useState<View>("servers");
   const projects = AsyncResult.getOrElse(listed, (): ReadonlyArray<ProjectInfo> => []).filter(
     (project) => project.missing !== true,
   );
@@ -96,8 +116,8 @@ export function HubSettings() {
   return (
     <SettingsPage
       perMachine
-      title="MCP & skills"
-      description="Each harness keeps its own config, which Cerium edits in place. Secrets stay in those files: only whether one is set shows here."
+      title={pageCopy[kind].title}
+      description={pageCopy[kind].description}
       action={
         shown === undefined ? null : (
           <div className="flex items-center gap-1.5">
@@ -109,31 +129,11 @@ export function HubSettings() {
     >
       {shown === undefined ? (
         <SettingsNote>
-          No projects yet. Open a folder in a new thread to see its servers and skills.
+          No projects yet. Open a folder in a new thread to see its{" "}
+          {kind === "servers" ? "servers" : "skills"}.
         </SettingsNote>
       ) : (
-        <>
-          <ToggleGroup
-            value={[view]}
-            onValueChange={(value) => {
-              const next = value[0];
-              if (next === "servers" || next === "skills") setView(next);
-            }}
-            aria-label="Show"
-            className="-mb-3 flex items-center gap-0.5 self-start rounded-lg border border-line-subtle p-0.5"
-          >
-            {(["servers", "skills"] as const).map((each) => (
-              <Toggle
-                key={each}
-                value={each}
-                className="rounded-md px-2.5 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-              >
-                {each === "servers" ? "MCP servers" : "Skills"}
-              </Toggle>
-            ))}
-          </ToggleGroup>
-          <HubList key={shown} project={shown} view={view} />
-        </>
+        <HubBody key={shown} project={shown} kind={kind} />
       )}
     </SettingsPage>
   );
@@ -145,10 +145,31 @@ function RefreshHub({ project }: { project: string }) {
   return <IconButton icon={RefreshCw} label="Read again" onClick={refresh} />;
 }
 
-/** Every harness's section for the project, then the ones that aren't installed, in a line. */
-function HubList({ project, view }: { project: string; view: View }) {
+/** A harness's live report on its servers, once it has started each. */
+interface Live {
+  readonly statuses: ReadonlyArray<HubServerStatus> | undefined;
+  readonly waiting: boolean;
+  readonly failed: string | undefined;
+}
+
+/** What every row of a page needs from it. */
+interface HubContext {
+  readonly project: string;
+  /** The harnesses whose config could be read, which a server or skill can be added to. */
+  readonly harnesses: ReadonlyArray<HubHarness>;
+  readonly live: ReadonlyMap<ProviderId, Live>;
+  /** The harness the list is narrowed to, whose switch each row then shows without opening. */
+  readonly picked: ProviderId | undefined;
+  readonly onChanged: () => void;
+}
+
+/** The search and harness filter, the list under its places, then the harnesses not installed. */
+function HubBody({ project, kind }: { project: string; kind: Kind }) {
   const result = useAtomValue(hubAtom(project));
   const refresh = useAtomRefresh(hubAtom(project));
+  const reports = useAtomValue(hubStatusesAtom(project));
+  const [query, setQuery] = useState("");
+  const [provider, setProvider] = useState<ProviderId>();
   const harnesses = AsyncResult.getOrElse(result, (): ReadonlyArray<HubHarness> | undefined => undefined);
   if (harnesses === undefined) {
     return AsyncResult.isFailure(result) ? (
@@ -157,23 +178,61 @@ function HubList({ project, view }: { project: string; view: View }) {
       <SettingsNote>Reading each harness's config…</SettingsNote>
     );
   }
-  const shown = harnesses.filter((harness) => harness.unavailable !== NOT_INSTALLED);
+  const readable = harnesses.filter((harness) => harness.unavailable === undefined);
   const missing = harnesses.filter((harness) => harness.unavailable === NOT_INSTALLED);
-  const targets = shown.filter((harness) => harness.unavailable === undefined).map((each) => each.provider);
+  const picked = readable.some((harness) => harness.provider === provider) ? provider : undefined;
+  const live = new Map(
+    [...reports].map(([each, report]): [ProviderId, Live] => [
+      each,
+      {
+        statuses: AsyncResult.getOrElse(report, (): ReadonlyArray<HubServerStatus> | undefined => undefined),
+        waiting: report.waiting,
+        failed: AsyncResult.isFailure(report) ? messageOf(report.cause) : undefined,
+      },
+    ]),
+  );
+  const context: HubContext = { project, harnesses: readable, live, picked, onChanged: refresh };
+  const servers = groupHub(readable, (harness) => harness.servers);
+  const skills = groupHub(readable, (harness) => harness.skills);
+  const total = kind === "servers" ? servers.length : skills.length;
+  const filter = { query, provider: picked };
+
   return (
     <>
-      {shown.map((harness) => (
-        <HarnessSection
-          key={harness.provider}
-          harness={harness}
-          project={project}
-          view={view}
-          targets={targets.filter((each) => each !== harness.provider)}
-          onChanged={refresh}
+      {total === 0 ? (
+        <SettingsNote>{pageCopy[kind].empty}</SettingsNote>
+      ) : (
+        <div className="-mt-2 flex flex-col gap-3">
+          <div className="overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken [&>div]:h-9 [&>div]:border-b-0 [&>div]:pl-3">
+            <SearchBar value={query} onChange={setQuery} placeholder={pageCopy[kind].search} />
+          </div>
+          <HarnessFilter
+            kind={kind}
+            harnesses={readable}
+            total={total}
+            picked={picked}
+            live={live}
+            onPick={setProvider}
+          />
+        </div>
+      )}
+      {kind === "servers" ? (
+        <Places
+          groups={filterHub(servers, filter)}
+          query={query}
+          total={total}
+          row={(group) => <ServerGroupRow key={group.key} group={group} context={context} />}
         />
-      ))}
+      ) : (
+        <Places
+          groups={filterHub(skills, filter)}
+          query={query}
+          total={total}
+          row={(group) => <SkillGroupRow key={group.key} group={group} context={context} />}
+        />
+      )}
       {missing.length > 0 ? (
-        <p className="-mt-3 text-meta text-fg-tertiary">
+        <p className="-mt-2 px-1 text-meta text-fg-tertiary">
           Not installed: {missing.map((each) => harnessName[each.provider]).join(", ")}.
         </p>
       ) : null}
@@ -181,140 +240,92 @@ function HubList({ project, view }: { project: string; view: View }) {
   );
 }
 
-/** What a harness can't turn off natively, said once over its list instead of offering a fake switch. */
-const limitsOf = (harness: HubHarness, view: View): string | undefined => {
-  const name = harnessName[harness.provider];
-  const { servers, tools, skills } = harness.support;
-  if (view === "servers") {
-    if (servers === "none") return `${name} has no switch per project for servers or their tools.`;
-    if (tools === "none") return `${name} can't turn off a single tool.`;
-    return undefined;
-  }
-  if (skills === "none") return `${name} has no switch for skills: remove one from its folder instead.`;
-  if (skills === "everywhere") return `${name} turns a skill off in every project at once.`;
-  return undefined;
-};
-
-/** Whether a switch that works per project is held off in this one, as `locked` says why. */
-const lockedHere = (harness: HubHarness, kind: "servers" | "tools" | "skills") =>
-  harness.locked !== undefined && harness.support[kind] === "project";
-
-interface SectionProps {
-  harness: HubHarness;
-  project: string;
-  view: View;
-  /** The harnesses a server or skill can be copied to. */
-  targets: ReadonlyArray<ProviderId>;
-  onChanged: () => void;
-}
-
-function HarnessSection(props: SectionProps) {
-  const { harness, view } = props;
-  const count = view === "servers" ? harness.servers.length : harness.skills.length;
-  const locked =
-    view === "servers"
-      ? lockedHere(harness, "servers") || lockedHere(harness, "tools")
-      : lockedHere(harness, "skills");
-  const notes = [limitsOf(harness, view), locked ? harness.locked : undefined]
-    .filter((each) => each !== undefined)
-    .join(" ");
-  const title = (
-    <>
-      <ProviderLogo provider={harness.provider} size={15} />
-      {harnessName[harness.provider]}
-      {harness.unavailable === undefined ? (
-        <span className="font-normal text-fg-tertiary tabular-nums">{count}</span>
-      ) : null}
-    </>
-  );
-  if (harness.unavailable !== undefined) {
-    return (
-      <SettingsSection title={title}>
-        <SettingsNote>{harness.unavailable}</SettingsNote>
-      </SettingsSection>
-    );
-  }
-  if (count === 0) {
-    return (
-      <SettingsSection title={title}>
-        <SettingsNote>{view === "servers" ? "No MCP servers." : "No skills."}</SettingsNote>
-      </SettingsSection>
-    );
-  }
-  if (view === "skills") {
-    return (
-      <SettingsSection title={title} {...(notes ? { description: notes } : {})}>
-        <FoldedList
-          rows={byScope(harness.skills).map((skill) => (
-            <SkillRow key={skill.path} skill={skill} {...props} />
-          ))}
-        />
-      </SettingsSection>
-    );
-  }
-  return harness.support.status ? (
-    <LiveServers title={title} notes={notes} {...props} />
-  ) : (
-    <SettingsSection title={title} {...(notes ? { description: notes } : {})}>
-      <ServerList statuses={undefined} {...props} />
-    </SettingsSection>
-  );
-}
-
-/** A harness's servers with their connection, which it reports once it has started each. */
-function LiveServers({ title, notes, ...props }: SectionProps & { title: ReactNode; notes: string }) {
-  const key = hubStatusKey(props.harness.provider, props.project);
-  const result = useAtomValue(hubStatusAtom(key));
-  const refreshStatus = useAtomRefresh(hubStatusAtom(key));
-  const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HubServerStatus> | undefined => undefined);
-  const checking = result.waiting;
+/** Narrows the list to one harness's servers or skills, each chip counting them. */
+function HarnessFilter({
+  kind,
+  harnesses,
+  total,
+  picked,
+  live,
+  onPick,
+}: {
+  kind: Kind;
+  harnesses: ReadonlyArray<HubHarness>;
+  total: number;
+  picked: ProviderId | undefined;
+  live: ReadonlyMap<ProviderId, Live>;
+  onPick: (provider: ProviderId | undefined) => void;
+}) {
+  const chip =
+    "flex h-7 items-center gap-1.5 rounded-full border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors duration-150 select-none hover:bg-surface-hover hover:text-fg-primary data-pressed:border-transparent data-pressed:bg-surface-selected data-pressed:text-fg-primary";
   return (
-    <SettingsSection
-      title={title}
-      {...(notes ? { description: notes } : {})}
-      action={
-        checking ? (
-          <span className="shrink-0 text-meta text-fg-tertiary">Connecting…</span>
-        ) : AsyncResult.isFailure(result) ? (
-          <span className="shrink-0 text-meta text-fg-tertiary" title={messageOf(result.cause)}>
-            No status
-          </span>
-        ) : null
-      }
+    <ToggleGroup
+      value={[picked ?? "all"]}
+      onValueChange={(value) => onPick(harnesses.find((each) => each.provider === value[0])?.provider)}
+      aria-label="Harness"
+      className="flex flex-wrap items-center gap-1.5"
     >
-      <ServerList
-        {...props}
-        statuses={statuses}
-        onChanged={() => {
-          props.onChanged();
-          refreshStatus();
-        }}
-      />
-    </SettingsSection>
+      <Toggle value="all" className={chip}>
+        All <span className="text-fg-tertiary tabular-nums">{total}</span>
+      </Toggle>
+      {harnesses.map((harness) => {
+        const count = kind === "servers" ? harness.servers.length : harness.skills.length;
+        const connecting = kind === "servers" && live.get(harness.provider)?.waiting === true;
+        return (
+          <Toggle key={harness.provider} value={harness.provider} className={chip}>
+            <ProviderLogo provider={harness.provider} size={13} />
+            {harnessName[harness.provider]}
+            <span className="text-fg-tertiary tabular-nums">{count}</span>
+            {connecting ? (
+              <span
+                title="Connecting…"
+                className="size-1.5 animate-pulse rounded-full bg-running motion-reduce:animate-none"
+              />
+            ) : null}
+          </Toggle>
+        );
+      })}
+    </ToggleGroup>
   );
 }
 
-function ServerList({
-  statuses,
-  ...props
-}: SectionProps & { statuses: ReadonlyArray<HubServerStatus> | undefined }) {
-  return (
-    <FoldedList
-      rows={byScope(props.harness.servers).map((server) => (
-        <ServerRow
-          key={`${server.scope}:${server.name}`}
-          server={server}
-          status={statuses?.find((each) => each.name === server.name)}
-          live={statuses !== undefined}
-          {...props}
-        />
-      ))}
-    />
-  );
+/** The groups under where they're configured: this project's, every project's, then built-in ones. */
+function Places<T>({
+  groups,
+  query,
+  total,
+  row,
+}: {
+  groups: ReadonlyArray<HubGroup<T>>;
+  query: string;
+  total: number;
+  row: (group: HubGroup<T>) => ReactNode;
+}) {
+  if (total === 0) return null;
+  if (groups.length === 0) {
+    return (
+      <SettingsNote>
+        {query.trim() === "" ? "None in this harness." : `Nothing matches “${query.trim()}”.`}
+      </SettingsNote>
+    );
+  }
+  return (["project", "user", "bundled"] as const).map((place) => {
+    const shown = groups.filter((group) => group.place === place);
+    if (shown.length === 0) return null;
+    return (
+      <section key={place} className="flex flex-col gap-2">
+        <h2 className="flex items-baseline gap-1.5 px-1 text-meta font-medium text-fg-secondary">
+          {placeTitle[place]}
+          <span className="font-normal text-fg-tertiary tabular-nums">{shown.length}</span>
+        </h2>
+        <FoldedList rows={shown.map(row)} />
+      </section>
+    );
+  });
 }
 
 /** How many rows a long list shows before the rest are asked for. */
-const FOLD_AFTER = 5;
+const FOLD_AFTER = 8;
 
 /** A card of rows that shows the first few of a long list, and the rest on request. */
 function FoldedList({ rows }: { rows: ReadonlyArray<ReactNode> }) {
@@ -322,12 +333,12 @@ function FoldedList({ rows }: { rows: ReadonlyArray<ReactNode> }) {
   // One more row than the fold would hide is shown instead: "Show 1 more" saves no room.
   const folded = !all && rows.length > FOLD_AFTER + 1;
   return (
-    <SettingsCard className="flex flex-col divide-y divide-line-subtle">
+    <SettingsCard className="flex flex-col divide-y divide-line-subtle overflow-hidden">
       {folded ? rows.slice(0, FOLD_AFTER) : rows}
       {folded ? (
         <Button
           onClick={() => setAll(true)}
-          className="flex h-9 items-center px-4 pl-9 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
+          className="flex h-10 items-center justify-center text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
         >
           Show {rows.length - FOLD_AFTER} more
         </Button>
@@ -337,393 +348,423 @@ function FoldedList({ rows }: { rows: ReadonlyArray<ReactNode> }) {
 }
 
 /**
- * A change the row shows at once while it saves: kept until the harness's config is read again, when
- * the row has a new `of` and shows what the file now says.
+ * A server or skill: its name and a line on it, the harnesses that have it, and their copies folded
+ * under it until it's opened. With the list narrowed to one harness, that harness's switch sits on the row.
+ */
+function GroupRow({
+  name,
+  line,
+  off,
+  presence,
+  quick,
+  children,
+}: {
+  name: string;
+  line: string | undefined;
+  off: boolean;
+  presence: ReactNode;
+  quick: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible.Root className="group/row">
+      <div className="flex items-center gap-3 pr-4 transition-colors hover:bg-surface-hover/60 has-data-panel-open:bg-surface-hover/40">
+        <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span
+              className={`truncate text-body font-medium ${off ? "text-fg-tertiary" : "text-fg-primary"}`}
+            >
+              {name}
+            </span>
+            {line ? (
+              <span title={line} className="truncate text-meta text-fg-tertiary group-data-panel-open:hidden">
+                {line}
+              </span>
+            ) : null}
+          </span>
+          {presence}
+          <ChevronDown
+            size={14}
+            strokeWidth={2}
+            className="shrink-0 text-fg-tertiary transition-transform duration-200 ease-out-soft group-data-panel-open:rotate-180 motion-reduce:transition-none"
+          />
+        </Collapsible.Trigger>
+        {quick}
+      </div>
+      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <div className="flex flex-col gap-4 px-4 pt-1 pb-4">{children}</div>
+      </Collapsible.Panel>
+    </Collapsible.Root>
+  );
+}
+
+/** One harness's mark on a row: lit while it's on there, with a dot when its connection needs a look. */
+interface Mark {
+  readonly provider: ProviderId;
+  readonly on: boolean;
+  readonly dot: string | undefined;
+  readonly label: string;
+}
+
+/** The harnesses that have a server or skill, once each however many scopes it sits in there. */
+function Presence({ marks }: { marks: ReadonlyArray<Mark> }) {
+  const once = marks.filter((mark, at) => marks.findIndex((each) => each.provider === mark.provider) === at);
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {once.map((mark) => {
+        const on = marks.some((each) => each.provider === mark.provider && each.on);
+        return (
+          <span
+            key={mark.provider}
+            title={mark.label}
+            className={`relative grid size-6 place-items-center rounded-md ${on ? "bg-surface-raised" : ""}`}
+          >
+            <ProviderLogo provider={mark.provider} size={13} className={on ? "" : "opacity-35 grayscale"} />
+            {mark.dot !== undefined ? (
+              <span
+                className={`absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-surface-panel ${mark.dot}`}
+              />
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** A small heading over a part of an open row. */
+function Part({ label, end, children }: { label: string; end?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-meta font-medium text-fg-tertiary">{label}</span>
+        {end}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Each harness's copy of an open row, one line each. */
+function Copies({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col divide-y divide-line-subtle rounded-md border border-line-subtle bg-surface-sunken">
+      {children}
+    </div>
+  );
+}
+
+/** One harness's copy: the harness, where it's configured, its state and its switch. */
+function CopyLine({
+  provider,
+  scope,
+  file,
+  state,
+  control,
+  error,
+  labelId,
+}: {
+  provider: ProviderId;
+  scope: HubScope;
+  file: string | undefined;
+  state?: ReactNode;
+  control: ReactNode;
+  error: string | undefined;
+  labelId: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2">
+      <div className="flex min-h-6 items-center gap-2.5">
+        <ProviderLogo provider={provider} size={14} />
+        <span id={labelId} className="shrink-0 text-body text-fg-primary">
+          {harnessName[provider]}
+        </span>
+        <span
+          title={scopeHint[scope]}
+          className="shrink-0 rounded border border-line-subtle px-1.5 text-caption text-fg-tertiary"
+        >
+          {scopeLabel[scope]}
+        </span>
+        <span title={file} className="min-w-0 flex-1 truncate font-mono text-caption text-fg-tertiary">
+          {file}
+        </span>
+        {state}
+        {control}
+      </div>
+      {error ? <p className="pl-6 text-meta text-error-text">{error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * A change the switch shows at once while it saves: kept until the harness's config is read again, when
+ * the switch has a new `of` and shows what the file now says.
  */
 interface Saving<T> {
   readonly of: T;
   readonly value: boolean;
 }
 
-/** A dot for a server's connection; none while it's simply connected or turned off. */
-function Connection({ status }: { status: HubServerStatus | undefined }) {
-  if (status === undefined || status.connection === "disabled") return null;
-  const look = {
-    connected: { dot: "bg-success", label: undefined },
-    starting: { dot: "bg-running", label: "Starting" },
-    failed: { dot: "bg-error", label: "Failed" },
-    needsAuth: { dot: "bg-attention", label: "Needs sign-in" },
-  }[status.connection];
+/** A switch's state while a change to it saves, and why the last one didn't. */
+function useSaving<T>(
+  of: T,
+  current: boolean,
+  save: (next: boolean) => Promise<unknown>,
+  onSaved: () => void,
+) {
+  const [saving, setSaving] = useState<Saving<T>>();
+  const [error, setError] = useState<string>();
+  const toggle = (next: boolean) => {
+    setError(undefined);
+    setSaving({ of, value: next });
+    save(next).then(onSaved, (failure: unknown) => {
+      setSaving(undefined);
+      setError(messageOf(failure));
+    });
+  };
+  return { enabled: saving?.of === of ? saving.value : current, toggle, error };
+}
+
+/** What a harness can't turn off natively, said where its switch would be. */
+const limitOf = (harness: HubHarness, kind: "servers" | "tools" | "skills"): string | undefined => {
+  const name = harnessName[harness.provider];
+  const level = harness.support[kind];
+  if (kind === "servers" && level === "none") return `${name} has no switch per project for servers.`;
+  if (kind === "tools" && level === "none") return `${name} can't turn off a single tool.`;
+  if (kind === "skills" && level === "none")
+    return `${name} has no switch for skills: remove one from its folder instead.`;
+  if (kind === "skills" && level === "everywhere")
+    return `${name} turns a skill off in every project at once.`;
+  return undefined;
+};
+
+/** Whether a switch that works per project is held off in this one, as `locked` says why. */
+const lockedHere = (harness: HubHarness, kind: "servers" | "tools" | "skills") =>
+  harness.locked !== undefined && harness.support[kind] === "project";
+
+/** A copy's switch, or why there's none: held off for now, or not something the harness can turn off. */
+function CopySwitch({
+  harness,
+  kind,
+  checked,
+  onCheckedChange,
+  labelledBy,
+  compact = false,
+}: {
+  harness: HubHarness;
+  kind: "servers" | "skills";
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  labelledBy: string;
+  /** On a list's row, where a word beside every switch would repeat down the list: the tooltip says it. */
+  compact?: boolean;
+}) {
+  if (harness.support[kind] === "none") {
+    return (
+      <span title={limitOf(harness, kind)} className="shrink-0 text-meta text-fg-tertiary">
+        Always on
+      </span>
+    );
+  }
+  const locked = lockedHere(harness, kind);
+  const note = locked ? harness.locked : limitOf(harness, kind);
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-meta text-fg-tertiary">
-      <span className={`size-1.5 rounded-full ${look.dot}`} />
-      {look.label === undefined ? <span className="sr-only">Connected</span> : look.label}
+    <span title={note} className="flex shrink-0 items-center gap-2">
+      {harness.support[kind] === "everywhere" && !compact ? (
+        <span className="text-caption text-fg-tertiary">All projects</span>
+      ) : null}
+      <SettingsSwitch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={locked}
+        labelledBy={labelledBy}
+      />
     </span>
   );
 }
 
-function ServerRow({
-  server,
-  status,
-  live,
-  harness,
-  project,
-  targets,
-  onChanged,
-}: SectionProps & { server: HubServer; status: HubServerStatus | undefined; live: boolean }) {
-  const setServer = useAtomSet(setHubServer, { mode: "promise" });
-  const [saving, setSaving] = useState<Saving<HubServer>>();
-  const [error, setError] = useState<string>();
-  const enabled = saving?.of === server ? saving.value : server.enabled;
-  const ref = { provider: harness.provider, project, name: server.name, scope: server.scope };
+/** A path inside the project from its folder, as `.cursor/mcp.json`; any other in full. */
+const inProject = (path: string, project: string) => {
+  const plain = (each: string) => each.replaceAll("\\", "/").replace(/\/+$/, "");
+  const [file, folder] = [plain(path), plain(project)];
+  return file.toLowerCase().startsWith(`${folder.toLowerCase()}/`) ? file.slice(folder.length + 1) : path;
+};
 
-  const toggle = (next: boolean) => {
-    setError(undefined);
-    setSaving({ of: server, value: next });
-    setServer({ payload: { ...ref, enabled: next } }).then(onChanged, (failure: unknown) => {
-      setSaving(undefined);
-      setError(messageOf(failure));
-    });
-  };
+// Servers
 
-  return (
-    <HubRow
-      name={server.name}
-      meta={[
-        scopeLabel[server.scope],
-        transportLabel[server.transport],
-        ...(server.disabledTools.length > 0
-          ? [`${server.disabledTools.length} ${server.disabledTools.length === 1 ? "tool" : "tools"} off`]
-          : []),
-      ].join(" · ")}
-      metaHint={scopeHint[server.scope]}
-      off={!enabled}
-      end={<Connection status={enabled ? status : undefined} />}
-      control={
-        harness.support.servers === "none"
-          ? undefined
-          : (labelledBy) => (
-              <SettingsSwitch
-                checked={enabled}
-                onCheckedChange={toggle}
-                disabled={lockedHere(harness, "servers")}
-                labelledBy={labelledBy}
-              />
-            )
-      }
-      error={error}
-    >
-      <Details>
-        {server.url !== undefined ? (
-          <Detail label="URL">
-            <Code>{server.url}</Code>
-          </Detail>
-        ) : server.command !== undefined ? (
-          <Detail label="Runs">
-            <Code>{[server.command, ...(server.args ?? [])].join(" ")}</Code>
-          </Detail>
-        ) : null}
-        {server.env.length > 0 ? (
-          <Detail label="Environment">
-            <Secrets secrets={server.env} />
-          </Detail>
-        ) : null}
-        {server.headers.length > 0 ? (
-          <Detail label="Headers">
-            <Secrets secrets={server.headers} />
-          </Detail>
-        ) : null}
-        {server.file !== undefined ? (
-          <Detail label="Config">
-            <Code>{inProject(server.file, project)}</Code>
-          </Detail>
-        ) : null}
-        {status?.error !== undefined ? (
-          <Detail label="Error">
-            <span className="text-error-text">{status.error}</span>
-          </Detail>
-        ) : null}
-      </Details>
-      <Tools
-        server={server}
-        status={status}
-        live={live}
-        harness={harness}
-        project={project}
-        onChanged={onChanged}
-      />
-      {server.scope === "bundled" || targets.length === 0 ? null : (
-        <CopyTo
-          what={server.name}
-          from={server.scope}
-          project={project}
-          targets={targets}
-          secrets={[...server.env, ...server.headers].length > 0}
-          copy={(to) => ({ kind: "server", payload: { ...ref, to } })}
-          onCopied={onChanged}
-        />
-      )}
-    </HubRow>
-  );
-}
+const connectionLook = {
+  connected: { dot: "bg-success", label: "Connected" },
+  starting: { dot: "bg-running", label: "Starting" },
+  failed: { dot: "bg-error", label: "Failed" },
+  needsAuth: { dot: "bg-attention", label: "Needs sign-in" },
+  disabled: { dot: "bg-line-strong", label: "Off" },
+} as const;
 
-/**
- * A server's tools, from what its harness reports once connected, each with a switch where the harness
- * can turn one off; a tool already turned off is listed even when the server doesn't report it.
- */
-function Tools({
-  server,
-  status,
-  live,
-  harness,
-  project,
-  onChanged,
-}: {
-  server: HubServer;
-  status: HubServerStatus | undefined;
-  live: boolean;
-  harness: HubHarness;
-  project: string;
-  onChanged: () => void;
-}) {
-  const reported = status?.tools ?? [];
-  const names = [
-    ...reported.map((tool) => tool.name),
-    ...server.disabledTools.filter((tool) => !reported.some((each) => each.name === tool)),
-  ];
-  if (names.length === 0) {
-    if (!harness.support.status) return null;
-    return (
-      <p className="text-meta text-fg-tertiary">
-        {!live
-          ? "Tools show once it connects."
-          : server.enabled
-            ? "It reports no tools."
-            : "Turn it on to see its tools."}
-      </p>
-    );
-  }
-  const switchable = harness.support.tools !== "none";
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-meta font-medium text-fg-secondary">
-        Tools <span className="font-normal text-fg-tertiary tabular-nums">{names.length}</span>
-      </span>
-      <div className="flex flex-col">
-        {names.map((tool) => (
-          <ToolLine
-            key={tool}
-            tool={tool}
-            description={reported.find((each) => each.name === tool)?.description}
-            server={server}
-            harness={harness}
-            project={project}
-            switchable={switchable}
-            onChanged={onChanged}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+const statusOf = (entry: HubEntry<HubServer>, context: HubContext) =>
+  context.live.get(entry.harness.provider)?.statuses?.find((each) => each.name === entry.item.name);
 
-function ToolLine({
-  tool,
-  description,
-  server,
-  harness,
-  project,
-  switchable,
-  onChanged,
-}: {
-  tool: string;
-  description: string | undefined;
-  server: HubServer;
-  harness: HubHarness;
-  project: string;
-  switchable: boolean;
-  onChanged: () => void;
-}) {
-  const setTool = useAtomSet(setHubTool, { mode: "promise" });
-  const [saving, setSaving] = useState<Saving<HubServer>>();
-  const [error, setError] = useState<string>();
-  const enabled = saving?.of === server ? saving.value : !server.disabledTools.includes(tool);
-  const labelId = `tool-${server.scope}-${server.name}-${tool}`;
-
-  const toggle = (next: boolean) => {
-    setError(undefined);
-    setSaving({ of: server, value: next });
-    const payload = {
-      provider: harness.provider,
-      project,
-      name: server.name,
-      scope: server.scope,
-      tool,
-      enabled: next,
+function ServerGroupRow({ group, context }: { group: HubGroup<HubServer>; context: HubContext }) {
+  const [first] = group.entries;
+  if (first === undefined) return null;
+  const server = first.item;
+  const quick = group.entries.filter((entry) => entry.harness.provider === context.picked);
+  const marks = group.entries.map((entry): Mark => {
+    const status = statusOf(entry, context);
+    const look = status === undefined ? undefined : connectionLook[status.connection];
+    const problem = status?.connection === "failed" || status?.connection === "needsAuth";
+    return {
+      provider: entry.harness.provider,
+      on: entry.item.enabled,
+      dot: entry.item.enabled && problem ? look?.dot : undefined,
+      label: `${harnessName[entry.harness.provider]}: ${!entry.item.enabled ? "Off" : (look?.label ?? "On")}`,
     };
-    setTool({ payload }).then(onChanged, (failure: unknown) => {
-      setSaving(undefined);
-      setError(messageOf(failure));
-    });
-  };
-
+  });
   return (
-    <div className="flex min-h-7 items-center gap-3">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span
-          id={labelId}
-          title={description}
-          className={`truncate font-mono text-caption ${enabled ? "text-fg-secondary" : "text-fg-tertiary line-through"}`}
-        >
-          {tool}
-        </span>
-        {error ? <span className="text-meta text-error-text">{error}</span> : null}
-      </div>
-      {switchable ? (
-        <SettingsSwitch
+    <GroupRow
+      name={group.name}
+      line={serverGist(server)}
+      off={group.entries.every((entry) => !entry.item.enabled)}
+      presence={<Presence marks={marks} />}
+      quick={
+        quick.length === 1 && quick[0] !== undefined ? (
+          <QuickServerSwitch entry={quick[0]} context={context} name={group.name} />
+        ) : null
+      }
+    >
+      <ServerConfig server={server} />
+      <Part label="Harnesses">
+        <Copies>
+          {group.entries.map((entry) => (
+            <ServerCopy
+              key={`${entry.harness.provider}:${entry.item.scope}`}
+              entry={entry}
+              context={context}
+            />
+          ))}
+        </Copies>
+        <AddTo group={group} context={context} kind="servers" />
+      </Part>
+      <ToolMatrix group={group} context={context} />
+    </GroupRow>
+  );
+}
+
+/** Turns a server on or off in one harness, and reads that harness's connections again after. */
+function useServerSwitch(entry: HubEntry<HubServer>, context: HubContext) {
+  const setServer = useAtomSet(setHubServer, { mode: "promise" });
+  const refreshStatus = useAtomRefresh(hubStatusAtom(hubStatusKey(entry.harness.provider, context.project)));
+  const { harness, item } = entry;
+  return useSaving(
+    item,
+    item.enabled,
+    (enabled) =>
+      setServer({
+        payload: {
+          provider: harness.provider,
+          project: context.project,
+          name: item.name,
+          scope: item.scope,
+          enabled,
+        },
+      }),
+    () => {
+      context.onChanged();
+      if (harness.support.status) refreshStatus();
+    },
+  );
+}
+
+function QuickServerSwitch({
+  entry,
+  context,
+  name,
+}: {
+  entry: HubEntry<HubServer>;
+  context: HubContext;
+  name: string;
+}) {
+  const { enabled, toggle, error } = useServerSwitch(entry, context);
+  const labelId = useId();
+  return (
+    <span title={error} className="flex items-center">
+      <span id={labelId} className="sr-only">
+        {name} in {harnessName[entry.harness.provider]}
+      </span>
+      <CopySwitch
+        harness={entry.harness}
+        kind="servers"
+        checked={enabled}
+        onCheckedChange={toggle}
+        labelledBy={labelId}
+        compact
+      />
+    </span>
+  );
+}
+
+function ServerCopy({ entry, context }: { entry: HubEntry<HubServer>; context: HubContext }) {
+  const { enabled, toggle, error } = useServerSwitch(entry, context);
+  const labelId = useId();
+  const status = statusOf(entry, context);
+  const live = context.live.get(entry.harness.provider);
+  const look = status === undefined ? undefined : connectionLook[status.connection];
+  const state = !enabled ? null : look !== undefined ? (
+    <span className="flex shrink-0 items-center gap-1.5 text-meta text-fg-tertiary">
+      <span className={`size-1.5 rounded-full ${look.dot}`} />
+      {look.label}
+    </span>
+  ) : live?.waiting === true ? (
+    <span className="shrink-0 text-meta text-fg-tertiary">Connecting…</span>
+  ) : live?.failed !== undefined ? (
+    <span className="shrink-0 text-meta text-fg-tertiary" title={live.failed}>
+      No status
+    </span>
+  ) : null;
+  return (
+    <CopyLine
+      provider={entry.harness.provider}
+      scope={entry.item.scope}
+      file={entry.item.file === undefined ? undefined : inProject(entry.item.file, context.project)}
+      state={state}
+      control={
+        <CopySwitch
+          harness={entry.harness}
+          kind="servers"
           checked={enabled}
           onCheckedChange={toggle}
-          disabled={lockedHere(harness, "tools")}
           labelledBy={labelId}
         />
-      ) : null}
-    </div>
-  );
-}
-
-function SkillRow({ skill, harness, project, targets, onChanged }: SectionProps & { skill: HubSkill }) {
-  const setSkill = useAtomSet(setHubSkill, { mode: "promise" });
-  const [saving, setSaving] = useState<Saving<HubSkill>>();
-  const [error, setError] = useState<string>();
-  const enabled = saving?.of === skill ? saving.value : skill.enabled;
-
-  const toggle = (next: boolean) => {
-    setError(undefined);
-    setSaving({ of: skill, value: next });
-    setSkill({ payload: { provider: harness.provider, project, path: skill.path, enabled: next } }).then(
-      onChanged,
-      (failure: unknown) => {
-        setSaving(undefined);
-        setError(messageOf(failure));
-      },
-    );
-  };
-
-  return (
-    <HubRow
-      name={skill.name}
-      meta={scopeLabel[skill.scope]}
-      metaHint={scopeHint[skill.scope]}
-      off={!enabled}
-      control={
-        harness.support.skills === "none"
-          ? undefined
-          : (labelledBy) => (
-              <SettingsSwitch
-                checked={enabled}
-                onCheckedChange={toggle}
-                disabled={lockedHere(harness, "skills")}
-                labelledBy={labelledBy}
-              />
-            )
       }
-      error={error}
-    >
-      {skill.description ? (
-        <p className="text-meta leading-relaxed text-fg-secondary">{skill.description}</p>
+      error={error ?? (enabled ? status?.error : undefined)}
+      labelId={labelId}
+    />
+  );
+}
+
+/** What a server runs or where it's reached, and the secrets it's given by name. */
+function ServerConfig({ server }: { server: HubServer }) {
+  return (
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 rounded-md border border-line-subtle bg-surface-sunken px-3 py-2.5 text-meta">
+      <dt className="text-fg-tertiary">{server.url !== undefined ? "URL" : "Runs"}</dt>
+      <dd className="min-w-0 font-mono text-caption break-all text-fg-secondary">{serverLine(server)}</dd>
+      {server.env.length > 0 ? (
+        <>
+          <dt className="text-fg-tertiary">Environment</dt>
+          <dd className="min-w-0">
+            <Secrets secrets={server.env} />
+          </dd>
+        </>
       ) : null}
-      <Details>
-        <Detail label="Folder">
-          <Code>{inProject(skill.path, project)}</Code>
-        </Detail>
-      </Details>
-      {skill.scope === "bundled" || targets.length === 0 ? null : (
-        <CopyTo
-          what={skill.name}
-          from={skill.scope}
-          project={project}
-          targets={targets}
-          secrets={false}
-          copy={(to) => ({
-            kind: "skill",
-            payload: { provider: harness.provider, project, path: skill.path, to },
-          })}
-          onCopied={onChanged}
-        />
-      )}
-    </HubRow>
+      {server.headers.length > 0 ? (
+        <>
+          <dt className="text-fg-tertiary">Headers</dt>
+          <dd className="min-w-0">
+            <Secrets secrets={server.headers} />
+          </dd>
+        </>
+      ) : null}
+    </dl>
   );
-}
-
-/**
- * A server or skill: its name and where it's configured, its switch, and its details folded under it
- * until the name is clicked.
- */
-function HubRow({
-  name,
-  meta,
-  metaHint,
-  off,
-  end,
-  control,
-  error,
-  children,
-}: {
-  name: string;
-  meta: string;
-  metaHint: string;
-  off: boolean;
-  end?: ReactNode;
-  control: ((labelledBy: string) => ReactNode) | undefined;
-  error: string | undefined;
-  children: ReactNode;
-}) {
-  const labelId = `hub-${meta}-${name}`;
-  return (
-    <Collapsible.Root>
-      <div className="flex min-h-11 items-center gap-3 py-1.5 pr-4 pl-2.5">
-        <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 pr-1 pl-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
-          <ChevronRight
-            size={13}
-            strokeWidth={2}
-            className="shrink-0 text-fg-tertiary transition-transform duration-200 ease-out-soft group-data-panel-open:rotate-90 motion-reduce:transition-none"
-          />
-          <span
-            id={labelId}
-            className={`min-w-0 truncate text-body ${off ? "text-fg-tertiary" : "text-fg-primary"}`}
-          >
-            {name}
-          </span>
-          <span className="shrink-0 text-meta text-fg-tertiary" title={metaHint}>
-            {meta}
-          </span>
-        </Collapsible.Trigger>
-        {end}
-        {control?.(labelId)}
-      </div>
-      {error ? <p className="-mt-1 px-4 pb-2 pl-9 text-meta text-error-text">{error}</p> : null}
-      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
-        <div className="flex flex-col gap-3 pr-4 pb-3.5 pl-9">{children}</div>
-      </Collapsible.Panel>
-    </Collapsible.Root>
-  );
-}
-
-function Details({ children }: { children: ReactNode }) {
-  return <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-meta">{children}</dl>;
-}
-
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <>
-      <dt className="text-fg-tertiary">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </>
-  );
-}
-
-function Code({ children }: { children: string }) {
-  return <span className="font-mono text-caption break-all text-fg-secondary">{children}</span>;
 }
 
 /** Environment variables or headers by name, each saying whether the config gives it a value. */
@@ -733,15 +774,347 @@ function Secrets({ secrets }: { secrets: ReadonlyArray<HubSecret> }) {
       {secrets.map((secret) => (
         <span
           key={secret.name}
-          className="flex items-center gap-1.5 rounded-md border border-line-subtle px-1.5 py-px"
+          className="flex items-center gap-1.5 rounded-md border border-line-subtle bg-surface-pane px-1.5 py-px"
         >
+          <span className={`size-1.5 rounded-full ${secret.set ? "bg-success" : "bg-attention"}`} />
           <span className="font-mono text-caption text-fg-secondary">{secret.name}</span>
-          <span className={`text-caption ${secret.set ? "text-fg-tertiary" : "text-attention-text"}`}>
-            {secret.set ? "set" : "empty"}
-          </span>
+          <span className="sr-only">{secret.set ? "set" : "empty"}</span>
         </span>
       ))}
     </span>
+  );
+}
+
+/** How many tools show before the rest are asked for. */
+const TOOLS_SHOWN = 8;
+
+/**
+ * A server's tools, one row each, with a column per harness that reports them or has one turned off: a
+ * switch where that harness can turn a single tool off, a dot where it offers the tool but can't.
+ */
+function ToolMatrix({ group, context }: { group: HubGroup<HubServer>; context: HubContext }) {
+  const [all, setAll] = useState(false);
+  const columns = group.entries.filter(
+    (entry) => statusOf(entry, context)?.tools !== undefined || entry.item.disabledTools.length > 0,
+  );
+  const names = [
+    ...new Set(
+      columns.flatMap((entry) => [
+        ...(statusOf(entry, context)?.tools ?? []).map((tool) => tool.name),
+        ...entry.item.disabledTools,
+      ]),
+    ),
+  ];
+  if (names.length === 0) {
+    const reporting = group.entries.find((entry) => entry.harness.support.status);
+    if (reporting === undefined) return null;
+    const live = context.live.get(reporting.harness.provider);
+    return (
+      <p className="text-meta text-fg-tertiary">
+        {live?.statuses === undefined
+          ? "Tools show once it connects."
+          : group.entries.some((entry) => entry.item.enabled)
+            ? "It reports no tools."
+            : "Turn it on to see its tools."}
+      </p>
+    );
+  }
+  const describe = (tool: string) =>
+    columns.flatMap((entry) => statusOf(entry, context)?.tools ?? []).find((each) => each.name === tool)
+      ?.description;
+  const shown = all || names.length <= TOOLS_SHOWN + 1 ? names : names.slice(0, TOOLS_SHOWN);
+  const grid = { gridTemplateColumns: `minmax(0,1fr) repeat(${columns.length}, 2.75rem)` };
+  return (
+    <Part label="Tools" end={<span className="text-meta text-fg-tertiary tabular-nums">{names.length}</span>}>
+      <div className="flex flex-col rounded-md border border-line-subtle bg-surface-sunken">
+        {columns.length > 1 ? (
+          <div style={grid} className="grid items-center border-b border-line-subtle px-3 py-1.5">
+            <span />
+            {columns.map((entry) => (
+              <span
+                key={`${entry.harness.provider}:${entry.item.scope}`}
+                title={harnessName[entry.harness.provider]}
+                className="flex justify-center"
+              >
+                <ProviderLogo provider={entry.harness.provider} size={13} />
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex flex-col divide-y divide-line-subtle">
+          {shown.map((tool) => (
+            <ToolRow
+              key={tool}
+              tool={tool}
+              description={describe(tool)}
+              columns={columns}
+              grid={grid}
+              context={context}
+            />
+          ))}
+        </div>
+        {shown.length < names.length ? (
+          <Button
+            onClick={() => setAll(true)}
+            className="flex h-8 items-center justify-center border-t border-line-subtle text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
+          >
+            Show all {names.length}
+          </Button>
+        ) : null}
+      </div>
+    </Part>
+  );
+}
+
+function ToolRow({
+  tool,
+  description,
+  columns,
+  grid,
+  context,
+}: {
+  tool: string;
+  description: string | undefined;
+  columns: ReadonlyArray<HubEntry<HubServer>>;
+  grid: { gridTemplateColumns: string };
+  context: HubContext;
+}) {
+  const labelId = useId();
+  return (
+    <div style={grid} className="grid min-h-9 items-center gap-y-0.5 px-3 py-1.5">
+      <span className="flex min-w-0 flex-col">
+        <span id={labelId} className="truncate font-mono text-caption text-fg-secondary">
+          {tool}
+        </span>
+        {description ? (
+          <span title={description} className="truncate text-caption text-fg-tertiary">
+            {description}
+          </span>
+        ) : null}
+      </span>
+      {columns.map((entry) => (
+        <span key={`${entry.harness.provider}:${entry.item.scope}`} className="flex justify-center">
+          <ToolCell tool={tool} entry={entry} context={context} labelledBy={labelId} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ToolCell({
+  tool,
+  entry,
+  context,
+  labelledBy,
+}: {
+  tool: string;
+  entry: HubEntry<HubServer>;
+  context: HubContext;
+  labelledBy: string;
+}) {
+  const setTool = useAtomSet(setHubTool, { mode: "promise" });
+  const { harness, item } = entry;
+  const { enabled, toggle } = useSaving(
+    item,
+    !item.disabledTools.includes(tool),
+    (next) =>
+      setTool({
+        payload: {
+          provider: harness.provider,
+          project: context.project,
+          name: item.name,
+          scope: item.scope,
+          tool,
+          enabled: next,
+        },
+      }),
+    context.onChanged,
+  );
+  const offered =
+    item.disabledTools.includes(tool) ||
+    (statusOf(entry, context)?.tools ?? []).some((each) => each.name === tool);
+  if (!offered) {
+    return (
+      <span
+        title={`${harnessName[harness.provider]} doesn't offer it`}
+        className="text-meta text-fg-tertiary"
+      >
+        –
+      </span>
+    );
+  }
+  if (harness.support.tools === "none") {
+    return <span title={limitOf(harness, "tools")} className="size-1.5 rounded-full bg-fg-tertiary" />;
+  }
+  return (
+    <span title={lockedHere(harness, "tools") ? harness.locked : harnessName[harness.provider]}>
+      <SettingsSwitch
+        checked={enabled}
+        onCheckedChange={toggle}
+        disabled={lockedHere(harness, "tools")}
+        labelledBy={labelledBy}
+      />
+    </span>
+  );
+}
+
+// Skills
+
+function SkillGroupRow({ group, context }: { group: HubGroup<HubSkill>; context: HubContext }) {
+  const quick = group.entries.filter((entry) => entry.harness.provider === context.picked);
+  const description = group.entries.find((entry) => entry.item.description)?.item.description;
+  const marks = group.entries.map((entry): Mark => ({
+    provider: entry.harness.provider,
+    on: entry.item.enabled,
+    dot: undefined,
+    label: `${harnessName[entry.harness.provider]}: ${entry.item.enabled ? "On" : "Off"}`,
+  }));
+  return (
+    <GroupRow
+      name={group.name}
+      line={description}
+      off={group.entries.every((entry) => !entry.item.enabled)}
+      presence={<Presence marks={marks} />}
+      quick={
+        quick.length === 1 && quick[0] !== undefined ? (
+          <QuickSkillSwitch entry={quick[0]} context={context} name={group.name} />
+        ) : null
+      }
+    >
+      {description ? <p className="text-body leading-relaxed text-fg-secondary">{description}</p> : null}
+      <Part label="Harnesses">
+        <Copies>
+          {group.entries.map((entry) => (
+            <SkillCopy key={`${entry.harness.provider}:${entry.item.path}`} entry={entry} context={context} />
+          ))}
+        </Copies>
+        <AddTo group={group} context={context} kind="skills" />
+      </Part>
+    </GroupRow>
+  );
+}
+
+function useSkillSwitch(entry: HubEntry<HubSkill>, context: HubContext) {
+  const setSkill = useAtomSet(setHubSkill, { mode: "promise" });
+  const { harness, item } = entry;
+  return useSaving(
+    item,
+    item.enabled,
+    (enabled) =>
+      setSkill({
+        payload: { provider: harness.provider, project: context.project, path: item.path, enabled },
+      }),
+    context.onChanged,
+  );
+}
+
+function QuickSkillSwitch({
+  entry,
+  context,
+  name,
+}: {
+  entry: HubEntry<HubSkill>;
+  context: HubContext;
+  name: string;
+}) {
+  const { enabled, toggle, error } = useSkillSwitch(entry, context);
+  const labelId = useId();
+  return (
+    <span title={error} className="flex items-center">
+      <span id={labelId} className="sr-only">
+        {name} in {harnessName[entry.harness.provider]}
+      </span>
+      <CopySwitch
+        harness={entry.harness}
+        kind="skills"
+        checked={enabled}
+        onCheckedChange={toggle}
+        labelledBy={labelId}
+        compact
+      />
+    </span>
+  );
+}
+
+function SkillCopy({ entry, context }: { entry: HubEntry<HubSkill>; context: HubContext }) {
+  const { enabled, toggle, error } = useSkillSwitch(entry, context);
+  const labelId = useId();
+  return (
+    <CopyLine
+      provider={entry.harness.provider}
+      scope={entry.item.scope}
+      file={inProject(entry.item.path, context.project)}
+      control={
+        <CopySwitch
+          harness={entry.harness}
+          kind="skills"
+          checked={enabled}
+          onCheckedChange={toggle}
+          labelledBy={labelId}
+        />
+      }
+      error={error}
+      labelId={labelId}
+    />
+  );
+}
+
+// Adding to other harnesses
+
+/** A button for each harness that could have the server or skill and doesn't, which copies it there. */
+function AddTo<T extends HubServer | HubSkill>({
+  group,
+  context,
+  kind,
+}: {
+  group: HubGroup<T>;
+  context: HubContext;
+  kind: Kind;
+}) {
+  const source = group.entries.find((entry) => entry.item.scope !== "bundled");
+  const missing = context.harnesses
+    .map((harness) => harness.provider)
+    .filter((provider) => !group.entries.some((entry) => entry.harness.provider === provider));
+  if (source === undefined || missing.length === 0) return null;
+  const { harness, item } = source;
+  const secrets = "env" in item && item.env.length + item.headers.length > 0;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+      <span className="mr-0.5 text-meta text-fg-tertiary">Add to</span>
+      {missing.map((provider) => (
+        <AddButton
+          key={provider}
+          what={group.name}
+          to={provider}
+          from={item.scope}
+          project={context.project}
+          secrets={secrets}
+          copy={(scope) =>
+            kind === "servers"
+              ? {
+                  kind: "server",
+                  payload: {
+                    provider: harness.provider,
+                    project: context.project,
+                    name: item.name,
+                    scope: item.scope,
+                    to: [{ provider, scope }],
+                  },
+                }
+              : {
+                  kind: "skill",
+                  payload: {
+                    provider: harness.provider,
+                    project: context.project,
+                    path: "path" in item ? item.path : "",
+                    to: [{ provider, scope }],
+                  },
+                }
+          }
+          onCopied={context.onChanged}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -766,45 +1139,37 @@ type CopyRequest =
       };
     };
 
-/** A path inside the project from its folder, as `.cursor/mcp.json`; any other in full. */
-const inProject = (path: string, project: string) => {
-  const plain = (each: string) => each.replaceAll("\\", "/").replace(/\/+$/, "");
-  const [file, folder] = [plain(path), plain(project)];
-  return file.toLowerCase().startsWith(`${folder.toLowerCase()}/`) ? file.slice(folder.length + 1) : path;
-};
-
 /**
- * Copies a server or skill into other harnesses, each in its own format: the harnesses ticked, for this
- * project or every one; then where each copy went and what's left to fill in.
+ * Copies a server or skill into one more harness, in its own format, for this project or every one; then
+ * says where the copy went and what's left to fill in.
  */
-function CopyTo({
+function AddButton({
   what,
+  to,
   from,
   project,
-  targets,
   secrets,
   copy,
   onCopied,
 }: {
   what: string;
+  to: ProviderId;
   from: HubScope;
   project: string;
-  targets: ReadonlyArray<ProviderId>;
   secrets: boolean;
-  copy: (to: ReadonlyArray<{ provider: ProviderId; scope: HubTargetScope }>) => CopyRequest;
+  copy: (scope: HubTargetScope) => CopyRequest;
   onCopied: () => void;
 }) {
   const copyServer = useAtomSet(copyHubServer, { mode: "promise" });
   const copySkill = useAtomSet(copyHubSkill, { mode: "promise" });
   const [open, setOpen] = useState(false);
-  const [chosen, setChosen] = useState<ReadonlyArray<ProviderId>>([]);
   const [scope, setScope] = useState<HubTargetScope>(from === "user" ? "user" : "project");
   const [busy, setBusy] = useState(false);
-  const [outcomes, setOutcomes] = useState<ReadonlyArray<HubCopyOutcome>>();
+  const [outcome, setOutcome] = useState<HubCopyOutcome>();
   const [error, setError] = useState<string>();
 
   const start = () => {
-    const request = copy(chosen.map((provider) => ({ provider, scope })));
+    const request = copy(scope);
     setBusy(true);
     setError(undefined);
     const sent =
@@ -814,8 +1179,7 @@ function CopyTo({
     sent.then(
       (done) => {
         setBusy(false);
-        setOutcomes(done);
-        onCopied();
+        setOutcome(done.find((each) => each.provider === to));
       },
       (failure: unknown) => {
         setBusy(false);
@@ -830,43 +1194,35 @@ function CopyTo({
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
-          setOutcomes(undefined);
-          setChosen([]);
+          // The list is read again only once the outcome is closed: the copy takes this button away.
+          if (outcome !== undefined) onCopied();
+          setOutcome(undefined);
           setError(undefined);
         }
       }}
     >
       <Popover.Trigger
         render={<Button />}
-        className="flex h-7 items-center self-start rounded-md border border-line-subtle px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
+        className="flex h-7 items-center gap-1.5 rounded-full border border-dashed border-line-strong pr-2.5 pl-2 text-meta text-fg-secondary transition-colors hover:border-solid hover:bg-surface-hover hover:text-fg-primary data-popup-open:border-solid data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
       >
-        Copy to…
+        <Plus size={12} strokeWidth={2} className="text-fg-tertiary" />
+        <ProviderLogo provider={to} size={13} />
+        {harnessName[to]}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner side="bottom" align="start" sideOffset={4} className="z-50 outline-none">
+        <Popover.Positioner side="bottom" align="start" sideOffset={6} className="z-50 outline-none">
           <Popover.Popup
-            aria-label={`Copy ${what}`}
+            aria-label={`Add ${what} to ${harnessName[to]}`}
             className="flex w-72 max-w-[calc(100vw-1rem)] origin-(--transform-origin) flex-col gap-3 rounded-xl border border-line-subtle bg-surface-overlay p-3.5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0"
           >
-            {outcomes === undefined ? (
+            <span className="flex min-w-0 items-center gap-2 text-body font-medium">
+              <ProviderLogo provider={to} size={14} />
+              <span className="truncate">
+                Add {what} to {harnessName[to]}
+              </span>
+            </span>
+            {outcome === undefined ? (
               <>
-                <span className="truncate text-body font-medium">Copy {what} to</span>
-                <div className="flex flex-col gap-2">
-                  {targets.map((provider) => (
-                    <DialogCheck
-                      key={provider}
-                      checked={chosen.includes(provider)}
-                      onCheckedChange={(checked) =>
-                        setChosen((current) =>
-                          checked ? [...current, provider] : current.filter((each) => each !== provider),
-                        )
-                      }
-                    >
-                      <ProviderLogo provider={provider} size={14} />
-                      {harnessName[provider]}
-                    </DialogCheck>
-                  ))}
-                </div>
                 <ToggleGroup
                   value={[scope]}
                   onValueChange={(value) => {
@@ -888,47 +1244,38 @@ function CopyTo({
                 </ToggleGroup>
                 {secrets ? (
                   <p className="text-meta leading-relaxed text-fg-tertiary">
-                    Secrets aren't copied: each copy names them for you to fill in.
+                    Secrets aren't copied: the copy names them for you to fill in.
                   </p>
                 ) : null}
                 {error ? <p className="text-meta text-error-text">{error}</p> : null}
                 <div className="flex justify-end">
-                  <RowButton tone="primary" onClick={start} disabled={busy || chosen.length === 0}>
-                    {busy ? "Copying…" : "Copy"}
+                  <RowButton tone="primary" onClick={start} disabled={busy}>
+                    {busy ? "Adding…" : "Add"}
                   </RowButton>
                 </div>
               </>
             ) : (
               <>
-                <ul className="flex flex-col gap-2.5">
-                  {outcomes.map((outcome) => (
-                    <li key={outcome.provider} className="flex items-start gap-2">
-                      <span className="flex h-4 shrink-0 items-center">
-                        <ProviderLogo provider={outcome.provider} size={14} />
+                <div className="flex flex-col gap-1 text-meta">
+                  {outcome.skipped !== undefined ? (
+                    <span className="text-fg-tertiary">{outcome.skipped}</span>
+                  ) : (
+                    <>
+                      <span className="text-fg-tertiary">
+                        Added to{" "}
+                        <span
+                          className="font-mono text-caption break-all text-fg-secondary"
+                          title={outcome.wrote}
+                        >
+                          {outcome.wrote === undefined ? "" : inProject(outcome.wrote, project)}
+                        </span>
                       </span>
-                      <div className="flex min-w-0 flex-col gap-0.5 text-meta">
-                        <span className="font-medium">{harnessName[outcome.provider]}</span>
-                        {outcome.skipped !== undefined ? (
-                          <span className="text-fg-tertiary">{outcome.skipped}</span>
-                        ) : (
-                          <>
-                            <span className="text-fg-tertiary">
-                              Added to{" "}
-                              <span className="font-mono text-caption break-all" title={outcome.wrote}>
-                                {outcome.wrote === undefined ? "" : inProject(outcome.wrote, project)}
-                              </span>
-                            </span>
-                            {outcome.fill.length > 0 ? (
-                              <span className="text-attention-text">
-                                Fill in {outcome.fill.join(", ")} there.
-                              </span>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      {outcome.fill.length > 0 ? (
+                        <span className="text-attention-text">Fill in {outcome.fill.join(", ")} there.</span>
+                      ) : null}
+                    </>
+                  )}
+                </div>
                 <div className="flex justify-end">
                   <RowButton onClick={() => setOpen(false)}>Done</RowButton>
                 </div>
