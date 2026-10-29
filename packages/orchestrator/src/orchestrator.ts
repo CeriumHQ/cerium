@@ -102,7 +102,15 @@ import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } 
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
 import { commandOf, FolderActivity, turnFiles, type TurnWork } from "./turnFiles.ts";
-import { liveEvents, replayNotice, rewindPoint, startsAnew, undeliveredIds } from "./rewind.ts";
+import {
+  CONVERSATION_TAGS,
+  REWIND_TAGS,
+  liveEvents,
+  replayNotice,
+  rewindPoint,
+  startsAnew,
+  undeliveredIds,
+} from "./rewind.ts";
 import { StreamedText } from "./streamed.ts";
 import {
   Adapters,
@@ -2906,7 +2914,11 @@ export class Orchestrator extends Context.Service<
        * told the conversation so far. The agents the replaced turns spawned stop, and their files stay
        * as they are. Resolves with the message it went back before.
        */
-      const rewind = Effect.fn("Orchestrator.rewind")(function* (agentId: AgentId, messageId: string) {
+      const rewind = Effect.fn("Orchestrator.rewind")(function* (
+        agentId: AgentId,
+        messageId: string,
+        history?: ReadonlyArray<AgentEvent>,
+      ) {
         const live = runtimes.get(agentId);
         const stored =
           live?.info ??
@@ -2919,7 +2931,13 @@ export class Orchestrator extends Context.Service<
           yield* store.getThread(stored.threadId).pipe(Effect.mapError(unavailable)),
         );
         if (thread === undefined) return yield* notFound(`Thread ${stored.threadId} does not exist.`);
-        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const added = yield* store
+          .listEvents(agentId, {
+            tags: REWIND_TAGS,
+            ...(history === undefined ? {} : { afterSequence: history.at(-1)?.sequence ?? -1 }),
+          })
+          .pipe(Effect.mapError(unavailable));
+        const events = history === undefined ? added : [...history, ...added];
         const point = rewindPoint(events, messageId);
         if ("problem" in point) {
           return yield* new OrchestratorError({ reason: "invalid", message: point.problem });
@@ -3120,7 +3138,9 @@ export class Orchestrator extends Context.Service<
           return yield* notAllowed("Only a thread's lead can go back to before one of your messages.");
         }
         const thread = yield* threadInfo(lead.threadId);
-        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const events = yield* store
+          .listEvents(agentId, { tags: REWIND_TAGS })
+          .pipe(Effect.mapError(unavailable));
         const point = rewindPoint(events, messageId);
         if ("problem" in point) {
           return yield* new OrchestratorError({ reason: "invalid", message: point.problem });
@@ -3269,11 +3289,11 @@ export class Orchestrator extends Context.Service<
         agentId: AgentId,
         messageId: string,
       ) {
-        const { thread, since, snapshot } = yield* restorePoint(agentId, messageId);
+        const { thread, since, snapshot, events } = yield* restorePoint(agentId, messageId);
         // Every agent stops before a file goes back, so none changes one meanwhile; the lead's
         // conversation then goes back, and it hears the agents it spawned are gone.
         yield* Effect.forEach(liveChildren(thread.id), stopRuntime, { discard: true });
-        const message = yield* rewind(agentId, messageId);
+        const message = yield* rewind(agentId, messageId, events);
         const plan = yield* filePlan(thread, since, snapshot);
         if (
           snapshot === undefined ||
@@ -3313,7 +3333,9 @@ export class Orchestrator extends Context.Service<
           Option.getOrUndefined(yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)));
         if (info === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
         const thread = yield* threadInfo(info.threadId);
-        const events = yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable));
+        const events = yield* store
+          .listEvents(agentId, { tags: ["TurnFilesChanged", "TurnFilesReverted"] })
+          .pipe(Effect.mapError(unavailable));
         let changed: Extract<EventPayload, { _tag: "TurnFilesChanged" }> | undefined;
         let state: "undone" | "redone" = "redone";
         for (const { payload } of events) {
@@ -3944,7 +3966,9 @@ export class Orchestrator extends Context.Service<
             yield* store.getThread(info.threadId).pipe(Effect.mapError(unavailable)),
           );
           if (thread === undefined) return yield* notFound(`Thread ${info.threadId} does not exist.`);
-          const live = liveEvents(yield* store.listEvents(agentId).pipe(Effect.mapError(unavailable)));
+          const live = liveEvents(
+            yield* store.listEvents(agentId, { tags: CONVERSATION_TAGS }).pipe(Effect.mapError(unavailable)),
+          );
           // A lead whose session started anew holds none of the conversation before it; the text does.
           return yield* sideQuestions.ask({
             provider: info.provider,

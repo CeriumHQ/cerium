@@ -1,7 +1,31 @@
 import type { TurnRef } from "@cerium/harness";
-import type { AgentEvent, AgentId, FromUser } from "@cerium/protocol";
+import type { AgentEvent, AgentId, EventPayload, FromUser } from "@cerium/protocol";
 
 import { renderTurn } from "./prompts.ts";
+
+/** Rewind planning, session boundaries, queued inputs and outstanding approvals; never tool output. */
+export const REWIND_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
+  "TurnInput",
+  "MessageQueued",
+  "MessageWithdrawn",
+  "ConversationRewound",
+  "LeadHandedOff",
+  "SessionStarted",
+  "AgentSpawned",
+  "PermissionRequested",
+  "PermissionResolved",
+  "SpawnApprovalRequested",
+  "SpawnApprovalResolved",
+];
+
+/** The text exchanges a side question reads, with the boundaries `liveEvents` / `startsAnew` need. */
+export const CONVERSATION_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
+  "TurnInput",
+  "MessageCompleted",
+  "ConversationRewound",
+  "LeadHandedOff",
+  "SessionStarted",
+];
 
 // Going back to before one of the user's messages. The event log stays append-only: a
 // `ConversationRewound` marks the events it replaced, and everything that reads the conversation

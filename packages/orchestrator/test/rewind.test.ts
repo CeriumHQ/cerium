@@ -4,7 +4,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Exit } from "effect";
 
 import { Orchestrator } from "../src/index.ts";
-import { liveEvents, replayNotice, rewindPoint } from "../src/rewind.ts";
+import { REWIND_TAGS, liveEvents, replayNotice, rewindPoint } from "../src/rewind.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
 /** A conversation of one agent, numbered as the store would. */
@@ -61,6 +61,10 @@ describe("rewind points", () => {
     assert.deepStrictEqual(rewindPoint(events, "m2"), {
       problem: "That message is no longer in the conversation.",
     });
+    const actionHistory = events.filter(({ payload }) => REWIND_TAGS.includes(payload._tag));
+    for (const id of ["m1", "m2", "m3"]) {
+      assert.deepStrictEqual(rewindPoint(actionHistory, id), rewindPoint(events, id));
+    }
   });
 
   it("counts from a session that started anew, and replays to go back before its first turn", () => {
