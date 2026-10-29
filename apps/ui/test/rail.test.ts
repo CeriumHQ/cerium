@@ -25,35 +25,16 @@ const codex: ProviderUsage = {
 };
 
 describe("usageRings", () => {
-  it("gives each limit an arc in the harness's order, leaving a spending cap out", () => {
+  it("shows the limit with the least left, leaving a spending cap out", () => {
     const [ring] = usageRings([claude], new Set(["claude"]));
-    expect(ring?.arcs).toEqual([
-      { label: "Current session", left: 60 },
-      { label: "Weekly", left: 30 },
-    ]);
+    expect(ring?.label).toBe("Weekly");
     expect(ring?.left).toBe(30);
     expect(ring?.plan).toBe("max");
     expect(ring?.meters).toHaveLength(3);
   });
 
-  it("fills each arc with what's left of its own limit", () => {
-    expect(usageRings([codex], new Set(["codex"]))[0]?.arcs[0]?.left).toBe(8);
-  });
-
-  it("keeps the tightest of the rest as the last arc past three limits", () => {
-    const many: ProviderUsage = {
-      _tag: "Subscribed",
-      provider: "claude",
-      meters: [
-        { label: "Current session", usedPercent: 10 },
-        { label: "Weekly · All models", usedPercent: 20 },
-        { label: "Weekly · Opus", usedPercent: 30 },
-        { label: "Weekly · Sonnet", usedPercent: 80 },
-      ],
-      checkedAt: now,
-    };
-    const labels = usageRings([many], new Set(["claude"]))[0]?.arcs.map((arc) => arc.label);
-    expect(labels).toEqual(["Current session", "Weekly · All models", "Weekly · Sonnet"]);
+  it("shows a harness's only limit", () => {
+    expect(usageRings([codex], new Set(["codex"]))[0]?.left).toBe(8);
   });
 
   it("shows only harnesses that can run threads, and none that couldn't be read", () => {

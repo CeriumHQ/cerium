@@ -9,7 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - A new thread shows its question plainly, without the frosted glass over it that the pointer polished and typing wiped clear: a heading centred over the message box, each line coming into focus in turn as the pane opens. A new chat no longer says that chats read and search the web and never change your files.
-- The usage rings at the foot of the rail are grey like the rail's icons, over a visible track of the whole limit, with thinner arcs and a softer mark; a limit turns amber only under a quarter left and red under a tenth, where it turned amber at half.
+- The usage rings at the foot of the rail draw one arc per harness, its tightest limit, instead of a nested arc per limit; the tooltip still lists every limit and marks the one drawn. The arc is grey like the rail's icons, over a visible track of the whole limit, with a softer mark, and turns amber only under a quarter left and red under a tenth, where it turned amber at half.
 - Settings → Roster no longer shows or edits a line under each model. Settings → Tools is now Advisor, tagged Experimental, and the Your MCP servers switch is gone: agents always get the MCP servers set up in each harness, as before by default (`includeUserMcpServers` leaves the settings).
 - Settings → Harnesses: Update all updates every harness with a newer release in turn, in one dialog. The blue dot on a harness's icon is gone, and each row shows the harness's version (`v1.4.12 → v1.4.13` when a newer one is out) where it showed the plan. Muse Code updates itself when it starts and Cursor runs on the SDK that ships with Cerium, so neither has an update command to run.
 

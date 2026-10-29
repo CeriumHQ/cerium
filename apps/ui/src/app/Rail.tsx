@@ -165,8 +165,9 @@ function UsageRings({
 }
 
 const SIZE = 30;
-/** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
-const bands = { 1: [2, 0], 2: [1.75, 1.25], 3: [1.5, 1] } as const;
+const STROKE = 2;
+const RADIUS = SIZE / 2 - STROKE / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /**
  * A limit is quiet, in the rail's own grey, while there's plenty of it; it takes a colour only once it
@@ -180,45 +181,36 @@ const arcTone = (left: number) =>
       : { stroke: "stroke-error", fill: "bg-error" };
 
 /**
- * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
- * as its limit runs down, over a faint track of the whole.
+ * The harness's mark inside one arc, its tightest limit, emptying clockwise from the top as that limit
+ * runs down over a faint track of the whole; the tooltip lists the rest.
  */
 function Ring({ ring }: { ring: UsageRing }) {
-  const [stroke, gap] = bands[Math.min(ring.arcs.length, 3) as 1 | 2 | 3];
   return (
     <span className="relative grid size-[30px] place-items-center">
       <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0 -rotate-90">
-        {ring.arcs.map((arc, index) => {
-          const radius = SIZE / 2 - stroke / 2 - index * (stroke + gap);
-          const circumference = 2 * Math.PI * radius;
-          return (
-            <g key={arc.label}>
-              <circle
-                cx={SIZE / 2}
-                cy={SIZE / 2}
-                r={radius}
-                fill="none"
-                strokeWidth={stroke}
-                className="stroke-line-strong"
-              />
-              <circle
-                cx={SIZE / 2}
-                cy={SIZE / 2}
-                r={radius}
-                fill="none"
-                strokeWidth={stroke}
-                strokeLinecap="round"
-                strokeDasharray={circumference}
-                strokeDashoffset={circumference * (1 - arc.left / 100)}
-                className={`${arcTone(arc.left).stroke} transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft`}
-              />
-            </g>
-          );
-        })}
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          className="stroke-line-strong"
+        />
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={CIRCUMFERENCE * (1 - ring.left / 100)}
+          className={`${arcTone(ring.left).stroke} transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft`}
+        />
       </svg>
       <ProviderLogo
         provider={ring.provider}
-        size={ring.arcs.length > 2 ? 11 : 13}
+        size={14}
         className="text-fg-secondary transition-colors duration-150 group-hover:text-fg-primary"
       />
     </span>
@@ -233,13 +225,13 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
         {ring.plan ? <span className="font-normal text-fg-tertiary"> · {planName(ring.plan)}</span> : null}
       </span>
       {ring.meters.map((meter) => {
-        const arc = ring.arcs.find(({ label }) => label === meter.label);
+        const drawn = meter.label === ring.label;
         return (
           <span key={meter.label} className="flex flex-col">
             <span className="flex justify-between gap-6 tabular-nums">
               <span className="flex items-center gap-1.5 text-fg-secondary">
-                {/* The arc's colour, so a row finds its arc; a limit without an arc keeps the gap. */}
-                <span className={`size-2 rounded-full ${arc === undefined ? "" : arcTone(arc.left).fill}`} />
+                {/* The ring's colour on the limit it draws; the others keep the gap. */}
+                <span className={`size-2 rounded-full ${drawn ? arcTone(ring.left).fill : ""}`} />
                 {meter.label}
               </span>
               {leftLabel(meter)}
