@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- A response no longer opens with a header of its harness's mark and its model, which the message box already shows. For an agent on Auto, the level the effort router picked moves to the turn's footer as "High effort", beside its time and tokens, with how the router decided under the pointer ("Auto picked High", its confidence, time and cost, or why it kept the level), where it read "Auto · High" beside the model.
 - A new thread shows its question plainly, without the frosted glass over it that the pointer polished and typing wiped clear: a heading centred over the message box, each line coming into focus in turn as the pane opens. A new chat no longer says that chats read and search the web and never change your files.
 - The usage rings at the foot of the rail draw one arc per harness, its tightest limit, instead of a nested arc per limit; the tooltip still lists every limit and marks the one drawn. The arc is grey like the rail's icons, over a visible track of the whole limit, with a softer mark, and turns amber only under a quarter left and red under a tenth, where it turned amber at half.
 - Settings → Roster no longer shows or edits a line under each model. Settings → Tools is now Advisor, tagged Experimental, and the Your MCP servers switch is gone: agents always get the MCP servers set up in each harness, as before by default (`includeUserMcpServers` leaves the settings).

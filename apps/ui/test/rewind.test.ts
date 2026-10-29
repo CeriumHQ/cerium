@@ -61,8 +61,8 @@ describe("edited messages", () => {
     const items = layout(blocks);
     const folded = items.find((item) => item.kind === "replaced");
     expect(folded).toMatchObject({ kind: "replaced", turns: 1 });
-    // The new message starts a response of its own, under its own header.
-    expect(items.slice(-4).map((item) => item.kind)).toEqual(["input", "header", "block", "turnEnd"]);
+    // The new message starts a response of its own.
+    expect(items.slice(-3).map((item) => item.kind)).toEqual(["input", "block", "turnEnd"]);
   });
 
   it("nests an earlier version inside a later rewind that goes back further", () => {

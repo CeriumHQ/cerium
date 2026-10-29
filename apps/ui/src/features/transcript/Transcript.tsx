@@ -15,7 +15,6 @@ import {
 } from "react";
 
 import { ImageGallery } from "../../components/ImageViewer.tsx";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
@@ -35,7 +34,6 @@ import {
   Notice,
   PermissionCard,
   Reasoning,
-  RoutedEffort,
   SpawnAsk,
   SpawnCard,
   TurnFooter,
@@ -44,14 +42,13 @@ import {
   type ChildState,
 } from "./Blocks.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
-import { currentModel, layout, pendingRouted, runTimings, showsProgress, type Item } from "./layout.ts";
+import { layout, runTimings, showsProgress, type Item } from "./layout.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageMenuArea } from "./MessageMenu.tsx";
 import {
   holdsQueue,
   type AgentActivity,
   type QueuedMessages,
-  type RoutedDecision,
   type TranscriptBlock,
   type TurnChanges as TurnChangesModel,
 } from "./model.ts";
@@ -72,9 +69,9 @@ interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
   /** The user's messages that haven't reached the agent yet. */
   readonly queued: QueuedMessages;
-  /** The lead's provider, and the model it runs on now, which labels a response with no model of its own. */
-  readonly agent: { readonly provider: ProviderId; readonly model: string };
-  /** A model's id as people know it ("Opus 5.5"); without it, responses show the id. */
+  /** The lead's provider, which a switch that names none ran on. */
+  readonly agent: { readonly provider: ProviderId };
+  /** A model's id as people know it ("Opus 5.5"); without it, switches show the id. */
   readonly modelName?: ((model: string, provider: ProviderId) => string) | undefined;
   /** The thread's folder, which paths in the conversation are relative to; absent for chats. */
   readonly folder?: string | undefined;
@@ -140,8 +137,6 @@ const entrance = (item: Item): string => {
   switch (item.kind) {
     case "input":
       return "arrive";
-    // A response's header takes the place of the one shown while it was awaited, which already came in.
-    case "header":
     // A run writes in its own line, and brings in each of its steps as they come.
     case "run":
     case "replaced":
@@ -152,7 +147,6 @@ const entrance = (item: Item): string => {
       return "arrive-spawns";
     case "turnEnd":
       return "trail";
-    case "routed":
     case "switch":
     case "imported":
     case "spawnAsk":
@@ -223,12 +217,9 @@ export function Transcript({
   const last = items.at(-1);
   const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
-  // A response labels itself with the model it ran on, which the thread's events say; the model it
-  // runs on now is only for one that hasn't started and for threads that never said.
-  const modelLabel = (model: string | undefined, provider: ProviderId | undefined) =>
-    model === undefined ? agent.model : (modelName?.(model, provider ?? agent.provider) ?? model);
-  const responding =
-    items.findLast((item) => item.kind === "header" || item.kind === "input")?.kind === "header";
+  // A switch names the model as people know it.
+  const modelLabel = (model: string, provider: ProviderId | undefined) =>
+    modelName?.(model, provider ?? agent.provider) ?? model;
   // The chosen text size scales the whole column, so icons and spacing keep their proportions.
   const scale = textScale(useAtomValue(textSizeAtom));
   // A phone's keyboard shrinks the message box to one line, so the end needs less room.
@@ -282,12 +273,8 @@ export function Transcript({
             item={item}
             last={!replaced && item === last}
             activity={replaced ? "ended" : activity}
-            provider={
-              (item.kind === "header" || item.kind === "switch" ? item.provider : undefined) ?? agent.provider
-            }
-            model={
-              item.kind === "header" || item.kind === "switch" ? modelLabel(item.model, item.provider) : ""
-            }
+            provider={(item.kind === "switch" ? item.provider : undefined) ?? agent.provider}
+            model={item.kind === "switch" ? modelLabel(item.model, item.provider) : ""}
             replaced={replaced}
             fresh={
               !replaced && item.kind === "run"
@@ -323,17 +310,6 @@ export function Transcript({
               }}
             >
               <HistoryWindow items={items} viewport={viewport} render={(item) => renderItem(item, false)} />
-              {working && !responding ? (
-                <div className="arrive-header">
-                  <ResponseHeader
-                    agent={{
-                      provider: agent.provider,
-                      model: modelLabel(currentModel(shown), agent.provider),
-                    }}
-                    routed={pendingRouted(shown)}
-                  />
-                </div>
-              ) : null}
               {working ? (
                 <div className="arrive-late">
                   <Working />
@@ -467,14 +443,6 @@ const TranscriptItem = memo(
               )}
             </div>
           );
-        case "header":
-          return <ResponseHeader key={each.id} agent={{ provider, model }} routed={each.routed} />;
-        case "routed":
-          return each.decision.effort === undefined ? null : (
-            <div key={each.id} className="flex text-meta text-fg-tertiary">
-              <RoutedEffort routed={each.decision} />
-            </div>
-          );
         case "imported":
           return <ImportedFrom key={each.id} block={each.block} />;
         case "switch":
@@ -516,7 +484,7 @@ const TranscriptItem = memo(
         case "block":
           return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
         case "turnEnd":
-          return <TurnFooter key={each.id} block={each.block} text={each.text} />;
+          return <TurnFooter key={each.id} block={each.block} text={each.text} routed={each.routed} />;
         // Laid out by the transcript itself, around the items it holds.
         case "replaced":
           return null;
@@ -571,30 +539,6 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
           actions={agentActions}
         />
       ))}
-    </div>
-  );
-}
-
-/** The start of a response: the model it ran on and, for an agent on Auto, the effort the router chose. */
-export function ResponseHeader({
-  agent,
-  routed,
-}: {
-  agent: TranscriptProps["agent"];
-  routed?: RoutedDecision | undefined;
-}) {
-  return (
-    <div className="flex items-center gap-2 pt-2 text-meta text-fg-tertiary">
-      <span
-        data-header-mark
-        className="grid size-5 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary"
-      >
-        <ProviderLogo provider={agent.provider} size={11} />
-      </span>
-      <span data-header-name className="font-medium text-fg-secondary">
-        {agent.model}
-      </span>
-      {routed?.effort === undefined ? null : <RoutedEffort routed={routed} />}
     </div>
   );
 }

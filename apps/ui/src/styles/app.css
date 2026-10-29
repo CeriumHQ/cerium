@@ -483,23 +483,6 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation: asks 1.4s ease-out 380ms backwards;
   }
 
-  /*
-   * A response begins: the harness's mark is stamped down, and the model's name writes itself out
-   * from beside it.
-   */
-  .arrive-header [data-header-mark] {
-    animation: stamp 420ms var(--ease-pop) backwards;
-  }
-
-  .arrive-header [data-header-name] {
-    animation: write-in 380ms var(--ease-out-soft) 110ms backwards;
-  }
-
-  /* The effort the router picked follows the name. */
-  .arrive-header [data-header-name] ~ * {
-    animation: write-in 340ms var(--ease-out-soft) 240ms backwards;
-  }
-
   /* Shown only once the wait outlasts a moment, so a quick response doesn't flash it. */
   .arrive-late {
     animation: fade-in 320ms ease-out 260ms backwards;

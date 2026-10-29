@@ -287,7 +287,7 @@ export function ThreadPane({
                     folder={viewed.thread.cwd}
                     threadId={viewed.thread.id}
                     focused={focused}
-                    agent={{ provider: lead.provider, model: leadModel }}
+                    agent={{ provider: lead.provider }}
                     modelName={(model, provider) => modelLabel(models, provider, model)}
                     {...(cloud ? {} : { messageBox: box })}
                     activity={leadActivity}
