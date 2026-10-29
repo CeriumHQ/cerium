@@ -53,7 +53,7 @@ const borderClass = (invalid: boolean) => (invalid ? "border-error-text" : "bord
 
 /** A row of the card: what it's for, its field, and what sits at the end (where it came from, a remove button). */
 const rowClass =
-  "grid grid-cols-[6rem_minmax(0,1fr)_5.5rem] items-center gap-x-2.5 max-sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]";
+  "grid grid-cols-[6rem_minmax(0,1fr)_5.5rem] items-center gap-x-2.5 max-sm:grid-cols-[4.5rem_minmax(0,1fr)_1.75rem]";
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
 
