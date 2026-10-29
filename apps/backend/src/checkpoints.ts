@@ -349,9 +349,14 @@ export const maintainCheckpoints = Effect.fn("Checkpoints.maintain")(function* (
    */
   const adopt = Effect.fn("Checkpoints.adopt")(function* (store: string) {
     const own = path.join(store, "objects");
-    const held = (yield* entries(own)).filter((name) => name !== "info");
-    const packed = (yield* entries(path.join(own, "pack"))).length > 0;
-    if (held.every((name) => name === "pack") && !packed) return;
+    // Its `pack` folder stays, as git makes it, emptied: Windows won't remove a folder git is reading.
+    const held = [
+      ...(yield* entries(own))
+        .filter((name) => name !== "info" && name !== "pack")
+        .map((name) => path.join(own, name)),
+      ...(yield* entries(path.join(own, "pack"))).map((name) => path.join(own, "pack", name)),
+    ];
+    if (held.length === 0) return;
     const ids = yield* objectsOf(store, own);
     const absent = ids.length === 0 ? [] : yield* missing(ids);
     if (absent.length > 0) yield* pack(absent, own);
@@ -359,7 +364,7 @@ export const maintainCheckpoints = Effect.fn("Checkpoints.maintain")(function* (
       return yield* failure("The shared store doesn't hold all of them.");
     }
     yield* pointAtShared(fs, path, store, objects);
-    yield* Effect.forEach(held, (name) => fs.remove(path.join(own, name), { recursive: true, force: true }), {
+    yield* Effect.forEach(held, (file) => fs.remove(file, { recursive: true, force: true }), {
       discard: true,
     }).pipe(Effect.mapError(() => failure("Couldn't remove the store's own copies.")));
     yield* Effect.logInfo(`Moved ${ids.length} snapshot objects from ${store} into the shared store`);

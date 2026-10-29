@@ -1,7 +1,7 @@
 import { Checkpoints } from "@cerium/orchestrator";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Context, Effect, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, Fiber, FileSystem, Layer, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { createHash } from "node:crypto";
@@ -56,6 +56,47 @@ const setup = Effect.gen(function* () {
   const checkpoints = Context.get(yield* Layer.build(checkpointsLayer({ directory: home })), Checkpoints);
   return { fs, path, folder, home, write, read, exists, checkpoints, spawner };
 });
+
+/** A snapshot of `folder` as an older Cerium kept it: in the folder's own store under `home`. */
+const keptByOlderCerium = (folder: string, home: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const resolved = path.resolve(folder);
+    const store = path.join(
+      home,
+      createHash("sha256")
+        .update(process.platform === "win32" ? resolved.toLowerCase() : resolved)
+        .digest("hex")
+        .slice(0, 20),
+    );
+    const oldGit = (args: ReadonlyArray<string>) =>
+      spawner.string(
+        ChildProcess.make(
+          "git",
+          [`--git-dir=${store}`, `--work-tree=${folder}`, "-c", "core.autocrlf=false", ...args],
+          { cwd: folder, env: { GIT_INDEX_FILE: path.join(store, "index") }, extendEnv: true },
+        ),
+      );
+    yield* spawner.string(ChildProcess.make("git", ["init", "--quiet", "--bare", store], { cwd: home }));
+    yield* fs.writeFileString(path.join(store, "info", "exclude"), "node_modules/\n");
+    yield* oldGit(["add", "--all", "--", "."]);
+    const old = (yield* oldGit(["write-tree"])).trim();
+    return { store, oldGit, old };
+  });
+
+/** What `store`'s own object folder and its `pack` folder hold. */
+const ownObjects = (store: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const objects = path.join(store, "objects");
+    return [
+      (yield* fs.readDirectory(objects)).toSorted(),
+      yield* fs.readDirectory(path.join(objects, "pack")),
+    ];
+  });
 
 describe("Checkpoints", () => {
   it.effect("puts back the files it is asked to, as a snapshot held them, and no others", () =>
@@ -233,28 +274,8 @@ describe("Checkpoints", () => {
     "reads an older Cerium's store, then moves its objects to the shared one and still reads them",
     () =>
       Effect.gen(function* () {
-        const { folder, home, write, read, checkpoints, fs, path, spawner } = yield* setup;
-        // An older Cerium kept the folder's objects in its own store.
-        const resolved = path.resolve(folder);
-        const store = path.join(
-          home,
-          createHash("sha256")
-            .update(process.platform === "win32" ? resolved.toLowerCase() : resolved)
-            .digest("hex")
-            .slice(0, 20),
-        );
-        const oldGit = (args: ReadonlyArray<string>) =>
-          spawner.string(
-            ChildProcess.make(
-              "git",
-              [`--git-dir=${store}`, `--work-tree=${folder}`, "-c", "core.autocrlf=false", ...args],
-              { cwd: folder, env: { GIT_INDEX_FILE: path.join(store, "index") }, extendEnv: true },
-            ),
-          );
-        yield* spawner.string(ChildProcess.make("git", ["init", "--quiet", "--bare", store], { cwd: home }));
-        yield* fs.writeFileString(path.join(store, "info", "exclude"), "node_modules/\n");
-        yield* oldGit(["add", "--all", "--", "."]);
-        const old = (yield* oldGit(["write-tree"])).trim();
+        const { folder, home, write, read, checkpoints } = yield* setup;
+        const { store, oldGit, old } = yield* keptByOlderCerium(folder, home);
 
         yield* write("src/a.ts", "changed\n");
         const now = yield* checkpoints.save(folder);
@@ -264,7 +285,7 @@ describe("Checkpoints", () => {
 
         yield* maintainCheckpoints({ directory: home });
         // Nothing but where to find them is left in the folder's own store.
-        assert.deepStrictEqual(yield* fs.readDirectory(path.join(store, "objects")), ["info"]);
+        assert.deepStrictEqual(yield* ownObjects(store), [["info", "pack"], []]);
         assert.deepStrictEqual(yield* checkpoints.changes(folder, old, now), [
           { path: "src/a.ts", change: "modified" },
         ]);
@@ -343,6 +364,62 @@ describe("Checkpoints", () => {
       assert.isTrue(yield* fs.exists(damaged));
       assert.deepStrictEqual(yield* checkpoints.changes(folder, tree, tree), []);
       assert.strictEqual(yield* checkpoints.save(folder), tree);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps every snapshot while saves and restores run beside maintenance", () =>
+    Effect.gen(function* () {
+      const { folder, home, write, read, checkpoints } = yield* setup;
+      const { store, old } = yield* keptByOlderCerium(folder, home);
+      const trees: Array<string> = [];
+      const work = Effect.gen(function* () {
+        for (let version = 0; version < 6; version++) {
+          yield* write("src/a.ts", `v${version}\n`);
+          trees.push(yield* checkpoints.save(folder));
+          // Reads the older store's objects as maintenance moves them.
+          yield* checkpoints.restore(folder, old, ["src/b.ts"]);
+        }
+      });
+      const maintain = maintainCheckpoints({ directory: home, looseLimit: 1, packLimit: 2 });
+      yield* Effect.all([work, Effect.forEach([1, 2, 3, 4], () => maintain, { discard: true })], {
+        concurrency: "unbounded",
+      });
+      yield* maintainCheckpoints({ directory: home });
+
+      assert.deepStrictEqual(yield* ownObjects(store), [["info", "pack"], []]);
+      for (const tree of trees) {
+        assert.deepStrictEqual(yield* checkpoints.changes(folder, old, tree), [
+          { path: "src/a.ts", change: "modified" },
+        ]);
+      }
+      yield* checkpoints.restore(folder, trees[0]!, ["src/a.ts"]);
+      assert.strictEqual(yield* read("src/a.ts"), "v0\n");
+      yield* checkpoints.restore(folder, old, ["src/a.ts"]);
+      assert.strictEqual(yield* read("src/a.ts"), "one\r\n");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  // Live: maintenance is stopped after real time has passed, at whatever step it reached.
+  it.live("keeps every snapshot when maintenance is stopped part way, and finishes the next time", () =>
+    Effect.gen(function* () {
+      const { folder, home, write, read, checkpoints } = yield* setup;
+      const { store, old } = yield* keptByOlderCerium(folder, home);
+      for (const delay of [0, 20, 60, 150, 300]) {
+        yield* write("src/a.ts", `stopped after ${delay}\n`);
+        const now = yield* checkpoints.save(folder);
+        const fiber = yield* Effect.forkChild(
+          maintainCheckpoints({ directory: home, looseLimit: 1, packLimit: 2 }),
+        );
+        yield* Effect.sleep(delay);
+        yield* Fiber.interrupt(fiber);
+        assert.deepStrictEqual(yield* checkpoints.changes(folder, old, now), [
+          { path: "src/a.ts", change: "modified" },
+        ]);
+      }
+      yield* maintainCheckpoints({ directory: home });
+      assert.deepStrictEqual(yield* ownObjects(store), [["info", "pack"], []]);
+      yield* checkpoints.restore(folder, old, ["src/a.ts"]);
+      assert.strictEqual(yield* read("src/a.ts"), "one\r\n");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
