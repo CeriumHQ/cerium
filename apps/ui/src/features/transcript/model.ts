@@ -24,6 +24,9 @@ export const STEER_VERSION = 19;
 /** The `RPC_VERSION` that brought `WithdrawMessage`; an older machine's queued messages can't be taken back. */
 export const WITHDRAW_VERSION = 26;
 
+/** The `RPC_VERSION` that brought `AskSideQuestion`; an older machine can't answer side questions. */
+export const SIDE_QUESTION_VERSION = 44;
+
 // The transcript is a pure fold over one agent's canonical events. Streaming deltas grow a block
 // until its completed event replaces the text, so live and replayed threads render identically.
 

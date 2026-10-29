@@ -66,6 +66,7 @@ import {
   accountThreadsAtom,
   cloudEventsAtom,
   compactAgent,
+  askSideQuestion,
   continueThread,
   createThread,
   deleteThread,
@@ -222,7 +223,12 @@ import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { openFind } from "../features/transcript/find.ts";
-import { EDIT_VERSION, STEER_VERSION, WITHDRAW_VERSION } from "../features/transcript/model.ts";
+import {
+  EDIT_VERSION,
+  SIDE_QUESTION_VERSION,
+  STEER_VERSION,
+  WITHDRAW_VERSION,
+} from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
@@ -877,6 +883,7 @@ function Workspace() {
   const revertTurn = useAtomSet(revertTurnFiles, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const compactLead = useAtomSet(compactAgent, { mode: "promise" });
+  const askSide = useAtomSet(askSideQuestion, { mode: "promise" });
   const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
@@ -2067,6 +2074,10 @@ function Workspace() {
         : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
     compact: (agentId) => compactLead({ payload: { agentId } }),
+    askSide:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SIDE_QUESTION_VERSION
+        ? (agentId, question, earlier) => askSide({ payload: { agentId, question, earlier } })
+        : undefined,
     handOff:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION
         ? (agentId, choice) => handOffTo({ payload: { agentId, ...choice } })
