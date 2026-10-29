@@ -668,16 +668,67 @@ describe("Store", () => {
           yield* store.appendEvents([event(4)]);
           assert.deepStrictEqual(yield* store.countSyncedEvents, new Map([[thread.id, 3]]));
           const ids = (events: ReadonlyArray<AgentEvent>) => events.map((each) => each.id);
-          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 0, 10)), [
+          assert.deepStrictEqual(ids(yield* store.listSyncedEventsAfter(thread.id, undefined, 10)), [
             "evt_3",
             "evt_1",
             "evt_4",
           ]);
-          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 1, 1)), ["evt_1"]);
-          assert.deepStrictEqual(ids(yield* store.listSyncedEvents(thread.id, 3, 10)), []);
+          assert.strictEqual(yield* store.syncedEventCursor(thread.id, 0), undefined);
+          const first = yield* store.syncedEventCursor(thread.id, 1);
+          assert.strictEqual(first, "evt_3");
+          assert.deepStrictEqual(ids(yield* store.listSyncedEventsAfter(thread.id, first, 1)), ["evt_1"]);
+          const second = yield* store.syncedEventCursor(thread.id, 2);
+          assert.strictEqual(second, "evt_1");
+          assert.deepStrictEqual(ids(yield* store.listSyncedEventsAfter(thread.id, second, 10)), ["evt_4"]);
+          const end = yield* store.syncedEventCursor(thread.id, 3);
+          assert.deepStrictEqual(ids(yield* store.listSyncedEventsAfter(thread.id, end, 10)), []);
+          yield* store.appendEvents([event(5)]);
+          assert.deepStrictEqual(ids(yield* store.listSyncedEventsAfter(thread.id, end, 10)), ["evt_5"]);
+          assert.deepStrictEqual(
+            ids(yield* store.listSyncedEventsAfter(thread.id, "deleted-anchor", 10)),
+            [],
+          );
+          assert(Exit.isFailure(yield* Effect.exit(store.syncedEventCursor(thread.id, 20))));
         }),
       ),
   );
+
+  it.effect("keeps sync anchors across rowid gaps and VACUUM, without a page sort", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-sync-")), "events.db");
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      const other = { ...thread, id: "thr_removed" as ThreadId };
+      const otherLead = { ...lead, id: "agt_removed" as AgentId, threadId: other.id };
+      yield* store.createThread(other);
+      yield* store.createThread(thread);
+      yield* store.createAgent(otherLead);
+      yield* store.createAgent(lead);
+      yield* store.appendEvents([
+        { ...event(0), id: "evt_removed" as EventId, threadId: other.id, agentId: otherLead.id },
+        event(1),
+        event(2),
+        event(3),
+      ]);
+      const anchor = yield* store.syncedEventCursor(thread.id, 1);
+      yield* store.deleteThread(other.id);
+      const db = new DatabaseSync(filename);
+      db.exec("VACUUM");
+      const plan = db
+        .prepare(
+          "EXPLAIN QUERY PLAN SELECT id FROM events WHERE thread_id=? AND tag NOT IN ('MessageDelta','ReasoningDelta') AND rowid>(SELECT rowid FROM events WHERE id=?) ORDER BY rowid LIMIT 200",
+        )
+        .all(thread.id, anchor!);
+      assert.isFalse(plan.some((row) => String(row.detail).includes("TEMP B-TREE")));
+      assert.isTrue(
+        plan.some((row) => String(row.detail).includes("events_thread (thread_id=? AND rowid>?)")),
+      );
+      db.close();
+      assert.deepStrictEqual(
+        (yield* store.listSyncedEventsAfter(thread.id, anchor, 200)).map((row) => row.id),
+        ["evt_2", "evt_3"],
+      );
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
 
   it.effect("finds how a tool call in a thread ended by its id, through the index", () =>
     withStore(

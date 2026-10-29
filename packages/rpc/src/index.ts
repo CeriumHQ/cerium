@@ -190,6 +190,12 @@ export const MachineRpcs = RpcGroup.make(
     success: HistoryPage,
     error: CeriumError,
   }),
+  /** Search text and rewind markers, paged without tool payloads. Since RPC_VERSION 45. */
+  Rpc.make("ThreadMessagePage", {
+    payload: { agentId: AgentId, before: Schema.optionalKey(Schema.Int) },
+    success: CloudHistoryPage,
+    error: CeriumError,
+  }),
   Rpc.make("ThreadEvents", {
     payload: {
       threadId: ThreadId,

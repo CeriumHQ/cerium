@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Cloud uploads walk indexed event pages from their last acknowledged event, translating the relay's existing count cursor once on reconnect. Large histories avoid repeated OFFSET scans and sorts, while retries, legacy streamed deltas and database rewrites keep their place.
 - Large code fences stream as a bounded preview and extend without reparsing their earlier lines. Closing a fence restores the full highlighted, foldable code, diagram, math or artifact; copying keeps its entire text.
 - Consecutive tool calls, agent cards and user inputs group in linear time, so a long run no longer spends progressively longer copying its earlier rows.
 - Thread history has bounded compact pages and a durable append cursor for reconnect catch-up, including late imports and tied event timestamps. Old compact rows are filled only as their pages are read, in small resumable transactions. Cloud reads can page within individual uploads; legacy full-history RPCs remain available for older clients and whole-history consumers.

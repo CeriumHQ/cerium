@@ -8,6 +8,7 @@ import {
   type EventPayload,
   type HistoryPage,
   type HistoryRequest,
+  type CloudHistoryPage,
   type ThreadId,
   type ThreadMode,
   type ThreadWorktree,
@@ -236,6 +237,7 @@ export class Store extends Context.Service<
       options?: { readonly tags?: ReadonlyArray<EventPayload["_tag"]>; readonly withoutImages?: boolean },
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     historyPage(threadId: ThreadId, request: HistoryRequest): Effect.Effect<HistoryPage, StoreError>;
+    messagePage(agentId: AgentId, before?: number): Effect.Effect<CloudHistoryPage, StoreError>;
     /** How a tool call in a thread ended, for reading an image of its output on its own. */
     findToolCompletion(
       threadId: ThreadId,
@@ -259,13 +261,12 @@ export class Store extends Context.Service<
     listSpendEvents(from: number, to: number): Effect.Effect<ReadonlyArray<SpendEvent>, StoreError>;
     /** How many events of each thread the cloud copy keeps (all but streamed text), by thread id. */
     readonly countSyncedEvents: Effect.Effect<ReadonlyMap<string, number>, StoreError>;
-    /**
-     * A thread's events the cloud copy keeps, in the order they were stored, from position `offset`
-     * on. Stored order never changes within a thread, so positions stay put as events are added.
-     */
-    listSyncedEvents(
+    /** Translates the relay's event count once; legacy streamed deltas do not occupy cloud positions. */
+    syncedEventCursor(threadId: ThreadId, count: number): Effect.Effect<string | undefined, StoreError>;
+    /** A keyset page in rowid order. Its ID anchor survives database rewrites that renumber rowids. */
+    listSyncedEventsAfter(
       threadId: ThreadId,
-      offset: number,
+      after: string | undefined,
       limit: number,
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /**
@@ -721,6 +722,31 @@ export class Store extends Context.Service<
                 .orderBy(asc(events.at), asc(events.sequence)),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent)));
           },
+          messagePage: (agentId, before) =>
+            query(
+              "Could not read message history",
+              Effect.gen(function* () {
+                const rows = yield* db
+                  .select(eventColumns)
+                  .from(events)
+                  .where(
+                    and(
+                      eq(events.agentId, agentId),
+                      before === undefined ? undefined : sql`${events.sequence} < ${before}`,
+                      inArray(events.tag, ["TurnInput", "MessageCompleted", "ConversationRewound"]),
+                    ),
+                  )
+                  .orderBy(desc(events.sequence))
+                  .limit(257);
+                const selected = rows.slice(0, 256).reverse();
+                const first = selected[0];
+                return {
+                  events: yield* Effect.forEach(selected, decodeEvent),
+                  ...(first === undefined ? {} : { before: first.sequence }),
+                  more: rows.length > 256,
+                };
+              }),
+            ),
           historyPage: (threadId, request) =>
             query(
               "Could not read history page",
@@ -859,27 +885,45 @@ export class Store extends Context.Service<
               .where(notInArray(events.tag, STREAM_DELTAS))
               .groupBy(events.threadId),
           ).pipe(Effect.map((rows) => new Map(rows.map((row) => [row.threadId, row.events])))),
-          // The page is found among the thread's rowids alone, which an index holds: ordering the rows
-          // themselves sorted every event of the thread, payloads and all, to skip to the offset.
-          listSyncedEvents: (threadId, offset, limit) =>
+          syncedEventCursor: (threadId, position) =>
+            position === 0
+              ? Effect.succeed(undefined)
+              : query(
+                  "Could not resolve cloud event cursor",
+                  db
+                    .select({ id: events.id })
+                    .from(events)
+                    .where(and(eq(events.threadId, threadId), notInArray(events.tag, STREAM_DELTAS)))
+                    .orderBy(sql`rowid`)
+                    .limit(1)
+                    .offset(position - 1),
+                ).pipe(
+                  Effect.flatMap((rows) =>
+                    rows[0] === undefined
+                      ? Effect.fail(
+                          new StoreError({
+                            message: "Cloud event cursor is past the local history.",
+                            cause: position,
+                          }),
+                        )
+                      : Effect.succeed(rows[0].id),
+                  ),
+                ),
+          listSyncedEventsAfter: (threadId, after, limit) =>
             query(
-              "Could not list thread events",
+              "Could not read cloud event page",
               db
                 .select(eventColumns)
                 .from(events)
                 .where(
-                  inArray(
-                    sql`rowid`,
-                    db
-                      .select({ rowid: sql`rowid` })
-                      .from(events)
-                      .where(and(eq(events.threadId, threadId), notInArray(events.tag, STREAM_DELTAS)))
-                      .orderBy(sql`rowid`)
-                      .limit(limit)
-                      .offset(offset),
+                  and(
+                    eq(events.threadId, threadId),
+                    notInArray(events.tag, STREAM_DELTAS),
+                    sql`rowid > ${after === undefined ? sql`0` : sql`(SELECT rowid FROM events WHERE id = ${after} AND thread_id = ${threadId})`}`,
                   ),
                 )
-                .orderBy(sql`rowid`),
+                .orderBy(sql`rowid`)
+                .limit(limit),
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
           stopLiveAgents: query(
             "Could not stop live agents",

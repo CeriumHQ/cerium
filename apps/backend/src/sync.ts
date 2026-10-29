@@ -97,6 +97,8 @@ export const CloudCopy = Layer.effectDiscard(
     /** The overview last sent of each thread, as JSON, to send only what changed. */
     const sent = new Map<string, string>();
     const accepted = new Map<string, Deferred.Deferred<number>>();
+    /** Only acknowledged pages advance these anchors; a reconnect translates fresh relay counts. */
+    const positions = new Map<string, { readonly count: number; readonly after: string | undefined }>();
 
     const overviews = orchestrator.threadOverviews;
 
@@ -108,12 +110,24 @@ export const CloudCopy = Layer.effectDiscard(
       threadId: ThreadId,
       from: number,
       deadline: number,
+      connection: ReadonlyMap<string, number>,
     ) {
       let start = from;
+      let position = positions.get(threadId);
+      if (position?.count !== from) {
+        position = { count: from, after: yield* store.syncedEventCursor(threadId, from) };
+        positions.set(threadId, position);
+      }
       while (true) {
+        if (cursors !== connection) return false;
         if ((yield* Clock.currentTimeMillis) >= deadline) return true;
-        const page = yield* store.listSyncedEvents(threadId, start, PAGE);
+        const page: ReadonlyArray<AgentEvent> = yield* store.listSyncedEventsAfter(
+          threadId,
+          position.after,
+          PAGE,
+        );
         for (const batch of batches(page.map(cloudEvent))) {
+          if (cursors !== connection) return false;
           if ((yield* Clock.currentTimeMillis) >= deadline) return true;
           const answer = yield* Deferred.make<number>();
           accepted.set(threadId, answer);
@@ -121,10 +135,17 @@ export const CloudCopy = Layer.effectDiscard(
           const count = yield* Deferred.await(answer).pipe(
             Effect.timeoutOrElse({ duration: ACCEPT_WITHIN, orElse: () => Effect.succeed(-1) }),
           );
-          accepted.delete(threadId);
+          if (accepted.get(threadId) === answer) accepted.delete(threadId);
+          if (cursors !== connection) return false;
           // No answer, or the relay has fewer than it was sent (a gap): try again next round.
-          if (count < start + batch.length) return false;
+          // A larger count can be a retry the relay already stored; resolve its exact anchor next time.
+          if (count !== start + batch.length) {
+            positions.delete(threadId);
+            return false;
+          }
           start = count;
+          position = { count, after: batch.at(-1)!.id };
+          positions.set(threadId, position);
         }
         // A page short of full was the last; asking again would only read an empty one.
         if (page.length < PAGE) return false;
@@ -157,6 +178,7 @@ export const CloudCopy = Layer.effectDiscard(
         for (const id of gone) {
           known.delete(id);
           sent.delete(id);
+          positions.delete(id);
         }
       }
 
@@ -167,7 +189,7 @@ export const CloudCopy = Layer.effectDiscard(
       const deadline = (yield* Clock.currentTimeMillis) + ROUND_BUDGET;
       const cut = yield* Effect.forEach(
         behind,
-        ({ thread }) => upload(thread.id, known.get(thread.id) ?? 0, deadline),
+        ({ thread }) => upload(thread.id, known.get(thread.id) ?? 0, deadline, known),
         { concurrency: UPLOADS },
       );
       // What the budget left goes up in the next round, after whatever happens meanwhile.
@@ -180,6 +202,9 @@ export const CloudCopy = Layer.effectDiscard(
       while (true) {
         const event = yield* PubSub.take(events);
         if (event._tag === "SyncCursors") {
+          for (const answer of accepted.values()) yield* Deferred.succeed(answer, -1);
+          accepted.clear();
+          positions.clear();
           cursors = new Map(Object.entries(event.threads));
           sent.clear();
           yield* Queue.offer(kick, undefined);
@@ -189,7 +214,9 @@ export const CloudCopy = Layer.effectDiscard(
           if (answer !== undefined) yield* Deferred.succeed(answer, event.count);
         } else if (event._tag === "RelayLost") {
           cursors = undefined;
+          positions.clear();
           for (const answer of accepted.values()) yield* Deferred.succeed(answer, -1);
+          accepted.clear();
         }
       }
     }).pipe(Effect.scoped, Effect.forkScoped);
