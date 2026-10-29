@@ -13,6 +13,7 @@ import { AppearanceSettings } from "./Appearance.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
+import { HubSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { SettingsPlace, SettingsProject } from "./parts.tsx";
@@ -34,6 +35,7 @@ export type SettingsCategory =
   | "prompts"
   | "effortRouter"
   | "harnesses"
+  | "hub"
   | "usage"
   | "sourceControl"
   | "discord"
@@ -99,6 +101,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
     label: "Providers",
     pages: [
       ...page("harnesses", "Harnesses", "Installed CLIs and sign-ins", settingsGlyphs.harnesses),
+      ...page("hub", "MCP & skills", "Servers and skills per harness", settingsGlyphs.hub),
       ...page("usage", "Usage", "Limits and spend", settingsGlyphs.usage),
     ],
   },
@@ -166,6 +169,9 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["effortRouter", "OpenRouter key"],
     ["harnesses", "Installed CLIs"],
     ["harnesses", "Sign-ins"],
+    ["hub", "MCP servers"],
+    ["hub", "Skills"],
+    ["hub", "Copy a server to another harness"],
     ["usage", "Limits"],
     ["usage", "Tokens & cost"],
     ["usage", "Free resets"],
@@ -418,6 +424,8 @@ function SettingsContent({
       return <EffortRouterSettings />;
     case "harnesses":
       return <HarnessSettings />;
+    case "hub":
+      return <HubSettings />;
     case "usage":
       return <UsageSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
     case "sourceControl":
