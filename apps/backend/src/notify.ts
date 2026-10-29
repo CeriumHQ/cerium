@@ -155,6 +155,7 @@ const startNotifier = (
             const message = notificationLine(payload.text);
             return Effect.sync(() => endTurn(agentId, message === undefined ? {} : { message }));
           }
+          case "LimitReached":
           case "AgentError": {
             const error = notificationLine(payload.message);
             return Effect.sync(() => endTurn(agentId, error === undefined ? {} : { error }));

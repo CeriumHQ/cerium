@@ -19,6 +19,7 @@ import {
   UserSettings,
   Worktrees,
   type CatalogEntry,
+  type OrchestratorSettings,
 } from "../src/index.ts";
 
 export const fakeBus = Layer.succeed(BusEndpoint, {
@@ -46,6 +47,8 @@ export const testLayer = (
     readonly database?: string;
     /** The models the harnesses offer, with their efforts, for the effort router. */
     readonly models?: ReadonlyArray<ModelInfo>;
+    /** How long a thread paused at its limit waits, and how many times; short by default for tests. */
+    readonly limitPause?: Partial<OrchestratorSettings["limitPause"]>;
     /** The effort router's decision model; without one the router never runs. */
     readonly decider?: EffortDecider["Service"];
   } = {},
@@ -75,6 +78,12 @@ export const testLayer = (
         ...(options.warmSessions === undefined ? {} : { warmSessions: options.warmSessions }),
         messageBudget: { limit: options.messageLimit ?? 10, window: Duration.minutes(30) },
         threadBudget: { limit: options.threadLimit ?? 12, window: Duration.minutes(30) },
+        limitPause: {
+          retry: Duration.millis(100),
+          margin: Duration.millis(0),
+          maxPauses: 5,
+          ...options.limitPause,
+        },
       }),
     ),
     Layer.provide(NodeServices.layer),

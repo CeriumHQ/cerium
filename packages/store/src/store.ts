@@ -103,6 +103,8 @@ export interface ThreadPatch {
   readonly laterUntil?: number | null;
   /** Null when the thread hands its worktree to the thread that continues it. */
   readonly worktree?: ThreadWorktree | null;
+  /** `null` goes back to following the setting for all threads. */
+  readonly onLimit?: ThreadInfo["onLimit"] | null;
 }
 
 export interface StoredProject {
@@ -486,6 +488,7 @@ export class Store extends Context.Service<
                 archivedAt: thread.archivedAt ?? null,
                 laterUntil: thread.laterUntil ?? null,
                 runId: thread.runId ?? null,
+                onLimit: thread.onLimit ?? null,
               }),
             ).pipe(allThreads.forget),
           getThread: (id) =>

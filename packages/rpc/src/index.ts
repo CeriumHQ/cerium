@@ -25,6 +25,7 @@ import {
   NotificationKind,
   ProjectInfo,
   PushSubscriptionInfo,
+  LimitPolicy,
   ProviderId,
   QuestionResponse,
   ReasoningEffort,
@@ -93,7 +94,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 43;
+export const RPC_VERSION = 44;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -135,6 +136,8 @@ export const CreateThreadPayload = Schema.Struct({
    * sidebar shows as one run. Since `RPC_VERSION` 25; an older backend leaves the threads apart.
    */
   runId: Schema.optionalKey(Schema.NonEmptyString),
+  /** What the thread does when its harness's limit runs out. Since `RPC_VERSION` 41. */
+  onLimit: Schema.optionalKey(LimitPolicy),
   lead: Schema.Struct({
     provider: ProviderId,
     model: Schema.NonEmptyString,
@@ -412,6 +415,15 @@ export const MachineRpcs = RpcGroup.make(
    */
   Rpc.make("SetThreadLater", {
     payload: { threadId: ThreadId, until: Schema.optionalKey(EpochMillis) },
+    success: ThreadInfo,
+    error: CeriumError,
+  }),
+  /**
+   * Sets what a thread does when its harness's limit runs out; without `policy` it follows the
+   * setting for all threads again. Since `RPC_VERSION` 41.
+   */
+  Rpc.make("SetThreadOnLimit", {
+    payload: { threadId: ThreadId, policy: Schema.optionalKey(LimitPolicy) },
     success: ThreadInfo,
     error: CeriumError,
   }),

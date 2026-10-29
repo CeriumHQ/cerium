@@ -29,6 +29,8 @@ import {
   type FromUser,
   type InputItem,
   type LeadHandedOff,
+  type LimitPolicy,
+  type LimitReached,
   type Mention,
   type ModelInfo,
   type ProviderId,
@@ -56,6 +58,7 @@ import {
   Duration,
   Effect,
   Exit,
+  Fiber,
   FileSystem,
   Layer,
   Option,
@@ -86,6 +89,15 @@ import {
 } from "./effort.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
+import {
+  failoverNotice,
+  failoverTarget,
+  LIMIT_TAGS,
+  limitEpisode,
+  openPause,
+  pauseEnd,
+  resumeNotice,
+} from "./limits.ts";
 import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
@@ -132,6 +144,8 @@ export interface CreateThreadInput {
   readonly worktree?: boolean;
   /** Shared by the threads one message starts together (multi agent). */
   readonly runId?: string;
+  /** What the thread does when its harness's limit runs out; absent follows the setting for all threads. */
+  readonly onLimit?: LimitPolicy;
   readonly lead: {
     readonly provider: ProviderId;
     readonly model: string;
@@ -227,6 +241,9 @@ type OpenQuestion = readonly [Question, ...Array<Question>];
 /** How many `ask_user` calls an agent may have waiting at once. */
 const MAX_OPEN_QUESTIONS = 4;
 
+/** The longest one timer waits for a paused thread's limit to reset, in milliseconds (a timer's own cap is 24 days). */
+const MAX_PAUSE_WAIT = 20 * 24 * 60 * 60 * 1000;
+
 /** A live agent: the inbox Cerium delivers turns from, and its harness session once that has started. */
 interface Runtime {
   info: AgentInfo;
@@ -280,6 +297,13 @@ interface Runtime {
    */
   routedEffort: ReasoningEffort | undefined;
   readonly turnFiles: Set<string>;
+  /** The limit the turn in progress ran into, the first it reported. */
+  limit: LimitReached | undefined;
+  /**
+   * Set while the lead is paused at its harness's limit: the turn loop takes nothing from the inbox
+   * until it is lifted, when the reset time comes or the user sends a message.
+   */
+  pause: Deferred.Deferred<void> | undefined;
   /**
    * The provider's message last stored with one of its events. A message makes several events (an
    * edit of many files, a reply with tool calls), and each kept the whole of it again.
@@ -352,6 +376,9 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
 const BRIEF_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "TurnInput",
   "MessageCompleted",
+  // What a turn cut off by a limit had done.
+  "ToolCallStarted",
+  "LimitReached",
   "ConversationRewound",
   "LeadHandedOff",
   "TurnFilesChanged",
@@ -593,6 +620,14 @@ export class Orchestrator extends Context.Service<
       until: number | undefined,
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
+     * What the thread does when its harness's limit runs out; `undefined` goes back to following the
+     * setting for all threads. A thread already paused stays so until it resumes.
+     */
+    setThreadOnLimit(
+      threadId: ThreadId,
+      policy: LimitPolicy | undefined,
+    ): Effect.Effect<ThreadInfo, OrchestratorError>;
+    /**
      * Deletes a thread for good: its agents' sessions end and its agents and events are removed, and
      * its worktree with them. Refused while its agents work or wait on the user, like archiving.
      */
@@ -825,6 +860,10 @@ export class Orchestrator extends Context.Service<
       >();
       /** The leads handed to another harness whose new session hasn't heard the conversation yet. */
       const briefsOwed = new Map<AgentId, LeadHandedOff>();
+      /** The timers that end the pauses of leads waiting for their harness's limit to reset. */
+      const pauseTimers = new Map<AgentId, Fiber.Fiber<void>>();
+      /** The app is quitting: its agents stop, but their pauses go on for the next start. */
+      let quitting = false;
 
       // Sessions don't survive a restart, so agents a previous run left live are stopped; a lead
       // resumes its harness session when the user next messages it.
@@ -1258,10 +1297,12 @@ export class Orchestrator extends Context.Service<
               yield* emit(rt, payload, event.raw);
               if (
                 payload._tag === "AgentError" ||
+                payload._tag === "LimitReached" ||
                 (payload._tag === "TurnCompleted" && payload.stopReason === "error")
               ) {
                 rt.turnFailed = true;
               }
+              if (payload._tag === "LimitReached") rt.limit ??= payload;
               if (payload._tag === "FileChanged") rt.turnFiles.add(payload.path);
               if (payload._tag === "ToolCallCompleted" && payload.isError) rt.turnToolErrors += 1;
               if (payload._tag === "TurnCompleted") rt.turnStopReason = payload.stopReason;
@@ -1449,6 +1490,7 @@ export class Orchestrator extends Context.Service<
           rt.turnFailed = false;
           rt.turnToolErrors = 0;
           rt.turnStopReason = undefined;
+          rt.limit = undefined;
           rt.turnFiles.clear();
           const startedAt = yield* Clock.currentTimeMillis;
           rt.turn = yield* Deferred.make<void>();
@@ -1799,6 +1841,210 @@ export class Orchestrator extends Context.Service<
         );
 
       /**
+       * The pause a lead is in, read from its events so it survives a restart: the latest `LimitPaused`
+       * that nothing has ended.
+       */
+      const pauseOf = (agentId: AgentId) =>
+        Effect.gen(function* () {
+          const paused = yield* store.listEvents(agentId, { tags: ["LimitPaused"] });
+          const last = paused.at(-1);
+          if (last === undefined) return undefined;
+          const since = yield* store.listEvents(agentId, { afterSequence: last.sequence, tags: LIMIT_TAGS });
+          return openPause([last, ...since]);
+        }).pipe(Effect.mapError(unavailable));
+
+      const cancelPauseTimer = (agentId: AgentId) =>
+        Effect.suspend(() => {
+          const timer = pauseTimers.get(agentId);
+          pauseTimers.delete(agentId);
+          return timer === undefined ? Effect.void : Fiber.interrupt(timer);
+        });
+
+      /** Sends a paused lead on at `resumeAt`, or at once if that has passed. */
+      const schedulePause = (agentId: AgentId, resumeAt: number) =>
+        Effect.gen(function* () {
+          yield* cancelPauseTimer(agentId);
+          // Past what a timer can wait, `resumeFromPause` finds it too early and waits again.
+          const wait = Math.min(Math.max(0, resumeAt - (yield* Clock.currentTimeMillis)), MAX_PAUSE_WAIT);
+          pauseTimers.set(
+            agentId,
+            yield* Effect.forkIn(
+              Effect.sleep(Duration.millis(wait)).pipe(Effect.andThen(resumeFromPause(agentId))),
+              layerScope,
+            ),
+          );
+        });
+
+      /**
+       * Ends a paused lead's pause: its reset time came. Under the same permit as the user's messages
+       * and only while the lead's events still show the pause open, so a pause ends once, whichever of
+       * the timer, a message or a restart gets here first. The lead goes on in its own session.
+       */
+      const resumeFromPause = (agentId: AgentId): Effect.Effect<void> =>
+        acceptPermit
+          .withPermits(1)(
+            Effect.gen(function* () {
+              // Not interrupted by what ends the pause from here on.
+              pauseTimers.delete(agentId);
+              const paused = yield* pauseOf(agentId);
+              if (paused === undefined) return;
+              if (paused.resumeAt > (yield* Clock.currentTimeMillis) + 1_000) {
+                return yield* schedulePause(agentId, paused.resumeAt);
+              }
+              const agent = yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable));
+              if (Option.isNone(agent)) return;
+              // An archived thread stays as it is until the user brings it back.
+              if ((yield* threadInfo(agent.value.threadId)).archivedAt !== undefined) return;
+              const { rt, undelivered, notices } = yield* liveLead(agentId);
+              const gate = rt.pause;
+              rt.pause = undefined;
+              yield* emit(rt, { _tag: "LimitResumed", by: "reset" });
+              rt.userWaiting = undelivered.length > 0;
+              yield* Queue.offerAll(rt.inbox, [
+                ...undelivered,
+                { _tag: "SystemNotice", text: resumeNotice() },
+                ...notices,
+              ]);
+              if (gate !== undefined) yield* Deferred.succeed(gate, undefined);
+            }),
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`Couldn't resume ${agentId} after its harness's limit reset`, cause),
+            ),
+          );
+
+      /**
+       * Ends a pause the user ended: they sent a message, or stopped the agent. Nothing happens for a
+       * lead that isn't paused.
+       */
+      const endPause = (rt: Runtime, by: "message" | "stopped") =>
+        Effect.gen(function* () {
+          const gate = rt.pause;
+          const timed = pauseTimers.has(rt.info.id);
+          if (gate === undefined && !timed) return;
+          rt.pause = undefined;
+          yield* cancelPauseTimer(rt.info.id);
+          yield* emit(rt, { _tag: "LimitResumed", by });
+          if (gate !== undefined) yield* Deferred.succeed(gate, undefined);
+        });
+
+      /** The lead stops here for its harness's limit to reset, then goes on. */
+      const pauseLead = (rt: Runtime, hit: LimitReached, pauses: number) =>
+        Effect.gen(function* () {
+          const { resumeAt, reported } = pauseEnd(hit, yield* Clock.currentTimeMillis, pauses, {
+            retry: Duration.toMillis(config.limitPause.retry),
+            margin: Duration.toMillis(config.limitPause.margin),
+          });
+          rt.pause = yield* Deferred.make<void>();
+          yield* emit(rt, {
+            _tag: "LimitPaused",
+            provider: hit.provider,
+            ...(hit.window ? { window: hit.window } : {}),
+            resumeAt,
+            reported,
+            attempt: pauses + 1,
+          });
+          yield* schedulePause(rt.info.id, resumeAt);
+        });
+
+      /** The next model on the roster from a harness that hasn't run out, to carry a lead on. */
+      const nextHarness = (info: AgentInfo, tried: ReadonlySet<ProviderId>) =>
+        Effect.gen(function* () {
+          const installed = (provider: ProviderId) => adapters.has(provider);
+          const models = yield* (catalog.models ?? Effect.succeed([])).pipe(
+            Effect.timeoutOption("3 seconds"),
+            Effect.map(Option.getOrElse((): ReadonlyArray<ModelInfo> => [])),
+          );
+          if (models.length > 0) {
+            const { roster } = yield* settings.get;
+            return failoverTarget(roster, models, info, tried, installed);
+          }
+          const entry = (yield* catalog.entries).find(
+            (each) =>
+              each.provider !== info.provider && !tried.has(each.provider) && installed(each.provider),
+          );
+          return entry === undefined
+            ? undefined
+            : ({
+                provider: entry.provider,
+                model: entry.model,
+                ...(entry.effort ? { effort: entry.effort } : {}),
+                ...(entry.speed ? { speed: entry.speed } : {}),
+              } satisfies HandoffTarget);
+        });
+
+      /**
+       * What a thread does about its lead's turn ending at its harness's limit, as the thread or the
+       * setting chose. A thread that moves on to another harness never goes back to one that ran out
+       * since a turn last completed; with none left it waits instead, and after too many pauses in a
+       * row it stops and says so.
+       */
+      const handleLimit = (rt: Runtime, hit: LimitReached): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          const thread = yield* threadInfo(rt.info.threadId);
+          const policy = thread.onLimit ?? (yield* settings.get).limits.onLimit;
+          if (policy === "off") return;
+          const episode = limitEpisode(
+            liveEvents(
+              yield* store.listEvents(rt.info.id, { tags: LIMIT_TAGS }).pipe(Effect.mapError(unavailable)),
+            ),
+          );
+          if (policy === "failover") {
+            const target = yield* nextHarness(rt.info, episode.providers);
+            if (target !== undefined) {
+              // Handed off from outside this fiber, which handing off ends.
+              yield* Effect.forkIn(
+                handOff(rt.info.id, target, {
+                  cause: "limit",
+                  notice: failoverNotice(`${rt.info.model} (${rt.info.provider})`),
+                }).pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning(
+                      `Couldn't move ${rt.info.id} to ${target.provider} at its limit`,
+                      cause,
+                    ),
+                  ),
+                ),
+                layerScope,
+              );
+              return;
+            }
+          }
+          if (episode.pauses >= config.limitPause.maxPauses) {
+            yield* emit(rt, {
+              _tag: "AgentError",
+              kind: "rateLimit",
+              message: `Still at its limit after ${episode.pauses} pauses; send a message to try again.`,
+              retryable: false,
+            });
+            return;
+          }
+          yield* pauseLead(rt, hit, episode.pauses);
+        }).pipe(
+          Effect.catchCause((cause) => Effect.logWarning(`Couldn't handle ${rt.info.id}'s limit`, cause)),
+        );
+
+      /**
+       * Leads a previous run left paused wait for their reset again, or go on at once when it came while
+       * Cerium was closed.
+       */
+      const recoverPauses = Effect.gen(function* () {
+        const paused = yield* store.listEventsByTag("LimitPaused").pipe(Effect.mapError(unavailable));
+        const latest = new Map(paused.map((event) => [event.agentId, event] as const));
+        yield* Effect.forEach(
+          latest.keys(),
+          (agentId) =>
+            pauseOf(agentId).pipe(
+              Effect.flatMap((open) =>
+                open === undefined ? Effect.void : schedulePause(agentId, open.resumeAt),
+              ),
+            ),
+          { discard: true },
+        );
+      }).pipe(Effect.catchCause((cause) => Effect.logWarning("Couldn't recover paused threads", cause)));
+
+      /**
        * The brief a lead handed to another harness owes its new session with its first turn: the
        * conversation so far, its older turns condensed by the quick model. None once told.
        */
@@ -1821,6 +2067,7 @@ export class Orchestrator extends Context.Service<
             _tag: "SystemNotice",
             text: handoffBrief(history, {
               from: handoff.from,
+              cause: handoff.cause,
               summary: Option.getOrUndefined(summary),
               running,
             }),
@@ -1842,6 +2089,8 @@ export class Orchestrator extends Context.Service<
        */
       const turnLoop = (rt: Runtime) =>
         Effect.gen(function* () {
+          // A lead paused at its harness's limit takes nothing until the pause is lifted.
+          if (rt.pause !== undefined) yield* Deferred.await(rt.pause);
           const first = yield* Queue.take(rt.inbox);
           // An advisor answers one question a turn, each to the agent that asked it; a reviewer reviews
           // the one diff it was started with.
@@ -1893,6 +2142,13 @@ export class Orchestrator extends Context.Service<
           const halted = rt.halted;
           rt.halted = false;
 
+          // The turn ran into its harness's limit: the thread waits, moves on, or stops, as chosen.
+          const limit = rt.limit;
+          rt.limit = undefined;
+          if (limit !== undefined && !halted && rt.info.parentId === undefined) {
+            yield* handleLimit(rt, limit);
+          }
+
           const review = reviews.get(rt.info.id);
           if (review !== undefined) {
             reviews.delete(rt.info.id);
@@ -1922,7 +2178,12 @@ export class Orchestrator extends Context.Service<
               _tag: "ChildFinishedTurn",
               agentId: rt.info.id,
               role: rt.info.role,
-              text: truncate(rt.lastMessage ?? "(no final message)", config.maxDeliveredChars),
+              text: truncate(
+                limit === undefined
+                  ? (rt.lastMessage ?? "(no final message)")
+                  : `Stopped early: ${rt.info.model}'s ${limit.provider} usage limit ran out. ${rt.lastMessage ?? "(no final message)"}`,
+                config.maxDeliveredChars,
+              ),
             });
           }
         }).pipe(
@@ -2013,6 +2274,8 @@ export class Orchestrator extends Context.Service<
             effortDecision: undefined,
             routedEffort: undefined,
             turnFiles: new Set(),
+            limit: undefined,
+            pause: undefined,
             storedRaw: undefined,
           };
           runtimes.set(info.id, rt);
@@ -2301,6 +2564,8 @@ export class Orchestrator extends Context.Service<
       const stopRuntime = (rt: Runtime) =>
         Effect.gen(function* () {
           yield* expireQuestions(rt).pipe(Effect.ignore);
+          // Stopping a paused lead ends its pause; quitting leaves it for the next start to pick up.
+          if (!quitting) yield* endPause(rt, "stopped").pipe(Effect.ignore);
           runtimes.delete(rt.info.id);
           pendingPermissions.delete(rt.info.id);
           leadRequests.delete(rt.info.id);
@@ -2724,7 +2989,11 @@ export class Orchestrator extends Context.Service<
        * to end, so the transcript records how it ended; what waited in its inbox stays: the user's
        * messages come back from the history, and the rest goes to the new session.
        */
-      const handOff = Effect.fn("Orchestrator.handOff")(function* (agentId: AgentId, target: HandoffTarget) {
+      const handOff = Effect.fn("Orchestrator.handOff")(function* (
+        agentId: AgentId,
+        target: HandoffTarget,
+        options: { readonly cause?: "limit"; readonly notice?: string } = {},
+      ) {
         const live = runtimes.get(agentId);
         const info =
           live?.info ??
@@ -2766,6 +3035,8 @@ export class Orchestrator extends Context.Service<
           yield* stopRuntime(live);
         }
         held.delete(agentId);
+        // What the new session is to do first, after the brief: told in the notice that follows it.
+        if (options.notice !== undefined) carried.push({ _tag: "SystemNotice", text: options.notice });
 
         const updatedAt = yield* now;
         const autoEffort = target.autoEffort === true;
@@ -2798,6 +3069,7 @@ export class Orchestrator extends Context.Service<
         };
         yield* emitStored(next, {
           _tag: "LeadHandedOff",
+          ...(options.cause ? { cause: options.cause } : {}),
           from: { provider: info.provider, model: info.model },
           provider: target.provider,
           model: target.model,
@@ -3132,8 +3404,11 @@ export class Orchestrator extends Context.Service<
 
       // Runs before `agentsScope` closes, so agents are stopped rather than failed as the app quits.
       yield* Effect.addFinalizer(() =>
-        Effect.forEach([...runtimes.values()], stopRuntime, { discard: true }),
+        Effect.sync(() => {
+          quitting = true;
+        }).pipe(Effect.andThen(Effect.forEach([...runtimes.values()], stopRuntime, { discard: true }))),
       );
+      yield* Effect.forkIn(recoverPauses, layerScope);
 
       /**
        * Names a new thread from its first message while the lead works on it, unless the user
@@ -3213,6 +3488,7 @@ export class Orchestrator extends Context.Service<
           ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
           ...(isolated ? { worktree: isolated.worktree } : adopted ? { worktree: adopted } : {}),
           ...(input.runId ? { runId: input.runId } : {}),
+          ...(input.onLimit ? { onLimit: input.onLimit } : {}),
           createdAt,
           updatedAt: createdAt,
         };
@@ -3287,6 +3563,8 @@ export class Orchestrator extends Context.Service<
           Effect.gen(function* () {
             if (options.rewindBefore !== undefined) yield* rewind(agentId, options.rewindBefore);
             const { rt, undelivered, notices } = yield* liveLead(agentId);
+            // A message to a paused lead is sent at once: the user may know the limit is lifted.
+            yield* endPause(rt, "message");
             const message: FromUser = {
               _tag: "FromUser",
               id: yield* makeId("msg"),
@@ -3836,6 +4114,9 @@ export class Orchestrator extends Context.Service<
 
         setThreadLater: (threadId: ThreadId, until: number | undefined) =>
           updateThread(threadId, { laterUntil: until ?? null }),
+
+        setThreadOnLimit: (threadId: ThreadId, policy: LimitPolicy | undefined) =>
+          updateThread(threadId, { onLimit: policy ?? null }),
 
         deleteThread: Effect.fn("Orchestrator.deleteThread")(function* (
           threadId: ThreadId,

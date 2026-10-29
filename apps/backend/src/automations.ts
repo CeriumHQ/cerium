@@ -193,6 +193,7 @@ export class Automations extends Context.Service<
                 mode: "work",
                 cwd: automation.project,
                 worktree: automation.worktree,
+                ...(automation.onLimit ? { onLimit: automation.onLimit } : {}),
                 lead: automation.lead,
               })
               .pipe(Effect.result);
