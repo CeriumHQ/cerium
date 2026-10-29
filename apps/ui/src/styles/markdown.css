@@ -270,9 +270,12 @@
 /*
  * A word an agent just wrote: it comes out of a blur, lit for a moment as it lands, and cools to the
  * text's own colour, so the edge where the agent is writing glows faintly as it moves along.
+ * Filled backwards only, so a word lets go of its animation once it lands: filled both ways, every
+ * word an agent ever wrote kept a live animation and a blurred shadow, thousands in a long thread,
+ * and each scroll, sidebar toggle and new word restyled and repainted them all.
  */
 .ink {
-  animation: ink 620ms var(--ease-out-soft) both;
+  animation: ink 620ms var(--ease-out-soft) backwards;
 
   @media (prefers-reduced-motion: reduce) {
     animation: none;
