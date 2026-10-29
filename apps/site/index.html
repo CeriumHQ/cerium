@@ -195,21 +195,52 @@
             </p>
           </div>
           <figure class="phone">
-            <img
-              src="./src/media/feature-phone.webp"
-              width="1170"
-              height="2532"
-              loading="lazy"
-              alt="Cerium on a phone: an agent asks whether a timeout should reject or resolve, with the choices as buttons"
-            />
-          </figure>
-          <div class="ping" aria-hidden="true">
-            <svg><use href="/icons.svg#mark-cerium" /></svg>
-            <div>
-              <b>Fix failing CI</b>
-              <span>All 37 checks pass. Pushed 2c41f9e.</span>
+            <div class="phone-bezel">
+              <div class="phone-display">
+                <div class="phone-status" aria-hidden="true">
+                  <span>9:41</span>
+                  <i class="phone-island"></i>
+                  <svg viewBox="0 0 64 12">
+                    <rect x="0" y="8" width="3" height="4" rx="1" />
+                    <rect x="5" y="5.5" width="3" height="6.5" rx="1" />
+                    <rect x="10" y="3" width="3" height="9" rx="1" />
+                    <rect x="15" y="0.5" width="3" height="11.5" rx="1" />
+                    <path
+                      d="M31 11.5 28.6 9a3.4 3.4 0 0 1 4.8 0zM26.5 7a6.4 6.4 0 0 1 9 0l1.4-1.4a8.4 8.4 0 0 0-11.8 0zM24 4.5a10 10 0 0 1 14 0l1.4-1.4a12 12 0 0 0-16.8 0z"
+                    />
+                    <rect
+                      x="43.5"
+                      y="0.5"
+                      width="18"
+                      height="11"
+                      rx="3.2"
+                      fill="none"
+                      stroke="currentColor"
+                      opacity="0.45"
+                    />
+                    <rect x="45.5" y="2.5" width="12.5" height="7" rx="1.6" />
+                    <path d="M62.8 4.2v3.6a1.9 1.9 0 0 0 0-3.6z" opacity="0.45" />
+                  </svg>
+                </div>
+                <img
+                  src="./src/media/feature-phone.webp"
+                  width="1170"
+                  height="2532"
+                  loading="lazy"
+                  alt="Cerium on a phone: an agent asks whether a timeout should reject or resolve, with the choices as buttons"
+                />
+                <div class="ping" aria-hidden="true">
+                  <span class="ping-icon"
+                    ><svg><use href="/icons.svg#mark-cerium" /></svg
+                  ></span>
+                  <b>Fix failing CI</b>
+                  <time>now</time>
+                  <p>All 37 checks pass. Pushed 2c41f9e.</p>
+                </div>
+                <i class="phone-home" aria-hidden="true"></i>
+              </div>
             </div>
-          </div>
+          </figure>
         </article>
 
         <article class="move move-play">

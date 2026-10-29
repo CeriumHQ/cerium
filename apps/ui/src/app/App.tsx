@@ -2434,6 +2434,7 @@ function Workspace() {
             }
           }}
           harnesses={indicators}
+          threads={summaries}
           onOpenUsage={() => openSettings("usage")}
           hidden={[
             ...(githubOk ? [] : (["github"] as const)),

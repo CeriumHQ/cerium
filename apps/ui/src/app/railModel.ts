@@ -1,31 +1,58 @@
 import { leftPercent, type ProviderId, type ProviderUsage, type UsageMeter } from "@cerium/protocol";
 
-/** One arc of a usage ring: a limit and what's left of it. */
-export interface UsageArc {
-  readonly label: string;
-  /** What's left of the meter, from 0 to 100. */
-  readonly left: number;
+import { isListed, isPutOff, needsYou, type ThreadSummary } from "../features/threads/model.ts";
+
+/** A count on a rail place, in the attention colour while any of them waits on the user. */
+export interface RailBadge {
+  readonly count: number;
+  /** How many of them wait on the user. */
+  readonly waiting: number;
 }
 
-/** What one of the rail's usage rings shows: a harness's limits as concentric arcs. */
+/**
+ * The rail's badges. Home counts the inbox's work threads that are unread or wait on the user; Chat,
+ * whose threads keep no read state, counts the chats waiting for an approval.
+ */
+export const railBadges = (
+  threads: ReadonlyArray<ThreadSummary>,
+  now: number,
+): { readonly home?: RailBadge; readonly chat?: RailBadge } => {
+  const live = threads.filter((thread) => isListed(thread) && !isPutOff(thread, now));
+  const work = live.filter((thread) => thread.mode === "work");
+  const home = work.filter((thread) => thread.unread || needsYou(thread));
+  const chat = live.filter((thread) => thread.mode === "chat" && thread.status === "awaitingApproval");
+  return {
+    ...(home.length > 0 ? { home: { count: home.length, waiting: home.filter(needsYou).length } } : {}),
+    ...(chat.length > 0 ? { chat: { count: chat.length, waiting: chat.length } } : {}),
+  };
+};
+
+/** A badge's count as it fits the rail: past nine, "9+". */
+export const badgeLabel = (count: number): string => (count > 9 ? "9+" : String(count));
+
+/** What a badge counts, for its place's tooltip: "2 unread · 1 needs you". */
+export const badgeNote = ({ count, waiting }: RailBadge): string =>
+  [
+    ...(count > waiting ? [`${count - waiting} unread`] : []),
+    ...(waiting > 0 ? [`${waiting} ${waiting === 1 ? "needs" : "need"} you`] : []),
+  ].join(" · ");
+
+/** What one of the rail's usage rings shows: a harness's tightest limit, and every limit for its tooltip. */
 export interface UsageRing {
   readonly provider: ProviderId;
   readonly plan?: string;
-  /** Outermost first, in the harness's order; at most `MAX_ARCS`. */
-  readonly arcs: ReadonlyArray<UsageArc>;
-  /** What's left of the limit that will stop the harness first, from 0 to 100. */
+  /** The limit that will stop the harness first, which the ring draws. */
+  readonly label: string;
+  /** What's left of that limit, from 0 to 100. */
   readonly left: number;
   /** Every limit, for the ring's tooltip. */
   readonly meters: ReadonlyArray<UsageMeter>;
 }
 
-/** As many arcs as fit between the ring's edge and the harness's mark. */
-export const MAX_ARCS = 3;
-
 /**
  * A ring per harness that can run threads and reports a subscription's limits, in the backend's
- * order, with an arc per limit. A spending cap only charges past the plan, so it gets an arc only
- * when the plan has nothing else. Past `MAX_ARCS` limits, the last arc is the tightest of the rest.
+ * order, showing the limit with the least left. A spending cap only charges past the plan, so it
+ * counts only when the plan has nothing else.
  */
 export const usageRings = (
   usage: ReadonlyArray<ProviderUsage>,
@@ -34,20 +61,13 @@ export const usageRings = (
   usage.flatMap((each) => {
     if (each._tag !== "Subscribed" || !ready.has(each.provider) || each.meters.length === 0) return [];
     const limits = each.meters.filter((meter) => meter.spend === undefined);
-    const candidates = limits.length > 0 ? limits : each.meters;
-    const shown =
-      candidates.length <= MAX_ARCS
-        ? candidates
-        : [...candidates.slice(0, MAX_ARCS - 1), tightest(candidates.slice(MAX_ARCS - 1))];
+    const binding = tightest(limits.length > 0 ? limits : each.meters);
     return [
       {
         provider: each.provider,
         ...(each.plan === undefined ? {} : { plan: each.plan }),
-        arcs: shown.map((meter) => ({
-          label: meter.label,
-          left: leftPercent(meter),
-        })),
-        left: leftPercent(tightest(candidates)),
+        label: binding.label,
+        left: leftPercent(binding),
         meters: each.meters,
       },
     ];

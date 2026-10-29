@@ -4,25 +4,13 @@ import { isAnswerNotice, type RoutedDecision, type TranscriptBlock } from "./mod
 import { isPushCall } from "./push.ts";
 import { outputText, type ToolBlock } from "./tools.ts";
 
-// How a thread's blocks become what the transcript shows: inputs, a header per response, tool calls
-// grouped into runs, and the end of each response with the text it can copy.
+// How a thread's blocks become what the transcript shows: inputs, tool calls grouped into runs, and
+// the end of each turn with the text it can copy.
 
 type Block<K extends TranscriptBlock["kind"]> = Extract<TranscriptBlock, { kind: K }>;
 
 export type Item =
   | { readonly kind: "input"; readonly id: string; readonly blocks: ReadonlyArray<TranscriptBlock> }
-  /**
-   * The start of a response, with the model it ran on (absent when the thread never said) and, for
-   * an agent on Auto, what the effort router decided for it.
-   */
-  | {
-      readonly kind: "header";
-      readonly id: string;
-      /** The harness it ran on, where the thread said; else the lead's own. */
-      readonly provider?: ProviderId;
-      readonly model?: string;
-      readonly routed?: RoutedDecision;
-    }
   /**
    * Where the user switched the agent's model, or just its effort or speed, or handed it to another
    * harness.
@@ -38,8 +26,6 @@ export type Item =
     }
   /** Where the thread came from: a session the user had with the harness outside Cerium. */
   | { readonly kind: "imported"; readonly id: string; readonly block: Block<"imported"> }
-  /** The effort router's decision for a turn inside a response, such as one a child's result began. */
-  | { readonly kind: "routed"; readonly id: string; readonly decision: RoutedDecision }
   | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
   | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
   /** A request to start an agent that waits for the user's approval, which leaves no card yet. */
@@ -47,8 +33,17 @@ export type Item =
   /** A push through Cerium's `push` tool, shown with its checks rather than as a row of a run. */
   | { readonly kind: "push"; readonly id: string; readonly call: Block<"tool"> }
   | { readonly kind: "block"; readonly id: string; readonly block: TranscriptBlock }
-  /** The end of a response, with the response's text for its copy button. */
-  | { readonly kind: "turnEnd"; readonly id: string; readonly block: Block<"turnEnd">; readonly text: string }
+  /**
+   * The end of a turn, with the response's text for its copy button and, for an agent on Auto, what
+   * the effort router decided for the turn.
+   */
+  | {
+      readonly kind: "turnEnd";
+      readonly id: string;
+      readonly block: Block<"turnEnd">;
+      readonly text: string;
+      readonly routed?: RoutedDecision;
+    }
   | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> }
   /** The turns a rewind replaced, laid out like the conversation, with how many of the user's messages began them. */
   | {
@@ -120,25 +115,22 @@ const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Transcri
   });
 };
 
-/** Turns blocks into display items: user inputs, a header per response, and grouped tools and spawns. */
+/** Turns blocks into display items: user inputs, and grouped tools and spawns. */
 export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => {
   const items: Array<Item> = [];
   // What the agent has said since the user last spoke: what its end-of-response button copies.
   let said: Array<string> = [];
-  // The model the agent runs on, and its harness, for the header of the response that starts next.
-  let model: string | undefined;
+  // The harness the agent runs on, for a switch to another model.
   let provider: ProviderId | undefined;
-  let headerDue = true;
-  // The router decides before the turn's input arrives, so its word waits for the response's header.
-  let routed: Block<"routed"> | undefined;
+  // The router decides before the turn starts, and its word waits for the turn's footer.
+  let routed: RoutedDecision | undefined;
   for (const block of visible(blocks)) {
     const last = items.at(-1);
     if (block.kind === "routed") {
-      routed = block;
+      routed = block.decision;
       continue;
     }
     if (block.kind === "model") {
-      model = block.model;
       provider = block.provider ?? provider;
       if (block.change !== "start") {
         items.push({
@@ -157,14 +149,8 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
       items.push({ kind: "imported", id: block.id, block });
       continue;
     }
-    // A compaction the user asked for between responses begins none of its own.
-    if (block.kind === "compacted" && headerDue) {
-      items.push({ kind: "block", id: block.id, block });
-      continue;
-    }
     if (block.kind === "replaced") {
       said = [];
-      headerDue = true;
       routed = undefined;
       items.push({
         kind: "replaced",
@@ -177,7 +163,6 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     }
     if (block.kind === "user") {
       said = [];
-      headerDue = true;
       if (last?.kind === "input") items[items.length - 1] = { ...last, blocks: [...last.blocks, block] };
       else items.push({ kind: "input", id: block.id, blocks: [block] });
       continue;
@@ -186,24 +171,7 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     // response, as after a message.
     if (isAnswerNotice(block)) {
       said = [];
-      headerDue = true;
       continue;
-    }
-    // One header per response: only the user's own messages start a new one. Results from child
-    // agents arrive mid-response and stay inside it.
-    if (headerDue) {
-      items.push({
-        kind: "header",
-        id: `header:${block.id}`,
-        ...(provider ? { provider } : {}),
-        ...(model ? { model } : {}),
-        ...(routed ? { routed: routed.decision } : {}),
-      });
-      headerDue = false;
-      routed = undefined;
-    } else if (routed !== undefined) {
-      items.push({ kind: "routed", id: routed.id, decision: routed.decision });
-      routed = undefined;
     }
     const previous = items.at(-1);
     if (isSpawnCall(block) && block.status !== "error") {
@@ -219,8 +187,15 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
         items[items.length - 1] = { ...previous, spawns: [...previous.spawns, block] };
       else items.push({ kind: "spawns", id: block.id, spawns: [block] });
     } else if (block.kind === "turnEnd") {
-      items.push({ kind: "turnEnd", id: block.id, block, text: said.join("\n\n") });
+      items.push({
+        kind: "turnEnd",
+        id: block.id,
+        block,
+        text: said.join("\n\n"),
+        ...(routed?.effort === undefined ? {} : { routed }),
+      });
       said = [];
+      routed = undefined;
     } else {
       if (block.kind === "message") said.push(block.text);
       items.push({ kind: "block", id: block.id, block });
@@ -284,20 +259,3 @@ export const showsProgress = (item: Item | undefined): boolean => {
       return false;
   }
 };
-
-/**
- * What the effort router decided for a response that hasn't started: its last decision, unless a
- * response has begun since.
- */
-export const pendingRouted = (blocks: ReadonlyArray<TranscriptBlock>): RoutedDecision | undefined => {
-  for (let index = blocks.length - 1; index >= 0; index--) {
-    const block = blocks[index]!;
-    if (block.kind === "routed") return block.decision;
-    if (block.kind !== "user" && block.kind !== "model" && !isAnswerNotice(block)) return undefined;
-  }
-  return undefined;
-};
-
-/** The model the agent runs on at the end of the thread, which a response about to start runs on. */
-export const currentModel = (blocks: ReadonlyArray<TranscriptBlock>): string | undefined =>
-  blocks.findLast((block) => block.kind === "model")?.model;

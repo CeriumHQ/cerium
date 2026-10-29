@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
 import { editCounts } from "../src/features/transcript/EditDiff.tsx";
-import { currentModel, layout, pendingRouted, runTimings } from "../src/features/transcript/layout.ts";
+import { layout, runTimings } from "../src/features/transcript/layout.ts";
 import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -187,7 +187,7 @@ describe("buildTranscript", () => {
   it("turns delivered inputs into user messages and notices, and closes turns with their usage", () => {
     const blocks = buildTranscript(transcriptFixture);
     const kinds = blocks.map((block) => block.kind);
-    expect(kinds.slice(0, 2)).toEqual(["model", "user"]);
+    expect(kinds.slice(0, 3)).toEqual(["model", "routed", "user"]);
     expect(kinds.filter((kind) => kind === "notice")).toHaveLength(2);
     expect(kinds.filter((kind) => kind === "spawn")).toHaveLength(2);
     expect(blocks.find((block) => block.kind === "turnEnd")).toMatchObject({
@@ -324,7 +324,7 @@ describe("the model each response ran on", () => {
     ]);
   });
 
-  it("puts the effort router's decision on its response's header, and runs on the level it picked", () => {
+  it("puts the effort router's decision on its turn's footer, and runs on the level it picked", () => {
     const blocks = buildTranscript(
       events(
         started,
@@ -337,8 +337,8 @@ describe("the model each response ran on", () => {
         ...say("once more"),
       ),
     );
-    const headers = layout(blocks).flatMap((item) => (item.kind === "header" ? [item.routed] : []));
-    expect(headers).toEqual([
+    const footers = layout(blocks).flatMap((item) => (item.kind === "turnEnd" ? [item.routed] : []));
+    expect(footers).toEqual([
       { effort: "low", confidence: 0.8, ms: 400, costUsd: 0.00002 },
       { effort: "low", kept: "unsure", confidence: 0.3 },
       undefined,
@@ -346,19 +346,7 @@ describe("the model each response ran on", () => {
     expect(blocks.filter((block) => block.kind === "model")).toHaveLength(1);
   });
 
-  it("shows the router's decision before the response starts, and inside one a child's result began", () => {
-    const decided = buildTranscript(
-      events(
-        started,
-        { _tag: "EffortRouted", effort: "high", confidence: 0.9 },
-        {
-          _tag: "TurnInput",
-          items: [{ _tag: "FromUser", text: "plan it" }],
-        },
-      ),
-    );
-    expect(pendingRouted(decided)).toEqual({ effort: "high", confidence: 0.9 });
-
+  it("puts the router's decision for a turn a child's result began on that turn's footer", () => {
     const answered = buildTranscript(
       events(
         started,
@@ -371,9 +359,9 @@ describe("the model each response ran on", () => {
         { _tag: "TurnCompleted", stopReason: "completed" },
       ),
     );
-    expect(pendingRouted(answered)).toBeUndefined();
-    expect(layout(answered).filter((item) => item.kind === "routed")).toMatchObject([
-      { decision: { effort: "low", confidence: 0.7 } },
+    expect(layout(answered).flatMap((item) => (item.kind === "turnEnd" ? [item.routed] : []))).toEqual([
+      undefined,
+      { effort: "low", confidence: 0.7 },
     ]);
   });
 
@@ -385,7 +373,7 @@ describe("the model each response ran on", () => {
     expect(blocks.at(-1)).toMatchObject({ kind: "model", model: "opus", effort: "low", change: "effort" });
   });
 
-  it("marks a handoff to another harness, and labels each response with the harness it ran on", () => {
+  it("marks a handoff to another harness", () => {
     const blocks = buildTranscript(
       events(
         started,
@@ -408,16 +396,12 @@ describe("the model each response ran on", () => {
       ),
     );
     const items = layout(blocks);
-    expect(items.flatMap((item) => (item.kind === "header" ? [[item.provider, item.model]] : []))).toEqual([
-      ["claude", "claude-opus-5-5"],
-      ["codex", "gpt-6-luna"],
-    ]);
     expect(items.filter((item) => item.kind === "switch")).toMatchObject([
       { provider: "codex", model: "gpt-6-luna", effort: "medium", change: "handoff" },
     ]);
   });
 
-  it("labels each response with the model in effect when it began, not the thread's current one", () => {
+  it("marks a switch between two responses once", () => {
     const blocks = buildTranscript(
       events(
         started,
@@ -426,43 +410,14 @@ describe("the model each response ran on", () => {
         ...say("second"),
       ),
     );
-    const items = layout(blocks);
-    expect(items.flatMap((item) => (item.kind === "header" ? [item.model] : []))).toEqual([
-      "claude-opus-5-5",
-      "claude-sonnet-5-5",
-    ]);
-    // The switch shows between the two responses, once.
-    expect(items.map((item) => item.kind)).toEqual([
+    expect(layout(blocks).map((item) => item.kind)).toEqual([
       "input",
-      "header",
       "block",
       "turnEnd",
       "switch",
       "input",
-      "header",
       "block",
       "turnEnd",
     ]);
-    expect(currentModel(blocks)).toBe("claude-sonnet-5-5");
-  });
-
-  it("gives a response a header even when a switch sits between the message and its reply", () => {
-    const items = layout(
-      buildTranscript(
-        events(
-          started,
-          { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "hi" }] },
-          { _tag: "ModelChanged", model: "claude-haiku-5-5" },
-          { _tag: "MessageCompleted", messageId: "m", text: "Hello" },
-        ),
-      ),
-    );
-    expect(items.map((item) => item.kind)).toEqual(["input", "switch", "header", "block"]);
-  });
-
-  it("leaves a response without a model when the thread never named one", () => {
-    const items = layout(buildTranscript(events(...say("hi"))));
-    expect(items[1]).toEqual({ kind: "header", id: expect.any(String) });
-    expect(currentModel(buildTranscript(events(...say("hi"))))).toBeUndefined();
   });
 });

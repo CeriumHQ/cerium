@@ -117,7 +117,7 @@ export function ProjectPicker({
       <Tooltip label={folder ?? "Choose the folder agents work in"}>
         <Combobox.Trigger
           aria-label="Project"
-          className={`flex h-8 max-w-52 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
+          className={`flex h-8 max-w-52 min-w-0 items-center gap-1.5 rounded-full px-2.5 text-meta whitespace-nowrap transition-colors select-none hover:bg-surface-hover data-popup-open:bg-surface-active ${
             folder ? "text-fg-primary" : needed ? "text-attention-text" : "text-fg-secondary"
           }`}
         >

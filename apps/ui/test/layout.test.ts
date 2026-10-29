@@ -38,7 +38,7 @@ const turnEnd = (id: string, stopReason = "completed"): TranscriptBlock => ({
 });
 
 describe("layout", () => {
-  it("gives each response one header and puts the text it said on its end", () => {
+  it("puts the text each response said on its end", () => {
     const items = layout([
       user("u1"),
       message("m1", "First."),
@@ -51,13 +51,11 @@ describe("layout", () => {
     ]);
     expect(items.map((item) => item.kind)).toEqual([
       "input",
-      "header",
       "block",
       "run",
       "block",
       "turnEnd",
       "input",
-      "header",
       "block",
       "turnEnd",
     ]);
@@ -73,7 +71,7 @@ describe("layout", () => {
       { kind: "reasoning", id: "r1", text: "hmm", streaming: false },
       tool("t2", "Grep"),
     ]);
-    expect(items.map((item) => item.kind)).toEqual(["input", "header", "run"]);
+    expect(items.map((item) => item.kind)).toEqual(["input", "run"]);
   });
 
   it("leaves a spawn call to its agent's card, unless the call made none", () => {
@@ -81,12 +79,12 @@ describe("layout", () => {
     expect(layout([user("u"), spawned]).map((item) => item.kind)).toEqual(["input"]);
 
     const refused = tool("s2", "mcp__cerium__spawn_agent", "Only a lead can spawn agents.", "error");
-    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "header", "run"]);
+    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "run"]);
 
     const asked = tool("s3", "mcp__cerium__spawn_agent", [
       { type: "text", text: JSON.stringify({ status: "pendingApproval", requestId: "r" }) },
     ]);
-    expect(layout([user("u"), asked]).map((item) => item.kind)).toEqual(["input", "header", "spawnAsk"]);
+    expect(layout([user("u"), asked]).map((item) => item.kind)).toEqual(["input", "spawnAsk"]);
   });
 
   it("shows a pending approval's card in place of the call it gates, and the call once decided", () => {
@@ -100,20 +98,20 @@ describe("layout", () => {
         ...(resolution ? { resolution } : {}),
       }) satisfies TranscriptBlock;
     const pending = layout([user("u"), tool("c", "Bash", undefined, "running"), permission()]);
-    expect(pending.map((item) => item.kind)).toEqual(["input", "header", "block"]);
+    expect(pending.map((item) => item.kind)).toEqual(["input", "block"]);
     const decided = layout([
       user("u"),
       tool("c", "Bash", "ok"),
       permission({ decision: "allow", scope: "once" }),
     ]);
-    expect(decided.map((item) => item.kind)).toEqual(["input", "header", "run"]);
+    expect(decided.map((item) => item.kind)).toEqual(["input", "run"]);
     // A decided request whose call left no row still tells what was decided.
     const alone = layout([
       user("u"),
       tool("other", "Bash", "ok"),
       permission({ decision: "deny", scope: "once" }),
     ]);
-    expect(alone.map((item) => item.kind)).toEqual(["input", "header", "run", "block"]);
+    expect(alone.map((item) => item.kind)).toEqual(["input", "run", "block"]);
   });
 
   it("shows a question as its card, and what the agent does with the answer as a new response", () => {
@@ -138,27 +136,20 @@ describe("layout", () => {
       answer,
       message("m", "Going with that one."),
     ]);
-    expect(items.map((item) => item.kind)).toEqual([
-      "input",
-      "header",
-      "block",
-      "turnEnd",
-      "header",
-      "block",
-    ]);
+    expect(items.map((item) => item.kind)).toEqual(["input", "block", "turnEnd", "block"]);
 
     const refused = tool("c2", "mcp__cerium__ask_user", "Ask at most four questions.", "error");
-    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "header", "run"]);
+    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "run"]);
   });
 });
 
 describe("showsProgress", () => {
   it("is true while a tool runs or text streams, and false once the agent has gone quiet", () => {
-    const [, , running] = layout([user("u"), tool("t", "Bash", undefined, "running")]);
+    const [, running] = layout([user("u"), tool("t", "Bash", undefined, "running")]);
     expect(showsProgress(running)).toBe(true);
-    const [, , streaming] = layout([user("u"), message("m", "Hel", true)]);
+    const [, streaming] = layout([user("u"), message("m", "Hel", true)]);
     expect(showsProgress(streaming)).toBe(true);
-    const [, , done] = layout([user("u"), message("m", "Hello")]);
+    const [, done] = layout([user("u"), message("m", "Hello")]);
     expect(showsProgress(done)).toBe(false);
   });
 
@@ -170,7 +161,7 @@ describe("showsProgress", () => {
       questions: [{ question: "Which?", options: [], multiSelect: false, allowOther: true }],
       at: 0,
     } satisfies TranscriptBlock;
-    const [, , open] = layout([user("u"), question]);
+    const [, open] = layout([user("u"), question]);
     expect(showsProgress(open)).toBe(true);
   });
 });

@@ -61,7 +61,7 @@ export function Playground() {
         <Transcript
           blocks={buildTranscript(events)}
           queued={queuedMessages(events)}
-          agent={{ provider: leadFixture.provider, model: leadFixture.model }}
+          agent={{ provider: leadFixture.provider }}
           folder="C:/work/acme-web"
           activity="running"
           childState={(id) => (id === "agt_scout1" ? "idle" : "running")}
