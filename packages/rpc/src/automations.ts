@@ -2,6 +2,7 @@ import {
   AccessMode,
   EpochMillis,
   LenientArray,
+  LimitPolicy,
   ProviderId,
   ReasoningEffort,
   ThreadId,
@@ -67,6 +68,11 @@ export const AutomationInput = Schema.Struct({
   worktree: Schema.Boolean,
   lead: AutomationLead,
   when: AutomationWhen,
+  /**
+   * What each run's thread does when its harness's limit runs out; absent follows the setting for all
+   * threads. Since `RPC_VERSION` 41.
+   */
+  onLimit: Schema.optionalKey(LimitPolicy),
 });
 export type AutomationInput = typeof AutomationInput.Type;
 

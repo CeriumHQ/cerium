@@ -132,6 +132,9 @@ export interface ModelSwitch {
 /** The `RPC_VERSION` that brought `HandOffLead`; an older machine's leads stay on their harness. */
 export const HANDOFF_VERSION = 32;
 
+/** The `RPC_VERSION` that brought `SetThreadOnLimit`: an older machine's threads can't choose what a limit does. */
+export const LIMIT_POLICY_VERSION = 44;
+
 /** What an open thread's lead is handed to: a model of another harness. */
 export interface HandoffChoice extends ModelSwitch {
   readonly provider: ProviderId;

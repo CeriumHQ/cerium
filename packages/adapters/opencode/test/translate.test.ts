@@ -357,6 +357,7 @@ describe("OpenCodeTranslator", () => {
       { _tag: "AuthRequired", provider: "opencode", reason: "Bad key", loginCommand: "opencode auth login" },
     ],
     ["provider.rate-limit", { _tag: "AgentError", kind: "rateLimit", message: "Bad key", retryable: true }],
+    ["provider.quota", { _tag: "LimitReached", provider: "opencode", message: "Bad key" }],
     ["provider.timeout", { _tag: "AgentError", kind: "transient", message: "Bad key", retryable: true }],
     ["provider.no-route", { _tag: "AgentError", kind: "unknown", message: "Bad key", retryable: false }],
   ])("reports a %s failure", (type, expected) => {

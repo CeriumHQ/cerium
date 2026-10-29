@@ -299,6 +299,8 @@ const stopReason = (result: RunResult) => {
 
 const AUTH = /unauthenticated|unauthori[sz]ed|api key|not logged in|authentication/i;
 const RATE_LIMIT = /rate limit|usage limit|too many requests|resource.exhausted/i;
+/** A rate limit that is the plan's usage running out, not a throttle that passes in seconds. */
+const USAGE_LIMIT = /usage limit|out of usage|limit reached|exceeded your/i;
 const NETWORK = /network|unavailable|timed? ?out|deadline|econn|socket|fetch failed/i;
 
 /** Run errors carry only a message (e.g. "[unknown] Invalid User API Key"), so their kind is read from it. */
@@ -317,7 +319,10 @@ const errorPayload = (error: CursorError): EventPayload => {
       // No command to run: Cursor signs in from Settings → Harnesses (`CursorAdapter.login`).
       return { _tag: "AuthRequired", provider: "cursor", reason: error.message };
     case "rateLimit":
-      return { _tag: "AgentError", kind: "rateLimit", message: error.message, retryable: true };
+      // Throttled for a moment, or out of the plan's usage: only the latter pauses a thread.
+      return USAGE_LIMIT.test(error.message)
+        ? { _tag: "LimitReached", provider: "cursor", message: error.message }
+        : { _tag: "AgentError", kind: "rateLimit", message: error.message, retryable: true };
     case "network":
       return { _tag: "AgentError", kind: "transient", message: error.message, retryable: true };
     case "other":

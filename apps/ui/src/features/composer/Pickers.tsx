@@ -3,7 +3,7 @@ import { Menu } from "@base-ui/react/menu";
 import { Switch } from "@base-ui/react/switch";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { AccessMode, HarnessLimit, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
+import type { AccessMode, HarnessLimit, LimitPolicy, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import {
   Eye,
   FilePen,
@@ -19,6 +19,7 @@ import type { MouseEvent, ReactNode } from "react";
 
 import { MenuRadioGroup, MenuRadioItem } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { limitLabel, limitPolicies } from "../settings/limitPolicy.ts";
 import { accessOptions, effortHint, effortLabel, speedHint, speedLabel } from "./models.ts";
 
 // The message box's own controls beside the model menu (ModelPicker.tsx): the effort, speed and
@@ -287,6 +288,54 @@ export function SeveralSwitch({
         <Switch.Thumb className="size-3.5 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3.5 data-checked:bg-accent-fg" />
       </span>
     </Switch.Root>
+  );
+}
+
+/** What the model menu offers for a thread's limit: what it does when its harness's usage runs out. */
+export interface LimitChoice {
+  readonly value: LimitPolicy;
+  /** The thread follows the setting for all threads, rather than a choice of its own. */
+  readonly inherited: boolean;
+  readonly onPick: (policy: LimitPolicy) => void;
+}
+
+/**
+ * The model menu's last row: what the thread does when its harness's usage limit runs out. Quiet,
+ * since it's seldom changed; it names the setting while the thread follows it.
+ */
+export function LimitRow({ choice }: { readonly choice: LimitChoice }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 border-t border-line-subtle px-2.5 py-2">
+      <span className="flex min-w-0 flex-1 flex-col px-0.5 text-caption">
+        <span className="truncate text-fg-tertiary">When usage runs out</span>
+        <span className="truncate text-fg-secondary">
+          {choice.inherited
+            ? "Following Settings"
+            : limitPolicies.find((each) => each.value === choice.value)?.short}
+        </span>
+      </span>
+      <ToggleGroup
+        value={[choice.value]}
+        onValueChange={(value) => {
+          const next = value[0] as LimitPolicy | undefined;
+          if (next !== undefined) choice.onPick(next);
+        }}
+        aria-label="When usage runs out"
+        className="flex shrink-0 gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+      >
+        {limitPolicies.map((policy) => (
+          <Toggle
+            key={policy.value}
+            value={policy.value}
+            aria-label={limitLabel[policy.value]}
+            onMouseDown={keepFocus}
+            className="flex h-7 items-center justify-center rounded-[7px] px-2.5 text-meta whitespace-nowrap text-fg-tertiary transition-colors select-none hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-focus-ring data-pressed:bg-surface-overlay data-pressed:font-medium data-pressed:text-fg-primary data-pressed:shadow-[0_0_0_1px_var(--line-strong)] max-md:h-9"
+          >
+            {policy.label}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+    </div>
   );
 }
 

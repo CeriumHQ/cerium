@@ -40,6 +40,18 @@ export const AgentState = withFallback(
 );
 export type AgentState = typeof AgentState.Type;
 
+/**
+ * What a thread does when its harness's plan or usage limit runs out mid-turn:
+ * - `wait`: it pauses until the limit resets, then goes on with the same harness and session.
+ * - `failover`: it goes on at once with the next model on the roster from another harness, told the
+ *   task and what the interrupted turn had done.
+ * - `off`: the turn ends with the error.
+ *
+ * A policy a newer version added reads as `off`.
+ */
+export const LimitPolicy = withFallback(Schema.Literals(["wait", "failover", "off"]), "off");
+export type LimitPolicy = typeof LimitPolicy.Type;
+
 export const ThreadMode = Schema.Literals(["work", "chat"]);
 export type ThreadMode = typeof ThreadMode.Type;
 
@@ -90,6 +102,8 @@ export const ThreadInfo = Schema.Struct({
    * (multi agent), so the sidebar can show them as one run.
    */
   runId: Schema.optionalKey(Schema.NonEmptyString),
+  /** What the thread does when its harness's limit runs out; absent follows the setting for all threads. */
+  onLimit: Schema.optionalKey(LimitPolicy),
 });
 export type ThreadInfo = typeof ThreadInfo.Type;
 

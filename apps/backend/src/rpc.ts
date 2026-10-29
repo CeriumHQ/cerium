@@ -347,6 +347,8 @@ export const Handlers = MachineRpcs.toLayer(
         }).pipe(Effect.mapError(refuse)),
       SetThreadLater: ({ threadId, until }) =>
         orchestrator.setThreadLater(threadId, until).pipe(Effect.mapError(refuse)),
+      SetThreadOnLimit: ({ threadId, policy }) =>
+        orchestrator.setThreadOnLimit(threadId, policy).pipe(Effect.mapError(refuse)),
       // A deleted thread's terminals end with it.
       DeleteThread: ({ threadId, discardWork }) => {
         let teardown: TeardownFailure | undefined;

@@ -1,6 +1,7 @@
 import type {
   CapabilityManifest,
   ContextCompacted,
+  LimitReached,
   ModelSpeed,
   ProviderId,
   ReasoningEffort,
@@ -51,6 +52,12 @@ export const makeFakeAdapter = (
     readonly permissionTool?: string;
     /** Each turn reports these todo lists, one update after another, before it replies. */
     readonly todos?: ReadonlyArray<ReadonlyArray<TodoItem>>;
+    /**
+     * A turn that runs into the harness's plan limit instead of replying: given the turn's number
+     * across all this adapter's sessions (from 1), the limit it hits, or none for a turn that goes
+     * through. It reports its work first, then the limit and a failed end.
+     */
+    readonly limit?: (turn: number) => Omit<LimitReached, "_tag"> | undefined;
     /** Whether the manifest takes images (default false). */
     readonly images?: boolean;
     /** How long each session takes to start. */
@@ -82,6 +89,7 @@ export const makeFakeAdapter = (
   const sideQuestions: Array<SideQuestionRequest> = [];
   const compactions = { count: 0 };
   let failuresLeft = options.failedStarts ?? 0;
+  let turnsTaken = 0;
   const running = { now: 0, max: 0 };
   const manifest: CapabilityManifest = {
     provider,
@@ -198,6 +206,12 @@ export const makeFakeAdapter = (
             for (const payload of options.work?.(text) ?? []) {
               yield* Queue.offer(events, { payload });
               yield* Effect.sleep(options.workPause ?? 0);
+            }
+            const limit = options.limit?.(++turnsTaken);
+            if (limit !== undefined) {
+              yield* Queue.offer(events, { payload: { _tag: "LimitReached", ...limit } });
+              yield* Queue.offer(events, { payload: { _tag: "TurnCompleted", stopReason: "error" } });
+              return;
             }
             const messageId = `m${session.sent.length}`;
             const reply = options.reply?.(text, sessionOptions) ?? `reply to: ${text.slice(0, 40)}`;

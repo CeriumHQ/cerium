@@ -3,8 +3,10 @@ import { sameTodos, type ContextCompacted, type EventPayload, type TodoItem } fr
 
 import { fromCodexEffort } from "./config.ts";
 import { LOGIN_COMMAND } from "./manifest.ts";
+import { windowLabel } from "./usage.ts";
 import type { ServerNotification } from "./protocol/ServerNotification.ts";
 import type { CodexErrorInfo } from "./protocol/v2/CodexErrorInfo.ts";
+import type { RateLimitSnapshot } from "./protocol/v2/RateLimitSnapshot.ts";
 import type { ThreadItem } from "./protocol/v2/ThreadItem.ts";
 import type { ThreadResumeResponse } from "./protocol/v2/ThreadResumeResponse.ts";
 import type { ThreadStartResponse } from "./protocol/v2/ThreadStartResponse.ts";
@@ -58,6 +60,8 @@ export class CodexTranslator {
   readonly #reasoning = new Map<string, { readonly source: "summary" | "content"; readonly part: number }>();
   /** The first and latest usage update of each running turn. */
   readonly #usage = new Map<string, { readonly first: ThreadTokenUsage; latest: ThreadTokenUsage }>();
+  /** The plan's limits as Codex last reported them, by bucket, which say when a limit that ran out resets. */
+  readonly #limits = new Map<string, RateLimitSnapshot>();
   /** Turns whose failure was already reported by an `error` notification. */
   readonly #reportedErrors = new Set<string>();
   /** The context as the latest usage update measured it. */
@@ -201,7 +205,12 @@ export class CodexTranslator {
         const { error, willRetry, turnId } = notification.params;
         if (willRetry) return [];
         this.#reportedErrors.add(turnId);
-        return [turnError(error)];
+        return [turnError(error, this.#limits)];
+      }
+      case "account/rateLimits/updated": {
+        const { rateLimits } = notification.params;
+        this.#limits.set(rateLimits.limitId ?? "codex", rateLimits);
+        return [];
       }
       case "turn/plan/updated":
         return this.#planUpdated(notification.params);
@@ -292,7 +301,7 @@ export class CodexTranslator {
     return [
       ...unfinished,
       ...this.#flushCompaction(),
-      ...(failed && turn.error !== null ? [turnError(turn.error)] : []),
+      ...(failed && turn.error !== null ? [turnError(turn.error, this.#limits)] : []),
       turnUsage(usage),
       { _tag: "TurnCompleted", stopReason: stopReason(turn.status) },
     ];
@@ -346,13 +355,40 @@ const errorCode = (info: CodexErrorInfo | null): string | undefined => {
   return Object.keys(info)[0];
 };
 
-const turnError = (error: TurnError): EventPayload => {
+/**
+ * Which limit ran out and when it resets, from the limits Codex last reported: the windows at their
+ * limit, and the latest of their resets, as that is when the turn can go on.
+ */
+export const exhaustedLimit = (
+  limits: ReadonlyMap<string, RateLimitSnapshot>,
+): { readonly window?: string; readonly resetsAt?: number } => {
+  const exhausted = [...limits.values()].flatMap((snapshot) =>
+    [snapshot.primary, snapshot.secondary].flatMap((window) =>
+      window !== null && window.usedPercent >= 100 ? [window] : [],
+    ),
+  );
+  const resets = exhausted.flatMap((window) =>
+    window.resetsAt !== null && window.resetsAt > 0 ? [window.resetsAt] : [],
+  );
+  const longest = exhausted.toSorted((a, b) => (b.windowDurationMins ?? 0) - (a.windowDurationMins ?? 0))[0];
+  return {
+    ...(longest === undefined || longest.windowDurationMins === null
+      ? {}
+      : { window: windowLabel(longest.windowDurationMins).replace(/ limit$/, "") }),
+    ...(resets.length === 0 ? {} : { resetsAt: Math.round(Math.max(...resets) * 1000) }),
+  };
+};
+
+const turnError = (error: TurnError, limits: ReadonlyMap<string, RateLimitSnapshot>): EventPayload => {
   const code = errorCode(error.codexErrorInfo);
   const message = error.additionalDetails ? `${error.message} (${error.additionalDetails})` : error.message;
   if (code === "unauthorized") {
     return { _tag: "AuthRequired", provider: "codex", reason: message, loginCommand: LOGIN_COMMAND };
   }
-  if (code === "usageLimitExceeded" || code === "rateLimitExceeded") {
+  if (code === "usageLimitExceeded") {
+    return { _tag: "LimitReached", provider: "codex", ...exhaustedLimit(limits), message };
+  }
+  if (code === "rateLimitExceeded") {
     return { _tag: "AgentError", kind: "rateLimit", message, retryable: true };
   }
   if (code !== undefined && RETRYABLE_ERRORS.has(code)) {

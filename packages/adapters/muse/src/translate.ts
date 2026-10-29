@@ -489,7 +489,15 @@ const turnErrors = (params: TurnCompletedParams): ReadonlyArray<EventPayload> =>
     return [{ _tag: "AuthRequired", provider: "muse", reason: error.message, loginCommand: LOGIN_COMMAND }];
   }
   if (error.quota !== undefined) {
-    return [{ _tag: "AgentError", kind: "rateLimit", message: error.message, retryable: true }];
+    const { resetsAtMs } = error.quota;
+    return [
+      {
+        _tag: "LimitReached",
+        provider: "muse",
+        ...(Number.isFinite(resetsAtMs) && resetsAtMs > 0 ? { resetsAt: Math.round(resetsAtMs) } : {}),
+        message: error.message,
+      },
+    ];
   }
   if (error.kind === "stepLimit") return [];
   return [

@@ -212,6 +212,16 @@ export interface OrchestratorSettings {
   readonly maxDeliveredChars: number;
   /** Whether stopping a lead also stops its children. */
   readonly stopChildrenWithLead: boolean;
+  /**
+   * A thread paused at its harness's limit: how long to wait to try again when no reset time is
+   * reported (times the pause's number), how long past a reported reset, and how many pauses in a
+   * row before it gives up.
+   */
+  readonly limitPause: {
+    readonly retry: Duration.Duration;
+    readonly margin: Duration.Duration;
+    readonly maxPauses: number;
+  };
 }
 
 export class OrchestratorConfig extends Context.Service<OrchestratorConfig, OrchestratorSettings>()(
@@ -227,6 +237,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
       threadBudget: { limit: 12, window: Duration.minutes(30) },
       maxDeliveredChars: 8_000,
       stopChildrenWithLead: false,
+      limitPause: { retry: Duration.minutes(20), margin: Duration.seconds(30), maxPauses: 5 },
       ...settings,
     });
 }

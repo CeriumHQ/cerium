@@ -139,7 +139,7 @@ describe("CursorTranslator on the synthetic session", () => {
       // Rejected key, then a failed send.
       "AuthRequired",
       "TurnCompleted",
-      "AgentError",
+      "LimitReached",
       "TurnCompleted",
     ]);
   });
@@ -215,12 +215,11 @@ describe("CursorTranslator on the synthetic session", () => {
     });
   });
 
-  it("reports a rate-limited send as retryable", () => {
-    expect(payloads.find((payload) => payload._tag === "AgentError")).toEqual({
-      _tag: "AgentError",
-      kind: "rateLimit",
+  it("reports a send that ran out of usage as a limit, apart from a failure", () => {
+    expect(payloads.find((payload) => payload._tag === "LimitReached")).toEqual({
+      _tag: "LimitReached",
+      provider: "cursor",
       message: "Usage limit exceeded",
-      retryable: true,
     });
   });
 });

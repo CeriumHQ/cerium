@@ -14,6 +14,8 @@ export const threads = sqliteTable("threads", {
   laterUntil: integer("later_until"),
   /** Shared by the threads one message started together (multi agent). */
   runId: text("run_id"),
+  /** What the thread does when its harness's limit runs out (`LimitPolicy`); null follows the setting. */
+  onLimit: text("on_limit", { enum: ["wait", "failover", "off"] }),
   /**
    * When the thread was last slimmed (`Store.slimThreads`): its events up to then hold no images and
    * no harness payloads. Null for a thread never slimmed.

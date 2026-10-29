@@ -140,11 +140,51 @@ const todoMark: Record<TodoItem["status"], string> = {
 /** What a handoff's brief tells beside the conversation. */
 export interface BriefContext {
   readonly from: ModelChoice;
+  /** Why the lead moved: the user chose to (the default), or the first harness ran out of usage. */
+  readonly cause?: "user" | "limit" | undefined;
   /** The older turns condensed (`Condenser`); without it, the brief lists their requests. */
   readonly summary?: string | undefined;
   /** The agents the lead spawned that still run, and report to it. */
   readonly running: ReadonlyArray<Pick<AgentInfo, "id" | "role" | "model">>;
 }
+
+/** The most tool calls of an interrupted turn the brief lists, newest kept. */
+const MAX_CALLS = 40;
+
+/** What a tool call acted on, in a few words: its command, file, pattern or query. */
+const callTarget = (input: unknown): string => {
+  if (typeof input !== "object" || input === null) return "";
+  const fields = input as Record<string, unknown>;
+  const target = [
+    fields["command"],
+    fields["file_path"],
+    fields["path"],
+    fields["pattern"],
+    fields["query"],
+    fields["url"],
+    fields["description"],
+  ].find((value): value is string => typeof value === "string" && value.trim() !== "");
+  return target === undefined ? "" : clip(target.replace(/\s+/g, " ").trim(), 120);
+};
+
+/**
+ * What the turn that a limit cut off had done: its tool calls, newest last, and how many came
+ * before the ones listed. None when the lead's latest turn wasn't cut off by a limit.
+ */
+export const interruptedWork = (
+  live: ReadonlyArray<AgentEvent>,
+): { readonly calls: ReadonlyArray<string>; readonly earlier: number } | undefined => {
+  const turn = live.findLastIndex(({ payload }) => payload._tag === "TurnInput");
+  if (turn === -1 || !live.slice(turn).some(({ payload }) => payload._tag === "LimitReached")) {
+    return undefined;
+  }
+  const calls = live.slice(turn).flatMap(({ payload }) => {
+    if (payload._tag !== "ToolCallStarted") return [];
+    const target = callTarget(payload.input);
+    return [target === "" ? payload.toolName : `${payload.toolName}: ${target}`];
+  });
+  return { calls: calls.slice(-MAX_CALLS), earlier: Math.max(0, calls.length - MAX_CALLS) };
+};
 
 /**
  * The brief a lead's new session on another harness hears with its first turn: where the
@@ -174,9 +214,13 @@ export const handoffBrief = (live: ReadonlyArray<AgentEvent>, context: BriefCont
     used += line.length;
   }
   const named = [...files].slice(-MAX_FILES);
+  const interrupted = interruptedWork(live);
+  const moved =
+    context.cause === "limit"
+      ? `${harnessName[context.from.provider]} (${context.from.model}) ran out of usage in the middle of a turn, so Cerium moved this thread to you`
+      : `The user moved this thread from ${harnessName[context.from.provider]} (${context.from.model}) to you`;
   const sections = [
-    `${HANDOFF_PREFACE} The user moved this thread from ${harnessName[context.from.provider]}` +
-      ` (${context.from.model}) to you, to carry on where it left off. Only the text below came across:` +
+    `${HANDOFF_PREFACE} ${moved}, to carry on where it left off. Only the text below came across:` +
       " that session's memory, tool results and open requests stayed behind, so read files again before" +
       " relying on them, and don't redo work already done. Whatever the user sends next follows this notice.",
     ...(older.length === 0
@@ -192,6 +236,13 @@ export const handoffBrief = (live: ReadonlyArray<AgentEvent>, context: BriefCont
       : [
           older.length === 0 ? "## The conversation" : `## The latest ${recent.length} turns`,
           ...recent.map(entryOf),
+        ]),
+    ...(interrupted === undefined || interrupted.calls.length === 0
+      ? []
+      : [
+          "## What the cut-off turn had done",
+          `Its tool calls, in order${interrupted.earlier > 0 ? ` (the last ${interrupted.calls.length}, after ${interrupted.earlier} earlier)` : ""}; their results are not shown, so check the files before relying on them.`,
+          interrupted.calls.map((call) => `- ${call}`).join("\n"),
         ]),
     ...(named.length === 0
       ? []

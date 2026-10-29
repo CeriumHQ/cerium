@@ -3,7 +3,7 @@ import { Effect, Schema, Struct } from "effect";
 import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { LenientArray, withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
-import { AccessMode } from "./orchestration.ts";
+import { AccessMode, LimitPolicy } from "./orchestration.ts";
 import { PromptsSettings } from "./savedPrompts.ts";
 
 /**
@@ -112,6 +112,12 @@ const defaultRoster: RosterSettings = { models: [], edited: [] };
 
 const defaultPrompts: PromptsSettings = { prompts: [] };
 
+/** What threads and automations do when a harness's limit runs out, unless they say otherwise. */
+export const LimitSettings = Schema.Struct({ onLimit: LimitPolicy });
+export type LimitSettings = typeof LimitSettings.Type;
+
+const defaultLimits: LimitSettings = { onLimit: "wait" };
+
 /** The days a thread can go quiet before it's slimmed, the user's choices; 0 never slims. */
 export const SLIM_AFTER_DAYS = [0, 1, 3, 7, 14, 30] as const;
 
@@ -146,6 +152,7 @@ const SettingsFields = Schema.Struct({
   prompts: PromptsSettings,
   slimThreadsAfter: SlimThreadsAfter,
   assistants: AssistantSettings,
+  limits: LimitSettings,
 });
 
 /**
@@ -172,6 +179,8 @@ export const Settings = Schema.Struct({
   ),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 43). */
   assistants: AssistantSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAssistants))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 44). */
+  limits: LimitSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultLimits))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -191,4 +200,5 @@ export const defaultSettings: Settings = {
   prompts: defaultPrompts,
   slimThreadsAfter: defaultSlimThreadsAfter,
   assistants: defaultAssistants,
+  limits: defaultLimits,
 };

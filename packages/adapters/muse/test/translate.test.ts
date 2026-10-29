@@ -287,10 +287,17 @@ describe("MuseTranslator turn endings", () => {
     });
   });
 
-  it("reports quota failures as retryable rate limits", () => {
+  it("reports quota failures as a limit with the provider's reset time", () => {
     expect(
-      endOf("failed", { error: { kind: "modelError", message: "quota", retryable: false, quota: {} } })[0],
-    ).toEqual({ _tag: "AgentError", kind: "rateLimit", message: "quota", retryable: true });
+      endOf("failed", {
+        error: {
+          kind: "modelError",
+          message: "quota",
+          retryable: false,
+          quota: { limitKind: "tierLimit", resetsAtMs: 1_900_000_000_000 },
+        },
+      })[0],
+    ).toEqual({ _tag: "LimitReached", provider: "muse", resetsAt: 1_900_000_000_000, message: "quota" });
   });
 
   it("reports a host that died mid-turn as a crash", () => {

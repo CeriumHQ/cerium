@@ -30,6 +30,7 @@ import { providerName } from "../threads/model.ts";
 import {
   Compaction,
   ImportedFrom,
+  LimitNote,
   ModelSwitch,
   Notice,
   PermissionCard,
@@ -563,6 +564,8 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
       return <QuestionBlock block={block} expired={activity === "ended"} />;
     case "error":
       return <p className="text-body text-fg-secondary">{block.message}</p>;
+    case "limit":
+      return <LimitNote block={block} />;
     case "compacted":
       return <Compaction block={block} />;
     default:

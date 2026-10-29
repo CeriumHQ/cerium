@@ -1,4 +1,4 @@
-import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SDKRateLimitInfo, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AdapterEvent } from "@cerium/harness";
 import type { ContextCompacted, EventPayload } from "@cerium/protocol";
 
@@ -7,6 +7,20 @@ import { ClaudeTodos } from "./todos.ts";
 
 /** Built-in tools whose successful result means a file in the workspace changed. */
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+/** The limits Claude Code names, as the user knows them. */
+const LIMIT_WINDOWS: Record<NonNullable<SDKRateLimitInfo["rateLimitType"]>, string> = {
+  five_hour: "5-hour",
+  seven_day: "Weekly",
+  seven_day_opus: "Weekly Opus",
+  seven_day_sonnet: "Weekly Sonnet",
+  seven_day_overage_included: "Weekly",
+  overage: "Extra usage",
+};
+
+/** A reset time as epoch milliseconds, from Claude Code's seconds (or milliseconds). */
+const epochMillis = (value: number): number | undefined =>
+  Number.isFinite(value) && value > 0 ? Math.round(value < 1e11 ? value * 1000 : value) : undefined;
 
 const AUTH_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "verification_required"]);
 
@@ -30,6 +44,8 @@ export class ClaudeTranslator {
   #started = false;
   /** `total_cost_usd` is cumulative for the session; turns report the difference. */
   #costSoFar = 0;
+  /** The limit this turn ran into, so it is reported once. */
+  #limitHit: { readonly window?: string; readonly resetsAt?: number } | undefined;
   /** The model the session runs, which each turn's `init` names. */
   #model: string | undefined;
   /** The window Claude Code measures its context against, as it last reported it (`measured`). */
@@ -129,16 +145,7 @@ export class ClaudeTranslator {
       case "result":
         return this.#result(message);
       case "rate_limit_event":
-        return message.rate_limit_info.status === "rejected"
-          ? [
-              {
-                _tag: "AgentError",
-                kind: "rateLimit",
-                message: `Claude ${message.rate_limit_info.rateLimitType ?? "usage"} limit reached`,
-                retryable: true,
-              },
-            ]
-          : [];
+        return message.rate_limit_info.status === "rejected" ? this.#limit(message.rate_limit_info) : [];
       case "auth_status":
         return message.error === undefined
           ? []
@@ -203,15 +210,20 @@ export class ClaudeTranslator {
   }
 
   #assistant(message: Extract<SDKMessage, { type: "assistant" }>): ReadonlyArray<EventPayload> {
+    if (message.error === "rate_limit" && this.#limitHit === undefined) {
+      // The rejected-limit event normally comes first; without it, the error alone says the limit ran out.
+      return this.#limit(undefined);
+    }
+    if (message.error === "rate_limit") return [];
     if (message.error !== undefined) {
       return [
         AUTH_ERRORS.has(message.error)
           ? { _tag: "AuthRequired", provider: "claude", reason: message.error, loginCommand: LOGIN_COMMAND }
           : {
               _tag: "AgentError",
-              kind: message.error === "rate_limit" ? "rateLimit" : "unknown",
+              kind: message.error === "overloaded" ? "transient" : "unknown",
               message: message.error,
-              retryable: message.error === "rate_limit" || message.error === "overloaded",
+              retryable: message.error === "overloaded",
             },
       ];
     }
@@ -278,7 +290,24 @@ export class ClaudeTranslator {
     });
   }
 
+  /** One `LimitReached` for the turn: the rejected-limit event and the error after it say the same. */
+  #limit(info: SDKRateLimitInfo | undefined): ReadonlyArray<EventPayload> {
+    if (this.#limitHit !== undefined) return [];
+    const window = info?.rateLimitType === undefined ? undefined : LIMIT_WINDOWS[info.rateLimitType];
+    const resetsAt = info?.resetsAt === undefined ? undefined : epochMillis(info.resetsAt);
+    this.#limitHit = { ...(window ? { window } : {}), ...(resetsAt ? { resetsAt } : {}) };
+    return [
+      {
+        _tag: "LimitReached",
+        provider: "claude",
+        ...this.#limitHit,
+        message: `Claude ${window ?? "usage"} limit reached`,
+      },
+    ];
+  }
+
   #result(message: SDKResultMessage): ReadonlyArray<EventPayload> {
+    this.#limitHit = undefined;
     const { usage } = message;
     const turnCost = Math.max(0, message.total_cost_usd - this.#costSoFar);
     this.#costSoFar = Math.max(this.#costSoFar, message.total_cost_usd);

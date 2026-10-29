@@ -2,8 +2,10 @@ import {
   ADVISOR_ROLE,
   type AgentEvent,
   type AgentId,
+  type LimitPolicy,
   type ProviderId,
   type RestorePreview,
+  type ThreadId,
 } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
@@ -18,7 +20,13 @@ import {
   type RefObject,
 } from "react";
 
-import { cloudEventsAtom, queueEventsAtom, summaryEventsAtom, threadEventsAtom } from "../backend/atoms.ts";
+import {
+  cloudEventsAtom,
+  queueEventsAtom,
+  settingsAtom,
+  summaryEventsAtom,
+  threadEventsAtom,
+} from "../backend/atoms.ts";
 import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
 import { KeptViews, useKeptHidden, useKeptResult } from "../components/KeptViews.tsx";
 import { Reveal } from "../components/Reveal.tsx";
@@ -40,6 +48,7 @@ import type { TurnFileOpen } from "../features/transcript/TurnChanges.tsx";
 import type { TurnFileTab } from "../features/viewer/model.ts";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
+import { DEFAULT_LIMIT_POLICY } from "../features/settings/limitPolicy.ts";
 import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
@@ -121,6 +130,11 @@ export interface ThreadPaneActions {
   readonly switchLead: (agentId: AgentId, choice: ModelSwitch) => Promise<unknown>;
   /** Asks a lead's harness to compact its conversation. */
   readonly compact: (agentId: AgentId) => Promise<unknown>;
+  /**
+   * Sets what a thread does when its harness's usage runs out; absent when the machine's backend
+   * can't.
+   */
+  readonly setOnLimit?: ((threadId: ThreadId, policy: LimitPolicy) => Promise<unknown>) | undefined;
   /**
    * Answers a question about a thread from its lead's conversation, keeping nothing; absent when the
    * machine's backend can't.
@@ -215,6 +229,9 @@ export function ThreadPane({
   slashCommands,
 }: ThreadPaneProps) {
   const models = useModels();
+  const limitDefault =
+    AsyncResult.getOrElse(useAtomValue(settingsAtom), () => undefined)?.limits.onLimit ??
+    DEFAULT_LIMIT_POLICY;
   const input = useRef<HTMLDivElement>(null);
   const [boxRef, box] = useMessageBoxHandle();
   const handOver = useEffectEvent(() => onHandles(paneKey, { input, box }));
@@ -390,6 +407,18 @@ export function ThreadPane({
                         : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
                       context: agents.find((agent) => agent.id === lead.id)?.context,
                       ...(cloud ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
+                      ...(cloud || actions.setOnLimit === undefined
+                        ? {}
+                        : {
+                            onLimit: {
+                              value: viewed.thread.onLimit ?? limitDefault,
+                              inherited: viewed.thread.onLimit === undefined,
+                              onPick: (policy) =>
+                                void attempt(
+                                  actions.setOnLimit?.(viewed.thread.id, policy) ?? Promise.resolve(),
+                                ),
+                            },
+                          }),
                       ...(cloud || askSide === undefined
                         ? {}
                         : { onAskSide: (question, earlier) => askSide(lead.id, question, earlier) }),

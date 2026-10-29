@@ -107,6 +107,7 @@ import {
   SpeedMark,
   type EffortChoice,
   type EffortPick,
+  type LimitChoice,
   type SpeedChoice,
 } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
@@ -187,6 +188,8 @@ export type ComposerTarget =
       readonly context?: AgentContext | undefined;
       /** Asks the lead's harness to compact its conversation, offered where the harness can. */
       readonly onCompact?: () => void;
+      /** What the thread does when its harness's usage runs out, and sets it; absent where it can't be set. */
+      readonly onLimit?: LimitChoice;
       /**
        * Answers a quick question about the thread from its conversation, without adding it to the
        * thread (`/btw`). Absent where the machine can't.
@@ -1077,7 +1080,12 @@ export function Composer({
     thread?.onCompact && compacts && !running && thread.ended === undefined ? thread.onCompact : undefined;
   const threadChip =
     thread && threadShown ? (
-      handoff || switchesModel || threadEffortChoice || offersSpeed(threadSpeedChoice) || onCompact ? (
+      handoff ||
+      switchesModel ||
+      threadEffortChoice ||
+      offersSpeed(threadSpeedChoice) ||
+      onCompact ||
+      thread.onLimit ? (
         <ModelPicker
           models={
             handoff
@@ -1091,6 +1099,7 @@ export function Composer({
           effortShown={threadEffortShown}
           speed={threadSpeedChoice}
           speedShown={threadSpeed}
+          limit={thread.onLimit}
           leaves={(picked) => picked.provider !== thread.provider}
           onPick={(picked) =>
             picked.provider === thread.provider

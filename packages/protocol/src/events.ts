@@ -232,6 +232,21 @@ export const AuthRequired = Schema.TaggedStruct("AuthRequired", {
   loginCommand: Schema.optionalKey(Schema.NonEmptyString),
 });
 
+/**
+ * A harness's plan or usage limit ran out: the turn can't go on until the limit resets. Adapters
+ * report it apart from `AgentError`, whose `rateLimit` kind is a momentary throttle worth retrying
+ * at once, so the orchestrator can pause the thread or move it to another harness.
+ */
+export const LimitReached = Schema.TaggedStruct("LimitReached", {
+  provider: ProviderId,
+  /** Which limit ran out, such as "5-hour" or "Weekly"; absent when the harness doesn't say. */
+  window: Schema.optionalKey(Schema.NonEmptyString),
+  /** When the limit resets, when the harness reports it. */
+  resetsAt: Schema.optionalKey(EpochMillis),
+  message: Schema.String,
+});
+export type LimitReached = typeof LimitReached.Type;
+
 export const AgentError = Schema.TaggedStruct("AgentError", {
   kind: withFallback(
     Schema.Literals(["transient", "rateLimit", "versionMismatch", "crash", "unknown"]),
@@ -464,6 +479,8 @@ export const ModelChanged = Schema.TaggedStruct("ModelChanged", {
  * behind.
  */
 export const LeadHandedOff = Schema.TaggedStruct("LeadHandedOff", {
+  /** `limit`: Cerium moved the lead because its harness's limit ran out. Absent: the user did. */
+  cause: Schema.optionalKey(withFallback(Schema.Literals(["user", "limit"]), "user")),
   from: Schema.Struct({ provider: ProviderId, model: Schema.NonEmptyString }),
   provider: ProviderId,
   model: Schema.NonEmptyString,
@@ -475,6 +492,31 @@ export const LeadHandedOff = Schema.TaggedStruct("LeadHandedOff", {
   speed: Schema.optionalKey(StoredSpeed),
 });
 export type LeadHandedOff = typeof LeadHandedOff.Type;
+
+/**
+ * The lead's harness hit its limit and the thread waits for it to reset (`LimitPolicy` "wait"). At
+ * `resumeAt` Cerium sends the lead on with the same session; a `LimitResumed` closes the pause.
+ */
+export const LimitPaused = Schema.TaggedStruct("LimitPaused", {
+  provider: ProviderId,
+  window: Schema.optionalKey(Schema.NonEmptyString),
+  /** When the thread picks up again. */
+  resumeAt: EpochMillis,
+  /** `resumeAt` is the harness's reported reset; without it, Cerium's own guess to try again at. */
+  reported: Schema.Boolean,
+  /** How many pauses in a row, since a turn last completed. */
+  attempt: NonNegativeInt,
+});
+export type LimitPaused = typeof LimitPaused.Type;
+
+/**
+ * A pause ended: the limit's reset time came (`reset`), the user sent a message first (`message`), or
+ * stopped the agent (`stopped`). Recorded before the lead is sent on, so a pause is never resumed twice.
+ */
+export const LimitResumed = Schema.TaggedStruct("LimitResumed", {
+  by: withFallback(Schema.Literals(["reset", "message", "stopped"]), "reset"),
+});
+export type LimitResumed = typeof LimitResumed.Type;
 
 /**
  * The effort router's word on the turn about to start, for an agent set to Auto: the level the turn
@@ -575,7 +617,10 @@ export const EventPayload = Schema.Union([
   ContextCompacted,
   TurnCompleted,
   AuthRequired,
+  LimitReached,
   AgentError,
+  LimitPaused,
+  LimitResumed,
   TurnInput,
   ConversationRewound,
   FilesSaved,
