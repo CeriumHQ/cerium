@@ -128,6 +128,9 @@ export const readCursorUsage = Effect.fn("CursorAdapter.usage")(function* () {
           rows: ROWS,
           cwd,
           env: { ...process.env, NO_OPEN_BROWSER: "1" } as Record<string, string>,
+          // The ConPTY node-pty ships. Windows' own leaves its `conhost.exe` running after the CLI
+          // exits, because node-pty never closes a console whose process ended: one every read.
+          useConptyDll: true,
         }),
       catch: failure("Couldn't start the Cursor CLI"),
     }),
