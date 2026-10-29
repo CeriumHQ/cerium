@@ -123,6 +123,17 @@ export interface CompletionRequest {
   readonly cwd: string;
 }
 
+/** A question put to a throwaway copy of a session's conversation, which answers and is forgotten. */
+export interface SideQuestionRequest {
+  readonly model: string;
+  readonly cwd: string;
+  /** The harness's session id whose conversation the question is asked in; it stays as it was. */
+  readonly sessionId: string;
+  /** Opens the copy's instructions: it answers rather than carries on, and changes nothing. */
+  readonly instructions: string;
+  readonly prompt: string;
+}
+
 /** A subscription's plan and meters, as an adapter reads them. */
 export interface SubscriptionReport {
   readonly plan?: string;
@@ -214,6 +225,13 @@ export interface HarnessAdapter {
    * `session.fork` is.
    */
   fork?(request: ForkRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
+  /**
+   * Answers a question in a copy of a session's conversation, even while the session is mid-turn: the
+   * copy sees what the session did so far, can only read, saves nothing and is gone with the answer, and
+   * the session never learns of it. Resolves with the reply's text. Present when the harness can copy
+   * a session without leaving the copy in its history.
+   */
+  sideQuestion?(request: SideQuestionRequest): Effect.Effect<string, HarnessUnavailable | HarnessFailure>;
   /**
    * The user's own sessions with the harness, newest first, for bringing them into Cerium. It reads
    * sessions only, never credentials, and leaves out the ones Cerium's adapters start where the

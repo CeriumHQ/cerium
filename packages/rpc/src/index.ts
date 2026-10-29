@@ -90,7 +90,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 40;
+export const RPC_VERSION = 41;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -350,6 +350,22 @@ export const MachineRpcs = RpcGroup.make(
    * offers `compact`. Refused while the agent is working. Since `RPC_VERSION` 28.
    */
   Rpc.make("CompactAgent", { payload: { agentId: AgentId }, error: CeriumError }),
+  /**
+   * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps nothing:
+   * no event, no message in the lead's session, no effect on its turn. `earlier` holds the side
+   * questions already asked in the same pop-over, so a follow-up has them. Since `RPC_VERSION` 41.
+   */
+  Rpc.make("AskSideQuestion", {
+    payload: {
+      agentId: AgentId,
+      question: Schema.NonEmptyString,
+      earlier: Schema.optionalKey(
+        Schema.Array(Schema.Struct({ question: Schema.String, answer: Schema.String })),
+      ),
+    },
+    success: Schema.String,
+    error: CeriumError,
+  }),
   /**
    * Takes back one of the user's messages still queued for a lead. Answers false when the agent has
    * already taken it. Since `RPC_VERSION` 26.

@@ -4,7 +4,7 @@ import { Effect, Stream } from "effect";
 import { listAllModels } from "./models.ts";
 import type { JsonValue } from "./protocol/serde_json/JsonValue.ts";
 import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
-import { connect, type Incoming } from "./rpc.ts";
+import { connect, type AppServer, type Incoming } from "./rpc.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "codex", message, cause });
@@ -17,11 +17,35 @@ export const lowestEffort = (supported: ReadonlyArray<string>) =>
   EFFORTS_LOWEST_FIRST.find((effort) => supported.includes(effort));
 
 /**
+ * What keeps a thread to answering: no browser, computer use, image generation, MCP servers, apps,
+ * plugins or subagents to start or describe, none of the user's hooks or `notify` program. `shell` is
+ * whether it keeps the shell tool, which a side question reads files with.
+ */
+export const answeringConfig = (userMcpServers: ReadonlyArray<string>, shell: boolean) =>
+  ({
+    agents: { enabled: false },
+    features: {
+      multi_agent: false,
+      multi_agent_v2: false,
+      apps: false,
+      plugins: false,
+      shell_tool: shell,
+      shell_snapshot: false,
+      browser_use: false,
+      computer_use: false,
+      image_generation: false,
+      hooks: false,
+    },
+    notify: [],
+    mcp_servers: Object.fromEntries(userMcpServers.map((name) => [name, { enabled: false }])),
+    web_search: "disabled",
+  }) satisfies Record<string, JsonValue>;
+
+/**
  * A thread that only answers: nothing saved, the request's instructions in place of Codex's base
- * instructions (the long coding-agent prompt), no shell, web search, browser, computer use, image
- * generation, MCP servers, apps, plugins or subagents to start or describe, none of the user's hooks
- * or `notify` program, and the shortest answers and reasoning the model gives. Codex still takes
- * about two seconds to set each new thread's first turn up, warm process or not.
+ * instructions (the long coding-agent prompt), no shell or web search, and the shortest answers and
+ * reasoning the model gives. Codex still takes about two seconds to set each new thread's first turn
+ * up, warm process or not.
  */
 export const completionParams = (
   request: CompletionRequest,
@@ -36,22 +60,7 @@ export const completionParams = (
     approvalPolicy: "never",
     sandbox: "read-only",
     config: {
-      agents: { enabled: false },
-      features: {
-        multi_agent: false,
-        multi_agent_v2: false,
-        apps: false,
-        plugins: false,
-        shell_tool: false,
-        shell_snapshot: false,
-        browser_use: false,
-        computer_use: false,
-        image_generation: false,
-        hooks: false,
-      },
-      notify: [],
-      mcp_servers: Object.fromEntries(userMcpServers.map((name) => [name, { enabled: false }])),
-      web_search: "disabled",
+      ...answeringConfig(userMcpServers, false),
       model_reasoning_summary: "none",
       model_verbosity: "low",
       ...(effort === undefined ? {} : { model_reasoning_effort: effort }),
@@ -84,17 +93,23 @@ export const completeWithCodex = Effect.fn("CodexAdapter.complete")(function* (
   const { thread } = yield* server
     .request("thread/start", completionParams(request, userMcpServers, lowestEffort(supported ?? [])))
     .pipe(Effect.mapError(failure("Could not start a Codex thread")));
+  return yield* answerOn(server, thread.id, request.prompt);
+}, Effect.scoped);
+
+/** Puts a prompt to a thread that only answers, and resolves with its reply. */
+export const answerOn = Effect.fn("CodexAdapter.answerOn")(function* (
+  server: AppServer,
+  threadId: string,
+  prompt: string,
+) {
   yield* server
-    .request("turn/start", {
-      threadId: thread.id,
-      input: [{ type: "text", text: request.prompt, text_elements: [] }],
-    })
+    .request("turn/start", { threadId, input: [{ type: "text", text: prompt, text_elements: [] }] })
     .pipe(Effect.mapError(failure("Could not start a Codex turn")));
 
   const isEnd = (incoming: Incoming) =>
     incoming._tag === "Notification" &&
     incoming.message.method === "turn/completed" &&
-    incoming.message.params.threadId === thread.id;
+    incoming.message.params.threadId === threadId;
   const reply = yield* server.incoming.pipe(
     Stream.takeUntil(isEnd),
     Stream.runFoldEffect(
@@ -123,4 +138,4 @@ export const completeWithCodex = Effect.fn("CodexAdapter.complete")(function* (
     message: reply.error ?? "Codex ended its turn without an answer",
     cause: reply,
   });
-}, Effect.scoped);
+});
