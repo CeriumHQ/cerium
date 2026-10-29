@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "@effect/vitest";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
@@ -119,5 +121,14 @@ describe("rehypeInk", () => {
     expect(html("Use `a b`", rehypeInk(0))).toBe(
       '<p><span class="ink" style="animation-delay:0ms">Use</span> <code>a b</code></p>',
     );
+  });
+
+  // Every word wears `.ink`, so its fade must let go once it lands: filled forwards, a long thread kept
+  // thousands of live animations and blurred shadows, and scrolling and the sidebars stuttered.
+  it("fills its fade backwards only", () => {
+    const css = readFileSync(new URL("../src/styles/markdown.css", import.meta.url), "utf8");
+    const animation = /\.ink\s*\{[^}]*?animation:\s*([^;]+);/.exec(css)?.[1];
+    expect(animation).toMatch(/\bbackwards\b/);
+    expect(animation).not.toMatch(/\b(both|forwards)\b/);
   });
 });
