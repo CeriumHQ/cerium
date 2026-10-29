@@ -31,8 +31,14 @@ export const PROJECT_TERMINAL_VERSION = 22;
 /** The `RPC_VERSION` that brought a project's scripts (`RunProjectScript`); an older machine has none. */
 export const SCRIPT_VERSION = 29;
 
+/**
+ * The machine confirms a guessed setup from the thread, and keeps a teardown: `SetProjectScripts`
+ * leaves out a command it shouldn't change, and archiving answers with a failed teardown's report.
+ */
+export const SCRIPT_BOOT_VERSION = 39;
+
 /** The `RPC_VERSION` that brought a project's named actions and writing its `.cerium.toml`; an older machine has neither. */
-export const ACTIONS_VERSION = 39;
+export const ACTIONS_VERSION = 40;
 
 /** Whose terminals the drawer shows: a work thread's, or a project's while a new thread is written there. */
 export type TerminalOwner = { readonly threadId: string } | { readonly project: string };

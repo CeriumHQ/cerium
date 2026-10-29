@@ -100,9 +100,9 @@ function ProjectScriptsSection() {
         <>
           Project scripts
           <InfoTip label="About project scripts" side="bottom">
-            Setup runs when a worktree is made, Run starts the project, and actions are more commands in a
-            thread's Run menu. Save keeps them on this machine; Save to .cerium.toml shares them with the
-            project's team.
+            Setup runs when a worktree is made, Run starts the project, Teardown clears up as its thread is
+            archived or deleted, and actions are more commands in a thread's Run menu. Save keeps them on this
+            machine; Save to .cerium.toml shares them with the project's team.
           </InfoTip>
         </>
       }
@@ -231,7 +231,7 @@ function ProjectScriptFields({
     if (busy !== undefined || texts === undefined || problems.size > 0) return;
     setNote(undefined);
     setBusy(to);
-    const typed = { setup: texts.setup.trim(), run: texts.run.trim() };
+    const typed = { setup: texts.setup.trim(), run: texts.run.trim(), teardown: texts.teardown.trim() };
     const request: Promise<unknown> =
       to === "machine"
         ? save({
@@ -239,6 +239,7 @@ function ProjectScriptFields({
               path: project,
               setup: savedWord(value, "setup", typed.setup),
               run: savedWord(value, "run", typed.run),
+              teardown: savedWord(value, "teardown", typed.teardown),
               ...(actionsOk ? { actions: savedActions(value, rows) } : {}),
             },
           })

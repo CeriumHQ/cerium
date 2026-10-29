@@ -52,6 +52,8 @@ export {
   type ScriptKind,
   type ScriptSource,
   type ScriptStarted,
+  type TeardownFailure,
+  type ThreadPorts,
 } from "./scripts.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

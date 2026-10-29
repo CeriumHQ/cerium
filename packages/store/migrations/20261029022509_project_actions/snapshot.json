@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "24671e27-007b-4a69-91bd-2dc6080ac5b8",
-  "prevIds": ["0266cbd4-32ae-499f-a438-3d12ed08736e"],
+  "id": "df148898-3e22-4551-8b0d-d2dfe4a8ba2c",
+  "prevIds": ["f8b01780-f021-45ec-8162-0851e3f6ae3c"],
   "ddl": [
     {
       "name": "agents",
@@ -300,6 +300,16 @@
     },
     {
       "table": "projects",
+      "name": "teardown",
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "projects",
       "name": "actions",
       "type": "text",
       "notNull": false,
@@ -431,6 +441,16 @@
     {
       "table": "threads",
       "name": "slimmed_at",
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "entityType": "columns"
+    },
+    {
+      "table": "threads",
+      "name": "port",
       "type": "integer",
       "notNull": false,
       "autoincrement": false,

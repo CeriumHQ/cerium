@@ -8,6 +8,7 @@ import { actionNameProblem, type ActionCommand, type ProjectScripts, type Script
 export const SCRIPT_FIELDS = [
   { kind: "setup", label: "Setup" },
   { kind: "run", label: "Run" },
+  { kind: "teardown", label: "Teardown" },
 ] as const;
 export type ScriptField = (typeof SCRIPT_FIELDS)[number]["kind"];
 
@@ -33,6 +34,7 @@ export const fieldText = (scripts: ProjectScripts, kind: ScriptField): string =>
 export const textsOf = (scripts: ProjectScripts): Record<ScriptField, string> => ({
   setup: fieldText(scripts, "setup"),
   run: fieldText(scripts, "run"),
+  teardown: fieldText(scripts, "teardown"),
 });
 
 /**

@@ -8,6 +8,7 @@ import { Effect, FileSystem, Layer, Path, Scope } from "effect";
 import { projectScriptsLayer } from "../src/projectScripts.ts";
 import { Terminals } from "../src/terminal.ts";
 import { Ptys } from "../src/terminalPty.ts";
+import { ThreadEnv } from "../src/threadEnv.ts";
 
 // A project's commands as the service resolves them from its folder, the user's saved word and its
 // `.cerium.toml`, and what writing them into the file does to what was saved. Terminals are real,
@@ -33,6 +34,7 @@ const size = { cols: 80, rows: 24 };
 const TestLayer = (() => {
   const terminals = Terminals.layer({ version: "test", shell, batchMs: 0 }).pipe(
     Layer.provide(idle),
+    Layer.provideMerge(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(Store.layer({ filename: ":memory:" })),
   );

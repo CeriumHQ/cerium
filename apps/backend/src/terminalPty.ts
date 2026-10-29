@@ -109,6 +109,9 @@ export class Ptys extends Context.Service<
                   rows: options.rows,
                   cwd: options.cwd,
                   env: { ...options.env },
+                  // The ConPTY node-pty ships. Windows' own leaves its `conhost.exe` running after the
+                  // shell exits, because node-pty never closes a console whose process ended.
+                  useConptyDll: true,
                 }),
               catch: (cause) =>
                 new TerminalError({ message: `Couldn't start ${options.file}: ${reason(cause)}` }),

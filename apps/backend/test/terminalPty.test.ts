@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import type { ThreadId } from "@cerium/protocol";
 import type { TerminalOutput } from "@cerium/rpc";
 import { Store } from "@cerium/store";
@@ -7,6 +9,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { Terminals } from "../src/terminal.ts";
 import { Ptys } from "../src/terminalPty.ts";
+import { ThreadEnv } from "../src/threadEnv.ts";
 
 // The same service on a real pseudoterminal (ConPTY on Windows), with Node itself as the shell so the
 // test needs nothing installed: it echoes what it's typed, starts a child that outlives it, and exits
@@ -27,6 +30,7 @@ const size = { cols: 100, rows: 30 };
 
 const layer = Terminals.layer({ version: "test", shell }).pipe(
   Layer.provide(Ptys.layer),
+  Layer.provide(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
   Layer.provideMerge(NodeServices.layer),
   Layer.provideMerge(Store.layer({ filename: ":memory:" })),
 );
@@ -39,6 +43,20 @@ const alive = (pid: number) => {
     return false;
   }
 };
+
+/** The console hosts ConPTY runs for this process's pseudoterminals, Windows' own or node-pty's. */
+const consoleHosts = () =>
+  Number(
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        `@(Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid}" | Where-Object Name -in 'conhost.exe','OpenConsole.exe').Count`,
+      ],
+      { encoding: "utf8" },
+    ).trim(),
+  );
 
 /** Polls the terminal's screen until `done` holds for its text, or fails after a while. */
 const screenUntil = (
@@ -103,6 +121,25 @@ describe("Terminals on a real pseudoterminal", () => {
         yield* terminals.close(id);
         for (let attempt = 0; attempt < 40 && alive(child); attempt++) yield* Effect.sleep("100 millis");
         assert.isFalse(alive(child));
+      }).pipe(Effect.provide(layer), Effect.scoped),
+    60_000,
+  );
+
+  it.live.runIf(process.platform === "win32")(
+    "leaves no console host behind once the shell exits",
+    () =>
+      Effect.gen(function* () {
+        const before = consoleHosts();
+        const { terminals, id } = yield* openTerminal;
+        yield* screenUntil(terminals, id, (text) => text.includes("child:"));
+        yield* terminals.write(id, "q\r");
+        yield* terminals.attach(id, size).pipe(Stream.runDrain);
+        let left = consoleHosts();
+        for (let attempt = 0; attempt < 20 && left > before; attempt++) {
+          yield* Effect.sleep("250 millis");
+          left = consoleHosts();
+        }
+        assert.strictEqual(left, before);
       }).pipe(Effect.provide(layer), Effect.scoped),
     60_000,
   );

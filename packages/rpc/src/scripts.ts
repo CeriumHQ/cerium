@@ -5,10 +5,11 @@ import { Rpc, RpcGroup } from "effect/rpc";
 import { CeriumError } from "./error.ts";
 import { TerminalInfo, TerminalSize } from "./terminal.ts";
 
-// A project's setup and run commands: what makes a worktree usable, and what keeps the project
-// running there. They're resolved each time (`ResolvedScript`) from the user's local choice in
-// Cerium's saved projects, then the project's `.cerium.toml`, then a guess from its package
-// manager, and the same script's terminal replaces the one before it.
+// A project's setup, run and teardown commands: what makes a worktree usable, what keeps the project
+// running there, and what cleans up after it before the worktree goes. They're resolved each time
+// (`ResolvedScript`) from the user's local choice in Cerium's saved projects, then the project's
+// `.cerium.toml`, then a guess from its package manager, and the same script's terminal replaces
+// the one before it.
 
 /** Where a script came from. A `guessed` one is shown for the user to confirm, never run alone. */
 export const ScriptSource = Schema.Literals(["saved", "project", "guessed"]);
@@ -30,19 +31,32 @@ export const ResolvedAction = Schema.Struct({
 export type ResolvedAction = typeof ResolvedAction.Type;
 
 /**
- * A project's setup and run commands, as they'd run; absent when nothing offers one. `actions` are
- * its named commands, in the order they run in menus; they all come from the same side, the user's
- * saved list when they have one (empty when they turned the project's off), else the project's
- * `[actions]`, absent when it has none. Since `RPC_VERSION` 39.
+ * A project's setup, run and teardown commands, as they'd run; absent when nothing offers one.
+ * `teardown` since `RPC_VERSION` 39. `actions` are its named commands, in the order they run in
+ * menus; they all come from the same side, the user's saved list when they have one (empty when they
+ * turned the project's off), else the project's `[actions]`, absent when it has none. Since
+ * `RPC_VERSION` 40.
  */
 export const ProjectScripts = Schema.Struct({
   setup: Schema.optionalKey(ResolvedScript),
   run: Schema.optionalKey(ResolvedScript),
+  teardown: Schema.optionalKey(ResolvedScript),
   actions: Schema.optionalKey(Schema.Array(ResolvedAction)),
 });
 export type ProjectScripts = typeof ProjectScripts.Type;
 
-/** Which of a project's commands it is. */
+/**
+ * A teardown that didn't end well, for the user to read once its thread is already put away: the
+ * command, and why in a line (its exit code and the end of its output, or that it ran out of time).
+ * Since `RPC_VERSION` 39.
+ */
+export const TeardownReport = Schema.Struct({
+  script: Schema.String,
+  failure: Schema.String,
+});
+export type TeardownReport = typeof TeardownReport.Type;
+
+/** Which of a project's commands runs in a terminal of the thread's own. */
 export const ScriptKind = Schema.Literals(["setup", "run"]);
 export type ScriptKind = typeof ScriptKind.Type;
 
@@ -94,18 +108,19 @@ export const ScriptRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
-   * Stores a project's own setup and run commands, which take them off its `.cerium.toml`: `null`
-   * defers again, `""` turns the command off. Saves the folder as a project when it isn't one.
-   * Since `RPC_VERSION` 29.
+   * Stores a project's own setup, run and teardown commands, which take them off its `.cerium.toml`:
+   * `null` defers again, `""` turns the command off, and one left out stays as it was (since
+   * `RPC_VERSION` 39). Saves the folder as a project when it isn't one. Since `RPC_VERSION` 29.
    */
   Rpc.make("SetProjectScripts", {
     payload: {
       path: Schema.NonEmptyString,
-      setup: Schema.NullOr(Schema.String),
-      run: Schema.NullOr(Schema.String),
+      setup: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      run: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      teardown: Schema.optionalKey(Schema.NullOr(Schema.String)),
       /**
        * The user's own named commands, which replace the project's `[actions]` whole; `null` defers to
-       * the file again, absent leaves what was saved. Since `RPC_VERSION` 39.
+       * the file again, absent leaves what was saved. Since `RPC_VERSION` 40.
        */
       actions: Schema.optionalKey(Schema.NullOr(Schema.Array(ActionCommand))),
     },
@@ -113,15 +128,17 @@ export const ScriptRpcs = RpcGroup.make(
   }),
   /**
    * Writes the commands into the project's `.cerium.toml` so its team shares them: its `[scripts]`
-   * setup and run (an empty one is taken out) and its `[actions]`, creating the file when there is
-   * none and keeping the rest of it as it is. The user's own saved commands for the project, which
-   * the file would be shadowed by, are cleared. Since `RPC_VERSION` 39.
+   * setup, run and teardown (an empty one is taken out; an absent teardown stays as the file has it)
+   * and its `[actions]`, creating the file when there is none and keeping the rest of it as it is.
+   * The user's own saved commands for the project, which the file would be shadowed by, are cleared.
+   * Since `RPC_VERSION` 40.
    */
   Rpc.make("WriteProjectScriptsFile", {
     payload: {
       path: Schema.NonEmptyString,
       setup: Schema.String,
       run: Schema.String,
+      teardown: Schema.optionalKey(Schema.String),
       actions: Schema.Array(ActionCommand),
     },
     error: CeriumError,
@@ -138,7 +155,7 @@ export const ScriptRpcs = RpcGroup.make(
   }),
   /**
    * Starts one of the project's named commands in a terminal of the work thread's own, whose tab
-   * shows its name; running it again replaces its terminal. Since `RPC_VERSION` 39.
+   * shows its name; running it again replaces its terminal. Since `RPC_VERSION` 40.
    */
   Rpc.make("RunProjectAction", {
     payload: { threadId: ThreadId, name: Schema.NonEmptyString, size: TerminalSize },

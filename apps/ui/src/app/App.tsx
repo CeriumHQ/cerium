@@ -9,7 +9,7 @@ import {
   type ThreadId,
   type WorktreeChanges,
 } from "@cerium/protocol";
-import type { ThreadOverview } from "@cerium/rpc";
+import type { TeardownReport, ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
@@ -185,6 +185,7 @@ import { usePreviewDocks } from "../features/preview/usePreviewDocks.ts";
 import {
   ACTIONS_VERSION,
   PROJECT_TERMINAL_VERSION,
+  SCRIPT_BOOT_VERSION,
   SCRIPT_VERSION,
   TERMINAL_VERSION,
   labelledTerminalOf,
@@ -874,6 +875,14 @@ function Workspace() {
     );
   };
 
+  /** Says in the notice bar that the project's teardown failed as a thread was put away, which it went on without. */
+  const reportTeardown = (title: string, teardown: TeardownReport | undefined) => {
+    if (teardown === undefined) return;
+    setActionError(
+      `The teardown of “${title}” (${teardown.script}) ${teardown.failure}. The thread was put away anyway.`,
+    );
+  };
+
   /**
    * Archives a thread and closes its tab; resolves whether it went.
    * `discardWork` once the user confirmed losing its worktree's work.
@@ -882,7 +891,7 @@ function Workspace() {
     attempt(
       setArchived({
         payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
-      }),
+      }).then(({ title, teardown }) => reportTeardown(title, teardown)),
     ).then((archived) => {
       if (!archived) return false;
       refreshThreads();
@@ -1971,6 +1980,7 @@ function Workspace() {
     answerQuestion: answerQuestionOf,
     agentActions,
     keep: tabs.keep,
+    confirmsSetup: drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SCRIPT_BOOT_VERSION,
     onSetUp: noHarness ? () => openSettings("harnesses") : undefined,
     chooseFolder,
   };
@@ -2501,16 +2511,21 @@ function Workspace() {
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
           onDelete={(threadId): Promise<boolean> =>
-            attempt(remove({ payload: { threadId: threadId as ThreadId, discardWork: true } })).then(
-              (deleted) => {
-                if (!deleted) return false;
-                registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
-                previewDocks.close(threadId);
-                refreshThreads();
-                tabs.drop(threadId);
-                return true;
-              },
-            )
+            attempt(
+              remove({ payload: { threadId: threadId as ThreadId, discardWork: true } }).then((teardown) =>
+                reportTeardown(
+                  summaries.find((summary) => summary.id === threadId)?.title ?? "the thread",
+                  teardown,
+                ),
+              ),
+            ).then((deleted) => {
+              if (!deleted) return false;
+              registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
+              previewDocks.close(threadId);
+              refreshThreads();
+              tabs.drop(threadId);
+              return true;
+            })
           }
           {...(drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LATER_VERSION
             ? {

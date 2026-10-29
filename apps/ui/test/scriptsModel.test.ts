@@ -24,7 +24,11 @@ const fromFile: ProjectScripts = {
 };
 
 const stateOf = (scripts: ProjectScripts, edit: Partial<CardState> = {}): CardState => ({
-  texts: { setup: scripts.setup?.text ?? "", run: scripts.run?.text ?? "" },
+  texts: {
+    setup: scripts.setup?.text ?? "",
+    run: scripts.run?.text ?? "",
+    teardown: scripts.teardown?.text ?? "",
+  },
   rows: rowsOf(scripts),
   ...edit,
 });
@@ -104,9 +108,9 @@ describe("changed and alreadyInFile", () => {
   });
 
   it("see an edited command or action as a change", () => {
-    expect(changed(fromFile, stateOf(fromFile, { texts: { setup: "bun ci", run: "bun run dev" } }))).toBe(
-      true,
-    );
+    expect(
+      changed(fromFile, stateOf(fromFile, { texts: { setup: "bun ci", run: "bun run dev", teardown: "" } })),
+    ).toBe(true);
     expect(changed(fromFile, stateOf(fromFile, { rows: [] }))).toBe(true);
   });
 

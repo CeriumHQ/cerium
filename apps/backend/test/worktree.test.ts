@@ -93,7 +93,8 @@ describe("Worktrees", () => {
     () =>
       Effect.gen(function* () {
         const { fs, path, repo, home, worktrees } = yield* setup;
-        const { worktree, cwd } = yield* worktrees.create(path.join(repo, "app"), "Fix the login");
+        const { worktree, cwd, copied } = yield* worktrees.create(path.join(repo, "app"), "Fix the login");
+        assert.deepStrictEqual(copied, [".env", "app/.env.local"]);
         assert.strictEqual(worktree.branch, "cerium/fix-the-login");
         assert.strictEqual(worktree.base, "main");
         assert.strictEqual(worktree.project, path.join(repo, "app"));
@@ -130,6 +131,19 @@ describe("Worktrees", () => {
       assert.isTrue(yield* fs.exists(path.join(worktree.root, "dist", "out.js")));
       assert.isFalse(yield* fs.exists(path.join(worktree.root, ".env")));
       assert.isFalse(yield* fs.exists(path.join(worktree.root, "notes.md")));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("never copies over a file the worktree has, an ignored one committed anyway included", () =>
+    Effect.gen(function* () {
+      const { fs, path, repo, write, worktrees } = yield* setup;
+      yield* git(repo, "add", "-f", ".env");
+      yield* git(repo, "commit", "-q", "-m", "keep the env file");
+      yield* write(repo, ".env", "KEY=changed locally\n");
+      const { worktree, copied } = yield* worktrees.create(repo, "Tracked");
+      // The commit's own file stands, and only what the worktree lacked was copied.
+      assert.strictEqual((yield* fs.readFileString(path.join(worktree.root, ".env"))).trim(), "KEY=root");
+      assert.deepStrictEqual(copied, ["app/.env.local"]);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
