@@ -32,6 +32,7 @@ import {
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { remember } from "../../lib/storage.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
+import { useEditor } from "../editor/useEditor.ts";
 import { FileMenuItems } from "../files/FileMenu.tsx";
 import { diffSideAtom } from "../git/model.ts";
 import { SideDiff } from "../git/SideDiff.tsx";
@@ -40,7 +41,7 @@ import type { PaneChrome } from "../split/SplitView.tsx";
 import { dirOf, nameOf, stateAt, stateWord, touchWord, type OpenFile } from "../files/model.ts";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { fileTargets } from "../transcript/menus.ts";
-import { CodeView } from "./CodeView.tsx";
+import { CodeView, OpenAtLine } from "./CodeView.tsx";
 import { DiffView, type DiffCommenting } from "./DiffView.tsx";
 import { useDiffComments } from "./diffComments.ts";
 import {
@@ -292,6 +293,11 @@ export function FileViewer({
 
   const { location } = fileTargets(path, false, root);
   const bridge = shellBridge();
+  const editor = useEditor();
+  const opener =
+    editor.open === undefined || location === undefined || editor.editor === undefined
+      ? undefined
+      : { open: (line: number) => editor.open?.(location, line, root), label: editor.editor.label };
   const gone = state === "deleted" || preview?._tag === "Missing";
   const openOutside =
     gone || location === undefined || bridge?.openPath === undefined
@@ -449,51 +455,53 @@ export function FileViewer({
 
       <div className="min-h-0 flex-1">
         <WorkspaceFolder value={root}>
-          {view === "diff" && side !== undefined ? (
-            <SideDiff
-              root={root}
-              path={path}
-              side={side}
-              onSide={setSide}
-              layout={layout}
-              context={whole ? WHOLE_FILE : CONTEXT}
-              whole={whole}
-              onWhole={() => setWhole(true)}
-              commenting={commenting}
-            />
-          ) : view === "diff" ? (
-            <DiffBody
-              path={path}
-              diff={diff}
-              failure={
-                AsyncResult.isFailure(diffResult)
-                  ? messageOf(diffResult.cause, "Git couldn't compare that file.")
-                  : undefined
-              }
-              from={from}
-              renamed={state === "renamed"}
-              layout={layout}
-              whole={whole}
-              onWhole={() => setWhole(true)}
-              commenting={commenting}
-            />
-          ) : (
-            <FileBody
-              root={root}
-              path={path}
-              preview={preview}
-              failure={
-                AsyncResult.isFailure(previewResult)
-                  ? messageOf(previewResult.cause, "That file couldn't be read.")
-                  : undefined
-              }
-              rendered={view === "rendered"}
-              wrap={wrap}
-              messageBox={messageBox}
-              onOpenFile={onOpenFile}
-              outside={outside}
-            />
-          )}
+          <OpenAtLine value={gone ? undefined : opener}>
+            {view === "diff" && side !== undefined ? (
+              <SideDiff
+                root={root}
+                path={path}
+                side={side}
+                onSide={setSide}
+                layout={layout}
+                context={whole ? WHOLE_FILE : CONTEXT}
+                whole={whole}
+                onWhole={() => setWhole(true)}
+                commenting={commenting}
+              />
+            ) : view === "diff" ? (
+              <DiffBody
+                path={path}
+                diff={diff}
+                failure={
+                  AsyncResult.isFailure(diffResult)
+                    ? messageOf(diffResult.cause, "Git couldn't compare that file.")
+                    : undefined
+                }
+                from={from}
+                renamed={state === "renamed"}
+                layout={layout}
+                whole={whole}
+                onWhole={() => setWhole(true)}
+                commenting={commenting}
+              />
+            ) : (
+              <FileBody
+                root={root}
+                path={path}
+                preview={preview}
+                failure={
+                  AsyncResult.isFailure(previewResult)
+                    ? messageOf(previewResult.cause, "That file couldn't be read.")
+                    : undefined
+                }
+                rendered={view === "rendered"}
+                wrap={wrap}
+                messageBox={messageBox}
+                onOpenFile={onOpenFile}
+                outside={outside}
+              />
+            )}
+          </OpenAtLine>
         </WorkspaceFolder>
       </div>
     </section>
