@@ -17,6 +17,8 @@ import { useHighlight } from "../viewer/highlight.ts";
 import { Artifact } from "./Artifact.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { FileChip, SkillChip } from "./FileChip.tsx";
+import { Formula } from "./MarkdownMath.tsx";
+import { Diagram } from "./MarkdownMermaid.tsx";
 import type { AlertKind, HtmlNode } from "./markdownPlugins.ts";
 import { isOpenableLink, LINK_ATTRIBUTE } from "./menus.ts";
 import { pathReference } from "./paths.ts";
@@ -54,6 +56,17 @@ const textOf = (node: HtmlNode | undefined): string =>
 export function InlineCode({ children, node: _node, ...props }: Part<"code">) {
   const mentions = useContext(Mentions);
   const inLink = useContext(InLink);
+  const unfinished = useContext(Unfinished);
+  if (typeof children === "string" && props.className?.split(" ").includes("math-inline")) {
+    return (
+      <Formula
+        source={children}
+        display={false}
+        unfinished={unfinished}
+        fallback={<code data-md="inline-code">{`$${children}$`}</code>}
+      />
+    );
+  }
   const text = typeof children === "string" && !inLink ? children : undefined;
   const mention = text === undefined ? undefined : mentions.get(text);
   if (mention?._tag === "SkillMention") return <SkillChip name={mention.name} />;
@@ -238,7 +251,11 @@ export function CodeBlock({ node }: Part<"pre">) {
       ?.slice("language-".length)
       .toLowerCase() ?? "";
   const text = textOf(code).replace(/\n$/, "");
-  const highlighted = useHighlight(unfinished || language === "" ? undefined : text, `snippet.${language}`);
+  const drawn = language === "mermaid" || language === "math";
+  const highlighted = useHighlight(
+    unfinished || language === "" || drawn ? undefined : text,
+    `snippet.${language}`,
+  );
   if (language === ARTIFACT_LANGUAGE) return <Artifact code={text} isIncomplete={unfinished} />;
   const lines = text.split("\n");
   const folds = !unfinished && lines.length > FOLDED_LINES + FOLD_SLACK;
@@ -246,13 +263,14 @@ export function CodeBlock({ node }: Part<"pre">) {
   const diff = language === "diff" || language === "patch";
   const copied = SHELLS.has(language) ? text.replace(/^\$ /gm, "") : text;
   const name = LANGUAGE_NAMES[language] ?? language;
-  return (
+  const view = (note?: string) => (
     <div data-md="code-block" className="group/code relative">
       <div className="flex h-8 items-center gap-1.5 pr-1.5 pl-3">
         {name === "" ? null : (
           <FileIcon path={LANGUAGE_FILES[language] ?? `x.${language}`} className="size-3.5 opacity-90" />
         )}
         <span className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">{name}</span>
+        {note === undefined ? null : <span className="shrink-0 text-caption text-fg-tertiary">{note}</span>}
         <CopyButton
           text={copied}
           label="Copy code"
@@ -288,6 +306,13 @@ export function CodeBlock({ node }: Part<"pre">) {
       ) : null}
     </div>
   );
+  if (language === "mermaid") {
+    return <Diagram source={text} unfinished={unfinished} fallback={view("Couldn't draw this")} />;
+  }
+  if (language === "math") {
+    return <Formula source={text} display unfinished={unfinished} fallback={view("Couldn't read this")} />;
+  }
+  return view();
 }
 
 /** A diff's line, tinted by what it does. */
