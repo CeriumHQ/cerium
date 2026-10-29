@@ -30,6 +30,7 @@ import { FileIcon } from "../../components/FileIcon.tsx";
 import { settled, useArrivals, useLingering } from "../../lib/motion.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { isNonThreadKey } from "./tabKinds.ts";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -462,6 +463,7 @@ function ThreadTab({
           <MenuSeparator />
           {tab.draft || isNonThreadKey(tab.key) ? null : (
             <>
+              <CopyLinkMenuItem threadId={tab.key} />
               <ExportMenuItems threadId={tab.key} />
               <MenuSeparator />
             </>

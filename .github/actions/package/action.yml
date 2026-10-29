@@ -183,12 +183,15 @@ runs:
     # installed first and started as the system's package manager left it: its AppArmor profile is what
     # lets Chromium's sandbox into the unprivileged user namespaces Ubuntu's AppArmor otherwise keeps
     # from it. Then the AppImage, unpacked since the runner has no FUSE to mount it with, which only
-    # sandboxes itself once those namespaces are let through. Meanwhile the .rpm, installed with dnf in
+    # sandboxes itself once those namespaces are let through. Alongside the AppImage, the .rpm is installed with dnf in
     # the Fedora container started above, which checks its dependencies resolve there, and started by
     # a user of its own,
     # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
     # would keep the sandbox out of the namespaces a Fedora desktop lets it into, and leave it apart
-    # from the runner's. All run on a virtual display. On macOS the app starts from its disk image,
+    # from the runner's. The Fedora container shares the runner's kernel: start its test only after
+    # the .deb has tested Ubuntu's AppArmor profile and the user-namespace restriction is lifted,
+    # otherwise its unprivileged Chromium can start before that sysctl and abort. All run on a virtual
+    # display. On macOS the app starts from its disk image,
     # once its signature checks out. A report is printed again when a start fails, in case the Windows
     # app's own output went nowhere. A push's packages upload to its draft release meanwhile, with the
     # token given to the upload alone, never to the app.
@@ -230,6 +233,9 @@ runs:
           smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
           hdiutil detach "$mount" > /dev/null
         else
+          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
+          smoke deb xvfb-run -a cerium
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (
             for _ in $(seq 300); do [ -s "$RUNNER_TEMP/fedora-ready" ] && break; sleep 1; done
             if [ "$(cat "$RUNNER_TEMP/fedora-ready" 2>/dev/null)" != 0 ]; then
@@ -247,9 +253,6 @@ runs:
             }
           ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
           rpm=$!
-          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
-          smoke deb xvfb-run -a cerium
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
           if wait "$rpm"; then

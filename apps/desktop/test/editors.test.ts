@@ -31,9 +31,9 @@ describe("editorArgs", () => {
   });
 
   it("opens Visual Studio with /Edit and goes to the line once the file is open", () => {
-    expect(editorArgs("visualStudio", { file: "C:pa.cs", line: 7 })).toEqual([
+    expect(editorArgs("visualStudio", { file: "C:\\p\\a.cs", line: 7 })).toEqual([
       "/Edit",
-      "C:pa.cs",
+      "C:\\p\\a.cs",
       "/Command",
       "Edit.GoTo 7",
     ]);
