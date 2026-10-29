@@ -1,9 +1,10 @@
 import { Worktrees, WorktreeError } from "@cerium/orchestrator";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
-import { Effect, FileSystem, Layer, Path, Schedule, Semaphore } from "effect";
+import { Effect, FileSystem, Layer, Option, Path, Schedule, Scope, Semaphore } from "effect";
 
 import { Git, type GitResult } from "./git.ts";
 import { Terminals } from "./terminal.ts";
+import { includeList } from "./worktreeInclude.ts";
 
 // Each thread that asks for one gets a git worktree of its project's repository, on a branch of its
 // own, so threads in one project stop changing each other's files. Git does the work; Cerium picks
@@ -76,13 +77,17 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       const path = yield* Path.Path;
       const gitService = yield* Git;
       const terminals = yield* Terminals;
-      /** One worktree is made at a time: threads started together with one title pick their names in turn. */
-      const making = yield* Semaphore.make(1);
+      const layerScope = yield* Scope.Scope;
+      /** Names are picked one at a time: threads started together with one title get one each. */
+      const picking = yield* Semaphore.make(1);
+      /** The roots of worktrees picked and not yet checked out, which no other may take. */
+      const planned = new Set<string>();
+      /** Where a removed worktree's folder goes to be deleted behind the thread that had it. */
+      const removing = path.join(options.directory, ".removing");
 
-      // Names are git's own here (`check-ignore` refuses literal pathspecs), never the user's.
-      const git = (cwd: string, args: ReadonlyArray<string>, stdin?: string) =>
+      const git = (cwd: string, args: ReadonlyArray<string>) =>
         gitService
-          .run(cwd, args, { pathspecs: true, ...(stdin === undefined ? {} : { stdin }) })
+          .run(cwd, args)
           .pipe(Effect.mapError((error) => new WorktreeError({ message: error.message })));
 
       /** Runs git and fails with its complaint when it exits with an error. */
@@ -105,35 +110,53 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       /**
        * Copies the files the repository's include list names into a worktree: only those git ignores,
        * since the worktree has every tracked file already, and never over a file the worktree has.
-       * Without a list, its environment files. Resolves with the files copied, relative to the root.
+       * Without a list, its environment files. Git lists what it ignores without going into ignored
+       * folders (asking it to match the list walks every one, node_modules too, and took a minute),
+       * and only those a line reaches into are looked through. Resolves with what was copied, relative
+       * to the root; a folder copied whole ends in a slash.
        */
       const copyIncluded = Effect.fn("Worktrees.copyIncluded")(function* (toplevel: string, root: string) {
         const listFile = path.join(toplevel, INCLUDE_FILE);
-        const patterns = (yield* exists(listFile))
-          ? [`--exclude-from=${listFile}`]
-          : DEFAULT_INCLUDE.map((pattern) => `--exclude=${pattern}`);
+        const list = includeList(
+          (yield* exists(listFile))
+            ? (yield* fs.readFileString(listFile).pipe(Effect.orElseSucceed(() => ""))).split(/\r?\n/)
+            : DEFAULT_INCLUDE,
+        );
         const listed = yield* gitOk(
           toplevel,
-          ["ls-files", "-z", "--others", "--ignored", ...patterns],
-          "Couldn't list the files to copy",
+          ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"],
+          "Couldn't list the files git ignores",
         );
-        const candidates = listed.split("\0").filter((name) => name !== "");
-        if (candidates.length === 0) return [];
-        // Untracked files the list names but git doesn't ignore are the user's work in progress.
-        const ignored = yield* git(toplevel, ["check-ignore", "-z", "--stdin"], `${candidates.join("\0")}\0`);
-        const files = ignored.stdout.split("\0").filter((name) => name !== "");
+        const picked: Array<string> = [];
+        const pick = (entry: string): Effect.Effect<void> =>
+          Effect.gen(function* () {
+            const folder = entry.endsWith("/");
+            const name = folder ? entry.slice(0, -1) : entry;
+            if (list.includes(name, folder)) return void picked.push(entry);
+            if (!folder || !list.reachesInto(name)) return;
+            const children = yield* fs
+              .readDirectory(path.join(toplevel, name))
+              .pipe(Effect.orElseSucceed((): Array<string> => []));
+            for (const child of children.toSorted()) {
+              const info = yield* fs.stat(path.join(toplevel, name, child)).pipe(Effect.option);
+              if (Option.isNone(info)) continue;
+              yield* pick(`${name}/${child}${info.value.type === "Directory" ? "/" : ""}`);
+            }
+          });
+        for (const entry of listed.split("\0")) if (entry !== "") yield* pick(entry);
         const copied = yield* Effect.forEach(
-          files,
-          (file) =>
+          picked,
+          (entry) =>
             Effect.gen(function* () {
-              const target = path.join(root, file);
+              const target = path.join(root, entry);
               if (yield* exists(target)) return [];
               yield* fs.makeDirectory(path.dirname(target), { recursive: true });
-              yield* fs.copyFile(path.join(toplevel, file), target);
-              return [file];
+              const source = path.join(toplevel, entry);
+              yield* entry.endsWith("/") ? fs.copy(source, target) : fs.copyFile(source, target);
+              return [entry];
             }).pipe(
               Effect.catch(() =>
-                Effect.logWarning(`Couldn't copy ${file} into the worktree`).pipe(Effect.as([])),
+                Effect.logWarning(`Couldn't copy ${entry} into the worktree`).pipe(Effect.as([])),
               ),
             ),
           { concurrency: 16 },
@@ -180,6 +203,32 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
         return { uncommitted, unmerged: yield* unmerged(worktree) } satisfies WorktreeChanges;
       });
 
+      /** The root of the repository `project` is in. */
+      const toplevelOf = (project: string) =>
+        gitOk(
+          project,
+          ["rev-parse", "--show-toplevel"],
+          `${project} isn't in a git repository any more.`,
+        ).pipe(Effect.map((top) => path.resolve(top.trim())));
+
+      /** Deletes a removed worktree's folder, moved aside already, with what nobody holds open any more. */
+      const clear = (folder: string) =>
+        fs.remove(folder, { recursive: true, force: true }).pipe(
+          Effect.retry({ times: 5, schedule: Schedule.spaced("2 seconds") }),
+          Effect.catch(() =>
+            Effect.logWarning(`Couldn't delete ${folder}; it goes when Cerium next starts.`),
+          ),
+        );
+
+      // What a removal moved aside before Cerium last quit.
+      yield* fs.readDirectory(removing).pipe(
+        Effect.flatMap((left) =>
+          Effect.forEach(left, (name) => clear(path.join(removing, name)), { discard: true }),
+        ),
+        Effect.ignore,
+        Effect.forkIn(layerScope),
+      );
+
       /** Checks a worktree out at `worktree.root`, on its branch, or a new one from its base. */
       const checkOut = Effect.fn("Worktrees.checkOut")(function* (
         toplevel: string,
@@ -210,7 +259,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       });
 
       return Worktrees.of({
-        create: Effect.fn("Worktrees.create")(function* (project: string, name: string) {
+        plan: Effect.fn("Worktrees.plan")(function* (project: string, name: string) {
           const folder = path.resolve(project);
           const where = yield* git(folder, ["rev-parse", "--show-toplevel", "--show-prefix"]);
           if (where.code !== 0) {
@@ -232,6 +281,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           let attempt = 1;
           let picked = slug;
           while (
+            planned.has(path.join(home, picked)) ||
             (yield* exists(path.join(home, picked))) ||
             (yield* hasBranch(toplevel, `${BRANCH_PREFIX}${picked}`))
           ) {
@@ -245,14 +295,17 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             branch: `${BRANCH_PREFIX}${picked}`,
             base,
           };
-          const copied = yield* checkOut(toplevel, worktree);
+          planned.add(worktree.root);
           // Git ends the prefix with a slash.
-          return {
-            worktree,
-            cwd: prefix === "" ? worktree.root : path.resolve(worktree.root, prefix),
-            copied,
-          };
-        }, making.withPermits(1)),
+          return { worktree, cwd: prefix === "" ? worktree.root : path.resolve(worktree.root, prefix) };
+        }, picking.withPermits(1)),
+
+        checkOut: (worktree) =>
+          toplevelOf(worktree.project).pipe(
+            Effect.flatMap((toplevel) => checkOut(toplevel, worktree)),
+            // Its folder and branch keep the name from here on, or it's free again.
+            Effect.ensuring(Effect.sync(() => planned.delete(worktree.root))),
+          ),
 
         changes,
 
@@ -266,13 +319,20 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           );
           const repo = worktree.project;
           if (yield* exists(worktree.root)) {
-            // A harness that just ended can hold a file open for a moment longer.
-            const removed = yield* gitOk(repo, ["worktree", "remove", "--force", worktree.root], "").pipe(
+            // Moved aside at once and deleted behind: its dependencies alone are tens of thousands of
+            // files, and `git worktree remove` takes minutes over them, follows bun's workspace links
+            // on Windows, and stops at node_modules' long paths. A harness that just ended can hold a
+            // file open for a moment longer.
+            const aside = path.join(removing, `${path.basename(worktree.root)}-${Date.now().toString(36)}`);
+            const moved = yield* fs.makeDirectory(removing, { recursive: true }).pipe(
+              Effect.andThen(fs.rename(worktree.root, aside)),
               Effect.retry({ times: 3, schedule: Schedule.spaced("500 millis") }),
               Effect.as(true),
               Effect.orElseSucceed(() => false),
             );
-            if (!removed) {
+            if (moved) {
+              yield* Effect.forkIn(clear(aside), layerScope);
+            } else {
               yield* fs.remove(worktree.root, { recursive: true }).pipe(
                 Effect.mapError(
                   () =>
@@ -283,18 +343,14 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               );
             }
           }
+          // Git forgets a worktree whose folder is gone.
           yield* git(repo, ["worktree", "prune"]);
           if (!keepBranch) yield* git(repo, ["branch", "-D", worktree.branch]);
         }),
 
         restore: Effect.fn("Worktrees.restore")(function* (worktree) {
           if (yield* exists(worktree.root)) return;
-          const where = yield* gitOk(
-            worktree.project,
-            ["rev-parse", "--show-toplevel"],
-            `${worktree.project} isn't in a git repository any more.`,
-          );
-          yield* checkOut(path.resolve(where.trim()), worktree);
+          yield* checkOut(yield* toplevelOf(worktree.project), worktree);
         }),
       });
     }),

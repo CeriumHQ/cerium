@@ -1,7 +1,7 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Layer, Stream } from "effect";
+import { Deferred, Effect, Exit, Layer, Stream } from "effect";
 
 import {
   Orchestrator,
@@ -37,24 +37,41 @@ const fakeScripts = (calls: Array<string>, state: { started?: ScriptStarted; tor
     ports: () => Effect.succeed({ first: 20010, last: 20019 }),
   });
 
-/** Worktrees that only record what was asked of them, holding `changes` until told otherwise. */
+/**
+ * Worktrees that only record what was asked of them, holding `changes` until told otherwise; a checkout
+ * waits for `state.gate` when one is set, and fails with `state.refuseCheckOut`.
+ */
 const fakeWorktrees = () => {
   const calls: Array<string> = [];
-  const state: { changes: WorktreeChanges; refuse?: string } = { changes: { uncommitted: 0, unmerged: 0 } };
+  const state: {
+    changes: WorktreeChanges;
+    refuse?: string;
+    refuseCheckOut?: string;
+    gate?: Deferred.Deferred<void>;
+  } = { changes: { uncommitted: 0, unmerged: 0 } };
   const layer = Layer.succeed(Worktrees, {
-    create: (project, name) =>
+    plan: (project, name) =>
       state.refuse === undefined
         ? Effect.sync(() => {
-            calls.push(`create ${project} ${name}`);
+            calls.push(`plan ${project} ${name}`);
             const worktree: ThreadWorktree = {
               project,
               root: "/worktrees/proj/fix-it",
               branch: "cerium/fix-it",
               base: "main",
             };
-            return { worktree, cwd: "/worktrees/proj/fix-it/app", copied: [".env", "app/.env.local"] };
+            return { worktree, cwd: "/worktrees/proj/fix-it/app" };
           })
         : Effect.fail(new WorktreeError({ message: state.refuse })),
+    checkOut: (worktree) =>
+      Effect.gen(function* () {
+        if (state.gate !== undefined) yield* Deferred.await(state.gate);
+        if (state.refuseCheckOut !== undefined) {
+          return yield* new WorktreeError({ message: state.refuseCheckOut });
+        }
+        calls.push(`checkOut ${worktree.branch}`);
+        return [".env", "app/.env.local"];
+      }),
     changes: () => Effect.succeed(state.changes),
     remove: (threadId, worktree) =>
       Effect.sync(() => void calls.push(`remove ${threadId} ${worktree.branch}`)),
@@ -83,7 +100,7 @@ describe("Orchestrator worktrees", () => {
       const { thread, lead } = yield* start;
       assert.strictEqual(thread.cwd, "/worktrees/proj/fix-it/app");
       assert.strictEqual(thread.worktree?.project, "/proj/app");
-      assert.deepStrictEqual(worktrees.calls, ["create /proj/app Fix it"]);
+      assert.deepStrictEqual(worktrees.calls, ["plan /proj/app Fix it"]);
 
       yield* orchestrator.sendUserMessage(lead.id, "hello");
       while (fake.sessions[0] === undefined) yield* Effect.sleep("5 millis");
@@ -103,7 +120,53 @@ describe("Orchestrator worktrees", () => {
       const shared = yield* orchestrator.startThread(lead.id, { prompt: "Docs", worktree: false });
       assert.strictEqual(shared.thread.cwd, "/proj/app");
       assert.isUndefined(shared.thread.worktree);
-      assert.deepStrictEqual(worktrees.calls, ["create /proj/app Fix it", "create /proj/app Dark mode"]);
+      assert.deepStrictEqual(
+        worktrees.calls.filter((call) => call.startsWith("plan")),
+        ["plan /proj/app Fix it", "plan /proj/app Dark mode"],
+      );
+    }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
+
+  it.live("shows the thread before its worktree is checked out, its session waiting for it", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const gate = yield* Deferred.make<void>();
+      worktrees.state.gate = gate;
+      const { thread, lead } = yield* start;
+      assert.deepStrictEqual(
+        (yield* orchestrator.listThreads).map(({ id }) => id),
+        [thread.id],
+      );
+      // The message is taken at once; the harness starts only once the folder is there.
+      yield* orchestrator.sendUserMessage(lead.id, "hello");
+      yield* Effect.sleep("50 millis");
+      assert.strictEqual(fake.sessions.length, 0);
+      yield* Deferred.succeed(gate, undefined);
+      while (fake.sessions[0]?.sent[0] === undefined) yield* Effect.sleep("5 millis");
+      assert.include(worktrees.calls, "checkOut cerium/fix-it");
+      const heard = fake.sessions[0].sent.join("\n");
+      assert.include(heard, "hello");
+      assert.include(heard, "Copied from the project into this worktree");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
+
+  it.live("tells in the thread why its worktree couldn't be checked out", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    worktrees.state.refuseCheckOut = "invalid reference: main";
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* start;
+      let lead = (yield* orchestrator.listAgents(thread.id))[0];
+      while (lead?.state !== "failed") {
+        yield* Effect.sleep("5 millis");
+        lead = (yield* orchestrator.listAgents(thread.id))[0];
+      }
+      assert.strictEqual(fake.sessions.length, 0);
+      const events = yield* orchestrator.threadEvents(thread.id);
+      assert.include(JSON.stringify(events), "Couldn't make the thread's worktree: invalid reference: main");
     }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
   });
 
