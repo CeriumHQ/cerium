@@ -104,7 +104,20 @@ import {
   type WorktreeError,
 } from "./services.ts";
 import { UserSettings } from "./settings.ts";
-import { ProjectScripts, type ScriptEnded, type ScriptStarted } from "./scripts.ts";
+import {
+  runAnswer,
+  runLines,
+  START_WAITS_FOR,
+  type ProjectRunAnswer,
+  type ProjectRunRequest,
+} from "./projectRun.ts";
+import {
+  ProjectScripts,
+  type ScriptEnded,
+  ScriptsError,
+  type ScriptServed,
+  type ScriptStarted,
+} from "./scripts.ts";
 import { ThreadTitles } from "./titles.ts";
 
 export interface CreateThreadInput {
@@ -365,15 +378,19 @@ const setupNote = (ran: ScriptStarted | undefined): string =>
       ? `The project's setup (\`${ran.script}\`) is running in this thread's terminal. Wait for the notice of it finishing or failing before relying on what it installs.`
       : `Cerium guesses the setup \`${ran.script}\` for this project, but a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub (or press Setup); until then, wait for what it looks for.`;
 
-/** What the lead hears when a script's run is over. */
+/** What the lead hears when a script's run is over; a failure comes with the last of what it printed. */
 const endedNote = (ended: ScriptEnded): string => {
   const what = `The project's ${ended.kind} (\`${ended.script}\`)`;
-  return ended.code === 0
-    ? `${what} finished.`
-    : ended.code === undefined
-      ? `${what} stopped (its terminal was closed).`
-      : `${what} failed with exit code ${ended.code}; its terminal shows why.`;
+  if (ended.code === 0) return `${what} finished.`;
+  if (ended.code === undefined) return `${what} stopped (its terminal was closed).`;
+  return ended.output === undefined
+    ? `${what} failed with exit code ${ended.code}; its terminal shows why.`
+    : `${what} failed with exit code ${ended.code}. The end of its output:\n\`\`\`\n${ended.output}\n\`\`\``;
 };
+
+/** What the lead hears when the project's run prints the address it serves at. */
+const servedNote = (served: ScriptServed): string =>
+  `The project's ${served.kind} (\`${served.script}\`) is serving at ${served.url}. Open it in your thread's browser with \`browser_open\` to check it, or read its output with \`project_run\`.`;
 
 export class Orchestrator extends Context.Service<
   Orchestrator,
@@ -621,6 +638,17 @@ export class Orchestrator extends Context.Service<
       request: { readonly toolName: string; readonly summary: string; readonly input: unknown },
     ): Effect.Effect<PermissionDecision, OrchestratorError>;
     /**
+     * Starts, stops or restarts the caller's thread's project run (or setup) in the thread's own
+     * terminal, or reads how it stands, with its last lines of output. Starting asks like a command
+     * does (`requestApproval`), and runs only a command the user confirmed, never a guess; a start
+     * waits briefly for the run to print its address or end, and tells the caller instead of the
+     * lead. Refused for an advisor, a reviewer, and a thread with no project folder.
+     */
+    projectRun(
+      callerId: AgentId,
+      request: ProjectRunRequest,
+    ): Effect.Effect<ProjectRunAnswer, OrchestratorError>;
+    /**
      * Every persisted event in a thread, in order. With `streamed`, each block still streaming follows
      * them as one delta holding its text so far, in its first delta's place: streamed text is never
      * stored, and a reader joining mid-reply would otherwise start it partway through.
@@ -739,17 +767,22 @@ export class Orchestrator extends Context.Service<
       const acceptPermit = yield* Semaphore.make(1);
 
       // A script's run ending reaches its thread's lead as any notice does, so it knows when the
-      // setup is through: without one, its work would race the install.
-      yield* scripts.ended.pipe(
-        Stream.runForEach((ended) =>
-          Effect.forEach(
-            [...runtimes.values()].filter(
-              (rt) => rt.info.threadId === ended.threadId && rt.info.parentId === undefined,
-            ),
-            (rt) => deliver(rt.info.id, { _tag: "SystemNotice", text: endedNote(ended) }),
-            { discard: true },
+      // setup is through: without one, its work would race the install. So does the address a run
+      // serves at, the first time its output prints one.
+      const tellLead = (threadId: ThreadId, text: string) =>
+        Effect.forEach(
+          [...runtimes.values()].filter(
+            (rt) => rt.info.threadId === threadId && rt.info.parentId === undefined,
           ),
-        ),
+          (rt) => deliver(rt.info.id, { _tag: "SystemNotice", text }),
+          { discard: true },
+        );
+      yield* scripts.ended.pipe(
+        Stream.runForEach((ended) => tellLead(ended.threadId, endedNote(ended))),
+        Effect.forkIn(layerScope),
+      );
+      yield* scripts.served.pipe(
+        Stream.runForEach((served) => tellLead(served.threadId, servedNote(served))),
         Effect.forkIn(layerScope),
       );
 
@@ -3122,7 +3155,7 @@ export class Orchestrator extends Context.Service<
         );
       };
 
-      return Orchestrator.of({
+      const orchestrator: Orchestrator["Service"] = Orchestrator.of({
         createThread,
 
         sendUserMessage: (agentId, text, extras = {}) =>
@@ -4025,8 +4058,96 @@ export class Orchestrator extends Context.Service<
             Effect.mapError(unavailable),
           ),
 
+        projectRun: Effect.fn("Orchestrator.projectRun")(function* (callerId, request) {
+          const caller = yield* runtime(callerId);
+          if (isHelper(caller.info)) {
+            return yield* notAllowed("An advisor or reviewer doesn't run the project.");
+          }
+          const kind = request.script ?? "run";
+          const lines = runLines(request.lines);
+          const thread = yield* threadInfo(caller.info.threadId);
+          const folder = thread.cwd;
+          if (thread.mode !== "work" || folder === undefined) {
+            return yield* notAllowed("This thread has no project folder, so there is nothing to run.");
+          }
+          const project = thread.worktree?.project ?? folder;
+          const failed = (error: ScriptsError) =>
+            new OrchestratorError({ reason: "invalid", message: error.message });
+          const command = (yield* scripts.resolve(project).pipe(Effect.mapError(failed)))[kind];
+          const standing = () => scripts.status(thread.id, kind, lines);
+
+          if (request.action === "status") {
+            return runAnswer(kind, yield* standing(), { command: command?.text });
+          }
+          /** Asks as a command does; what the answer is when it isn't allowed, and nothing when it is. */
+          const refusal = Effect.fn("Orchestrator.projectRun.approve")(function* (summary: string) {
+            const decision = yield* orchestrator.requestApproval(callerId, {
+              toolName: "project_run",
+              summary,
+              input: { action: request.action, script: kind },
+            });
+            return decision.decision === "deny"
+              ? ({
+                  ...runAnswer(kind, undefined, {
+                    command: command?.text,
+                    note: decision.message ?? "The user didn't allow this.",
+                  }),
+                  state: "denied",
+                } satisfies ProjectRunAnswer)
+              : undefined;
+          });
+
+          if (request.action === "stop") {
+            const refused = yield* refusal(`Stop the project's ${kind}`);
+            if (refused !== undefined) return refused;
+            const stopped = yield* scripts.stop(thread.id, kind);
+            return runAnswer(kind, undefined, {
+              command: command?.text,
+              note: stopped ? "Stopped." : "It wasn't running.",
+            });
+          }
+
+          if (command === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `No ${kind} command is set for this project. Ask the user to set one in Settings → Git & GitHub.`,
+            });
+          }
+          if (command.from === "guessed") {
+            return yield* notAllowed(
+              `Cerium only guesses this project's ${kind} (\`${command.text}\`), and a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub, or to press ${kind === "run" ? "Run" : "Setup"}.`,
+            );
+          }
+          if (request.action === "start") {
+            const current = yield* standing();
+            if (current?.running === true) {
+              return runAnswer(kind, current, {
+                command: command.text,
+                ...(current.url === undefined
+                  ? { note: "Already running; `restart` runs it again from the start." }
+                  : {}),
+              });
+            }
+          }
+          const refused = yield* refusal(
+            `${request.action === "start" ? "Start" : "Restart"} the project's ${kind}: ${command.text}`,
+          );
+          if (refused !== undefined) return refused;
+          yield* scripts
+            .start({
+              kind,
+              threadId: thread.id,
+              project,
+              cwd: folder,
+              settleWithin: START_WAITS_FOR,
+            })
+            .pipe(Effect.mapError(failed));
+          return runAnswer(kind, yield* standing(), { command: command.text });
+        }),
+
         awaitingApproval: waitsOnUser,
       });
+      return orchestrator;
     }),
   ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer)));
 }

@@ -5,13 +5,27 @@ import {
   type ResolvedScripts,
   type ScriptEnded,
   type ScriptKind,
+  type ScriptServed,
   type ScriptStarted,
+  type ScriptStatus,
 } from "@cerium/orchestrator";
 import { ThreadId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
-import { Effect, FileSystem, Layer, Option, Path, PubSub, Scope, Stream } from "effect";
+import {
+  Deferred,
+  type Duration,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  PubSub,
+  Scope,
+  Stream,
+} from "effect";
 import { lstatSync } from "node:fs";
 
+import { tailOf } from "./pushModel.ts";
 import { Terminals } from "./terminal.ts";
 import { chooseShell, scriptChoice, type ShellHost } from "./terminalShell.ts";
 
@@ -29,6 +43,12 @@ const SCRIPT_SIZE = { cols: 100, rows: 30 };
 
 /** What a terminal's tab shows for the script it runs; a plain shell's tab shows its shell's name. */
 export const SCRIPT_LABEL = { setup: "Setup", run: "Run" } as const;
+
+/** How much of a failed script's last output its end carries to the lead: lines, and characters at most. */
+const ENDED_LINES = 30;
+const ENDED_CHARS = 3_000;
+/** The most characters of output a status holds, whatever lines were asked for. */
+const STATUS_CHARS = 8_000;
 
 /** What `[scripts]` of a `.cerium.toml` holds. */
 export interface ScriptFile {
@@ -149,28 +169,69 @@ export const projectScriptsLayer = Layer.effect(
     const scope = yield* Scope.Scope;
 
     const ended = yield* PubSub.unbounded<ScriptEnded>();
+    const served = yield* PubSub.unbounded<ScriptServed>();
     /** The runs watched for their end, keyed by the terminal they run in. */
-    const waiting = new Map<string, Omit<ScriptEnded, "code">>();
+    const waiting = new Map<string, Omit<ScriptEnded, "code" | "output">>();
+    /** The runs a caller waits on for the first news of them, which the caller takes instead of the lead. */
+    const claims = new Map<string, Deferred.Deferred<void>>();
+
+    /** Hands the first news of a run to the caller waiting for it; whether there was one. */
+    const settle = (id: string): boolean => {
+      const claim = claims.get(id);
+      if (claim === undefined) return false;
+      claims.delete(id);
+      Deferred.doneUnsafe(claim, Effect.void);
+      return true;
+    };
+
+    /** A thread's own terminal for `kind`: the newest, when a replaced one has lingered. */
+    const terminalOf = (threadId: ThreadId, kind: ScriptKind) =>
+      Effect.map(terminals.list, (all) =>
+        all.findLast((info) => info.threadId === threadId && info.script === SCRIPT_LABEL[kind]),
+      );
 
     // A terminal's list tells when a run ended (its exit code) or stopped (it's gone, no code):
-    // both reach the thread, so its lead knows when the server is there and when it fell over.
+    // both reach the thread, so its lead knows when the server is there and when it fell over, and
+    // why, from the last of what a failed script printed.
     yield* terminals.changes.pipe(
       Stream.runForEach((all) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           for (const info of all) {
             const one = waiting.get(info.id);
-            if (one === undefined) continue;
-            if (info.exitCode !== undefined) {
-              waiting.delete(info.id);
-              PubSub.publishUnsafe(ended, { ...one, code: info.exitCode });
-            }
+            if (one === undefined || info.exitCode === undefined) continue;
+            waiting.delete(info.id);
+            if (settle(info.id)) continue;
+            const printed =
+              info.exitCode === 0
+                ? undefined
+                : yield* terminals.output(info.id, ENDED_LINES).pipe(
+                    Effect.map(({ text }) => tailOf(text.trim(), ENDED_CHARS)),
+                    Effect.orElseSucceed(() => ""),
+                  );
+            PubSub.publishUnsafe(ended, {
+              ...one,
+              code: info.exitCode,
+              ...(printed ? { output: printed } : {}),
+            });
           }
           for (const [id, one] of [...waiting]) {
             if (!all.some((info) => info.id === id)) {
               waiting.delete(id);
-              PubSub.publishUnsafe(ended, { ...one, code: undefined });
+              if (!settle(id)) PubSub.publishUnsafe(ended, { ...one, code: undefined });
             }
           }
+        }),
+      ),
+      Effect.forkIn(scope),
+    );
+
+    // A run's first local address tells the lead where the project is serving, once per run.
+    yield* terminals.served.pipe(
+      Stream.runForEach((event) =>
+        Effect.sync(() => {
+          const one = waiting.get(event.id);
+          if (one === undefined || one.kind !== "run" || settle(event.id)) return;
+          PubSub.publishUnsafe(served, { ...one, url: event.url });
         }),
       ),
       Effect.forkIn(scope),
@@ -210,8 +271,9 @@ export const projectScriptsLayer = Layer.effect(
         cwd: string;
         size?: { readonly cols: number; readonly rows: number };
         auto?: boolean;
+        settleWithin?: Duration.Input;
       }) {
-        const { kind, threadId, project, cwd, size, auto } = options;
+        const { kind, threadId, project, cwd, size, auto, settleWithin } = options;
         const one = (yield* resolve(project))?.[kind] as ResolvedScript | undefined;
         // A guess is run only when the user themselves stands behind it; the thread was just told.
         if (auto === true && one?.from === "guessed")
@@ -222,6 +284,13 @@ export const projectScriptsLayer = Layer.effect(
             : yield* new ScriptsError({
                 message: `No ${kind} command is set for ${path.basename(project)}; set one in Settings → Git & GitHub.`,
               });
+        }
+        // The run this one replaces is over by the user's or an agent's own doing: its closing isn't
+        // news, and nobody is left waiting on it.
+        for (const [id, earlier] of [...waiting]) {
+          if (earlier.threadId !== threadId || earlier.kind !== kind) continue;
+          waiting.delete(id);
+          settle(id);
         }
         const started = yield* terminals
           .openScript(
@@ -237,9 +306,43 @@ export const projectScriptsLayer = Layer.effect(
             ),
           );
         waiting.set(started.id, { threadId, kind, script: one.text });
+        if (settleWithin !== undefined) {
+          const claim = yield* Deferred.make<void>();
+          claims.set(started.id, claim);
+          // Its first news arrives here if it comes in time; later, the thread's lead hears it.
+          yield* Deferred.await(claim).pipe(
+            Effect.timeoutOrElse({ duration: settleWithin, orElse: () => Effect.void }),
+          );
+          if (claims.get(started.id) === claim) claims.delete(started.id);
+        }
         return { _tag: "Ran", script: one.text, from: one.from } satisfies ScriptStarted;
       }),
+      stop: Effect.fn("ProjectScripts.stop")(function* (threadId: ThreadId, kind: ScriptKind) {
+        const own = yield* terminalOf(threadId, kind);
+        if (own === undefined) return false;
+        waiting.delete(own.id);
+        settle(own.id);
+        yield* terminals.close(own.id).pipe(Effect.ignore);
+        return true;
+      }),
+      status: Effect.fn("ProjectScripts.status")(function* (
+        threadId: ThreadId,
+        kind: ScriptKind,
+        lines: number,
+      ) {
+        const own = yield* terminalOf(threadId, kind);
+        if (own === undefined) return undefined;
+        const printed = yield* terminals.output(own.id, lines).pipe(Effect.option);
+        if (Option.isNone(printed)) return undefined;
+        return {
+          running: own.exitCode === undefined,
+          ...(own.exitCode === undefined ? {} : { exitCode: own.exitCode }),
+          ...(printed.value.url === undefined ? {} : { url: printed.value.url }),
+          output: tailOf(printed.value.text, STATUS_CHARS),
+        } satisfies ScriptStatus;
+      }),
       ended: Stream.fromPubSub(ended),
+      served: Stream.fromPubSub(served),
     });
   }),
 );

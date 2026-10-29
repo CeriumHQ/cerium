@@ -16,6 +16,13 @@ export { OrchestratorError } from "./errors.ts";
 export { importedEvents, SessionImports, type ImportOptions } from "./imports.ts";
 export { CONDENSE_INSTRUCTIONS, condensePrompt, handoffBrief } from "./handoff.ts";
 export {
+  MAX_RUN_LINES,
+  type ProjectRunAction,
+  type ProjectRunAnswer,
+  type ProjectRunRequest,
+  type ProjectRunState,
+} from "./projectRun.ts";
+export {
   Orchestrator,
   type CreateThreadInput,
   type HandoffTarget,
@@ -49,8 +56,10 @@ export {
   type ResolvedScripts,
   type ScriptEnded,
   type ScriptKind,
+  type ScriptServed,
   type ScriptSource,
   type ScriptStarted,
+  type ScriptStatus,
 } from "./scripts.ts";
 export { UserSettings } from "./settings.ts";
 export { cleanTitle, ThreadTitles, TITLE_INSTRUCTIONS, titleModels, titlePrompt } from "./titles.ts";

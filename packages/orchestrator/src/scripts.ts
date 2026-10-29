@@ -1,5 +1,5 @@
 import { ThreadId } from "@cerium/protocol";
-import { Context, Effect, Layer, Schema, Stream } from "effect";
+import { Context, type Duration, Effect, Layer, Schema, Stream } from "effect";
 
 // A project's setup and run commands, as the scripts threads' worktrees need. The backend resolves
 // them (Cerium's saved projects, the project's `.cerium.toml`, else a guess from its package
@@ -40,6 +40,28 @@ export interface ScriptEnded {
   readonly kind: ScriptKind;
   readonly script: string;
   readonly code: number | undefined;
+  /** What it printed last, in plain text, when it failed: the lead reads why without opening the terminal. */
+  readonly output?: string;
+}
+
+/** A run's first local address, as its output printed it: where the project says it is serving. */
+export interface ScriptServed {
+  readonly threadId: ThreadId;
+  readonly kind: ScriptKind;
+  readonly script: string;
+  readonly url: string;
+}
+
+/** Where a thread's script stands: its run in the thread's terminal, as an agent asks about it. */
+export interface ScriptStatus {
+  /** Its shell is still going: for a run, the server is up. */
+  readonly running: boolean;
+  /** How it ended, once it has. */
+  readonly exitCode?: number;
+  /** The first local address its output printed, once it has. */
+  readonly url?: string;
+  /** Its last lines, in plain text. */
+  readonly output: string;
 }
 
 /**
@@ -66,15 +88,36 @@ export class ProjectScripts extends Context.Service<
       readonly cwd: string;
       readonly size?: { readonly cols: number; readonly rows: number };
       readonly auto?: boolean;
+      /**
+       * Waits this long, at most, for the run to print its address or to end, and then keeps that
+       * news from the thread's lead: whoever waits for it has it. Without it, or once the time is
+       * up, the lead is told when it comes.
+       */
+      readonly settleWithin?: Duration.Input;
     }): Effect.Effect<ScriptStarted | undefined, ScriptsError>;
+    /**
+     * Closes a thread's terminal of `kind`, stopping what runs in it; whether it had one. A stop
+     * asked for isn't told to the lead as a run ending.
+     */
+    stop(threadId: ThreadId, kind: ScriptKind): Effect.Effect<boolean>;
+    /**
+     * Where a thread's `kind` stands, with its last `lines` lines; absent when the thread has no
+     * terminal of that kind (not started, or closed).
+     */
+    status(threadId: ThreadId, kind: ScriptKind, lines: number): Effect.Effect<ScriptStatus | undefined>;
     /** How each run ends, started at the thread's creation or on demand. */
     readonly ended: Stream.Stream<ScriptEnded>;
+    /** Each run's first local address, once per run, unless the caller who started it waited for it. */
+    readonly served: Stream.Stream<ScriptServed>;
   }
 >()("cerium/orchestrator/ProjectScripts") {
   /** For builds and tests without them: nothing is resolved and nothing runs. */
   static readonly unavailable = Layer.succeed(ProjectScripts, {
     resolve: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
     start: () => Effect.fail(new ScriptsError({ message: "Scripts aren't available here." })),
+    stop: () => Effect.succeed(false),
+    status: () => Effect.undefined,
     ended: Stream.empty,
+    served: Stream.empty,
   });
 }
