@@ -4123,9 +4123,9 @@ export class Orchestrator extends Context.Service<
             if (current?.running === true) {
               return runAnswer(kind, current, {
                 command: command.text,
-                ...(current.url === undefined
-                  ? { note: "Already running; `restart` runs it again from the start." }
-                  : {}),
+                note: `Already running, so it wasn't started again; \`restart\` runs it again.${
+                  current.url === undefined ? "" : ` Serving at ${current.url}.`
+                }`,
               });
             }
           }

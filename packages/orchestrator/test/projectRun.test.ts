@@ -119,6 +119,8 @@ describe("Orchestrator.projectRun", () => {
 
       const again = yield* orchestrator.projectRun(lead.id, { action: "start" });
       assert.strictEqual(again.state, "running");
+      assert.include(again.note, "wasn't started again");
+      assert.include(again.note, "Serving at http://localhost:5173/");
       const restarted = yield* orchestrator.projectRun(lead.id, { action: "restart" });
       assert.strictEqual(restarted.state, "running");
       const stopped = yield* orchestrator.projectRun(lead.id, { action: "stop" });
