@@ -9,11 +9,12 @@
 import {
   AdditiveBlending,
   Color,
+  DoubleSide,
   ExtrudeGeometry,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
-  NeutralToneMapping,
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
@@ -24,7 +25,6 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 export interface Band {
   readonly color: string;
@@ -84,7 +84,38 @@ const markShapes = (): Array<Shape> => {
   return [ring, facet];
 };
 
-/** A beam of light: a strip whose brightness falls off across its width and towards its end. */
+/**
+ * A dark studio lit by a few thin softboxes, for the glass to reflect. Glass reads as glass by its
+ * crisp highlights and clear body; a bright, even room instead lays a soft milky sheen over every
+ * face, and the mark looks moulded from acrylic.
+ */
+const studio = (): Scene => {
+  const room = new Scene();
+  const panel = (w: number, h: number, strength: number, at: [number, number, number]) => {
+    const mesh = new Mesh(
+      new PlaneGeometry(w, h),
+      new MeshBasicMaterial({ color: new Color().setScalar(strength), side: DoubleSide }),
+    );
+    mesh.position.set(...at);
+    mesh.lookAt(0, 0, 0);
+    room.add(mesh);
+  };
+  // Two tall strips either side of the camera draw long highlight lines down the ring's curves.
+  panel(0.35, 9, 14, [-5, 1.5, 6]);
+  panel(0.25, 9, 9, [6, -0.5, 5]);
+  // A long box overhead catches the top edges; a narrow strip behind lights the rims from within.
+  panel(8, 0.8, 6, [0, 7, 1.5]);
+  panel(10, 0.4, 3, [0, -3, -8]);
+  return room;
+};
+
+/**
+ * A beam of light: a strip whose brightness falls off across its width and towards its end.
+ *
+ * This shader and the haze's work out a colour as it shows on screen, then hand three.js its linear
+ * value to encode for the canvas: the glass samples a linear copy of the scene, and a shader that
+ * wrote screen colours straight out reached it encoded twice, so the glass showed a milky grey.
+ */
 const beamMaterial = (color: Color, strength: number) =>
   new ShaderMaterial({
     uniforms: {
@@ -114,7 +145,8 @@ const beamMaterial = (color: Color, strength: number) =>
         float tail = mix(1.0, 0.35, smoothstep(0.35, 1.0, vUv.x));
         float shimmer = 0.92 + 0.08 * sin(vUv.x * 40.0 - uTime * 2.2);
         vec3 light = uColor * (core * 1.6 + halo) + vec3(core * 0.55);
-        gl_FragColor = vec4(light * along * tail * shimmer * uStrength, 1.0);
+        gl_FragColor = sRGBTransferEOTF(vec4(light * along * tail * shimmer * uStrength, 1.0));
+        #include <colorspace_fragment>
       }
     `,
     blending: AdditiveBlending,
@@ -143,16 +175,15 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     return undefined;
   }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // No tone mapping: the glass is the only thing it would touch, and Neutral's toe pulls the dim haze
+  // the glass refracts down to black, so the mark went opaque against a backdrop it should show.
   renderer.outputColorSpace = SRGBColorSpace;
-  renderer.toneMapping = NeutralToneMapping;
-  renderer.toneMappingExposure = 1.05;
 
   const scene = new Scene();
   const background = new Color();
   scene.background = background;
   const pmrem = new PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.55;
+  scene.environment = pmrem.fromScene(studio(), 0).texture;
 
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 0, 14);
@@ -198,7 +229,8 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
           folds = pow(0.5 + 0.5 * folds, 6.0);
           float ribs = pow(0.5 + 0.5 * sin((p.x + p.y * 0.6) * 9.0 - t * 4.0), 14.0) * 0.5;
           float light = glow * (0.22 + folds * 0.6 + ribs);
-          gl_FragColor = vec4(uTint * light * 0.32, 1.0);
+          gl_FragColor = sRGBTransferEOTF(vec4(uTint * light * 0.32, 1.0));
+          #include <colorspace_fragment>
         }
       `,
       blending: AdditiveBlending,
@@ -207,28 +239,28 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
   );
   scene.add(haze);
 
-  // The glass itself.
+  // The glass itself: polished, with no clearcoat (a second lacquer layer is what plastic has), thick
+  // enough to bend what's behind it, and only faintly tinted so the body stays clear.
   const material = new MeshPhysicalMaterial({
     color: new Color(1, 1, 1),
     metalness: 0,
-    roughness: 0.035,
+    roughness: 0,
     transmission: 1,
-    thickness: 1.1,
-    ior: 1.62,
-    dispersion: 9,
-    clearcoat: 1,
-    clearcoatRoughness: 0.04,
+    thickness: 0.8,
+    ior: 1.52,
+    dispersion: 6,
     specularIntensity: 1,
     attenuationColor: new Color(1, 1, 1),
-    attenuationDistance: 3.2,
-    envMapIntensity: 1.25,
+    attenuationDistance: 6,
+    side: DoubleSide,
   });
+  // A tight rounded edge: a fat, soft bevel reads as a moulded toy, a narrow one as a polished edge.
   const geometry = new ExtrudeGeometry(markShapes(), {
-    depth: 0.72,
+    depth: 0.84,
     bevelEnabled: true,
-    bevelThickness: 0.16,
-    bevelSize: 0.1,
-    bevelSegments: 8,
+    bevelThickness: 0.07,
+    bevelSize: 0.05,
+    bevelSegments: 6,
     curveSegments: 96,
   });
   geometry.center();
