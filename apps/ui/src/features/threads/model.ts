@@ -114,6 +114,9 @@ export const isListed = (thread: ThreadSummary): boolean =>
 /** The `RPC_VERSION` that brought `SetThreadLater`; an older machine's threads can't be put off. */
 export const LATER_VERSION = 24;
 
+/** The `RPC_VERSION` that brought `ContinueThread`; an older machine's threads can't be continued. */
+export const CONTINUE_VERSION = 41;
+
 /** Waiting on the user: an approval, or a failure they haven't seen. */
 export const needsYou = (thread: ThreadSummary): boolean =>
   thread.status === "awaitingApproval" || (thread.status === "failed" && thread.unread);

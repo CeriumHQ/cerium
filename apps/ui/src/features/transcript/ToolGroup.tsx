@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FolderOpen,
   LoaderCircle,
+  SquareArrowOutUpRight,
   type LucideIcon,
 } from "lucide-react";
 import { memo, useContext, useState, type ReactNode } from "react";
@@ -19,6 +20,7 @@ import {
 } from "../../components/ImageThumb.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { useArrivals, useChanged } from "../../lib/motion.ts";
+import { useEditor } from "../editor/useEditor.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { EditDiff, editCounts } from "./EditDiff.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
@@ -358,11 +360,18 @@ function ToolMenu({ tool }: { tool: ToolBlock }) {
   const folder = useContext(WorkspaceFolder);
   const reveal = shellBridge()?.revealPath;
   const location = plan.path ? resolvePath(plan.path, folder) : undefined;
+  const editor = useEditor();
+  const openInEditor = plan.folder ? undefined : editor.open;
   return (
     <>
       {plan.copy ? (
         <MenuItem icon={Copy} onClick={() => void navigator.clipboard.writeText(location ?? plan.copy!.text)}>
           {plan.copy.label}
+        </MenuItem>
+      ) : null}
+      {openInEditor && location ? (
+        <MenuItem icon={SquareArrowOutUpRight} onClick={() => openInEditor(location, plan.line, folder)}>
+          Open in {editor.editor?.label}
         </MenuItem>
       ) : null}
       {reveal && location ? (
@@ -387,6 +396,29 @@ function ToolMenu({ tool }: { tool: ToolBlock }) {
   );
 }
 
+/**
+ * A button on an edit's card that opens the file it changed in the user's editor; absent where the call
+ * names no file or there is no editor to use.
+ */
+function OpenInEditor({ tool }: { tool: ToolBlock }) {
+  const folder = useContext(WorkspaceFolder);
+  const editor = useEditor();
+  const { path, line } = toolMenuPlan(tool);
+  const location = path ? resolvePath(path, folder) : undefined;
+  if (editor.open === undefined || location === undefined) return null;
+  const open = editor.open;
+  return (
+    <button
+      type="button"
+      onClick={() => open(location, line, folder)}
+      className="flex items-center gap-1 rounded px-1 transition-colors hover:text-fg-primary"
+    >
+      <SquareArrowOutUpRight size={11} strokeWidth={2} aria-hidden="true" />
+      Open in {editor.editor?.label}
+    </button>
+  );
+}
+
 /** What an opened row shows: what the call was given, then what came back. */
 function ToolBody({ tool }: { tool: ToolBlock }) {
   const input = toolInputView(tool);
@@ -405,7 +437,7 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
   return (
     <div className="flex flex-col gap-2 pt-1 pr-1.5 pb-3 pl-2">
       {input?.kind === "diff" ? (
-        <Frame label="Change">
+        <Frame label="Change" aside={<OpenInEditor tool={tool} />}>
           <EditDiff edits={input.edits} bare />
         </Frame>
       ) : input?.kind === "code" ? (

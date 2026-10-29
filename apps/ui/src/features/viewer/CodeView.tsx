@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { createContext, useContext, type CSSProperties } from "react";
 
 import { useHighlight, type Line } from "./highlight.ts";
 import type { Piece } from "./model.ts";
@@ -8,6 +8,46 @@ import { VisibleChunk } from "./VisibleChunk.tsx";
 export const CHUNK = 100;
 /** A line's height: 12.5px text, 1.6 apart. */
 export const LINE_HEIGHT = 20;
+
+/**
+ * What a line's number does when clicked: opens the file in the user's editor at that line. Absent
+ * where there is no editor to open it in, so the numbers stay plain.
+ */
+export const OpenAtLine = createContext<
+  { readonly open: (line: number) => void; readonly label: string } | undefined
+>(undefined);
+
+/** A line's number in the gutter; a button that opens the line in the editor when the viewer has one. */
+export function LineNumber({
+  line,
+  className,
+  style,
+}: {
+  line: number;
+  className: string;
+  style?: CSSProperties;
+}) {
+  const opener = useContext(OpenAtLine);
+  if (opener === undefined) {
+    return (
+      <span style={style} className={className} aria-hidden="true">
+        {line}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      title={`Open line ${line} in ${opener.label}`}
+      onClick={() => opener.open(line)}
+      style={style}
+      className={`${className} cursor-pointer transition-colors hover:text-fg-primary hover:underline`}
+    >
+      {line}
+    </button>
+  );
+}
 
 /** A run of highlighted text; a colourless run is plain text. */
 export function Run({ piece, mark }: { piece: Piece; mark?: string }) {
@@ -64,13 +104,11 @@ export function CodeView({ text, path, wrap }: { text: string; path: string; wra
                     key={first + index}
                     className={`flex pr-6 hover:bg-surface-hover ${wrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
                   >
-                    <span
+                    <LineNumber
+                      line={first + index + 1}
                       style={{ width: gutter }}
                       className="shrink-0 pr-4 pl-3 text-right text-fg-disabled tabular-nums select-none"
-                      aria-hidden="true"
-                    >
-                      {first + index + 1}
-                    </span>
+                    />
                     <span className={`min-w-0 text-fg-primary ${wrap ? "break-all" : ""}`}>
                       <LineText text={line.replace(/\r$/, "")} tokens={highlighted?.[first + index]} />
                     </span>

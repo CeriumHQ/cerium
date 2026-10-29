@@ -62,6 +62,13 @@ export interface ShellBridge {
    * its folder opens with it selected.
    */
   readonly openPath?: (path: string) => Promise<void>;
+  /** The code editors installed on this computer; `fresh` looks again instead of using the last look. */
+  readonly editors?: (fresh?: boolean) => Promise<ReadonlyArray<Editor>>;
+  /**
+   * Opens a file (absolute path) in the editor with this id at `line`, in the window of the project
+   * `folder`; resolves whether the editor started.
+   */
+  readonly openInEditor?: (id: string, file: string, line?: number, folder?: string) => Promise<boolean>;
   /**
    * Saves an image where the user picks with the native Save dialog, suggesting `name`. `source` is
    * a `data:image/…;base64,` URL or an absolute path to an image file. Resolves whether it was saved.
@@ -144,6 +151,12 @@ export interface ShellBridge {
    * on; absent on Linux, which has no such page.
    */
   readonly openMicrophoneSettings?: () => Promise<void>;
+}
+
+/** An editor the shell found; mirrors `Editor` in apps/desktop/src/editors.ts. */
+export interface Editor {
+  readonly id: string;
+  readonly label: string;
 }
 
 /** Mirrors the shell's `PreviewState` in apps/desktop/src/preview.ts. */
@@ -280,6 +293,8 @@ export const shellBridge = (): ShellBridge | undefined => {
     pathForFile: _path,
     revealPath: _reveal,
     openPath: _open,
+    editors: _editors,
+    openInEditor: _openInEditor,
     ...elsewhere
   } = bridge;
   return elsewhere;

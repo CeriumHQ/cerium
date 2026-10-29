@@ -28,7 +28,7 @@ export const HubCopyTarget = Schema.Struct({ provider: ProviderId, scope: HubTar
 export type HubCopyTarget = typeof HubCopyTarget.Type;
 
 export const HubRpcs = RpcGroup.make(
-  /** Each harness's servers and skills for `project`, read from its config. Since `RPC_VERSION` 41. */
+  /** Each harness's servers and skills for `project`, read from its config. Since `RPC_VERSION` 42. */
   Rpc.make("ReadHub", {
     payload: { project: Schema.NonEmptyString },
     success: Schema.Array(HubHarness),
@@ -36,24 +36,24 @@ export const HubRpcs = RpcGroup.make(
   }),
   /**
    * A harness's servers as it reports them right now, connecting each: slower than `ReadHub`, so the
-   * UI asks once the list shows. Since `RPC_VERSION` 41.
+   * UI asks once the list shows. Since `RPC_VERSION` 42.
    */
   Rpc.make("ReadHubStatus", {
     payload: { provider: ProviderId, project: Schema.NonEmptyString },
     success: Schema.Array(HubServerStatus),
     error: CeriumError,
   }),
-  /** Turns a server on or off where its harness can. Since `RPC_VERSION` 41. */
+  /** Turns a server on or off where its harness can. Since `RPC_VERSION` 42. */
   Rpc.make("SetHubServer", {
     payload: { ...ServerRef, enabled: Schema.Boolean },
     error: CeriumError,
   }),
-  /** Turns one of a server's tools on or off where its harness can. Since `RPC_VERSION` 41. */
+  /** Turns one of a server's tools on or off where its harness can. Since `RPC_VERSION` 42. */
   Rpc.make("SetHubTool", {
     payload: { ...ServerRef, tool: Schema.NonEmptyString, enabled: Schema.Boolean },
     error: CeriumError,
   }),
-  /** Turns a skill, by its folder, on or off where its harness can. Since `RPC_VERSION` 41. */
+  /** Turns a skill, by its folder, on or off where its harness can. Since `RPC_VERSION` 42. */
   Rpc.make("SetHubSkill", {
     payload: {
       provider: ProviderId,
@@ -65,14 +65,14 @@ export const HubRpcs = RpcGroup.make(
   }),
   /**
    * Copies a server into other harnesses' config, in each one's format, with its environment variables
-   * and headers left empty for the user to fill in. Since `RPC_VERSION` 41.
+   * and headers left empty for the user to fill in. Since `RPC_VERSION` 42.
    */
   Rpc.make("CopyHubServer", {
     payload: { ...ServerRef, to: Schema.Array(HubCopyTarget) },
     success: Schema.Array(HubCopyOutcome),
     error: CeriumError,
   }),
-  /** Copies a skill's folder into other harnesses' skill folders. Since `RPC_VERSION` 41. */
+  /** Copies a skill's folder into other harnesses' skill folders. Since `RPC_VERSION` 42. */
   Rpc.make("CopyHubSkill", {
     payload: {
       provider: ProviderId,

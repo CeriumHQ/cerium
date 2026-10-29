@@ -6,6 +6,7 @@ import {
   AppWindow,
   Archive,
   ChevronRight,
+  CornerDownRight,
   MessagesSquare,
   Pencil,
   Pin,
@@ -64,6 +65,8 @@ interface SidebarProps {
   readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a work thread off until then, or brings it back; absent where the machine can't. */
   readonly onLater?: (threadId: string, until: number | undefined) => Promise<boolean>;
+  /** Goes on with a thread in a new one that starts small; absent where the machine can't. */
+  readonly onContinue?: (threadId: string) => Promise<boolean>;
   /** The threads open in tabs. */
   readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
@@ -102,6 +105,7 @@ export function Sidebar({
   onArchive,
   onRestore,
   onLater,
+  onContinue,
   open = [],
   onDelete,
   onOpenWindow,
@@ -181,6 +185,7 @@ export function Sidebar({
           onArchive={onArchive}
           onRestore={onRestore}
           onLater={onLater}
+          onContinue={onContinue}
           onDelete={onDelete}
           onOpenWindow={onOpenWindow}
         />
@@ -193,6 +198,7 @@ export function Sidebar({
           onSelect={onSelect}
           onRename={onRename}
           onArchive={onArchive}
+          onContinue={onContinue}
           onDelete={onDelete}
           onOpenWindow={onOpenWindow}
           onMarkRead={onMarkRead}
@@ -219,6 +225,7 @@ interface ChatActions {
   readonly onRename: RenameThread;
   /** Each resolves whether the thread went, so the bulk bar reports what worked. */
   readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onContinue: ((threadId: string) => Promise<boolean>) | undefined;
   readonly onDelete: (threadId: string) => Promise<boolean>;
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
@@ -365,6 +372,7 @@ function ChatRow({
   onSelect,
   onRename,
   onArchive,
+  onContinue,
   onDelete,
   onOpenWindow,
 }: {
@@ -403,6 +411,15 @@ function ChatRow({
                 <MenuItem icon={Pencil} onClick={rename}>
                   Rename
                 </MenuItem>
+                {onContinue ? (
+                  <MenuItem
+                    icon={CornerDownRight}
+                    disabled={!canArchive(thread)}
+                    onClick={() => void onContinue(thread.id)}
+                  >
+                    Continue in new chat
+                  </MenuItem>
+                ) : null}
                 <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
                   Archive
                 </MenuItem>

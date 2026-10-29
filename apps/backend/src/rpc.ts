@@ -45,9 +45,11 @@ import { homedir } from "node:os";
 import { Automations, type AutomationError } from "./automations.ts";
 import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
+import { continuations } from "./continuation.ts";
 import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
 import { fileDiffOf, Files, resolveInside, type FilesError } from "./files.ts";
+import { Git } from "./git.ts";
 import { GitBranches, gitBranchHandlers } from "./gitBranches.ts";
 import { GitChanges, gitChangesHandlers } from "./gitChanges.ts";
 import { GitHub } from "./github.ts";
@@ -155,6 +157,7 @@ export const Handlers = MachineRpcs.toLayer(
     const reviews = yield* Reviews;
     const automations = yield* Automations;
     const hub = yield* hubHandlers;
+    const continued = continuations(store, yield* Git, github);
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -333,6 +336,13 @@ export const Handlers = MachineRpcs.toLayer(
             Effect.mapError(refuse),
           );
       },
+      // The brief is read before the old thread lets go of its worktree, which changes nothing in it.
+      ContinueThread: ({ threadId }) =>
+        Effect.gen(function* () {
+          const brief = yield* continued.briefFor(threadId);
+          const started = yield* orchestrator.continueThread(threadId);
+          return { ...started, brief };
+        }).pipe(Effect.mapError(refuse)),
       SetThreadLater: ({ threadId, until }) =>
         orchestrator.setThreadLater(threadId, until).pipe(Effect.mapError(refuse)),
       // A deleted thread's terminals end with it.

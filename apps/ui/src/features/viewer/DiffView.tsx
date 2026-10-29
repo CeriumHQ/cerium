@@ -7,7 +7,7 @@ import { useCompact } from "../../app/compact.ts";
 import type { DraftCommentFile } from "../composer/draft.ts";
 import { lineRange } from "../composer/draft.ts";
 import { useCoarsePointer } from "../composer/pointer.ts";
-import { CHUNK, LINE_HEIGHT, Run } from "./CodeView.tsx";
+import { CHUNK, LINE_HEIGHT, LineNumber, Run } from "./CodeView.tsx";
 import { VisibleChunk } from "./VisibleChunk.tsx";
 import { useHighlight } from "./highlight.ts";
 import {
@@ -321,9 +321,13 @@ function Cell({
     <div className={`group/line flex min-w-0 flex-1 ${tint[line.kind]}`}>
       {mark}
       {pick}
-      <span style={{ width: gutter }} className={number} aria-hidden="true">
-        {lineNumber}
-      </span>
+      {lineNumber === undefined || line.kind === "removed" ? (
+        <span style={{ width: gutter }} className={number} aria-hidden="true">
+          {lineNumber}
+        </span>
+      ) : (
+        <LineNumber line={lineNumber} style={{ width: gutter }} className={number} />
+      )}
       <span className={`w-4 shrink-0 select-none ${markerTint[line.kind]}`} aria-hidden="true">
         {marker[line.kind]}
       </span>

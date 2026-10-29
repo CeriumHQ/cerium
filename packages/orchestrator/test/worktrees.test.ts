@@ -327,3 +327,52 @@ describe("Orchestrator worktrees", () => {
     );
   });
 });
+
+describe("Orchestrator continuing threads", () => {
+  it.live("hands the worktree to a new thread on the same model and archives the old one", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread: old } = yield* start;
+      const { thread, lead } = yield* orchestrator.continueThread(old.id);
+      assert.notStrictEqual(thread.id, old.id);
+      assert.strictEqual(thread.title, "Fix it");
+      assert.strictEqual(thread.cwd, old.cwd);
+      assert.deepStrictEqual(thread.worktree, old.worktree);
+      assert.strictEqual(lead.provider, "claude");
+      assert.strictEqual(lead.model, "opus");
+      assert.strictEqual(lead.access, "ask");
+
+      const before = (yield* orchestrator.listThreads).find((each) => each.id === old.id);
+      assert.isDefined(before?.archivedAt);
+      assert.isUndefined(before?.worktree);
+      // Nothing was planned, checked out or removed: the one worktree changed hands.
+      assert.deepStrictEqual(worktrees.calls, ["plan /proj/app Fix it", "checkOut cerium/fix-it"]);
+
+      yield* orchestrator.sendUserMessage(lead.id, "Go on");
+      while (fake.sessions[0] === undefined) yield* Effect.sleep("5 millis");
+      assert.strictEqual(fake.sessions[0].options.cwd, "/worktrees/proj/fix-it/app");
+      assert.isUndefined(fake.sessions[0].options.resume);
+
+      // Deleting the old thread leaves the worktree its successor works in.
+      yield* orchestrator.deleteThread(old.id);
+      assert.notInclude(worktrees.calls.join("\n"), "remove");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
+
+  it.live("won't continue an archived thread", () => {
+    const worktrees = fakeWorktrees();
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* start;
+      yield* orchestrator.setThreadArchived(thread.id, true);
+      const refused = yield* Effect.exit(orchestrator.continueThread(thread.id));
+      assert.isTrue(Exit.isFailure(refused));
+      assert.include(String(refused), "Restore this thread");
+    }).pipe(
+      Effect.provide(testLayer([makeFakeAdapter("claude").adapter], { worktrees: worktrees.layer })),
+      Effect.scoped,
+    );
+  });
+});

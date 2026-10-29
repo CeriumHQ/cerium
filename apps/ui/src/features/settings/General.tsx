@@ -18,6 +18,7 @@ import {
   type Updates,
 } from "../../backend/shell.ts";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import { useEditors } from "../editor/useEditor.ts";
 import { welcomeOpenAtom } from "../onboarding/state.ts";
 import { speechLanguages, speechModel, speechModels, type SpeechModelId } from "../dictation/model.ts";
 import { dictationLanguageAtom, dictationModelAtom, downloadedModelsAtom } from "../dictation/preferences.ts";
@@ -42,6 +43,7 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "./parts.tsx";
+import { editorAtom } from "./preferences.ts";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
@@ -74,6 +76,13 @@ export function GeneralSettings() {
         <SettingsSection title="Startup">
           <SettingsList>
             <StartAtLoginRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
+      {local && shellBridge()?.editors !== undefined ? (
+        <SettingsSection title="Editor">
+          <SettingsList>
+            <EditorRow />
           </SettingsList>
         </SettingsSection>
       ) : null}
@@ -157,6 +166,48 @@ function SlimThreadsRow() {
                 {slimLabel[days]}
               </SelectItem>
             ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
+  );
+}
+
+/**
+ * The editor files open in at their line, from the ones installed on this computer; the first one found
+ * until the user picks. "File manager" turns opening in an editor off.
+ */
+function EditorRow() {
+  const editors = useEditors();
+  const [choice, setChoice] = useAtom(editorAtom);
+  const chosen = editors?.find((each) => each.id === choice);
+  const current =
+    choice === "none" ? "None" : (chosen ?? (choice === "auto" ? editors?.[0] : undefined))?.label;
+  const none = editors !== undefined && editors.length === 0;
+  return (
+    <SettingsRow
+      label="Open files in"
+      hint={
+        none
+          ? "No editor found: VS Code, Cursor, Zed, a JetBrains IDE or Visual Studio."
+          : "File chips, diffs and tool calls open at their line."
+      }
+      className="pr-2.5"
+      control={() => (
+        <SelectRoot
+          value={choice === "auto" || choice === "none" || chosen ? choice : "auto"}
+          onValueChange={(next) => next !== null && setChoice(next)}
+          disabled={editors === undefined || none}
+        >
+          <SelectTrigger label="Editor">{current ?? "…"}</SelectTrigger>
+          <SelectPopup>
+            <SelectItem value="auto">{`Automatic${editors?.[0] ? ` (${editors[0].label})` : ""}`}</SelectItem>
+            {editors?.map((each) => (
+              <SelectItem key={each.id} value={each.id}>
+                {each.label}
+              </SelectItem>
+            ))}
+            <SelectItem value="none">None</SelectItem>
           </SelectPopup>
         </SelectRoot>
       )}
