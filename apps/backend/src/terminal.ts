@@ -73,6 +73,28 @@ export const urlsIn = (text: string): ReadonlyArray<string> => [
   ...new Set((text.match(LOCAL_URL) ?? []).map((url) => url.replace(/[.,;:!?]+$/, ""))),
 ];
 
+/**
+ * An address as a browser on this machine reaches it: a server that listens on every interface prints
+ * `0.0.0.0`, which only some systems let a browser open.
+ */
+export const reachableUrl = (url: string): string =>
+  url.replace(/^(https?:\/\/)0\.0\.0\.0(?=[:/]|$)/i, "$1localhost");
+
+/** The first address a script's terminal printed in a run: where the project says it is serving. */
+export interface TerminalServed {
+  readonly id: TerminalId;
+  readonly threadId: ThreadId;
+  /** The script it runs ("Setup" or "Run"). */
+  readonly script: string;
+  readonly url: string;
+}
+
+/** What a terminal's screen holds, as plain text, and the first address its run printed. */
+export interface TerminalText {
+  readonly text: string;
+  readonly url?: string;
+}
+
 /** What goes to the viewers of a terminal, numbered so that a viewer can tell when it missed some. */
 type Piece =
   | { readonly _tag: "Data"; readonly seq: number; readonly data: string }
@@ -149,6 +171,16 @@ export class Terminals extends Context.Service<
     /** Every terminal, now and after every change. */
     readonly changes: Stream.Stream<ReadonlyArray<TerminalInfo>>;
     readonly list: Effect.Effect<ReadonlyArray<TerminalInfo>>;
+    /**
+     * Each script's first local address, as its output prints it, once per run: a run started again
+     * prints a first one of its own.
+     */
+    readonly served: Stream.Stream<TerminalServed>;
+    /**
+     * The last `lines` lines a terminal's screen shows, as plain text, and the first local address
+     * its output printed since it started. Works on a terminal whose shell has ended.
+     */
+    output(id: TerminalId, lines: number): Effect.Effect<TerminalText, TerminalError>;
     /** Opens a shell in a work thread's folder. */
     open(threadId: ThreadId, size: TerminalSize): Effect.Effect<TerminalInfo, TerminalError | StoreError>;
     /** Opens a shell in a project folder, for the new thread being written there. */
@@ -211,6 +243,7 @@ export class Terminals extends Context.Service<
         // Whoever subscribes is first told the list as it stands.
         const listed = yield* PubSub.unbounded<ReadonlyArray<TerminalInfo>>({ replay: 1 });
         PubSub.publishUnsafe(listed, []);
+        const served = yield* PubSub.unbounded<TerminalServed>();
         const host: ShellHost = { platform: process.platform, env: process.env, exists };
         const build = windowsBuild(process.platform, release());
 
@@ -263,6 +296,14 @@ export class Terminals extends Context.Service<
             if (entry.urls.has(url)) continue;
             entry.urls.add(url);
             send(entry, { _tag: "Url", seq: ++entry.seq, url });
+            if (entry.urls.size === 1 && entry.script !== undefined && entry.threadId !== undefined) {
+              PubSub.publishUnsafe(served, {
+                id: entry.id,
+                threadId: entry.threadId,
+                script: entry.script,
+                url: reachableUrl(url),
+              });
+            }
           }
           entry.tail = data.length > 256 ? "" : data.slice(-256);
           // A shell that prints faster than the screen reads waits for it, rather than piling up output.
@@ -586,6 +627,18 @@ export class Terminals extends Context.Service<
         return Terminals.of({
           changes: Stream.fromPubSub(listed),
           list: Effect.sync(currentList),
+          served: Stream.fromPubSub(served),
+          output: (id, lines) =>
+            Effect.gen(function* () {
+              const entry = yield* find(id);
+              flush(entry);
+              const text = yield* Effect.tryPromise({
+                try: () => entry.screen.text(lines),
+                catch: () => new TerminalError({ message: "That terminal has closed." }),
+              });
+              const first = entry.urls.values().next();
+              return first.done === true ? { text } : { text, url: reachableUrl(first.value) };
+            }),
           open,
           openProject,
           openScript,
