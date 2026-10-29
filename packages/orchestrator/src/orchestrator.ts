@@ -2396,10 +2396,14 @@ export class Orchestrator extends Context.Service<
           heldNotices.set(leadId, [...(heldNotices.get(leadId) ?? []), notice]);
         });
 
-      /** Puts back a thread's worktree whose folder is gone (Cerium quit while making it, or the user deleted it). */
+      /**
+       * Puts back a thread's worktree whose folder is gone (Cerium quit while making it, or the user
+       * deleted it), or is only what's left of a removal still deleting it, without its `.git` file.
+       */
       const ensureWorktree = (threadId: ThreadId, worktree: ThreadWorktree, cwd: string) =>
         Effect.gen(function* () {
-          if (yield* fs.exists(worktree.root).pipe(Effect.orElseSucceed(() => true))) return;
+          const marker = path.join(worktree.root, ".git");
+          if (yield* fs.exists(marker).pipe(Effect.orElseSucceed(() => true))) return;
           yield* worktrees.restore(worktree).pipe(Effect.mapError(refusedWorktree));
           yield* setUp(threadId, worktree, cwd);
         });
