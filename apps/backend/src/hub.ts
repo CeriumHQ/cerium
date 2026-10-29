@@ -116,7 +116,7 @@ export const hubHandlers = Effect.gen(function* () {
           support: hub.support,
           servers: listing.servers,
           skills: listing.skills,
-          ...(listing.notice ? { notice: listing.notice } : {}),
+          ...(listing.locked ? { locked: listing.locked } : {}),
         })),
         Effect.catch((error) =>
           Effect.succeed<HubHarness>({ ...empty, support: hub.support, unavailable: error.message }),

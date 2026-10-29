@@ -81,8 +81,11 @@ export const HubHarness = Schema.Struct({
   skills: Schema.Array(HubSkill),
   /** Why the harness couldn't be read (not installed, an unreadable file), written for the user. */
   unavailable: Schema.optionalKey(Schema.String),
-  /** Something the user should know about this project's config, such as Codex not trusting it yet. */
-  notice: Schema.optionalKey(Schema.String),
+  /**
+   * Why the harness won't take a switch for this project right now, in its own words, such as Codex
+   * not trusting the project yet; its switches for every project still work.
+   */
+  locked: Schema.optionalKey(Schema.String),
 });
 export type HubHarness = typeof HubHarness.Type;
 

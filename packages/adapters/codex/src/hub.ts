@@ -97,7 +97,9 @@ export const codexServers = (
   const servers = isRecord(merged) && isRecord(merged["mcp_servers"]) ? merged["mcp_servers"] : {};
   const project = layers.find((layer) => layer.name.type === "project" && !layer.disabledReason);
   const user = layers.find((layer) => layer.name.type === "user");
-  return Object.entries(servers).flatMap(([name, value]) => {
+  // By name: Codex merges its layers into a map whose order changes from one read to the next.
+  const named = Object.entries(servers).sort(([a], [b]) => a.localeCompare(b));
+  return named.flatMap(([name, value]) => {
     const scope: HubScope = defines(serversIn(project)[name])
       ? "project"
       : defines(serversIn(user)[name])
@@ -200,7 +202,7 @@ export const makeCodexHub = (
       const result: HubListing = {
         servers: codexServers(config.config, layers),
         skills: codexSkills(skills),
-        ...(untrusted?.disabledReason ? { notice: untrusted.disabledReason } : {}),
+        ...(untrusted?.disabledReason ? { locked: untrusted.disabledReason } : {}),
       };
       return { result, layers };
     });

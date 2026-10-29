@@ -40,7 +40,8 @@ export interface PortableServer {
 export interface HubListing {
   readonly servers: ReadonlyArray<HubServer>;
   readonly skills: ReadonlyArray<HubSkill>;
-  readonly notice?: string;
+  /** Why the harness won't take a switch for this project right now, in its own words. */
+  readonly locked?: string;
 }
 
 type HubError = HarnessUnavailable | HarnessFailure;
@@ -91,8 +92,10 @@ export const portable = (server: HubServer): PortableServer => ({
   ...(server.command !== undefined ? { command: server.command } : {}),
   ...(server.args !== undefined ? { args: server.args } : {}),
   ...(server.url !== undefined ? { url: server.url } : {}),
-  env: server.env.map((secret) => secret.name),
-  headers: server.headers.map((secret) => secret.name),
+  // A command takes environment variables and a URL takes headers: a copy carries only what its
+  // transport uses, so it never asks the user to fill in a value nothing reads.
+  env: server.transport === "stdio" ? server.env.map((secret) => secret.name) : [],
+  headers: server.transport === "stdio" ? [] : server.headers.map((secret) => secret.name),
 });
 
 /** Every name a copy leaves for the user to fill in. */

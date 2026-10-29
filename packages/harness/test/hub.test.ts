@@ -53,7 +53,7 @@ describe("the mcpServers format", () => {
   it("copies a server's shape with its secrets blank", () => {
     const server = fromMcpJson(
       "web",
-      { type: "http", url: "https://x", headers: { Authorization: "Bearer t" } },
+      { type: "http", url: "https://x", headers: { Authorization: "Bearer t" }, env: { UNUSED: "" } },
       "user",
       undefined,
     )!;
