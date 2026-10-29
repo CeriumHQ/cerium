@@ -4,6 +4,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import { completeWithClaude } from "./complete.ts";
 import { forkClaudeSession } from "./fork.ts";
+import { makeClaudeHub } from "./hub.ts";
 import { claudeManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { listClaudeModels } from "./models.ts";
 import { probeClaude } from "./probe.ts";
@@ -63,6 +64,7 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         fork: forkClaudeSession,
         listSessions: listClaudeSessions,
         readSession: readClaudeSession,
+        hub: makeClaudeHub(ready, platform),
         startSession,
       });
     }),

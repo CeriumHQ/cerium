@@ -59,6 +59,7 @@ import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
 import { AutomationRpcs } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
+import { HubRpcs } from "./hub.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
 import { ImportRpcs } from "./imports.ts";
@@ -73,6 +74,7 @@ export * from "./files.ts";
 export * from "./git.ts";
 export * from "./gitBranches.ts";
 export * from "./github.ts";
+export * from "./hub.ts";
 export * from "./githubIssues.ts";
 export * from "./history.ts";
 export * from "./imports.ts";
@@ -90,7 +92,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 40;
+export const RPC_VERSION = 41;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -670,6 +672,7 @@ export const MachineRpcs = RpcGroup.make(
   GitRpcs,
   GitHubRpcs,
   IssueRpcs,
+  HubRpcs,
 );
 
 /**

@@ -3,6 +3,7 @@ export * from "./capabilities.ts";
 export * from "./compat.ts";
 export * from "./events.ts";
 export * from "./harness.ts";
+export * from "./hub.ts";
 export * from "./ids.ts";
 export * from "./images.ts";
 export * from "./imports.ts";

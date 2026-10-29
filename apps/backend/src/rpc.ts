@@ -54,6 +54,7 @@ import { GitHub } from "./github.ts";
 import { issueHandlers } from "./githubIssues.ts";
 import { githubHandlers } from "./githubPulls.ts";
 import { History, type HistoryError } from "./history.ts";
+import { hubHandlers } from "./hub.ts";
 import { Notifications } from "./notify.ts";
 import { Projects, type ProjectError } from "./project.ts";
 import { Pushes } from "./pushes.ts";
@@ -153,6 +154,7 @@ export const Handlers = MachineRpcs.toLayer(
     const pushes = yield* Pushes;
     const reviews = yield* Reviews;
     const automations = yield* Automations;
+    const hub = yield* hubHandlers;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -628,6 +630,7 @@ export const Handlers = MachineRpcs.toLayer(
           ),
         ),
       ...issueHandlers(github, drafts),
+      ...hub,
     });
   }),
 );
