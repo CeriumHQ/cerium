@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { subscribePush, unsubscribePush } from "../backend/atoms.ts";
 import { WEB } from "../backend/target.ts";
+import { onLaunchRequest } from "../features/launch/launchRequests.ts";
 import { OPEN_MESSAGE, OPEN_PARAMS } from "./serviceWorker.ts";
 
 // Push notifications on this browser: its service worker, its
@@ -180,9 +181,21 @@ export function useNotificationOpens<T>(
   useEffect(() => {
     if (new URLSearchParams(location.search).has(OPEN_PARAMS.thread))
       history.replaceState(history.state, "", location.pathname);
-    // The desktop's own notifications come through its shell (desktop/notifications.ts).
+    // The desktop's own notifications come through its shell (desktop/notifications.ts), and so do
+    // `cerium://thread/<id>` links.
     const shell = window.cerium?.onOpenThread;
-    if (shell !== undefined) return shell((threadId) => setTapped({ threadId, tap: ++taps }));
+    if (shell !== undefined) {
+      const stopLinks = onLaunchRequest((request) => {
+        if (request.kind !== "thread") return false;
+        setTapped({ threadId: request.id, tap: ++taps });
+        return true;
+      });
+      const stop = shell((threadId) => setTapped({ threadId, tap: ++taps }));
+      return () => {
+        stop();
+        stopLinks();
+      };
+    }
     if (!WEB || !("serviceWorker" in navigator)) return;
     const listener = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; threadId?: unknown } | null;

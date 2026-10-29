@@ -62,6 +62,15 @@ export interface ShellBridge {
    * its folder opens with it selected.
    */
   readonly openPath?: (path: string) => Promise<void>;
+  /** The `cerium` terminal command: whether it's installed, and putting it on the PATH or taking it off. */
+  readonly cli?: () => Promise<CliState>;
+  readonly installCli?: () => Promise<CliState>;
+  readonly removeCli?: () => Promise<CliState>;
+  /**
+   * Calls back with what the `cerium` command or a `cerium://` link asked for, among them what asked
+   * before the page listened; returns how to stop.
+   */
+  readonly onLaunch?: (listener: (request: unknown) => void) => () => void;
   /** The code editors installed on this computer; `fresh` looks again instead of using the last look. */
   readonly editors?: (fresh?: boolean) => Promise<ReadonlyArray<Editor>>;
   /**
@@ -151,6 +160,14 @@ export interface ShellBridge {
    * on; absent on Linux, which has no such page.
    */
   readonly openMicrophoneSettings?: () => Promise<void>;
+}
+
+/** Mirrors the shell's own type in apps/desktop/src/cli.ts. */
+export interface CliState {
+  readonly available: boolean;
+  readonly installed: boolean;
+  readonly folder: string;
+  readonly onPath: boolean;
 }
 
 /** An editor the shell found; mirrors `Editor` in apps/desktop/src/editors.ts. */
@@ -293,6 +310,9 @@ export const shellBridge = (): ShellBridge | undefined => {
     pathForFile: _path,
     revealPath: _reveal,
     openPath: _open,
+    cli: _cli,
+    installCli: _installCli,
+    removeCli: _removeCli,
     editors: _editors,
     openInEditor: _openInEditor,
     ...elsewhere

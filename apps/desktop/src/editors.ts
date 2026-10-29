@@ -236,7 +236,7 @@ const visualStudioProgram = (env: Env): Promise<string | undefined> => {
       { windowsHide: true, timeout: 5_000 },
       (error, stdout) => {
         const found = error ? "" : (stdout.trim().split(/\r?\n/)[0] ?? "");
-        resolve(/devenv.exe$/i.test(found) && existsSync(found) ? found : undefined);
+        resolve(/devenv\.exe$/i.test(found) && existsSync(found) ? found : undefined);
       },
     );
   });

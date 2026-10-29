@@ -49,6 +49,7 @@ import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
 import { inboxProjects, inboxSections } from "./sections.ts";
+import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { DraftRow, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
@@ -986,6 +987,7 @@ function InboxRowCard({
             </MenuItem>
           )}
           <MenuSeparator />
+          <CopyLinkMenuItem threadId={thread.id} />
           <ExportMenuItems threadId={thread.id} />
           <MenuSeparator />
           <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>
