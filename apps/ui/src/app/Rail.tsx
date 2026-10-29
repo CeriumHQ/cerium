@@ -154,7 +154,7 @@ function UsageRings({
           <Button
             aria-label={`${harnessName[ring.provider]}: ${Math.round(ring.left)}% left`}
             onClick={onOpen}
-            className="grid size-9 place-items-center rounded-lg transition-colors duration-150 hover:bg-surface-hover max-md:size-11"
+            className="group grid size-9 place-items-center rounded-lg transition-colors duration-150 hover:bg-surface-hover max-md:size-11"
           >
             <Ring ring={ring} />
           </Button>
@@ -166,15 +166,22 @@ function UsageRings({
 
 const SIZE = 30;
 /** Stroke and gap by arc count, so every count fills the band between the edge and the mark. */
-const bands = { 1: [2.5, 0], 2: [2.5, 1], 3: [2, 0.5] } as const;
+const bands = { 1: [2, 0], 2: [1.75, 1.25], 3: [1.5, 1] } as const;
 
-/** Green while most of a limit is left, amber below half, red once under a fifth. */
-const arcColor = (left: number) =>
-  left > 50 ? "var(--color-success)" : left >= 20 ? "var(--color-attention)" : "var(--color-error)";
+/**
+ * A limit is quiet, in the rail's own grey, while there's plenty of it; it takes a colour only once it
+ * needs the eye: amber under a quarter left, red under a tenth.
+ */
+const arcTone = (left: number) =>
+  left >= 25
+    ? { stroke: "stroke-fg-tertiary group-hover:stroke-fg-secondary", fill: "bg-fg-tertiary" }
+    : left >= 10
+      ? { stroke: "stroke-attention", fill: "bg-attention" }
+      : { stroke: "stroke-error", fill: "bg-error" };
 
 /**
  * The harness's mark inside an arc per limit, outermost first, each emptying clockwise from the top
- * as its limit runs down.
+ * as its limit runs down, over a faint track of the whole.
  */
 function Ring({ ring }: { ring: UsageRing }) {
   const [stroke, gap] = bands[Math.min(ring.arcs.length, 3) as 1 | 2 | 3];
@@ -199,18 +206,21 @@ function Ring({ ring }: { ring: UsageRing }) {
                 cy={SIZE / 2}
                 r={radius}
                 fill="none"
-                stroke={arcColor(arc.left)}
                 strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference * (1 - arc.left / 100)}
-                className="transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft"
+                className={`${arcTone(arc.left).stroke} transition-[stroke-dashoffset,stroke] duration-700 ease-out-soft`}
               />
             </g>
           );
         })}
       </svg>
-      <ProviderLogo provider={ring.provider} size={ring.arcs.length > 2 ? 12 : 14} />
+      <ProviderLogo
+        provider={ring.provider}
+        size={ring.arcs.length > 2 ? 11 : 13}
+        className="text-fg-secondary transition-colors duration-150 group-hover:text-fg-primary"
+      />
     </span>
   );
 }
@@ -229,10 +239,7 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
             <span className="flex justify-between gap-6 tabular-nums">
               <span className="flex items-center gap-1.5 text-fg-secondary">
                 {/* The arc's colour, so a row finds its arc; a limit without an arc keeps the gap. */}
-                <span
-                  className="size-2 rounded-full"
-                  style={arc === undefined ? undefined : { backgroundColor: arcColor(arc.left) }}
-                />
+                <span className={`size-2 rounded-full ${arc === undefined ? "" : arcTone(arc.left).fill}`} />
                 {meter.label}
               </span>
               {leftLabel(meter)}

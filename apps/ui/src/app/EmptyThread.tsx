@@ -19,9 +19,8 @@ const BOX_MIDDLE = 47;
 const SEATED = "(min-width: 48rem)";
 
 /**
- * Where a new thread starts, behind the message box: the question it asks. Only a chat says anything
- * beyond the question, since its limits aren't on the box, and a machine with no harness ready says
- * what to do first.
+ * Where a new thread starts, behind the message box: the question it asks. A machine with no harness
+ * ready also says what to do first.
  */
 export function EmptyThread({
   mode,
@@ -104,10 +103,6 @@ export function EmptyThread({
                 Set up a harness
               </Button>
             </>
-          ) : mode === "chat" ? (
-            <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-body leading-relaxed text-fg-tertiary">
-              Chats read and search the web, and never change your files.
-            </p>
           ) : null}
         </div>
       </div>
