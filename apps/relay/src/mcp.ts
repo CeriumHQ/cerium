@@ -8,8 +8,8 @@ import {
 } from "@cerium/protocol";
 import { Option, Schema } from "effect";
 
-// The relay's MCP endpoint (Streamable HTTP, answering with plain JSON): the tools an assistant
-// the user connected calls, each answered from the account's cloud copy of its threads or by one
+// The relay's remote MCP server (Streamable HTTP, answering with plain JSON), for managing the
+// account's threads from any MCP client the user connected (an "assistant" here): its tools, each answered from the account's cloud copy of its threads or by one
 // of its desktops. What reaches a desktop is an `AssistantRequest`; the desktop decides whether to
 // do it. Nothing here keeps state between requests, so there is no session to resume.
 
@@ -17,12 +17,12 @@ import { Option, Schema } from "effect";
 export const MCP_PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 const INSTRUCTIONS = [
-  "Cerium runs coding agents (Claude Code, Codex, Cursor and others) on the user's own computers.",
-  "Start a thread with create_thread when the user asks you to start work there, one thread per task;",
-  "its lead agent takes your prompt as the user's request, so make it stand alone.",
+  "Cerium runs coding agents (Claude Code, Codex, Cursor and others) on the user's own computers;",
+  "these tools manage their threads. Start one with create_thread when the user asks for work there,",
+  "one thread per task; its lead agent takes your prompt as the user's request, so make it stand alone.",
   "list_projects names the folders it can work in, list_threads and read_thread show how threads are",
   "going, and send_message adds to one. Threads run on the user's computer, which must be online with",
-  "assistants turned on in Cerium's settings.",
+  "remote MCP allowed in Cerium (Settings → Remote MCP).",
 ].join(" ");
 
 /** One of the account's desktops, as the tools see it. */
@@ -187,7 +187,7 @@ const computerParam = {
   computer: {
     type: "string",
     description:
-      "The computer's name or id from list_computers. Needed only when more than one takes assistants.",
+      "The computer's name or id from list_computers. Needed only when more than one allows remote MCP.",
   },
 } as const;
 
@@ -195,7 +195,7 @@ export const TOOLS = [
   {
     name: "list_computers",
     description:
-      "List the computers in the user's Cerium account: whether each is online and lets assistants start threads.",
+      "List the computers in the user's Cerium account: whether each is online and allows remote MCP.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
   },
@@ -317,16 +317,16 @@ export const pickComputer = (
       return `No computer is called "${wanted}". The account has: ${computers.map((each) => each.name).join(", ")}.`;
     if (!named.online) return `${named.name} isn't online. Cerium needs to be running on it.`;
     if (!named.takesAssistants)
-      return `${named.name} doesn't let assistants start threads. The user can turn that on in Cerium: Settings → Assistants.`;
+      return `${named.name} doesn't allow remote MCP. The user can turn it on in Cerium: Settings → Remote MCP.`;
     return named;
   }
   const taking = computers.filter((each) => each.takesAssistants);
   const [only] = taking;
   if (only !== undefined && taking.length === 1) return only;
   if (taking.length > 1)
-    return `Several computers take assistants: ${taking.map((each) => each.name).join(", ")}. Name one as \`computer\`.`;
+    return `Several computers allow remote MCP: ${taking.map((each) => each.name).join(", ")}. Name one as \`computer\`.`;
   return computers.some((each) => each.online)
-    ? "None of the user's online computers lets assistants start threads. The user can turn that on in Cerium: Settings → Assistants."
+    ? "None of the user's online computers allows remote MCP. The user can turn it on in Cerium: Settings → Remote MCP."
     : "None of the user's computers is online. Cerium needs to be running on one.";
 };
 

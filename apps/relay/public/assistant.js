@@ -1,8 +1,8 @@
-// The page an assistant (Grok, ChatGPT, Claude and others) sends the user to when they connect it
-// to Cerium: `/oauth/authorize`, which the relay answers with this page. It signs in with Clerk,
-// shows which assistant asks and where it sends the user back, and allows it with the user's
-// session token. Allowing hands the page a code to take back to the assistant, which redeems it for
-// its tokens; cancelling takes the assistant the refusal instead.
+// The page an MCP client (Claude, ChatGPT, Grok, an editor; an "assistant" in the code) sends the
+// user to when they connect it to Cerium's remote MCP server: `/oauth/authorize`, which the relay
+// answers with this page. It signs in with Clerk, shows which app asks and where it sends the user
+// back, and allows it with the user's session token. Allowing hands the page a code to take back to
+// the app, which redeems it for its tokens; cancelling takes the app the refusal instead.
 
 import { escapeHtml, loadClerk, request } from "/clerk.js";
 
@@ -52,15 +52,15 @@ const main = async () => {
     return showOutcome(
       "muted",
       "Nothing to allow",
-      "Connect Cerium from your assistant's connector settings.",
+      "Add Cerium as a remote MCP server in your app, and connect from there.",
     );
 
   const [asked, config] = await Promise.all([request(`/api/oauth/client?${query}`), request("/api/config")]);
   if (asked.status === 400)
     return showOutcome(
       "muted",
-      "This assistant can't connect",
-      asked.body.message ?? "Connect it again from the assistant.",
+      "This app can't connect",
+      asked.body.message ?? "Connect Cerium again from the app.",
     );
   if (!asked.ok || !config.ok || typeof config.body.publishableKey !== "string") return unavailable();
   if (typeof asked.body.next === "string") return location.replace(asked.body.next);
@@ -86,7 +86,7 @@ const main = async () => {
       if (signInMount?.isConnected) return;
       panel.innerHTML = `
         <h1>Connect ${escapeHtml(assistant.name)}</h1>
-        <p class="lead">Sign in to your Cerium account to let this assistant start threads for you.</p>
+        <p class="lead">Sign in to your Cerium account to let this app manage your threads.</p>
         ${assistantCard(assistant)}
         <div id="sign-in"></div>`;
       signInMount = document.getElementById("sign-in");
@@ -103,15 +103,15 @@ const main = async () => {
     const who = user.primaryEmailAddress?.emailAddress ?? user.fullName ?? user.username ?? "your account";
     panel.innerHTML = `
       <h1>Allow ${escapeHtml(assistant.name)}?</h1>
-      <p class="lead">It can start threads on your computers that allow assistants in Cerium's settings,
-        send messages to their agents, and read your threads' titles, status and latest messages.</p>
+      <p class="lead">It can start threads on your computers that allow remote MCP, send messages to
+        their agents, and read your threads' titles, status and latest messages.</p>
       ${assistantCard(assistant)}
       <div class="account">
         <span>Signed in as <strong>${escapeHtml(who)}</strong></span>
         <button type="button" class="link-button" id="switch">Use another account</button>
       </div>
       <p class="caution">Only continue if you just connected Cerium from ${escapeHtml(assistant.site)} yourself.
-        You can disconnect it any time in Cerium: Settings → Assistants.</p>
+        You can disconnect it any time in Cerium: Settings → Remote MCP.</p>
       <button type="button" class="button" id="allow" ${busy ? "disabled" : ""}>
         ${busy ? "Allowing…" : "Allow"}
       </button>
@@ -138,15 +138,11 @@ const main = async () => {
         body: JSON.stringify({ request: query }),
       });
       if (!result.ok || typeof result.body.next !== "string") {
-        error = result.body.message ?? "The relay couldn't allow this assistant. Try again.";
+        error = result.body.message ?? "The relay couldn't allow this app. Try again.";
         return;
       }
       finished = true;
-      showOutcome(
-        "waiting",
-        `Returning to ${assistant.name}`,
-        "Cerium is connected. Finish in your assistant.",
-      );
+      showOutcome("waiting", `Returning to ${assistant.name}`, "Cerium is connected. Finish in the app.");
       location.assign(result.body.next);
     } catch {
       error = "Couldn't reach Cerium's relay. Check your connection and try again.";

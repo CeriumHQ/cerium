@@ -321,14 +321,14 @@ export const readAuthorize = async (
   fetcher: typeof fetch = fetch,
 ): Promise<AuthorizeOutcome> => {
   const clientId = params.get("client_id");
-  if (clientId === null || clientId === "") return { refused: "The assistant didn't say who it is." };
+  if (clientId === null || clientId === "") return { refused: "The app didn't say who it is." };
   const client = await resolveClient(clientId, fetcher);
   if (client === undefined)
-    return { refused: "Cerium doesn't recognise this assistant. Connect it again from the assistant." };
+    return { refused: "Cerium doesn't recognise this app. Connect Cerium again from the app." };
   const redirectUri =
     params.get("redirect_uri") ?? (client.redirectUris.length === 1 ? client.redirectUris[0] : undefined);
   if (redirectUri === undefined || !allowsRedirect(client, redirectUri))
-    return { refused: "This assistant asked to be sent somewhere it didn't register." };
+    return { refused: "This app asked to be sent somewhere it didn't register." };
   const state = params.get("state") ?? undefined;
   const fail = (error: string, description: string) => ({
     redirect: redirectTo(redirectUri, { error, error_description: description, state }, issuer),

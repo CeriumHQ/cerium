@@ -105,7 +105,7 @@ const token = async (request: Request, env: Env): Promise<Response> => {
 const mcp = async (request: Request, env: Env): Promise<Response> => {
   const metadata = `${env.PUBLIC_ORIGIN}${PROTECTED_RESOURCE_PATH}`;
   const unauthorized = (error?: string) => {
-    const response = refuse(401, "Connect this assistant to your Cerium account.");
+    const response = refuse(401, "Connect this app to your Cerium account.");
     response.headers.set(
       "WWW-Authenticate",
       `Bearer ${error === undefined ? "" : `error="${error}", `}resource_metadata="${metadata}"`,
@@ -184,7 +184,7 @@ export const assistantApproval = async (
   }
   if (action === "approve" && request.method === "POST") {
     const accountId = await clerkUser(request, env);
-    if (accountId === undefined) return refuse(401, "Sign in to allow this assistant.");
+    if (accountId === undefined) return refuse(401, "Sign in to allow this app.");
     const body: unknown = await request.json().catch(() => undefined);
     const query = (body as { request?: unknown } | undefined)?.request;
     if (typeof query !== "string") return refuse(400, "That approval isn't one the relay understands.");

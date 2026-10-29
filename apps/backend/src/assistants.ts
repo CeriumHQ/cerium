@@ -12,11 +12,12 @@ import { basename } from "node:path";
 
 import { Projects } from "./project.ts";
 
-// Assistants outside Cerium (Grok, ChatGPT, Claude and others) the user connected to their account
-// at the relay's MCP endpoint. While the user has them on in Settings → Assistants, this machine
-// tells the relay it takes their calls, and answers each one the relay hands it: the projects and
-// models it offers, a thread started on the assistant's prompt, a message to a thread's lead. A
-// thread or message an assistant sends is marked with its name, so the user sees where it came from.
+// Remote MCP: the relay's MCP server, which lets any MCP client the user connected to their account
+// (Claude, ChatGPT, Grok, an editor, a script; an "assistant" here) manage their threads. While the
+// user allows it in Settings → Remote MCP, this machine tells the relay it takes the server's calls,
+// and answers each one the relay hands it: the projects and models it offers, a thread started on
+// the client's prompt, a message to a thread's lead. A thread or message a client sends is marked
+// with its name, so the user sees where it came from.
 
 /** How long a call gets before the relay is told it couldn't be done; the relay waits a little longer. */
 const ANSWER_WITHIN = "20 seconds";
@@ -49,7 +50,7 @@ export const answerAssistant = Effect.fn("Assistants.answer")(function* (
   const { assistants } = yield* settings.get;
   if (!assistants.enabled)
     return refused(
-      "This computer doesn't let assistants start threads. The user can turn that on in Cerium: Settings → Assistants.",
+      "This computer doesn't allow remote MCP. The user can turn it on in Cerium: Settings → Remote MCP.",
     );
   switch (request._tag) {
     case "ListProjects": {
@@ -133,7 +134,7 @@ export const AssistantCalls = Layer.effectDiscard(
           orElse: () => Effect.succeed(refused("This computer took too long to do that.")),
         }),
         Effect.tap((result) =>
-          Effect.logInfo("Answered an assistant").pipe(
+          Effect.logInfo("Answered a remote MCP call").pipe(
             Effect.annotateLogs({
               assistant: call.assistant,
               request: call.request._tag,

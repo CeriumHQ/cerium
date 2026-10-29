@@ -163,7 +163,7 @@ describe("picking a computer", () => {
       /isn't online|is online/,
     );
     expect(pickComputer([computer("A", { takesAssistants: false })], undefined)).toMatch(
-      /Settings → Assistants/,
+      /Settings → Remote MCP/,
     );
     expect(pickComputer([computer("A", { online: false, takesAssistants: false })], "A")).toMatch(
       /isn't online/,

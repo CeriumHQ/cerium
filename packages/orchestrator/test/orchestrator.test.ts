@@ -515,7 +515,7 @@ describe("Orchestrator", () => {
         sentVia: { assistant: "Grok" },
       });
       const sent = fake.sessions.find((session) => session.sent.some((text) => text.includes("dark mode")));
-      assert.include(sent?.sent[0] ?? "", "through Grok, an assistant outside Cerium");
+      assert.include(sent?.sent[0] ?? "", "from Grok, an app outside Cerium");
 
       const chat = yield* orchestrator.startAssistantThread({
         assistant: "Grok",

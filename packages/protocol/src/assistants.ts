@@ -3,10 +3,10 @@ import { Schema } from "effect";
 import { EpochMillis, ThreadId } from "./ids.ts";
 import { MAX_THREAD_TITLE } from "./orchestration.ts";
 
-// Assistants: chat apps outside Cerium (Grok, ChatGPT, Claude and others) the user connects to their
-// account as an MCP connector at the relay's `/mcp`. An assistant asks the relay, the relay asks one
-// of the account's desktops, and only a desktop whose user turned assistants on in its settings
-// answers. What a desktop does for one is what the user could do in its window: start a thread, or
+// Remote MCP: the relay's MCP server at `/mcp`, for managing the account's threads from any MCP
+// client the user connects (Claude, ChatGPT, Grok, an editor, a script), called an "assistant" here.
+// An assistant asks the relay, the relay asks one of the account's desktops, and only a desktop whose
+// user allowed remote MCP in its settings answers. What a desktop does for one is what the user could do in its window: start a thread, or
 // send one of its leads a message.
 
 /** What an assistant calls itself when it connects, as the user sees it. */

@@ -21,9 +21,10 @@ import {
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
-// Assistants outside Cerium (Grok, ChatGPT, Claude and others) the user connects to their account
-// as an MCP connector: whether the computer the window drives starts threads for them, and the
-// access those threads get; the address to connect one at; and the ones connected, to disconnect.
+// Cerium's remote MCP server, which lets any MCP client the user connects to their account (Claude,
+// ChatGPT, Grok, an editor, a script) manage their threads: whether the computer the window drives
+// takes its requests, and the access the threads it starts get; the server's address; and the apps
+// connected, to disconnect.
 
 /** Least access first, as the composer offers them. */
 const ACCESS_MODES: ReadonlyArray<AccessMode> = ["readOnly", "ask", "acceptEdits", "auto", "fullAccess"];
@@ -50,14 +51,14 @@ export function AssistantSettings({ onOpen }: { onOpen?: () => void }) {
 
   return (
     <SettingsPage
-      title="Assistants"
-      description="Ask Grok, ChatGPT, Claude or another assistant to start threads here, through an MCP connector. Threads run on your computer, and you follow them in Cerium."
+      title="Remote MCP"
+      description="Manage your threads from any MCP client: Claude, ChatGPT, Grok, your editor or your own scripts. Start threads, check on them and message their agents from wherever you are, while they run on your computer."
     >
       {account === undefined ? (
         <SettingsNote>Checking…</SettingsNote>
       ) : account._tag !== "SignedIn" ? (
         <SettingsNote>
-          Assistants reach your computers through your Cerium account. Sign in first.{" "}
+          The remote MCP server reaches your computers through your Cerium account. Sign in first.{" "}
           {onOpen ? (
             <button
               type="button"
@@ -71,7 +72,7 @@ export function AssistantSettings({ onOpen }: { onOpen?: () => void }) {
       ) : (
         <>
           {driven !== undefined && (driven.rpcVersion ?? 0) < ASSISTANTS_RPC_VERSION ? (
-            <SettingsNote>Update Cerium on {driven.name} to let assistants start threads there.</SettingsNote>
+            <SettingsNote>Update Cerium on {driven.name} to manage its threads over MCP.</SettingsNote>
           ) : (
             <SettingsSection title={machine === undefined ? "This computer" : machine.name}>
               <SettingsList>
@@ -92,8 +93,8 @@ function AssistantRows() {
   return (
     <>
       <SettingsRow
-        label="Let assistants start threads"
-        hint="Connected assistants can start threads in your projects and message their agents while Cerium runs here."
+        label="Allow remote MCP"
+        hint="Connected apps can start threads in your projects and message their agents while Cerium runs here."
         error={error}
         control={(labelledBy) => (
           <SettingsSwitch
@@ -107,7 +108,7 @@ function AssistantRows() {
       {value.enabled ? (
         <SettingsRow
           label="Access"
-          hint="What the agents of an assistant's threads may do without asking you."
+          hint="What the agents of threads started over MCP may do without asking you."
           className="pr-2.5"
           control={() => (
             <SelectRoot
@@ -115,7 +116,9 @@ function AssistantRows() {
               onValueChange={(next) => next !== null && save({ ...value, access: next as AccessMode })}
               disabled={saved === undefined}
             >
-              <SelectTrigger label="Access of assistants' threads">{accessLabel[value.access]}</SelectTrigger>
+              <SelectTrigger label="Access of threads started over MCP">
+                {accessLabel[value.access]}
+              </SelectTrigger>
               <SelectPopup>
                 {ACCESS_MODES.map((mode) => (
                   <SelectItem key={mode} value={mode}>
@@ -140,7 +143,7 @@ function ConnectedSection() {
   if (AsyncResult.isFailure(result))
     return (
       <SettingsNote tone="error">
-        Couldn't reach Cerium's cloud for your assistants.{" "}
+        Couldn't reach Cerium's cloud for your connected apps.{" "}
         <button type="button" onClick={refresh} className="underline-offset-2 hover:underline">
           Try again
         </button>
@@ -152,8 +155,8 @@ function ConnectedSection() {
   return (
     <>
       <SettingsSection
-        title="Connect an assistant"
-        description="Add this address as a custom connector (an MCP server) in your assistant's settings, then sign in to Cerium when it asks."
+        title="Server address"
+        description="Add it as a remote MCP server (a custom connector) in any MCP client, then sign in to Cerium when it asks."
       >
         <SettingsList>
           <div className="flex min-h-11 items-center gap-3 px-4 py-2">
@@ -173,9 +176,9 @@ function ConnectedSection() {
           </div>
         </SettingsList>
       </SettingsSection>
-      <SettingsSection title="Connected">
+      <SettingsSection title="Connected apps">
         {assistants.length === 0 ? (
-          <SettingsNote>No assistant is connected to your account.</SettingsNote>
+          <SettingsNote>No app is connected to your account.</SettingsNote>
         ) : (
           <SettingsList>
             {assistants.map((assistant) => (

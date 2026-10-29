@@ -31,8 +31,8 @@ const renderItem = (item: InputItem): string => {
             " `send_message`."
           : "",
         item.sentVia
-          ? `${PREFIX} The user sent the message below through ${item.sentVia.assistant}, an assistant outside` +
-            " Cerium, which wrote it for them; they follow your work here."
+          ? `${PREFIX} The user sent the message below from ${item.sentVia.assistant}, an app outside Cerium` +
+            " connected to it over MCP; they follow your work here."
           : "",
         item.text,
         attached.length > 0 ? ["Attached files:", ...attached].join("\n") : "",

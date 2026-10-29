@@ -930,7 +930,10 @@ export class Account extends DurableObject<Env> {
       row.refreshHash === null ||
       (await hashSecret(refresh.secret)) !== row.refreshHash
     )
-      return oauthError("invalid_grant", "That refresh token isn't valid. Connect the assistant again.");
+      return oauthError(
+        "invalid_grant",
+        "That refresh token isn't valid. Connect Cerium again from the app.",
+      );
     if (clientId !== undefined && clientId !== row.clientId)
       return oauthError("invalid_grant", "That refresh token was issued to another client.");
     return this.issue(refresh.accountId, row.id);
@@ -1043,7 +1046,7 @@ export class Account extends DurableObject<Env> {
     if (target === undefined)
       return Promise.resolve({
         _tag: "Refused",
-        message: `${computer.name} stopped taking assistants' calls.`,
+        message: `${computer.name} no longer allows remote MCP.`,
       });
     const id = randomToken(16);
     return new Promise<AssistantResult>((resolve) => {
@@ -1095,6 +1098,6 @@ export class Account extends DurableObject<Env> {
       return refused(401, "This device isn't signed in to the account.");
     }
     const removed = this.db.delete(tables.assistants).where(eq(tables.assistants.id, grantId)).run();
-    return removed.rowsWritten > 0 ? done : refused(404, "That assistant isn't connected anymore.");
+    return removed.rowsWritten > 0 ? done : refused(404, "That app isn't connected anymore.");
   }
 }

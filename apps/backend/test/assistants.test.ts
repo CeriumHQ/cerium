@@ -106,7 +106,7 @@ describe("answering an assistant", () => {
       const { layer, started } = yield* fakes({ enabled: false, access: "ask" });
       const result = yield* ask({ _tag: "StartThread", prompt: "Add dark mode" }, layer);
       assert.strictEqual(result._tag, "Refused");
-      assert.include(result._tag === "Refused" ? result.message : "", "Settings → Assistants");
+      assert.include(result._tag === "Refused" ? result.message : "", "Settings → Remote MCP");
       assert.deepStrictEqual(started, []);
     }),
   );
