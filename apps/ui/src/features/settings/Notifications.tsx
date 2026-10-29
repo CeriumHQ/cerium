@@ -1,7 +1,7 @@
 import { NOTIFICATION_KINDS, type NotificationKind } from "@cerium/protocol";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { EllipsisVertical, Share, SquarePlus } from "lucide-react";
+import { EllipsisVertical, Play, Share, SquarePlus } from "lucide-react";
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { accountAtom, subscribePush, unsubscribePush } from "../../backend/atoms.ts";
@@ -24,7 +24,8 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "./parts.tsx";
-import { notifyBadgeAtom, notifyKindsAtom, notifySoundAtom } from "./preferences.ts";
+import { CUES, previewCue, type Cue } from "../../desktop/sounds.ts";
+import { cueSoundsAtom, notifyBadgeAtom, notifyKindsAtom, notifySoundAtom } from "./preferences.ts";
 
 // Notifications. In the web client, push notifications on this phone, tablet or browser: turning
 // them on, and which kinds. Some mobile browsers notify only web apps on the Home Screen; there it
@@ -42,6 +43,12 @@ const kindText: Record<NotificationKind, { readonly label: string; readonly desc
     label: "A usage limit nears",
     description: "A subscription's meter turns amber or red, or would run out before it resets.",
   },
+};
+
+const cueText: Record<Cue, string> = {
+  finished: "A thread finishes",
+  needsYou: "An agent needs you",
+  failed: "Something fails",
 };
 
 /** Whether this is a phone or a tablet, or just a browser. */
@@ -230,6 +237,7 @@ function DesktopNotificationSettings() {
   const [kinds, setKinds] = useAtom(notifyKindsAtom);
   const [sound, setSound] = useAtom(notifySoundAtom);
   const [badge, setBadge] = useAtom(notifyBadgeAtom);
+  const [cues, setCues] = useAtom(cueSoundsAtom);
   const [testSent, setTestSent] = useState(false);
   const on = kinds.length > 0;
 
@@ -275,7 +283,7 @@ function DesktopNotificationSettings() {
         {on ? (
           <>
             <SettingsRow
-              label="Play a sound"
+              label="Notification sound"
               control={(labelledBy) => (
                 <SettingsSwitch
                   checked={sound === "on"}
@@ -317,6 +325,40 @@ function DesktopNotificationSettings() {
           </SettingsList>
         </SettingsSection>
       ) : null}
+      <SettingsSection title="Sounds">
+        <SettingsList>
+          <SettingsRow
+            label="Cerium's own sounds"
+            hint="Short and quiet, and heard while Cerium is in front of you too."
+            control={(labelledBy) => (
+              <SettingsSwitch
+                checked={cues === "on"}
+                onCheckedChange={(next) => setCues(next ? "on" : "off")}
+                labelledBy={labelledBy}
+              />
+            )}
+          />
+          {cues === "on"
+            ? CUES.map((cue) => (
+                <SettingsRow
+                  key={cue}
+                  label={cueText[cue]}
+                  control={() => (
+                    <button
+                      type="button"
+                      onClick={() => previewCue(cue)}
+                      aria-label={`Play the sound for ${cueText[cue].toLowerCase()}`}
+                      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                    >
+                      <Play size={12} strokeWidth={1.75} aria-hidden />
+                      Play
+                    </button>
+                  )}
+                />
+              ))
+            : null}
+        </SettingsList>
+      </SettingsSection>
     </SettingsPage>
   );
 }
