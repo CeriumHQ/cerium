@@ -6,6 +6,7 @@ import {
   ArchiveRestore,
   CheckCheck,
   Clock,
+  CornerDownRight,
   Inbox as InboxIcon,
   ListFilter,
   Mail,
@@ -105,6 +106,8 @@ interface InboxProps {
   readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a thread off until then, or brings it back; absent where the machine can't. */
   readonly onLater: ((threadId: string, until: number | undefined) => Promise<boolean>) | undefined;
+  /** Goes on with a thread in a new one that starts small; absent where the machine can't. */
+  readonly onContinue: ((threadId: string) => Promise<boolean>) | undefined;
   readonly onDelete: (threadId: string) => Promise<boolean>;
   /** Opens a thread in a window of its own; absent where there are no such windows. */
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
@@ -130,6 +133,7 @@ export function Inbox({
   onArchive,
   onRestore,
   onLater,
+  onContinue,
   onDelete,
   onOpenWindow,
 }: InboxProps) {
@@ -204,6 +208,7 @@ export function Inbox({
     onArchive,
     onRestore,
     onLater,
+    onContinue,
     onDelete,
     onOpenWindow,
   });
@@ -556,6 +561,7 @@ type RowActions = Pick<
   | "onArchive"
   | "onRestore"
   | "onLater"
+  | "onContinue"
   | "onDelete"
   | "onOpenWindow"
 >;
@@ -579,14 +585,16 @@ function useSteadyActions(actions: RowActions): RowActions {
     onArchive: (threadId) => latest.current.onArchive(threadId),
     onRestore: (threadId) => latest.current.onRestore(threadId),
     onLater: (threadId, until) => latest.current.onLater?.(threadId, until) ?? Promise.resolve(false),
+    onContinue: (threadId) => latest.current.onContinue?.(threadId) ?? Promise.resolve(false),
     onDelete: (threadId) => latest.current.onDelete(threadId),
     onOpenWindow: (threadId) => latest.current.onOpenWindow?.(threadId),
   }));
-  // Rows offer to put a thread off only where the machine can, and a window of its own only where
-  // there are such windows.
+  // Rows offer to put a thread off or continue it only where the machine can, and a window of its
+  // own only where there are such windows.
   const onLater = actions.onLater === undefined ? undefined : steady.onLater;
+  const onContinue = actions.onContinue === undefined ? undefined : steady.onContinue;
   const onOpenWindow = actions.onOpenWindow === undefined ? undefined : steady.onOpenWindow;
-  return { ...steady, onLater, onOpenWindow };
+  return { ...steady, onLater, onContinue, onOpenWindow };
 }
 
 /** A list's threads, each multi-agent run's in one card. */
@@ -878,6 +886,7 @@ function InboxRowCard({
   onArchive,
   onRestore,
   onLater,
+  onContinue,
   onDelete,
   onOpenWindow,
   scope,
@@ -960,6 +969,15 @@ function InboxRowCard({
           {back ? (
             <MenuItem icon={box === "archive" ? ArchiveRestore : Undo2} onClick={back}>
               Back to Inbox
+            </MenuItem>
+          ) : null}
+          {box !== "archive" && onContinue ? (
+            <MenuItem
+              icon={CornerDownRight}
+              disabled={!canArchive(thread)}
+              onClick={() => void onContinue(thread.id)}
+            >
+              Continue in new thread
             </MenuItem>
           ) : null}
           {box === "archive" ? null : (

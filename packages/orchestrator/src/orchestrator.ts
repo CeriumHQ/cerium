@@ -549,6 +549,16 @@ export class Orchestrator extends Context.Service<
       options?: PutAwayOptions,
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
+     * Starts a thread that goes on from `threadId` in its folder, under its title, with a lead on the
+     * same harness, model, effort and access, and archives the old one. A worktree passes to the new
+     * thread whole, so archiving the old one leaves it be. The new lead's session starts fresh and
+     * takes no message: the user sends the first, the brief `continuationBrief` writes. Refused while
+     * the old thread's agents work or wait on the user, like archiving.
+     */
+    continueThread(
+      threadId: ThreadId,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    /**
      * Puts a thread off until `until`, when it comes back to the user's inbox; `undefined` brings it
      * back now. Archiving a thread ends its wait.
      */
@@ -3139,7 +3149,11 @@ export class Orchestrator extends Context.Service<
         Effect.catchCause((cause) => Effect.logWarning("Couldn't close the questions left open", cause)),
       );
 
-      const createThread = Effect.fn("Orchestrator.createThread")(function* (input: CreateThreadInput) {
+      /** With `adopted`, the thread takes over that worktree, which `cwd` is in, instead of making one. */
+      const createThread = Effect.fn("Orchestrator.createThread")(function* (
+        input: CreateThreadInput,
+        adopted?: ThreadWorktree,
+      ) {
         if (input.mode === "work" && input.cwd === undefined) {
           return yield* new OrchestratorError({
             reason: "invalid",
@@ -3150,7 +3164,7 @@ export class Orchestrator extends Context.Service<
         const threadId = (yield* makeId("thr")) as ThreadId;
         // Only picked here: the checkout runs behind the thread, so it shows at once.
         const isolated: NewWorktree | undefined =
-          input.mode === "work" && input.cwd !== undefined && input.worktree === true
+          adopted === undefined && input.mode === "work" && input.cwd !== undefined && input.worktree === true
             ? yield* worktrees.plan(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
             : undefined;
         const directory =
@@ -3163,7 +3177,7 @@ export class Orchestrator extends Context.Service<
           title: input.title,
           mode: input.mode,
           ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
-          ...(isolated ? { worktree: isolated.worktree } : {}),
+          ...(isolated ? { worktree: isolated.worktree } : adopted ? { worktree: adopted } : {}),
           ...(input.runId ? { runId: input.runId } : {}),
           createdAt,
           updatedAt: createdAt,
@@ -3197,7 +3211,13 @@ export class Orchestrator extends Context.Service<
         );
         threadDirectories.set(threadId, directory);
         threadModes.set(threadId, input.mode);
-        untitled.set(threadId, input.title);
+        // A thread that continues another keeps its title.
+        if (adopted === undefined) untitled.set(threadId, input.title);
+        if (adopted !== undefined) {
+          threadWorktrees.set(threadId, adopted);
+          yield* startRuntime(lead, directory, { prepare: ensureWorktree(threadId, adopted, directory) });
+          return { thread, lead };
+        }
         if (isolated === undefined) {
           yield* startRuntime(lead, directory);
           return { thread, lead };
@@ -3728,6 +3748,54 @@ export class Orchestrator extends Context.Service<
             threadId,
             archived ? { archivedAt: yield* now, laterUntil: null } : { archivedAt: null },
           );
+        }),
+
+        continueThread: Effect.fn("Orchestrator.continueThread")(function* (threadId: ThreadId) {
+          if (working(threadId) || waitsOnUser(threadId)) {
+            return yield* notAllowed(
+              "A thread can't be continued while its agents are working or waiting on you.",
+            );
+          }
+          const thread = yield* threadInfo(threadId);
+          if (thread.archivedAt !== undefined) {
+            return yield* notAllowed("Restore this thread before continuing it.");
+          }
+          const lead = (yield* store.listAgents(threadId).pipe(Effect.mapError(unavailable))).find(
+            (agent) => agent.parentId === undefined && agent.role === LEAD_ROLE,
+          );
+          if (lead === undefined) return yield* notFound(`Thread ${threadId} has no lead.`);
+          // A checkout still under way finishes first, so the worktree passes on whole.
+          const making = checkouts.get(threadId);
+          if (making !== undefined) yield* Effect.exit(Deferred.await(making));
+          const started = yield* createThread(
+            {
+              title: thread.title,
+              mode: thread.mode,
+              ...(thread.cwd === undefined ? {} : { cwd: thread.cwd }),
+              lead: {
+                provider: lead.provider,
+                model: lead.model,
+                ...(lead.effort ? { effort: lead.effort } : {}),
+                ...(lead.autoEffort ? { autoEffort: true } : {}),
+                ...(lead.speed ? { speed: lead.speed } : {}),
+                access: lead.access,
+              },
+            },
+            thread.worktree,
+          );
+          // The old thread's sessions end, and it lets go of the worktree its successor now holds.
+          yield* Effect.forEach(
+            [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+            stopRuntime,
+            { discard: true },
+          );
+          threadWorktrees.delete(threadId);
+          yield* updateThread(threadId, {
+            archivedAt: yield* now,
+            laterUntil: null,
+            ...(thread.worktree === undefined ? {} : { worktree: null }),
+          });
+          return started;
         }),
 
         setThreadLater: (threadId: ThreadId, until: number | undefined) =>
