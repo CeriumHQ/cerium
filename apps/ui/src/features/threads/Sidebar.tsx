@@ -19,6 +19,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel, usesCommandKey } from "../../lib/keys.ts";
@@ -424,6 +425,7 @@ function ChatRow({
                   Archive
                 </MenuItem>
                 <MenuSeparator />
+                <CopyLinkMenuItem threadId={thread.id} />
                 <ExportMenuItems threadId={thread.id} />
                 <MenuSeparator />
                 <MenuItem icon={Trash2} tone="danger" disabled={!canDelete(thread)} onClick={remove}>

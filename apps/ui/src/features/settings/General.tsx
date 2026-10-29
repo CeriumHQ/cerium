@@ -12,6 +12,7 @@ import {
   onMac,
   onWindows,
   shellBridge,
+  type CliState,
   type CrashReportsState,
   type StartAtLogin,
   type UpdateChannel,
@@ -83,6 +84,13 @@ export function GeneralSettings() {
         <SettingsSection title="Editor">
           <SettingsList>
             <EditorRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
+      {local && shellBridge()?.cli !== undefined ? (
+        <SettingsSection title="Command line">
+          <SettingsList>
+            <CliRow />
           </SettingsList>
         </SettingsSection>
       ) : null}
@@ -210,6 +218,61 @@ function EditorRow() {
             <SelectItem value="none">None</SelectItem>
           </SelectPopup>
         </SelectRoot>
+      )}
+    />
+  );
+}
+
+/**
+ * The `cerium` command (apps/desktop/src/cli.ts): `cerium .` opens a folder, `cerium "fix login"` starts a
+ * thread with that prompt. Installing it puts a small launcher on the PATH; only the installed app can.
+ */
+function CliRow() {
+  const bridge = shellBridge();
+  const windows = onWindows();
+  const [state, setState] = useState<CliState>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    void bridge?.cli?.().then(setState, () => undefined);
+  }, [bridge]);
+
+  const change = (install: boolean) => {
+    setBusy(true);
+    setError(undefined);
+    const ask = install ? bridge?.installCli : bridge?.removeCli;
+    void ask?.()
+      .then(setState, () => setError(`Couldn't ${install ? "install" : "remove"} it. Try again.`))
+      .finally(() => setBusy(false));
+  };
+
+  const installed = state?.installed === true;
+  return (
+    <SettingsRow
+      label={
+        <>
+          <code className="font-mono text-meta">cerium</code> command
+        </>
+      }
+      hint={
+        state?.available === false
+          ? "Only the installed app can add it."
+          : installed && !state?.onPath
+            ? `Add ${state?.folder ?? "its folder"} to your PATH to use it.`
+            : installed && windows
+              ? "Installed. Open a new terminal to use it."
+              : "Run cerium . in a folder to open it here."
+      }
+      error={error}
+      control={() => (
+        <RowButton
+          tone={installed ? "neutral" : "primary"}
+          onClick={() => change(!installed)}
+          disabled={busy || state?.available !== true}
+        >
+          {installed ? "Remove" : "Install"}
+        </RowButton>
       )}
     />
   );

@@ -35,6 +35,7 @@ import {
   GitPullRequestArrow,
   Globe,
   History,
+  Link,
   MessagesSquare,
   OctagonX,
   PanelLeft,
@@ -289,6 +290,9 @@ import {
 import { remember, stored } from "../lib/storage.ts";
 import { useMatchingBuild } from "../web/builds.ts";
 import { useDesktopNotifications } from "../desktop/notifications.ts";
+import { threadLink } from "../features/launch/CopyLink.tsx";
+import { copyText } from "../features/transcript/menus.ts";
+import { useLaunchRequests } from "../features/launch/launchRequests.ts";
 import { useNotificationOpens, useRenewPush } from "../web/push.ts";
 import { WebGate } from "../web/WebGate.tsx";
 import { AppFrame } from "./AppFrame.tsx";
@@ -1192,6 +1196,16 @@ function Workspace() {
     if (compact) setSidePanel(undefined);
     focusComposer();
   };
+  // `cerium .` opens a new thread in that folder, and `cerium "fix login"` one with that prompt waiting in
+  // its message box (apps/desktop/src/launch.ts). They are this computer's folders, so a window driving
+  // another machine leaves them.
+  useLaunchRequests((request) => {
+    if (request.kind === "thread") return false;
+    if (driven === undefined) {
+      startThreadFrom({ folder: request.folder, text: request.kind === "prompt" ? request.text : "" });
+    }
+    return true;
+  });
   const githubPanel =
     githubRoot === undefined || !githubOpen || settingsOpen ? undefined : (
       <GitHubPanel
@@ -1533,6 +1547,17 @@ function Workspace() {
       when: selected !== undefined && cloudSelected === undefined,
       run: () => {
         if (selected) void exportThread(selected.thread.id, "text");
+      },
+    },
+    {
+      id: "copy-link",
+      group: "Actions",
+      label: "Copy thread link",
+      icon: Link,
+      keywords: "cerium url share note",
+      when: selected !== undefined && cloudSelected === undefined,
+      run: () => {
+        if (selected) copyText(threadLink(selected.thread.id));
       },
     },
     {

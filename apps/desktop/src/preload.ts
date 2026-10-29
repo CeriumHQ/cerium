@@ -11,7 +11,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // machine is signed in and working, which keep it in the tray and awake, and turns start at login on
 // or off. Updates come through here too: the shell checks, downloads and installs them. The page
 // asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
-// The main window opens a thread in a window of its own.
+// The main window opens a thread in a window of its own, and hears what the `cerium` command and links ask
+// for; the command is installed from Settings.
 // Dictation opens Windows' or macOS's microphone privacy settings when they block it. The Preview
 // pane's pages are the shell's; the page says where its pane is and passes on the agents' calls.
 contextBridge.exposeInMainWorld("cerium", {
@@ -36,6 +37,17 @@ contextBridge.exposeInMainWorld("cerium", {
   pathForFile: (file: File): string | undefined => webUtils.getPathForFile(file) || undefined,
   revealPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:reveal-path", path),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke("cerium:open-path", path),
+  cli: (): Promise<unknown> => ipcRenderer.invoke("cerium:cli"),
+  installCli: (): Promise<unknown> => ipcRenderer.invoke("cerium:install-cli"),
+  removeCli: (): Promise<unknown> => ipcRenderer.invoke("cerium:remove-cli"),
+  // Calls back with what the `cerium` command or a `cerium://` link asked for, including what asked
+  // before the page listened; listening is what tells the shell to hand those over.
+  onLaunch: (listener: (request: unknown) => void): (() => void) => {
+    const forward = (_event: unknown, request: unknown) => listener(request);
+    ipcRenderer.on("cerium:launch", forward);
+    ipcRenderer.send("cerium:launch-ready");
+    return () => ipcRenderer.off("cerium:launch", forward);
+  },
   editors: (fresh?: boolean): Promise<unknown> => ipcRenderer.invoke("cerium:editors", fresh),
   openInEditor: (id: string, file: string, line?: number, folder?: string): Promise<boolean> =>
     ipcRenderer.invoke("cerium:open-in-editor", id, file, line, folder),

@@ -20,7 +20,9 @@ import { startBackend } from "./backend.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
 import { desktopTheme } from "./desktopTheme.ts";
+import { cliState, installCli, refreshCli, removeCli } from "./cli.ts";
 import { listEditors, openInEditor } from "./editors.ts";
+import { launchArguments, parseLaunch, SCHEME, threadOfLink, type LaunchRequest } from "./launch.ts";
 import {
   isBadgeRequest,
   isNotificationRequest,
@@ -328,8 +330,12 @@ const createWindow = () => {
     // The threads' own windows go with the main one, and come back with it next start.
     if (!quitting) app.quit();
   });
-  // A reload takes the panes away until the page lays them out again.
-  window.webContents.on("did-start-loading", () => browserPreviews.unplaceAll());
+  // A reload takes the panes away until the page lays them out again, and the page stops listening
+  // for what Cerium was asked to open until it says so again.
+  window.webContents.on("did-start-loading", () => {
+    browserPreviews.unplaceAll();
+    launchListening = false;
+  });
   // The threads left in windows of their own last time come back once the main window shows, which
   // a start at login holds back until it's asked for.
   window.once("show", () => threads?.restore());
@@ -387,7 +393,53 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
   typeof enabled === "boolean" ? setStartAtLogin(enabled) : startAtLogin(),
 );
 
-app.on("second-instance", () => background.show());
+/**
+ * What the user asked Cerium to open, by the command (`cerium .`) or a link (`cerium://thread/<id>`):
+ * the page takes it once it has said it listens (`cerium:launch-ready`), and until then, or while it
+ * reloads, it waits here. A thread open in a window of its own is brought forward instead.
+ */
+const pendingLaunches: LaunchRequest[] = [];
+let launchListening = false;
+
+const deliverLaunches = () => {
+  const target = mainWindow?.webContents;
+  if (!launchListening || target === undefined || target.isDestroyed()) return;
+  for (const request of pendingLaunches.splice(0)) target.send("cerium:launch", request);
+};
+
+const launch = (request: LaunchRequest | undefined) => {
+  if (smokeTest !== undefined) return;
+  if (request?.kind === "thread") {
+    const own = threads?.windowOf(request.id);
+    if (own !== undefined) {
+      if (own.isMinimized()) own.restore();
+      own.show();
+      own.focus();
+      return;
+    }
+  }
+  background.show();
+  if (request === undefined) return;
+  pendingLaunches.push(request);
+  deliverLaunches();
+};
+
+/** A second start's command line or link, handed to the instance that is running. */
+app.on("second-instance", (_event, argv, cwd) =>
+  launch(parseLaunch(launchArguments(argv, app.isPackaged), cwd)),
+);
+// macOS hands links to the running app as an event, never as an argument.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  const id = threadOfLink(url);
+  launch(id === undefined ? undefined : { kind: "thread", id });
+});
+// The page listens: what asked for something before that, or while it reloaded, goes to it now.
+ipcMain.on("cerium:launch-ready", (event) => {
+  if (!fromMainWindow(event)) return;
+  launchListening = true;
+  deliverLaunches();
+});
 // Clicking the dock icon brings back a window hidden to the menu bar.
 app.on("activate", () => background.show());
 
@@ -477,6 +529,18 @@ ipcMain.handle("cerium:open-microphone-settings", async () => {
 
 /** Opens a file the explorer lists in its own app (openPath.ts). */
 ipcMain.handle("cerium:open-path", (_event, target: unknown) => openPath(target));
+
+/** The `cerium` command: whether it's on this computer's PATH, and putting it there or taking it off (cli.ts). */
+const shellPathNow = () => (windows ? Promise.resolve(undefined) : loginShellPath(sessionEnvironment()));
+ipcMain.handle("cerium:cli", () => cliState(app.isPackaged, shellPathNow));
+ipcMain.handle("cerium:install-cli", async () => {
+  if (app.isPackaged) await installCli();
+  return cliState(app.isPackaged, shellPathNow);
+});
+ipcMain.handle("cerium:remove-cli", async () => {
+  if (app.isPackaged) await removeCli();
+  return cliState(app.isPackaged, shellPathNow);
+});
 
 /** The editors installed here, and opening a file in one at a line (editors.ts). */
 ipcMain.handle("cerium:editors", (_event, fresh: unknown) => listEditors(fresh === true));
@@ -583,6 +647,12 @@ void app.whenReady().then(() => {
     );
   }
   updater = startUpdater({ working: background.working, stopBackend });
+  // Links open Cerium: this computer's own installed app takes them, never a development build that
+  // would claim them from it. An installed command follows the app if an update moved it.
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(SCHEME);
+    void refreshCli().catch(() => undefined);
+  }
   // Chromium's built-in spellchecker is off: its squiggles are a website's, and the text menu
   // gets its groups from what a right-click was on now.
   session.defaultSession.setSpellCheckerEnabled(false);
@@ -597,6 +667,9 @@ void app.whenReady().then(() => {
     screens: () => screen.getAllDisplays().map((display) => display.workArea),
   });
   createWindow();
+  // The command or link that started this instance asks for something too.
+  const asked = parseLaunch(launchArguments(process.argv, app.isPackaged), process.cwd());
+  if (asked !== undefined) launch(asked);
   if (smokeTest !== undefined && mainWindow !== undefined) {
     runSmokeTest({
       folder: smokeTest,
