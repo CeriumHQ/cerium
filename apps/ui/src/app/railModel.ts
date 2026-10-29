@@ -1,5 +1,42 @@
 import { leftPercent, type ProviderId, type ProviderUsage, type UsageMeter } from "@cerium/protocol";
 
+import { isListed, isPutOff, needsYou, type ThreadSummary } from "../features/threads/model.ts";
+
+/** A count on a rail place, in the attention colour while any of them waits on the user. */
+export interface RailBadge {
+  readonly count: number;
+  /** How many of them wait on the user. */
+  readonly waiting: number;
+}
+
+/**
+ * The rail's badges. Home counts the inbox's work threads that are unread or wait on the user; Chat,
+ * whose threads keep no read state, counts the chats waiting for an approval.
+ */
+export const railBadges = (
+  threads: ReadonlyArray<ThreadSummary>,
+  now: number,
+): { readonly home?: RailBadge; readonly chat?: RailBadge } => {
+  const live = threads.filter((thread) => isListed(thread) && !isPutOff(thread, now));
+  const work = live.filter((thread) => thread.mode === "work");
+  const home = work.filter((thread) => thread.unread || needsYou(thread));
+  const chat = live.filter((thread) => thread.mode === "chat" && thread.status === "awaitingApproval");
+  return {
+    ...(home.length > 0 ? { home: { count: home.length, waiting: home.filter(needsYou).length } } : {}),
+    ...(chat.length > 0 ? { chat: { count: chat.length, waiting: chat.length } } : {}),
+  };
+};
+
+/** A badge's count as it fits the rail: past nine, "9+". */
+export const badgeLabel = (count: number): string => (count > 9 ? "9+" : String(count));
+
+/** What a badge counts, for its place's tooltip: "2 unread · 1 needs you". */
+export const badgeNote = ({ count, waiting }: RailBadge): string =>
+  [
+    ...(count > waiting ? [`${count - waiting} unread`] : []),
+    ...(waiting > 0 ? [`${waiting} ${waiting === 1 ? "needs" : "need"} you`] : []),
+  ].join(" · ");
+
 /** What one of the rail's usage rings shows: a harness's tightest limit, and every limit for its tooltip. */
 export interface UsageRing {
   readonly provider: ProviderId;

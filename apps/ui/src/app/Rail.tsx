@@ -18,10 +18,11 @@ import { SlidingHighlight } from "../components/SlidingHighlight.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { harnessName } from "../features/settings/Harnesses.tsx";
 import { leftLabel, planName, resetLabel } from "../features/settings/usageModel.ts";
+import type { ThreadSummary } from "../features/threads/model.ts";
 import type { HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { bindingFor, shortcutBindingsAtom, type ShortcutId } from "../lib/shortcuts.ts";
 import { useMinute } from "../lib/useMinute.ts";
-import { usageRings, type UsageRing } from "./railModel.ts";
+import { badgeLabel, badgeNote, railBadges, usageRings, type UsageRing } from "./railModel.ts";
 
 /**
  * Where the rail goes: the work inbox, the chats, the user's own tasks, GitHub's pull requests and
@@ -42,6 +43,8 @@ interface RailProps {
   readonly view: RailView;
   readonly onSelect: (view: RailView) => void;
   readonly harnesses: ReadonlyArray<HarnessIndicator>;
+  /** Every thread the sidebar knows, for the counts on Home and Chat. */
+  readonly threads: ReadonlyArray<ThreadSummary>;
   /** Settings → Usage, where a ring's limits are laid out in full. */
   readonly onOpenUsage: () => void;
   /** The places the driven machine can't serve, left off the rail. */
@@ -52,17 +55,20 @@ interface RailProps {
 
 /**
  * The window's places, as icons down its left edge, over a ring per subscribed harness showing what's
- * left of its tightest limit. Settings carries a dot while a harness waits to be signed in or set up.
+ * left of its tightest limit. Home and Chat count what's new or waiting on the user, and Settings
+ * carries a dot while a harness waits to be signed in or set up.
  */
 export function Rail({
   view,
   onSelect,
   harnesses,
+  threads,
   onOpenUsage,
   hidden = [],
   orientation = "vertical",
 }: RailProps) {
   const vertical = orientation === "vertical";
+  const badges = railBadges(threads, useMinute());
   const places = useRef<HTMLElement>(null);
   const bindings = useAtomValue(shortcutBindingsAtom);
   // The backend reports every adapter it has, so all "unsupported" is the list before its first answer.
@@ -92,15 +98,16 @@ export function Rail({
         <SlidingHighlight within={places} active={view} className="rounded-lg bg-surface-selected" />
         {shown.map(({ view: id, label, icon: Icon, shortcut }) => {
           const active = id === view;
+          const badge = id === "home" || id === "chat" ? badges[id] : undefined;
           return (
             <Tooltip
               key={id}
-              label={label}
+              label={badge ? `${label} · ${badgeNote(badge)}` : label}
               shortcut={bindingFor(bindings, shortcut)}
               side={vertical ? "right" : "top"}
             >
               <Button
-                aria-label={label}
+                aria-label={badge ? `${label}, ${badgeNote(badge)}` : label}
                 aria-current={active ? "page" : undefined}
                 {...(active ? { "data-highlight-active": "" } : {})}
                 onClick={() => onSelect(id)}
@@ -111,6 +118,20 @@ export function Rail({
                 }`}
               >
                 <Icon size={18} strokeWidth={1.75} />
+                {badge ? (
+                  <span
+                    aria-hidden
+                    // A badge that turns urgent pops in again at its new colour, as a thread's status dot does.
+                    key={badge.waiting > 0 ? "waiting" : "unread"}
+                    className={`absolute top-0.5 right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[9.5px] leading-none font-semibold tabular-nums transition-[scale] duration-300 ease-pop starting:scale-0 max-md:top-1 max-md:right-1 ${
+                      badge.waiting > 0
+                        ? "bg-attention text-fg-primary dark:text-accent-fg"
+                        : "bg-accent text-accent-fg"
+                    }`}
+                  >
+                    {badgeLabel(badge.count)}
+                  </span>
+                ) : null}
                 {id === "settings" && waiting ? (
                   <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-attention" />
                 ) : null}
