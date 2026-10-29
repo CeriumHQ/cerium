@@ -55,6 +55,7 @@ import {
   type TranscriptBlock,
   type TurnChanges as TurnChangesModel,
 } from "./model.ts";
+import { PromptStepper, promptsOf } from "./PromptStepper.tsx";
 import { PushCard } from "./PushCard.tsx";
 import { previewFailure } from "./restore.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
@@ -271,6 +272,8 @@ export function Transcript({
         <div
           // A message sent rises out of the message box, its text flying there from where it was written.
           {...(item.kind === "input" ? { "data-from-box": "" } : {})}
+          // The prompt stepper finds a prompt to bring into view by it.
+          {...(item.kind === "input" && !replaced ? { "data-prompt": item.id } : {})}
           className={`${item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : ""} ${
             !replaced && arrived(item.id) ? entrance(item) : ""
           }`}
@@ -338,6 +341,7 @@ export function Transcript({
               ) : null}
             </div>
           </ScrollArea>
+          <PromptStepper prompts={promptsOf(items)} viewport={viewport} />
           <SelectionReply within={column} />
           {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
           <Button
