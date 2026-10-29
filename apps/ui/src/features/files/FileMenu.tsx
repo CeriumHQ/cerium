@@ -1,7 +1,8 @@
-import { AtSign, Copy, FileText, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
+import { AtSign, Code, Copy, FileText, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { useEditor } from "../editor/useEditor.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { copyText, fileTargets } from "../transcript/menus.ts";
 
@@ -32,6 +33,8 @@ export function FileMenuItems({
   const { location, relative, mention } = fileTargets(path, folder, root);
   const reveal = gone ? undefined : shellBridge()?.revealPath;
   const openOutside = gone || folder ? undefined : shellBridge()?.openPath;
+  const editor = useEditor();
+  const openInEditor = gone || folder ? undefined : editor.open;
   if (location === undefined) return null;
   const canMention = mention !== undefined && messageBox !== undefined;
   return (
@@ -41,9 +44,14 @@ export function FileMenuItems({
           Open
         </MenuItem>
       ) : null}
+      {openInEditor ? (
+        <MenuItem icon={Code} onClick={() => openInEditor(location, undefined, root)}>
+          Open in {editor.editor?.label}
+        </MenuItem>
+      ) : null}
       {openOutside ? (
         <MenuItem icon={SquareArrowOutUpRight} onClick={() => void openOutside(location)}>
-          {onOpen ? "Open in its app" : "Open"}
+          {onOpen || openInEditor ? "Open in its app" : "Open"}
         </MenuItem>
       ) : null}
       {reveal ? (
