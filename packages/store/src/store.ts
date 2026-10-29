@@ -110,6 +110,8 @@ export interface StoredProject {
   readonly setup: string | null;
   /** The user's run command here; null defers to the project's own `.cerium.toml`. */
   readonly run: string | null;
+  /** The user's named commands here, replacing the file's `[actions]` whole; null defers to it. */
+  readonly actions: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
 }
 
 /** A thread whose messages match a search, and the passage around its best match in pieces. */
@@ -257,11 +259,16 @@ export class Store extends Context.Service<
     saveProject(path: string, usedAt: number): Effect.Effect<void, StoreError>;
     /**
      * Stores a project's own setup and run commands, over what its `.cerium.toml` holds (`""` turns
-     * one off). Saves the folder as a project if it wasn't one.
+     * one off), and its named commands when given (`null` defers to the file again, absent leaves
+     * what was stored). Saves the folder as a project if it wasn't one.
      */
     writeProjectScripts(
       path: string,
-      scripts: { readonly setup: string | null; readonly run: string | null },
+      scripts: {
+        readonly setup: string | null;
+        readonly run: string | null;
+        readonly actions?: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
+      },
     ): Effect.Effect<void, StoreError>;
     /** Forgets a project folder; its threads keep it. */
     removeProject(path: string): Effect.Effect<void, StoreError>;
@@ -800,7 +807,7 @@ export class Store extends Context.Service<
               "Could not save the project",
               db
                 .insert(projects)
-                .values({ path, addedAt: usedAt, usedAt, setup: null, run: null })
+                .values({ path, addedAt: usedAt, usedAt, setup: null, run: null, actions: null })
                 .onConflictDoUpdate({ target: projects.path, set: { usedAt } }),
             ),
           writeProjectScripts: (path, scripts) =>
@@ -808,10 +815,14 @@ export class Store extends Context.Service<
               "Could not save the project's scripts",
               db
                 .insert(projects)
-                .values({ path, addedAt: Date.now(), usedAt: Date.now(), ...scripts })
+                .values({ path, addedAt: Date.now(), usedAt: Date.now(), actions: null, ...scripts })
                 .onConflictDoUpdate({
                   target: projects.path,
-                  set: { setup: scripts.setup, run: scripts.run },
+                  set: {
+                    setup: scripts.setup,
+                    run: scripts.run,
+                    ...(scripts.actions === undefined ? {} : { actions: scripts.actions }),
+                  },
                 }),
             ),
           removeProject: (path) =>

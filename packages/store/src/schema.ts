@@ -115,4 +115,9 @@ export const projects = sqliteTable("projects", {
    */
   setup: text("setup"),
   run: text("run"),
+  /**
+   * The project's named commands as the user saved them here, which replace its `.cerium.toml`'s
+   * `[actions]` whole. Null defers to the file.
+   */
+  actions: text("actions", { mode: "json" }).$type<ReadonlyArray<{ name: string; command: string }>>(),
 });

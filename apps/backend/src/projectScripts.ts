@@ -1,6 +1,7 @@
 import {
   ProjectScripts,
   ScriptsError,
+  type ResolvedAction,
   type ResolvedScript,
   type ResolvedScripts,
   type ScriptEnded,
@@ -8,10 +9,12 @@ import {
   type ScriptStarted,
 } from "@cerium/orchestrator";
 import { ThreadId } from "@cerium/protocol";
+import { actionListProblem, actionNameProblem } from "@cerium/rpc";
 import { Store } from "@cerium/store";
 import { Effect, FileSystem, Layer, Option, Path, PubSub, Scope, Stream } from "effect";
 import { lstatSync } from "node:fs";
 
+import { editProjectFile, ProjectFileError, readProjectFile } from "./projectToml.ts";
 import { Terminals } from "./terminal.ts";
 import { chooseShell, scriptChoice, type ShellHost } from "./terminalShell.ts";
 
@@ -19,9 +22,11 @@ import { chooseShell, scriptChoice, type ShellHost } from "./terminalShell.ts";
 // made — the user's saved word for the project wins, then the project's own `.cerium.toml`, then a
 // guess from its package manager that waits for the user — and the run command that keeps it going,
 // whose output's dev-server address the terminal hands over. Scripts run in a terminal of the
-// thread's own, where the user and its agents watch them.
+// thread's own, where the user and its agents watch them. A project also has named commands, its
+// actions (Test, Lint, Migrate): the user's saved list when they have one, else the project's
+// `[actions]`, run on demand in a terminal labelled with the name, and never guessed.
 
-/** The project's own file, checked into the repository so a team shares one pair of commands. */
+/** The project's own file, checked into the repository so a team shares its commands. */
 const SCRIPT_FILE = ".cerium.toml";
 
 /** The size a script's terminal starts at; its viewer fits it again. */
@@ -39,19 +44,36 @@ export interface ScriptFile {
 /**
  * The two scripts a `.cerium.toml` holds, in its `[scripts]` section, quoted plainly or with single
  * quotes, its comments dropped. What the file holds elsewhere is left as its own: the fields get
- * commands, and nothing else of the file is Cerium's to read.
+ * commands, and nothing else of the file is Cerium's to read (`projectToml.ts`).
  */
 export const scriptsFromToml = (text: string): ScriptFile => {
-  const scripts: { setup?: string; run?: string } = {};
-  let inScripts = false;
-  for (const line of text.replace(/^\uFEFF/, "").split("\n")) {
-    const entry = /^(?:\[([^[\]]+)\]|(setup|run)\s*=\s*(['"])([^'"]*)\3)\s*(?:#.*)?$/.exec(line.trim());
-    if (entry === null) continue;
-    // A section header is `[scripts]` itself; a subsection like `[scripts.more]` leaves it.
-    if (entry[1] !== undefined) inScripts = entry[1] === "scripts";
-    else if (inScripts) scripts[entry[2] as "setup" | "run"] = entry[4]!;
+  const { scripts } = readProjectFile(text);
+  return {
+    ...(scripts["setup"] === undefined ? {} : { setup: scripts["setup"] }),
+    ...(scripts["run"] === undefined ? {} : { run: scripts["run"] }),
+  };
+};
+
+/**
+ * The actions of a list that can be told apart and run: a name another action has already (ignoring
+ * case) or that a script of the project has is left out, and so is one with no command.
+ */
+export const usableActions = <A extends { readonly name: string }>(
+  actions: ReadonlyArray<A>,
+  hasCommand: (action: A) => boolean,
+): ReadonlyArray<A> => {
+  const kept: A[] = [];
+  for (const action of actions) {
+    if (!hasCommand(action)) continue;
+    if (
+      actionNameProblem(
+        action.name,
+        kept.map((each) => each.name),
+      ) === undefined
+    )
+      kept.push(action);
   }
-  return scripts;
+  return kept;
 };
 
 /** What a project's package.json says its run is: the script named `dev`, else `start`. */
@@ -176,13 +198,16 @@ export const projectScriptsLayer = Layer.effect(
       Effect.forkIn(scope),
     );
 
-    const resolve = Effect.fn("ProjectScripts.resolve")(function* (project: string) {
+    /** What offers a project its commands: its file, the guess from its folder, and the user's saved ones. */
+    const offers = Effect.fn("ProjectScripts.offers")(function* (project: string) {
       const folder = path.resolve(project);
       const names = yield* fs
         .readDirectory(folder)
         .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
       const fileOption = yield* Effect.option(fs.readFileString(path.join(folder, SCRIPT_FILE)));
-      const file = Option.isSome(fileOption) ? scriptsFromToml(fileOption.value) : ({} as ScriptFile);
+      const file = Option.isSome(fileOption)
+        ? readProjectFile(fileOption.value)
+        : ({ scripts: {}, actions: [] } satisfies ReturnType<typeof readProjectFile>);
       const packageJson = Option.getOrUndefined(
         yield* Effect.option(fs.readFileString(path.join(folder, "package.json"))),
       );
@@ -192,12 +217,78 @@ export const projectScriptsLayer = Layer.effect(
           (error) => new ScriptsError({ message: `The projects couldn't be read: ${error.message}` }),
         ),
       )).find((each) => sameFolder(path, each.path, project));
-      const setup = oneOf(where?.setup ?? null, file.setup, guess.setup);
-      const run = oneOf(where?.run ?? null, file.run, guess.run);
+      return { file, guess, where };
+    });
+
+    const resolve = Effect.fn("ProjectScripts.resolve")(function* (project: string) {
+      const { file, guess, where } = yield* offers(project);
+      const setup = oneOf(where?.setup ?? null, file.scripts["setup"], guess.setup);
+      const run = oneOf(where?.run ?? null, file.scripts["run"], guess.run);
+      // The user's own list replaces the file's whole, so a project's actions come from one side.
+      const actions: ReadonlyArray<ResolvedAction> =
+        where?.actions == null
+          ? usableActions(file.actions, (action) => action.command.trim() !== "").map((action) => ({
+              name: action.name,
+              text: action.command,
+              from: "project" as const,
+            }))
+          : usableActions(where.actions, (action) => action.command.trim() !== "").map((action) => ({
+              name: action.name.trim(),
+              text: action.command,
+              from: "saved" as const,
+            }));
       return {
         ...(setup === undefined ? {} : { setup }),
         ...(run === undefined ? {} : { run }),
+        ...(actions.length === 0 ? {} : { actions }),
       } satisfies ResolvedScripts;
+    });
+
+    const writeFile = Effect.fn("ProjectScripts.writeFile")(function* (options: {
+      project: string;
+      setup: string;
+      run: string;
+      actions: ReadonlyArray<{ readonly name: string; readonly command: string }>;
+    }) {
+      const problem = actionListProblem(options.actions);
+      if (problem !== undefined) return yield* new ScriptsError({ message: problem });
+      const file = path.join(path.resolve(options.project), SCRIPT_FILE);
+      const failed = (what: string) => (error: { readonly message: string }) =>
+        new ScriptsError({ message: `${SCRIPT_FILE} couldn't be ${what}: ${error.message}` });
+      const text = (yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))
+        ? yield* fs.readFileString(file).pipe(Effect.mapError(failed("read")))
+        : "";
+      const setup = options.setup.trim();
+      const run = options.run.trim();
+      const edited = yield* Effect.try({
+        try: () =>
+          editProjectFile(text, {
+            scripts: { setup: setup === "" ? null : setup, run: run === "" ? null : run },
+            actions: options.actions
+              .filter((action) => action.command.trim() !== "")
+              .map((action) => ({ name: action.name.trim(), command: action.command.trim() })),
+          }),
+        catch: (error) =>
+          new ScriptsError({
+            message: error instanceof ProjectFileError ? error.message : `${SCRIPT_FILE} couldn't be edited.`,
+          }),
+      });
+      if (edited !== text) yield* fs.writeFileString(file, edited).pipe(Effect.mapError(failed("written")));
+      // The file now says what the user sees, so nothing saved here is left to shadow it, except a
+      // command emptied that the project's guess would bring back: that stays turned off.
+      const { guess } = yield* offers(options.project);
+      yield* store
+        .writeProjectScripts(options.project, {
+          setup: setup === "" && guess.setup !== undefined ? "" : null,
+          run: run === "" && guess.run !== undefined ? "" : null,
+          actions: null,
+        })
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new ScriptsError({ message: `The project's commands couldn't be saved: ${error.message}` }),
+          ),
+        );
     });
 
     return ProjectScripts.of({
@@ -239,6 +330,38 @@ export const projectScriptsLayer = Layer.effect(
         waiting.set(started.id, { threadId, kind, script: one.text });
         return { _tag: "Ran", script: one.text, from: one.from } satisfies ScriptStarted;
       }),
+
+      startAction: Effect.fn("ProjectScripts.startAction")(function* (options: {
+        name: string;
+        threadId: ThreadId;
+        project: string;
+        cwd: string;
+        size?: { readonly cols: number; readonly rows: number };
+      }) {
+        const { name, threadId, project, cwd, size } = options;
+        const wanted = name.trim().toLowerCase();
+        const action = (yield* resolve(project)).actions?.find((each) => each.name.toLowerCase() === wanted);
+        if (action === undefined) {
+          return yield* new ScriptsError({
+            message: `${path.basename(project)} has no ${name.trim()} action; add one in Settings → Git & GitHub.`,
+          });
+        }
+        yield* terminals
+          .openScript(
+            threadId,
+            action.name,
+            scriptChoice(chooseShell(host), action.text),
+            cwd,
+            size ?? SCRIPT_SIZE,
+          )
+          .pipe(
+            Effect.mapError(
+              (error) => new ScriptsError({ message: `${action.name} couldn't start: ${error.message}` }),
+            ),
+          );
+        return action;
+      }),
+      writeFile,
       ended: Stream.fromPubSub(ended),
     });
   }),

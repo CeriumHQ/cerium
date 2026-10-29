@@ -45,6 +45,7 @@ export {
 export {
   ProjectScripts,
   ScriptsError,
+  type ResolvedAction,
   type ResolvedScript,
   type ResolvedScripts,
   type ScriptEnded,

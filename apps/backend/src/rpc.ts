@@ -26,6 +26,7 @@ import {
   type SkillInfo,
 } from "@cerium/protocol";
 import {
+  actionListProblem,
   CeriumError,
   CeriumRpcs,
   MachineRpcs,
@@ -474,8 +475,54 @@ export const Handlers = MachineRpcs.toLayer(
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
       RemoveProject: ({ path }) => projects.remove(path).pipe(Effect.mapError(refuse)),
       ProjectScripts: ({ project }) => scripts.resolve(project).pipe(Effect.mapError(refuse)),
-      SetProjectScripts: ({ path, setup, run }) =>
-        store.writeProjectScripts(path, { setup, run }).pipe(Effect.mapError(refuse)),
+      SetProjectScripts: ({ path, setup, run, actions }) =>
+        Effect.gen(function* () {
+          const problem = actions == null ? undefined : actionListProblem(actions);
+          if (problem !== undefined) return yield* new CeriumError({ message: problem });
+          yield* store
+            .writeProjectScripts(path, {
+              setup,
+              run,
+              ...(actions === undefined
+                ? {}
+                : {
+                    actions:
+                      actions?.map((each) => ({ name: each.name.trim(), command: each.command.trim() })) ??
+                      null,
+                  }),
+            })
+            .pipe(Effect.mapError(refuse));
+        }),
+      WriteProjectScriptsFile: ({ path, setup, run, actions }) =>
+        scripts
+          .writeFile({ project: path, setup, run, actions })
+          .pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
+      RunProjectAction: ({ threadId, name, size }) =>
+        Effect.gen(function* () {
+          const thread = Option.getOrUndefined(
+            yield* store.getThread(threadId).pipe(Effect.mapError(refuse)),
+          );
+          if (thread === undefined || thread.mode !== "work" || thread.cwd === undefined) {
+            return yield* new CeriumError({
+              message: "Only a work thread has a project its actions run in.",
+            });
+          }
+          const action = yield* scripts
+            .startAction({
+              name,
+              threadId,
+              project: thread.worktree?.project ?? thread.cwd,
+              cwd: thread.cwd,
+              size,
+            })
+            .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
+          const own = (yield* terminals.list).findLast(
+            (info) => info.threadId === threadId && info.script === action.name,
+          );
+          return own === undefined
+            ? yield* new CeriumError({ message: "The terminal closed as it opened." })
+            : own;
+        }),
       RunProjectScript: ({ threadId, kind, size }) =>
         Effect.gen(function* () {
           const thread = Option.getOrUndefined(
