@@ -23,12 +23,20 @@ export function SelectTrigger({ children, label }: { children: ReactNode; label:
   );
 }
 
-/** `footer` stays in view below the list while a long list scrolls. */
-export function SelectPopup({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+/** `footer` stays in view below the list while a long list scrolls. It opens above its trigger unless `side` says below. */
+export function SelectPopup({
+  children,
+  footer,
+  side = "top",
+}: {
+  children: ReactNode;
+  footer?: ReactNode;
+  side?: "top" | "bottom";
+}) {
   return (
     <BaseSelect.Portal>
       <BaseSelect.Positioner
-        side="top"
+        side={side}
         sideOffset={6}
         alignItemWithTrigger={false}
         className="z-50 outline-none"

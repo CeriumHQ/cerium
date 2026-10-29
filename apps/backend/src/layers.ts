@@ -48,6 +48,7 @@ import { threadSlimming } from "./slimming.ts";
 import { CloudCopy } from "./sync.ts";
 import { Terminals } from "./terminal.ts";
 import { Ptys } from "./terminalPty.ts";
+import { ThreadEnv } from "./threadEnv.ts";
 import { EffortRouter } from "./effortRouter.ts";
 import { fileEffortRouterKey, fileVault, type EffortRouterKey } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
@@ -104,9 +105,10 @@ export const AdaptersLive = Layer.effect(
  */
 export const backendLayer = (options: BackendOptions) => {
   /** The one Terminals instance; its viewer's tabs and the scripts' own terminals share it. */
+  const threadEnvLayer = ThreadEnv.layer();
   const terminalsLayer = Terminals.layer({
     version: options.account?.device.version ?? "dev",
-  }).pipe(Layer.provide(Ptys.layer));
+  }).pipe(Layer.provide(Ptys.layer), Layer.provide(threadEnvLayer));
 
   return HttpRouter.serve(
     Layer.mergeAll(
@@ -191,7 +193,10 @@ export const backendLayer = (options: BackendOptions) => {
       Layer.mergeAll(Projects.layer, Releases.layer.pipe(Layer.provide(FetchHttpClient.layer))),
     ),
     // Worktree scripts run in a terminal of the thread's own; the same Terminals instance feeds both.
-    Layer.provideMerge([terminalsLayer, projectScriptsLayer.pipe(Layer.provide(terminalsLayer))]),
+    Layer.provideMerge([
+      terminalsLayer,
+      projectScriptsLayer.pipe(Layer.provide(terminalsLayer), Layer.provide(threadEnvLayer)),
+    ]),
     Layer.provideMerge(
       Account.layer({
         handoff: loopbackHandoff,

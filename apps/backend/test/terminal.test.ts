@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { MAX_PER_THREAD, reachableUrl, Terminals, type TerminalServed } from "../src/terminal.ts";
 import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
 import { openScreen } from "../src/terminalScreen.ts";
+import { ThreadEnv } from "../src/threadEnv.ts";
 
 // The Terminals service over a pseudoterminal that is a puppet, so what the shell prints and when it
 // ends is up to the test. The screen is the real emulator.
@@ -69,6 +70,7 @@ const withTerminals = (options: { readonly backlog?: number; readonly redrawMs?:
         Effect.provide(
           Terminals.layer({ version: "test", shell, batchMs: 0, ...options }).pipe(
             Layer.provide(layer),
+            Layer.provide(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
             Layer.provideMerge(NodeServices.layer),
             Layer.provideMerge(Store.layer({ filename: ":memory:" })),
           ),
@@ -126,6 +128,11 @@ describe("Terminals.open", () => {
         assert.strictEqual(puppet?.options.cols, 80);
         assert.strictEqual(puppet?.options.env["TERM"], "xterm-256color");
         assert.strictEqual(puppet?.options.env["TERM_PROGRAM_VERSION"], "test");
+        // The thread's own variables: who it is, where its project and folder are, and its ports.
+        assert.strictEqual(puppet?.options.env["CERIUM_THREAD_ID"], "thr_a");
+        assert.strictEqual(puppet?.options.env["CERIUM_ROOT_PATH"], cwd);
+        assert.strictEqual(puppet?.options.env["CERIUM_WORKSPACE_PATH"], cwd);
+        assert.match(puppet?.options.env["CERIUM_PORT"] ?? "", /^\d{5}$/);
         assert.deepStrictEqual(
           (yield* terminals.list).map((each) => each.id),
           [info.id],

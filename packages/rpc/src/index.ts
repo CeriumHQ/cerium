@@ -64,7 +64,7 @@ import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
 import { ImportRpcs } from "./imports.ts";
 import { PushRpcs } from "./pushes.ts";
 import { ReviewRpcs } from "./reviews.ts";
-import { ScriptRpcs } from "./scripts.ts";
+import { ScriptRpcs, TeardownReport } from "./scripts.ts";
 import { CommandTerminal, TerminalRpcs, TerminalSize } from "./terminal.ts";
 
 export * from "./automations.ts";
@@ -90,7 +90,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 38;
+export const RPC_VERSION = 40;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -379,7 +379,9 @@ export const MachineRpcs = RpcGroup.make(
   /**
    * Archiving hides a thread until it is restored; refused while its agents work or wait on the user.
    * A thread's worktree goes with it, refused while it holds work its base doesn't (`WorktreeChanges`)
-   * unless `discardWork` (since `RPC_VERSION` 7); restoring puts it back.
+   * unless `discardWork` (since `RPC_VERSION` 7); restoring puts it back. The project's teardown
+   * runs in the worktree first, and one that fails doesn't stop the archiving: the thread comes back
+   * with the `teardown` report (since `RPC_VERSION` 39).
    */
   Rpc.make("SetThreadArchived", {
     payload: {
@@ -387,7 +389,7 @@ export const MachineRpcs = RpcGroup.make(
       archived: Schema.Boolean,
       discardWork: Schema.optionalKey(Schema.Boolean),
     },
-    success: ThreadInfo,
+    success: Schema.Struct({ ...ThreadInfo.fields, teardown: Schema.optionalKey(TeardownReport) }),
     error: CeriumError,
   }),
   /**
@@ -401,10 +403,13 @@ export const MachineRpcs = RpcGroup.make(
   }),
   /**
    * Deletes a thread and everything in it for good, its worktree too; refused while its agents work
-   * or wait on the user, and, without `discardWork`, while its worktree holds unmerged work.
+   * or wait on the user, and, without `discardWork`, while its worktree holds unmerged work. The
+   * project's teardown runs in the worktree first; one that fails is reported, not a reason to keep
+   * the thread (since `RPC_VERSION` 39).
    */
   Rpc.make("DeleteThread", {
     payload: { threadId: ThreadId, discardWork: Schema.optionalKey(Schema.Boolean) },
+    success: Schema.UndefinedOr(TeardownReport),
     error: CeriumError,
   }),
   /** What a thread's worktree holds that its base doesn't; none without one. Since `RPC_VERSION` 7. */

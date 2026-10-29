@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { homedir, release } from "node:os";
 
+import { ThreadEnv } from "./threadEnv.ts";
 import { openScreen, type Screen } from "./terminalScreen.ts";
 import { Ptys, TerminalError, type Pty } from "./terminalPty.ts";
 import {
@@ -112,6 +113,8 @@ interface Entry {
   readonly command: string | undefined;
   readonly shell: ShellChoice;
   readonly cwd: string;
+  /** The `CERIUM_*` variables of its thread (`ThreadEnv`), set on every shell it starts. */
+  readonly threadEnv: Readonly<Record<string, string>>;
   /** The project script it runs ("Setup" or "Run"), standing in for the shell's name on its tab. */
   readonly script: string | undefined;
   openedAt: number;
@@ -219,7 +222,7 @@ export class Terminals extends Context.Service<
   }
 >()("cerium/backend/Terminals") {
   /**
-   * Requires `Store`, `FileSystem`, `Path` and `Ptys`. `shell` replaces the machine's default; `version`
+   * Requires `Store`, `FileSystem`, `Path`, `Ptys` and `ThreadEnv`. `shell` replaces the machine's default; `version`
    * is the build, which shells see as `TERM_PROGRAM_VERSION`. `batchMs`, `backlog` and `redrawMs`
    * replace how long output is gathered, how many pieces a viewer may lag by and how often it is
    * drawn the screen again, for tests.
@@ -238,6 +241,7 @@ export class Terminals extends Context.Service<
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const ptys = yield* Ptys;
+        const threads = yield* ThreadEnv;
 
         const entries = new Map<TerminalId, Entry>();
         // Whoever subscribes is first told the list as it stands.
@@ -340,7 +344,7 @@ export class Terminals extends Context.Service<
                 file: entry.shell.file,
                 args: entry.shell.args,
                 cwd: entry.cwd,
-                env: terminalEnv(process.env, options.version),
+                env: { ...terminalEnv(process.env, options.version), ...entry.threadEnv },
                 cols: entry.size.cols,
                 rows: entry.size.rows,
               },
@@ -433,6 +437,7 @@ export class Terminals extends Context.Service<
           readonly size: TerminalSize;
         }) {
           const { threadId, project, command, script, shell, cwd, size } = fields;
+          const threadEnv = threadId === undefined ? {} : yield* threads.of(threadId);
           if (entries.size >= MAX_TERMINALS) {
             return yield* new TerminalError({
               message: `Cerium runs ${MAX_TERMINALS} terminals at most. Close one to open another.`,
@@ -454,6 +459,7 @@ export class Terminals extends Context.Service<
             script,
             shell,
             cwd,
+            threadEnv,
             openedAt: yield* Clock.currentTimeMillis,
             run: 1,
             windowsBuild: build,

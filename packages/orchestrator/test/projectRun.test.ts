@@ -10,6 +10,7 @@ import {
   type ScriptEnded,
   type ScriptServed,
   type ScriptStatus,
+  ScriptsError,
 } from "../src/index.ts";
 import { runAnswer, runLines } from "../src/projectRun.ts";
 import { systemPrompt } from "../src/prompts.ts";
@@ -53,8 +54,12 @@ const puppetScripts = (commands: ResolvedScripts) => {
           state.calls.push(`status ${kind}`);
           return state.status;
         }),
+      startAction: () => Effect.fail(new ScriptsError({ message: "No actions here." })),
+      writeFile: () => Effect.void,
       ended: Stream.fromPubSub(ended),
       served: Stream.fromPubSub(served),
+      teardown: () => Effect.succeed(undefined),
+      ports: () => Effect.succeed(undefined),
     }),
   );
   return { state, ended, served, layer };

@@ -117,17 +117,22 @@ export const scriptChoice = (shell: ShellChoice, command: string): ShellChoice =
   }
 };
 
+/** What a program Cerium starts for the user inherits of the backend's environment. */
+export const inheritedEnv = (base: Readonly<Record<string, string | undefined>>): Record<string, string> => {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value !== undefined && !WITHHELD.has(key)) env[key] = value;
+  }
+  return env;
+};
+
 /** What a terminal's shell runs with: the backend's environment, set up for a terminal emulator. */
 export const terminalEnv = (
   base: Readonly<Record<string, string | undefined>>,
   version: string,
 ): Record<string, string> => {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (value !== undefined && !WITHHELD.has(key)) env[key] = value;
-  }
   return {
-    ...env,
+    ...inheritedEnv(base),
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "Cerium",

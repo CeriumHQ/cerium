@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import type { ProviderId } from "@cerium/protocol";
 import {
+  ChevronDown,
   Ellipsis,
   FolderTree,
   GalleryVerticalEnd,
@@ -10,6 +11,7 @@ import {
   Minus,
   PanelLeft,
   Play,
+  Settings2,
   Square,
   SquarePen,
   SquareTerminal,
@@ -20,7 +22,14 @@ import type { ReactNode } from "react";
 import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { IconButton } from "../components/ui/IconButton.tsx";
-import { MenuCheckboxItem, MenuPopup, MenuRoot, MenuTrigger } from "../components/ui/Menu.tsx";
+import {
+  MenuCheckboxItem,
+  MenuItem,
+  MenuPopup,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger,
+} from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
 import { useShortcut } from "../lib/shortcuts.ts";
 import { WEB } from "../backend/target.ts";
@@ -32,6 +41,20 @@ import { RAIL, type SidePanelId } from "./panelLayout.ts";
  * its own and Electron Linux's. A Mac's traffic lights sit at the other end (`--titlebar-inset`).
  */
 const CAPTION_BUTTON_WIDTH = 46;
+
+/** The open work thread's run button, and the menu of its project's named actions beside it. */
+export interface RunProps {
+  readonly running: boolean;
+  readonly onToggle: () => void;
+  /** The project's actions, each with whether its terminal runs; the menu shows while there are any. */
+  readonly actions?: ReadonlyArray<{ readonly name: string; readonly running: boolean }>;
+  /** Runs an action, or stops it while it runs. */
+  readonly onAction?: (name: string) => void;
+  /** The menu opened: the project's actions are read again, in case its file changed. */
+  readonly onMenuOpen?: () => void;
+  /** Opens where the project's actions are edited. */
+  readonly onEditActions?: () => void;
+}
 
 export interface PreviewToggleProps {
   readonly open: boolean;
@@ -66,7 +89,7 @@ interface TitlebarProps {
   /** The terminal drawer's button, offered while the thread can have a terminal. */
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** The project's run button: starts its run command in a thread terminal, and stops it while it runs. */
-  readonly run?: { readonly running: boolean; readonly onToggle: () => void };
+  readonly run?: RunProps;
   /** The Preview pane's button, offered while the thread can have a browser: the desktop app's own threads. */
   readonly preview?: PreviewToggleProps;
   /** Which of the account's computers the window drives, once there's a choice. */
@@ -170,7 +193,7 @@ export function Titlebar({
           </>
         )}
         <div className="flex h-full shrink-0 items-center justify-end">
-          {run && !covered ? <RunToggle running={run.running} onToggle={run.onToggle} /> : null}
+          {run && !covered ? <RunToggle {...run} /> : null}
           {covered ? null : (
             <CompactPanelMenu
               agents={agents}
@@ -274,14 +297,25 @@ export function CompactPanelMenu({
   );
 }
 
-/** Starts the open work thread's project run command, or stops it while it runs. */
-export function RunToggle({ running, onToggle }: { running: boolean; onToggle: () => void }) {
-  return (
+/**
+ * Starts the open work thread's project run command, or stops it while it runs. A project with
+ * actions (Test, Lint, Migrate) has a menu beside it, whose rows run each in a terminal of the
+ * thread's own, or stop it while it runs.
+ */
+export function RunToggle({
+  running,
+  onToggle,
+  actions = [],
+  onAction,
+  onMenuOpen,
+  onEditActions,
+}: RunProps) {
+  const button = (
     <Tooltip label={running ? "Stop run" : "Run project"}>
       <Button
         onClick={onToggle}
         aria-label={running ? "Stop run" : "Run project"}
-        className={`mr-1 grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] pointer-coarse:size-10 max-md:size-10 ${
+        className={`grid size-7 place-items-center rounded-md transition-colors [app-region:no-drag] pointer-coarse:size-10 max-md:size-10 ${
           running
             ? "bg-surface-selected text-fg-primary"
             : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -290,6 +324,45 @@ export function RunToggle({ running, onToggle }: { running: boolean; onToggle: (
         {running ? <Square size={13} strokeWidth={1.75} /> : <Play size={14} strokeWidth={1.75} />}
       </Button>
     </Tooltip>
+  );
+  if (actions.length === 0) return <span className="mr-1 flex">{button}</span>;
+  const busy = actions.filter((action) => action.running).length;
+  return (
+    <span className="mr-1 flex items-center">
+      {button}
+      <MenuRoot onOpenChange={(open) => open && onMenuOpen?.()}>
+        <MenuTrigger>
+          <Button
+            aria-label="Project actions"
+            className="relative grid h-7 w-5 place-items-center rounded-md text-fg-tertiary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary pointer-coarse:h-10 pointer-coarse:w-7 max-md:h-10 max-md:w-7"
+          >
+            <ChevronDown size={12} strokeWidth={2} />
+            {busy > 0 ? (
+              <span className="absolute top-1 right-0.5 size-1.5 rounded-full bg-running" aria-hidden />
+            ) : null}
+          </Button>
+        </MenuTrigger>
+        <MenuPopup>
+          {actions.map((action) => (
+            <MenuItem
+              key={action.name}
+              icon={action.running ? Square : Play}
+              onClick={() => onAction?.(action.name)}
+            >
+              {action.running ? `Stop ${action.name}` : action.name}
+            </MenuItem>
+          ))}
+          {onEditActions ? (
+            <>
+              <MenuSeparator />
+              <MenuItem icon={Settings2} onClick={onEditActions}>
+                Edit actions…
+              </MenuItem>
+            </>
+          ) : null}
+        </MenuPopup>
+      </MenuRoot>
+    </span>
   );
 }
 

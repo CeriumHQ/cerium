@@ -9,6 +9,7 @@ import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PubSub, Scope, Stream
 import { projectScriptsLayer } from "../src/projectScripts.ts";
 import { Terminals } from "../src/terminal.ts";
 import { Ptys, type SpawnOptions } from "../src/terminalPty.ts";
+import { ThreadEnv } from "../src/threadEnv.ts";
 
 // The project scripts over the Terminals service, whose shells are puppets: what a run prints and
 // when it ends is up to the test. The screens are the real emulator.
@@ -53,6 +54,7 @@ const stack = () => {
     batchMs: 0,
   }).pipe(
     Layer.provide(ptys),
+    Layer.provideMerge(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(Store.layer({ filename: ":memory:" })),
   );
@@ -349,6 +351,7 @@ describe("ProjectScripts watching a slow read", () => {
     } as unknown as Terminals["Service"]);
     const layer = projectScriptsLayer.pipe(
       Layer.provideMerge(terminals),
+      Layer.provideMerge(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
       Layer.provideMerge(NodeServices.layer),
       Layer.provideMerge(Store.layer({ filename: ":memory:" })),
     );

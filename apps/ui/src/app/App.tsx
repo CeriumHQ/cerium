@@ -9,7 +9,7 @@ import {
   type ThreadId,
   type WorktreeChanges,
 } from "@cerium/protocol";
-import type { ThreadOverview } from "@cerium/rpc";
+import type { TeardownReport, ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
@@ -97,7 +97,12 @@ import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
-import { runProjectScript } from "../backend/scripts.ts";
+import {
+  noProjectScripts,
+  projectScriptsAtom,
+  runProjectAction,
+  runProjectScript,
+} from "../backend/scripts.ts";
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
@@ -178,9 +183,12 @@ import {
 import { PreviewPane } from "../features/preview/PreviewPane.tsx";
 import { usePreviewDocks } from "../features/preview/usePreviewDocks.ts";
 import {
+  ACTIONS_VERSION,
   PROJECT_TERMINAL_VERSION,
+  SCRIPT_BOOT_VERSION,
   SCRIPT_VERSION,
   TERMINAL_VERSION,
+  labelledTerminalOf,
   scriptTerminalOf,
 } from "../features/terminal/model.ts";
 import { fittedSize } from "../features/terminal/session.ts";
@@ -867,6 +875,14 @@ function Workspace() {
     );
   };
 
+  /** Says in the notice bar that the project's teardown failed as a thread was put away, which it went on without. */
+  const reportTeardown = (title: string, teardown: TeardownReport | undefined) => {
+    if (teardown === undefined) return;
+    setActionError(
+      `The teardown of “${title}” (${teardown.script}) ${teardown.failure}. The thread was put away anyway.`,
+    );
+  };
+
   /**
    * Archives a thread and closes its tab; resolves whether it went.
    * `discardWork` once the user confirmed losing its worktree's work.
@@ -875,7 +891,7 @@ function Workspace() {
     attempt(
       setArchived({
         payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
-      }),
+      }).then(({ title, teardown }) => reportTeardown(title, teardown)),
     ).then((archived) => {
       if (!archived) return false;
       refreshThreads();
@@ -1012,6 +1028,43 @@ function Workspace() {
   const setupProject = () => {
     if (runThreadId === undefined) return;
     void attempt(runProject({ payload: { threadId: runThreadId, kind: "setup", size: fittedSize() } }));
+  };
+  /** The folder the thread's project was picked by, which its scripts and actions resolve from. */
+  const scriptsProject =
+    selected === undefined ? undefined : (selected.thread.worktree?.project ?? selected.thread.cwd);
+  const actionsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ACTIONS_VERSION;
+  const projectScriptsFor =
+    runThreadId === undefined || scriptsProject === undefined || !actionsOk
+      ? noProjectScripts
+      : projectScriptsAtom(scriptsProject);
+  /** The project's named actions (Test, Lint, Migrate), each with whether its terminal is running. */
+  const projectActions = (
+    AsyncResult.getOrElse(useAtomValue(projectScriptsFor), () => undefined)?.actions ?? []
+  ).map((action) => {
+    const own =
+      selected === undefined
+        ? undefined
+        : labelledTerminalOf(machineTerminals, { threadId: selected.thread.id }, action.name);
+    return { name: action.name, running: own !== undefined && own.exitCode === undefined };
+  });
+  const refreshProjectScripts = useAtomRefresh(projectScriptsFor);
+  const runAction = useAtomSet(runProjectAction, { mode: "promise" });
+  /** Runs one of the project's actions in a terminal of the thread's, labelled with its name, or stops it while it runs. */
+  const toggleAction = (name: string) => {
+    if (runThreadId === undefined || selected === undefined) return;
+    const own = labelledTerminalOf(machineTerminals, { threadId: selected.thread.id }, name);
+    if (own !== undefined && own.exitCode === undefined) {
+      void attempt(endRun({ payload: { id: own.id } }));
+    } else {
+      // Its output is what the user wants to see: the drawer opens on the action's terminal.
+      void runAction({ payload: { threadId: runThreadId, name, size: fittedSize() } }).then(
+        (started) => {
+          setActionError(undefined);
+          terminal.reveal(started.id);
+        },
+        (error: unknown) => setActionError(messageOf(error)),
+      );
+    }
   };
   const filesPanel = useFilesExplorer({
     root: filesRoot,
@@ -1502,6 +1555,16 @@ function Workspace() {
       when: runThreadId !== undefined,
       run: setupProject,
     },
+    // The project's named actions, each run in a terminal of the thread's own.
+    ...projectActions.map((action) => ({
+      id: `project-action:${action.name}`,
+      group: "Actions" as const,
+      label: `${action.running ? "Stop" : "Run"} ${action.name}`,
+      icon: action.running ? Square : Play,
+      keywords: "project action command script test lint build",
+      when: runThreadId !== undefined,
+      run: () => toggleAction(action.name),
+    })),
     {
       id: "preview",
       group: "Actions",
@@ -1917,6 +1980,7 @@ function Workspace() {
     answerQuestion: answerQuestionOf,
     agentActions,
     keep: tabs.keep,
+    confirmsSetup: drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SCRIPT_BOOT_VERSION,
     onSetUp: noHarness ? () => openSettings("harnesses") : undefined,
     chooseFolder,
   };
@@ -2447,16 +2511,21 @@ function Workspace() {
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
           onDelete={(threadId): Promise<boolean> =>
-            attempt(remove({ payload: { threadId: threadId as ThreadId, discardWork: true } })).then(
-              (deleted) => {
-                if (!deleted) return false;
-                registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
-                previewDocks.close(threadId);
-                refreshThreads();
-                tabs.drop(threadId);
-                return true;
-              },
-            )
+            attempt(
+              remove({ payload: { threadId: threadId as ThreadId, discardWork: true } }).then((teardown) =>
+                reportTeardown(
+                  summaries.find((summary) => summary.id === threadId)?.title ?? "the thread",
+                  teardown,
+                ),
+              ),
+            ).then((deleted) => {
+              if (!deleted) return false;
+              registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
+              previewDocks.close(threadId);
+              refreshThreads();
+              tabs.drop(threadId);
+              return true;
+            })
           }
           {...(drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LATER_VERSION
             ? {
@@ -2509,7 +2578,12 @@ function Workspace() {
           />
         ),
         page: (
-          <SettingsView category={settingsCategory} harnesses={indicators} onOpen={setSettingsCategory} />
+          <SettingsView
+            category={settingsCategory}
+            harnesses={indicators}
+            onOpen={setSettingsCategory}
+            project={scriptsProject ?? newProject}
+          />
         ),
         pane: settingsPane,
         title: settingsLabel(settingsCategory),
@@ -2575,7 +2649,18 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
-      {...(runThreadId === undefined ? {} : { run: { running: runRunning, onToggle: toggleRun } })}
+      {...(runThreadId === undefined
+        ? {}
+        : {
+            run: {
+              running: runRunning,
+              onToggle: toggleRun,
+              actions: projectActions,
+              onAction: toggleAction,
+              onMenuOpen: refreshProjectScripts,
+              onEditActions: () => openSettings("sourceControl"),
+            },
+          })}
       {...(previewThread === undefined
         ? {}
         : {

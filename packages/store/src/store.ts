@@ -10,7 +10,7 @@ import {
   type ThreadMode,
 } from "@cerium/protocol";
 import { SqliteClient } from "@effect/sql-sqlite-node";
-import { and, asc, count, desc, eq, gt, inArray, max, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, max, notInArray, sql } from "drizzle-orm";
 import * as SqliteDrizzle from "drizzle-orm/effect-sqlite-node";
 import { migrate } from "drizzle-orm/effect-sqlite-node/migrator";
 import { Context, Effect, Layer, Option, Schema } from "effect";
@@ -110,6 +110,18 @@ export interface StoredProject {
   readonly setup: string | null;
   /** The user's run command here; null defers to the project's own `.cerium.toml`. */
   readonly run: string | null;
+  /** The user's teardown command here; null defers to the project's own `.cerium.toml`. */
+  readonly teardown: string | null;
+  /** The user's named commands here, replacing the file's `[actions]` whole; null defers to it. */
+  readonly actions: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
+}
+
+/** The commands of a project the user stored; one left out stays as it was, `null` defers again. */
+export interface ProjectScriptsPatch {
+  readonly setup?: string | null;
+  readonly run?: string | null;
+  readonly teardown?: string | null;
+  readonly actions?: ReadonlyArray<{ readonly name: string; readonly command: string }> | null;
 }
 
 /** A thread whose messages match a search, and the passage around its best match in pieces. */
@@ -179,6 +191,12 @@ export class Store extends Context.Service<
     updateThread(id: ThreadId, patch: ThreadPatch): Effect.Effect<void, StoreError>;
     /** Deletes a thread with its agents and events, atomically. */
     deleteThread(id: ThreadId): Effect.Effect<void, StoreError>;
+    /** The first port of the block a thread was given (`CERIUM_PORT`); null before it got one. */
+    threadPort(id: ThreadId): Effect.Effect<number | null, StoreError>;
+    /** The first port of every block threads hold, for picking one no thread has. */
+    readonly threadPorts: Effect.Effect<ReadonlyArray<number>, StoreError>;
+    /** Gives a thread its block, once: a thread that has one keeps it. Resolves with the block it holds. */
+    giveThreadPort(id: ThreadId, port: number): Effect.Effect<number, StoreError>;
     /**
      * The threads of one mode whose messages, the user's or the agents', hold every word of `typed`
      * (`searchExpression`), best match first.
@@ -256,13 +274,11 @@ export class Store extends Context.Service<
     /** Saves a project folder, or marks a saved one used at `usedAt`. */
     saveProject(path: string, usedAt: number): Effect.Effect<void, StoreError>;
     /**
-     * Stores a project's own setup and run commands, over what its `.cerium.toml` holds (`""` turns
-     * one off). Saves the folder as a project if it wasn't one.
+     * Stores a project's own setup, run and teardown commands, over what its `.cerium.toml` holds
+     * (`""` turns one off), and its named commands (`null` defers to the file again). Saves the
+     * folder as a project if it wasn't one.
      */
-    writeProjectScripts(
-      path: string,
-      scripts: { readonly setup: string | null; readonly run: string | null },
-    ): Effect.Effect<void, StoreError>;
+    writeProjectScripts(path: string, scripts: ProjectScriptsPatch): Effect.Effect<void, StoreError>;
     /** Forgets a project folder; its threads keep it. */
     removeProject(path: string): Effect.Effect<void, StoreError>;
     /**
@@ -491,6 +507,27 @@ export class Store extends Context.Service<
                 ]),
               ),
             ).pipe(allThreads.forget, allAgents.forget),
+          threadPort: (id) =>
+            query(
+              "Could not read the thread's port",
+              db.select({ port: threads.port }).from(threads).where(eq(threads.id, id)),
+            ).pipe(Effect.map((rows) => rows[0]?.port ?? null)),
+          threadPorts: query(
+            "Could not read the threads' ports",
+            db.select({ port: threads.port }).from(threads).where(isNotNull(threads.port)),
+          ).pipe(Effect.map((rows) => rows.flatMap(({ port }) => (port === null ? [] : [port])))),
+          giveThreadPort: (id, port) =>
+            query(
+              "Could not give the thread a port",
+              Effect.gen(function* () {
+                yield* db
+                  .update(threads)
+                  .set({ port })
+                  .where(and(eq(threads.id, id), isNull(threads.port)));
+                const rows = yield* db.select({ port: threads.port }).from(threads).where(eq(threads.id, id));
+                return rows[0]?.port ?? port;
+              }),
+            ),
           // `message_search` is kept by triggers on the events and threads tables (the thread_search
           // migration).
           searchMessages: (typed, { mode, limit }) => {
@@ -800,20 +837,42 @@ export class Store extends Context.Service<
               "Could not save the project",
               db
                 .insert(projects)
-                .values({ path, addedAt: usedAt, usedAt, setup: null, run: null })
+                .values({
+                  path,
+                  addedAt: usedAt,
+                  usedAt,
+                  setup: null,
+                  run: null,
+                  teardown: null,
+                  actions: null,
+                })
                 .onConflictDoUpdate({ target: projects.path, set: { usedAt } }),
             ),
-          writeProjectScripts: (path, scripts) =>
-            query(
+          writeProjectScripts: (path, scripts) => {
+            // A command left out stays as saved; a folder not saved yet starts with none.
+            const set = {
+              ...(scripts.setup === undefined ? {} : { setup: scripts.setup }),
+              ...(scripts.run === undefined ? {} : { run: scripts.run }),
+              ...(scripts.teardown === undefined ? {} : { teardown: scripts.teardown }),
+              ...(scripts.actions === undefined ? {} : { actions: scripts.actions }),
+            };
+            const now = Date.now();
+            const insert = db.insert(projects).values({
+              path,
+              addedAt: now,
+              usedAt: now,
+              setup: scripts.setup ?? null,
+              run: scripts.run ?? null,
+              teardown: scripts.teardown ?? null,
+              actions: scripts.actions ?? null,
+            });
+            return query(
               "Could not save the project's scripts",
-              db
-                .insert(projects)
-                .values({ path, addedAt: Date.now(), usedAt: Date.now(), ...scripts })
-                .onConflictDoUpdate({
-                  target: projects.path,
-                  set: { setup: scripts.setup, run: scripts.run },
-                }),
-            ),
+              Object.keys(set).length === 0
+                ? insert.onConflictDoNothing()
+                : insert.onConflictDoUpdate({ target: projects.path, set }),
+            );
+          },
           removeProject: (path) =>
             query("Could not remove the project", db.delete(projects).where(eq(projects.path, path))),
           slimThreads: (before) =>

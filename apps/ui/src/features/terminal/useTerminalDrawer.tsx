@@ -28,6 +28,8 @@ export interface TerminalDrawerControl {
   /** Shows or hides the drawer, as its titlebar button does. */
   readonly toggle: () => void;
   readonly hide: () => void;
+  /** Shows the drawer on one terminal, as when a command the user started opens there; the cursor stays where it was. */
+  readonly reveal: (id: TerminalId) => void;
   /** The drawer, to place under the thread's conversation; none while it is hidden. */
   readonly drawer: ReactNode;
 }
@@ -94,6 +96,11 @@ export function useTerminalDrawer({
     open,
     toggle: () => (open ? hide() : show()),
     hide,
+    reveal: (id) => {
+      if (key === undefined) return;
+      setOpen(key, true);
+      setChosen((current) => ({ ...current, [key]: id }));
+    },
     drawer:
       open && owner !== undefined && key !== undefined ? (
         <TerminalDrawer
