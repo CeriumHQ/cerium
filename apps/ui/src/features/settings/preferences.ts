@@ -180,3 +180,16 @@ export const workplaceAtom = preference<"local" | "worktree">(
   ["local", "worktree"],
   "local",
 );
+
+const EDITOR_KEY = "cerium:editor";
+/**
+ * Where files open at their line: `auto` is the first editor the shell finds, `none` leaves opening
+ * to the file manager, anything else is an editor's id (apps/desktop/src/editors.ts).
+ */
+export const editorAtom = Atom.writable(
+  () => stored(EDITOR_KEY) ?? "auto",
+  (context, value: string) => {
+    context.setSelf(value);
+    remember(EDITOR_KEY, value);
+  },
+).pipe(Atom.keepAlive);

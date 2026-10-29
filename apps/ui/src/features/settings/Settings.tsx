@@ -13,6 +13,7 @@ import { AppearanceSettings } from "./Appearance.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
+import { McpSettings, SkillsSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { SettingsPlace, SettingsProject } from "./parts.tsx";
@@ -34,6 +35,8 @@ export type SettingsCategory =
   | "prompts"
   | "effortRouter"
   | "harnesses"
+  | "mcp"
+  | "skills"
   | "usage"
   | "sourceControl"
   | "discord"
@@ -99,6 +102,8 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
     label: "Providers",
     pages: [
       ...page("harnesses", "Harnesses", "Installed CLIs and sign-ins", settingsGlyphs.harnesses),
+      ...page("mcp", "MCP servers", "Servers across harnesses", settingsGlyphs.mcp),
+      ...page("skills", "Skills", "Skills across harnesses", settingsGlyphs.skills),
       ...page("usage", "Usage", "Limits and spend", settingsGlyphs.usage),
     ],
   },
@@ -166,6 +171,11 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["effortRouter", "OpenRouter key"],
     ["harnesses", "Installed CLIs"],
     ["harnesses", "Sign-ins"],
+    ["mcp", "MCP servers"],
+    ["mcp", "Server tools"],
+    ["mcp", "Add a server to another harness"],
+    ["skills", "Skills"],
+    ["skills", "Add a skill to another harness"],
     ["usage", "Limits"],
     ["usage", "Tokens & cost"],
     ["usage", "Free resets"],
@@ -418,6 +428,10 @@ function SettingsContent({
       return <EffortRouterSettings />;
     case "harnesses":
       return <HarnessSettings />;
+    case "mcp":
+      return <McpSettings />;
+    case "skills":
+      return <SkillsSettings />;
     case "usage":
       return <UsageSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
     case "sourceControl":

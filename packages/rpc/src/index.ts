@@ -59,6 +59,7 @@ import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
 import { AutomationRpcs } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
+import { HubRpcs } from "./hub.ts";
 import { IssueRpcs } from "./githubIssues.ts";
 import { CloneEvent, CommitDetail, CommitPage } from "./history.ts";
 import { ImportRpcs } from "./imports.ts";
@@ -73,6 +74,7 @@ export * from "./files.ts";
 export * from "./git.ts";
 export * from "./gitBranches.ts";
 export * from "./github.ts";
+export * from "./hub.ts";
 export * from "./githubIssues.ts";
 export * from "./history.ts";
 export * from "./imports.ts";
@@ -90,7 +92,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 40;
+export const RPC_VERSION = 42;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -393,6 +395,17 @@ export const MachineRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   /**
+   * Starts a thread that goes on from `threadId` in its folder and worktree, with a lead on the same
+   * harness and model, and archives the old one; refused while its agents work or wait on the user.
+   * Answers with the new thread and `brief`, the first message Cerium wrote for it from the old
+   * thread's events and git, without asking a model, for the user to edit and send. Since `RPC_VERSION` 41.
+   */
+  Rpc.make("ContinueThread", {
+    payload: { threadId: ThreadId },
+    success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo, brief: Schema.String }),
+    error: CeriumError,
+  }),
+  /**
    * Puts a thread off until `until`, when it comes back to the inbox; without `until` it comes back
    * now. Archiving a thread ends its wait. Since `RPC_VERSION` 24.
    */
@@ -670,6 +683,7 @@ export const MachineRpcs = RpcGroup.make(
   GitRpcs,
   GitHubRpcs,
   IssueRpcs,
+  HubRpcs,
 );
 
 /**

@@ -3,6 +3,7 @@ import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
 import { completeWithCursor } from "./complete.ts";
+import { makeCursorHub } from "./hub.ts";
 import { cursorLogin } from "./login.ts";
 import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog, toModelInfo } from "./models.ts";
@@ -69,6 +70,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
             Effect.provide(platform),
           ),
         startSession,
+        hub: makeCursorHub(platform),
         usage: readyForCompletion.pipe(Effect.andThen(readCursorUsage()), Effect.provide(platform)),
       });
     }),
