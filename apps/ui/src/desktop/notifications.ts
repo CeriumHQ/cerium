@@ -5,8 +5,14 @@ import { useContext, useEffect, useEffectEvent, useRef, useState, useSyncExterna
 
 import { notificationsAtom, type Arrived } from "../backend/atoms.ts";
 import { shellBridge } from "../backend/shell.ts";
-import { notifyBadgeAtom, notifyKindsAtom, notifySoundAtom } from "../features/settings/preferences.ts";
+import {
+  cueSoundsAtom,
+  notifyBadgeAtom,
+  notifyKindsAtom,
+  notifySoundAtom,
+} from "../features/settings/preferences.ts";
 import { badgeText, handling } from "./model.ts";
+import { cueOfBatch, playCue } from "./sounds.ts";
 
 // The desktop's own notifications about this computer's threads. The backend says when a thread
 // needs the user, finished or failed (apps/backend/src/notify.ts); the window decides whether the
@@ -63,6 +69,7 @@ export function useDesktopNotifications(viewing: string | undefined) {
   const kinds = useAtomValue(notifyKindsAtom);
   const sound = useAtomValue(notifySoundAtom);
   const badge = useAtomValue(notifyBadgeAtom);
+  const cues = useAtomValue(cueSoundsAtom);
   const focused = useSyncExternalStore(onFocusChange, atWindow);
   /** The threads that notified since the user last looked at them. */
   const [waiting, setWaiting] = useState<ReadonlySet<string>>(new Set());
@@ -72,6 +79,11 @@ export function useDesktopNotifications(viewing: string | undefined) {
     const fresh = arrived.filter((each) => each.seq > handled.current);
     if (fresh.length === 0) return;
     handled.current = fresh.at(-1)!.seq;
+    // Heard whatever the window shows, and without the kinds that decide the native toasts.
+    if (cues === "on") {
+      const cue = cueOfBatch(fresh.map((each) => each.notification.kind));
+      if (cue !== undefined) playCue(cue);
+    }
     if (bridge?.notify === undefined) return;
     const looking = { atWindow: atWindow(), viewing };
     const counted: Array<string> = [];

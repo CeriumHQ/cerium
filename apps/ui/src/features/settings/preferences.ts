@@ -130,6 +130,11 @@ export const notifyKindsAtom = Atom.writable(
 ).pipe(Atom.keepAlive);
 /** Windows plays its notification sound with each one. */
 export const notifySoundAtom = preference<"on" | "off">("cerium:notifySound", ["on", "off"], "on");
+/**
+ * Cerium plays its own short sound when a thread finishes, needs the user or fails, in front of the
+ * window too. Off until chosen.
+ */
+export const cueSoundsAtom = preference<"on" | "off">("cerium:cueSounds", ["on", "off"], "off");
 /** The taskbar icon counts the threads that notified since the user last looked at them. */
 export const notifyBadgeAtom = preference<"on" | "off">("cerium:notifyBadge", ["on", "off"], "on");
 
