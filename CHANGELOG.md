@@ -20,6 +20,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Website: the hero's five beams and their labels take each harness's own colour (Claude's clay, Cursor's silver, OpenAI green for Codex, a warm grey for OpenCode, Meta blue for Muse Code) instead of a band of the spectrum.
 
 - Desktop: Electron is updated to 44.9.1 to address a security alert.
+- Git: merging or rebasing a branch keeps both sides' `CHANGELOG.md` entries instead of stopping on a conflict there.
 - CI: the commit message check reads only the subject of a pull request's squash merge, whose body GitHub fills with the branch's already-checked commits.
 - CI: a pull request that adds or updates only the web UI's, the website's or the relay's dependencies packages for Windows x64 alone, in about 3 minutes instead of 7, since none of those dependencies changes what the other platforms' packages carry.
 - CI: packaging leaves out the relay's and the website's dependencies, Cloudflare's runtime among them, which no package carries.
