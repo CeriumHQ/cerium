@@ -46,7 +46,7 @@ const fakeWorktrees = () => {
               branch: "cerium/fix-it",
               base: "main",
             };
-            return { worktree, cwd: "/worktrees/proj/fix-it/app" };
+            return { worktree, cwd: "/worktrees/proj/fix-it/app", copied: [".env", "app/.env.local"] };
           })
         : Effect.fail(new WorktreeError({ message: state.refuse })),
     changes: () => Effect.succeed(state.changes),
@@ -213,6 +213,10 @@ describe("Orchestrator worktrees", () => {
       assert.notInclude(heard, "Settings");
       assert.include(heard, "20010–20019");
       assert.include(heard, "CERIUM_PORT");
+      assert.include(
+        heard,
+        "Copied from the project into this worktree, since git ignores them: `.env`, `app/.env.local`.",
+      );
     }).pipe(
       Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer, scripts })),
       Effect.scoped,

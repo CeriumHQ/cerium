@@ -104,7 +104,8 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
 
       /**
        * Copies the files the repository's include list names into a worktree: only those git ignores,
-       * since the worktree has every tracked file already. Without a list, its environment files.
+       * since the worktree has every tracked file already, and never over a file the worktree has.
+       * Without a list, its environment files. Resolves with the files copied, relative to the root.
        */
       const copyIncluded = Effect.fn("Worktrees.copyIncluded")(function* (toplevel: string, root: string) {
         const listFile = path.join(toplevel, INCLUDE_FILE);
@@ -117,21 +118,27 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           "Couldn't list the files to copy",
         );
         const candidates = listed.split("\0").filter((name) => name !== "");
-        if (candidates.length === 0) return 0;
+        if (candidates.length === 0) return [];
         // Untracked files the list names but git doesn't ignore are the user's work in progress.
         const ignored = yield* git(toplevel, ["check-ignore", "-z", "--stdin"], `${candidates.join("\0")}\0`);
         const files = ignored.stdout.split("\0").filter((name) => name !== "");
-        yield* Effect.forEach(
+        const copied = yield* Effect.forEach(
           files,
           (file) =>
             Effect.gen(function* () {
               const target = path.join(root, file);
+              if (yield* exists(target)) return [];
               yield* fs.makeDirectory(path.dirname(target), { recursive: true });
               yield* fs.copyFile(path.join(toplevel, file), target);
-            }).pipe(Effect.ignore({ log: "Warn", message: `Couldn't copy ${file} into the worktree` })),
-          { concurrency: 16, discard: true },
+              return [file];
+            }).pipe(
+              Effect.catch(() =>
+                Effect.logWarning(`Couldn't copy ${file} into the worktree`).pipe(Effect.as([])),
+              ),
+            ),
+          { concurrency: 16 },
         );
-        return files.length;
+        return copied.flat();
       });
 
       /** Commits on the branch its base doesn't have, read in the repository so a removed worktree still counts. */
@@ -193,8 +200,12 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             : ["worktree", "add", "-b", worktree.branch, worktree.root, worktree.base],
           "Git couldn't make the worktree",
         );
-        yield* copyIncluded(toplevel, worktree.root).pipe(
-          Effect.ignore({ log: "Warn", message: "Couldn't copy the included files into the worktree" }),
+        return yield* copyIncluded(toplevel, worktree.root).pipe(
+          Effect.catch(() =>
+            Effect.logWarning("Couldn't copy the included files into the worktree").pipe(
+              Effect.as([] as ReadonlyArray<string>),
+            ),
+          ),
         );
       });
 
@@ -234,9 +245,13 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             branch: `${BRANCH_PREFIX}${picked}`,
             base,
           };
-          yield* checkOut(toplevel, worktree);
+          const copied = yield* checkOut(toplevel, worktree);
           // Git ends the prefix with a slash.
-          return { worktree, cwd: prefix === "" ? worktree.root : path.resolve(worktree.root, prefix) };
+          return {
+            worktree,
+            cwd: prefix === "" ? worktree.root : path.resolve(worktree.root, prefix),
+            copied,
+          };
         }, making.withPermits(1)),
 
         changes,

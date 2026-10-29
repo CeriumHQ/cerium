@@ -376,6 +376,16 @@ const setupNote = (ran: ScriptStarted | undefined): string =>
       ? `The project's setup (\`${ran.script}\`) is running in this thread's terminal. Wait for the notice of it finishing or failing before relying on what it installs.`
       : `Cerium guesses the setup \`${ran.script}\` for this project, and a guess never runs by itself: the user was asked in this thread to run it, once or always for this project. You'll be told when it ends. Until then, don't rely on what it installs; if the user doesn't answer, install what you need yourself.`;
 
+/** What the lead hears of the git-ignored files (`.env`, or what `.worktreeinclude` lists) copied in from the project. */
+const copiedNote = (copied: ReadonlyArray<string> | undefined): string => {
+  if (copied === undefined || copied.length === 0) return "";
+  const shown = copied
+    .slice(0, 6)
+    .map((file) => `\`${file}\``)
+    .join(", ");
+  return ` Copied from the project into this worktree, since git ignores them: ${shown}${copied.length > 6 ? ` and ${copied.length - 6} more` : ""}.`;
+};
+
 /** What the lead hears of the ports its thread's scripts and terminals were given. */
 const portsNote = (ports: ThreadPorts | undefined): string =>
   ports === undefined
@@ -3099,7 +3109,10 @@ export class Orchestrator extends Context.Service<
             .pipe(Effect.option);
           yield* deliver(lead.id, {
             _tag: "SystemNotice",
-            text: setupNote(Option.getOrUndefined(started)) + portsNote(yield* scripts.ports(threadId)),
+            text:
+              setupNote(Option.getOrUndefined(started)) +
+              copiedNote(isolated.copied) +
+              portsNote(yield* scripts.ports(threadId)),
           });
         }
         return { thread, lead };
