@@ -155,7 +155,7 @@ export const decodeAnnounced = (stored: unknown): Announcements =>
 /**
  * Tells the user when a subscription's meter turns amber or red, or would run out before it resets
  * (see the notes above). Watching the usage keeps the harnesses read in the background, so the
- * warnings come without Settings → Usage open. Requires `Store`, `SubscriptionUsage` and `Notifications`.
+ * warnings come without Settings → Limits open. Requires `Store`, `SubscriptionUsage` and `Notifications`.
  */
 export const limitWarnings = Layer.effectDiscard(
   Effect.gen(function* () {

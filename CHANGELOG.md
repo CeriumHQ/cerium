@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Settings → Usage is now two pages under Providers: Limits, with each harness's limit cards, and Tokens, with the tokens and cost agents used. Each has its own Refresh and "Updated" time, and the rail's usage rings open Limits.
 - The model menu sets the model's effort and speed in a panel beside its list instead of stacking them under it, so it no longer runs off the top of the window. Each effort sits on its own row, weakest first, with bars that rise with it. On a phone the panel goes under the list, with Auto beside the levels. Several at once moves into the menu as a switch at its foot, showing how many models are picked while it's on, so a chat can start several models too. The access button beside it now shows the access picked, Auto included, and its menu lists just the three modes, with no heading or descriptions. It explains a greyed-out mode only when there is one.
 - On a phone, the message box's project and branch shorten to fit, the branch first, instead of sliding under the model chip.
 - A response no longer opens with a header of its harness's mark and its model, which the message box already shows. For an agent on Auto, the level the effort router picked moves to the turn's footer as "High effort", beside its time and tokens, with how the router decided under the pointer ("Auto picked High", its confidence, time and cost, or why it kept the level), where it read "Auto · High" beside the model.

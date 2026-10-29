@@ -1,6 +1,6 @@
 import type { SpendTotals } from "@cerium/protocol";
 
-// How Settings → Usage cuts time and words what agents used.
+// How Settings → Tokens cuts time and words what agents used.
 
 export type SpendRange = "today" | "week" | "month";
 
