@@ -304,7 +304,7 @@ function InstalledRow({
             "Needs setup"
           ) : (
             <span className="font-mono tabular-nums">
-              {newer === undefined ? status.version : `${status.version} → ${newer}`}
+              {newer === undefined ? `v${status.version}` : `v${status.version} → v${newer}`}
             </span>
           )
         }

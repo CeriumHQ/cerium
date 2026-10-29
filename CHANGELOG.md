@@ -9,7 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Changed
 
 - Settings → Roster no longer shows or edits a line under each model. Settings → Tools is now Advisor, tagged Experimental, and the Your MCP servers switch is gone: agents always get the MCP servers set up in each harness, as before by default (`includeUserMcpServers` leaves the settings).
-- Settings → Harnesses: Update all updates every harness with a newer release in turn, in one dialog. The blue dot on a harness's icon is gone, and each row shows the harness's version (`1.4.12 → 1.4.13` when a newer one is out) where it showed the plan. Muse Code updates itself when it starts and Cursor runs on the SDK that ships with Cerium, so neither has an update command to run.
+- Settings → Harnesses: Update all updates every harness with a newer release in turn, in one dialog. The blue dot on a harness's icon is gone, and each row shows the harness's version (`v1.4.12 → v1.4.13` when a newer one is out) where it showed the plan. Muse Code updates itself when it starts and Cursor runs on the SDK that ships with Cerium, so neither has an update command to run.
 
 - Desktop: Electron is updated to 44.9.1 to address a security alert.
 - CI: the commit message check reads only the subject of a pull request's squash merge, whose body GitHub fills with the branch's already-checked commits.
