@@ -40,6 +40,7 @@ import type { TurnFileTab } from "../features/viewer/model.ts";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { PreviewDock } from "../features/preview/PreviewDock.tsx";
+import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
@@ -133,6 +134,8 @@ export interface ThreadPaneActions {
   readonly agentActions: AgentActions;
   /** The user wrote to the thread: its tab is no longer only a preview. */
   readonly keep: (threadId: string) => void;
+  /** The machine takes the user's word on a guessed setup from the thread, so the thread asks for it. */
+  readonly confirmsSetup: boolean;
   /** Where a new thread is set up when no harness can run one. */
   readonly onSetUp: (() => void) | undefined;
   /** The new-thread folder the user picked. */
@@ -419,12 +422,17 @@ export function ThreadPane({
                 cloud ? (
                   <ConnectingNote machine={cloud.name} />
                 ) : (
-                  <ApprovalTray
-                    agents={agents}
-                    onAnswer={actions.answerApproval}
-                    onAnswerSpawn={actions.answerSpawn}
-                    onAnswerQuestion={actions.answerQuestion}
-                  />
+                  <>
+                    <ApprovalTray
+                      agents={agents}
+                      onAnswer={actions.answerApproval}
+                      onAnswerSpawn={actions.answerSpawn}
+                      onAnswerQuestion={actions.answerQuestion}
+                    />
+                    {viewed && actions.confirmsSetup ? (
+                      <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />
+                    ) : null}
+                  </>
                 )
               }
               onHeight={setComposerHeight}
