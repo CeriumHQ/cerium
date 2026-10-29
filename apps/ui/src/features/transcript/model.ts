@@ -36,6 +36,8 @@ export type TranscriptBlock =
       readonly mentions: ReadonlyArray<Mention>;
       /** The title of the thread whose lead wrote this for the user when it started this thread. */
       readonly writtenIn?: string;
+      /** The assistant outside Cerium the user had send this, such as Grok. */
+      readonly sentVia?: string;
       /** Whether the message reached the agent, so the user can edit it and send it again. */
       readonly delivered?: true;
     }
@@ -190,6 +192,7 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
   attachments: item.attachments ?? [],
   mentions: item.mentions ?? [],
   ...(item.writtenBy ? { writtenIn: item.writtenBy.threadTitle } : {}),
+  ...(item.sentVia ? { sentVia: item.sentVia.assistant } : {}),
 });
 
 /**

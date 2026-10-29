@@ -9,6 +9,7 @@ import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings, DeviceSettings } from "./Account.tsx";
 import { AdvisorSettings, RosterSettings, ThreadSettings } from "./Agents.tsx";
+import { AssistantSettings } from "./Assistants.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
@@ -40,6 +41,7 @@ export type SettingsCategory =
   | "usage"
   | "sourceControl"
   | "discord"
+  | "assistants"
   | "account"
   | "devices";
 
@@ -117,6 +119,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
         settingsGlyphs.sourceControl,
       ),
       ...page("discord", "Discord", "Activity status", settingsGlyphs.discord, desktop),
+      ...page("assistants", "Remote MCP", "Manage threads from other apps", settingsGlyphs.assistants),
     ],
   },
   {
@@ -182,6 +185,9 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["sourceControl", "GitHub CLI"],
     ["sourceControl", "Project scripts"],
     ["discord", "Show activity on Discord"],
+    ["assistants", "Allow remote MCP"],
+    ["assistants", "MCP server address"],
+    ["assistants", "Connected apps"],
     ["account", "Sign in"],
     ["account", "Sign out"],
     ["devices", "Devices"],
@@ -438,6 +444,8 @@ function SettingsContent({
       return <SourceControlSettings />;
     case "discord":
       return <DiscordSettings />;
+    case "assistants":
+      return <AssistantSettings {...open("account")} />;
     case "account":
       return <AccountSettings />;
     case "devices":

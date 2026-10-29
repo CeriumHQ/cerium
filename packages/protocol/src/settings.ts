@@ -3,6 +3,7 @@ import { Effect, Schema, Struct } from "effect";
 import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { LenientArray, withFallback } from "./compat.ts";
 import { ProviderId } from "./ids.ts";
+import { AccessMode } from "./orchestration.ts";
 import { PromptsSettings } from "./savedPrompts.ts";
 
 /**
@@ -123,6 +124,18 @@ export type SlimThreadsAfter = typeof SlimThreadsAfter.Type;
 
 const defaultSlimThreadsAfter: SlimThreadsAfter = 7;
 
+/**
+ * Assistants outside Cerium the user connected to their account (assistants.ts): whether this
+ * computer starts threads and sends messages for them, and the access the threads they start get.
+ */
+export const AssistantSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  access: AccessMode,
+});
+export type AssistantSettings = typeof AssistantSettings.Type;
+
+const defaultAssistants: AssistantSettings = { enabled: false, access: "ask" };
+
 /** Each setting's shape, without the defaults `Settings` reads a missing one as. */
 const SettingsFields = Schema.Struct({
   advisor: AdvisorSettings,
@@ -132,6 +145,7 @@ const SettingsFields = Schema.Struct({
   roster: RosterSettings,
   prompts: PromptsSettings,
   slimThreadsAfter: SlimThreadsAfter,
+  assistants: AssistantSettings,
 });
 
 /**
@@ -156,6 +170,8 @@ export const Settings = Schema.Struct({
   slimThreadsAfter: SlimThreadsAfter.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(defaultSlimThreadsAfter)),
   ),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 43). */
+  assistants: AssistantSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAssistants))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -174,4 +190,5 @@ export const defaultSettings: Settings = {
   roster: defaultRoster,
   prompts: defaultPrompts,
   slimThreadsAfter: defaultSlimThreadsAfter,
+  assistants: defaultAssistants,
 };

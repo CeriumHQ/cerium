@@ -40,7 +40,8 @@ function glyph(art: ReactNode) {
 /**
  * Each page's glyph: a slider with its knobs, a person, a ping, a prism, a fan of agents, a slash, a
  * frame, four blocks round a hub, a book, a branch, a gauge, keycaps, a microphone, a turning arrow, a
- * pen, a ranked list, a plug, a fork in the road, a screen beside a phone and a speech bubble.
+ * pen, a ranked list, a plug, a fork in the road, a screen beside a phone, a speech bubble and a
+ * bubble with a spark leaping from it.
  */
 export const settingsGlyphs: Record<
   | "general"
@@ -62,7 +63,8 @@ export const settingsGlyphs: Record<
   | "advisor"
   | "router"
   | "devices"
-  | "discord",
+  | "discord"
+  | "assistants",
   ComponentType<GlyphProps>
 > = {
   general: glyph(
@@ -197,6 +199,13 @@ export const settingsGlyphs: Record<
     <>
       <path d="M5 4.5h14A1.5 1.5 0 0 1 20.5 6v8.5A1.5 1.5 0 0 1 19 16h-7l-4.5 3.5V16H5a1.5 1.5 0 0 1-1.5-1.5V6A1.5 1.5 0 0 1 5 4.5Z" />
       <path d={facet(12, 10.25, 2.5)} className="fill-accent stroke-none" />
+    </>,
+  ),
+  assistants: glyph(
+    <>
+      <path d="M13.5 6.5H5A1.5 1.5 0 0 0 3.5 8v7.5A1.5 1.5 0 0 0 5 17h2.5v3l4-3H17a1.5 1.5 0 0 0 1.5-1.5V12" />
+      <path d="M8 11.5h5" />
+      <path d={facet(18, 6, 2.75)} className="fill-accent stroke-none" />
     </>,
   ),
 };

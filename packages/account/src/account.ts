@@ -1,9 +1,11 @@
 import {
   AccountProfile,
   AccountState,
+  ASSISTANT_MCP_PATH,
   buildQuery,
   ClaimLinkResponse,
   CLOSE_BAD_CREDENTIAL,
+  ConnectedAssistants,
   CLOSE_REMOVED,
   CreateLinkResponse,
   DeviceId,
@@ -14,7 +16,9 @@ import {
   randomToken,
   RelayMessage,
   relayProtocols,
+  type AssistantNotice,
   type ChannelId,
+  type ConnectedAssistant,
   type ClaimLinkRequest,
   type CreateLinkRequest,
   type Credential,
@@ -71,10 +75,11 @@ const retryAfterOf = (response: HttpClientResponse.HttpClientResponse): number |
 export const DEFAULT_RELAY_URL = "https://cerium.nonlooped.xyz";
 
 /**
- * What the relay says besides the account's state: tunnel messages and sync notices, and `RelayLost`
+ * What the relay says besides the account's state: tunnel messages, sync notices, assistants' calls
+ * to a desktop, and `RelayLost`
  * when this device's connection to the relay drops, which ends every channel it carried.
  */
-export type RelayEvent = TunnelMessage | SyncNotice | { readonly _tag: "RelayLost" };
+export type RelayEvent = TunnelMessage | SyncNotice | AssistantNotice | { readonly _tag: "RelayLost" };
 
 export interface AccountOptions {
   /** The relay, e.g. `https://cerium.nonlooped.xyz`. */
@@ -212,6 +217,18 @@ export class Account extends Context.Service<
      * nobody is notified about what they're looking at.
      */
     reportPresence(presence: Presence): Effect.Effect<void>;
+    /**
+     * Tells the relay whether this desktop takes the account's assistants' calls, now and again
+     * whenever it reconnects.
+     */
+    offerAssistants(enabled: boolean): Effect.Effect<void>;
+    /** The assistants connected to the account, and the address they connect to. */
+    readonly assistants: Effect.Effect<
+      { readonly url: string; readonly assistants: ReadonlyArray<ConnectedAssistant> },
+      AccountError
+    >;
+    /** Disconnects an assistant from the account: it can do nothing more. */
+    disconnectAssistant(id: string): Effect.Effect<void, AccountError>;
     /** What the relay says from now on, for as long as the scope lasts. */
     readonly relayEvents: Effect.Effect<PubSub.Subscription<RelayEvent>, never, Scope.Scope>;
     /** Another machine's thread from the cloud copy, undecoded. */
@@ -263,6 +280,8 @@ export class Account extends Context.Service<
         }).pipe(Effect.forkScoped);
         /** What the window shows, as last reported; sent again on every connection. */
         let presence: Presence | undefined;
+        /** Whether this desktop takes assistants' calls, as last said; sent again on every connection. */
+        let offeringAssistants = false;
         const relay = options.relayUrl.replace(/\/+$/, "");
 
         // ---- The relay's HTTP API ------------------------------------------------------------
@@ -376,6 +395,11 @@ export class Account extends Context.Service<
             yield* writer.write("ping").pipe(Effect.delay(PING_EVERY), Effect.forever, Effect.forkScoped);
             if (presence !== undefined) {
               yield* writer.write(JSON.stringify({ _tag: "Presence", ...presence } satisfies DeviceMessage));
+            }
+            if (offeringAssistants) {
+              yield* writer.write(
+                JSON.stringify({ _tag: "OfferAssistants", enabled: true } satisfies DeviceMessage),
+              );
             }
             // A connection this new needs no check.
             yield* Queue.clear(checks);
@@ -715,6 +739,29 @@ export class Account extends Context.Service<
               presence = next;
               // Offline, it goes when the connection comes back.
               return sendFrame({ _tag: "Presence", ...next }).pipe(Effect.ignore);
+            }),
+          offerAssistants: (enabled) =>
+            Effect.suspend(() => {
+              offeringAssistants = enabled;
+              return sendFrame({ _tag: "OfferAssistants", enabled }).pipe(Effect.ignore);
+            }),
+          assistants: Effect.gen(function* () {
+            const credential = yield* signedIn;
+            const response = yield* send(
+              withCredential(HttpClientRequest.get(`${relay}/api/assistants`), credential),
+            );
+            const { assistants } = yield* decode(ConnectedAssistants)(response);
+            return { url: `${relay}${ASSISTANT_MCP_PATH}`, assistants };
+          }),
+          disconnectAssistant: (id) =>
+            Effect.gen(function* () {
+              const credential = yield* signedIn;
+              yield* send(
+                withCredential(
+                  HttpClientRequest.delete(`${relay}/api/assistants/${encodeURIComponent(id)}`),
+                  credential,
+                ),
+              );
             }),
           relayEvents: PubSub.subscribe(tunnelEvents),
           readThread: (machine, threadId) =>

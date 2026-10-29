@@ -15,6 +15,7 @@ import {
   narrowAccess,
   REVIEWER_ROLE,
   type AccessMode,
+  type AssistantOrigin,
   type AdvisorSettings,
   type AgentEvent,
   type Attachment,
@@ -146,6 +147,8 @@ export interface CreateThreadInput {
 export interface UserMessageExtras {
   readonly attachments?: ReadonlyArray<Attachment>;
   readonly mentions?: ReadonlyArray<Mention>;
+  /** The assistant outside Cerium the user had send it. */
+  readonly sentVia?: AssistantOrigin;
 }
 
 /** What a lead asks for through `spawn_agent`. */
@@ -158,6 +161,29 @@ export interface SpawnRequest {
   readonly access?: AccessMode;
   readonly prompt: string;
 }
+
+/**
+ * What an assistant outside Cerium asks for on the user's behalf (assistants.ts in @cerium/protocol):
+ * a work thread in `cwd`, or a chat without one.
+ */
+export interface AssistantThreadRequest {
+  readonly assistant: string;
+  /** The new lead's first message, which it takes as the user's request. */
+  readonly prompt: string;
+  /** A project folder; a chat without one. */
+  readonly cwd?: string;
+  /** Named from the prompt without one, like a thread the user starts. */
+  readonly title?: string;
+  /** A catalog alias or model id; the first model of the roster without one. */
+  readonly model?: string;
+  /** Whether it runs in a worktree of its own; only a work thread can. */
+  readonly worktree?: boolean;
+  readonly access: AccessMode;
+}
+
+/** The model an assistant's thread starts on without naming one: the roster's first, its harness's favourite. */
+export const defaultAssistantModel = (entries: ReadonlyArray<CatalogEntry>): CatalogEntry | undefined =>
+  entries.find((entry) => entry.priority === 1) ?? entries[0];
 
 /** What a lead asks for through `create_thread`: a thread of the user's in its own folder. */
 export interface ThreadRequest {
@@ -590,6 +616,14 @@ export class Orchestrator extends Context.Service<
     startThread(
       callerId: AgentId,
       request: ThreadRequest,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    /**
+     * Starts a thread for the user at an assistant's request, whose lead begins on the prompt as the
+     * user's message, marked as sent through that assistant. Assistants together start as many
+     * threads as `threadBudget` lets agents.
+     */
+    startAssistantThread(
+      request: AssistantThreadRequest,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     /**
      * Delivers an agent's message. One to another thread's lead waits for that lead's next turn,
@@ -3245,7 +3279,7 @@ export class Orchestrator extends Context.Service<
         extras: UserMessageExtras & Pick<FromUser, "writtenBy"> = {},
         options: { readonly rewindBefore?: string } = {},
       ) => {
-        const { attachments = [], mentions = [], writtenBy } = extras;
+        const { attachments = [], mentions = [], writtenBy, sentVia } = extras;
         if (text.trim() === "" && attachments.length === 0) {
           return Effect.fail(new OrchestratorError({ reason: "invalid", message: "The message is empty." }));
         }
@@ -3260,6 +3294,7 @@ export class Orchestrator extends Context.Service<
               ...(attachments.length > 0 ? { attachments } : {}),
               ...(mentions.length > 0 ? { mentions } : {}),
               ...(writtenBy ? { writtenBy } : {}),
+              ...(sentVia ? { sentVia } : {}),
             };
             // Recorded before it waits on the session or a running turn, so the user sees it at once.
             yield* emit(rt, { _tag: "MessageQueued", message });
@@ -3284,6 +3319,7 @@ export class Orchestrator extends Context.Service<
           acceptUserMessage(agentId, text, {
             ...(extras.attachments ? { attachments: extras.attachments } : {}),
             ...(extras.mentions ? { mentions: extras.mentions } : {}),
+            ...(extras.sentVia ? { sentVia: extras.sentVia } : {}),
           }),
 
         editMessage: (agentId, messageId, text, extras = {}) =>
@@ -3964,6 +4000,64 @@ export class Orchestrator extends Context.Service<
           if (title !== undefined) untitled.delete(started.thread.id);
           yield* acceptUserMessage(started.lead.id, request.prompt, {
             writtenBy: { agentId: callerId, threadId: origin.id, threadTitle: origin.title },
+          });
+          return started;
+        }),
+
+        startAssistantThread: Effect.fn("Orchestrator.startAssistantThread")(function* (
+          request: AssistantThreadRequest,
+        ) {
+          const title = request.title?.trim() || undefined;
+          if (title !== undefined && title.length > MAX_THREAD_TITLE) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `A title is 1 to ${MAX_THREAD_TITLE} characters; leave it out to have the thread named from its prompt.`,
+            });
+          }
+          const entries = yield* catalog.entries;
+          const first = defaultAssistantModel(entries);
+          const target =
+            request.model === undefined
+              ? first === undefined
+                ? undefined
+                : resolveTarget(entries, { model: first.alias })
+              : resolveTarget(entries, { model: request.model });
+          if (target === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message:
+                request.model === undefined
+                  ? "No harness is signed in on this computer, so no thread can start there."
+                  : `"${request.model}" isn't a model this computer offers. list_models names the ones it does.`,
+            });
+          }
+          if (!adapters.has(target.provider)) {
+            return yield* new OrchestratorError({
+              reason: "unavailable",
+              message: `No ${target.provider} adapter is installed.`,
+            });
+          }
+          yield* spend(
+            "assistants",
+            config.threadBudget,
+            (recent) =>
+              `Assistants have started ${recent} threads on this computer recently, the most allowed. Try again later.`,
+          );
+          const work = request.cwd !== undefined;
+          const started = yield* createThread({
+            title: title ?? (work ? "New thread" : "New chat"),
+            mode: work ? "work" : "chat",
+            ...(work ? { cwd: request.cwd } : {}),
+            worktree: work && request.worktree === true,
+            lead: {
+              ...target,
+              ...((yield* routerOn) ? { autoEffort: true } : {}),
+              access: request.access,
+            },
+          });
+          if (title !== undefined) untitled.delete(started.thread.id);
+          yield* acceptUserMessage(started.lead.id, request.prompt, {
+            sentVia: { assistant: request.assistant },
           });
           return started;
         }),

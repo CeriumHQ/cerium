@@ -25,6 +25,7 @@ import { Repositories } from "./clone.ts";
 import { CatalogLive, OfferedModels } from "./catalog.ts";
 import { checkpointsLayer } from "./checkpoints.ts";
 import { thisMachine } from "./device.ts";
+import { AssistantCalls } from "./assistants.ts";
 import { discordPresence } from "./discord.ts";
 import { limitWarnings } from "./limits.ts";
 import { loopbackHandoff } from "./linkHandoff.ts";
@@ -143,8 +144,10 @@ export const backendLayer = (options: BackendOptions) => {
     // tells the account's browsers when a thread here needs the user, finished or failed. Shows
     // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
     // subscription usage for Settings → Usage. Slims threads gone quiet for the days the user chose.
+    // Answers the assistants the user connected to their account, when they let them in.
     Layer.provideMerge(
       Layer.mergeAll(
+        AssistantCalls,
         CloudCopy,
         CloudThreads.layer,
         Notifications.layer,

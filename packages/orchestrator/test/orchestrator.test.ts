@@ -492,6 +492,63 @@ describe("Orchestrator", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku], threadLimit: 3 })), Effect.scoped);
   });
 
+  it.live("starts threads for an assistant, marked as sent through it, on the roster's first model", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+
+      const { thread, lead } = yield* orchestrator.startAssistantThread({
+        assistant: "Grok",
+        prompt: "Add dark mode",
+        cwd: ".",
+        title: "Dark mode",
+        access: "acceptEdits",
+      });
+      assert.deepInclude(thread, { title: "Dark mode", mode: "work", cwd: "." });
+      assert.deepInclude(lead, { provider: "claude", model: "haiku", access: "acceptEdits" });
+      const [brief] = yield* waitFor((events) => turnInputs(events, lead.id)[0]);
+      const { id: _, ...delivered } = brief?._tag === "FromUser" ? brief : { id: undefined };
+      assert.deepStrictEqual(delivered, {
+        _tag: "FromUser",
+        text: "Add dark mode",
+        sentVia: { assistant: "Grok" },
+      });
+      const sent = fake.sessions.find((session) => session.sent.some((text) => text.includes("dark mode")));
+      assert.include(sent?.sent[0] ?? "", "from Grok, an app outside Cerium");
+
+      const chat = yield* orchestrator.startAssistantThread({
+        assistant: "Grok",
+        prompt: "Hi",
+        access: "ask",
+      });
+      assert.deepInclude(chat.thread, { mode: "chat" });
+      assert.deepInclude(chat.lead, { access: "readOnly" });
+
+      const refusals = yield* Effect.forEach(
+        [
+          orchestrator.startAssistantThread({ assistant: "Grok", prompt: "x", model: "nope", access: "ask" }),
+          orchestrator.startAssistantThread({
+            assistant: "Grok",
+            prompt: "x",
+            title: "x".repeat(81),
+            access: "ask",
+          }),
+        ],
+        (attempt) => Effect.flip(attempt).pipe(Effect.map((error) => error.reason)),
+      );
+      assert.deepStrictEqual(refusals, ["invalid", "invalid"]);
+      yield* orchestrator.startAssistantThread({ assistant: "Grok", prompt: "Third", access: "ask" });
+      const spent = yield* Effect.flip(
+        orchestrator.startAssistantThread({ assistant: "Grok", prompt: "Fourth", access: "ask" }),
+      );
+      assert.strictEqual(spent.reason, "budgetExceeded");
+    }).pipe(
+      Effect.provide(testLayer([fake.adapter], { catalog: [{ ...haiku, priority: 1 }], threadLimit: 3 })),
+      Effect.scoped,
+    );
+  });
+
   it.live("tells a starting lead which threads already work in its folder", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
