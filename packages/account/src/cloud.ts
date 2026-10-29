@@ -1,5 +1,6 @@
 import {
   UiEvents,
+  CloudHistoryPage,
   type AccountDrafts,
   type AccountTasks,
   type AccountThreads,
@@ -114,6 +115,11 @@ export class CloudThreads extends Context.Service<
     readonly accountThreads: Stream.Stream<AccountThreads>;
     /** Another machine's thread, read from the cloud copy. */
     cloudEvents(machine: DeviceId, threadId: ThreadId): Effect.Effect<ReadonlyArray<UiEvent>, AccountError>;
+    cloudHistory(
+      machine: DeviceId,
+      threadId: ThreadId,
+      before?: number,
+    ): Effect.Effect<CloudHistoryPage, AccountError>;
     /** Tells the account's other devices these threads were seen here. */
     markRead(entries: ReadonlyArray<ReadEntry>): Effect.Effect<void, AccountError>;
     /** The account's drafts, now and after every change. */
@@ -177,6 +183,18 @@ export class CloudThreads extends Context.Service<
               error._tag === "AccountError"
                 ? error
                 : new AccountError({ message: "Cerium's cloud sent a thread Cerium can't read." }),
+            ),
+          ),
+        cloudHistory: (machine, threadId, before) =>
+          account.readThread(machine, threadId, before === undefined ? {} : { before }).pipe(
+            // A relay not upgraded yet returns its legacy array, still validated by the usual schema.
+            Effect.flatMap((value) =>
+              Array.isArray(value)
+                ? decodeEvents(value).pipe(Effect.map((events) => ({ events, more: false })))
+                : Schema.decodeUnknownEffect(CloudHistoryPage)(value),
+            ),
+            Effect.mapError(
+              () => new AccountError({ message: "Cerium's cloud sent a history page Cerium can't read." }),
             ),
           ),
         markRead: (entries) =>

@@ -53,6 +53,71 @@ const event = (sequence: number, text = `message ${sequence}`): AgentEvent => ({
 });
 
 describe("Store", () => {
+  it.effect(
+    "pages tied timestamps and per-agent sequences without gaps, then catches late imports by append position",
+    () =>
+      withStore(
+        Effect.gen(function* () {
+          const store = yield* Store;
+          yield* store.createThread(thread);
+          yield* store.createAgent(lead);
+          const child = { ...lead, id: "agt_child" as AgentId, parentId: lead.id };
+          yield* store.createAgent(child);
+          const initial = Array.from({ length: 12 }, (_, n) => ({
+            ...event(Math.floor(n / 2)),
+            id: `tie_${n.toString().padStart(2, "0")}` as EventId,
+            agentId: n % 2 ? child.id : lead.id,
+            at: 100,
+          }));
+          yield* store.appendEvents(initial);
+          let page = yield* store.historyPage(thread.id, { limit: 3 });
+          const watermark = page.after;
+          const ids = page.events.map((e) => e.id);
+          while (page.more) {
+            page = yield* store.historyPage(thread.id, { before: page.before!, limit: 3 });
+            ids.unshift(...page.events.map((e) => e.id));
+          }
+          assert.deepStrictEqual(
+            ids,
+            initial.map((e) => e.id),
+          );
+          const imported = { ...event(6), at: 0 };
+          yield* store.appendEvents([imported, event(7), event(8)]);
+          const resumed = yield* store.historyPage(thread.id, { after: watermark, limit: 2 });
+          assert.deepStrictEqual(
+            resumed.events.map((e) => e.id),
+            [imported.id, event(7).id],
+          );
+          assert.isTrue(resumed.more);
+          const end = yield* store.historyPage(thread.id, { after: resumed.after, limit: 2 });
+          assert.deepStrictEqual(
+            end.events.map((e) => e.id),
+            [event(8).id],
+          );
+          assert.isFalse(end.more);
+        }),
+      ),
+  );
+
+  it.effect("fills only the requested compact page and persists its progress across reopen", () => {
+    const filename = join(mkdtempSync(join(tmpdir(), "cerium-page-")), "events.db");
+    return Effect.gen(function* () {
+      const store = yield* Store;
+      yield* store.createThread(thread);
+      yield* store.createAgent(lead);
+      yield* store.appendEvents(Array.from({ length: 40 }, (_, n) => event(n)));
+      const db = new DatabaseSync(filename);
+      db.exec("DELETE FROM ui_events");
+      const page = yield* store.historyPage(thread.id, { limit: 5 });
+      assert.lengthOf(page.events, 5);
+      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 5);
+      yield* store.historyPage(thread.id, { limit: 5 });
+      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 5);
+      yield* store.historyPage(thread.id, { before: page.before!, limit: 5 });
+      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 10);
+      db.close();
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+  });
   it.effect("backfills compact history for old events once and keeps it idempotent", () => {
     const filename = join(mkdtempSync(join(tmpdir(), "cerium-compact-")), "events.db");
     return Effect.gen(function* () {

@@ -1,4 +1,5 @@
 import {
+  HistoryRequest,
   ClaimLinkRequest,
   ConfirmLinkRequest,
   CreateLinkRequest,
@@ -119,7 +120,18 @@ const route = async (request: Request, env: Env): Promise<Response> => {
     const threadId = param(action, ThreadId);
     if (machine === undefined || threadId === undefined)
       return refuse(404, "That thread isn't in your account.");
-    const events = await accountStub(env, credential).threadEvents(credential, machine, threadId);
+    const query = new URL(request.url).searchParams;
+    const before = query.get("before");
+    const page = query.has("page")
+      ? param({ ...(before === null ? {} : { after: Number(before) }) }, HistoryRequest)
+      : undefined;
+    if (query.has("page") && page === undefined) return refuse(400, "Invalid history cursor.");
+    const events = await accountStub(env, credential).threadEvents(
+      credential,
+      machine,
+      threadId,
+      page === undefined ? undefined : { ...(page.after === undefined ? {} : { before: page.after }) },
+    );
     return typeof events === "string"
       ? new Response(events, {
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },

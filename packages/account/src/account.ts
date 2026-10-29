@@ -232,7 +232,11 @@ export class Account extends Context.Service<
     /** What the relay says from now on, for as long as the scope lasts. */
     readonly relayEvents: Effect.Effect<PubSub.Subscription<RelayEvent>, never, Scope.Scope>;
     /** Another machine's thread from the cloud copy, undecoded. */
-    readThread(machine: DeviceId, threadId: ThreadId): Effect.Effect<unknown, AccountError>;
+    readThread(
+      machine: DeviceId,
+      threadId: ThreadId,
+      page?: { readonly before?: number },
+    ): Effect.Effect<unknown, AccountError>;
     /**
      * A channel this device opens to a machine, for as long as the scope lasts. A desktop both opens
      * channels and answers them, so answers on its own channels mustn't look like new ones.
@@ -764,11 +768,16 @@ export class Account extends Context.Service<
               );
             }),
           relayEvents: PubSub.subscribe(tunnelEvents),
-          readThread: (machine, threadId) =>
+          readThread: (machine, threadId, page) =>
             Effect.gen(function* () {
               const credential = yield* signedIn;
               const response = yield* send(
-                withCredential(HttpClientRequest.get(`${relay}/api/sync/${machine}/${threadId}`), credential),
+                withCredential(
+                  HttpClientRequest.get(
+                    `${relay}/api/sync/${machine}/${threadId}${page === undefined ? "" : `?page=1${page.before === undefined ? "" : `&before=${page.before}`}`}`,
+                  ),
+                  credential,
+                ),
               );
               return yield* response.json.pipe(
                 Effect.mapError(

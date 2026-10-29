@@ -69,6 +69,8 @@ export const deviceHandlers = <W, N, K, B>(own: {
         WatchAccountThreads: () => cloud.accountThreads,
         CloudThreadEvents: ({ machine, threadId }) =>
           cloud.cloudEvents(machine, threadId).pipe(Effect.mapError(refuse)),
+        CloudThreadHistory: ({ machine, threadId, before }) =>
+          cloud.cloudHistory(machine, threadId, before).pipe(Effect.mapError(refuse)),
         MarkThreadsRead: ({ entries }) => cloud.markRead(entries).pipe(Effect.mapError(refuse)),
         WatchAccountDrafts: () => cloud.accountDrafts,
         SaveDrafts: ({ drafts }) => cloud.saveDrafts(drafts).pipe(Effect.mapError(refuse)),

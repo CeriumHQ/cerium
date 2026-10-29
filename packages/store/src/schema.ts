@@ -105,6 +105,25 @@ export const uiEvents = sqliteTable(
   (table) => [index("ui_events_thread_at").on(table.threadId, table.at, table.sequence)],
 );
 
+/** Small metadata index: stable append positions survive deletes, and never read tool payloads. */
+export const eventOrder = sqliteTable(
+  "event_order",
+  {
+    position: integer("position").primaryKey({ autoIncrement: true }),
+    id: text("id")
+      .notNull()
+      .unique()
+      .references(() => events.id, { onDelete: "cascade" }),
+    threadId: text("thread_id").notNull(),
+    at: integer("at").notNull(),
+    sequence: integer("sequence").notNull(),
+  },
+  (table) => [
+    index("event_order_history").on(table.threadId, table.at, table.sequence, table.id),
+    index("event_order_resume").on(table.threadId, table.position),
+  ],
+);
+
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value", { mode: "json" }).notNull(),

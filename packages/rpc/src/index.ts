@@ -16,6 +16,9 @@ import {
   FromUser,
   HarnessStatus,
   ImageData,
+  HistoryRequest,
+  HistoryPage,
+  CloudHistoryPage,
   LenientArray,
   LiveUiEvent,
   LoginProgress,
@@ -94,7 +97,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 44;
+export const RPC_VERSION = 45;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -181,6 +184,12 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  */
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
+  /** Bounded compact history and durable reconnect catch-up. Since RPC_VERSION 45. */
+  Rpc.make("ThreadHistory", {
+    payload: { threadId: ThreadId, page: HistoryRequest },
+    success: HistoryPage,
+    error: CeriumError,
+  }),
   Rpc.make("ThreadEvents", {
     payload: {
       threadId: ThreadId,
@@ -750,6 +759,11 @@ export const DeviceRpcs = RpcGroup.make(
   Rpc.make("CloudThreadEvents", {
     payload: { machine: DeviceId, threadId: ThreadId },
     success: UiEvents,
+    error: CeriumError,
+  }),
+  Rpc.make("CloudThreadHistory", {
+    payload: { machine: DeviceId, threadId: ThreadId, before: Schema.optionalKey(Schema.Int) },
+    success: CloudHistoryPage,
     error: CeriumError,
   }),
   /** Tells the account's other devices these threads were seen here. */

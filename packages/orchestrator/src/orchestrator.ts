@@ -28,6 +28,8 @@ import {
   type FromAgent,
   type FromUser,
   type InputItem,
+  type HistoryPage,
+  type HistoryRequest,
   type LeadHandedOff,
   type LimitPolicy,
   type LimitReached,
@@ -778,6 +780,7 @@ export class Orchestrator extends Context.Service<
       threadId: ThreadId,
       options?: { readonly streamed?: boolean; readonly withoutImages?: boolean },
     ): Effect.Effect<ReadonlyArray<AgentEvent>, OrchestratorError>;
+    threadHistory(threadId: ThreadId, page: HistoryRequest): Effect.Effect<HistoryPage, OrchestratorError>;
     /**
      * Whether the thread waits for the user: its lead's permission request (a child's goes to the lead),
      * the lead's request to start an agent outside the catalog, or a question an agent asked.
@@ -4660,6 +4663,15 @@ export class Orchestrator extends Context.Service<
             Effect.map((events) =>
               options?.streamed === true ? [...events, ...streamed.soFar(threadId)] : events,
             ),
+            Effect.mapError(unavailable),
+          ),
+
+        threadHistory: (threadId, page) =>
+          store.historyPage(threadId, page).pipe(
+            Effect.map((read) => ({
+              ...read,
+              events: page.before === undefined ? [...read.events, ...streamed.soFar(threadId)] : read.events,
+            })),
             Effect.mapError(unavailable),
           ),
 

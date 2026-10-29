@@ -205,6 +205,8 @@ export const Handlers = MachineRpcs.toLayer(
 
     return MachineRpcs.of({
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
+      ThreadHistory: ({ threadId, page }) =>
+        orchestrator.threadHistory(threadId, page).pipe(Effect.mapError(refuse)),
       ThreadEvents: ({ threadId, withoutImages: lean, streamed }) =>
         orchestrator
           .threadEvents(threadId, { streamed: streamed === true, withoutImages: lean === true })

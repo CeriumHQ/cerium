@@ -396,10 +396,39 @@ export class Account extends DurableObject<Env> {
     credential: Credential,
     machine: DeviceId,
     threadId: ThreadId,
+    page?: { readonly before?: number },
   ): Promise<Outcome | string> {
     const reader = this.row(credential.deviceId);
     if (reader === undefined || !(await this.verify(reader, credential))) {
       return refused(401, "This device isn't signed in to the account.");
+    }
+    if (page !== undefined) {
+      // Read one immutable upload (at most 900 kB), never all batches of a thread. The cursor is
+      // an event's append position, so a page can finish partway through a large upload.
+      const [batch] = this.db
+        .select()
+        .from(tables.eventBatches)
+        .where(
+          and(
+            this.batchesOf(machine, threadId),
+            page.before === undefined ? undefined : lt(tables.eventBatches.start, page.before),
+          ),
+        )
+        .orderBy(desc(tables.eventBatches.start))
+        .limit(1)
+        .all();
+      if (batch === undefined) return JSON.stringify({ events: [], more: false });
+      const events: Array<unknown> = JSON.parse(batch.events);
+      const end = Math.min(
+        events.length,
+        page.before === undefined ? events.length : page.before - batch.start,
+      );
+      const start = Math.max(0, end - 256);
+      return JSON.stringify({
+        events: events.slice(start, end),
+        before: batch.start + start,
+        more: batch.start + start > 0,
+      });
     }
     const batches = this.db
       .select({ events: tables.eventBatches.events })
