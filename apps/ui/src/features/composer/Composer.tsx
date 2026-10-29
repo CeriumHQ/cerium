@@ -102,7 +102,7 @@ import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
 import {
   chipEffortLabel,
   FixedChip,
-  MoreMenu,
+  AccessMenu,
   offersSpeed,
   SpeedMark,
   type EffortChoice,
@@ -1092,6 +1092,11 @@ export function Composer({
       }
     : undefined;
   const newSpeedChoice: SpeedChoice = { speeds, value: activeSpeed ?? "standard", onPick: setSpeed };
+  // Several models at once, switched on in the model menu's foot, once there are several to pick.
+  const several =
+    target.kind === "new" && models.filter((each) => target.available.has(each.provider)).length > 1
+      ? { on: multi, onChange: setMulti }
+      : undefined;
   const newChip =
     target.kind === "new" ? (
       multi ? (
@@ -1107,8 +1112,8 @@ export function Composer({
           effortShown={newEffortShown}
           speed={newSpeedChoice}
           speedShown={activeSpeed}
+          several={several}
           onPick={(keys) => pickForDraft({ models: keys })}
-          onSingle={() => setMulti(false)}
           // Agents that may edit share the one folder, where they can undo each other's work.
           {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
             ? { note: "They share the folder, so their edits can collide" }
@@ -1127,21 +1132,16 @@ export function Composer({
           effortShown={newEffortShown}
           speed={newSpeedChoice}
           speedShown={activeSpeed}
+          several={several}
           onPick={(picked) => setModelId(modelKey(picked))}
         />
       )
     ) : null;
 
-  // What's seldom changed waits behind one button: access, shown on it once it isn't Auto, and
-  // several models at once.
-  const moreMenu =
-    target.kind === "new" ? (
-      <MoreMenu
-        {...(target.mode === "work" ? { access: { value: access, onPick: setAccess, limit } } : {})}
-        {...(models.filter((each) => target.available.has(each.provider)).length > 1
-          ? { several: { on: multi, onChange: setMulti } }
-          : {})}
-      />
+  // What the agents may do unasked, shown on its button once it isn't Auto.
+  const accessMenu =
+    target.kind === "new" && target.mode === "work" ? (
+      <AccessMenu value={access} onPick={setAccess} limit={limit} />
     ) : null;
 
   /** Access other than Auto stays in sight while the box rests and its setup row is folded away. */
@@ -1153,7 +1153,7 @@ export function Composer({
   const actions = (
     <div className="flex min-w-0 shrink-0 items-center gap-1">
       {oneLine ? null : thread ? threadChip : newChip}
-      {!inline || restingAccess ? moreMenu : null}
+      {!inline || restingAccess ? accessMenu : null}
       {dictates ? <DictationControl dictation={dictation} /> : null}
       {running ? stopButton : null}
       {running && !written ? null : sendButton}

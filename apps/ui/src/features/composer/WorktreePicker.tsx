@@ -4,6 +4,9 @@ import { FolderGit2, GitBranch, GitBranchPlus } from "lucide-react";
 import { SelectItem, SelectPopup, SelectRoot } from "../../components/ui/Select.tsx";
 import { chipClass } from "./Pickers.tsx";
 
+/** The box's chip, free to shrink: on a narrow box the branch truncates first, before the project, rather than slide under the model. */
+const branchChip = `${chipClass.replace("shrink-0 ", "")} min-w-8 shrink-[4] px-2`;
+
 /**
  * Where a new work thread's agents work: in the project's own folder, beside every other thread
  * there, or in a git worktree of their own on a new branch made from `branch`.
@@ -27,7 +30,7 @@ export function WorktreePicker({
       }}
     >
       {/* The second step of the box's path (project / branch), so it goes without a chevron like the first. */}
-      <BaseSelect.Trigger aria-label="Where agents work" className={`${chipClass} min-w-0 px-2`}>
+      <BaseSelect.Trigger aria-label="Where agents work" className={branchChip}>
         <Icon size={13} strokeWidth={1.75} className="shrink-0" />
         <span className="max-w-36 truncate">{value ? "New worktree" : branch}</span>
       </BaseSelect.Trigger>
