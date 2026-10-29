@@ -318,6 +318,15 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/* A new thread's question (app/EmptyThread.tsx) comes into focus a line at a time, as the mark does. */
+@keyframes question-settle {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    translate: 0 6px;
+  }
+}
+
 /* Each letter of the launch screen's name rises into place as it first shows. */
 @keyframes launch-letter {
   from {

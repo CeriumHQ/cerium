@@ -12,7 +12,7 @@ const QUESTIONS = {
 } as const;
 
 /** The space between the question and the message box seated under it. */
-const SEAT_GAP = 36;
+const SEAT_GAP = 28;
 /** Half the empty message box's height: seated, its middle lands on the pane's, where the eye goes first. */
 const BOX_MIDDLE = 47;
 /** The width from which the box sits under the question; a phone keeps it at the foot, over the keyboard. */
@@ -75,14 +75,19 @@ export function EmptyThread({
         style={{ "--seat": `${BOX_MIDDLE + SEAT_GAP}px` } as CSSProperties}
         className="relative flex h-full flex-col items-center justify-center px-6 pb-32 md:[justify-content:safe_flex-end] md:pb-[calc(50cqb+var(--seat))]"
       >
-        <div ref={said} className="flex max-w-full flex-col items-start">
-          {/* Its longest line spans most of a phone and less of a wide pane, and never crowds a short one. */}
+        <div ref={said} className="flex max-w-full flex-col items-center text-center">
+          {/* A heading over the box rather than a poster behind it: its longest line spans most of a phone
+              and about two thirds of the box. Each line comes into focus in turn as the pane opens. */}
           <h1
             style={{ "--measure": question.measure } as CSSProperties}
-            className="font-display text-[length:min(calc(min(61.5cqi_+_70px,84cqi)/var(--measure)),13cqb,148px)] leading-[1.04] font-extralight tracking-[-0.01em] text-fg-tertiary font-stretch-expanded [font-size-adjust:none]"
+            className="font-display text-[length:min(calc(min(76cqi,420px)/var(--measure)),9cqb)] leading-[1.08] font-light tracking-[-0.015em] text-balance text-fg-secondary font-stretch-expanded [font-size-adjust:none]"
           >
-            {question.lines.map((line) => (
-              <span key={line} className="block whitespace-nowrap">
+            {question.lines.map((line, index) => (
+              <span
+                key={line}
+                style={{ animationDelay: `${index * 90}ms` }}
+                className="block animate-[question-settle_640ms_cubic-bezier(0.2,0.8,0.2,1)_backwards] whitespace-nowrap motion-reduce:animate-none"
+              >
                 {line}
               </span>
             ))}
