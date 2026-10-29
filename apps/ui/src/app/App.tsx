@@ -2533,7 +2533,7 @@ function Workspace() {
           }}
           harnesses={indicators}
           threads={summaries}
-          onOpenUsage={() => openSettings("usage")}
+          onOpenLimits={() => openSettings("limits")}
           hidden={[
             ...(githubOk ? [] : (["github"] as const)),
             ...(automationsOk ? [] : (["automations"] as const)),

@@ -1,6 +1,7 @@
+import { Button } from "@base-ui/react/button";
 import { Switch } from "@base-ui/react/switch";
 import { useAtomValue } from "@effect/atom-react";
-import { Monitor } from "lucide-react";
+import { Monitor, RefreshCw } from "lucide-react";
 import { createContext, use, useId, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
@@ -88,6 +89,35 @@ export function SettingsSection({
       </div>
       {children}
     </section>
+  );
+}
+
+/** A page's Refresh, beside when what it shows was last read. */
+export function RefreshAction({
+  updatedAt,
+  checking,
+  onRefresh,
+}: {
+  updatedAt: number | undefined;
+  checking: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      {updatedAt ? (
+        <span className="text-meta text-fg-tertiary tabular-nums max-sm:hidden">
+          Updated {new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        </span>
+      ) : null}
+      <Button
+        onClick={onRefresh}
+        disabled={checking}
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
+      >
+        <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
+        {checking ? "Checking…" : "Refresh"}
+      </Button>
+    </div>
   );
 }
 

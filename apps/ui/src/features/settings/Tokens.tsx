@@ -2,7 +2,7 @@ import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronRight, CircleDollarSign } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -13,7 +13,7 @@ import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { harnessName } from "./Harnesses.tsx";
-import { SettingsCard, SettingsSection } from "./parts.tsx";
+import { RefreshAction, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import {
   bucketLabel,
   cacheShare,
@@ -65,86 +65,94 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
 };
 
 /**
- * What agents used over `range`, for the Usage page: the totals over a chart, then each model,
- * or thread's share. The page's Refresh reads it again.
+ * What agents used over a range of time: the totals over a chart, then each model's or thread's
+ * share. Refresh reads it again.
  */
-export function SpendSection({
-  range,
-  onRange,
-}: {
-  range: SpendRange;
-  onRange: (range: SpendRange) => void;
-}) {
+export function TokensSettings() {
+  const [range, setRange] = useState<SpendRange>("week");
   const [by, setBy] = useState<Breakdown>("model");
   const result = useAtomValue(spendAtom(range));
+  const refresh = useAtomRefresh(spendAtom(range));
   const driven = useAtomValue(machineAtom);
   const report = AsyncResult.getOrElse(result, (): SpendReport | undefined => undefined);
 
   return (
-    <SettingsSection
-      title="Tokens & cost"
+    <SettingsPage
+      perMachine
+      title="Tokens"
       description="Cost is what each harness reports at its own rates: on a subscription, what the use is worth, not a charge."
       action={
-        <ToggleGroup
-          value={[range]}
-          onValueChange={(value) => {
-            const next = spendRanges.find((each) => each.id === value[0]);
-            if (next) onRange(next.id);
-          }}
-          aria-label="Time range"
-          className="flex shrink-0 items-center"
-        >
-          {spendRanges.map(({ id, label }) => (
-            <Toggle
-              key={id}
-              value={id}
-              className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-            >
-              {label}
-            </Toggle>
-          ))}
-        </ToggleGroup>
+        <RefreshAction
+          updatedAt={AsyncResult.isSuccess(result) ? result.timestamp : undefined}
+          checking={result.waiting}
+          onRefresh={refresh}
+        />
       }
     >
-      {AsyncResult.isFailure(result) && report === undefined ? (
-        <SettingsCard className="px-4 py-3.5 text-body text-error-text">
-          {driven
-            ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
-            : "Couldn't read the usage. Try again in a moment."}
-        </SettingsCard>
-      ) : report === undefined ? (
-        <LoadingCard />
-      ) : report.totals.turns === 0 ? (
-        <Empty range={range} />
-      ) : (
-        <>
-          <Summary report={report} range={range} />
-          <div className="flex items-center gap-2 pt-2">
-            <span className="text-meta text-fg-tertiary">By</span>
-            <ToggleGroup
-              value={[by]}
-              onValueChange={(value) => {
-                const next = breakdowns.find((each) => each.id === value[0]);
-                if (next) setBy(next.id);
-              }}
-              aria-label="Break down by"
-              className="flex items-center"
-            >
-              {breakdowns.map(({ id, label }) => (
-                <Toggle
-                  key={id}
-                  value={id}
-                  className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
-                >
-                  {label}
-                </Toggle>
-              ))}
-            </ToggleGroup>
-          </div>
-          {by === "reset" ? <ResetShares /> : <Rows rows={rowsOf(report, by)} />}
-        </>
-      )}
-    </SettingsSection>
+      <SettingsSection
+        title="Tokens & cost"
+        action={
+          <ToggleGroup
+            value={[range]}
+            onValueChange={(value) => {
+              const next = spendRanges.find((each) => each.id === value[0]);
+              if (next) setRange(next.id);
+            }}
+            aria-label="Time range"
+            className="flex shrink-0 items-center"
+          >
+            {spendRanges.map(({ id, label }) => (
+              <Toggle
+                key={id}
+                value={id}
+                className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+              >
+                {label}
+              </Toggle>
+            ))}
+          </ToggleGroup>
+        }
+      >
+        {AsyncResult.isFailure(result) && report === undefined ? (
+          <SettingsCard className="px-4 py-3.5 text-body text-error-text">
+            {driven
+              ? `Couldn't read the usage on ${driven.name}. It may need a newer Cerium.`
+              : "Couldn't read the usage. Try again in a moment."}
+          </SettingsCard>
+        ) : report === undefined ? (
+          <LoadingCard />
+        ) : report.totals.turns === 0 ? (
+          <Empty range={range} />
+        ) : (
+          <>
+            <Summary report={report} range={range} />
+            <div className="flex items-center gap-2 pt-2">
+              <span className="text-meta text-fg-tertiary">By</span>
+              <ToggleGroup
+                value={[by]}
+                onValueChange={(value) => {
+                  const next = breakdowns.find((each) => each.id === value[0]);
+                  if (next) setBy(next.id);
+                }}
+                aria-label="Break down by"
+                className="flex items-center"
+              >
+                {breakdowns.map(({ id, label }) => (
+                  <Toggle
+                    key={id}
+                    value={id}
+                    className="rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary"
+                  >
+                    {label}
+                  </Toggle>
+                ))}
+              </ToggleGroup>
+            </div>
+            {by === "reset" ? <ResetShares /> : <Rows rows={rowsOf(report, by)} />}
+          </>
+        )}
+      </SettingsSection>
+    </SettingsPage>
   );
 }
 
@@ -406,7 +414,7 @@ function Empty({ range }: { range: SpendRange }) {
   );
 }
 
-/** Stands in for the page while the backend adds it up, the first time. */
+/** Stands in for the totals while the backend adds it up, the first time. */
 function LoadingCard() {
   return (
     <SettingsCard className="animate-pulse">

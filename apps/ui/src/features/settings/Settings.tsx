@@ -16,12 +16,13 @@ import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } f
 import { HarnessSettings } from "./Harnesses.tsx";
 import { McpSettings, SkillsSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
+import { LimitsSettings } from "./Limits.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
 import { SettingsPlace, SettingsProject } from "./parts.tsx";
 import { PromptSettings } from "./Prompts.tsx";
 import { settingsGlyphs, type GlyphProps } from "./glyphs.tsx";
 import { SourceControlSettings } from "./SourceControl.tsx";
-import { UsageSettings } from "./Usage.tsx";
+import { TokensSettings } from "./Tokens.tsx";
 
 export type SettingsCategory =
   | "general"
@@ -38,7 +39,8 @@ export type SettingsCategory =
   | "harnesses"
   | "mcp"
   | "skills"
-  | "usage"
+  | "limits"
+  | "tokens"
   | "sourceControl"
   | "discord"
   | "assistants"
@@ -106,7 +108,8 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
       ...page("harnesses", "Harnesses", "Installed CLIs and sign-ins", settingsGlyphs.harnesses),
       ...page("mcp", "MCP servers", "Servers across harnesses", settingsGlyphs.mcp),
       ...page("skills", "Skills", "Skills across harnesses", settingsGlyphs.skills),
-      ...page("usage", "Usage", "Limits and spend", settingsGlyphs.usage),
+      ...page("limits", "Limits", "What's left of each plan", settingsGlyphs.limits),
+      ...page("tokens", "Tokens", "Tokens and cost", settingsGlyphs.tokens),
     ],
   },
   {
@@ -179,9 +182,11 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["mcp", "Add a server to another harness"],
     ["skills", "Skills"],
     ["skills", "Add a skill to another harness"],
-    ["usage", "Limits"],
-    ["usage", "Tokens & cost"],
-    ["usage", "Free resets"],
+    ["limits", "Limits"],
+    ["limits", "Usage limits"],
+    ["limits", "Free resets"],
+    ["tokens", "Tokens & cost"],
+    ["tokens", "Token usage"],
     ["sourceControl", "GitHub CLI"],
     ["sourceControl", "Project scripts"],
     ["discord", "Show activity on Discord"],
@@ -438,8 +443,10 @@ function SettingsContent({
       return <McpSettings />;
     case "skills":
       return <SkillsSettings />;
-    case "usage":
-      return <UsageSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
+    case "limits":
+      return <LimitsSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
+    case "tokens":
+      return <TokensSettings />;
     case "sourceControl":
       return <SourceControlSettings />;
     case "discord":
