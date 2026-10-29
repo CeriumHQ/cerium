@@ -1,17 +1,18 @@
 import { Button } from "@base-ui/react/button";
 import { OFFERED_PROVIDERS, type HarnessSetup, type HarnessStatus, type ProviderId } from "@cerium/protocol";
 import type { CommandTerminal, HarnessCommand } from "@cerium/rpc";
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { Download, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
+import { closeTerminal, runHarnessCommand } from "../../backend/terminals.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
+import { fittedSize } from "../terminal/session.ts";
 import { ActionDialog, CommandDialog, CopyableCommand, useStartCommand } from "./ActionDialog.tsx";
-import { accountLabel } from "./harnessModel.ts";
 import { SettingsNote, SettingsPage } from "./parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
@@ -44,6 +45,12 @@ export function HarnessSettings() {
   };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> | undefined => undefined);
   const failed = AsyncResult.isFailure(result);
+  const outdated = (statuses ?? []).filter(
+    (status): status is Installed =>
+      status._tag === "HarnessInstalled" &&
+      status.latestVersion !== undefined &&
+      status.updateCommand !== undefined,
+  );
 
   return (
     <SettingsPage
@@ -58,6 +65,7 @@ export function HarnessSettings() {
               Checked {new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </span>
           ) : null}
+          {outdated.length > 0 ? <UpdateAll targets={outdated} onChanged={check} /> : null}
           <Button
             onClick={check}
             disabled={checking}
@@ -91,6 +99,60 @@ export function HarnessSettings() {
         </ul>
       )}
     </SettingsPage>
+  );
+}
+
+/**
+ * Updates every harness that has a newer release, one after another, each in the dialog's terminal as
+ * its own command runs. The harnesses are checked again once the last has ended.
+ */
+function UpdateAll({ targets, onChanged }: { targets: ReadonlyArray<Installed>; onChanged: () => void }) {
+  const run = useAtomSet(runHarnessCommand, { mode: "promise" });
+  const close = useAtomSet(closeTerminal, { mode: "promise" });
+  const [flow, setFlow] = useState<{
+    readonly queue: ReadonlyArray<Installed>;
+    readonly at: number;
+    readonly started: Promise<CommandTerminal>;
+  }>();
+  const current = flow?.queue[flow.at];
+
+  const start = (queue: ReadonlyArray<Installed>, at: number) => {
+    const target = queue[at];
+    if (target === undefined) return;
+    // The command that just ended has no more to show.
+    void flow?.started.then((terminal) => close({ payload: { id: terminal.id } })).catch(() => undefined);
+    setFlow({
+      queue,
+      at,
+      started: run({ payload: { provider: target.provider, action: "update", size: fittedSize() } }),
+    });
+  };
+
+  return (
+    <>
+      <Button
+        onClick={() => start(targets, 0)}
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong"
+      >
+        <Download size={13} strokeWidth={1.75} />
+        Update all
+      </Button>
+      <CommandDialog
+        started={flow?.started}
+        onClose={() => setFlow(undefined)}
+        title={current === undefined ? "Update harnesses" : `Update ${harnessName[current.provider]}`}
+        description={
+          flow === undefined || current === undefined
+            ? ""
+            : `Harness ${flow.at + 1} of ${flow.queue.length}. Each updates itself below, one after another.`
+        }
+        command={current?.updateCommand}
+        onFinished={() => {
+          if (flow !== undefined && flow.at + 1 < flow.queue.length) start(flow.queue, flow.at + 1);
+          else onChanged();
+        }}
+      />
+    </>
   );
 }
 
@@ -234,9 +296,18 @@ function InstalledRow({
         mark={<ProviderLogo provider={status.provider} size={16} />}
         name={harnessName[status.provider]}
         dim={signedOut}
-        newer={newer}
         tone={signedOut || setup ? "attention" : "quiet"}
-        detail={signedOut ? "Not signed in" : setup ? "Needs setup" : accountLabel(auth)}
+        detail={
+          signedOut ? (
+            "Not signed in"
+          ) : setup ? (
+            "Needs setup"
+          ) : (
+            <span className="font-mono tabular-nums">
+              {newer === undefined ? status.version : `${status.version} → ${newer}`}
+            </span>
+          )
+        }
         action={
           <>
             {newer !== undefined && status.updateCommand !== undefined ? (

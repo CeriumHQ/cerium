@@ -40,7 +40,7 @@ const spawnScout = (leadId: AgentId) =>
 
 describe("Advisor", () => {
   it("reads as off from a backend that predates it", () => {
-    const settings = Schema.decodeUnknownSync(Settings)({ includeUserMcpServers: true });
+    const settings = Schema.decodeUnknownSync(Settings)({});
     assert.deepStrictEqual(settings.advisor, { enabled: false });
   });
 

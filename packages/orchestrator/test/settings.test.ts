@@ -35,23 +35,12 @@ const readSettings = Effect.gen(function* () {
 }).pipe(Effect.provide(UserSettings.layer));
 
 describe("UserSettings", () => {
-  it.live("loads the user's own MCP servers into sessions until they turn it off", () => {
+  it.live("loads the user's own MCP servers into every session", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
-      const settings = yield* UserSettings;
-      const store = yield* Store;
-
       // Sessions start behind the thread.
       yield* startWorkThread;
       assert.isTrue((yield* started(fake, 0)).options.includeUserMcpServers);
-
-      assert.deepStrictEqual(yield* settings.update({ includeUserMcpServers: false }), {
-        ...defaultSettings,
-        includeUserMcpServers: false,
-      });
-      yield* startWorkThread;
-      assert.isFalse((yield* started(fake, 1)).options.includeUserMcpServers);
-      assert.deepStrictEqual(yield* store.readSettings, { includeUserMcpServers: false });
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
@@ -87,14 +76,10 @@ describe("UserSettings", () => {
       assert.deepStrictEqual(yield* readSettings, defaultSettings);
 
       const advisor = { enabled: true, model: { provider: "claude", model: "opus", effort: "max" } } as const;
-      yield* store.writeSettings({ includeUserMcpServers: false, advisor });
-      assert.deepStrictEqual(yield* readSettings, {
-        ...defaultSettings,
-        includeUserMcpServers: false,
-        advisor,
-      });
+      yield* store.writeSettings({ advisor });
+      assert.deepStrictEqual(yield* readSettings, { ...defaultSettings, advisor });
 
-      yield* store.writeSettings({ includeUserMcpServers: "no", advisor: { enabled: "yes" } });
+      yield* store.writeSettings({ advisor: { enabled: "yes" } });
       assert.deepStrictEqual(yield* readSettings, defaultSettings);
     }).pipe(
       Effect.provide(

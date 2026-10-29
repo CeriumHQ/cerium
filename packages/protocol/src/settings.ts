@@ -125,8 +125,6 @@ const defaultSlimThreadsAfter: SlimThreadsAfter = 7;
 
 /** Each setting's shape, without the defaults `Settings` reads a missing one as. */
 const SettingsFields = Schema.Struct({
-  /** Load the MCP servers the user set up in each harness into sessions Cerium starts. */
-  includeUserMcpServers: Schema.Boolean,
   advisor: AdvisorSettings,
   titles: TitleSettings,
   discord: DiscordSettings,
@@ -169,7 +167,6 @@ export const SettingsPatch = SettingsFields.mapFields(Struct.map(Schema.optional
 export type SettingsPatch = typeof SettingsPatch.Type;
 
 export const defaultSettings: Settings = {
-  includeUserMcpServers: true,
   advisor: defaultAdvisor,
   titles: defaultTitles,
   discord: defaultDiscord,

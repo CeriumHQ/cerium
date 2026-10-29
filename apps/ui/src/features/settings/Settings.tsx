@@ -8,7 +8,7 @@ import { SlidingHighlight } from "../../components/SlidingHighlight.tsx";
 import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { AccountSettings, DeviceSettings } from "./Account.tsx";
-import { RosterSettings, ThreadSettings, ToolSettings } from "./Agents.tsx";
+import { AdvisorSettings, RosterSettings, ThreadSettings } from "./Agents.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
@@ -30,7 +30,7 @@ export type SettingsCategory =
   | "updates"
   | "threads"
   | "roster"
-  | "tools"
+  | "advisor"
   | "prompts"
   | "effortRouter"
   | "harnesses"
@@ -90,7 +90,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
     pages: [
       ...page("threads", "New threads", "Model, effort and access", settingsGlyphs.threads),
       ...page("roster", "Roster", "Models a lead may start", settingsGlyphs.roster),
-      ...page("tools", "Tools", "Advisor and MCP servers", settingsGlyphs.tools),
+      ...page("advisor", "Advisor", "Experimental second opinion", settingsGlyphs.advisor),
       ...page("prompts", "Prompts", "Text and commands on /", settingsGlyphs.prompts),
       ...page("effortRouter", "Effort router", "Effort picked per turn", settingsGlyphs.router),
     ],
@@ -159,8 +159,8 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["threads", "Where new work threads run"],
     ["threads", "Name new threads"],
     ["roster", "Roster"],
-    ["tools", "Advisor model"],
-    ["tools", "MCP servers"],
+    ["advisor", "Advisor"],
+    ["advisor", "Advisor model"],
     ["prompts", "Saved prompts"],
     ["effortRouter", "Pick effort automatically"],
     ["effortRouter", "OpenRouter key"],
@@ -410,8 +410,8 @@ function SettingsContent({
       return <ThreadSettings harnesses={harnesses} {...open("harnesses")} />;
     case "roster":
       return <RosterSettings harnesses={harnesses} {...open("harnesses")} />;
-    case "tools":
-      return <ToolSettings harnesses={harnesses} />;
+    case "advisor":
+      return <AdvisorSettings harnesses={harnesses} />;
     case "prompts":
       return <PromptSettings />;
     case "effortRouter":

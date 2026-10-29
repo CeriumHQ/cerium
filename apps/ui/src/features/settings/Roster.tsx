@@ -2,7 +2,6 @@ import { Button } from "@base-ui/react/button";
 import {
   movedInOrder,
   rosterMembers,
-  rosterUse,
   starterRoster,
   withHarnessReset,
   withHarnessRoster,
@@ -14,7 +13,7 @@ import {
   type RosterSettings,
 } from "@cerium/protocol";
 import { ChevronDown, ChevronUp, GripVertical, MoreHorizontal, Plus, RotateCcw, X } from "lucide-react";
-import { useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
@@ -22,22 +21,18 @@ import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../compon
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { speedHint, speedLabel } from "../composer/models.ts";
 import { SpeedMark } from "../composer/Pickers.tsx";
-import { TitleField } from "../threads/Rename.tsx";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsCard } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
-/** How long a model's line may be: a phrase for the lead to pick by, not instructions. */
-const MAX_USE = 160;
-
 const emptyRoster: RosterSettings = { models: [], edited: [] };
 
 /**
  * The roster: for each harness that can run, the models a lead starts without asking, in the order it
- * prefers them, each with what it's for and the speed it runs at. Models join from the harness's Add
- * menu, leave from their row and move by their handle; a line is edited in place. Saved by the
+ * prefers them, each with the speed it runs at. Models join from the harness's Add
+ * menu, leave from their row and move by their handle. Saved by the
  * backend, which hands it to leads as `list_models`.
  */
 export function RosterSection({
@@ -88,16 +83,6 @@ export function RosterSection({
                   list.filter((entry) => entry.model !== model.id),
                 )
               }
-              onDescribe={(model, use) =>
-                change(
-                  provider,
-                  list.map((entry) => {
-                    if (entry.model !== model.id) return entry;
-                    const { use: _, ...rest } = entry;
-                    return use === undefined ? rest : { ...rest, use };
-                  }),
-                )
-              }
               onSpeed={(model, speed) =>
                 change(
                   provider,
@@ -139,7 +124,6 @@ function HarnessRoster({
   disabled,
   onAdd,
   onRemove,
-  onDescribe,
   onSpeed,
   onOrder,
   onReset,
@@ -151,8 +135,6 @@ function HarnessRoster({
   disabled: boolean;
   onAdd: (model: ModelInfo) => void;
   onRemove: (model: ModelInfo) => void;
-  /** The user's own line, or undefined for Cerium's. */
-  onDescribe: (model: ModelInfo, use: string | undefined) => void;
   /** The speed picked, or undefined for the harness's own. */
   onSpeed: (model: ModelInfo, speed: ModelSpeed | undefined) => void;
   /** The models' ids in their new order of priority. */
@@ -262,19 +244,17 @@ function HarnessRoster({
           None. A lead asks before starting any {name} model.
         </p>
       ) : (
-        shown.map(({ model, use, speed }, at) => (
+        shown.map(({ model, speed }, at) => (
           <RosterRow
             key={model.id}
             provider={provider}
             model={model}
-            use={use}
             speed={speed}
             rank={members.length > 1 ? at + 1 : undefined}
             count={members.length}
             dragging={drag?.model === model.id}
             disabled={disabled}
             onRemove={() => onRemove(model)}
-            onDescribe={(next) => onDescribe(model, next)}
             onSpeed={(next) => onSpeed(model, next)}
             onStep={(by, from) => step(model.id, by, from)}
             onDragStart={(event) => {
@@ -298,21 +278,18 @@ function HarnessRoster({
 }
 
 /**
- * A model on the roster: its rank, which turns into a handle to move it by, over its name and what it's
- * for, a line to click and rewrite; then its speed, where the model offers a choice, and a button that
- * takes it off. A line cleared, or put back to Cerium's own, stops being the user's.
+ * A model on the roster: its rank, which turns into a handle to move it by, beside its name; then its
+ * speed, where the model offers a choice, and a button that takes it off.
  */
 function RosterRow({
   provider,
   model,
-  use,
   speed,
   rank,
   count,
   dragging,
   disabled,
   onRemove,
-  onDescribe,
   onSpeed,
   onStep,
   onDragStart,
@@ -323,7 +300,6 @@ function RosterRow({
 }: {
   provider: ProviderId;
   model: ModelInfo;
-  use: string;
   speed: ModelSpeed | undefined;
   /** Its place among the harness's models; undefined when it's the only one. */
   rank: number | undefined;
@@ -332,7 +308,6 @@ function RosterRow({
   dragging: boolean;
   disabled: boolean;
   onRemove: () => void;
-  onDescribe: (use: string | undefined) => void;
   onSpeed: (speed: ModelSpeed | undefined) => void;
   onStep: (by: -1 | 1, from: "handle" | "button") => void;
   onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
@@ -341,20 +316,6 @@ function RosterRow({
   onDragOver: (event: DragEvent) => void;
   onDrop: (event: DragEvent) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const line = useRef<HTMLButtonElement>(null);
-  const fallback = rosterUse(model);
-  const own = use !== fallback;
-
-  const finish = (typed: string | undefined, byKey: boolean) => {
-    setEditing(false);
-    if (byKey) requestAnimationFrame(() => line.current?.focus());
-    if (typed === undefined) return;
-    const next = typed.trim();
-    const kept = next === "" || next === fallback ? undefined : next;
-    if (kept !== (own ? use : undefined)) onDescribe(kept);
-  };
-
   const speeds = model.speeds ?? [];
   return (
     <div
@@ -394,32 +355,7 @@ function RosterRow({
           </Button>
         </Tooltip>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-body text-fg-primary">{model.label}</span>
-        {editing ? (
-          <TitleField
-            title={use}
-            label={`What ${model.label} is for`}
-            maxLength={MAX_USE}
-            onDone={finish}
-            className="-mx-1 text-meta leading-relaxed"
-          />
-        ) : (
-          <Tooltip label="Describe what it's for">
-            <Button
-              ref={line}
-              disabled={disabled}
-              onClick={() => setEditing(true)}
-              // A phone's line wraps to say it all, rather than lose it to the ellipsis.
-              className={`-mx-1 max-w-full cursor-text self-start truncate rounded-sm px-1 text-left text-meta leading-relaxed transition-colors outline-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring max-md:whitespace-normal ${
-                own ? "text-fg-secondary" : "text-fg-tertiary"
-              }`}
-            >
-              {use}
-            </Button>
-          </Tooltip>
-        )}
-      </div>
+      <span className="min-w-0 flex-1 truncate text-body text-fg-primary">{model.label}</span>
       {/* Beside the line on a wide window; a line of its own under it on a phone, where it also holds the
           buttons that move the row, which a touch screen has no handle or arrow keys for. */}
       {speeds.length > 1 || rank !== undefined ? (

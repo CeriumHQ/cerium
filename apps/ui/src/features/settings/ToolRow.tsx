@@ -6,8 +6,7 @@ import { shellBridge } from "../../backend/shell.ts";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
 
 // One program Settings lists, a harness or `gh`: its mark, its name, the account it runs on or what it
-// needs, and the one thing to do about it. A dot on the mark says a newer release is out. The version
-// and where it's installed wait in the row's menu.
+// needs, and the one thing to do about it. Where it's installed waits in the row's menu.
 
 export function ToolRow({
   mark,
@@ -15,35 +14,25 @@ export function ToolRow({
   detail,
   tone = "quiet",
   dim = false,
-  newer,
   action,
   menu,
 }: {
   readonly mark: ReactNode;
   readonly name: string;
-  /** The account, or the state: "Claude Max", "Not signed in". */
+  /** The version, or the state: "1.4.12", "Not signed in". */
   readonly detail: ReactNode;
   /** `attention` while the program can't be used as it is. */
   readonly tone?: "quiet" | "attention";
   /** The mark fades while the program can't be used. */
   readonly dim?: boolean;
-  /** Its newest release, when that's newer than the installed one. */
-  readonly newer?: string | undefined;
   readonly action?: ReactNode;
   /** The row's menu, behind ⋯. */
   readonly menu?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
-      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">
+      <span className="grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-primary">
         <span className={dim ? "opacity-35 grayscale" : undefined}>{mark}</span>
-        {newer === undefined ? null : (
-          <span
-            title={`${newer} is out`}
-            aria-label={`Update available: ${newer}`}
-            className="absolute -top-1 -right-1 size-2.5 rounded-full bg-running shadow-[0_0_0_2px_var(--window)]"
-          />
-        )}
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-body text-fg-primary">{name}</span>

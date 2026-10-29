@@ -1969,7 +1969,7 @@ export class Orchestrator extends Context.Service<
             const info = rt.info;
             const sessionScope = yield* Scope.fork(scope);
             rt.sessionScope = sessionScope;
-            const { includeUserMcpServers, advisor } = yield* settings.get;
+            const { advisor } = yield* settings.get;
             const neighbours = yield* neighboursOf(info, cwd);
             const busSpec = yield* bus.register(info.id);
             yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
@@ -1982,7 +1982,7 @@ export class Orchestrator extends Context.Service<
                 ...(resume === undefined ? {} : { resume }),
                 access: info.access,
                 mcpServers: { [bus.serverName]: busSpec },
-                includeUserMcpServers,
+                includeUserMcpServers: true,
                 trustedMcpServers: [bus.serverName],
                 appendSystemPrompt: systemPrompt(info, bus.serverName, {
                   advisor: advisor.enabled && advisor.model !== undefined,

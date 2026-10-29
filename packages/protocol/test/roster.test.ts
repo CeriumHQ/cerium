@@ -113,10 +113,9 @@ describe("movedInOrder", () => {
 describe("Settings.roster", () => {
   it("reads as empty from a backend that predates it, and skips what it can't read", () => {
     const decode = Schema.decodeUnknownSync(Settings);
-    expect(decode({ includeUserMcpServers: true }).roster).toEqual(empty);
+    expect(decode({}).roster).toEqual(empty);
     expect(
       decode({
-        includeUserMcpServers: true,
         roster: {
           models: [
             { provider: "someday", model: "x" },

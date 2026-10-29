@@ -9,8 +9,7 @@ import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
 import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
-// What agents can call on beyond their own harness: the advisor, and the MCP servers they're given.
-// Rows for the Agents page's Tools card.
+// The advisor agents can call on beyond their own harness: rows for the Agents page's Advisor card.
 
 /** An advisor is there to think hard, so a new pick starts at the model's strongest effort. */
 const advisorEffort = (model: ModelInfo, wanted?: ReasoningEffort) =>
@@ -114,31 +113,5 @@ export function AdvisorRows({
         />
       ) : null}
     </>
-  );
-}
-
-/** Whether agents get the user's own MCP servers as well as Cerium's, which they always have. */
-export function McpServersRow() {
-  const { value: on, saved, save, error } = useSetting("includeUserMcpServers", true);
-  return (
-    <SettingsRow
-      label="Your MCP servers"
-      hint={
-        <>
-          The ones set up in each harness, like a project's{" "}
-          <code className="font-mono text-caption text-fg-secondary">.mcp.json</code>. Cerium's own tools are
-          always on.
-        </>
-      }
-      error={error}
-      control={(labelledBy) => (
-        <SettingsSwitch
-          checked={on}
-          onCheckedChange={save}
-          disabled={saved === undefined}
-          labelledBy={labelledBy}
-        />
-      )}
-    />
   );
 }

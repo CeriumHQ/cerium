@@ -22,11 +22,18 @@ import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../compon
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "../composer/models.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
-import { SettingsList, SettingsNote, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
+import {
+  SettingsList,
+  SettingsNote,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  SettingsTag,
+} from "./parts.tsx";
 import { accessAtom, effortAtom, modelAtom, workplaceAtom } from "./preferences.ts";
 import { RosterSection } from "./Roster.tsx";
 import { TitleRows } from "./Titles.tsx";
-import { AdvisorRows, McpServersRow } from "./Tools.tsx";
+import { AdvisorRows } from "./Advisor.tsx";
 
 const effortHint: Record<ReasoningEffort, string> = {
   minimal: "Answers almost at once",
@@ -210,7 +217,7 @@ export function RosterSettings({
     <SettingsPage
       perMachine
       title="Roster"
-      description="The models a lead starts without asking you, first choice first, and what it uses each for. It asks before starting any other."
+      description="The models a lead starts without asking you, first choice first. It asks before starting any other."
     >
       {rosterOk ? (
         <RosterSection
@@ -238,14 +245,22 @@ export function RosterSettings({
   );
 }
 
-/** What agents are given beyond their harness's own tools: an advisor, and the user's MCP servers. */
-export function ToolSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
+/** The experimental advisor agents can ask when they're stuck. */
+export function AdvisorSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
   const { models, model } = useLeadModel(harnesses);
   return (
-    <SettingsPage perMachine title="Tools" description="A change applies to agents started after it.">
+    <SettingsPage
+      perMachine
+      title={
+        <>
+          Advisor
+          <SettingsTag>Experimental</SettingsTag>
+        </>
+      }
+      description="A change applies to agents started after it."
+    >
       <SettingsList>
         <AdvisorRows models={models} harnesses={harnesses} leadModel={model} />
-        <McpServersRow />
       </SettingsList>
     </SettingsPage>
   );

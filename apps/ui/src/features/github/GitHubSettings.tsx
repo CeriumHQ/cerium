@@ -53,7 +53,6 @@ export function GitHubRow() {
         mark={mark}
         name="GitHub CLI"
         dim={active === undefined}
-        newer={status.latestVersion}
         tone={active === undefined || active.failing === true ? "attention" : "quiet"}
         detail={
           active === undefined

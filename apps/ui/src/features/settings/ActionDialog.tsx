@@ -85,14 +85,16 @@ export function CommandDialog({
   readonly onFinished: () => void;
 }) {
   const close = useAtomSet(closeTerminal, { mode: "promise" });
-  const [finished, setFinished] = useState(false);
+  // Which run ended, so a dialog that moves on to another command starts unfinished.
+  const [finishedRun, setFinishedRun] = useState<Promise<CommandTerminal>>();
+  const finished = started !== undefined && finishedRun === started;
   return (
     <ActionDialog
       open={started !== undefined}
       onOpenChange={(open) => {
         if (open) return;
         void started?.then((terminal) => close({ payload: { id: terminal.id } })).catch(() => undefined);
-        setFinished(false);
+        setFinishedRun(undefined);
         onClose();
       }}
       title={title}
@@ -105,7 +107,7 @@ export function CommandDialog({
           started={started}
           command={command}
           onEnded={() => {
-            setFinished(true);
+            setFinishedRun(started);
             onFinished();
           }}
         />

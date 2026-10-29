@@ -57,7 +57,7 @@ export const settingsGlyphs: Record<
   | "updates"
   | "threads"
   | "roster"
-  | "tools"
+  | "advisor"
   | "router"
   | "devices"
   | "discord",
@@ -155,7 +155,7 @@ export const settingsGlyphs: Record<
       <path d="M10.5 6h10M10.5 12h10M10.5 18h10M5 12h.01M5 18h.01" />
     </>,
   ),
-  tools: glyph(
+  advisor: glyph(
     <>
       <path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v3a5.5 5.5 0 0 1-11 0ZM12 16v4.5" />
       <path d={facet(12, 11, 2)} className="fill-accent stroke-none" />

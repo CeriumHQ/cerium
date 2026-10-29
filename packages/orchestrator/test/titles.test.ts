@@ -86,7 +86,7 @@ describe("titleModels", () => {
 
 describe("thread titles", () => {
   it("are on for settings from a backend that predates them", () => {
-    const settings = Schema.decodeUnknownSync(Settings)({ includeUserMcpServers: false });
+    const settings = Schema.decodeUnknownSync(Settings)({});
     assert.deepStrictEqual(settings.titles, { enabled: true });
   });
 
