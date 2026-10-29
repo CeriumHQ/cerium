@@ -1,10 +1,35 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Layer } from "effect";
+import { Effect, Exit, Layer, Stream } from "effect";
 
-import { Orchestrator, Worktrees, WorktreeError } from "../src/index.ts";
+import {
+  Orchestrator,
+  ProjectScripts,
+  Worktrees,
+  WorktreeError,
+  type ScriptStarted,
+  type TeardownFailure,
+} from "../src/index.ts";
 import { testLayer } from "./fakes.ts";
+
+/** Scripts that record what was run into `calls`, with the setup `started` says and the teardown `torn` ends with. */
+const fakeScripts = (calls: Array<string>, state: { started?: ScriptStarted; torn?: TeardownFailure } = {}) =>
+  Layer.succeed(ProjectScripts, {
+    resolve: () => Effect.succeed({}),
+    start: ({ kind }) =>
+      Effect.sync(() => {
+        calls.push(`start ${kind}`);
+        return state.started;
+      }),
+    ended: Stream.empty,
+    teardown: ({ cwd }) =>
+      Effect.sync(() => {
+        calls.push(`teardown ${cwd}`);
+        return state.torn;
+      }),
+    ports: () => Effect.succeed({ first: 20010, last: 20019 }),
+  });
 
 /** Worktrees that only record what was asked of them, holding `changes` until told otherwise. */
 const fakeWorktrees = () => {
@@ -117,6 +142,81 @@ describe("Orchestrator worktrees", () => {
       assert.isUndefined(restored.archivedAt);
       assert.include(worktrees.calls, "restore cerium/fix-it");
     }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
+
+  it.live(
+    "runs the teardown in the worktree before removing it, and puts the thread away when it fails",
+    () => {
+      const worktrees = fakeWorktrees();
+      const torn: TeardownFailure = { script: "docker compose down", failure: "exited with code 1" };
+      const scripts = fakeScripts(worktrees.calls, { torn });
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { thread } = yield* start;
+        const told: Array<TeardownFailure> = [];
+        const archived = yield* orchestrator.setThreadArchived(thread.id, true, {
+          onTeardownFailed: (failure) => void told.push(failure),
+        });
+        assert.isDefined(archived.archivedAt);
+        assert.deepStrictEqual(told, [torn]);
+        const ran = worktrees.calls.filter((call) => /^(teardown|remove)/.test(call));
+        assert.deepStrictEqual(ran, [
+          "teardown /worktrees/proj/fix-it/app",
+          `remove ${thread.id} cerium/fix-it`,
+        ]);
+
+        // Deleting a live thread runs it too; an archived thread's worktree is gone, so it doesn't.
+        const second = yield* start;
+        yield* orchestrator.deleteThread(second.thread.id, {
+          onTeardownFailed: (failure) => void told.push(failure),
+        });
+        assert.strictEqual(told.length, 2);
+        const before = worktrees.calls.filter((call) => call.startsWith("teardown")).length;
+        yield* orchestrator.deleteThread(thread.id);
+        assert.strictEqual(worktrees.calls.filter((call) => call.startsWith("teardown")).length, before);
+      }).pipe(
+        Effect.provide(
+          testLayer([makeFakeAdapter("claude").adapter], { worktrees: worktrees.layer, scripts }),
+        ),
+        Effect.scoped,
+      );
+    },
+  );
+
+  it.live("keeps a refused archive from running the teardown", () => {
+    const worktrees = fakeWorktrees();
+    const scripts = fakeScripts(worktrees.calls);
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread } = yield* start;
+      worktrees.state.changes = { uncommitted: 1, unmerged: 0 };
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(orchestrator.setThreadArchived(thread.id, true))));
+      assert.notInclude(worktrees.calls.join("\n"), "teardown");
+    }).pipe(
+      Effect.provide(testLayer([makeFakeAdapter("claude").adapter], { worktrees: worktrees.layer, scripts })),
+      Effect.scoped,
+    );
+  });
+
+  it.live("tells the lead its ports, and that a guessed setup waits on the user's word in the thread", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    const scripts = fakeScripts(worktrees.calls, { started: { _tag: "Guess", script: "bun install" } });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* start;
+      yield* orchestrator.sendUserMessage(lead.id, "hello");
+      while (fake.sessions[0]?.sent[0] === undefined) yield* Effect.sleep("5 millis");
+      const heard = fake.sessions[0].sent.join("\n");
+      assert.include(heard, "`bun install`");
+      assert.include(heard, "the user was asked in this thread");
+      assert.notInclude(heard, "Settings");
+      assert.include(heard, "20010–20019");
+      assert.include(heard, "CERIUM_PORT");
+    }).pipe(
+      Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer, scripts })),
+      Effect.scoped,
+    );
   });
 
   it.live("archives a worktree with nothing unmerged without asking", () => {

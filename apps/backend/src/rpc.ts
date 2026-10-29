@@ -13,6 +13,7 @@ import {
   UserSettings,
   type EffortDecisionError,
   type OrchestratorError,
+  type TeardownFailure,
 } from "@cerium/orchestrator";
 import {
   isStreamDelta,
@@ -314,18 +315,39 @@ export const Handlers = MachineRpcs.toLayer(
       StopThread: ({ threadId }) => orchestrator.stopThread(threadId).pipe(Effect.mapError(refuse)),
       RenameThread: ({ threadId, title }) =>
         orchestrator.renameThread(threadId, title).pipe(Effect.mapError(refuse)),
-      SetThreadArchived: ({ threadId, archived, discardWork }) =>
-        orchestrator
-          .setThreadArchived(threadId, archived, discardWork === undefined ? {} : { discardWork })
-          .pipe(Effect.mapError(refuse)),
+      SetThreadArchived: ({ threadId, archived, discardWork }) => {
+        // A teardown that failed is told with the thread: the archiving went on without it.
+        let teardown: TeardownFailure | undefined;
+        return orchestrator
+          .setThreadArchived(threadId, archived, {
+            ...(discardWork === undefined ? {} : { discardWork }),
+            onTeardownFailed: (failure) => {
+              teardown = failure;
+            },
+          })
+          .pipe(
+            Effect.map((thread) => (teardown === undefined ? thread : { ...thread, teardown })),
+            Effect.mapError(refuse),
+          );
+      },
       SetThreadLater: ({ threadId, until }) =>
         orchestrator.setThreadLater(threadId, until).pipe(Effect.mapError(refuse)),
       // A deleted thread's terminals end with it.
-      DeleteThread: ({ threadId, discardWork }) =>
-        orchestrator.deleteThread(threadId, discardWork === undefined ? {} : { discardWork }).pipe(
-          Effect.tap(() => terminals.closeThread(threadId)),
-          Effect.mapError(refuse),
-        ),
+      DeleteThread: ({ threadId, discardWork }) => {
+        let teardown: TeardownFailure | undefined;
+        return orchestrator
+          .deleteThread(threadId, {
+            ...(discardWork === undefined ? {} : { discardWork }),
+            onTeardownFailed: (failure) => {
+              teardown = failure;
+            },
+          })
+          .pipe(
+            Effect.tap(() => terminals.closeThread(threadId)),
+            Effect.map(() => teardown),
+            Effect.mapError(refuse),
+          );
+      },
       WorktreeChanges: ({ threadId }) => orchestrator.worktreeChanges(threadId).pipe(Effect.mapError(refuse)),
       SearchThreads: ({ query, mode }) =>
         store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
@@ -474,8 +496,14 @@ export const Handlers = MachineRpcs.toLayer(
       SaveProject: ({ path }) => projects.save(path).pipe(Effect.mapError(refuse)),
       RemoveProject: ({ path }) => projects.remove(path).pipe(Effect.mapError(refuse)),
       ProjectScripts: ({ project }) => scripts.resolve(project).pipe(Effect.mapError(refuse)),
-      SetProjectScripts: ({ path, setup, run }) =>
-        store.writeProjectScripts(path, { setup, run }).pipe(Effect.mapError(refuse)),
+      SetProjectScripts: ({ path, setup, run, teardown }) =>
+        store
+          .writeProjectScripts(path, {
+            ...(setup === undefined ? {} : { setup }),
+            ...(run === undefined ? {} : { run }),
+            ...(teardown === undefined ? {} : { teardown }),
+          })
+          .pipe(Effect.mapError(refuse)),
       RunProjectScript: ({ threadId, kind, size }) =>
         Effect.gen(function* () {
           const thread = Option.getOrUndefined(

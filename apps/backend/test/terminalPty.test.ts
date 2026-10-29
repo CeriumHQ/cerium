@@ -7,6 +7,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { Terminals } from "../src/terminal.ts";
 import { Ptys } from "../src/terminalPty.ts";
+import { ThreadEnv } from "../src/threadEnv.ts";
 
 // The same service on a real pseudoterminal (ConPTY on Windows), with Node itself as the shell so the
 // test needs nothing installed: it echoes what it's typed, starts a child that outlives it, and exits
@@ -27,6 +28,7 @@ const size = { cols: 100, rows: 30 };
 
 const layer = Terminals.layer({ version: "test", shell }).pipe(
   Layer.provide(Ptys.layer),
+  Layer.provide(ThreadEnv.layer({ free: () => Promise.resolve(true) })),
   Layer.provideMerge(NodeServices.layer),
   Layer.provideMerge(Store.layer({ filename: ":memory:" })),
 );
