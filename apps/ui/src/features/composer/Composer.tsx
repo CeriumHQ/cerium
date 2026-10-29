@@ -14,7 +14,7 @@ import {
 } from "@cerium/protocol";
 import { RegistryContext, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ArrowRightLeft, ArrowUp, Paperclip, Square } from "lucide-react";
+import { ArrowRightLeft, ArrowUp, MessageCircleQuestionMark, Paperclip, Square } from "lucide-react";
 import {
   useContext,
   useEffect,
@@ -112,6 +112,8 @@ import {
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
+import { sideQuestionOf } from "./btw.ts";
+import { SideQuestion, type AskSide } from "./SideQuestion.tsx";
 import { SlashMenu, slashGroups, type SlashEntry } from "./SlashMenu.tsx";
 import { WorktreePicker } from "./WorktreePicker.tsx";
 import { QueueTray, type Queue } from "./QueueTray.tsx";
@@ -186,6 +188,11 @@ export type ComposerTarget =
       /** Asks the lead's harness to compact its conversation, offered where the harness can. */
       readonly onCompact?: () => void;
       /**
+       * Answers a quick question about the thread from its conversation, without adding it to the
+       * thread (`/btw`). Absent where the machine can't.
+       */
+      readonly onAskSide?: AskSide;
+      /**
        * Hands the lead to a model of another harness, which the user confirms first; its model menu
        * then lists every harness. Absent where the machine can't.
        */
@@ -210,6 +217,9 @@ export type ComposerTarget =
       /** The machine can give a thread a worktree of its own. */
       readonly worktrees?: boolean;
     };
+
+/** The `/` list's entry that writes `/btw `. */
+const SIDE_QUESTION_COMMAND = "slash-side-question";
 
 interface ComposerProps {
   readonly target: ComposerTarget;
@@ -351,6 +361,14 @@ export function Composer({
       ? speed
       : starting.map((each) => speedFor(each, speed)).find((each) => each !== undefined);
   const [modelsOpen, setModelsOpen] = useState(false);
+  /** The side question's pop-over: a new `id` each time it opens, so nothing of the last one stays. */
+  const [side, setSide] = useState<{
+    readonly id: number;
+    readonly question: string;
+    readonly open: boolean;
+  }>();
+  const openSide = (question: string) =>
+    setSide((current) => ({ id: (current?.id ?? 0) + 1, question, open: true }));
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
   const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
@@ -402,6 +420,19 @@ export function Composer({
     : [];
   // Switching models and stopping the turn live in the box, beside the palette's actions.
   const slashLocal: ReadonlyArray<PaletteCommand> = [
+    ...(target.kind === "thread" && target.onAskSide
+      ? [
+          {
+            id: SIDE_QUESTION_COMMAND,
+            group: "Actions" as const,
+            label: "Side question",
+            icon: MessageCircleQuestionMark,
+            keywords: "btw ask aside quick",
+            // Picking it writes `/btw ` (`pickSlash`); the box's ref stays out of render.
+            run: () => undefined,
+          },
+        ]
+      : []),
     ...(target.kind === "new"
       ? [
           {
@@ -784,12 +815,22 @@ export function Composer({
   /** A `/` entry: a saved prompt's text in place of the command, or the action run at once. */
   const pickSlash = (entry: SlashEntry) => {
     if (entry.kind === "prompt") editor.current?.replaceTriggerText(entry.prompt.text);
+    else if (entry.command.id === SIDE_QUESTION_COMMAND) editor.current?.replaceTriggerText("/btw ");
     else entry.command.run();
     setTrigger(undefined);
     setActive(0);
   };
 
   const send = () => {
+    const asked = thread?.onAskSide ? sideQuestionOf(text) : undefined;
+    if (asked !== undefined) {
+      // A side question never joins the thread: the box empties and the pop-over answers.
+      setDrafts((current) => withoutDraft(current, draftKey));
+      setEpoch((current) => current + 1);
+      setTrigger(undefined);
+      openSide(asked);
+      return;
+    }
     if (asksForProject) {
       setProjectsOpen(true);
       return;
@@ -869,6 +910,15 @@ export function Composer({
     if ((menuOpen || slashOpen) && event.key === "Escape") {
       event.preventDefault();
       setDismissed(menuTrigger ?? slashTrigger);
+      return;
+    }
+    if (
+      thread?.onAskSide &&
+      !isCapturingBinding() &&
+      matchesBinding(event, bindingFor(bindings, "side-question"), usesCommandKey())
+    ) {
+      event.preventDefault();
+      openSide("");
       return;
     }
     if (
@@ -1238,6 +1288,17 @@ export function Composer({
           });
         }}
       >
+        {side && thread?.onAskSide ? (
+          <SideQuestion
+            key={side.id}
+            open={side.open}
+            anchor={box}
+            initial={side.question}
+            ask={thread.onAskSide}
+            onClose={() => setSide((current) => current && { ...current, open: false })}
+            finalFocus={input}
+          />
+        ) : null}
         {menuOpen ? (
           <MentionMenu
             trigger={menuTrigger}
