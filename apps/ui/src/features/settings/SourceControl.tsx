@@ -55,7 +55,7 @@ function ProjectScriptsSection() {
   return (
     <SettingsSection
       title="Project scripts"
-      description="Setup runs when a worktree is made; Run keeps the project going. Unsaved, each comes from the project's .cerium.toml, or Cerium's guess."
+      description="Setup runs as a worktree is made, Run keeps the project going, and Teardown clears up as its thread is archived or deleted. Unsaved, they come from the project's .cerium.toml; Setup and Run are otherwise Cerium's guess."
     >
       {projects.length === 0 ? (
         <SettingsNote>
@@ -81,6 +81,7 @@ function ProjectScriptFields({
   const refreshResolved = useAtomRefresh(projectScriptsAtom(project));
   const [setup, setSetup] = useState<string>();
   const [run, setRun] = useState<string>();
+  const [teardown, setTeardown] = useState<string>();
   const [filled, setFilled] = useState(false);
   const [fresh, setFresh] = useState(false);
   const [error, setError] = useState<string>();
@@ -93,9 +94,10 @@ function ProjectScriptFields({
   if (!filled && AsyncResult.isSuccess(resolved)) {
     setSetup(value.setup?.text ?? "");
     setRun(value.run?.text ?? "");
+    setTeardown(value.teardown?.text ?? "");
     setFilled(true);
   }
-  const identity = (kind: "setup" | "run", text: string | undefined) => {
+  const identity = (kind: "setup" | "run" | "teardown", text: string | undefined) => {
     const one = value[kind];
     // Unchanged and already the user's: saved again the same. Unchanged from the file or a guess:
     // left as it was, so the project's own word can change underneath it later.
@@ -105,12 +107,17 @@ function ProjectScriptFields({
   };
 
   const saveChanges = () => {
-    if (busy || setup === undefined || run === undefined) return;
+    if (busy || setup === undefined || run === undefined || teardown === undefined) return;
     setError(undefined);
     setBusy(true);
     save({
       // An empty field turns a command off; null leaves whatever the project itself offers standing.
-      payload: { path: project, setup: identity("setup", setup), run: identity("run", run) },
+      payload: {
+        path: project,
+        setup: identity("setup", setup),
+        run: identity("run", run),
+        teardown: identity("teardown", teardown),
+      },
     }).then(
       () => {
         setBusy(false);
@@ -135,16 +142,18 @@ function ProjectScriptFields({
   return (
     <SettingsCard className="flex flex-col gap-3 px-4 py-3">
       <div className="grid gap-2.5 sm:grid-cols-2">
-        {(["setup", "run"] as const).map((kind) => {
-          const text = kind === "setup" ? setup : run;
-          const setText = kind === "setup" ? setSetup : setRun;
+        {(["setup", "run", "teardown"] as const).map((kind) => {
+          const text = kind === "setup" ? setup : kind === "run" ? run : teardown;
+          const setText = kind === "setup" ? setSetup : kind === "run" ? setRun : setTeardown;
           const from = value[kind]?.from;
+          const label = kind === "setup" ? "Setup" : kind === "run" ? "Run" : "Teardown";
           return (
-            <label key={kind} className="flex min-w-0 flex-col gap-1">
+            <label
+              key={kind}
+              className={`flex min-w-0 flex-col gap-1 ${kind === "teardown" ? "sm:col-span-2" : ""}`}
+            >
               <span className="flex items-baseline justify-between gap-2">
-                <span className="text-meta font-medium text-fg-secondary">
-                  {kind === "setup" ? "Setup" : "Run"}
-                </span>
+                <span className="text-meta font-medium text-fg-secondary">{label}</span>
                 {filled && from !== undefined ? (
                   <span className="text-caption text-fg-tertiary">{SOURCE[from]}</span>
                 ) : null}
@@ -157,7 +166,7 @@ function ProjectScriptFields({
                 }}
                 spellCheck={false}
                 autoComplete="off"
-                aria-label={`${kind === "setup" ? "Setup" : "Run"} command for ${project}`}
+                aria-label={`${label} command for ${project}`}
                 className={fieldClass}
               />
             </label>

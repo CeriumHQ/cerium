@@ -104,7 +104,13 @@ import {
   type WorktreeError,
 } from "./services.ts";
 import { UserSettings } from "./settings.ts";
-import { ProjectScripts, type ScriptEnded, type ScriptStarted } from "./scripts.ts";
+import {
+  ProjectScripts,
+  type ScriptEnded,
+  type ScriptStarted,
+  type TeardownFailure,
+  type ThreadPorts,
+} from "./scripts.ts";
 import { ThreadTitles } from "./titles.ts";
 
 export interface CreateThreadInput {
@@ -346,6 +352,11 @@ export interface PutAwayOptions {
    * worktree with uncommitted changes or unmerged commits keeps its thread from being put away.
    */
   readonly discardWork?: boolean;
+  /**
+   * Told when the project's teardown, run in the worktree before it goes, didn't end well. It never
+   * keeps the thread from being put away.
+   */
+  readonly onTeardownFailed?: (failure: TeardownFailure) => void;
 }
 
 /** What a worktree's changes are, in words, for the refusal that asks the user to confirm. */
@@ -360,10 +371,26 @@ const describeChanges = ({ uncommitted, unmerged }: WorktreeChanges, base: strin
 /** What the lead hears when the worktree was made: what setup runs there, or that none is set. */
 const setupNote = (ran: ScriptStarted | undefined): string =>
   ran === undefined
-    ? "No setup command is set for this project, so the worktree may lack what it needs. Ask the user to set one in Settings → Git & GitHub, or install what's missing yourself."
+    ? "No setup command is set for this project, so the worktree may lack what it needs. The user can set one in Settings → Git & GitHub; until then, install what's missing yourself."
     : ran._tag === "Ran"
       ? `The project's setup (\`${ran.script}\`) is running in this thread's terminal. Wait for the notice of it finishing or failing before relying on what it installs.`
-      : `Cerium guesses the setup \`${ran.script}\` for this project, but a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub (or press Setup); until then, wait for what it looks for.`;
+      : `Cerium guesses the setup \`${ran.script}\` for this project, and a guess never runs by itself: the user was asked in this thread to run it, once or always for this project. You'll be told when it ends. Until then, don't rely on what it installs; if the user doesn't answer, install what you need yourself.`;
+
+/** What the lead hears of the git-ignored files (`.env`, or what `.worktreeinclude` lists) copied in from the project. */
+const copiedNote = (copied: ReadonlyArray<string> | undefined): string => {
+  if (copied === undefined || copied.length === 0) return "";
+  const shown = copied
+    .slice(0, 6)
+    .map((file) => `\`${file}\``)
+    .join(", ");
+  return ` Copied from the project into this worktree, since git ignores them: ${shown}${copied.length > 6 ? ` and ${copied.length - 6} more` : ""}.`;
+};
+
+/** What the lead hears of the ports its thread's scripts and terminals were given. */
+const portsNote = (ports: ThreadPorts | undefined): string =>
+  ports === undefined
+    ? ""
+    : ` This thread's ports are ${ports.first}–${ports.last}. Its scripts and terminals have the environment variable CERIUM_PORT set to ${ports.first}, and CERIUM_ROOT_PATH to the project's own checkout: use CERIUM_PORT, and the ports after it, for any dev server, test server or database you start, so threads running in this project don't collide.`;
 
 /** What the lead hears when a script's run is over. */
 const endedNote = (ended: ScriptEnded): string => {
@@ -2199,6 +2226,7 @@ export class Orchestrator extends Context.Service<
       const removeWorktree = Effect.fn("Orchestrator.removeWorktree")(function* (
         threadId: ThreadId,
         worktree: ThreadWorktree,
+        cwd: string,
         options: PutAwayOptions,
       ) {
         if (options.discardWork !== true) {
@@ -2214,6 +2242,13 @@ export class Orchestrator extends Context.Service<
           stopRuntime,
           { discard: true },
         );
+        // The project's teardown runs in the worktree while it is still there, its agents ended; a
+        // failing one is told to whoever put the thread away, and doesn't stop them.
+        const torn = yield* scripts.teardown({ threadId, project: worktree.project, cwd });
+        if (torn !== undefined) {
+          yield* Effect.logWarning(`The teardown of ${worktree.branch} failed: ${torn.failure}`);
+          options.onTeardownFailed?.(torn);
+        }
         yield* worktrees.remove(threadId, worktree).pipe(Effect.mapError(refusedWorktree));
         threadWorktrees.delete(threadId);
       });
@@ -3074,7 +3109,10 @@ export class Orchestrator extends Context.Service<
             .pipe(Effect.option);
           yield* deliver(lead.id, {
             _tag: "SystemNotice",
-            text: setupNote(Option.getOrUndefined(started)),
+            text:
+              setupNote(Option.getOrUndefined(started)) +
+              copiedNote(isolated.copied) +
+              portsNote(yield* scripts.ports(threadId)),
           });
         }
         return { thread, lead };
@@ -3583,7 +3621,7 @@ export class Orchestrator extends Context.Service<
           const thread = yield* threadInfo(threadId);
           if (thread.worktree !== undefined && archived !== (thread.archivedAt !== undefined)) {
             if (archived) {
-              yield* removeWorktree(thread.id, thread.worktree, options);
+              yield* removeWorktree(thread.id, thread.worktree, thread.cwd ?? thread.worktree.root, options);
             } else {
               yield* worktrees.restore(thread.worktree).pipe(Effect.mapError(refusedWorktree));
               // A restored worktree starts empty of what setup installs, so it runs again, whether
@@ -3620,7 +3658,7 @@ export class Orchestrator extends Context.Service<
           }
           // An archived thread's worktree is gone already; its branch keeps any commits.
           if (thread.worktree !== undefined && thread.archivedAt === undefined) {
-            yield* removeWorktree(thread.id, thread.worktree, options);
+            yield* removeWorktree(thread.id, thread.worktree, thread.cwd ?? thread.worktree.root, options);
           }
           // Sessions end first, so nothing they record lands after the rows are gone.
           yield* Effect.forEach(

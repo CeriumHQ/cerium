@@ -19,6 +19,11 @@ export const threads = sqliteTable("threads", {
    * no harness payloads. Null for a thread never slimmed.
    */
   slimmedAt: integer("slimmed_at"),
+  /**
+   * The first of the block of ports (`CERIUM_PORT`) the thread's scripts and terminals get, picked
+   * when the thread first needed one and kept for the thread's life. Null until then.
+   */
+  port: integer("port"),
 });
 
 export const agents = sqliteTable(
@@ -110,9 +115,11 @@ export const projects = sqliteTable("projects", {
   /** When a thread last started in it, or the user last chose it. */
   usedAt: integer("used_at").notNull(),
   /**
-   * The project's setup and run commands, as the user overrode them here (`""` turns one off) and
-   * want shared by every thread's worktree of it. Null defers to the project's own `.cerium.toml`.
+   * The project's setup, run and teardown commands, as the user overrode them here (`""` turns one
+   * off) and want shared by every thread's worktree of it. Null defers to the project's own
+   * `.cerium.toml`.
    */
   setup: text("setup"),
   run: text("run"),
+  teardown: text("teardown"),
 });

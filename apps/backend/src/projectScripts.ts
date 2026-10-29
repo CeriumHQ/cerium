@@ -6,22 +6,26 @@ import {
   type ScriptEnded,
   type ScriptKind,
   type ScriptStarted,
+  type TeardownFailure,
 } from "@cerium/orchestrator";
 import { ThreadId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
-import { Effect, FileSystem, Layer, Option, Path, PubSub, Scope, Stream } from "effect";
+import { Duration, Effect, Fiber, FileSystem, Layer, Option, Path, PubSub, Scope, Stream } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { lstatSync } from "node:fs";
 
 import { Terminals } from "./terminal.ts";
-import { chooseShell, scriptChoice, type ShellHost } from "./terminalShell.ts";
+import { chooseShell, inheritedEnv, scriptChoice, taskkillArgs, type ShellHost } from "./terminalShell.ts";
+import { PORT_BLOCK, ThreadEnv } from "./threadEnv.ts";
 
 // What each project's worktree is made usable with: the setup command that runs as the worktree is
 // made — the user's saved word for the project wins, then the project's own `.cerium.toml`, then a
 // guess from its package manager that waits for the user — and the run command that keeps it going,
 // whose output's dev-server address the terminal hands over. Scripts run in a terminal of the
-// thread's own, where the user and its agents watch them.
+// thread's own, where the user and its agents watch them. A third, teardown, runs out of sight as
+// the thread's worktree is removed, to stop what setup or run started outside it.
 
-/** The project's own file, checked into the repository so a team shares one pair of commands. */
+/** The project's own file, checked into the repository so a team shares one set of commands. */
 const SCRIPT_FILE = ".cerium.toml";
 
 /** The size a script's terminal starts at; its viewer fits it again. */
@@ -30,28 +34,61 @@ const SCRIPT_SIZE = { cols: 100, rows: 30 };
 /** What a terminal's tab shows for the script it runs; a plain shell's tab shows its shell's name. */
 export const SCRIPT_LABEL = { setup: "Setup", run: "Run" } as const;
 
+/** How long a teardown may run before it is stopped and the thread is put away without it. */
+export const TEARDOWN_LIMIT_SECONDS = 60;
+
 /** What `[scripts]` of a `.cerium.toml` holds. */
 export interface ScriptFile {
   readonly setup?: string;
   readonly run?: string;
+  readonly teardown?: string;
 }
 
 /**
- * The two scripts a `.cerium.toml` holds, in its `[scripts]` section, quoted plainly or with single
+ * The scripts a `.cerium.toml` holds, in its `[scripts]` section, quoted plainly or with single
  * quotes, its comments dropped. What the file holds elsewhere is left as its own: the fields get
  * commands, and nothing else of the file is Cerium's to read.
  */
 export const scriptsFromToml = (text: string): ScriptFile => {
-  const scripts: { setup?: string; run?: string } = {};
+  const scripts: { setup?: string; run?: string; teardown?: string } = {};
   let inScripts = false;
   for (const line of text.replace(/^\uFEFF/, "").split("\n")) {
-    const entry = /^(?:\[([^[\]]+)\]|(setup|run)\s*=\s*(['"])([^'"]*)\3)\s*(?:#.*)?$/.exec(line.trim());
+    const entry = /^(?:\[([^[\]]+)\]|(setup|run|teardown)\s*=\s*(['"])([^'"]*)\3)\s*(?:#.*)?$/.exec(
+      line.trim(),
+    );
     if (entry === null) continue;
     // A section header is `[scripts]` itself; a subsection like `[scripts.more]` leaves it.
     if (entry[1] !== undefined) inScripts = entry[1] === "scripts";
-    else if (inScripts) scripts[entry[2] as "setup" | "run"] = entry[4]!;
+    else if (inScripts) scripts[entry[2] as "setup" | "run" | "teardown"] = entry[4]!;
   }
   return scripts;
+};
+
+/** The end of a script's output as one line for the user: its last few lines, without colour codes. */
+export const outputTail = (output: string): string => {
+  const lines = output
+    // oxlint-disable-next-line no-control-regex
+    .replaceAll(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const tail = lines.slice(-3).join(" · ");
+  return tail.length > 300 ? `…${tail.slice(-300)}` : tail;
+};
+
+/** Why a teardown failed, in a line: what happened to it, then what it last said. */
+export const teardownFailure = (
+  how: { readonly code: number } | { readonly timedOut: true } | { readonly cannotStart: string },
+  output: string,
+): string => {
+  const what =
+    "timedOut" in how
+      ? `ran longer than ${TEARDOWN_LIMIT_SECONDS} seconds and was stopped`
+      : "cannotStart" in how
+        ? `couldn't start: ${how.cannotStart}`
+        : `exited with code ${how.code}`;
+  const tail = outputTail(output);
+  return tail === "" ? what : `${what}: ${tail}`;
 };
 
 /** What a project's package.json says its run is: the script named `dev`, else `start`. */
@@ -146,6 +183,8 @@ export const projectScriptsLayer = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const terminals = yield* Terminals;
+    const threads = yield* ThreadEnv;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const scope = yield* Scope.Scope;
 
     const ended = yield* PubSub.unbounded<ScriptEnded>();
@@ -194,14 +233,111 @@ export const projectScriptsLayer = Layer.effect(
       )).find((each) => sameFolder(path, each.path, project));
       const setup = oneOf(where?.setup ?? null, file.setup, guess.setup);
       const run = oneOf(where?.run ?? null, file.run, guess.run);
+      // Nothing guesses a teardown: it only ever runs on the user's word, saved or in the file.
+      const teardown = oneOf(where?.teardown ?? null, file.teardown, undefined);
       return {
         ...(setup === undefined ? {} : { setup }),
         ...(run === undefined ? {} : { run }),
+        ...(teardown === undefined ? {} : { teardown }),
       } satisfies ResolvedScripts;
+    });
+
+    /** Ends a process and what it started: a shell's children outlive it on Windows otherwise. */
+    const stopTree = (pid: number) =>
+      process.platform === "win32"
+        ? spawner
+            .spawn(
+              ChildProcess.make("taskkill", taskkillArgs(pid), {
+                stdin: "ignore",
+                stdout: "ignore",
+                stderr: "ignore",
+              }),
+            )
+            .pipe(
+              Effect.andThen((handle) => handle.exitCode),
+              Effect.scoped,
+              Effect.ignore,
+            )
+        : Effect.void;
+
+    /** Runs `command` to its end, out of sight, with what it printed; stopped at the time limit. */
+    const runHidden = Effect.fn("ProjectScripts.runHidden")(function* (
+      command: string,
+      cwd: string,
+      threadEnv: Readonly<Record<string, string>>,
+    ) {
+      const shell = scriptChoice(chooseShell(host), command);
+      const ran = Effect.scoped(
+        Effect.gen(function* () {
+          const handle = yield* spawner.spawn(
+            ChildProcess.make(shell.file, shell.args, {
+              cwd,
+              env: { ...inheritedEnv(process.env), ...threadEnv },
+              extendEnv: false,
+              stdin: "ignore",
+            }),
+          );
+          // What the shell started outlives it when it is stopped; the tree goes with the scope.
+          yield* Effect.addFinalizer(() =>
+            handle.isRunning.pipe(
+              Effect.flatMap((running) => (running ? stopTree(Number(handle.pid)) : Effect.void)),
+              Effect.ignore,
+            ),
+          );
+          const output = yield* Effect.forkScoped(Stream.mkString(Stream.decodeText(handle.all)));
+          const code = Number(yield* handle.exitCode);
+          return { code, output: yield* Fiber.join(output) };
+        }),
+      );
+      return yield* ran.pipe(
+        Effect.map((done) => ({ _tag: "Ended", ...done }) as const),
+        Effect.timeoutOrElse({
+          duration: Duration.seconds(TEARDOWN_LIMIT_SECONDS),
+          orElse: () => Effect.succeed({ _tag: "TimedOut" } as const),
+        }),
+      );
     });
 
     return ProjectScripts.of({
       resolve,
+
+      teardown: Effect.fn("ProjectScripts.teardown")(function* (options: {
+        threadId: ThreadId;
+        project: string;
+        cwd: string;
+      }) {
+        const { threadId, project, cwd } = options;
+        const scripts = yield* resolve(project).pipe(Effect.orElseSucceed((): ResolvedScripts => ({})));
+        const one = scripts.teardown;
+        if (one === undefined) return undefined;
+        // A worktree already gone has nothing left to tear down.
+        if (!(yield* fs.exists(cwd).pipe(Effect.orElseSucceed(() => false)))) return undefined;
+        const threadEnv = yield* threads.of(threadId);
+        const result = yield* runHidden(one.text, cwd, threadEnv).pipe(
+          Effect.catch((error: { readonly message?: string }) =>
+            Effect.succeed({
+              _tag: "CannotStart",
+              message: error.message ?? "the shell wouldn't start",
+            } as const),
+          ),
+        );
+        if (result._tag === "Ended" && result.code === 0) return undefined;
+        const how =
+          result._tag === "TimedOut"
+            ? ({ timedOut: true } as const)
+            : result._tag === "CannotStart"
+              ? ({ cannotStart: result.message } as const)
+              : ({ code: result.code } as const);
+        return {
+          script: one.text,
+          failure: teardownFailure(how, result._tag === "Ended" ? result.output : ""),
+        } satisfies TeardownFailure;
+      }),
+
+      ports: Effect.fn("ProjectScripts.ports")(function* (threadId: ThreadId) {
+        const first = yield* threads.port(threadId);
+        return first === undefined ? undefined : { first, last: first + PORT_BLOCK - 1 };
+      }),
 
       start: Effect.fn("ProjectScripts.start")(function* (options: {
         kind: ScriptKind;

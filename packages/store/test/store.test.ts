@@ -692,6 +692,63 @@ describe("Store", () => {
     ),
   );
 
+  it.effect("stores a project's commands one at a time, leaving the others as they were", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const scripts = () =>
+          store.listProjects.pipe(
+            Effect.map(([project]) => ({
+              setup: project?.setup,
+              run: project?.run,
+              teardown: project?.teardown,
+            })),
+          );
+        yield* store.writeProjectScripts("C:/a", { setup: "bun install", run: "" });
+        assert.deepStrictEqual(yield* scripts(), { setup: "bun install", run: "", teardown: null });
+        yield* store.writeProjectScripts("C:/a", { teardown: "docker compose down" });
+        assert.deepStrictEqual(yield* scripts(), {
+          setup: "bun install",
+          run: "",
+          teardown: "docker compose down",
+        });
+        // `null` defers again to the project's own file; nothing at all changes nothing.
+        yield* store.writeProjectScripts("C:/a", { setup: null });
+        yield* store.writeProjectScripts("C:/a", {});
+        assert.deepStrictEqual(yield* scripts(), { setup: null, run: "", teardown: "docker compose down" });
+      }),
+    ),
+  );
+
+  it.effect("keeps a thread's ports for its life, and never gives two threads the same block", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        const thread = (id: string) => ({
+          id: id as ThreadId,
+          title: id,
+          mode: "work" as const,
+          cwd: "/w",
+          createdAt: 1,
+          updatedAt: 1,
+        });
+        yield* store.createThread(thread("thr_a"));
+        yield* store.createThread(thread("thr_b"));
+        assert.isNull(yield* store.threadPort("thr_a" as ThreadId));
+        assert.strictEqual(yield* store.giveThreadPort("thr_a" as ThreadId, 20_000), 20_000);
+        // A thread that has a block keeps it.
+        assert.strictEqual(yield* store.giveThreadPort("thr_a" as ThreadId, 20_010), 20_000);
+        assert.strictEqual(yield* store.giveThreadPort("thr_b" as ThreadId, 20_010), 20_010);
+        assert.deepStrictEqual(
+          (yield* store.threadPorts).toSorted((a, b) => a - b),
+          [20_000, 20_010],
+        );
+        yield* store.deleteThread("thr_a" as ThreadId);
+        assert.deepStrictEqual(yield* store.threadPorts, [20_010]);
+      }),
+    ),
+  );
+
   it.effect("keeps project folders most recently used first, remembering when each was added", () =>
     withStore(
       Effect.gen(function* () {
@@ -700,8 +757,8 @@ describe("Store", () => {
         yield* store.saveProject("C:/b", 2);
         yield* store.saveProject("C:/a", 3);
         assert.deepStrictEqual(yield* store.listProjects, [
-          { path: "C:/a", addedAt: 1, usedAt: 3, setup: null, run: null },
-          { path: "C:/b", addedAt: 2, usedAt: 2, setup: null, run: null },
+          { path: "C:/a", addedAt: 1, usedAt: 3, setup: null, run: null, teardown: null },
+          { path: "C:/b", addedAt: 2, usedAt: 2, setup: null, run: null, teardown: null },
         ]);
 
         yield* store.removeProject("C:/a");

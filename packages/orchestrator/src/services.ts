@@ -82,6 +82,8 @@ export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Worktree
 export interface NewWorktree {
   readonly worktree: ThreadWorktree;
   readonly cwd: string;
+  /** The git-ignored files copied in from the project (`.worktreeinclude`), relative to the worktree's root. */
+  readonly copied?: ReadonlyArray<string>;
 }
 
 /** Git worktrees threads run in, so threads in one project keep out of each other's files. */
