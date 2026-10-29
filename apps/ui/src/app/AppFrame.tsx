@@ -22,7 +22,7 @@ import type { AppMode } from "./mode.ts";
 import { GUTTER, panelLayout, RAIL, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
-import { CompactPanelMenu, Titlebar, type PreviewToggleProps } from "./Titlebar.tsx";
+import { CompactPanelMenu, Titlebar, type PreviewToggleProps, type RunProps } from "./Titlebar.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -59,8 +59,8 @@ interface AppFrameProps {
    * `children`; in the narrow window it covers the thread, and the phone's Back hides it.
    */
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
-  /** The open thread's project run button: starts its run command, and stops it while it runs. */
-  readonly run?: { readonly running: boolean; readonly onToggle: () => void };
+  /** The open thread's project run button: starts its run command, and stops it while it runs; its menu has the project's actions. */
+  readonly run?: RunProps;
   /** The open thread's browser, in the Preview pane beside it; the wide window's titlebar has its button. */
   readonly preview?: PreviewToggleProps;
   /**

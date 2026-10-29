@@ -98,7 +98,7 @@ describe("ProjectScripts.resolve", () => {
         ]);
         // An empty saved list is the user turning every action off.
         yield* store.writeProjectScripts(folder, { setup: null, run: null, actions: [] });
-        assert.strictEqual((yield* scripts.resolve(folder)).actions, undefined);
+        assert.deepStrictEqual((yield* scripts.resolve(folder)).actions, []);
       }),
     ),
   );

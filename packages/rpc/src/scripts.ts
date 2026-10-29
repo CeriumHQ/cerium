@@ -32,7 +32,8 @@ export type ResolvedAction = typeof ResolvedAction.Type;
 /**
  * A project's setup and run commands, as they'd run; absent when nothing offers one. `actions` are
  * its named commands, in the order they run in menus; they all come from the same side, the user's
- * saved list when they have one, else the project's `[actions]`. Since `RPC_VERSION` 39.
+ * saved list when they have one (empty when they turned the project's off), else the project's
+ * `[actions]`, absent when it has none. Since `RPC_VERSION` 39.
  */
 export const ProjectScripts = Schema.Struct({
   setup: Schema.optionalKey(ResolvedScript),

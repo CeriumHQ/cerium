@@ -97,7 +97,12 @@ import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
-import { runProjectScript } from "../backend/scripts.ts";
+import {
+  noProjectScripts,
+  projectScriptsAtom,
+  runProjectAction,
+  runProjectScript,
+} from "../backend/scripts.ts";
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
@@ -178,9 +183,11 @@ import {
 import { PreviewPane } from "../features/preview/PreviewPane.tsx";
 import { usePreviewDocks } from "../features/preview/usePreviewDocks.ts";
 import {
+  ACTIONS_VERSION,
   PROJECT_TERMINAL_VERSION,
   SCRIPT_VERSION,
   TERMINAL_VERSION,
+  labelledTerminalOf,
   scriptTerminalOf,
 } from "../features/terminal/model.ts";
 import { fittedSize } from "../features/terminal/session.ts";
@@ -1013,6 +1020,43 @@ function Workspace() {
     if (runThreadId === undefined) return;
     void attempt(runProject({ payload: { threadId: runThreadId, kind: "setup", size: fittedSize() } }));
   };
+  /** The folder the thread's project was picked by, which its scripts and actions resolve from. */
+  const scriptsProject =
+    selected === undefined ? undefined : (selected.thread.worktree?.project ?? selected.thread.cwd);
+  const actionsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ACTIONS_VERSION;
+  const projectScriptsFor =
+    runThreadId === undefined || scriptsProject === undefined || !actionsOk
+      ? noProjectScripts
+      : projectScriptsAtom(scriptsProject);
+  /** The project's named actions (Test, Lint, Migrate), each with whether its terminal is running. */
+  const projectActions = (
+    AsyncResult.getOrElse(useAtomValue(projectScriptsFor), () => undefined)?.actions ?? []
+  ).map((action) => {
+    const own =
+      selected === undefined
+        ? undefined
+        : labelledTerminalOf(machineTerminals, { threadId: selected.thread.id }, action.name);
+    return { name: action.name, running: own !== undefined && own.exitCode === undefined };
+  });
+  const refreshProjectScripts = useAtomRefresh(projectScriptsFor);
+  const runAction = useAtomSet(runProjectAction, { mode: "promise" });
+  /** Runs one of the project's actions in a terminal of the thread's, labelled with its name, or stops it while it runs. */
+  const toggleAction = (name: string) => {
+    if (runThreadId === undefined || selected === undefined) return;
+    const own = labelledTerminalOf(machineTerminals, { threadId: selected.thread.id }, name);
+    if (own !== undefined && own.exitCode === undefined) {
+      void attempt(endRun({ payload: { id: own.id } }));
+    } else {
+      // Its output is what the user wants to see: the drawer opens on the action's terminal.
+      void runAction({ payload: { threadId: runThreadId, name, size: fittedSize() } }).then(
+        (started) => {
+          setActionError(undefined);
+          terminal.reveal(started.id);
+        },
+        (error: unknown) => setActionError(messageOf(error)),
+      );
+    }
+  };
   const filesPanel = useFilesExplorer({
     root: filesRoot,
     events: fileEvents,
@@ -1502,6 +1546,16 @@ function Workspace() {
       when: runThreadId !== undefined,
       run: setupProject,
     },
+    // The project's named actions, each run in a terminal of the thread's own.
+    ...projectActions.map((action) => ({
+      id: `project-action:${action.name}`,
+      group: "Actions" as const,
+      label: `${action.running ? "Stop" : "Run"} ${action.name}`,
+      icon: action.running ? Square : Play,
+      keywords: "project action command script test lint build",
+      when: runThreadId !== undefined,
+      run: () => toggleAction(action.name),
+    })),
     {
       id: "preview",
       group: "Actions",
@@ -2509,7 +2563,12 @@ function Workspace() {
           />
         ),
         page: (
-          <SettingsView category={settingsCategory} harnesses={indicators} onOpen={setSettingsCategory} />
+          <SettingsView
+            category={settingsCategory}
+            harnesses={indicators}
+            onOpen={setSettingsCategory}
+            project={scriptsProject ?? newProject}
+          />
         ),
         pane: settingsPane,
         title: settingsLabel(settingsCategory),
@@ -2575,7 +2634,18 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
-      {...(runThreadId === undefined ? {} : { run: { running: runRunning, onToggle: toggleRun } })}
+      {...(runThreadId === undefined
+        ? {}
+        : {
+            run: {
+              running: runRunning,
+              onToggle: toggleRun,
+              actions: projectActions,
+              onAction: toggleAction,
+              onMenuOpen: refreshProjectScripts,
+              onEditActions: () => openSettings("sourceControl"),
+            },
+          })}
       {...(previewThread === undefined
         ? {}
         : {

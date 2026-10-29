@@ -77,19 +77,27 @@ export function ToolRow({
 export function RowButton({
   tone = "neutral",
   onClick,
+  disabled = false,
   children,
+  ...trigger
 }: {
   readonly tone?: "primary" | "neutral";
   readonly onClick: () => void;
+  readonly disabled?: boolean;
   readonly children: ReactNode;
 }) {
+  // What a tooltip around it hands its trigger (handlers, a ref) goes on to the button.
   return (
     <Button
+      {...trigger}
       onClick={onClick}
-      className={`flex h-7 items-center rounded-md px-3 text-meta font-medium transition-colors ${
+      // Focusable while disabled, so its tooltip can still say why.
+      focusableWhenDisabled
+      disabled={disabled}
+      className={`flex h-7 items-center rounded-md px-3 text-meta font-medium transition-colors data-disabled:cursor-default data-disabled:opacity-45 ${
         tone === "primary"
-          ? "bg-accent text-accent-fg hover:bg-accent-strong"
-          : "border border-line-subtle text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+          ? `bg-accent text-accent-fg ${disabled ? "" : "hover:bg-accent-strong"}`
+          : `border border-line-subtle text-fg-secondary ${disabled ? "" : "hover:bg-surface-hover hover:text-fg-primary"}`
       }`}
     >
       {children}

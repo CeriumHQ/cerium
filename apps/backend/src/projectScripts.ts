@@ -240,7 +240,8 @@ export const projectScriptsLayer = Layer.effect(
       return {
         ...(setup === undefined ? {} : { setup }),
         ...(run === undefined ? {} : { run }),
-        ...(actions.length === 0 ? {} : { actions }),
+        // An empty list is there when the user's own is: they turned the file's actions off.
+        ...(actions.length === 0 && where?.actions == null ? {} : { actions }),
       } satisfies ResolvedScripts;
     });
 

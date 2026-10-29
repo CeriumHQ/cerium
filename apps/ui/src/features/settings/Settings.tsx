@@ -15,7 +15,7 @@ import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } f
 import { HarnessSettings } from "./Harnesses.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
-import { SettingsPlace } from "./parts.tsx";
+import { SettingsPlace, SettingsProject } from "./parts.tsx";
 import { PromptSettings } from "./Prompts.tsx";
 import { settingsGlyphs, type GlyphProps } from "./glyphs.tsx";
 import { SourceControlSettings } from "./SourceControl.tsx";
@@ -359,21 +359,26 @@ export function SettingsView({
   category,
   harnesses,
   onOpen,
+  project,
 }: {
   category: SettingsCategory;
   /** Which harnesses can run, for the choices that depend on them. */
   harnesses: ReadonlyArray<HarnessIndicator>;
   /** Opens another page, for a page that points the way to one. */
   onOpen?: (category: SettingsCategory) => void;
+  /** The folder of the thread Settings was opened from, which the pages about a project open on. */
+  project?: string | undefined;
 }) {
   return (
     <SettingsPlace value={groupOf(category)?.label}>
-      <SettingsContent
-        key={category}
-        category={category}
-        harnesses={harnesses}
-        {...(onOpen ? { onOpen } : {})}
-      />
+      <SettingsProject value={project}>
+        <SettingsContent
+          key={category}
+          category={category}
+          harnesses={harnesses}
+          {...(onOpen ? { onOpen } : {})}
+        />
+      </SettingsProject>
     </SettingsPlace>
   );
 }
