@@ -345,11 +345,6 @@ export const draftCommentsAtom = Atom.family((key: string) =>
   ),
 );
 
-/** How long a draft's text is, for the parts of the window that answer typing without reading it. */
-export const draftLengthAtom = Atom.family((key: string) =>
-  Atom.make((get) => draftText(get(draftsAtom)[key]?.segments ?? []).length),
-);
-
 /** How a draft starts, for the parts of the window that show it without its text. */
 export const draftStartAtom = Atom.family((key: string) =>
   Atom.make((get) => get(draftsAtom)[key]?.start).pipe(

@@ -348,7 +348,6 @@ export function ThreadPane({
             {viewed && lead ? null : loading ? null : (
               <EmptyThread
                 mode={mode}
-                draftKey={draftKey}
                 {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
                 onSeat={setSeat}
               />
