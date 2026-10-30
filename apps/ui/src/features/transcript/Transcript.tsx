@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import { ImageGallery } from "../../components/ImageViewer.tsx";
+import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
@@ -585,18 +586,62 @@ const TurnChangesItem = memo(
 
 function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   const { childState, childAgent, agentActions } = use(Actions);
+  const groups = new Map<ProviderId, Array<Block<"spawn">>>();
+  const counts = { running: 0, idle: 0, failed: 0, needsYou: 0 };
+  for (const spawn of spawns) {
+    const group = groups.get(spawn.provider) ?? [];
+    group.push(spawn);
+    groups.set(spawn.provider, group);
+    counts[childState(spawn.childId)]++;
+  }
+  const status = (
+    <span className="inline-flex flex-wrap gap-x-2 text-caption font-normal">
+      {counts.running > 0 ? <span className="text-running">{counts.running} working</span> : null}
+      {counts.idle > 0 ? <span className="text-fg-tertiary">{counts.idle} done</span> : null}
+      {counts.failed > 0 ? <span className="text-error-text">{counts.failed} failed</span> : null}
+      {counts.needsYou > 0 ? <span className="text-attention-text">{counts.needsYou} need you</span> : null}
+    </span>
+  );
+  const card = (spawn: Block<"spawn">) => (
+    <SpawnCard
+      key={spawn.id}
+      block={spawn}
+      state={childState(spawn.childId)}
+      agent={childAgent(spawn.childId)}
+      actions={agentActions}
+    />
+  );
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {spawns.map((spawn) => (
-        <SpawnCard
-          key={spawn.id}
-          block={spawn}
-          state={childState(spawn.childId)}
-          agent={childAgent(spawn.childId)}
-          actions={agentActions}
-        />
-      ))}
-    </div>
+    <Disclosure
+      defaultOpen
+      summary={
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-meta">
+          <span>Spawned {spawns.length === 1 ? "an agent" : `${spawns.length} agents`}</span>
+          {status}
+        </span>
+      }
+    >
+      <div className="ml-1.5 flex flex-col gap-1 border-l border-line-subtle pl-4">
+        {[...groups].map(([provider, group]) =>
+          group.length === 1 ? (
+            card(group[0]!)
+          ) : (
+            <Disclosure
+              key={provider}
+              summary={
+                <span className="inline-flex items-center gap-2 text-meta font-normal">
+                  <ProviderLogo provider={provider} size={14} />
+                  <span>{providerName[provider]}</span>
+                  <span className="text-caption text-fg-tertiary">{group.length} agents</span>
+                </span>
+              }
+            >
+              <div className="flex flex-col gap-1 pl-5">{group.map(card)}</div>
+            </Disclosure>
+          ),
+        )}
+      </div>
+    </Disclosure>
   );
 }
 
