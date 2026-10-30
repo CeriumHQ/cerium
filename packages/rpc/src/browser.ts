@@ -43,6 +43,13 @@ export const BrowserStep = Schema.Struct({
 });
 export type BrowserStep = typeof BrowserStep.Type;
 
+const VisualReview = Schema.Struct({
+  session: Schema.String,
+  state: Schema.optionalKey(Schema.String),
+  defect: Schema.optionalKey(Schema.String),
+  fix: Schema.optionalKey(Schema.String),
+});
+
 export const BrowserCommand = Schema.Union([
   Schema.TaggedStruct("Open", {
     url: Schema.optionalKey(Schema.String),
@@ -52,8 +59,14 @@ export const BrowserCommand = Schema.Union([
   Schema.TaggedStruct("Act", {
     steps: Schema.Array(BrowserStep).check(Schema.isMinLength(1), Schema.isMaxLength(30)),
     screenshot: Schema.Boolean,
+    of: Schema.optionalKey(BrowserTarget),
+    review: Schema.optionalKey(VisualReview),
   }),
-  Schema.TaggedStruct("Screenshot", { fullPage: Schema.Boolean, of: Schema.optionalKey(BrowserTarget) }),
+  Schema.TaggedStruct("Screenshot", {
+    fullPage: Schema.Boolean,
+    of: Schema.optionalKey(BrowserTarget),
+    review: Schema.optionalKey(VisualReview),
+  }),
   Schema.TaggedStruct("Logs", {}),
 ]);
 export type BrowserCommand = typeof BrowserCommand.Type;

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { ReviewLedger, type ReviewRequest } from "./review.ts";
 import { CdpError } from "./cdp.ts";
 import type { Page, Target } from "./page.ts";
 import { fromJson, runStep, type Action } from "./steps.ts";
@@ -46,8 +48,19 @@ export type BrowserCommand =
   /** Opens `url`, or goes back, forward or reloads; with neither, just reports the page. */
   | { readonly _tag: "Open"; readonly url?: string; readonly go?: "back" | "forward" | "reload" }
   | { readonly _tag: "Read"; readonly text: boolean }
-  | { readonly _tag: "Act"; readonly steps: ReadonlyArray<AgentStep>; readonly screenshot: boolean }
-  | { readonly _tag: "Screenshot"; readonly fullPage: boolean; readonly of?: AgentTarget }
+  | {
+      readonly _tag: "Act";
+      readonly steps: ReadonlyArray<AgentStep>;
+      readonly screenshot: boolean;
+      readonly of?: AgentTarget;
+      readonly review?: ReviewRequest;
+    }
+  | {
+      readonly _tag: "Screenshot";
+      readonly fullPage: boolean;
+      readonly of?: AgentTarget;
+      readonly review?: ReviewRequest;
+    }
   | { readonly _tag: "Logs" };
 
 /** What the agent reads back. */
@@ -133,6 +146,65 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 
 const base64 = (png: Uint8Array) => Buffer.from(png).toString("base64");
 
+const reviews = new Map<string, ReviewLedger>();
+let captureSequence = 0;
+
+/** A single review returns accessibility context, errors and an image only when it is new. */
+const reviewCapture = async (
+  page: Page,
+  options: {
+    readonly fullPage: boolean;
+    readonly of?: AgentTarget | undefined;
+    readonly review?: ReviewRequest | undefined;
+  },
+): Promise<BrowserReport> => {
+  const inspection = (await page.inspect(false)) as Inspection;
+  const theme = await page.evaluate<string>(
+    "document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')",
+  );
+  const key = JSON.stringify([
+    inspection.url,
+    inspection.viewport,
+    theme,
+    options.of ?? null,
+    options.fullPage,
+    options.review?.state ?? "default",
+  ]);
+  const session = options.review?.session;
+  let ledger: ReviewLedger | undefined;
+  if (session !== undefined) {
+    ledger = reviews.get(session) ?? new ReviewLedger();
+    reviews.delete(session);
+    reviews.set(session, ledger);
+    if (reviews.size > 256) reviews.delete(reviews.keys().next().value!);
+  }
+  const issue = ledger?.check(key, options.review ?? {});
+  const errors = page
+    .drainConsole()
+    .filter((e) => e.level === "error" || e.level === "warning")
+    .slice(-20);
+  const requests = page.drainRequests().slice(-20);
+  const context = [
+    describePage(inspection),
+    ...errors.map((e) => `Console ${e.level}: ${e.text.slice(0, 500)}`),
+    ...requests.map((r) => `Request ${r.method} ${r.url}: ${r.failure}`),
+  ].join("\n");
+  if (issue) return { text: `${context}\n${issue}` };
+  const png = await page.screenshot(options);
+  const result = ledger?.record(
+    key,
+    createHash("sha256").update(png).digest("hex"),
+    `capture-${++captureSequence}`,
+    options.review ?? {},
+  );
+  if (result && !result.changed)
+    return { text: `${context}\nUnchanged; reuse ${result.capture}. No image sent.` };
+  return {
+    text: `${context}\n${result ? `${result.capture}, visual review ${result.rounds}.` : ""}`,
+    image: base64(png),
+  };
+};
+
 /**
  * Runs `command` on `page`. `navigate` opens a URL the preview's way (the desktop shell loads it in
  * its view, which keeps its own history); failures read as text the agent can act on.
@@ -176,12 +248,12 @@ export const runCommand = async (
       await page.settle();
       lines.push(await pageLine(page), ...unreadLine(page));
       if (!command.screenshot) return { text: lines.join("\n") };
-      return { text: lines.join("\n"), image: base64(await page.screenshot({ fullPage: false })) };
+      const capture = await reviewCapture(page, { fullPage: false, of: command.of, review: command.review });
+      return { ...capture, text: `${lines.join("\n")}\n${capture.text}` };
     }
     case "Screenshot": {
       const of: Target | undefined = command.of;
-      const png = await page.screenshot({ fullPage: command.fullPage, of });
-      return { text: [await pageLine(page), ...unreadLine(page)].join("\n"), image: base64(png) };
+      return reviewCapture(page, { fullPage: command.fullPage, of, review: command.review });
     }
     case "Logs": {
       // A development build of Electron warns every page about its own policy; the page's author can't act on it.

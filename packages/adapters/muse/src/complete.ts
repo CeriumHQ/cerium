@@ -25,5 +25,5 @@ export const completeWithMuse = Effect.fn("MuseAdapter.complete")(function* (
     },
     { ephemeral: true },
   );
-  return yield* replyTo(session, "muse", request.prompt);
+  return yield* replyTo(session, "muse", request.prompt, request.onUsage);
 }, Effect.scoped);

@@ -37,5 +37,5 @@ export const askCodexSideQuestion = Effect.fn("CodexAdapter.sideQuestion")(funct
       config: answeringConfig(userMcpServers, true),
     })
     .pipe(Effect.mapError(failure("Could not fork the Codex thread")));
-  return yield* answerOn(server, thread.id, request.prompt);
+  return yield* answerOn(server, thread.id, request.prompt, request.onUsage);
 }, Effect.scoped);

@@ -211,7 +211,7 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
     }),
   );
 
-  const translator = new ClaudeTranslator();
+  const translator = new ClaudeTranslator({ resumed: options.resume !== undefined });
   // Claude Code's own measure of the context as each turn ends, against the window it compacts at, as
   // its `/context` reports it. `summary` reads the last response's usage, with no API calls.
   const measure = Effect.tryPromise(() => session.getContextUsage({ detail: "summary" })).pipe(

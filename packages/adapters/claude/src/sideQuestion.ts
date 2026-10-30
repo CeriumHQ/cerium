@@ -50,6 +50,11 @@ export const askClaudeSideQuestion = Effect.fn("ClaudeAdapter.sideQuestion")(fun
         options: sideQuestionOptions(executablePath, request, abortController),
       })) {
         if (message.type !== "result") continue;
+        request.onUsage?.({
+          inputTokens: message.usage.input_tokens + message.usage.cache_creation_input_tokens,
+          outputTokens: message.usage.output_tokens,
+          cachedInputTokens: message.usage.cache_read_input_tokens,
+        });
         if (message.subtype === "success" && !message.is_error) return message.result;
         throw new Error(
           message.subtype === "success" ? message.result : message.errors.join("; ") || message.subtype,

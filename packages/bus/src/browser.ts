@@ -127,13 +127,29 @@ const OpenInput = Schema.Struct({
   go: Schema.optionalKey(Schema.Literals(["back", "forward", "reload"])),
 });
 const ReadInput = Schema.Struct({ text: Schema.optionalKey(Schema.Boolean) });
+const ReviewInput = {
+  state: Schema.optionalKey(Schema.String),
+  defect: Schema.optionalKey(Schema.String),
+  fix: Schema.optionalKey(Schema.String),
+};
+const reviewProperties = {
+  state: {
+    type: "string",
+    description: "Affected component and interaction state; keep it stable across reviews.",
+  },
+  defect: { type: "string", description: "After two reviews, the specific unresolved visual defect." },
+  fix: { type: "string", description: "The change made to address that defect." },
+} as const;
 const ActInput = Schema.Struct({
   steps: Schema.Array(BrowserStep).check(Schema.isMinLength(1), Schema.isMaxLength(30)),
   screenshot: Schema.optionalKey(Schema.Boolean),
+  of: Schema.optionalKey(BrowserTarget),
+  ...ReviewInput,
 });
 const ScreenshotInput = Schema.Struct({
   fullPage: Schema.optionalKey(Schema.Boolean),
   of: Schema.optionalKey(BrowserTarget),
+  ...ReviewInput,
 });
 const LogsInput = Schema.Struct({});
 
@@ -254,7 +270,16 @@ export const BROWSER_TOOLS = [
               required: ["action"],
             },
           },
-          screenshot: { type: "boolean", description: "Add a screenshot once the steps are done." },
+          screenshot: {
+            type: "boolean",
+            description: "Explicit visual review once all actions finish; default false.",
+          },
+          of: {
+            type: "object",
+            properties: target,
+            description: "Crop the review to the affected component.",
+          },
+          ...reviewProperties,
         },
         required: ["steps"],
       },
@@ -262,7 +287,18 @@ export const BROWSER_TOOLS = [
     }),
     input: ActInput,
     usage: "Give `steps`: 1 to 30 of { action, target fields, value, to, ms }.",
-    command: ({ steps, screenshot }) => ({ _tag: "Act", steps, screenshot: screenshot === true }),
+    command: ({ steps, screenshot, of, state, defect, fix }) => ({
+      _tag: "Act",
+      steps,
+      screenshot: screenshot === true,
+      ...(of ? { of } : {}),
+      review: {
+        session: "",
+        ...(state === undefined ? {} : { state }),
+        ...(defect === undefined ? {} : { defect }),
+        ...(fix === undefined ? {} : { fix }),
+      },
+    }),
   }),
   browserTool({
     tool: new McpSchema.Tool({
@@ -274,6 +310,7 @@ export const BROWSER_TOOLS = [
       inputSchema: {
         type: "object",
         properties: {
+          ...reviewProperties,
           fullPage: { type: "boolean", description: "The whole page, not just what is in view." },
           of: {
             type: "object",
@@ -286,7 +323,13 @@ export const BROWSER_TOOLS = [
     }),
     input: ScreenshotInput,
     usage: "`fullPage` and `of` are optional.",
-    command: ({ fullPage, of }) => ({
+    command: ({ fullPage, of, state, defect, fix }) => ({
+      review: {
+        session: "",
+        ...(state === undefined ? {} : { state }),
+        ...(defect === undefined ? {} : { defect }),
+        ...(fix === undefined ? {} : { fix }),
+      },
       _tag: "Screenshot",
       fullPage: fullPage === true,
       ...(of ? { of } : {}),
@@ -336,7 +379,14 @@ export const BrowserTools = Layer.effectDiscard(
             if (Option.isNone(agent)) return failure("Unknown Cerium agent.");
             const input = yield* Schema.decodeUnknownEffect(each.input)(payload).pipe(Effect.option);
             if (Option.isNone(input)) return failure(each.usage);
-            const outcome = yield* browser.call(agent.value.threadId, each.command(input.value));
+            const command = each.command(input.value);
+            const outcome = yield* browser.call(
+              agent.value.threadId,
+              command._tag === "Act" || command._tag === "Screenshot"
+                ? { ...command, review: { ...command.review, session: agentId.value } }
+                : command,
+            );
+
             if (outcome._tag === "Failed") return failure(outcome.message);
             return new McpSchema.CallToolResult({
               content: [

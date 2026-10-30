@@ -1,3 +1,5 @@
+import { ReviewLedger } from "@cerium/browser";
+import { createHash } from "node:crypto";
 import { ARTIFACT_COLUMN_WIDTH } from "@cerium/artifacts";
 import { previewArtifact } from "@cerium/artifacts/preview";
 import { Orchestrator } from "@cerium/orchestrator";
@@ -13,6 +15,9 @@ import { BusRegistry } from "./registry.ts";
 const NAME = "artifact_preview";
 
 const Input = Schema.Struct({
+  state: Schema.optionalKey(Schema.String),
+  defect: Schema.optionalKey(Schema.String),
+  fix: Schema.optionalKey(Schema.String),
   html: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_000_000)),
   width: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 280, maximum: 1600 }))),
   mode: Schema.optional(Schema.Literals(["dark", "light"])),
@@ -28,6 +33,9 @@ const tool = new McpSchema.Tool({
   inputSchema: {
     type: "object",
     properties: {
+      state: { type: "string", description: "Artifact and state being reviewed; keep stable across fixes." },
+      defect: { type: "string", description: "Unresolved defect, required after two reviews." },
+      fix: { type: "string", description: "Fix being verified, required after two reviews." },
       html: { type: "string", description: "The page, exactly as it will go in the artifact block." },
       width: {
         type: "integer",
@@ -56,6 +64,8 @@ export const ArtifactPreviewTool = Layer.effectDiscard(
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
     const registry = yield* BusRegistry;
+    const reviews = new Map<string, ReviewLedger>();
+    let captures = 0;
     const orchestrator = yield* Orchestrator;
     yield* server.addTool({
       tool,
@@ -83,6 +93,13 @@ export const ArtifactPreviewTool = Layer.effectDiscard(
             return failure("Give `html` (a non-empty string), and optionally `width` (280-1600) and `mode`.");
           }
           const { html, width = ARTIFACT_COLUMN_WIDTH, mode = "dark" } = input.value;
+          const ledger = reviews.get(agentId.value) ?? new ReviewLedger();
+          reviews.delete(agentId.value);
+          reviews.set(agentId.value, ledger);
+          if (reviews.size > 256) reviews.delete(reviews.keys().next().value!);
+          const key = JSON.stringify([width, mode, input.value.state ?? "artifact"]);
+          const issue = ledger.check(key, input.value);
+          if (issue) return new McpSchema.CallToolResult({ content: [{ type: "text", text: issue }] });
           const preview = yield* Effect.tryPromise(() => previewArtifact({ html, width, mode, folder })).pipe(
             Effect.result,
           );
@@ -91,6 +108,12 @@ export const ArtifactPreviewTool = Layer.effectDiscard(
             return failure(`The preview failed: ${cause instanceof Error ? cause.message : String(cause)}`);
           }
           const { png, contentHeight, growsWithFrame, console } = preview.success;
+          const capture = ledger.record(
+            key,
+            createHash("sha256").update(png).digest("hex"),
+            `artifact-${++captures}`,
+            input.value,
+          );
           const summary = [
             `Rendered at ${width}px in ${mode} mode; the frame takes ${contentHeight}px.`,
             ...(growsWithFrame
@@ -100,12 +123,17 @@ export const ArtifactPreviewTool = Layer.effectDiscard(
               : []),
             console.length === 0
               ? "Console: nothing."
-              : `Console:\n${console.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")}`,
+              : `Console:\n${console
+                  .slice(-20)
+                  .map((entry) => `[${entry.level}] ${entry.text}`)
+                  .join("\n")}`,
           ].join("\n");
           return new McpSchema.CallToolResult({
             content: [
               { type: "text", text: summary },
-              { type: "image", data: png, mimeType: "image/png" },
+              ...(capture.changed
+                ? [{ type: "image" as const, data: png, mimeType: "image/png" }]
+                : [{ type: "text" as const, text: `Unchanged; reuse ${capture.capture}. No image sent.` }]),
             ],
           });
         }),

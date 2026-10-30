@@ -1,3 +1,5 @@
+import type { AgentId } from "@cerium/protocol";
+import { HelperUsage } from "./helperUsage.ts";
 import type {
   AgentEvent,
   AgentInfo,
@@ -291,13 +293,18 @@ export class Condenser extends Context.Service<
      * The older turns of a conversation condensed by the quick model that titles threads (`fallback`
      * last, a model known to answer); none when no model answers.
      */
-    condense(older: ReadonlyArray<Exchange>, fallback: ModelChoice): Effect.Effect<Option.Option<string>>;
+    condense(
+      older: ReadonlyArray<Exchange>,
+      fallback: ModelChoice,
+      agentId?: AgentId,
+    ): Effect.Effect<Option.Option<string>>;
   }
 >()("cerium/orchestrator/Condenser") {
   static readonly layer = Layer.effect(
     Condenser,
     Effect.gen(function* () {
       const adapters = yield* Adapters;
+      const accounting = yield* HelperUsage;
       const catalog = yield* Catalog;
       const settings = yield* UserSettings;
       const config = yield* OrchestratorConfig;
@@ -306,10 +313,18 @@ export class Condenser extends Context.Service<
       // Titles' empty folder, so no project's instructions load.
       const cwd = config.titleDirectory ?? path.join(config.chatDirectory, ".titles");
 
-      const ask = (choice: ModelChoice, prompt: string) =>
+      const ask = (choice: ModelChoice, prompt: string, agentId?: AgentId) =>
         Effect.fromNullishOr(adapters.get(choice.provider)).pipe(
           Effect.flatMap((adapter) =>
-            adapter.complete({ model: choice.model, instructions: CONDENSE_INSTRUCTIONS, prompt, cwd }),
+            adapter.complete({
+              model: choice.model,
+              instructions: CONDENSE_INSTRUCTIONS,
+              prompt,
+              cwd,
+              ...(agentId === undefined
+                ? {}
+                : { onUsage: accounting.track({ agentId, purpose: "summary", ...choice }) }),
+            }),
           ),
           Effect.timeout(ATTEMPT_TIMEOUT),
           Effect.map((reply) => (reply.trim() === "" ? undefined : reply.trim())),
@@ -323,7 +338,7 @@ export class Condenser extends Context.Service<
         );
 
       return Condenser.of({
-        condense: Effect.fn("Condenser.condense")(function* (older, fallback) {
+        condense: Effect.fn("Condenser.condense")(function* (older, fallback, agentId) {
           if (older.length === 0) return Option.none();
           const { titles } = yield* settings.get;
           yield* fs.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
@@ -332,12 +347,12 @@ export class Condenser extends Context.Service<
             models.some((model) => model.provider === choice.provider && model.model === choice.model);
           const prompt = condensePrompt(condenseInput(older));
           for (const choice of titleModels(titles, offered, fallback)) {
-            const summary = yield* ask(choice, prompt);
+            const summary = yield* ask(choice, prompt, agentId);
             if (summary !== undefined) return Option.some(summary);
           }
           return Option.none();
         }),
       });
     }),
-  );
+  ).pipe(Layer.provideMerge(HelperUsage.layer));
 }
