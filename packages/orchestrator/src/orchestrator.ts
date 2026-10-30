@@ -393,6 +393,7 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "MessageQueued",
   "MessageWithdrawn",
   "MessageHeld",
+  "NoticeHeld",
   "TurnInput",
   "MessageCompleted",
   "SessionStarted",
@@ -2943,7 +2944,7 @@ export class Orchestrator extends Context.Service<
         const expiredAt = new Map<string, number>();
         const dismissedAt = new Map<string, number>();
         // Other threads' heads-ups no turn has delivered yet still wait for its next one.
-        const heldMessages = new Map<string, FromAgent>();
+        const heldMessages = new Map<string, InputItem>();
         let lastTurnAt = -1;
         for (const [index, { payload }] of history.entries()) {
           if (payload._tag === "PermissionRequested") unanswered.add(payload.requestId);
@@ -2966,13 +2967,16 @@ export class Orchestrator extends Context.Service<
             undelivered.set(payload.message.id, payload.message);
           }
           if (payload._tag === "MessageWithdrawn") undelivered.delete(payload.messageId);
+          if (payload._tag === "NoticeHeld")
+            heldMessages.set(payload.id, { _tag: "SystemNotice", id: payload.id, text: payload.text });
           if (payload._tag === "MessageHeld" && payload.message.id !== undefined) {
             heldMessages.set(payload.message.id, payload.message);
           }
           if (payload._tag === "TurnInput") {
             for (const item of payload.items) {
               if (item._tag === "FromUser" && item.id) undelivered.delete(item.id);
-              if (item._tag === "FromAgent" && item.id) heldMessages.delete(item.id);
+              if ((item._tag === "FromAgent" || item._tag === "SystemNotice") && item.id)
+                heldMessages.delete(item.id);
             }
           }
           // Every message queued before a rewind went with the turns it replaced.
@@ -4831,10 +4835,19 @@ export class Orchestrator extends Context.Service<
         agent: (agentId) => runtime(agentId).pipe(Effect.map((rt) => rt.info)),
 
         notify: (agentId, text) =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             const rt = runtimes.get(agentId);
             if (rt === undefined || rt.ended) return;
-            heldNotices.set(agentId, [...(heldNotices.get(agentId) ?? []), { _tag: "SystemNotice", text }]);
+            const id = yield* makeId("notice");
+            yield* emit(rt, { _tag: "NoticeHeld", id, text }).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning(`Could not save informational notice: ${error.message}`),
+              ),
+            );
+            heldNotices.set(agentId, [
+              ...(heldNotices.get(agentId) ?? []),
+              { _tag: "SystemNotice", id, text },
+            ]);
           }),
 
         wake: (agentId, text) =>

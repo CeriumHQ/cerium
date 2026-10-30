@@ -364,6 +364,7 @@ export const InputItem = Schema.Union([
   }),
   FromAgent,
   Schema.TaggedStruct("SystemNotice", {
+    id: Schema.optionalKey(Schema.NonEmptyString),
     text: Schema.String,
     /** The question whose answer this notice tells the agent; the thread shows the answer on the question. */
     questionId: Schema.optionalKey(Schema.NonEmptyString),
@@ -478,6 +479,12 @@ export const MessageWithdrawn = Schema.TaggedStruct("MessageWithdrawn", {
  */
 export const MessageHeld = Schema.TaggedStruct("MessageHeld", {
   message: FromAgent,
+});
+
+/** Informational app news saved for the agent's next turn, with no inference now. */
+export const NoticeHeld = Schema.TaggedStruct("NoticeHeld", {
+  id: Schema.NonEmptyString,
+  text: Schema.String,
 });
 
 export const AgentSpawned = Schema.TaggedStruct("AgentSpawned", {
@@ -665,6 +672,7 @@ export const EventPayload = Schema.Union([
   MessageQueued,
   MessageWithdrawn,
   MessageHeld,
+  NoticeHeld,
   AgentSpawned,
   AgentStateChanged,
   ModelChanged,
