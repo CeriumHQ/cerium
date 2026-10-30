@@ -279,6 +279,7 @@ export const pendingHandoff = (live: ReadonlyArray<AgentEvent>): LeadHandedOff |
     const { payload } = live[index]!;
     if (payload._tag === "TurnInput" || payload._tag === "ConversationRewound") return undefined;
     if (payload._tag === "LeadHandedOff") return payload;
+    if (payload._tag === "WorkspaceMoved") return { ...payload, _tag: "LeadHandedOff" };
   }
   return undefined;
 };

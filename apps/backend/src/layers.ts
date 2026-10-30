@@ -54,6 +54,7 @@ import { EffortRouter } from "./effortRouter.ts";
 import { fileEffortRouterKey, fileVault, type EffortRouterKey } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
 import { worktreesLayer } from "./worktree.ts";
+import { SourceControl } from "./sourceControl.ts";
 
 export interface BackendOptions {
   /** Where Cerium keeps its database and chat-thread folders (the app's user-data directory). */
@@ -124,109 +125,121 @@ export const backendLayer = (options: BackendOptions) => {
       disableListenLog: true,
       disableLogger: true,
     },
-  ).pipe(
-    // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
-    // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows; over them, the
-    // user's automations, which start threads on a schedule or when a push's CI fails.
-    Layer.provideMerge(
-      Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
-        Layer.provideMerge(
-          Layer.mergeAll(
-            limitWarnings,
-            Pushes.layer({ file: join(options.dataDirectory, "pushes.json") }),
-            // The reviews of a diff by another harness each thread holds.
-            Reviews.layer({ file: join(options.dataDirectory, "reviews.json") }),
+  )
+    .pipe(
+      Layer.provideMerge(
+        SourceControl.host.pipe(
+          Layer.provideMerge(
+            SourceControl.layer({ file: join(options.dataDirectory, "source-control.json") }),
           ),
         ),
       ),
-    ),
-    // Keeps the cloud copy of this machine's threads current, knows the account's, and
-    // tells the account's browsers when a thread here needs the user, finished or failed. Shows
-    // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
-    // subscription usage for Settings → Limits. Slims threads gone quiet for the days the user chose.
-    // Answers the assistants the user connected to their account, when they let them in.
-    Layer.provideMerge(
-      Layer.mergeAll(
-        AssistantCalls,
-        CloudCopy,
-        CloudThreads.layer,
-        Notifications.layer,
-        discordPresence(),
-        SubscriptionUsage.layer,
-        threadSlimming,
-      ),
-    ),
-    // With the effort router's decision model, through the user's own OpenRouter key. Beside it, what
-    // brings the user's own harness sessions in as threads.
-    Layer.provideMerge(
-      Layer.mergeAll(
-        Orchestrator.layer.pipe(
-          Layer.provideMerge(EffortRouter.decider),
+    )
+    .pipe(
+      // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
+      // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows; over them, the
+      // user's automations, which start threads on a schedule or when a push's CI fails.
+      Layer.provideMerge(
+        Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
           Layer.provideMerge(
-            EffortRouter.layer.pipe(
-              Layer.provide(
-                options.effortRouterKey ??
-                  fileEffortRouterKey(join(options.dataDirectory, "effort-router.json")),
-              ),
-              Layer.provide(FetchHttpClient.layer),
+            Layer.mergeAll(
+              limitWarnings,
+              Pushes.layer({ file: join(options.dataDirectory, "pushes.json") }),
+              // The reviews of a diff by another harness each thread holds.
+              Reviews.layer({ file: join(options.dataDirectory, "reviews.json") }),
             ),
           ),
         ),
-        SessionImports.layer,
       ),
-    ),
-    Layer.provideMerge(
-      worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),
-    ),
-    // Snapshots of work threads' folders, so the user can put them back as they were before a message.
-    Layer.provideMerge(checkpointsLayer({ directory: join(options.dataDirectory, "checkpoints") })),
-    Layer.provideMerge(Files.layer),
-    // The user's own `gh`, for GitHub's pull requests and issues, and the commit messages, pull
-    // requests and issues a quick model writes for the user to edit.
-    Layer.provideMerge(Layer.mergeAll(GitHub.layer, Drafts.layer.pipe(Layer.provide(QuickWriter.layer)))),
-    Layer.provideMerge(GitBranches.layer),
-    Layer.provideMerge(GitChanges.layer),
-    Layer.provideMerge(History.layer),
-    Layer.provideMerge(Repositories.layer),
-    // Each layer above needs what a layer below it provides, so Git comes after the git services.
-    Layer.provideMerge(Git.layer),
-    Layer.provideMerge(Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") })),
-    // Projects, and the newest release of each harness and of `gh`, for Settings to offer the update.
-    Layer.provideMerge(
-      Layer.mergeAll(Projects.layer, Releases.layer.pipe(Layer.provide(FetchHttpClient.layer))),
-    ),
-    // Worktree scripts run in a terminal of the thread's own; the same Terminals instance feeds both.
-    Layer.provideMerge([
-      terminalsLayer,
-      projectScriptsLayer.pipe(Layer.provide(terminalsLayer), Layer.provide(threadEnvLayer)),
-    ]),
-    Layer.provideMerge(
-      Account.layer({
-        handoff: loopbackHandoff,
-        ...(options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") }),
-      }).pipe(
-        Layer.provide(options.vault ?? fileVault(join(options.dataDirectory, "account.json"))),
-        Layer.provide(FetchHttpClient.layer),
-        Layer.provide(Socket.layerWebSocketConstructorGlobal),
+      // Keeps the cloud copy of this machine's threads current, knows the account's, and
+      // tells the account's browsers when a thread here needs the user, finished or failed. Shows
+      // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
+      // subscription usage for Settings → Limits. Slims threads gone quiet for the days the user chose.
+      // Answers the assistants the user connected to their account, when they let them in.
+      Layer.provideMerge(
+        Layer.mergeAll(
+          AssistantCalls,
+          CloudCopy,
+          CloudThreads.layer,
+          Notifications.layer,
+          discordPresence(),
+          SubscriptionUsage.layer,
+          threadSlimming,
+        ),
       ),
-    ),
-    // With the catalog: the roster in the user's settings, applied to what the harnesses offer.
-    // With the browser the desktop window hosts for the bus's browser tools.
-    Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive, BrowserHost.layer)),
-    Layer.provideMerge(UserSettings.layer),
-    Layer.provideMerge(
-      Layer.mergeAll(
-        Store.layer({
-          filename: join(options.dataDirectory, "cerium.db"),
-          ...(options.migrationsFolder === undefined ? {} : { migrationsFolder: options.migrationsFolder }),
-        }),
-        OfferedModels.layer.pipe(Layer.provideMerge(AdaptersLive)),
-        OrchestratorConfig.layer({
-          chatDirectory: join(options.dataDirectory, "chats"),
-          titleDirectory: join(options.dataDirectory, "titles"),
-        }),
+      // With the effort router's decision model, through the user's own OpenRouter key. Beside it, what
+      // brings the user's own harness sessions in as threads.
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Orchestrator.layer.pipe(
+            Layer.provideMerge(EffortRouter.decider),
+            Layer.provideMerge(
+              EffortRouter.layer.pipe(
+                Layer.provide(
+                  options.effortRouterKey ??
+                    fileEffortRouterKey(join(options.dataDirectory, "effort-router.json")),
+                ),
+                Layer.provide(FetchHttpClient.layer),
+              ),
+            ),
+          ),
+          SessionImports.layer,
+        ),
       ),
-    ),
-    Layer.provideMerge(BusHttpServer),
-  );
+      Layer.provideMerge(
+        worktreesLayer({ directory: options.worktreeDirectory ?? join(homedir(), ".cerium", "worktrees") }),
+      ),
+      // Snapshots of work threads' folders, so the user can put them back as they were before a message.
+      Layer.provideMerge(checkpointsLayer({ directory: join(options.dataDirectory, "checkpoints") })),
+      Layer.provideMerge(Files.layer),
+      // The user's own `gh`, for GitHub's pull requests and issues, and the commit messages, pull
+      // requests and issues a quick model writes for the user to edit.
+      Layer.provideMerge(Layer.mergeAll(GitHub.layer, Drafts.layer.pipe(Layer.provide(QuickWriter.layer)))),
+      Layer.provideMerge(GitBranches.layer),
+      Layer.provideMerge(GitChanges.layer),
+      Layer.provideMerge(History.layer),
+      Layer.provideMerge(Repositories.layer),
+      // Each layer above needs what a layer below it provides, so Git comes after the git services.
+      Layer.provideMerge(Git.layer),
+      Layer.provideMerge(
+        Workspace.layer({ attachmentsDirectory: join(options.dataDirectory, "attachments") }),
+      ),
+      // Projects, and the newest release of each harness and of `gh`, for Settings to offer the update.
+      Layer.provideMerge(
+        Layer.mergeAll(Projects.layer, Releases.layer.pipe(Layer.provide(FetchHttpClient.layer))),
+      ),
+      // Worktree scripts run in a terminal of the thread's own; the same Terminals instance feeds both.
+      Layer.provideMerge([
+        terminalsLayer,
+        projectScriptsLayer.pipe(Layer.provide(terminalsLayer), Layer.provide(threadEnvLayer)),
+      ]),
+      Layer.provideMerge(
+        Account.layer({
+          handoff: loopbackHandoff,
+          ...(options.account ?? { relayUrl: DEFAULT_RELAY_URL, device: thisMachine("dev", "dev") }),
+        }).pipe(
+          Layer.provide(options.vault ?? fileVault(join(options.dataDirectory, "account.json"))),
+          Layer.provide(FetchHttpClient.layer),
+          Layer.provide(Socket.layerWebSocketConstructorGlobal),
+        ),
+      ),
+      // With the catalog: the roster in the user's settings, applied to what the harnesses offer.
+      // With the browser the desktop window hosts for the bus's browser tools.
+      Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive, BrowserHost.layer)),
+      Layer.provideMerge(UserSettings.layer),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Store.layer({
+            filename: join(options.dataDirectory, "cerium.db"),
+            ...(options.migrationsFolder === undefined ? {} : { migrationsFolder: options.migrationsFolder }),
+          }),
+          OfferedModels.layer.pipe(Layer.provideMerge(AdaptersLive)),
+          OrchestratorConfig.layer({
+            chatDirectory: join(options.dataDirectory, "chats"),
+            titleDirectory: join(options.dataDirectory, "titles"),
+          }),
+        ),
+      ),
+      Layer.provideMerge(BusHttpServer),
+    );
 };

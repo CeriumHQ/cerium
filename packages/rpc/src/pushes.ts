@@ -113,6 +113,7 @@ export const PushRecord = Schema.Struct({
   cwd: Schema.String,
   remote: Schema.String,
   branch: Schema.String,
+  followCi: Schema.optionalKey(Schema.Boolean),
   createdAt: EpochMillis,
   updatedAt: EpochMillis,
   stage: PushStage,

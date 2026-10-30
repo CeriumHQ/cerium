@@ -10,6 +10,7 @@ export const REWIND_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "MessageWithdrawn",
   "ConversationRewound",
   "LeadHandedOff",
+  "WorkspaceMoved",
   "SessionStarted",
   "AgentSpawned",
   "PermissionRequested",
@@ -24,6 +25,7 @@ export const CONVERSATION_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "MessageCompleted",
   "ConversationRewound",
   "LeadHandedOff",
+  "WorkspaceMoved",
   "SessionStarted",
 ];
 
@@ -107,7 +109,9 @@ export const rewindPoint = (
     if (payload._tag === "TurnInput") before++;
   }
   // A session on another harness since then never held the message: it is told the conversation again.
-  const handedOff = live.slice(at).some(({ payload }) => payload._tag === "LeadHandedOff");
+  const handedOff = live
+    .slice(at)
+    .some(({ payload }) => payload._tag === "LeadHandedOff" || payload._tag === "WorkspaceMoved");
   const index = handedOff
     ? 0
     : live.slice(base + 1, at).filter(({ payload }) => payload._tag === "TurnInput").length;
@@ -133,13 +137,16 @@ export const startsAnew = (live: ReadonlyArray<AgentEvent>): boolean => {
     if (payload?._tag === "SessionStarted") return false;
     if (payload?._tag === "ConversationRewound") return payload.via !== "fork";
     if (payload?._tag === "LeadHandedOff") return true;
+    if (payload?._tag === "WorkspaceMoved") return true;
   }
   return false;
 };
 
 /** A rewind that didn't fork, or a handoff: the session after it holds none of the turns before. */
 const startsSession = (payload: AgentEvent["payload"]) =>
-  (payload._tag === "ConversationRewound" && payload.via !== "fork") || payload._tag === "LeadHandedOff";
+  (payload._tag === "ConversationRewound" && payload.via !== "fork") ||
+  payload._tag === "LeadHandedOff" ||
+  payload._tag === "WorkspaceMoved";
 
 /** How much of the conversation a replay tells a new session, in characters. */
 const REPLAY_BUDGET = 60_000;

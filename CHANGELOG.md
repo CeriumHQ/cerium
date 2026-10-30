@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Threads can reuse durable workspaces, choose a base or existing branch, start from a GitHub pull request, and record dependencies on another conversation. Workspace details show live Git state, related conversations, linked issues and PRs, preparation and scoped diffs; idle conversations can move between checkouts with their history preserved. New workspaces survive archive and deletion, with separate cleanup that protects imported checkouts, running terminals and local or unmerged work. MCP exposes workspace inspection, PR linking and watching, review scopes and queued moves. Push returns promptly with an operation ID, supports a reviewed-head check, and separates agent CI notifications from PR monitoring.
+
 - Subagent spawns use a minimal, collapsible thread line with real provider marks, live status counts and provider groups instead of bordered cards. Agent transcripts and right-click actions remain available.
 
 - Click a subagent card or select a child in the agents panel to read its live transcript with the same messages, reasoning and tool details as the lead. Child transcripts have no composer, edit, restore or execution controls; Back to lead returns to the lead's conversation.

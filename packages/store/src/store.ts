@@ -104,6 +104,7 @@ export type AgentPatch = Partial<Pick<AgentInfo, "state" | "provider" | "model" 
 
 /** `archivedAt: null` restores an archived thread; `laterUntil: null` brings one put off back now. */
 export interface ThreadPatch {
+  readonly cwd?: string;
   readonly title?: string;
   readonly archivedAt?: number | null;
   readonly laterUntil?: number | null;

@@ -7,6 +7,13 @@ import { Tool } from "effect/ai";
 // instead of on GitHub. The backend runs it (apps/backend/src/pushes.ts); the bus only carries it.
 
 export const PushRequest = Schema.Struct({
+  expectedHead: Schema.optionalKey(Schema.NonEmptyString).annotate({
+    description: "Refuse if the branch moved since the revision you reviewed.",
+  }),
+  followCi: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Also follow this pushed commit's CI (default false). PR monitoring is independent: use watch_pull_request.",
+  }),
   remote: Schema.optionalKey(Schema.NonEmptyString).annotate({
     description: "The remote to push to; default the branch's upstream remote, else origin.",
   }),
@@ -30,11 +37,10 @@ export type PushAnswer = typeof PushAnswer.Type;
 export const Push = Tool.make("push", {
   description:
     "Push your commits with git, the way `git push` would, pre-push hook and all, and show the user the" +
-    " push and its CI checks in the thread. Use it instead of running `git push` yourself. It returns" +
-    " once the push lands or fails, or after about 45 seconds while the pre-push checks still run, when" +
-    " the outcome follows as a message. The CI result reaches you later as a message too: the failing" +
-    " check and its log's last lines when CI fails, so you can fix it. No force pushes, and the hook" +
-    " always runs.",
+    " push in the thread. Returns promptly with pushId while the hook and push continue; the outcome" +
+    " follows as a message. Inspect workspace_status before pushing and pass expectedHead to bind the" +
+    " push to your reviewed revision. PR monitoring is independent: use watch_pull_request. No force" +
+    " pushes, and the hook always runs.",
   parameters: PushRequest,
   success: PushAnswer,
   failure: OrchestratorError,

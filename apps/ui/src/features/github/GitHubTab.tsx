@@ -20,6 +20,7 @@ export function GitHubTabView({
   issue,
   onClose,
   pane,
+  onOpenThread,
 }: {
   tab: GitHubTab;
   /** A thread can start in a worktree of its own. */
@@ -29,6 +30,7 @@ export function GitHubTabView({
   issue?: ((tab: GitHubTab, pane: PaneChrome | undefined) => ReactNode) | undefined;
   onClose: () => void;
   pane?: PaneChrome | undefined;
+  onOpenThread?: ((id: string) => void) | undefined;
 }) {
   if (tab.kind === "issue") {
     return issue ? issue(tab, pane) : <Note>Issues can't open here.</Note>;
@@ -43,6 +45,7 @@ export function GitHubTabView({
         onStartThread={onStartThread}
         onClose={onClose}
         pane={pane}
+        onOpenThread={onOpenThread}
       />
     </>
   );

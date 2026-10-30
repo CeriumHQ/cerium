@@ -40,6 +40,22 @@ const handedOff: EventPayload = {
 };
 
 describe("handoff briefs", () => {
+  it("restores conversation context after moving the same harness to another checkout", () => {
+    const events = log(turn("m1", "Keep the existing API"), {
+      _tag: "WorkspaceMoved",
+      from: { provider: "claude", model: "opus" },
+      provider: "claude",
+      model: "opus",
+      previousCwd: "/project",
+      cwd: "/worktree",
+    });
+    assert.isTrue(startsAnew(events));
+    assert.isDefined(pendingHandoff(events));
+    assert.include(
+      handoffBrief(events, { from: { provider: "claude", model: "opus" }, running: [] }),
+      "Keep the existing API",
+    );
+  });
   it("tells the conversation, the files the thread changed, its plan and its running agents", () => {
     const events = log(
       turn("m1", "Fix the parser"),

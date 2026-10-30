@@ -53,6 +53,10 @@ import {
   UsageSnapshot,
   WorkspaceEntry,
   WorktreeChanges,
+  WorkspaceChoice,
+  CheckoutInfo,
+  SourceControlCommand,
+  SourceControlResult,
   ReadEntry,
 } from "@cerium/protocol";
 import { Schema } from "effect";
@@ -98,7 +102,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 47;
+export const RPC_VERSION = 48;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -135,6 +139,7 @@ export const CreateThreadPayload = Schema.Struct({
   cwd: Schema.optionalKey(Schema.NonEmptyString),
   /** A work thread runs in a git worktree of its own. Since `RPC_VERSION` 7. */
   worktree: Schema.optionalKey(Schema.Boolean),
+  workspace: Schema.optionalKey(WorkspaceChoice),
   /**
    * The same for each thread one message starts with several models (multi agent), which the
    * sidebar shows as one run. Since `RPC_VERSION` 25; an older backend leaves the threads apart.
@@ -184,6 +189,21 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  * projects, harnesses and settings.
  */
 export const MachineRpcs = RpcGroup.make(
+  Rpc.make("SourceControl", {
+    payload: { threadId: ThreadId, command: SourceControlCommand },
+    success: SourceControlResult,
+    error: CeriumError,
+  }),
+  Rpc.make("RelatedWorkThreads", {
+    payload: { url: Schema.NonEmptyString },
+    success: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.String, active: Schema.Boolean })),
+    error: CeriumError,
+  }),
+  Rpc.make("ListCheckouts", {
+    payload: { root: Schema.NonEmptyString },
+    success: Schema.Array(CheckoutInfo),
+    error: CeriumError,
+  }),
   Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
   /** A full snapshot, then only changed/removed overviews. Since RPC_VERSION 46. */
   Rpc.make("WatchThreadOverviews", { success: ThreadOverviewUpdate, stream: true, error: CeriumError }),
@@ -418,7 +438,8 @@ export const MachineRpcs = RpcGroup.make(
   }),
   /**
    * Archiving hides a thread until it is restored; refused while its agents work or wait on the user.
-   * A thread's worktree goes with it, refused while it holds work its base doesn't (`WorktreeChanges`)
+   * Since RPC_VERSION 48, durable workspaces stay on disk until explicit cleanup. On older machines,
+   * a thread's worktree goes with it, refused while it holds work its base doesn't (`WorktreeChanges`)
    * unless `discardWork` (since `RPC_VERSION` 7); restoring puts it back. The project's teardown
    * runs in the worktree first, and one that fails doesn't stop the archiving: the thread comes back
    * with the `teardown` report (since `RPC_VERSION` 39).

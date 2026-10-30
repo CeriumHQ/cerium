@@ -57,10 +57,17 @@ export type ThreadMode = typeof ThreadMode.Type;
 
 /**
  * A work thread's own git worktree: a checkout of its project's repository on a branch of its own,
- * so threads in one project don't change each other's files. Archiving the thread removes the
- * worktree, and restoring it puts the worktree back.
+ * so independent tasks don't change each other's files. Related conversations share its identity;
+ * archiving retains the checkout and explicit cleanup retains its branch for restoration.
  */
 export const ThreadWorktree = Schema.Struct({
+  /** Durable checkout identity; conversations with this identity share its lifetime. */
+  id: Schema.optionalKey(Schema.String),
+  managed: Schema.optionalKey(Schema.Boolean),
+  baseCommit: Schema.optionalKey(Schema.String),
+  startCommit: Schema.optionalKey(Schema.String),
+  dependsOnThreadId: Schema.optionalKey(Schema.String),
+  pullRequestUrl: Schema.optionalKey(Schema.String),
   /** The folder the user chose; the thread's `cwd` is the same folder inside the worktree. */
   project: Schema.NonEmptyString,
   /** The worktree's own folder: `cwd`, or above it when the project is a subfolder of its repository. */

@@ -14,6 +14,14 @@ export const savedProjectsAtom = Backend.runtime.atom((get) => {
 
 export const saveProject = Backend.mutation("SaveProject");
 export const removeProject = Backend.mutation("RemoveProject");
+export const checkoutsAtom = Atom.family((root: string) =>
+  Backend.runtime
+    .atom((get) => {
+      get(connectionEpochAtom);
+      return Backend.use((client) => client("ListCheckouts", { root }));
+    })
+    .pipe(Atom.setIdleTTL("30 seconds")),
+);
 
 /**
  * The branch checked out in a folder (a short commit when detached); undefined outside git, and for

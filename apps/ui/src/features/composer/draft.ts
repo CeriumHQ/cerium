@@ -50,6 +50,7 @@ export interface DraftStart {
   readonly access?: AccessMode;
   /** The thread runs in a git worktree of its own. */
   readonly worktree?: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice | undefined;
 }
 
 /** One line of a diff a comment sits on, as the diff shows it. */

@@ -638,7 +638,16 @@ export const UserTasksChanged = Schema.TaggedStruct("UserTasksChanged", {
   tasks: Schema.Array(TaskEntry),
 });
 
+export const WorkspaceMoved = Schema.TaggedStruct("WorkspaceMoved", {
+  from: Schema.Struct({ provider: ProviderId, model: Schema.NonEmptyString }),
+  provider: ProviderId,
+  model: Schema.NonEmptyString,
+  previousCwd: Schema.String,
+  cwd: Schema.String,
+});
+
 export const EventPayload = Schema.Union([
+  WorkspaceMoved,
   SessionStarted,
   SessionImported,
   MessageDelta,

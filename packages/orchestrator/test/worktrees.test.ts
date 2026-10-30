@@ -48,19 +48,21 @@ const fakeWorktrees = () => {
     refuse?: string;
     refuseCheckOut?: string;
     gate?: Deferred.Deferred<void>;
+    durable?: boolean;
   } = { changes: { uncommitted: 0, unmerged: 0 } };
   const layer = Layer.succeed(Worktrees, {
-    plan: (project, name) =>
+    plan: (project, name, choice) =>
       state.refuse === undefined
         ? Effect.sync(() => {
             calls.push(`plan ${project} ${name}`);
             const worktree: ThreadWorktree = {
+              ...(state.durable ? { id: "workspace-one", managed: true } : {}),
               project,
-              root: "/worktrees/proj/fix-it",
+              root: choice?.path ?? "/worktrees/proj/fix-it",
               branch: "cerium/fix-it",
               base: "main",
             };
-            return { worktree, cwd: "/worktrees/proj/fix-it/app" };
+            return { worktree, cwd: `${worktree.root}/app` };
           })
         : Effect.fail(new WorktreeError({ message: state.refuse })),
     checkOut: (worktree) =>
@@ -92,6 +94,45 @@ const start = Effect.gen(function* () {
 });
 
 describe("Orchestrator worktrees", () => {
+  it.live(
+    "retains a durable checkout and uncommitted work when conversations are archived or deleted",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      const worktrees = fakeWorktrees();
+      worktrees.state.durable = true;
+      worktrees.state.changes = { uncommitted: 3, unmerged: 2 };
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { thread } = yield* start;
+        const archived = yield* orchestrator.setThreadArchived(thread.id, true);
+        assert.isDefined(archived.archivedAt);
+        assert.strictEqual(archived.worktree?.id, "workspace-one");
+        yield* orchestrator.setThreadArchived(thread.id, false);
+        yield* orchestrator.deleteThread(thread.id);
+        assert.notInclude(worktrees.calls.join("\n"), "remove");
+        assert.notInclude(worktrees.calls.join("\n"), "restore");
+      }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+    },
+  );
+
+  it.live("moves an idle conversation without losing its identity or portable history", () => {
+    const fake = makeFakeAdapter("claude");
+    const worktrees = fakeWorktrees();
+    worktrees.state.durable = true;
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { thread, lead } = yield* start;
+      const moved = yield* orchestrator.moveThread(thread.id, { path: "/worktrees/proj/review" });
+      assert.strictEqual(moved.id, thread.id);
+      assert.strictEqual(moved.cwd, "/worktrees/proj/review/app");
+      assert.strictEqual(
+        (yield* orchestrator.listAgents(thread.id)).find((agent) => agent.parentId === undefined)?.id,
+        lead.id,
+      );
+      const events = yield* orchestrator.threadEvents(thread.id);
+      assert.isTrue(events.some((event) => event.payload._tag === "WorkspaceMoved"));
+    }).pipe(Effect.provide(testLayer([fake.adapter], { worktrees: worktrees.layer })), Effect.scoped);
+  });
   it.live("starts a thread's agents in a worktree of its own and tells them its branch", () => {
     const fake = makeFakeAdapter("claude");
     const worktrees = fakeWorktrees();

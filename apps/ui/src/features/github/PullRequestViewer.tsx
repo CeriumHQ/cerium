@@ -58,6 +58,7 @@ import { MergeBox, PullComposer } from "./PullActionsBox.tsx";
 import { PullChecks, PullCommits, PullFiles } from "./PullTabs.tsx";
 import { ReviewThreadCard } from "./ReviewThreadCard.tsx";
 import { usePullActions, usePullFreshness, type PullActions } from "./usePullRequest.ts";
+import { RelatedWorkThreads } from "./RelatedWorkThreads.tsx";
 
 type PullTab = "conversation" | "commits" | "checks" | "files";
 
@@ -75,6 +76,7 @@ export interface PullThreadStart {
   readonly text: string;
   /** In a worktree of its own, where it checks the pull request out. */
   readonly worktree: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
 }
 
 /**
@@ -88,6 +90,7 @@ export function PullRequestViewer({
   onStartThread,
   onClose,
   pane,
+  onOpenThread,
 }: {
   /** The work thread's folder the panel acted on. */
   cwd: string;
@@ -98,6 +101,7 @@ export function PullRequestViewer({
   onClose: () => void;
   /** While it shares the main area with other panes, its header is the pane's. */
   pane?: PaneChrome | undefined;
+  onOpenThread?: ((id: string) => void) | undefined;
 }) {
   const id = pullKey(cwd, number);
   const result = useAtomValue(pullAtom(id));
@@ -143,6 +147,7 @@ export function PullRequestViewer({
               className={`mx-auto flex flex-col gap-5 px-6 pt-5 pb-12 max-md:px-3 ${tab === "files" ? "max-w-[90rem]" : "max-w-[56rem]"}`}
             >
               <TitleBlock pull={pull} />
+              <RelatedWorkThreads url={pull.url} onOpen={onOpenThread} />
               {tab === "conversation" ? (
                 <PullConversation
                   cwd={cwd}
@@ -194,7 +199,12 @@ function Header({
 }) {
   const [checkingOut, setCheckingOut] = useState(false);
   const start = (worktree: boolean) => {
-    if (pull && onStartThread) onStartThread({ text: pullRequestBrief(pull, { worktree }), worktree });
+    if (pull && onStartThread)
+      onStartThread({
+        text: pullRequestBrief(pull, { worktree }),
+        worktree,
+        ...(worktree ? { workspace: { pullRequestUrl: pull.url } } : {}),
+      });
   };
   const tabs: ReadonlyArray<{ value: PullTab; label: string; count?: number | undefined }> = [
     { value: "conversation", label: "Conversation" },

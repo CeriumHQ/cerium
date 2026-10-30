@@ -9,6 +9,7 @@ import {
   ProviderId,
   ReasoningEffort,
   TaskEntry,
+  WorkspaceChoice,
   type Question,
 } from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
@@ -17,6 +18,18 @@ import { HttpServerRequest } from "effect/http";
 
 import { ProjectRun } from "./projectRun.ts";
 import { Push, PushHost } from "./push.ts";
+import {
+  SourceControlHost,
+  WorkspaceStatus,
+  ListWorkspaces,
+  LinkPullRequest,
+  UnlinkPullRequest,
+  WatchPullRequest,
+  UnwatchPullRequest,
+  ReviewChanges,
+  MoveToWorkspace,
+  LinkIssue,
+} from "./sourceControl.ts";
 import { BusRegistry } from "./registry.ts";
 
 // The tools every Cerium-managed session sees under the `cerium` MCP server.
@@ -93,6 +106,10 @@ export const CreateThread = Tool.make("create_thread", {
     " user follows it in its own tab. Use it when the user asks you to start threads, e.g. one per feature." +
     " Returns at once. Leads only.",
   parameters: Schema.Struct({
+    workspace: Schema.optionalKey(WorkspaceChoice).annotate({
+      description:
+        "Reuse an existing checkout with path, or create one with baseRef and optional branch. sourceThreadId builds on another thread's branch and records the dependency.",
+    }),
     prompt: Schema.NonEmptyString.annotate({
       description:
         "The new lead's first message. It sees nothing of your conversation, so make it stand alone.",
@@ -329,6 +346,15 @@ export const ListTasks = Tool.make("list_tasks", {
 });
 
 export const BusToolkit = Toolkit.make(
+  WorkspaceStatus,
+  ListWorkspaces,
+  LinkPullRequest,
+  UnlinkPullRequest,
+  WatchPullRequest,
+  UnwatchPullRequest,
+  ReviewChanges,
+  MoveToWorkspace,
+  LinkIssue,
   ListModels,
   SpawnAgent,
   CreateThread,
@@ -349,6 +375,9 @@ export const BusToolkit = Toolkit.make(
 
 /** Workers cannot delegate, answer other children's permissions or manage the user's threads/tasks. */
 export const ChildToolkit = Toolkit.make(
+  WorkspaceStatus,
+  ListWorkspaces,
+  ReviewChanges,
   ListAgents,
   SendMessage,
   AskAdvisor,
@@ -365,6 +394,7 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
     const orchestrator = yield* Orchestrator;
     const registry = yield* BusRegistry;
     const pushes = yield* PushHost;
+    const sourceControl = yield* Effect.serviceOption(SourceControlHost);
 
     /** The agent making this call, from its per-session bearer token. */
     const caller = Effect.gen(function* () {
@@ -379,7 +409,28 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
       return agentId.value;
     });
 
+    const source = (
+      action: import("@cerium/protocol").SourceControlCommand["action"],
+      request: Omit<import("@cerium/protocol").SourceControlCommand, "action">,
+    ) =>
+      Effect.gen(function* () {
+        if (Option.isNone(sourceControl))
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: "Source control isn't available here.",
+          });
+        return yield* sourceControl.value.run(yield* caller, { ...request, action });
+      });
     return BusToolkit.of({
+      workspace_status: (request) => source("status", request),
+      list_workspaces: (request) => source("list", request),
+      link_pull_request: (request) => source("link", request),
+      unlink_pull_request: (request) => source("unlink", request),
+      link_issue: (request) => source("link_issue", request),
+      watch_pull_request: (request) => source("watch", request),
+      unwatch_pull_request: (request) => source("unwatch", request),
+      review_changes: (request) => source("diff", request),
+      move_to_workspace: (request) => source("move", request),
       list_models: () =>
         Effect.map(orchestrator.catalog, (catalog) => ({
           models: catalog.map(({ alias, provider, model, effort, speed, description, priority }) => ({
