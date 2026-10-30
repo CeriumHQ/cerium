@@ -164,6 +164,7 @@ import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
+import { WorkspaceStatus } from "../features/git/WorkspaceStatus.tsx";
 import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
 import { GitHubPageEmpty, GitHubPageList } from "../features/github/GitHubPage.tsx";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
@@ -2074,15 +2075,19 @@ function Workspace() {
     }
   };
 
+  /** The machine keeps threads' workspaces: their checkouts, links and reviews. */
+  const workspacesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= 48;
+  const openThreadById = (threadId: string) => {
+    const summary = summaries.find((candidate) => candidate.id === threadId);
+    if (summary) openSummary(summary);
+  };
+
+  /** The open work thread whose checkout the titlebar shows: local, in a folder, on a machine that keeps workspaces. */
+  const workspaceThread =
+    workspacesOk && runThreadId !== undefined && !compact ? selected?.thread : undefined;
+
   const paneActions: ThreadPaneActions = {
-    sourceControlEnabled: drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= 48,
-    openSourceControl: () => {
-      if (!gitOpen) toggleGit();
-    },
-    openThread: (threadId) => {
-      const summary = summaries.find((candidate) => candidate.id === threadId);
-      if (summary) openSummary(summary);
-    },
+    sourceControlEnabled: workspacesOk,
     attempt,
     send: (agentId, message) => send({ payload: { agentId, ...message } }),
     edit:
@@ -2381,7 +2386,7 @@ function Workspace() {
     ) : (
       <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised max-md:rounded-none max-md:border-0">
         <GitHubTabView
-          onOpenThread={paneActions.openThread}
+          onOpenThread={openThreadById}
           key={githubKey(githubPick.root, githubPick.kind, githubPick.number)}
           tab={githubPick}
           worktrees={worktreesOk}
@@ -2424,7 +2429,7 @@ function Workspace() {
     if (github !== undefined) {
       return (
         <GitHubTabView
-          onOpenThread={paneActions.openThread}
+          onOpenThread={openThreadById}
           key={key}
           tab={github}
           worktrees={worktreesOk}
@@ -2816,6 +2821,21 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
+      {...(workspaceThread === undefined
+        ? {}
+        : {
+            workspace: (
+              <WorkspaceStatus
+                key={workspaceThread.id}
+                threadId={workspaceThread.id as ThreadId}
+                projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
+                onOpenSourceControl={() => {
+                  if (!gitOpen) toggleGit();
+                }}
+                onOpenThread={openThreadById}
+              />
+            ),
+          })}
       {...(runThreadId === undefined
         ? {}
         : {

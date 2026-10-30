@@ -61,6 +61,8 @@ interface AppFrameProps {
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** The open thread's project run button: starts its run command, and stops it while it runs; its menu has the project's actions. */
   readonly run?: RunProps;
+  /** The open thread's workspace: its branch and state, before the run button. */
+  readonly workspace?: ReactNode;
   /** The open thread's browser, in the Preview pane beside it; the wide window's titlebar has its button. */
   readonly preview?: PreviewToggleProps;
   /**
@@ -161,6 +163,7 @@ function DesktopFrame({
   onCloseSide,
   terminal,
   run,
+  workspace,
   preview,
   settings,
   page,
@@ -232,6 +235,7 @@ function DesktopFrame({
         onTogglePanel={onTogglePanel}
         {...(terminal ? { terminal } : {})}
         {...(run ? { run } : {})}
+        {...(workspace ? { workspace } : {})}
         {...(preview ? { preview } : {})}
         {...(alone ? {} : { machinePicker, tabs })}
       />

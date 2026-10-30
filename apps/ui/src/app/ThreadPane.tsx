@@ -53,7 +53,6 @@ import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { DEFAULT_LIMIT_POLICY } from "../features/settings/limitPolicy.ts";
 import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
-import { WorkspaceSummary } from "../features/git/WorkspaceSummary.tsx";
 import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
@@ -85,9 +84,8 @@ const KEPT_THREADS = 2;
 
 /** What the window does for any of its thread panes. */
 export interface ThreadPaneActions {
+  /** The machine keeps workspaces: a new thread's box offers its checkouts. */
   readonly sourceControlEnabled: boolean;
-  readonly openSourceControl: () => void;
-  readonly openThread: (threadId: string) => void;
   /** Runs a backend action, reporting a failure; resolves whether it worked. */
   readonly attempt: (action: Promise<unknown>) => Promise<boolean>;
   readonly send: (agentId: AgentId, message: OutgoingMessage) => Promise<unknown>;
@@ -323,14 +321,6 @@ export function ThreadPane({
       <div data-drawer-column="" className="relative flex h-full flex-col">
         <div className="relative flex min-h-0 flex-1 flex-col">
           {notices}
-          {actions.sourceControlEnabled && !cloud && !child && viewed?.thread.cwd ? (
-            <WorkspaceSummary
-              threadId={viewed.thread.id}
-              projectRoot={viewed.thread.worktree?.project ?? viewed.thread.cwd}
-              onOpenSourceControl={actions.openSourceControl}
-              onOpenThread={actions.openThread}
-            />
-          ) : null}
           {child ? (
             <header className="flex shrink-0 items-center gap-3 border-b border-line-subtle px-4 py-2 text-meta">
               <Button
