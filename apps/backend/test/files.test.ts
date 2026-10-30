@@ -632,7 +632,20 @@ describe("Files", () => {
     Effect.gen(function* () {
       const files = yield* Files;
       const { root, write } = yield* repository;
-      const watching = yield* files.watch(root).pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped);
+      // Separate writes can straddle the batching window on a busy runner.
+      const watching = yield* files.watch(root).pipe(
+        Stream.scan(
+          () => ({ paths: [] as string[], status: false }),
+          (seen, batch) => ({
+            paths: [...new Set([...seen.paths, ...batch.paths])],
+            status: seen.status || batch.status,
+          }),
+        ),
+        Stream.filter((batch) => batch.paths.includes("src/app.ts") && batch.paths.includes("debug.log")),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
       yield* Effect.sleep("300 millis");
       yield* write("src/app.ts", "changed\n");
       yield* write("node_modules/dep/more.js", "ignored");
@@ -642,7 +655,7 @@ describe("Files", () => {
       assert.isTrue(batch!.paths.includes("src/app.ts"));
       assert.isTrue(batch!.paths.includes("debug.log"));
       assert.isFalse(batch!.paths.some((path) => path.startsWith("node_modules/")));
-      // The one change git sees makes the batch a change of status.
+      // The one change git sees reports a change of status.
       assert.isTrue(batch!.status);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );

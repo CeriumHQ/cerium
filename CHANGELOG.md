@@ -138,6 +138,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- CI: the file-watcher test waits for both expected paths across batches, avoiding a timing failure on busy Windows runners while still checking ignored paths and Git status.
 - Read-only Codex agents can start again: the app-server handshake enables the capability required by their granular approval policy, preserving read-only sandboxing and MCP approval prompts.
 - A new thread asks its question again, with the message box seated under it in the middle of the pane. Since subagent conversations became viewable, the open thread's views sat in a box as tall as the pane, which pushed the question out of sight and dropped the box to the foot.
 - CI: the Fedora RPM smoke test waits until the runner allows unprivileged user namespaces, after the Debian package tests its AppArmor profile. Starting it earlier raced that setup and could abort Chromium on Linux Arm64; it still runs alongside the AppImage test.
