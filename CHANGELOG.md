@@ -130,6 +130,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Read-only Codex agents can start again: the app-server handshake enables the capability required by their granular approval policy, preserving read-only sandboxing and MCP approval prompts.
+
 - CI: the Fedora RPM smoke test waits until the runner allows unprivileged user namespaces, after the Debian package tests its AppArmor profile. Starting it earlier raced that setup and could abort Chromium on Linux Arm64; it still runs alongside the AppImage test.
 - An agent's push always lands on a branch of its own name. A branch cut from `origin/main` tracks main, and the push followed that tracking, so a feature meant for a pull request went straight to main; such a push now goes to its own branch and points the tracking there.
 - A thread started in a new worktree shows at once, with its message, instead of vanishing for up to a few minutes. Its worktree is checked out behind it, and its agent starts once the folder is ready; a worktree that can't be made says why in the thread. Copying the ignored files a worktree takes (`.env`, or what `.worktreeinclude` lists) no longer walks every ignored folder: git did that through node_modules, following bun's workspace links on Windows, and it took 42 seconds in Cerium's own repository, where it now takes a fraction of one. Ignored folders are looked into only for lines with a slash that name something inside them. A thread whose worktree is missing when it picks back up (Cerium quit while making it, say) gets it back, with setup run again.

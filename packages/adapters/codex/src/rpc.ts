@@ -232,7 +232,8 @@ export const connect = Effect.fn("CodexAdapter.connect")(function* (executablePa
 
   const { codexHome } = yield* request("initialize", {
     clientInfo: { name: "cerium", title: "Cerium", version: "0.0.0" },
-    capabilities: { experimentalApi: false, requestAttestation: false, optOutNotificationMethods: OPTED_OUT },
+    // Read-only sessions use granular approvals, which require this protocol capability.
+    capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: OPTED_OUT },
   }).pipe(Effect.mapError(failure("The Codex app-server did not initialize")));
   yield* send({ method: "initialized" });
   const server: AppServer = {
