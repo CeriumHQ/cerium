@@ -478,13 +478,12 @@ export function SpawnCard({
   const card = (
     <Button
       onClick={() => actions.onShow?.(block.childId)}
-      className="flex min-w-0 flex-[1_1_17rem] items-center gap-2 rounded-lg border border-line-subtle px-2.5 py-1.5 text-left text-meta transition-colors max-md:min-h-10 hover:border-line-strong hover:bg-surface-hover data-popup-open:border-line-strong data-popup-open:bg-surface-hover"
+      title={`${block.model} · ${accessLabel[block.access]}`}
+      className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-sm py-1 text-left text-meta transition-colors max-md:min-h-10 hover:text-fg-primary"
     >
       <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
-      <span className="truncate font-medium text-fg-primary">{block.role}</span>
-      <span className="min-w-0 flex-1 truncate text-fg-tertiary">
-        {block.model} · {accessLabel[block.access]}
-      </span>
+      <span className="text-fg-primary">{providerName[block.provider]}</span>
+      <span className="min-w-0 truncate text-fg-tertiary">{block.role}</span>
       <AgentState state={state} />
     </Button>
   );
