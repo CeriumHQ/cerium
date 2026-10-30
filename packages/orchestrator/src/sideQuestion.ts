@@ -1,3 +1,5 @@
+import type { AgentId } from "@cerium/protocol";
+import { HelperUsage } from "./helperUsage.ts";
 import type { AgentEvent, ProviderId } from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
@@ -102,6 +104,7 @@ export const conversationPrompt = (
 
 /** What a side question is asked of. */
 export interface SideQuestionInput {
+  readonly agentId?: AgentId;
   readonly provider: ProviderId;
   readonly model: string;
   /** The folder the thread's agents run in. */
@@ -127,6 +130,7 @@ export class SideQuestions extends Context.Service<
     SideQuestions,
     Effect.gen(function* () {
       const adapters = yield* Adapters;
+      const accounting = yield* HelperUsage;
       const config = yield* OrchestratorConfig;
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -145,6 +149,16 @@ export class SideQuestions extends Context.Service<
           if (adapter.sideQuestion !== undefined && input.sessionId !== undefined) {
             const answer = yield* adapter
               .sideQuestion({
+                ...(input.agentId === undefined
+                  ? {}
+                  : {
+                      onUsage: accounting.track({
+                        agentId: input.agentId,
+                        purpose: "sideQuestion",
+                        provider: input.provider,
+                        model: input.model,
+                      }),
+                    }),
                 model: input.model,
                 cwd: input.cwd,
                 sessionId: input.sessionId,
@@ -165,6 +179,16 @@ export class SideQuestions extends Context.Service<
           return yield* adapter
             .complete({
               model: input.model,
+              ...(input.agentId === undefined
+                ? {}
+                : {
+                    onUsage: accounting.track({
+                      agentId: input.agentId,
+                      purpose: "sideQuestion",
+                      provider: input.provider,
+                      model: input.model,
+                    }),
+                  }),
               instructions: sideInstructions(input.working),
               prompt: conversationPrompt(input.live, input.question, input.earlier, input.working),
               cwd: empty,
@@ -189,5 +213,5 @@ export class SideQuestions extends Context.Service<
         }),
       });
     }),
-  );
+  ).pipe(Layer.provideMerge(HelperUsage.layer));
 }

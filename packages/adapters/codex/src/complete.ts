@@ -1,6 +1,7 @@
-import { HarnessFailure, type CompletionRequest } from "@cerium/harness";
+import { HarnessFailure, type CompletionRequest, type CompletionUsage } from "@cerium/harness";
 import { Effect, Stream } from "effect";
 
+import type { ThreadTokenUsage } from "./protocol/v2/ThreadTokenUsage.ts";
 import { listAllModels } from "./models.ts";
 import type { JsonValue } from "./protocol/serde_json/JsonValue.ts";
 import type { ThreadStartParams } from "./protocol/v2/ThreadStartParams.ts";
@@ -93,7 +94,7 @@ export const completeWithCodex = Effect.fn("CodexAdapter.complete")(function* (
   const { thread } = yield* server
     .request("thread/start", completionParams(request, userMcpServers, lowestEffort(supported ?? [])))
     .pipe(Effect.mapError(failure("Could not start a Codex thread")));
-  return yield* answerOn(server, thread.id, request.prompt);
+  return yield* answerOn(server, thread.id, request.prompt, request.onUsage);
 }, Effect.scoped);
 
 /** Puts a prompt to a thread that only answers, and resolves with its reply. */
@@ -101,6 +102,7 @@ export const answerOn = Effect.fn("CodexAdapter.answerOn")(function* (
   server: AppServer,
   threadId: string,
   prompt: string,
+  onUsage?: (usage: CompletionUsage) => void,
 ) {
   yield* server
     .request("turn/start", { threadId, input: [{ type: "text", text: prompt, text_elements: [] }] })
@@ -110,6 +112,8 @@ export const answerOn = Effect.fn("CodexAdapter.answerOn")(function* (
     incoming._tag === "Notification" &&
     incoming.message.method === "turn/completed" &&
     incoming.message.params.threadId === threadId;
+  let first: ThreadTokenUsage | undefined;
+  let latest: ThreadTokenUsage | undefined;
   const reply = yield* server.incoming.pipe(
     Stream.takeUntil(isEnd),
     Stream.runFoldEffect(
@@ -122,6 +126,10 @@ export const answerOn = Effect.fn("CodexAdapter.answerOn")(function* (
             .pipe(Effect.as(current));
         }
         const { message } = incoming;
+        if (message.method === "thread/tokenUsage/updated" && message.params.threadId === threadId) {
+          first ??= message.params.tokenUsage;
+          latest = message.params.tokenUsage;
+        }
         if (message.method === "item/completed" && message.params.item.type === "agentMessage") {
           return Effect.succeed({ ...current, text: message.params.item.text });
         }
@@ -132,6 +140,18 @@ export const answerOn = Effect.fn("CodexAdapter.answerOn")(function* (
       },
     ),
   );
+  if (first !== undefined && latest !== undefined) {
+    const initial = first;
+    const final = latest;
+    const delta = (key: "inputTokens" | "cachedInputTokens" | "outputTokens") =>
+      Math.max(0, final.total[key] - (initial.total[key] - initial.last[key]));
+    const cachedInputTokens = delta("cachedInputTokens");
+    onUsage?.({
+      inputTokens: Math.max(0, delta("inputTokens") - cachedInputTokens),
+      outputTokens: delta("outputTokens"),
+      cachedInputTokens,
+    });
+  }
   if (reply.text !== undefined && reply.text.trim() !== "") return reply.text;
   return yield* new HarnessFailure({
     provider: "codex",

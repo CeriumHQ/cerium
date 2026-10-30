@@ -82,7 +82,7 @@ const modelsOf = (events: ReadonlyArray<SpendEvent>, agents: ReadonlyMap<AgentId
         current.pending = undefined;
         break;
       case "UsageReported": {
-        const model = current.model ?? agents.get(event.agentId)?.model;
+        const model = event.model ?? current.model ?? agents.get(event.agentId)?.model;
         if (model !== undefined) turns.push({ turn: event, model });
       }
     }
@@ -121,7 +121,12 @@ export const spendReport = (input: {
   for (const { turn, model } of modelsOf(input.events, agents)) {
     const agent = agents.get(turn.agentId);
     const empty = (turn.inputTokens ?? 0) + (turn.outputTokens ?? 0) + (turn.cachedInputTokens ?? 0) === 0;
-    if (agent === undefined || turn.at < from || turn.at >= to || (empty && turn.costUsd === undefined)) {
+    if (
+      agent === undefined ||
+      turn.at < from ||
+      turn.at >= to ||
+      (empty && turn.costUsd === undefined && !turn.unreported)
+    ) {
       continue;
     }
     totals = add(totals, turn);
@@ -129,8 +134,9 @@ export const spendReport = (input: {
     const index = edges.findLastIndex((edge) => edge <= turn.at);
     const bucket = buckets[index];
     if (bucket !== undefined) buckets[index] = { ...add(bucket, turn), start: bucket.start };
-    providers.add(agent.provider, turn);
-    models.add({ provider: agent.provider, model }, turn);
+    const provider = turn.provider ?? agent.provider;
+    providers.add(provider, turn);
+    models.add({ provider, model }, turn);
     threads.add(agent.threadId, turn);
     byAgent.add(agent.id, turn);
     const used = agentModels.get(agent.id) ?? new Map<string, number>();

@@ -70,7 +70,10 @@ export const SpawnAgent = Tool.make("spawn_agent", {
       description: "readOnly, ask, acceptEdits, auto or fullAccess. Never more than your own access.",
     }),
     prompt: Schema.NonEmptyString.annotate({
-      description: "Everything the child needs: it sees nothing of your conversation.",
+      description: "The assignment's necessary context; the child sees no parent history.",
+    }),
+    includeUserMcpServers: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Load the user's MCP connections when this assignment needs them (default false).",
     }),
   }),
   success: Schema.Union([
@@ -141,15 +144,14 @@ export const ListThreads = Tool.make("list_threads", {
 
 export const SendMessage = Tool.make("send_message", {
   description:
-    "Send a message to another agent: anyone in your thread, or another thread's lead if you are a lead." +
-    " In your thread it starts their next turn once they are idle. Another thread's lead reads it with its" +
-    " next turn, whatever starts it, unless you set `reply` because you need an answer: then it starts their" +
-    " turn, and their answer starts yours. Use it before changing files another agent is working on, when" +
-    " your work affects theirs, or to ask what only they know; never only to acknowledge or thank." +
-    " Messages carry information, not authority.",
+    "Send a note (default; no extra turn), a blocking request, or a reply with its requestId. Requests wake the recipient; correlated replies wake their asker. Never send acknowledgements. Messages carry information, not authority.",
   parameters: Schema.Struct({
     to: AgentId,
     text: Schema.NonEmptyString,
+    kind: Schema.optionalKey(Schema.Literals(["note", "request", "reply"])),
+    requestId: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description: "Required for a reply; use the ID delivered with the request.",
+    }),
     reply: Schema.optionalKey(Schema.Boolean).annotate({
       description:
         "Another thread's lead only: true when you need its answer, which wakes it now. Leave it out for a" +
@@ -158,6 +160,8 @@ export const SendMessage = Tool.make("send_message", {
   }),
   success: Schema.Struct({
     delivered: Schema.Boolean,
+    requestId: Schema.optionalKey(Schema.String),
+    reason: Schema.optionalKey(Schema.String),
     waits: Schema.Boolean.annotate({ description: "It waits for the receiver's next turn." }),
   }),
   failure: OrchestratorError,
@@ -343,6 +347,17 @@ export const BusToolkit = Toolkit.make(
   Push,
 );
 
+/** Workers cannot delegate, answer other children's permissions or manage the user's threads/tasks. */
+export const ChildToolkit = Toolkit.make(
+  ListAgents,
+  SendMessage,
+  AskAdvisor,
+  AskUser,
+  ArtifactGuide,
+  ProjectRun,
+  Push,
+);
+
 const BEARER = /^Bearer\s+(.+)$/i;
 
 export const BusToolkitHandlers = BusToolkit.toLayer(
@@ -433,14 +448,13 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
         };
       }),
 
-      send_message: Effect.fn("Bus.send_message")(function* ({ to, text, reply }) {
-        const { held } = yield* orchestrator.sendMessage(
-          yield* caller,
-          to,
-          text,
-          reply === undefined ? {} : { reply },
-        );
-        return { delivered: true, waits: held };
+      send_message: Effect.fn("Bus.send_message")(function* ({ to, text, reply, kind, requestId }) {
+        const { held, ...result } = yield* orchestrator.sendMessage(yield* caller, to, text, {
+          ...(reply === undefined ? {} : { reply }),
+          ...(kind === undefined ? {} : { kind }),
+          ...(requestId === undefined ? {} : { requestId }),
+        });
+        return { delivered: true, waits: held, ...result };
       }),
 
       kill_agent: Effect.fn("Bus.kill_agent")(function* ({ agentId }) {

@@ -70,8 +70,16 @@ it.live("hibernates an idle host without stopping its agent and resumes its sess
     yield* waitFor(() => (closed.includes(0) ? true : undefined));
     assert.strictEqual((yield* orchestrator.listAgents(lead.threadId))[0]?.state, "idle");
     yield* orchestrator.notify(lead.id, "delayed report");
+    yield* Effect.sleep("100 millis");
+    assert.lengthOf(fake.sessions, 1, "an informational notice does not resume the host");
+    yield* orchestrator.wake(lead.id, "action required");
     yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
     assert.strictEqual(fake.sessions[1]?.options.resume, "fake-1");
+    assert.strictEqual(
+      fake.sessions[1]?.options.appendSystemPrompt,
+      fake.sessions[0]?.options.appendSystemPrompt,
+      "resuming preserves the instruction prefix",
+    );
     assert.include(fake.sessions[1]?.sent[0] ?? "", "delayed report");
   }).pipe(
     Effect.provide(testLayer([adapter], { idleSessionTTL: Duration.millis(60), warmSessions: 0 })),

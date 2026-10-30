@@ -15,6 +15,9 @@ export const SessionStarted = Schema.TaggedStruct("SessionStarted", {
   provider: ProviderId,
   /** The harness's own session id, used for resume and fork. */
   providerSessionId: Schema.NonEmptyString,
+  /** Stable Cerium instructions reused when this session resumes. */
+  ceriumInstructions: Schema.optionalKey(Schema.String),
+  ceriumPromptVersion: Schema.optionalKey(Schema.String),
   model: Schema.NonEmptyString,
   effort: Schema.optionalKey(ReasoningEffort),
 });
@@ -180,8 +183,36 @@ export const QuestionResolved = Schema.TaggedStruct("QuestionResolved", {
   answers: Schema.optionalKey(Schema.Array(QuestionAnswer)),
 });
 
+/** An attempt to title, summarize or answer aside, even when the SDK cannot report its tokens. */
+export const HelperCallStarted = Schema.TaggedStruct("HelperCallStarted", {
+  callId: Schema.NonEmptyString,
+  provider: ProviderId,
+  model: Schema.String,
+  purpose: Schema.Literals(["title", "summary", "sideQuestion"]),
+});
+
 /** Usage for one completed turn. `inputTokens` excludes cache reads, which are `cachedInputTokens`. */
 export const UsageReported = Schema.TaggedStruct("UsageReported", {
+  helperCallId: Schema.optionalKey(Schema.String),
+  unreported: Schema.optionalKey(Schema.Boolean),
+  provider: Schema.optionalKey(ProviderId),
+  model: Schema.optionalKey(Schema.String),
+  purpose: Schema.optionalKey(Schema.Literals(["title", "summary", "sideQuestion"])),
+  cause: Schema.optionalKey(
+    Schema.Literals([
+      "user",
+      "agentRequest",
+      "agentReply",
+      "childResult",
+      "notice",
+      "compact",
+      "title",
+      "summary",
+      "sideQuestion",
+    ]),
+  ),
+  turnId: Schema.optionalKey(Schema.String),
+  requestId: Schema.optionalKey(Schema.String),
   inputTokens: NonNegativeInt,
   outputTokens: NonNegativeInt,
   cachedInputTokens: Schema.optionalKey(NonNegativeInt),
@@ -315,6 +346,8 @@ export const FromAgent = Schema.TaggedStruct("FromAgent", {
   id: Schema.optionalKey(Schema.NonEmptyString),
   agentId: AgentId,
   threadId: ThreadId,
+  kind: Schema.optionalKey(Schema.Literals(["note", "request", "reply"])),
+  requestId: Schema.optionalKey(Schema.NonEmptyString),
   text: Schema.String,
 });
 export type FromAgent = typeof FromAgent.Type;
@@ -323,6 +356,7 @@ export type FromAgent = typeof FromAgent.Type;
 export const InputItem = Schema.Union([
   FromUser,
   Schema.TaggedStruct("ChildFinishedTurn", {
+    requestId: Schema.optionalKey(Schema.NonEmptyString),
     agentId: AgentId,
     role: Schema.NonEmptyString,
     /** The child's final message of the turn, truncated to the delivery size cap. */
@@ -612,6 +646,7 @@ export const EventPayload = Schema.Union([
   PermissionResolved,
   QuestionAsked,
   QuestionResolved,
+  HelperCallStarted,
   UsageReported,
   ContextReported,
   ContextCompacted,

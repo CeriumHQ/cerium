@@ -319,9 +319,14 @@ describe("Orchestrator", () => {
         const inputs = turnInputs(events, lead.id);
         return inputs.length > 0 ? inputs : undefined;
       });
-      assert.deepStrictEqual(items, [
-        { _tag: "ChildFinishedTurn", agentId: childId, role: "scout", text: "Paris" },
-      ]);
+      assert.isDefined(items);
+      assert.lengthOf(items!, 1);
+      assert.deepInclude(items![0], {
+        _tag: "ChildFinishedTurn",
+        agentId: childId,
+        role: "scout",
+        text: "Paris",
+      });
       assert.include(fake.sessions[1]?.sent[0] ?? "", "Capital of France?");
       assert.strictEqual(fake.sessions[1]?.options.speed, "fast");
       assert.include(fake.sessions[1]?.options.appendSystemPrompt ?? "", 'role "scout"');
@@ -712,8 +717,10 @@ describe("Orchestrator", () => {
       const before = turnInputs(seen, second.lead.id);
       assert.isFalse(before.flat().some((item) => item._tag === "FromAgent"));
 
-      // Within a thread, a message still starts a turn.
-      assert.isFalse((yield* orchestrator.sendMessage(childId, second.lead.id, "found it")).held);
+      // A blocking request wakes the lead and brings held notes with it.
+      assert.isFalse(
+        (yield* orchestrator.sendMessage(childId, second.lead.id, "found it", { kind: "request" })).held,
+      );
       const next = yield* waitFor((events) =>
         turnInputs(events, second.lead.id).find((turn) =>
           turn.some((item) => item._tag === "FromAgent" && item.agentId === childId),

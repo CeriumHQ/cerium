@@ -68,7 +68,7 @@ export class BusEndpoint extends Context.Service<
   {
     /** The server name sessions see the bus under. */
     readonly serverName: string;
-    register(agentId: AgentId): Effect.Effect<McpServerSpec>;
+    register(agentId: AgentId, profile?: "lead" | "child"): Effect.Effect<McpServerSpec>;
     unregister(agentId: AgentId): Effect.Effect<void>;
   }
 >()("cerium/orchestrator/BusEndpoint") {}
@@ -201,6 +201,8 @@ export interface OrchestratorSettings {
   /** Idle hosts beyond the warm pool are closed after this grace period, then resumed on demand. */
   readonly idleSessionTTL: Duration.Duration;
   readonly warmSessions: number;
+  /** New agent requests per originating thread until the user speaks again. Replies/unblocks are exempt. */
+  readonly automaticWakeLimit: number;
   /** Messages one agent may send another within `messageBudget.window`. */
   readonly messageBudget: { readonly limit: number; readonly window: Duration.Duration };
   /**
@@ -232,6 +234,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
       batchWindow: Duration.seconds(2),
       idleSessionTTL: Duration.minutes(5),
       warmSessions: 4,
+      automaticWakeLimit: 12,
       // Placeholder until tuned from real usage.
       messageBudget: { limit: 10, window: Duration.minutes(30) },
       threadBudget: { limit: 12, window: Duration.minutes(30) },

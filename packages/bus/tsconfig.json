@@ -3,6 +3,7 @@
   "include": ["src", "test"],
   "references": [
     { "path": "../artifacts" },
+    { "path": "../browser" },
     { "path": "../protocol" },
     { "path": "../rpc" },
     { "path": "../harness" },

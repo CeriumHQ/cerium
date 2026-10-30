@@ -90,6 +90,8 @@ import {
   type Exchange,
   type TurnFacts,
 } from "./effort.ts";
+import { HelperUsage } from "./helperUsage.ts";
+import { MessageDelivery, type MessageOptions } from "./delivery.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
 import { makeOverviewWatch } from "./overviewWatch.ts";
@@ -102,7 +104,14 @@ import {
   pauseEnd,
   resumeNotice,
 } from "./limits.ts";
-import { permissionNotice, renderTurn, systemPrompt, truncate, type Neighbour } from "./prompts.ts";
+import {
+  PROMPT_VERSION,
+  permissionNotice,
+  renderTurn,
+  systemPrompt,
+  truncate,
+  type Neighbour,
+} from "./prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "./questions.ts";
 import { planRestore, workSince } from "./restore.ts";
 import { commandOf, FolderActivity, turnFiles, type TurnWork } from "./turnFiles.ts";
@@ -187,6 +196,8 @@ export interface SpawnRequest {
   readonly effort?: ReasoningEffort;
   readonly access?: AccessMode;
   readonly prompt: string;
+  /** Workers load user MCP connections only when the assignment needs them. */
+  readonly includeUserMcpServers?: boolean;
 }
 
 /**
@@ -322,6 +333,11 @@ interface Runtime {
    * edit of many files, a reply with tool calls), and each kept the whole of it again.
    */
   storedRaw: unknown;
+  instructions: string | undefined;
+  currentTurnId: string | undefined;
+  currentRequestId: string | undefined;
+  readonly activeAssignments: Set<string>;
+  turnCause: "user" | "agentRequest" | "agentReply" | "childResult" | "notice" | "compact";
 }
 
 /**
@@ -693,8 +709,11 @@ export class Orchestrator extends Context.Service<
       callerId: AgentId,
       to: AgentId,
       text: string,
-      options?: { readonly reply?: boolean },
-    ): Effect.Effect<{ readonly held: boolean }, OrchestratorError>;
+      options?: MessageOptions,
+    ): Effect.Effect<
+      { readonly held: boolean; readonly requestId?: string; readonly reason?: string },
+      OrchestratorError
+    >;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
      * Puts a question to the thread's advisor, starting one on the model the user picked when none
@@ -808,6 +827,7 @@ export class Orchestrator extends Context.Service<
       const titles = yield* ThreadTitles;
       const sideQuestions = yield* SideQuestions;
       const condenser = yield* Condenser;
+      const helperUsage = yield* HelperUsage;
       const worktrees = yield* Worktrees;
       const checkpoints = yield* Checkpoints;
       const scripts = yield* ProjectScripts;
@@ -867,7 +887,7 @@ export class Orchestrator extends Context.Service<
        * The other threads' leads each lead asked with `reply`, whose next message to it starts its turn
        * rather than waiting: the answer it ended its turn to wait for.
        */
-      const awaitedReplies = new Map<AgentId, Set<AgentId>>();
+      const messageDelivery = new MessageDelivery();
       /** Each thread's live advisor. */
       const advisors = new Map<ThreadId, Runtime>();
       /** The agents waiting on each advisor's answers, in the order they asked. */
@@ -1317,7 +1337,21 @@ export class Orchestrator extends Context.Service<
                 event.payload.stopReason === "interrupted" &&
                 rt.steering
                   ? { _tag: "TurnCompleted", stopReason: "steered" }
-                  : event.payload;
+                  : event.payload._tag === "SessionStarted"
+                    ? {
+                        ...event.payload,
+                        ...(rt.instructions === undefined
+                          ? {}
+                          : { ceriumInstructions: rt.instructions, ceriumPromptVersion: PROMPT_VERSION }),
+                      }
+                    : event.payload._tag === "UsageReported"
+                      ? {
+                          ...event.payload,
+                          ...(rt.currentTurnId === undefined ? {} : { turnId: rt.currentTurnId }),
+                          cause: rt.turnCause,
+                          ...(rt.currentRequestId === undefined ? {} : { requestId: rt.currentRequestId }),
+                        }
+                      : event.payload;
               if (payload._tag === "PermissionRequested") {
                 if (approvesItself(rt.info.access, payload.toolName)) {
                   unseen.add(payload.requestId);
@@ -1520,6 +1554,7 @@ export class Orchestrator extends Context.Service<
         rt: Runtime,
         session: AgentSession,
         items: readonly [InputItem, ...Array<InputItem>],
+        initiating: InputItem,
       ) =>
         Effect.gen(function* () {
           yield* setState(rt, "running");
@@ -1536,6 +1571,30 @@ export class Orchestrator extends Context.Service<
           const startedAt = yield* Clock.currentTimeMillis;
           rt.turn = yield* Deferred.make<void>();
           const turnId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+          rt.currentTurnId = turnId;
+          for (const item of items) {
+            if (
+              item._tag === "FromAgent" &&
+              item.kind === "request" &&
+              item.agentId === rt.info.parentId &&
+              item.requestId !== undefined
+            )
+              rt.activeAssignments.add(item.requestId);
+          }
+          rt.currentRequestId = items.flatMap((i) =>
+            i._tag === "FromAgent" && i.requestId !== undefined ? [i.requestId] : [],
+          )[0];
+          rt.turnCause =
+            initiating._tag === "FromUser" ||
+            (initiating._tag === "SystemNotice" && initiating.questionId !== undefined)
+              ? "user"
+              : initiating._tag === "ChildFinishedTurn"
+                ? "childResult"
+                : initiating._tag === "FromAgent"
+                  ? initiating.kind === "request"
+                    ? "agentRequest"
+                    : "agentReply"
+                  : "notice";
           // The folder as it was before the turn, which restoring to before its messages goes back to:
           // usually as the last turn left it, so that snapshot serves and the turn starts at once.
           const files = yield* snapshotFor(rt.info, true);
@@ -1562,6 +1621,8 @@ export class Orchestrator extends Context.Service<
           // A stopped agent's turn ends here too, so it isn't counted as working in the folder for good.
           yield* Deferred.await(rt.turn).pipe(Effect.onInterrupt(() => Effect.asVoid(endWork(rt.info.id))));
           rt.turn = undefined;
+          rt.currentTurnId = undefined;
+          rt.currentRequestId = undefined;
           // What the effort router reads before the next turn.
           rt.fresh = false;
           rt.lastTurn = {
@@ -1602,6 +1663,7 @@ export class Orchestrator extends Context.Service<
        */
       const compactTurn = (rt: Runtime, compact: Effect.Effect<void, HarnessFailure>) =>
         Effect.gen(function* () {
+          rt.turnCause = "compact";
           if (rt.ended) return;
           yield* setState(rt, "running");
           rt.halted = false;
@@ -2097,10 +2159,14 @@ export class Orchestrator extends Context.Service<
           const history = liveEvents(
             yield* store.listEvents(rt.info.id, { tags: BRIEF_TAGS }).pipe(Effect.mapError(unavailable)),
           );
-          const summary = yield* condenser.condense(olderTurns(history), {
-            provider: rt.info.provider,
-            model: rt.info.model,
-          });
+          const summary = yield* condenser.condense(
+            olderTurns(history),
+            {
+              provider: rt.info.provider,
+              model: rt.info.model,
+            },
+            rt.info.id,
+          );
           const running = childrenOf(rt.info.id)
             .filter((child) => !child.ended && !isHelper(child.info))
             .map((child) => child.info);
@@ -2174,7 +2240,7 @@ export class Orchestrator extends Context.Service<
                   ...(requested !== actual ? { detail: "The harness kept its previous effort." } : {}),
                 });
               }
-              yield* runTurn(rt, session, told);
+              yield* runTurn(rt, session, told, first);
             }),
           );
           if (rt.ended) return yield* Effect.interrupt;
@@ -2215,17 +2281,52 @@ export class Orchestrator extends Context.Service<
               text: truncate(rt.lastMessage ?? "(no answer)", config.maxDeliveredChars),
             });
           } else if (rt.info.parentId !== undefined && !halted) {
-            yield* deliver(rt.info.parentId, {
-              _tag: "ChildFinishedTurn",
-              agentId: rt.info.id,
-              role: rt.info.role,
-              text: truncate(
-                limit === undefined
-                  ? (rt.lastMessage ?? "(no final message)")
-                  : `Stopped early: ${rt.info.model}'s ${limit.provider} usage limit ran out. ${rt.lastMessage ?? "(no final message)"}`,
-                config.maxDeliveredChars,
-              ),
-            });
+            const assignments = messageDelivery.activeTasks(rt.info.id, rt.activeAssignments);
+            const assignment = assignments[0];
+            for (const id of rt.activeAssignments)
+              if (!messageDelivery.requests.has(id)) rt.activeAssignments.delete(id);
+            // A child waiting for an answer has not finished its assignment. Explicit replies
+            // already delivered a result, so no second automatic report follows them.
+            if (
+              assignment === undefined ||
+              ((messageDelivery.waiting(rt.info.id) || (openQuestions.get(rt.info.id)?.size ?? 0) > 0) &&
+                !rt.turnFailed &&
+                limit === undefined)
+            )
+              return;
+            for (const task of assignments) {
+              messageDelivery.answer(rt.info.id, task.from, task.id);
+              rt.activeAssignments.delete(task.id);
+            }
+            const text = truncate(
+              limit === undefined
+                ? (rt.lastMessage ?? "(no final message)")
+                : `Stopped early: ${rt.info.model}'s usage limit ran out. ${rt.lastMessage ?? ""}`,
+              config.maxDeliveredChars,
+            );
+            if (!rt.turnFailed && messageDelivery.groupPending(assignment)) {
+              const parent = runtimes.get(assignment.from);
+              if (parent === undefined || parent.ended) return;
+              const message: FromAgent = {
+                _tag: "FromAgent",
+                id: yield* makeId("msg"),
+                agentId: rt.info.id,
+                threadId: rt.info.threadId,
+                kind: "reply",
+                requestId: assignment.id,
+                text,
+              };
+              yield* emit(parent, { _tag: "MessageHeld", message });
+              heldNotices.set(parent.info.id, [...(heldNotices.get(parent.info.id) ?? []), message]);
+            } else {
+              yield* deliver(assignment.from, {
+                _tag: "ChildFinishedTurn",
+                requestId: assignment.id,
+                agentId: rt.info.id,
+                role: rt.info.role,
+                text,
+              });
+            }
           }
         }).pipe(
           Effect.catchCause((cause) => Effect.logError(`Agent ${rt.info.id} turn failed`, cause)),
@@ -2272,6 +2373,7 @@ export class Orchestrator extends Context.Service<
           readonly initial?: InputItem;
           readonly resume?: string;
           readonly prepare?: Effect.Effect<void, OrchestratorError>;
+          readonly includeUserMcpServers?: boolean;
         } = {},
       ) =>
         Effect.gen(function* () {
@@ -2318,6 +2420,11 @@ export class Orchestrator extends Context.Service<
             limit: undefined,
             pause: undefined,
             storedRaw: undefined,
+            instructions: undefined,
+            currentTurnId: undefined,
+            currentRequestId: undefined,
+            activeAssignments: new Set(),
+            turnCause: "notice",
           };
           runtimes.set(info.id, rt);
 
@@ -2327,8 +2434,28 @@ export class Orchestrator extends Context.Service<
             const sessionScope = yield* Scope.fork(scope);
             rt.sessionScope = sessionScope;
             const { advisor } = yield* settings.get;
-            const neighbours = yield* neighboursOf(info, cwd);
-            const busSpec = yield* bus.register(info.id);
+            if (rt.instructions === undefined) {
+              const previous =
+                options.resume === undefined
+                  ? []
+                  : yield* store
+                      .listEvents(info.id, { tags: ["SessionStarted"] })
+                      .pipe(Effect.mapError(unavailable));
+              const saved = previous.findLast(
+                (e) =>
+                  e.payload._tag === "SessionStarted" &&
+                  e.payload.ceriumInstructions !== undefined &&
+                  e.payload.ceriumPromptVersion === PROMPT_VERSION,
+              );
+              rt.instructions =
+                saved?.payload._tag === "SessionStarted" ? saved.payload.ceriumInstructions : undefined;
+              rt.instructions ??= systemPrompt(info, bus.serverName, {
+                advisor: advisor.enabled && advisor.model !== undefined,
+                neighbours: yield* neighboursOf(info, cwd),
+                worktree: threadWorktrees.get(info.threadId),
+              });
+            }
+            const busSpec = yield* bus.register(info.id, info.parentId === undefined ? "lead" : "child");
             yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
             const session = yield* adapter
               .startSession({
@@ -2338,14 +2465,11 @@ export class Orchestrator extends Context.Service<
                 ...(info.speed ? { speed: info.speed } : {}),
                 ...(resume === undefined ? {} : { resume }),
                 access: info.access,
-                mcpServers: { [bus.serverName]: busSpec },
-                includeUserMcpServers: true,
+                mcpServers: isHelper(info) ? {} : { [bus.serverName]: busSpec },
+                includeUserMcpServers:
+                  !isHelper(info) && (info.parentId === undefined || options.includeUserMcpServers === true),
                 trustedMcpServers: [bus.serverName],
-                appendSystemPrompt: systemPrompt(info, bus.serverName, {
-                  advisor: advisor.enabled && advisor.model !== undefined,
-                  neighbours,
-                  worktree: threadWorktrees.get(info.threadId),
-                }),
+                appendSystemPrompt: rt.instructions,
               })
               .pipe(
                 Scope.provide(sessionScope),
@@ -2395,6 +2519,14 @@ export class Orchestrator extends Context.Service<
                     retryable: false,
                   });
                   yield* setState(rt, "failed");
+                  const assignment = messageDelivery.taskFor(info.id);
+                  messageDelivery.remove(info.id);
+                  if (assignment !== undefined) {
+                    yield* deliver(assignment.from, {
+                      _tag: "SystemNotice",
+                      text: `Agent ${info.id} (${info.role}) could not start: ${error.message}. Completed sibling results are included with this notice.`,
+                    });
+                  }
                 }).pipe(Effect.ensuring(Deferred.fail(rt.started, error)), Effect.ignore),
               ),
             ),
@@ -2494,11 +2626,22 @@ export class Orchestrator extends Context.Service<
             access: child.access,
           });
           const cwd = threadDirectories.get(lead.info.threadId) ?? ".";
+          const assignmentId = yield* makeId("task");
+          messageDelivery.request({
+            id: assignmentId,
+            from: lead.info.id,
+            to: child.id,
+            task: true,
+            group: lead.currentTurnId,
+          });
           yield* startRuntime(child, cwd, {
+            includeUserMcpServers: request.includeUserMcpServers === true,
             initial: {
               _tag: "FromAgent",
               agentId: lead.info.id,
               threadId: lead.info.threadId,
+              kind: "request",
+              requestId: assignmentId,
               text: request.prompt,
             },
           });
@@ -2612,7 +2755,20 @@ export class Orchestrator extends Context.Service<
           leadRequests.delete(rt.info.id);
           // A resumed session finds what it hadn't heard in the thread's history.
           heldNotices.delete(rt.info.id);
-          awaitedReplies.delete(rt.info.id);
+          const cancelled = messageDelivery.taskFor(rt.info.id);
+          messageDelivery.remove(rt.info.id);
+          const parent = cancelled === undefined ? undefined : runtimes.get(cancelled.from);
+          if (
+            cancelled !== undefined &&
+            !messageDelivery.groupPending(cancelled) &&
+            parent !== undefined &&
+            !parent.ended
+          ) {
+            yield* deliver(parent.info.id, {
+              _tag: "SystemNotice",
+              text: `Agent ${rt.info.id} stopped. Any completed results in its group are included with this notice.`,
+            });
+          }
           yield* setState(rt, "stopped").pipe(Effect.ignore);
           rt.ended = true;
           yield* Scope.close(rt.scope, Exit.void);
@@ -3482,6 +3638,7 @@ export class Orchestrator extends Context.Service<
         Effect.gen(function* () {
           const { threadId, provider, model } = lead.info;
           const title = yield* titles.name({
+            agentId: lead.info.id,
             text,
             attachments: attachments.map((attachment) => attachment.name),
             lead: { provider, model },
@@ -3634,6 +3791,7 @@ export class Orchestrator extends Context.Service<
               ...(sentVia ? { sentVia } : {}),
             };
             // Recorded before it waits on the session or a running turn, so the user sees it at once.
+            messageDelivery.userTurn(rt.info.threadId);
             yield* emit(rt, { _tag: "MessageQueued", message });
             // Offered together, so the user's messages and any notices make one turn.
             // A turn in progress takes it at its next step, between tool calls. Marked first: the turn
@@ -3791,8 +3949,9 @@ export class Orchestrator extends Context.Service<
             text: answerNotice(open, given),
             questionId: requestId,
           };
-          // An answer wakes the agent; a dismissal waits for its next turn.
-          if (given.outcome === "dismissed") {
+          // A user decision unblocks a pending child assignment; other dismissals wait.
+          messageDelivery.userTurn(rt.info.threadId);
+          if (given.outcome === "dismissed" && messageDelivery.taskFor(agentId) === undefined) {
             heldNotices.set(agentId, [...(heldNotices.get(agentId) ?? []), notice]);
           } else yield* deliver(agentId, notice);
         }),
@@ -4015,6 +4174,7 @@ export class Orchestrator extends Context.Service<
           );
           // A lead whose session started anew holds none of the conversation before it; the text does.
           return yield* sideQuestions.ask({
+            agentId,
             provider: info.provider,
             model: info.model,
             cwd: threadDirectory(thread),
@@ -4454,7 +4614,7 @@ export class Orchestrator extends Context.Service<
           callerId: AgentId,
           to: AgentId,
           text: string,
-          options: { readonly reply?: boolean } = {},
+          options: MessageOptions = {},
         ) {
           const from = yield* runtime(callerId);
           const stopped = notFound(
@@ -4489,28 +4649,61 @@ export class Orchestrator extends Context.Service<
               message: `The message is ${text.length} characters; the limit is ${config.maxDeliveredChars}. Summarize it.`,
             });
           }
-          yield* spendBudget(`${callerId}->${to}`, to);
-          const message = {
+          const legacyAnswer =
+            options.kind === undefined && options.reply !== true
+              ? messageDelivery.legacyReply(callerId, to)
+              : undefined;
+          const kind = options.kind ?? (options.reply === true ? "request" : legacyAnswer ? "reply" : "note");
+          let requestId = options.requestId ?? legacyAnswer;
+          if (kind === "reply") {
+            if (requestId === undefined || !messageDelivery.answer(callerId, to, requestId)) {
+              return yield* new OrchestratorError({
+                reason: "invalid",
+                message: "Reply with the requestId of an open request addressed to you.",
+              });
+            }
+          } else {
+            yield* spendBudget(`${callerId}->${to}`, to);
+            if (kind === "request") {
+              requestId = yield* makeId("req");
+              messageDelivery.request({
+                id: requestId,
+                from: callerId,
+                to,
+                task: recipient.info.parentId === callerId,
+                legacy: options.reply === true,
+                group: from.currentTurnId,
+              });
+            }
+          }
+          const message: FromAgent = {
             _tag: "FromAgent",
+            id: yield* makeId("msg"),
             agentId: callerId,
             threadId: from.info.threadId,
             text,
-          } as const;
-          // Within a thread agents wait on each other's messages. Across threads most are heads-ups the
-          // receiver can read with its next turn; a turn started for one rereads its whole context.
-          const answers = awaitedReplies.get(to)?.delete(callerId) === true;
-          if (crossThread && options.reply === true) {
-            awaitedReplies.set(callerId, (awaitedReplies.get(callerId) ?? new Set()).add(to));
-          }
-          if (!crossThread || options.reply === true || answers) {
+            kind,
+            ...(requestId === undefined ? {} : { requestId }),
+          };
+          const wakes =
+            kind === "reply" ||
+            (kind === "request" && messageDelivery.takeWake(from.info.threadId, config.automaticWakeLimit));
+          if (wakes) {
             yield* deliver(to, message);
-            return { held: false };
+            return { held: false, ...(requestId === undefined ? {} : { requestId }) };
           }
-          const held: FromAgent = { ...message, id: yield* makeId("msg") };
-          // Recorded first, so the receiver's thread shows it and a resumed session still hears it.
-          yield* emit(recipient, { _tag: "MessageHeld", message: held });
-          heldNotices.set(to, [...(heldNotices.get(to) ?? []), held]);
-          return { held: true };
+          yield* emit(recipient, { _tag: "MessageHeld", message });
+          heldNotices.set(to, [...(heldNotices.get(to) ?? []), message]);
+          return {
+            held: true,
+            ...(requestId === undefined ? {} : { requestId }),
+            ...(kind === "request"
+              ? {
+                  reason:
+                    "Automatic turn budget reached. The request is saved for the recipient's next user-initiated turn; do independent work or report that it is waiting.",
+                }
+              : {}),
+          };
         }),
 
         askAdvisor: Effect.fn("Orchestrator.askAdvisor")(function* (callerId: AgentId, question: string) {
@@ -4536,6 +4729,13 @@ export class Orchestrator extends Context.Service<
             return yield* new OrchestratorError({
               reason: "invalid",
               message: `The question is ${question.length} characters; the limit is ${config.maxDeliveredChars}. Shorten it, and name files for the advisor to read instead of pasting them.`,
+            });
+          }
+          if (!messageDelivery.takeWake(asker.info.threadId, config.automaticWakeLimit)) {
+            return yield* new OrchestratorError({
+              reason: "budgetExceeded",
+              message:
+                "Automatic turn budget reached. Do independent work or report that advice is waiting for the user's next turn; do not retry now.",
             });
           }
           yield* spendBudget(`${callerId}->${ADVISOR_ROLE}`, "the advisor");
@@ -4630,7 +4830,12 @@ export class Orchestrator extends Context.Service<
 
         agent: (agentId) => runtime(agentId).pipe(Effect.map((rt) => rt.info)),
 
-        notify: (agentId, text) => deliver(agentId, { _tag: "SystemNotice", text }),
+        notify: (agentId, text) =>
+          Effect.sync(() => {
+            const rt = runtimes.get(agentId);
+            if (rt === undefined || rt.ended) return;
+            heldNotices.set(agentId, [...(heldNotices.get(agentId) ?? []), { _tag: "SystemNotice", text }]);
+          }),
 
         wake: (agentId, text) =>
           acceptPermit
@@ -4801,7 +5006,39 @@ export class Orchestrator extends Context.Service<
 
         awaitingApproval: waitsOnUser,
       });
+      yield* helperUsage.events.pipe(
+        Stream.runForEach((reading) =>
+          Effect.gen(function* () {
+            const rt = runtimes.get(reading.agentId);
+            const payload: EventPayload =
+              reading.usage === undefined
+                ? {
+                    _tag: "HelperCallStarted",
+                    callId: reading.callId,
+                    provider: reading.provider,
+                    model: reading.model,
+                    purpose: reading.purpose,
+                  }
+                : {
+                    _tag: "UsageReported",
+                    ...reading.usage,
+                    helperCallId: reading.callId,
+                    provider: reading.provider,
+                    model: reading.model,
+                    purpose: reading.purpose,
+                    cause: reading.purpose,
+                  };
+            if (rt !== undefined) return yield* emit(rt, payload);
+            const stored = yield* store.getAgent(reading.agentId).pipe(Effect.mapError(unavailable));
+            if (Option.isSome(stored)) yield* emitStored(stored.value, payload);
+          }),
+        ),
+        Effect.forkScoped,
+      );
       return orchestrator;
     }),
-  ).pipe(Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer, SideQuestions.layer)));
+  ).pipe(
+    Layer.provide(Layer.mergeAll(ThreadTitles.layer, Condenser.layer, SideQuestions.layer)),
+    Layer.provide(HelperUsage.layer),
+  );
 }

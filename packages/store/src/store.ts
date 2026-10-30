@@ -1,3 +1,4 @@
+import type { ProviderId } from "@cerium/protocol";
 import {
   AgentEvent,
   AgentInfo,
@@ -146,6 +147,8 @@ export interface MessageMatch {
  * those turns ran on. Counts are absent for any other event.
  */
 export interface SpendEvent {
+  readonly provider?: ProviderId;
+  readonly unreported?: boolean;
   readonly agentId: AgentId;
   readonly threadId: ThreadId;
   readonly at: number;
@@ -874,29 +877,47 @@ export class Store extends Context.Service<
               "Could not read usage",
               db.values<[string, string, number, SpendEvent["tag"], ...Array<string | number | null>]>(sql`
                 SELECT agent_id, thread_id, at, tag,
-                  CASE WHEN tag IN ('SessionStarted', 'ModelChanged')
+                  CASE WHEN tag IN ('SessionStarted', 'ModelChanged', 'UsageReported')
                     THEN json_extract(payload, '$.model') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.inputTokens') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.outputTokens') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.cachedInputTokens') END,
-                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.costUsd') END
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.costUsd') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.provider') END,
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.unreported') END
                 FROM events
                 WHERE tag IN ('SessionStarted', 'ModelChanged', 'TurnInput')
                   OR (tag = 'UsageReported' AND at >= ${from} AND at < ${to})
                 ORDER BY agent_id, sequence`),
             ).pipe(
               Effect.map((rows) =>
-                rows.map(([agentId, threadId, at, tag, model, input, output, cached, cost]) => ({
-                  agentId: agentId as AgentId,
-                  threadId: threadId as ThreadId,
-                  at,
-                  tag,
-                  ...(typeof model === "string" ? { model } : {}),
-                  ...(typeof input === "number" ? { inputTokens: input } : {}),
-                  ...(typeof output === "number" ? { outputTokens: output } : {}),
-                  ...(typeof cached === "number" ? { cachedInputTokens: cached } : {}),
-                  ...(typeof cost === "number" ? { costUsd: cost } : {}),
-                })),
+                rows.map(
+                  ([
+                    agentId,
+                    threadId,
+                    at,
+                    tag,
+                    model,
+                    input,
+                    output,
+                    cached,
+                    cost,
+                    provider,
+                    unreported,
+                  ]) => ({
+                    agentId: agentId as AgentId,
+                    threadId: threadId as ThreadId,
+                    at,
+                    tag,
+                    ...(typeof model === "string" ? { model } : {}),
+                    ...(typeof provider === "string" ? { provider: provider as ProviderId } : {}),
+                    ...(unreported === 1 ? { unreported: true } : {}),
+                    ...(typeof input === "number" ? { inputTokens: input } : {}),
+                    ...(typeof output === "number" ? { outputTokens: output } : {}),
+                    ...(typeof cached === "number" ? { cachedInputTokens: cached } : {}),
+                    ...(typeof cost === "number" ? { costUsd: cost } : {}),
+                  }),
+                ),
               ),
             ),
           countSyncedEvents: query(
