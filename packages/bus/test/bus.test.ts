@@ -179,6 +179,14 @@ describe("Cerium MCP bus", () => {
       assert.strictEqual(spawned?.result?.structuredContent?.status, "spawned");
       const childId = spawned?.result?.structuredContent?.agentId as AgentId;
       assert.strictEqual((yield* orchestrator.agent(childId)).parentId, lead.id);
+      const workerClient = mcpClient(yield* busOf(fake, 1));
+      yield* workerClient.initialize;
+      const workerTools = yield* workerClient.request("tools/list", {});
+      const names = (workerTools?.result?.tools ?? []).map((t: { name: string }) => t.name);
+      assert.notInclude(names, "spawn_agent");
+      assert.notInclude(names, "create_thread");
+      assert.notInclude(names, "answer_permission");
+      assert.includeMembers(names, ["send_message", "browser_act", "browser_screenshot"]);
 
       const agents = yield* leadClient.callTool("list_agents");
       assert.deepStrictEqual(
@@ -196,8 +204,8 @@ describe("Cerium MCP bus", () => {
       const childClient = mcpClient(yield* busOf(fake, 1));
       yield* childClient.initialize;
       const refused = yield* childClient.callTool("spawn_agent", { role: "x", model: "scout", prompt: "no" });
-      assert.isTrue(refused?.result?.isError);
-      assert.include(JSON.stringify(refused?.result?.content), "Only a thread's lead can spawn agents.");
+      assert.isDefined(refused?.error);
+      assert.include(JSON.stringify(refused?.error), "spawn_agent");
 
       const unasked = yield* leadClient.callTool("answer_permission", {
         agentId: childId,
@@ -265,7 +273,7 @@ describe("Cerium MCP bus", () => {
       ]);
       assert.deepInclude(seen[0] as object, {
         threadId: lead.threadId,
-        command: { _tag: "Screenshot", fullPage: true },
+        command: { _tag: "Screenshot", fullPage: true, review: { session: lead.id } },
       });
 
       const bad = yield* client.callTool("browser_act", { steps: [{ action: "teleport" }] });

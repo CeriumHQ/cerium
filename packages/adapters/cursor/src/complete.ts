@@ -43,6 +43,12 @@ export const completeWithCursor = Effect.fn("CursorAdapter.complete")(function* 
         cause,
       }),
   });
+  if (result.usage !== undefined)
+    request.onUsage?.({
+      inputTokens: result.usage.inputTokens + result.usage.cacheWriteTokens,
+      outputTokens: result.usage.outputTokens,
+      cachedInputTokens: result.usage.cacheReadTokens,
+    });
   if (result.status === "finished" && result.result !== undefined && result.result.trim() !== "") {
     return result.result;
   }

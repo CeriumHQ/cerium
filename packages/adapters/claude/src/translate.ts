@@ -43,7 +43,11 @@ export class ClaudeTranslator {
   /** Claude Code repeats `init` every turn; only the first starts the session. */
   #started = false;
   /** `total_cost_usd` is cumulative for the session; turns report the difference. */
-  #costSoFar = 0;
+  #costSoFar: number | undefined;
+  constructor(options: { readonly resumed?: boolean } = {}) {
+    // A resumed SDK may restore cumulative spend. The first delta is unknown, not all past spend.
+    this.#costSoFar = options.resumed ? undefined : 0;
+  }
   /** The limit this turn ran into, so it is reported once. */
   #limitHit: { readonly window?: string; readonly resetsAt?: number } | undefined;
   /** The model the session runs, which each turn's `init` names. */
@@ -309,15 +313,16 @@ export class ClaudeTranslator {
   #result(message: SDKResultMessage): ReadonlyArray<EventPayload> {
     this.#limitHit = undefined;
     const { usage } = message;
-    const turnCost = Math.max(0, message.total_cost_usd - this.#costSoFar);
-    this.#costSoFar = Math.max(this.#costSoFar, message.total_cost_usd);
+    const turnCost =
+      this.#costSoFar === undefined ? undefined : Math.max(0, message.total_cost_usd - this.#costSoFar);
+    this.#costSoFar = Math.max(this.#costSoFar ?? 0, message.total_cost_usd);
     return [
       {
         _tag: "UsageReported",
         inputTokens: usage.input_tokens + usage.cache_creation_input_tokens,
         outputTokens: usage.output_tokens,
         cachedInputTokens: usage.cache_read_input_tokens,
-        costUsd: turnCost,
+        ...(turnCost === undefined ? {} : { costUsd: turnCost }),
       },
       { _tag: "TurnCompleted", stopReason: stopReason(message) },
     ];

@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
+import { ReviewLedger, type ReviewState } from "./review.ts";
 // `bun run ui`: see and use a web UI like a user, from any shell. `open` starts a headless Edge or
 // Chrome (or attaches to an app's debugging port) that stays up between calls; `act` runs a batch of
-// steps and saves one screenshot at the end; `shot` and `inspect` look without acting. Every call
+// steps; --shot saves one screenshot at the end; `shot` and `inspect` look without acting. Every call
 // prints one line of JSON, with the path of any screenshot it saved, and exits 1 when a step failed.
 // A session nobody used for an hour is closed by the next call.
 
@@ -43,7 +45,9 @@ const HELP = `bun run ui <command> [options]
           Targets: visible text or accessible name, css:<selector>, or @x,y; [n] after one picks the nth match.
           An action gives its target 5 s to show, and each step lets the page's animations finish.
           A JSON step works too: '{"action":"click","selector":"#go"}'.
-  Screenshots (act, open, shot):  --no-shot  --full (whole page)  --crop=<target> (one element)
+  Screenshots: shot or --shot (opt in); --no-shot  --full (whole page)  --crop=<target> (one element)
+  Visual review: --state=name --defect="unresolved defect" --fix="change to verify" (required beyond two reviews)
+  Captures are explicit: use shot, a shot step, or --shot; open/act otherwise return text only.
   --session=name      a page of your own beside other threads' (default: default)`;
 
 // Arguments: `--name=value` and `--flag` options, the rest positional.
@@ -80,6 +84,7 @@ interface Session {
   readonly colorScheme?: "light" | "dark" | undefined;
   readonly lastUsed: number;
   readonly shots: number;
+  readonly review?: ReviewState;
 }
 
 const load = (session: string): Session | undefined => {
@@ -167,22 +172,43 @@ const location = (page: Page) =>
     .evaluate<{ url: string; title: string }>("({ url: location.href, title: document.title })")
     .catch(() => ({ url: "", title: "" }));
 
-/** Saves a screenshot unless --no-shot, returning its path for the report. */
+/** Explicit visual checkpoint; unchanged pixels reuse the saved capture. */
 const shoot = async (
   page: Page,
   state: Session,
-): Promise<{ screenshot?: string; screenshotError?: string }> => {
-  if (options.has("no-shot")) return {};
+): Promise<{
+  screenshot?: string;
+  previousScreenshot?: string;
+  screenshotError?: string;
+  unchanged?: boolean;
+}> => {
+  if (options.has("no-shot") || !options.has("shot")) return {};
   try {
     const crop = text("crop");
     const of: Target | undefined = crop === undefined ? undefined : parseTarget(crop);
+    const ledger = new ReviewLedger(state.review);
+    const scope = await page.evaluate(
+      "({ url: location.href, width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme || matchMedia('(prefers-color-scheme: dark)').matches })",
+    );
+    const key = JSON.stringify([scope, crop ?? null, options.has("full"), text("state") ?? "default"]);
+    const review = { defect: text("defect"), fix: text("fix") };
+    const issue = ledger.check(key, review);
+    if (issue) return { screenshotError: issue };
     const png = await page.screenshot({ fullPage: options.has("full"), of });
     const directory = join(root, name);
     mkdirSync(directory, { recursive: true });
     const path = join(directory, `shot-${String(state.shots + 1).padStart(3, "0")}.png`);
-    writeFileSync(path, png);
-    save({ ...state, shots: state.shots + 1, lastUsed: Date.now() });
-    return { screenshot: path };
+    const result = ledger.record(key, createHash("sha256").update(png).digest("hex"), path, review);
+    if (result.changed) writeFileSync(path, png);
+    save({
+      ...state,
+      review: ledger.state,
+      shots: state.shots + Number(result.changed),
+      lastUsed: Date.now(),
+    });
+    return result.changed
+      ? { screenshot: result.capture }
+      : { previousScreenshot: result.capture, unchanged: true };
   } catch (error) {
     return { screenshotError: message(error) };
   }
@@ -283,7 +309,10 @@ const act = async (): Promise<Record<string, unknown>> => {
     for (const [index, step] of steps.entries()) {
       try {
         if (step.action === "shot") {
+          const alreadyCapturing = options.has("shot");
+          options.set("shot", true);
           results.push({ step: index + 1, action: step.action, ...(await shoot(page, current())) });
+          if (!alreadyCapturing) options.delete("shot");
           continue;
         }
         results.push({ step: index + 1, action: step.action, ...(await runStep(page, step)) });
@@ -324,6 +353,7 @@ const look = async (what: "shot" | "inspect"): Promise<Record<string, unknown>> 
       return { ...((await page.inspect(options.has("text"))) as object), console: page.drainConsole() };
     }
     options.delete("no-shot");
+    options.set("shot", true);
     await ensureShown(page);
     return { ...(await location(page)), ...(await shoot(page, state)) };
   } finally {

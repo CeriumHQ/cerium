@@ -1,3 +1,7 @@
+import type { AgentId } from "@cerium/protocol";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import { Duration, Effect } from "effect";
@@ -70,11 +74,54 @@ it.live("hibernates an idle host without stopping its agent and resumes its sess
     yield* waitFor(() => (closed.includes(0) ? true : undefined));
     assert.strictEqual((yield* orchestrator.listAgents(lead.threadId))[0]?.state, "idle");
     yield* orchestrator.notify(lead.id, "delayed report");
+    yield* Effect.sleep("100 millis");
+    assert.lengthOf(fake.sessions, 1, "an informational notice does not resume the host");
+    yield* orchestrator.wake(lead.id, "action required");
     yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
     assert.strictEqual(fake.sessions[1]?.options.resume, "fake-1");
+    assert.strictEqual(
+      fake.sessions[1]?.options.appendSystemPrompt,
+      fake.sessions[0]?.options.appendSystemPrompt,
+      "resuming preserves the instruction prefix",
+    );
     assert.include(fake.sessions[1]?.sent[0] ?? "", "delayed report");
   }).pipe(
     Effect.provide(testLayer([adapter], { idleSessionTTL: Duration.millis(60), warmSessions: 0 })),
     Effect.scoped,
   );
+});
+
+it.live("retains quiet notices over a backend restart and delivers each once", () => {
+  const fake = makeFakeAdapter("claude");
+  const database = join(mkdtempSync(join(tmpdir(), "cerium-notices-")), "store.db");
+  let agentId: AgentId;
+  const first = Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator;
+    const { waitFor } = yield* recordEvents;
+    const { lead } = yield* orchestrator.createThread({
+      title: "CI",
+      mode: "work",
+      cwd: ".",
+      lead: { provider: "claude", model: "opus", access: "readOnly" },
+    });
+    agentId = lead.id;
+    yield* orchestrator.sendUserMessage(lead.id, "first");
+    yield* waitFor((events) =>
+      events.find((e) => e.agentId === lead.id && e.payload._tag === "TurnCompleted"),
+    );
+    yield* orchestrator.notify(lead.id, "CI passed");
+    yield* Effect.sleep("50 millis");
+    assert.lengthOf(fake.sessions[0]!.sent, 1);
+  }).pipe(Effect.provide(testLayer([fake.adapter], { database })), Effect.scoped);
+  const resume = (index: number) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      yield* orchestrator.sendUserMessage(agentId, "continue");
+      yield* waitFor(() => (fake.sessions[index]?.sent.length ? true : undefined));
+      const sent = fake.sessions[index]!.sent[0]!;
+      if (index === 1) assert.include(sent, "CI passed");
+      else assert.notInclude(sent, "CI passed");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { database })), Effect.scoped);
+  return first.pipe(Effect.andThen(resume(1)), Effect.andThen(resume(2)));
 });

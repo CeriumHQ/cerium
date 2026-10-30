@@ -36,6 +36,7 @@ export const testLayer = (
   options: {
     readonly catalog?: ReadonlyArray<CatalogEntry>;
     readonly messageLimit?: number;
+    readonly automaticWakeLimit?: number;
     readonly idleSessionTTL?: Duration.Duration;
     readonly warmSessions?: number;
     readonly threadLimit?: number;
@@ -74,6 +75,9 @@ export const testLayer = (
       OrchestratorConfig.layer({
         chatDirectory: mkdtempSync(join(tmpdir(), "cerium-chat-")),
         batchWindow: Duration.millis(20),
+        ...(options.automaticWakeLimit === undefined
+          ? {}
+          : { automaticWakeLimit: options.automaticWakeLimit }),
         ...(options.idleSessionTTL === undefined ? {} : { idleSessionTTL: options.idleSessionTTL }),
         ...(options.warmSessions === undefined ? {} : { warmSessions: options.warmSessions }),
         messageBudget: { limit: options.messageLimit ?? 10, window: Duration.minutes(30) },

@@ -115,8 +115,18 @@ export interface ForkRequest {
   readonly before: TurnRef;
 }
 
+export interface CompletionUsage {
+  readonly unreported?: boolean;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cachedInputTokens?: number;
+  readonly costUsd?: number;
+}
+
 /** A one-off question Cerium asks for its own small jobs, such as naming a thread. */
 export interface CompletionRequest {
+  /** Report real SDK usage without another model call, including failed attempts. */
+  readonly onUsage?: (usage: CompletionUsage) => void;
   readonly model: string;
   /** The whole system prompt where the harness lets it be replaced; otherwise it opens the prompt. */
   readonly instructions: string;
@@ -127,6 +137,7 @@ export interface CompletionRequest {
 
 /** A question put to a throwaway copy of a session's conversation, which answers and is forgotten. */
 export interface SideQuestionRequest {
+  readonly onUsage?: (usage: CompletionUsage) => void;
   readonly model: string;
   readonly cwd: string;
   /** The harness's session id whose conversation the question is asked in; it stays as it was. */

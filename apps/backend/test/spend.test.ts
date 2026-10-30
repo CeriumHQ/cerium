@@ -192,3 +192,35 @@ describe("spendReport", () => {
     );
   });
 });
+
+it("attributes helper usage to its actual provider/model without changing the lead's model", () => {
+  const report = spendReport({
+    agents,
+    threads,
+    edges,
+    events: [
+      mark("lead", "SessionStarted", 1, "claude-sonnet"),
+      usage("lead", "t1", 10, { provider: "codex", model: "tiny", inputTokens: 50, outputTokens: 5 }),
+      usage("lead", "t1", 20, { inputTokens: 100, outputTokens: 10 }),
+      usage("lead", "t1", 30, {
+        provider: "opencode",
+        model: "unmetered",
+        inputTokens: 0,
+        outputTokens: 0,
+        unreported: true,
+      }),
+    ],
+  });
+  assert.deepInclude(report.models, {
+    provider: "codex",
+    model: "tiny",
+    inputTokens: 50,
+    outputTokens: 5,
+    cachedInputTokens: 0,
+    turns: 1,
+    pricedTurns: 0,
+    costUsd: 0,
+  });
+  assert.strictEqual(report.models.find((row) => row.model === "claude-sonnet")?.inputTokens, 100);
+  assert.strictEqual(report.providers.find((row) => row.provider === "opencode")?.turns, 1);
+});

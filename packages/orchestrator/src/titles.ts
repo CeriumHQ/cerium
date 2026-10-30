@@ -1,3 +1,5 @@
+import type { AgentId } from "@cerium/protocol";
+import { HelperUsage } from "./helperUsage.ts";
 import { MAX_THREAD_TITLE, TITLE_MODELS, type ModelChoice, type TitleSettings } from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 
@@ -82,6 +84,7 @@ export const titleModels = (
 
 /** What a thread's title is made from. */
 export interface TitleInput {
+  readonly agentId?: AgentId;
   readonly text: string;
   /** The names of the files the message carries. */
   readonly attachments: ReadonlyArray<string>;
@@ -99,6 +102,7 @@ export class ThreadTitles extends Context.Service<
     ThreadTitles,
     Effect.gen(function* () {
       const adapters = yield* Adapters;
+      const accounting = yield* HelperUsage;
       const catalog = yield* Catalog;
       const settings = yield* UserSettings;
       const config = yield* OrchestratorConfig;
@@ -118,6 +122,9 @@ export class ThreadTitles extends Context.Service<
               instructions: TITLE_INSTRUCTIONS,
               prompt: titlePrompt(input.text, input.attachments),
               cwd,
+              ...(input.agentId === undefined
+                ? {}
+                : { onUsage: accounting.track({ agentId: input.agentId, purpose: "title", ...choice }) }),
             }),
           ),
           Effect.timeout(ATTEMPT_TIMEOUT),
@@ -142,5 +149,5 @@ export class ThreadTitles extends Context.Service<
         }),
       });
     }),
-  );
+  ).pipe(Layer.provideMerge(HelperUsage.layer));
 }

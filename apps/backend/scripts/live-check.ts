@@ -8,6 +8,7 @@
 //          [--approvals=deny|allow] [--timeout=180] [--compact] [--trace]
 //        bun run live-check --usage [--providers=cursor]
 
+import { compareUsage } from "./live/usage.ts";
 import { Adapters } from "@cerium/orchestrator";
 import type { ProviderId } from "@cerium/protocol";
 import { NodeServices } from "@effect/platform-node";
@@ -49,6 +50,7 @@ if (process.argv.includes("--help")) {
       "  --interrupt-after=8        run a long command, interrupt after this many seconds; must end as interrupted",
       "  --compact                  after the turn, ask the harness to compact; must report the compaction",
       "  --trace                    print each event, with the start of its raw provider message",
+      "  --compare-usage            two matched short turns per provider: native SDK vs Cerium",
       "  --usage                    read each harness's plan limits instead of running a turn",
     ].join("\n"),
   );
@@ -56,6 +58,33 @@ if (process.argv.includes("--help")) {
 }
 
 const live = AdaptersLive.pipe(Layer.provide(NodeServices.layer));
+
+if (process.argv.includes("--compare-usage")) {
+  const models = Object.fromEntries((list("model") ?? []).map((pair) => pair.split(":")));
+  const results = await Effect.runPromise(
+    Effect.gen(function* () {
+      const adapters = yield* Adapters;
+      return yield* Effect.forEach(
+        list("providers") ?? ["claude", "codex", "cursor"],
+        (provider) =>
+          Effect.gen(function* () {
+            const adapter = adapters.get(provider as ProviderId);
+            if (adapter === undefined) return { provider, passed: false, error: "Unavailable harness" };
+            const offered = models[provider] === undefined ? yield* adapter.listModels : [];
+            const model =
+              models[provider] ??
+              offered.find((m) => /haiku|luna|composer/i.test(m.id))?.id ??
+              offered[0]?.id;
+            if (model === undefined) return { provider, passed: false, error: "No model available" };
+            return yield* compareUsage(adapter, model);
+          }).pipe(Effect.catch((error) => Effect.succeed({ provider, passed: false, error: String(error) }))),
+        { concurrency: 1 },
+      );
+    }).pipe(Effect.provide(live)),
+  );
+  for (const result of results) console.log(JSON.stringify(result));
+  process.exit(results.every((r) => r.passed) ? 0 : 1);
+}
 
 if (process.argv.includes("--usage")) {
   const readings = await Effect.runPromise(

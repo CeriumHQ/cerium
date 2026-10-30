@@ -415,3 +415,24 @@ describe("ClaudeTranslator edge cases", () => {
     expect(ids).toEqual(["msg_2:t0", "msg_2:t1"]);
   });
 });
+
+it("does not count a resumed session's restored USD total as new spend", () => {
+  const translator = new ClaudeTranslator({ resumed: true });
+  const result = (cost: number) =>
+    ({
+      type: "result",
+      subtype: "success",
+      total_cost_usd: cost,
+      usage: {
+        input_tokens: 2,
+        cache_creation_input_tokens: 3,
+        cache_read_input_tokens: 4,
+        output_tokens: 5,
+      },
+    }) as Parameters<ClaudeTranslator["translate"]>[0];
+  const first = translator.translate(result(10)).find((e) => e.payload._tag === "UsageReported")?.payload;
+  expect(first).toMatchObject({ inputTokens: 5, outputTokens: 5, cachedInputTokens: 4 });
+  expect(first).not.toHaveProperty("costUsd");
+  const next = translator.translate(result(10.5)).find((e) => e.payload._tag === "UsageReported")?.payload;
+  expect(next).toHaveProperty("costUsd", 0.5);
+});

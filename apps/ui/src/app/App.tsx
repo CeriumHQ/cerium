@@ -2217,6 +2217,8 @@ function Workspace() {
     const previewed = previewsHere ? resolved.listed?.thread.id : undefined;
     return (
       <ThreadPane
+        inspectedAgent={inspectedAgent}
+        onLeaveAgent={() => setInspectedAgent(undefined)}
         mode={mode}
         selected={resolved.listed}
         cloud={

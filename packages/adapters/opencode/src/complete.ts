@@ -47,6 +47,8 @@ export const completeWithOpenCode = Effect.fn("OpenCodeAdapter.complete")(functi
       { signal },
     ),
   );
+  // This SDK returns text only. Record the call without inventing token counts.
+  request.onUsage?.({ inputTokens: 0, outputTokens: 0, unreported: true });
   if (reply.text.trim() !== "") return reply.text;
   return yield* new HarnessFailure({
     provider: "opencode",

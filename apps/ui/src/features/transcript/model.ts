@@ -497,6 +497,7 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
           break;
         }
         case "UsageReported":
+          if (payload.purpose !== undefined) break;
           lastUsage = {
             inputTokens: payload.inputTokens + (payload.cachedInputTokens ?? 0),
             outputTokens: payload.outputTokens,

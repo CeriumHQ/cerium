@@ -28,13 +28,17 @@ export class BusRegistry extends Context.Service<
 
       return BusRegistry.of({
         serverName: BUS_SERVER_NAME,
-        register: (agentId) =>
+        register: (agentId, profile = "lead") =>
           crypto.randomUUIDv4().pipe(
             Effect.orDie,
             Effect.map((token) => {
               agents.set(token, agentId);
               tokens.set(agentId, token);
-              return { type: "http" as const, url, headers: { Authorization: `Bearer ${token}` } };
+              return {
+                type: "http" as const,
+                url: profile === "child" ? `${url}/child` : url,
+                headers: { Authorization: `Bearer ${token}` },
+              };
             }),
           ),
         unregister: (agentId) =>
