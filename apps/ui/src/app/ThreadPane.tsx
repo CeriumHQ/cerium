@@ -354,7 +354,8 @@ export function ThreadPane({
                 />
               </CrashGuard>
             ) : null}
-            <div className={child ? "hidden" : "h-full"}>
+            {/* No box of its own: a box taking the pane's height would push a new thread's question out of view. */}
+            <div className={child ? "hidden" : "contents"}>
               <KeptViews shown={viewed && lead && !child ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
                 {viewed && lead ? (
                   // A conversation that can't be drawn leaves the thread's message box to write in.
