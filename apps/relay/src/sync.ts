@@ -22,6 +22,17 @@ export const appendBatch = <A>(stored: number, start: number, events: ReadonlyAr
   return { keep, count: stored + keep.length };
 };
 
+/** The latest bounded part of one immutable upload, continued by its exclusive append position. */
+export const cloudHistorySlice = (
+  batch: { readonly start: number; readonly events: string },
+  before?: number,
+) => {
+  const events: ReadonlyArray<unknown> = JSON.parse(batch.events);
+  const end = Math.min(events.length, before === undefined ? events.length : before - batch.start);
+  const start = Math.max(0, end - 256);
+  return { events: events.slice(start, end), before: batch.start + start, more: batch.start + start > 0 };
+};
+
 /**
  * The `AccountThreads` message a device gets on connecting, as `JSON.stringify` would write it. The
  * overviews are stored as JSON already, each written by the relay from one it decoded, so they're

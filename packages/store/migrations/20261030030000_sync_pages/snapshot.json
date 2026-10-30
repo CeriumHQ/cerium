@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "3efab5d9-9ffb-4343-89dd-13e1cb52d17a",
-  "prevIds": [
-    "02848ff3-b151-4b90-904f-d856e2417b59"
-  ],
+  "prevIds": ["02848ff3-b151-4b90-904f-d856e2417b59"],
   "ddl": [
     {
       "name": "agents",
@@ -771,13 +769,9 @@
     {
       "table": "agents",
       "name": "agents_thread_id_threads_id_fk",
-      "columns": [
-        "thread_id"
-      ],
+      "columns": ["thread_id"],
       "tableTo": "threads",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "nameExplicit": false,
@@ -786,13 +780,9 @@
     {
       "table": "event_order",
       "name": "fk_event_order_id_events_id_fk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "tableTo": "events",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -801,13 +791,9 @@
     {
       "table": "events",
       "name": "events_thread_id_threads_id_fk",
-      "columns": [
-        "thread_id"
-      ],
+      "columns": ["thread_id"],
       "tableTo": "threads",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "nameExplicit": false,
@@ -816,13 +802,9 @@
     {
       "table": "events",
       "name": "events_agent_id_agents_id_fk",
-      "columns": [
-        "agent_id"
-      ],
+      "columns": ["agent_id"],
       "tableTo": "agents",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "nameExplicit": false,
@@ -831,13 +813,9 @@
     {
       "table": "ui_events",
       "name": "fk_ui_events_id_events_id_fk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "tableTo": "events",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -846,72 +824,56 @@
     {
       "table": "agents",
       "name": "agents_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "event_order",
       "name": "event_order_pk",
-      "columns": [
-        "position"
-      ],
+      "columns": ["position"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "events",
       "name": "events_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "projects",
       "name": "projects_pk",
-      "columns": [
-        "path"
-      ],
+      "columns": ["path"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "settings",
       "name": "settings_pk",
-      "columns": [
-        "key"
-      ],
+      "columns": ["key"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "threads",
       "name": "threads_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "ui_events",
       "name": "ui_events_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "event_order",
       "name": "event_order_id_unique",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "uniques"
     }

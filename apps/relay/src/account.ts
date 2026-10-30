@@ -70,7 +70,13 @@ import {
   type Tokens,
 } from "./oauth.ts";
 import * as tables from "./schema.ts";
-import { accountDraftsJson, accountTasksJson, accountThreadsJson, appendBatch } from "./sync.ts";
+import {
+  accountDraftsJson,
+  accountTasksJson,
+  accountThreadsJson,
+  appendBatch,
+  cloudHistorySlice,
+} from "./sync.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
 
@@ -418,17 +424,7 @@ export class Account extends DurableObject<Env> {
         .limit(1)
         .all();
       if (batch === undefined) return JSON.stringify({ events: [], more: false });
-      const events: Array<unknown> = JSON.parse(batch.events);
-      const end = Math.min(
-        events.length,
-        page.before === undefined ? events.length : page.before - batch.start,
-      );
-      const start = Math.max(0, end - 256);
-      return JSON.stringify({
-        events: events.slice(start, end),
-        before: batch.start + start,
-        more: batch.start + start > 0,
-      });
+      return JSON.stringify(cloudHistorySlice(batch, page.before));
     }
     const batches = this.db
       .select({ events: tables.eventBatches.events })

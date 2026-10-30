@@ -53,6 +53,39 @@ const event = (sequence: number, text = `message ${sequence}`): AgentEvent => ({
 });
 
 describe("Store", () => {
+  it.effect("pages search text without reading screenshot or tool payloads", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const batch = Array.from({ length: 300 }, (_, n) => [
+          event(n * 2),
+          // Decoding this unrelated result would fail. Filtered reads must never decode it.
+          {
+            ...event(n * 2 + 1),
+            payload: {
+              _tag: "ToolCallCompleted",
+              callId: `shot-${n}`,
+              output: { data: "image" },
+              isError: "invalid",
+            },
+          } as unknown as AgentEvent,
+        ]).flat();
+        yield* store.appendEvents(batch);
+        const last = yield* store.messagePage(lead.id);
+        const first = yield* store.messagePage(lead.id, last.before);
+        assert.lengthOf(last.events, 256);
+        assert.isTrue(last.more);
+        assert.isFalse(first.more);
+        assert.deepStrictEqual(
+          [...first.events, ...last.events].map((e) => e.sequence),
+          Array.from({ length: 300 }, (_, n) => n * 2),
+        );
+        assert.lengthOf(yield* store.listEvents(lead.id, { tags: ["MessageCompleted"] }), 300);
+      }),
+    ),
+  );
   it.effect(
     "pages tied timestamps and per-agent sequences without gaps, then catches late imports by append position",
     () =>

@@ -10,7 +10,31 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
 
-import { accountDraftsJson, accountTasksJson, accountThreadsJson, appendBatch } from "../src/sync.ts";
+import {
+  accountDraftsJson,
+  accountTasksJson,
+  accountThreadsJson,
+  appendBatch,
+  cloudHistorySlice,
+} from "../src/sync.ts";
+
+describe("cloud history pages", () => {
+  it("continues within an immutable upload and then at the previous upload without gaps", () => {
+    const events = Array.from({ length: 600 }, (_, n) => n);
+    const batch = { start: 100, events: JSON.stringify(events) };
+    const last = cloudHistorySlice(batch);
+    const middle = cloudHistorySlice(batch, last.before);
+    const first = cloudHistorySlice(batch, middle.before);
+    expect(last.events).toHaveLength(256);
+    expect(middle.events).toHaveLength(256);
+    expect([...first.events, ...middle.events, ...last.events]).toEqual(events);
+    expect(first.before).toBe(100);
+    expect(first.more).toBe(true);
+    expect(
+      cloudHistorySlice({ start: 0, events: JSON.stringify(events.slice(0, 100)) }, first.before),
+    ).toEqual({ events: events.slice(0, 100), before: 0, more: false });
+  });
+});
 
 describe("appending a batch to the cloud copy", () => {
   it("keeps a batch that follows on from what the cloud has", () => {
