@@ -116,6 +116,7 @@ import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
 import { sideQuestionOf } from "./btw.ts";
 import { SideQuestion, type AskSide } from "./SideQuestion.tsx";
 import { SlashMenu, slashGroups, type SlashEntry } from "./SlashMenu.tsx";
+import { WorkspacePicker } from "./WorkspacePicker.tsx";
 import { WorktreePicker } from "./WorktreePicker.tsx";
 import { QueueTray, type Queue } from "./QueueTray.tsx";
 
@@ -156,6 +157,7 @@ export interface ThreadSetup {
   readonly access: AccessMode;
   /** A work thread runs in a git worktree of its own. */
   readonly worktree?: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
 }
 
 export type ComposerTarget =
@@ -219,6 +221,7 @@ export type ComposerTarget =
       readonly available: ReadonlySet<ProviderId>;
       /** The machine can give a thread a worktree of its own. */
       readonly worktrees?: boolean;
+      readonly workspaceControls?: boolean;
     };
 
 /** The `/` list's entry that writes `/btw `. */
@@ -531,7 +534,15 @@ export function Composer({
     pick: Partial<
       Pick<
         DraftStart,
-        "folder" | "model" | "models" | "effort" | "autoEffort" | "speed" | "access" | "worktree"
+        | "folder"
+        | "model"
+        | "models"
+        | "effort"
+        | "autoEffort"
+        | "speed"
+        | "access"
+        | "worktree"
+        | "workspace"
       >
     >,
   ) =>
@@ -849,6 +860,11 @@ export function Composer({
         ...(pace ? { speed: pace } : {}),
         access: isNew && target.mode === "chat" ? "readOnly" : access,
         ...(worktree ? { worktree } : {}),
+        ...(draft.start?.workspace
+          ? { workspace: draft.start.workspace }
+          : worktree
+            ? { workspace: {} }
+            : {}),
       };
     };
     const [first, ...rest] = starting;
@@ -1239,14 +1255,28 @@ export function Composer({
             <span aria-hidden className="text-meta text-fg-disabled">
               /
             </span>
-            <WorktreePicker
-              branch={branch}
-              value={worktree}
-              onPick={(picked) => {
-                setWorkplace(picked ? "worktree" : "local");
-                pickForDraft({ worktree: picked });
-              }}
-            />
+            {target.workspaceControls ? (
+              <WorkspacePicker
+                key={gitFolder}
+                root={gitFolder}
+                branch={branch}
+                value={worktree}
+                workspace={draft.start?.workspace}
+                onPick={(picked, workspace) => {
+                  setWorkplace(picked ? "worktree" : "local");
+                  pickForDraft({ worktree: picked, workspace });
+                }}
+              />
+            ) : (
+              <WorktreePicker
+                branch={branch}
+                value={worktree}
+                onPick={(picked) => {
+                  setWorkplace(picked ? "worktree" : "local");
+                  pickForDraft({ worktree: picked, workspace: undefined });
+                }}
+              />
+            )}
           </>
         ) : null}
       </div>

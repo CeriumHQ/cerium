@@ -23,3 +23,4 @@ export * from "./tasks.ts";
 export * from "./todos.ts";
 export * from "./usage.ts";
 export * from "./workspace.ts";
+export * from "./workspaces.ts";

@@ -58,6 +58,7 @@ import { MergeBox, PullComposer } from "./PullActionsBox.tsx";
 import { PullChecks, PullCommits, PullFiles } from "./PullTabs.tsx";
 import { ReviewThreadCard } from "./ReviewThreadCard.tsx";
 import { usePullActions, usePullFreshness, type PullActions } from "./usePullRequest.ts";
+import { RelatedThreadsFact, useRelatedThreads } from "./RelatedWorkThreads.tsx";
 
 type PullTab = "conversation" | "commits" | "checks" | "files";
 
@@ -75,6 +76,7 @@ export interface PullThreadStart {
   readonly text: string;
   /** In a worktree of its own, where it checks the pull request out. */
   readonly worktree: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
 }
 
 /**
@@ -88,6 +90,7 @@ export function PullRequestViewer({
   onStartThread,
   onClose,
   pane,
+  onOpenThread,
 }: {
   /** The work thread's folder the panel acted on. */
   cwd: string;
@@ -98,6 +101,7 @@ export function PullRequestViewer({
   onClose: () => void;
   /** While it shares the main area with other panes, its header is the pane's. */
   pane?: PaneChrome | undefined;
+  onOpenThread?: ((id: string) => void) | undefined;
 }) {
   const id = pullKey(cwd, number);
   const result = useAtomValue(pullAtom(id));
@@ -142,7 +146,7 @@ export function PullRequestViewer({
             <div
               className={`mx-auto flex flex-col gap-5 px-6 pt-5 pb-12 max-md:px-3 ${tab === "files" ? "max-w-[90rem]" : "max-w-[56rem]"}`}
             >
-              <TitleBlock pull={pull} />
+              <TitleBlock pull={pull} onOpenThread={onOpenThread} />
               {tab === "conversation" ? (
                 <PullConversation
                   cwd={cwd}
@@ -194,7 +198,12 @@ function Header({
 }) {
   const [checkingOut, setCheckingOut] = useState(false);
   const start = (worktree: boolean) => {
-    if (pull && onStartThread) onStartThread({ text: pullRequestBrief(pull, { worktree }), worktree });
+    if (pull && onStartThread)
+      onStartThread({
+        text: pullRequestBrief(pull, { worktree }),
+        worktree,
+        ...(worktree ? { workspace: { pullRequestUrl: pull.url } } : {}),
+      });
   };
   const tabs: ReadonlyArray<{ value: PullTab; label: string; count?: number | undefined }> = [
     { value: "conversation", label: "Conversation" },
@@ -366,8 +375,15 @@ function CheckoutDialog({
 }
 
 /** The pull request's title, state, branches, and who reviews it. */
-function TitleBlock({ pull }: { pull: PullRequestDetail }) {
+function TitleBlock({
+  pull,
+  onOpenThread,
+}: {
+  pull: PullRequestDetail;
+  onOpenThread?: ((id: string) => void) | undefined;
+}) {
   const state = pullStateOf(pull);
+  const threads = useRelatedThreads(pull.url);
   const commits = pull.commitCount === 1 ? "1 commit" : `${pull.commitCount} commits`;
   const head =
     pull.headRepository === undefined ? pull.head : `${pull.headRepository.split("/")[0]}:${pull.head}`;
@@ -397,7 +413,12 @@ function TitleBlock({ pull }: { pull: PullRequestDetail }) {
           </span>
         </span>
       </ViewerTitle>
-      <PullFacts pull={pull} />
+      <PullFacts
+        pull={pull}
+        threads={
+          threads.length === 0 ? undefined : <RelatedThreadsFact threads={threads} onOpen={onOpenThread} />
+        }
+      />
     </div>
   );
 }
@@ -410,9 +431,10 @@ const reviewerLook: Record<Reviewer["state"], { icon: LucideIcon; tone: string; 
   requested: { icon: CircleDashed, tone: "text-attention-text", word: "review requested" },
 };
 
-/** Who reviews it and who it's assigned to, its labels and milestone: the lines that have something. */
-function PullFacts({ pull }: { pull: PullRequestDetail }) {
+/** Who reviews it and who it's assigned to, its labels and milestone, the threads on it: the lines that have something. */
+function PullFacts({ pull, threads }: { pull: PullRequestDetail; threads?: ReactNode }) {
   if (
+    threads === undefined &&
     pull.reviewers.length === 0 &&
     pull.assignees.length === 0 &&
     pull.labels.length === 0 &&
@@ -471,6 +493,7 @@ function PullFacts({ pull }: { pull: PullRequestDetail }) {
           <span className="text-fg-primary">{pull.milestone}</span>
         </Fact>
       )}
+      {threads}
     </Facts>
   );
 }

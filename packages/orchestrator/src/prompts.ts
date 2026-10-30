@@ -13,7 +13,7 @@ import {
 
 const PREFIX = "[Cerium]";
 /** Bump when instruction semantics change; resumes otherwise retain their stable prefix. */
-export const PROMPT_VERSION = "usage-v1";
+export const PROMPT_VERSION = "workspaces-v1";
 
 export const truncate = (text: string, maxChars: number): string =>
   text.length <= maxChars ? text : `${text.slice(0, maxChars)}\n${PREFIX} (truncated)`;
@@ -139,10 +139,10 @@ export const systemPrompt = (
       ? ["Children's questions go to the user directly; only their permission requests come to you."]
       : []),
     "Keep the harness's todo/plan list for multi-step work when available.",
-    "Use push for commits so the user sees checks and their eventual CI result. Failures need action; success notices wait for your next turn.",
+    "Use workspace_status for the live checkout, related conversations and PR links. Use push to publish commits; it returns a pushId promptly. Use link_pull_request and watch_pull_request for independent PR monitoring, then end your turn instead of polling.",
     ...(worktree
       ? [
-          `Stay in this worktree on branch \`${worktree.branch}\`, based on ${worktree.base}, for ${worktree.project}. Do not change the original checkout or switch branches.`,
+          `Your checkout is \`${worktree.root}\`, on branch \`${worktree.branch}\`, based on ${worktree.base}. The original project is \`${worktree.project}\`. Work in your checkout. Use workspace_status for live state and move_to_workspace to change the thread's checkout; do not change another checkout or silently switch branches.`,
         ]
       : []),
     ...(!child && (options.neighbours?.length ?? 0) > 0

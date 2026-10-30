@@ -134,6 +134,15 @@ describe("Cerium MCP bus", () => {
       assert.sameMembers(
         (tools?.result?.tools ?? []).map((tool: { name: string }) => tool.name),
         [
+          "workspace_status",
+          "list_workspaces",
+          "link_pull_request",
+          "unlink_pull_request",
+          "watch_pull_request",
+          "unwatch_pull_request",
+          "review_changes",
+          "move_to_workspace",
+          "link_issue",
           "list_models",
           "spawn_agent",
           "create_thread",
@@ -186,6 +195,9 @@ describe("Cerium MCP bus", () => {
       assert.notInclude(names, "spawn_agent");
       assert.notInclude(names, "create_thread");
       assert.notInclude(names, "answer_permission");
+      assert.notInclude(names, "watch_pull_request");
+      assert.notInclude(names, "move_to_workspace");
+      assert.includeMembers(names, ["workspace_status", "list_workspaces", "review_changes"]);
       assert.includeMembers(names, ["send_message", "browser_act", "browser_screenshot"]);
 
       const agents = yield* leadClient.callTool("list_agents");

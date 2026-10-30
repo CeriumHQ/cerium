@@ -164,6 +164,7 @@ export interface CreateThreadInput {
   readonly cwd?: string;
   /** A work thread runs in a git worktree of `cwd`'s repository of its own instead of `cwd` itself. */
   readonly worktree?: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
   /** Shared by the threads one message starts together (multi agent). */
   readonly runId?: string;
   /** What the thread does when its harness's limit runs out; absent follows the setting for all threads. */
@@ -236,6 +237,7 @@ export interface ThreadRequest {
   readonly access?: AccessMode;
   /** Whether it runs in a worktree of its own; as the caller's thread does without it. */
   readonly worktree?: boolean;
+  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
 }
 
 export type SpawnOutcome =
@@ -399,6 +401,7 @@ const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "SessionStarted",
   "ConversationRewound",
   "LeadHandedOff",
+  "WorkspaceMoved",
   "AgentSpawned",
 ];
 
@@ -411,6 +414,7 @@ const BRIEF_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "LimitReached",
   "ConversationRewound",
   "LeadHandedOff",
+  "WorkspaceMoved",
   "TurnFilesChanged",
   "FileChanged",
   "TodosUpdated",
@@ -628,6 +632,10 @@ export class Orchestrator extends Context.Service<
       threadId: ThreadId,
     ): Effect.Effect<{ readonly agents: number; readonly approvals: number }, OrchestratorError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, OrchestratorError>;
+    moveThread(
+      threadId: ThreadId,
+      choice: import("@cerium/protocol").WorkspaceChoice,
+    ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /** Renames a thread; the title is trimmed and must be 1 to `MAX_THREAD_TITLE` characters. */
     renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
@@ -3691,11 +3699,47 @@ export class Orchestrator extends Context.Service<
         }
         const createdAt = yield* now;
         const threadId = (yield* makeId("thr")) as ThreadId;
+        const source =
+          input.workspace?.sourceThreadId === undefined
+            ? undefined
+            : yield* threadInfo(input.workspace.sourceThreadId as ThreadId);
+        if (source !== undefined && source.worktree === undefined)
+          return yield* notAllowed(
+            "The source thread needs a branch workspace before another task can build on it.",
+          );
+        const choice =
+          source === undefined
+            ? input.workspace
+            : { ...input.workspace, baseRef: input.workspace?.baseRef ?? source.worktree!.branch };
         // Only picked here: the checkout runs behind the thread, so it shows at once.
-        const isolated: NewWorktree | undefined =
-          adopted === undefined && input.mode === "work" && input.cwd !== undefined && input.worktree === true
-            ? yield* worktrees.plan(input.cwd, input.title).pipe(Effect.mapError(refusedWorktree))
+        let isolated: NewWorktree | undefined =
+          adopted === undefined &&
+          input.mode === "work" &&
+          input.cwd !== undefined &&
+          (input.worktree === true || input.workspace !== undefined)
+            ? yield* worktrees.plan(input.cwd, input.title, choice).pipe(Effect.mapError(refusedWorktree))
             : undefined;
+        if (isolated !== undefined && input.workspace?.path !== undefined) {
+          const selected = isolated;
+          const identity = (root: string) =>
+            process.platform === "win32" ? path.resolve(root).toLowerCase() : path.resolve(root);
+          const previous = (yield* store.listThreads.pipe(Effect.mapError(unavailable))).find(
+            (other) =>
+              other.worktree !== undefined &&
+              identity(other.worktree.root) === identity(selected.worktree.root),
+          )?.worktree;
+          if (previous)
+            isolated = {
+              ...selected,
+              worktree: {
+                ...previous,
+                id: selected.worktree.id!,
+                project: selected.worktree.project,
+                root: selected.worktree.root,
+                branch: selected.worktree.branch,
+              },
+            };
+        }
         const directory =
           isolated?.cwd ??
           (input.cwd !== undefined && input.mode === "work"
@@ -3706,7 +3750,16 @@ export class Orchestrator extends Context.Service<
           title: input.title,
           mode: input.mode,
           ...(input.mode === "work" && input.cwd !== undefined ? { cwd: directory } : {}),
-          ...(isolated ? { worktree: isolated.worktree } : adopted ? { worktree: adopted } : {}),
+          ...(isolated
+            ? {
+                worktree: {
+                  ...isolated.worktree,
+                  ...(source === undefined ? {} : { dependsOnThreadId: source.id }),
+                },
+              }
+            : adopted
+              ? { worktree: adopted }
+              : {}),
           ...(input.runId ? { runId: input.runId } : {}),
           ...(input.onLimit ? { onLimit: input.onLimit } : {}),
           createdAt,
@@ -3753,6 +3806,12 @@ export class Orchestrator extends Context.Service<
           return { thread, lead };
         }
         threadWorktrees.set(threadId, isolated.worktree);
+        if (input.workspace?.path !== undefined) {
+          yield* startRuntime(lead, directory, {
+            prepare: ensureWorktree(threadId, isolated.worktree, directory),
+          });
+          return { thread, lead };
+        }
         const checkedOut = yield* Deferred.make<void, OrchestratorError>();
         checkouts.set(threadId, checkedOut);
         yield* startRuntime(lead, directory, {
@@ -4304,6 +4363,58 @@ export class Orchestrator extends Context.Service<
 
         listThreads: store.listThreads.pipe(Effect.mapError(unavailable)),
 
+        moveThread: Effect.fn("Orchestrator.moveThread")(function* (threadId, choice) {
+          if (working(threadId) || waitsOnUser(threadId))
+            return yield* notAllowed("Finish the current turn before moving this conversation.");
+          const thread = yield* threadInfo(threadId);
+          if (thread.mode !== "work" || !thread.cwd || thread.archivedAt !== undefined)
+            return yield* notAllowed("Restore a work conversation before moving it.");
+          const previousCwd = thread.cwd;
+          const lead = (yield* store.listAgents(threadId).pipe(Effect.mapError(unavailable))).find(
+            (agent) => agent.parentId === undefined && agent.role === LEAD_ROLE,
+          );
+          if (!lead) return yield* notFound("This conversation has no lead.");
+          const planned = yield* worktrees
+            .plan(thread.worktree?.project ?? thread.cwd, thread.title, choice)
+            .pipe(Effect.mapError(refusedWorktree));
+          yield* worktrees.checkOut(planned.worktree).pipe(Effect.mapError(refusedWorktree));
+          return yield* acceptPermit.withPermits(1)(
+            Effect.gen(function* () {
+              if (
+                working(threadId) ||
+                waitsOnUser(threadId) ||
+                (yield* threadInfo(threadId)).cwd !== thread.cwd
+              )
+                return yield* notAllowed(
+                  "The conversation changed while its destination was prepared. Retry the move when it is idle.",
+                );
+              yield* Effect.forEach(
+                [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+                stopRuntime,
+                { discard: true },
+              );
+              const updated = yield* updateThread(threadId, { cwd: planned.cwd, worktree: planned.worktree });
+              yield* store
+                .updateAgent(lead.id, { providerSessionId: null, updatedAt: yield* now })
+                .pipe(Effect.mapError(unavailable));
+              yield* emitStored(lead, {
+                _tag: "WorkspaceMoved",
+                from: { provider: lead.provider, model: lead.model },
+                provider: lead.provider,
+                model: lead.model,
+                previousCwd,
+                cwd: planned.cwd,
+              });
+              threadDirectories.set(threadId, planned.cwd);
+              threadWorktrees.set(threadId, planned.worktree);
+              const { undelivered, notices } = yield* resumeLead(lead.id);
+              held.set(lead.id, { undelivered, notices });
+              if (choice.path === undefined) yield* setUp(threadId, planned.worktree, planned.cwd);
+              return updated;
+            }),
+          );
+        }),
+
         renameThread: (threadId, title) => {
           const trimmed = title.trim();
           if (trimmed === "" || trimmed.length > MAX_THREAD_TITLE) {
@@ -4328,13 +4439,24 @@ export class Orchestrator extends Context.Service<
             );
           }
           const thread = yield* threadInfo(threadId);
-          if (thread.worktree !== undefined && archived !== (thread.archivedAt !== undefined)) {
+          if (
+            thread.worktree !== undefined &&
+            thread.worktree.id === undefined &&
+            archived !== (thread.archivedAt !== undefined)
+          ) {
             if (archived) {
               yield* removeWorktree(thread.id, thread.worktree, thread.cwd ?? thread.worktree.root, options);
             } else {
               // Setup runs again whether or not the thread's lead is listening; the terminal shows it.
               yield* ensureWorktree(threadId, thread.worktree, thread.cwd ?? thread.worktree.root);
             }
+          }
+          if (archived && thread.worktree?.id !== undefined) {
+            yield* Effect.forEach(
+              [...runtimes.values()].filter((rt) => rt.info.threadId === threadId),
+              stopRuntime,
+              { discard: true },
+            );
           }
           return yield* updateThread(
             threadId,
@@ -4385,7 +4507,7 @@ export class Orchestrator extends Context.Service<
           yield* updateThread(threadId, {
             archivedAt: yield* now,
             laterUntil: null,
-            ...(thread.worktree === undefined ? {} : { worktree: null }),
+            ...(thread.worktree === undefined || thread.worktree.id !== undefined ? {} : { worktree: null }),
           });
           return started;
         }),
@@ -4407,7 +4529,11 @@ export class Orchestrator extends Context.Service<
             );
           }
           // An archived thread's worktree is gone already; its branch keeps any commits.
-          if (thread.worktree !== undefined && thread.archivedAt === undefined) {
+          if (
+            thread.worktree !== undefined &&
+            thread.worktree.id === undefined &&
+            thread.archivedAt === undefined
+          ) {
             yield* removeWorktree(thread.id, thread.worktree, thread.cwd ?? thread.worktree.root, options);
           }
           // Sessions end first, so nothing they record lands after the rows are gone.
@@ -4423,7 +4549,8 @@ export class Orchestrator extends Context.Service<
 
         worktreeChanges: Effect.fn("Orchestrator.worktreeChanges")(function* (threadId: ThreadId) {
           const { worktree, archivedAt } = yield* threadInfo(threadId);
-          if (worktree === undefined || archivedAt !== undefined) return { uncommitted: 0, unmerged: 0 };
+          if (worktree === undefined || worktree.id !== undefined || archivedAt !== undefined)
+            return { uncommitted: 0, unmerged: 0 };
           return yield* worktrees.changes(worktree).pipe(Effect.mapError(refusedWorktree));
         }),
 
@@ -4542,6 +4669,7 @@ export class Orchestrator extends Context.Service<
             mode: origin.mode,
             ...(folder !== undefined ? { cwd: folder } : {}),
             worktree: request.worktree ?? origin.worktree !== undefined,
+            ...(request.workspace === undefined ? {} : { workspace: request.workspace }),
             lead: {
               ...target,
               // A new lead starts on Auto while the router is on, unless the caller named an effort.

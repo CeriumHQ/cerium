@@ -49,7 +49,15 @@ export const toThreadSummary = ({ thread, agents, awaitingApproval }: ThreadOver
     title: thread.title,
     mode: thread.mode,
     ...(folder ? { project: baseName(folder), folder } : {}),
-    ...(thread.worktree ? { worktree: { branch: thread.worktree.branch, base: thread.worktree.base } } : {}),
+    ...(thread.worktree
+      ? {
+          worktree: {
+            ...(thread.worktree.id ? { id: thread.worktree.id } : {}),
+            branch: thread.worktree.branch,
+            base: thread.worktree.base,
+          },
+        }
+      : {}),
     status,
     providers: ordered.map((agent) => agent.provider),
     unread: false,

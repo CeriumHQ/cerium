@@ -164,6 +164,7 @@ import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
+import { WorkspaceStatus } from "../features/git/WorkspaceStatus.tsx";
 import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
 import { GitHubPageEmpty, GitHubPageList } from "../features/github/GitHubPage.tsx";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
@@ -1212,12 +1213,14 @@ function Workspace() {
     folder,
     text,
     worktree,
+    workspace,
   }: {
     /** None leaves the project to the message box's own choice. */
     folder: string | undefined;
     text: string;
     /** Runs in a worktree of its own; left to the message box's own choice when absent. */
     worktree?: boolean;
+    workspace?: import("@cerium/protocol").WorkspaceChoice;
   }) => {
     const key = newDraftKey();
     registry.set(
@@ -1230,6 +1233,7 @@ function Workspace() {
           ...(folder === undefined ? {} : { folder: projectOf(folder) }),
           ...(driven ? { machine: driven.id } : {}),
           ...(worktree === undefined || !worktreesOk ? {} : { worktree }),
+          ...(workspace === undefined ? {} : { workspace }),
         }),
       })),
     );
@@ -2019,13 +2023,14 @@ function Workspace() {
     const title = (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80);
     // The threads of one multi-agent run share an id, so the sidebar shows them as one.
     const runId = setups.length > 1 ? crypto.randomUUID() : undefined;
-    const created = await settleInTurn(setups, ({ worktree, ...lead }) =>
+    const created = await settleInTurn(setups, ({ worktree, workspace, ...lead }) =>
       create({
         payload: {
           title,
           mode,
           ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
           ...(worktree ? { worktree } : {}),
+          ...(workspace ? { workspace } : {}),
           ...(runId ? { runId } : {}),
           lead,
         },
@@ -2070,7 +2075,19 @@ function Workspace() {
     }
   };
 
+  /** The machine keeps threads' workspaces: their checkouts, links and reviews. */
+  const workspacesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= 48;
+  const openThreadById = (threadId: string) => {
+    const summary = summaries.find((candidate) => candidate.id === threadId);
+    if (summary) openSummary(summary);
+  };
+
+  /** The open work thread whose checkout the titlebar shows: local, in a folder, on a machine that keeps workspaces. */
+  const workspaceThread =
+    workspacesOk && runThreadId !== undefined && !compact ? selected?.thread : undefined;
+
   const paneActions: ThreadPaneActions = {
+    sourceControlEnabled: workspacesOk,
     attempt,
     send: (agentId, message) => send({ payload: { agentId, ...message } }),
     edit:
@@ -2369,10 +2386,13 @@ function Workspace() {
     ) : (
       <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised max-md:rounded-none max-md:border-0">
         <GitHubTabView
+          onOpenThread={openThreadById}
           key={githubKey(githubPick.root, githubPick.kind, githubPick.number)}
           tab={githubPick}
           worktrees={worktreesOk}
-          onStartThread={({ text, worktree }) => startThreadFrom({ folder: githubPick.root, text, worktree })}
+          onStartThread={({ text, worktree, workspace }) =>
+            startThreadFrom({ folder: githubPick.root, text, worktree, ...(workspace ? { workspace } : {}) })
+          }
           {...(issuesOk
             ? {
                 issue: (tab: GitHubTab) => (
@@ -2409,10 +2429,13 @@ function Workspace() {
     if (github !== undefined) {
       return (
         <GitHubTabView
+          onOpenThread={openThreadById}
           key={key}
           tab={github}
           worktrees={worktreesOk}
-          onStartThread={({ text, worktree }) => startThreadFrom({ folder: github.root, text, worktree })}
+          onStartThread={({ text, worktree, workspace }) =>
+            startThreadFrom({ folder: github.root, text, worktree, ...(workspace ? { workspace } : {}) })
+          }
           {...(issuesOk
             ? {
                 issue: (tab: GitHubTab, pane: PaneChrome | undefined) => (
@@ -2798,6 +2821,21 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
+      {...(workspaceThread === undefined
+        ? {}
+        : {
+            workspace: (
+              <WorkspaceStatus
+                key={workspaceThread.id}
+                threadId={workspaceThread.id as ThreadId}
+                projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
+                onOpenSourceControl={() => {
+                  if (!gitOpen) toggleGit();
+                }}
+                onOpenThread={openThreadById}
+              />
+            ),
+          })}
       {...(runThreadId === undefined
         ? {}
         : {

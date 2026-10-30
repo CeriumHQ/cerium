@@ -93,7 +93,11 @@ export class Worktrees extends Context.Service<
      * branch checked out there. Quick: nothing is checked out until `checkOut`, and the name is kept
      * from other plans until then.
      */
-    plan(project: string, name: string): Effect.Effect<NewWorktree, WorktreeError>;
+    plan(
+      project: string,
+      name: string,
+      choice?: import("@cerium/protocol").WorkspaceChoice,
+    ): Effect.Effect<NewWorktree, WorktreeError>;
     /**
      * Checks a planned worktree out, copying in the git-ignored files its include list names;
      * resolves with those files, relative to its root.
@@ -105,7 +109,11 @@ export class Worktrees extends Context.Service<
      * Removes the worktree of thread `threadId` with what isn't committed there; its branch stays
      * while it holds commits its base doesn't.
      */
-    remove(threadId: ThreadId, worktree: ThreadWorktree): Effect.Effect<void, WorktreeError>;
+    remove(
+      threadId: ThreadId,
+      worktree: ThreadWorktree,
+      options?: { readonly keepBranch?: boolean },
+    ): Effect.Effect<void, WorktreeError>;
     /** Puts a removed worktree back where it was, on its branch, or afresh from its base without one. */
     restore(worktree: ThreadWorktree): Effect.Effect<void, WorktreeError>;
   }

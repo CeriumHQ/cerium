@@ -84,6 +84,8 @@ const KEPT_THREADS = 2;
 
 /** What the window does for any of its thread panes. */
 export interface ThreadPaneActions {
+  /** The machine keeps workspaces: a new thread's box offers its checkouts. */
+  readonly sourceControlEnabled: boolean;
   /** Runs a backend action, reporting a failure; resolves whether it worked. */
   readonly attempt: (action: Promise<unknown>) => Promise<boolean>;
   readonly send: (agentId: AgentId, message: OutgoingMessage) => Promise<unknown>;
@@ -509,6 +511,7 @@ export function ThreadPane({
                           onChooseFolder: actions.chooseFolder,
                           available,
                           worktrees,
+                          workspaceControls: actions.sourceControlEnabled,
                         }
                   }
                   running={leadRunning && cloud === undefined}

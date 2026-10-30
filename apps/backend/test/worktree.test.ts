@@ -130,6 +130,57 @@ const setup = Effect.gen(function* () {
 const TestLayer = Layer.mergeAll(Git.layer, fakeTerminals).pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("Worktrees", () => {
+  it.effect("keeps a cleaned workspace's branch available for restoration", () =>
+    Effect.gen(function* () {
+      const { repo, worktrees } = yield* setup;
+      const made = yield* worktrees.create(repo, "Retained branch");
+      yield* worktrees.remove("thr_clean" as ThreadId, made.worktree, { keepBranch: true });
+      assert.strictEqual(
+        (yield* git(repo, "rev-parse", `refs/heads/${made.worktree.branch}`)).trim(),
+        made.worktree.startCommit,
+      );
+      yield* worktrees.restore(made.worktree);
+      assert.strictEqual(
+        (yield* git(made.worktree.root, "rev-parse", "HEAD")).trim(),
+        made.worktree.startCommit,
+      );
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+  it.effect("pins a new checkout to the selected base even when that branch advances before checkout", () =>
+    Effect.gen(function* () {
+      const { repo, worktrees } = yield* setup;
+      const planned = yield* worktrees.plan(repo, "Pinned base", {
+        baseRef: "main",
+        branch: "feature/pinned",
+      });
+      yield* git(repo, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "advance base");
+      yield* worktrees.checkOut(planned.worktree);
+      assert.strictEqual(
+        (yield* git(planned.worktree.root, "rev-parse", "HEAD")).trim(),
+        planned.worktree.startCommit,
+      );
+      assert.notStrictEqual((yield* git(repo, "rev-parse", "HEAD")).trim(), planned.worktree.startCommit);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("reuses a checkout without overwriting its ignored local environment files", () =>
+    Effect.gen(function* () {
+      const { fs, path, repo, worktrees } = yield* setup;
+      const first = yield* worktrees.create(repo, "Shared checkout");
+      yield* fs.writeFileString(path.join(first.worktree.root, ".env"), "KEY=kept\n");
+      const reused = yield* worktrees.plan(repo, "Another conversation", { path: first.worktree.root });
+      yield* worktrees.checkOut(reused.worktree);
+      assert.strictEqual(reused.worktree.id, first.worktree.id);
+      assert.strictEqual(yield* fs.readFileString(path.join(first.worktree.root, ".env")), "KEY=kept\n");
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            worktrees.plan(repo, "Subfolder", { path: path.join(first.worktree.root, "app") }),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
   it.effect(
     "checks the repository out on a branch of its own, in the same subfolder, with its env files",
     () =>

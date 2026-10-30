@@ -90,6 +90,8 @@ interface TitlebarProps {
   readonly terminal?: { readonly open: boolean; readonly onToggle: () => void };
   /** The project's run button: starts its run command in a thread terminal, and stops it while it runs. */
   readonly run?: RunProps;
+  /** The open thread's workspace button, before the run button. */
+  readonly workspace?: ReactNode;
   /** The Preview pane's button, offered while the thread can have a browser: the desktop app's own threads. */
   readonly preview?: PreviewToggleProps;
   /** Which of the account's computers the window drives, once there's a choice. */
@@ -114,6 +116,7 @@ export function Titlebar({
   onTogglePanel,
   terminal,
   run,
+  workspace,
   preview,
   machinePicker,
   tabs,
@@ -193,6 +196,7 @@ export function Titlebar({
           </>
         )}
         <div className="flex h-full shrink-0 items-center justify-end">
+          {covered ? null : workspace}
           {run && !covered ? <RunToggle {...run} /> : null}
           {covered ? null : (
             <CompactPanelMenu

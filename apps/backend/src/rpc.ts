@@ -50,6 +50,8 @@ import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
 import { fileDiffOf, Files, resolveInside, type FilesError } from "./files.ts";
 import { Git } from "./git.ts";
+import { parseCheckouts } from "./checkouts.ts";
+import { SourceControl } from "./sourceControl.ts";
 import { GitBranches, gitBranchHandlers } from "./gitBranches.ts";
 import { GitChanges, gitChangesHandlers } from "./gitChanges.ts";
 import { GitHub } from "./github.ts";
@@ -158,6 +160,8 @@ export const Handlers = MachineRpcs.toLayer(
     const automations = yield* Automations;
     const hub = yield* hubHandlers;
     const continued = continuations(store, yield* Git, github);
+    const checkoutGit = yield* Git;
+    const sourceControl = yield* SourceControl;
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -204,6 +208,20 @@ export const Handlers = MachineRpcs.toLayer(
     });
 
     return MachineRpcs.of({
+      SourceControl: ({ threadId, command }) =>
+        sourceControl.run(threadId, command).pipe(Effect.mapError(refuse)),
+      RelatedWorkThreads: ({ url }) => sourceControl.related(url).pipe(Effect.mapError(refuse)),
+      ListCheckouts: ({ root }) =>
+        Effect.gen(function* () {
+          const result = yield* checkoutGit.run(root, ["worktree", "list", "--porcelain", "-z"], {
+            look: true,
+          });
+          if (result.code !== 0)
+            return yield* new CeriumError({
+              message: result.stderr || "Couldn't list the repository's checkouts.",
+            });
+          return parseCheckouts(result.stdout, yield* orchestrator.listThreads);
+        }).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       WatchThreadOverviews: () => orchestrator.watchThreadOverviews,
       ThreadHistory: ({ threadId, page }) =>

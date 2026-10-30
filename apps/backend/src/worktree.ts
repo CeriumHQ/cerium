@@ -1,10 +1,18 @@
 import { Worktrees, WorktreeError } from "@cerium/orchestrator";
 import type { ThreadWorktree, WorktreeChanges } from "@cerium/protocol";
 import { Deferred, Effect, Exit, FileSystem, Layer, Option, Path, Schedule, Scope, Semaphore } from "effect";
+import { GitHub } from "./github.ts";
 
 import { Git, type GitResult } from "./git.ts";
 import { Terminals } from "./terminal.ts";
 import { includeList } from "./worktreeInclude.ts";
+import { createHash } from "node:crypto";
+
+export const checkoutId = (root: string) =>
+  createHash("sha256")
+    .update(process.platform === "win32" ? root.toLowerCase().replaceAll("\\", "/") : root)
+    .digest("hex")
+    .slice(0, 24);
 
 // Each thread that asks for one gets a git worktree of its project's repository, on a branch of its
 // own, so threads in one project stop changing each other's files. Git does the work; Cerium picks
@@ -76,6 +84,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const gitService = yield* Git;
+      const github = yield* Effect.serviceOption(GitHub);
       const terminals = yield* Terminals;
       const layerScope = yield* Scope.Scope;
       /** Names are picked one at a time: threads started together with one title get one each. */
@@ -278,6 +287,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
         toplevel: string,
         worktree: ThreadWorktree,
       ) {
+        if (yield* exists(path.join(worktree.root, ".git"))) return [];
         yield* fs
           .makeDirectory(path.dirname(worktree.root), { recursive: true })
           .pipe(
@@ -290,7 +300,14 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           toplevel,
           (yield* hasBranch(toplevel, worktree.branch))
             ? ["worktree", "add", worktree.root, worktree.branch]
-            : ["worktree", "add", "-b", worktree.branch, worktree.root, worktree.base],
+            : [
+                "worktree",
+                "add",
+                "-b",
+                worktree.branch,
+                worktree.root,
+                worktree.startCommit ?? worktree.baseCommit ?? worktree.base,
+              ],
           "Git couldn't make the worktree",
         );
         return yield* copyIncluded(toplevel, worktree.root).pipe(
@@ -303,7 +320,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       });
 
       return Worktrees.of({
-        plan: Effect.fn("Worktrees.plan")(function* (project: string, name: string) {
+        plan: Effect.fn("Worktrees.plan")(function* (project, name, choice) {
           const folder = path.resolve(project);
           const where = yield* git(folder, ["rev-parse", "--show-toplevel", "--show-prefix"]);
           if (where.code !== 0) {
@@ -311,6 +328,50 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           }
           const [top = "", prefix = ""] = where.stdout.split("\n").map((line) => line.trim());
           const toplevel = path.resolve(top);
+          if (choice?.path !== undefined) {
+            const root = path.resolve(choice.path);
+            const actualRoot = yield* gitOk(
+              root,
+              ["rev-parse", "--show-toplevel"],
+              "This checkout is unavailable. Select another workspace.",
+            );
+            const canonical = (value: string) =>
+              process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+            if (canonical(root) !== canonical(actualRoot.trim()))
+              return yield* new WorktreeError({
+                message: "Choose the checkout's root folder, rather than a subfolder.",
+              });
+            const common = yield* gitOk(
+              toplevel,
+              ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+              "Couldn't identify the project.",
+            );
+            const other = yield* gitOk(
+              root,
+              ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+              "This checkout is unavailable. Select another workspace.",
+            );
+            if (canonical(common.trim()) !== canonical(other.trim()))
+              return yield* new WorktreeError({ message: "That checkout belongs to another repository." });
+            const ref = yield* gitOk(
+              root,
+              ["symbolic-ref", "--quiet", "--short", "HEAD"],
+              "Choose a checkout on a branch, rather than a detached commit.",
+            );
+            const commit = yield* gitOk(root, ["rev-parse", "HEAD"], "Couldn't read the checkout's commit.");
+            return {
+              worktree: {
+                id: checkoutId(root),
+                managed: false,
+                project,
+                root,
+                branch: ref.trim(),
+                base: choice.baseRef ?? ref.trim(),
+                baseCommit: commit.trim(),
+              },
+              cwd: prefix === "" ? root : path.resolve(root, prefix),
+            };
+          }
           const head = yield* git(toplevel, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
           if (head.code !== 0) {
             return yield* new WorktreeError({
@@ -318,7 +379,86 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             });
           }
           const branch = yield* git(toplevel, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-          const base = branch.code === 0 ? branch.stdout.trim() : head.stdout.trim();
+          let base = choice?.baseRef ?? (branch.code === 0 ? branch.stdout.trim() : head.stdout.trim());
+          let baseCommit = yield* gitOk(
+            toplevel,
+            ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`],
+            "The selected base doesn't exist. Fetch or select another branch.",
+          );
+          if (choice?.pullRequestUrl !== undefined) {
+            if (Option.isNone(github))
+              return yield* new WorktreeError({
+                message: "GitHub isn't available to prepare this pull request.",
+              });
+            const repository = yield* github.value
+              .repository(toplevel)
+              .pipe(Effect.mapError((error) => new WorktreeError({ message: error.message })));
+            const pullUrl = yield* Effect.try({
+              try: () => new URL(choice.pullRequestUrl!),
+              catch: () => new WorktreeError({ message: "Enter a complete GitHub pull request URL." }),
+            });
+            const match = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(pullUrl.pathname);
+            if (
+              pullUrl.protocol !== "https:" ||
+              pullUrl.username ||
+              pullUrl.password ||
+              pullUrl.search ||
+              pullUrl.hash ||
+              pullUrl.host !== repository.host ||
+              match?.[1]?.toLowerCase() !== repository.owner.toLowerCase() ||
+              match[2]?.toLowerCase() !== repository.name.toLowerCase()
+            )
+              return yield* new WorktreeError({
+                message: "Choose a pull request from this project's GitHub repository.",
+              });
+            yield* gitOk(
+              toplevel,
+              ["fetch", "--no-tags", repository.url, `refs/pull/${match[3]}/head`],
+              "Couldn't fetch the pull request's revision.",
+            );
+            baseCommit = yield* gitOk(
+              toplevel,
+              ["rev-parse", "FETCH_HEAD^{commit}"],
+              "Couldn't read the pull request's revision.",
+            );
+            base = choice.baseRef ?? repository.defaultBranch;
+          }
+          if (choice?.existingBranch !== undefined) {
+            yield* gitOk(
+              toplevel,
+              ["check-ref-format", "--branch", choice.existingBranch],
+              "Choose a valid existing branch.",
+            );
+            if (!(yield* hasBranch(toplevel, choice.existingBranch)))
+              return yield* new WorktreeError({
+                message: "That branch doesn't exist locally. Fetch it or choose another branch.",
+              });
+            const checkedOut = yield* gitOk(
+              toplevel,
+              ["for-each-ref", "--format=%(worktreepath)", `refs/heads/${choice.existingBranch}`],
+              "Couldn't check that branch's workspace.",
+            );
+            if (checkedOut.trim())
+              return yield* new WorktreeError({
+                message: `That branch is checked out at ${checkedOut.trim()}. Reuse its existing workspace.`,
+              });
+            baseCommit = yield* gitOk(
+              toplevel,
+              ["rev-parse", "--verify", "--end-of-options", `${choice.existingBranch}^{commit}`],
+              "Couldn't read the existing branch.",
+            );
+          }
+          if (choice?.branch !== undefined) {
+            yield* gitOk(
+              toplevel,
+              ["check-ref-format", "--branch", choice.branch],
+              "That branch name isn't valid.",
+            );
+            if (yield* hasBranch(toplevel, choice.branch))
+              return yield* new WorktreeError({
+                message: "That branch already exists. Choose its workspace or another name.",
+              });
+          }
           // A number tells apart threads with the same title, and repositories with the same name.
           const slug = worktreeSlug(name);
           const home = path.join(options.directory, path.basename(toplevel));
@@ -333,11 +473,20 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
             picked = `${slug}-${attempt}`;
           }
           const worktree: ThreadWorktree = {
+            id: checkoutId(path.join(home, picked)),
+            managed: true,
+            startCommit: baseCommit.trim(),
+            baseCommit: (yield* gitOk(
+              toplevel,
+              ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`],
+              "Couldn't resolve the base branch.",
+            )).trim(),
             // As the user chose it, so the saved projects list it once.
             project,
             root: path.join(home, picked),
-            branch: `${BRANCH_PREFIX}${picked}`,
+            branch: choice?.existingBranch ?? choice?.branch ?? `${BRANCH_PREFIX}${picked}`,
             base,
+            ...(choice?.pullRequestUrl ? { pullRequestUrl: choice.pullRequestUrl } : {}),
           };
           planned.add(worktree.root);
           // Git ends the prefix with a slash.
@@ -353,14 +502,16 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
 
         changes,
 
-        remove: Effect.fn("Worktrees.remove")(function* (threadId, worktree) {
+        remove: Effect.fn("Worktrees.remove")(function* (threadId, worktree, removal) {
           // What runs in the folder holds it open on Windows.
           yield* terminals.closeThread(threadId);
           // Unknown counts as unmerged: the branch stays rather than lose commits.
-          const keepBranch = yield* unmerged(worktree).pipe(
-            Effect.map((count) => count > 0),
-            Effect.orElseSucceed(() => true),
-          );
+          const keepBranch =
+            removal?.keepBranch === true ||
+            (yield* unmerged(worktree).pipe(
+              Effect.map((count) => count > 0),
+              Effect.orElseSucceed(() => true),
+            ));
           const repo = worktree.project;
           if (yield* exists(worktree.root)) {
             // Moved aside at once and deleted behind: its dependencies alone are tens of thousands of

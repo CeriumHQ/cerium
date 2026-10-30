@@ -5,6 +5,7 @@ import {
   Mention,
   ReasoningEffort,
   StoredSpeed,
+  WorkspaceChoice,
 } from "@cerium/protocol";
 import { Option, Schema } from "effect";
 import { Atom } from "effect/reactivity";
@@ -81,6 +82,7 @@ const StoredDraft = Schema.Struct({
       speed: Schema.optionalKey(StoredSpeed),
       access: Schema.optionalKey(AccessMode),
       worktree: Schema.optionalKey(Schema.Boolean),
+      workspace: Schema.optionalKey(WorkspaceChoice),
     }),
   ),
 });
@@ -95,8 +97,13 @@ export const toStored = (draft: Draft): StoredDraft => ({
     attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
   ),
   ...(draft.comments?.length ? { comments: draft.comments } : {}),
-  ...(draft.start ? { start: draft.start } : {}),
+  ...(draft.start ? { start: storedStart(draft.start) } : {}),
 });
+
+const storedStart = (value: NonNullable<Draft["start"]>): NonNullable<StoredDraft["start"]> => {
+  const { workspace, ...start } = value;
+  return { ...start, ...(workspace === undefined ? {} : { workspace }) };
+};
 
 export const fromStored = (draft: StoredDraft): Draft => ({
   segments: draft.segments,

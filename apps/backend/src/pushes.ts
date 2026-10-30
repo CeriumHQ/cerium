@@ -59,7 +59,7 @@ export class PushError extends Schema.TaggedError<PushError>()("PushError", {
 }) {}
 
 /** How long the tool waits for the push before answering `checking`, inside every harness's MCP timeout (Codex: 60s). */
-const ANSWER_WITHIN = "45 seconds";
+const ANSWER_WITHIN = "100 millis";
 /** How long a push, its hook included, may take. */
 const PUSH_TIMEOUT = "30 minutes";
 /** How long a push waits for GitHub to start its runs before it says there are none. */
@@ -411,9 +411,9 @@ export class Pushes extends Context.Service<
           Effect.gen(function* () {
             const note = ciNote(push);
             // A red run is the agent's to fix, so it's picked back up for it; other news waits for it.
-            if (note !== undefined && push.ci?.state === "failed") {
+            if (note !== undefined && push.followCi !== false && push.ci?.state === "failed") {
               yield* orchestrator.wake(push.agentId, note).pipe(Effect.ignore);
-            } else if (note !== undefined) {
+            } else if (note !== undefined && push.followCi !== false) {
               yield* orchestrator.notify(push.agentId, note);
             }
             const headline = ciHeadline(push);
@@ -615,6 +615,14 @@ export class Pushes extends Context.Service<
               message: "Your last push is still running: wait for how it went.",
             });
           }
+          if (request.expectedHead !== undefined) {
+            const current = yield* line(cwd, ["rev-parse", `refs/heads/${target.branch}`]);
+            if (current !== request.expectedHead)
+              return yield* new PushError({
+                message:
+                  "The branch moved since your review. Inspect workspace_status and review the new revision before pushing.",
+              });
+          }
           const commits = yield* unpushed(cwd, target.branch, target.remote, target.remoteBranch);
           const id = `push_${randomUUID()}`;
           const now = Date.now();
@@ -625,6 +633,7 @@ export class Pushes extends Context.Service<
             cwd,
             remote: target.remote,
             branch: target.branch,
+            followCi: request.followCi === true,
             createdAt: now,
             updatedAt: now,
             stage: "checking",
