@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Click a subagent card or select a child in the agents panel to read its live transcript with the same messages, reasoning and tool details as the lead. Child transcripts have no composer, edit, restore or execution controls; Back to lead returns to the lead's conversation.
+
 - Snapshots of work threads' folders keep their files in one object store instead of one per folder, so a file several worktrees of a repository share is stored once, and that store is packed in the background instead of growing by a file per version. A minute after the app starts, older per-folder stores move into it, each one's own copies removed only once the shared store holds every object; nothing is pruned, so every message can still be restored, and git run on a folder's store by hand still reads it. On one machine's 13 stores, 233 MB became 46 MB.
 - Deleting a thread finds its messages in the search index through an index by thread instead of reading every message's text, about 15 times faster with 50,000 messages. The update rebuilds the search index once; search finds the same messages as before.
 - Archiving or continuing a thread releases its browser preview once outstanding browser calls finish; archives and deletions from other clients do the same. Running agents keep their pages between calls. Hidden pages allow background throttling, keep at most four inactive pages warm, and close after five idle minutes; reopening restores bounded navigation history.
