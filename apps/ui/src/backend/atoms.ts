@@ -1,5 +1,7 @@
 import {
+  applyOverviewUpdate,
   isStreamDelta,
+  HISTORY_STATE_TAGS,
   ModelInfo,
   OFFERED_PROVIDERS,
   type AccountDrafts,
@@ -10,11 +12,13 @@ import {
   type AgentId,
   type DeviceId,
   type EventPayload,
+  type HistoryCursor,
   type PastSession,
   type ProviderId,
   type TaskEntry,
   type ThreadId,
   type ThreadNotification,
+  type ThreadOverview,
 } from "@cerium/protocol";
 import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -22,7 +26,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { remember, stored } from "../lib/storage.ts";
 import { Backend, BackendUnreachable, connectionAtom, connectionEpochAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
-import { byTime, ThreadLog } from "./threadLog.ts";
+import { inHistoryWindow, ThreadLog } from "./threadLog.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
 const resubscribe = Stream.retry(Schedule.spaced("1 second"));
@@ -103,6 +107,17 @@ const sameRead =
 /** The least time between two reads of the thread list, in milliseconds. */
 const LIST_SPACING = 250;
 
+/** Account presence changes do not restart the list unless the driven backend's capability changes. */
+const overviewWatchSupportedAtom = Atom.make((get) => {
+  const machine = get(machineAtom);
+  if (machine === undefined) return true;
+  const state = AsyncResult.getOrElse(get(accountAtom), () => undefined);
+  return (
+    state?._tag === "SignedIn" &&
+    (state.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0) >= 46
+  );
+});
+
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
 export const activityAtom = Backend.runtime.atom((get) =>
   Stream.unwrap(
@@ -119,22 +134,36 @@ export const activityAtom = Backend.runtime.atom((get) =>
 );
 
 /**
- * Every thread with its agents and whether it waits on the user. Read once connected, then again
- * after every change but streamed text and each time the live feed subscribes again. One read runs
- * at a time and changes during it make one more after it, so a busy machine can't keep cancelling
- * reads, and the list always ends on the latest state. While disconnected it fails, keeping the
- * last list it read; while the line comes back it stays as it was, then reads again. A read that
- * finds the list as it was (most events, a tool call say, change no thread's overview) wakes
- * nothing: re-rendering the inbox's rows for each took 55 ms.
+ * A full overview snapshot on connection, followed by changed rows, including archived threads.
+ * Older remote backends retain the event-driven list read, with a slow sweep for metadata changes
+ * that emit no events. Reconnecting starts a fresh snapshot while the last result stays visible.
  */
 export const threadsAtom = Backend.runtime
   .atom((get) => {
-    get.mount(liveFeedAtom);
+    get(machineAtom);
     get(connectionEpochAtom);
+    const watches = get(overviewWatchSupportedAtom);
     const connection = get.once(connectionAtom);
     if (connection === "connecting" || connection === "unreachable") {
       return Stream.fail(new BackendUnreachable({ message: "The machine isn't connected." }));
     }
+    if (watches) {
+      return Stream.unwrap(
+        Backend.use((client) =>
+          Effect.succeed(client("WatchThreadOverviews", undefined, { streamBufferSize: 1 })),
+        ),
+      ).pipe(
+        resubscribe,
+        Stream.mapAccum(
+          (): ReadonlyArray<ThreadOverview> => [],
+          (current, update) => {
+            const next = applyOverviewUpdate(current, update);
+            return [next, [next]] as const;
+          },
+        ),
+      );
+    }
+    get.mount(liveFeedAtom);
     const listThreads = Backend.use((client) => client("ListThreads", undefined));
     // While agents work, events keep coming and reads would follow one another without a break,
     // each decoding and comparing every thread; a read waits until `LIST_SPACING` after the last.
@@ -153,6 +182,7 @@ export const threadsAtom = Backend.runtime
         ),
       ),
     ).pipe(
+      Stream.merge(Stream.tick("15 seconds")),
       Stream.buffer({ capacity: 1, strategy: "sliding" }),
       Stream.mapEffect(() => read),
       resubscribe,
@@ -334,16 +364,143 @@ export const notificationsAtom = LocalBackend.runtime.atom(
 );
 
 /** A thread of another machine, read from the cloud copy. Keyed `machine:thread`. */
-export const cloudEventsAtom = Atom.family((key: string) => {
+const olderCloudAtom = Atom.family((_key: string) => Atom.make(0));
+export const cloudHistoryAtom = Atom.family((key: string) => {
   const split = key.indexOf(":");
   const machine = key.slice(0, split) as DeviceId;
   const threadId = key.slice(split + 1) as ThreadId;
-  return LocalBackend.runtime.atom(
-    LocalBackend.use((client) => client("CloudThreadEvents", { machine, threadId })).pipe(
-      Effect.map((events): ReadonlyArray<AgentEvent> => [...events].sort(byTime)),
-    ),
-  );
+  return LocalBackend.runtime
+    .atom((get) => {
+      const log = new ThreadLog();
+      let before: number | undefined;
+      let more = true;
+      let target: HistoryCursor | undefined;
+      let pageRevision = 0;
+      let loadError: string | undefined;
+      const loadOlder = () => get.set(olderCloudAtom(key), get.registry.get(olderCloudAtom(key)) + 1);
+      const loadThrough = (cursor: HistoryCursor) => {
+        target = cursor;
+        loadOlder();
+      };
+      return Stream.concat(
+        Stream.succeed(0),
+        get.stream(olderCloudAtom(key), { withoutInitialValue: true }),
+      ).pipe(
+        Stream.mapEffect(() =>
+          LocalBackend.use((client) =>
+            client("CloudThreadHistory", { machine, threadId, ...(before === undefined ? {} : { before }) }),
+          ).pipe(
+            Effect.option,
+            Effect.map((read) => {
+              pageRevision++;
+              loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
+              if (Option.isSome(read)) {
+                if (more) log.add(read.value.events);
+                before = read.value.before;
+                more = read.value.more;
+                if (target && !log.hasEvent(target.id) && more) loadOlder();
+                else target = undefined;
+              }
+              return { ...log.state(), more, loadOlder, loadThrough, pageRevision, loadError };
+            }),
+          ),
+        ),
+      );
+    })
+    .pipe(Atom.setIdleTTL("5 minutes"));
 });
+
+const stateTags: ReadonlySet<EventPayload["_tag"]> = new Set(HISTORY_STATE_TAGS);
+/** Cloud side panels retain whole-thread state, independently of the transcript's loaded suffix. */
+export const cloudEventsAtom = Atom.family((key: string) =>
+  LocalBackend.runtime
+    .atom(() =>
+      LocalBackend.use((client) =>
+        Effect.gen(function* () {
+          const split = key.indexOf(":");
+          const machine = key.slice(0, split) as DeviceId;
+          const threadId = key.slice(split + 1) as ThreadId;
+          const log = new ThreadLog();
+          let before: number | undefined;
+          for (;;) {
+            const page = yield* client("CloudThreadHistory", {
+              machine,
+              threadId,
+              ...(before === undefined ? {} : { before }),
+            });
+            log.add(page.events.filter((event) => stateTags.has(event.payload._tag)));
+            if (!page.more || page.before === undefined) break;
+            before = page.before;
+            yield* Effect.yieldNow;
+          }
+          return log.state().settled;
+        }),
+      ),
+    )
+    .pipe(Atom.setIdleTTL("5 minutes")),
+);
+
+/** Read only on an explicit find/jump: every message, in bounded pages, with no tool output. */
+export const readSearchHistory = Atom.family((key: string) =>
+  Backend.runtime.fn<void>()(() =>
+    Backend.use((client) =>
+      Effect.gen(function* () {
+        const [threadId, agentId, cloud] = JSON.parse(key) as [ThreadId, AgentId, string | null];
+        const collected: Array<ReadonlyArray<AgentEvent>> = [];
+        let before: number | undefined;
+        if (cloud !== null) return [] as ReadonlyArray<AgentEvent>;
+        for (;;) {
+          const page = yield* client("ThreadMessagePage", {
+            agentId,
+            ...(before === undefined ? {} : { before }),
+          });
+          collected.push(page.events);
+          if (!page.more || page.before === undefined) break;
+          before = page.before;
+          yield* Effect.yieldNow;
+        }
+        // Keep the key tied to its thread even though the RPC's agent uniquely identifies it.
+        return collected
+          .reverse()
+          .flat()
+          .filter((event) => event.threadId === threadId);
+      }),
+    ),
+  ),
+);
+
+export const readCloudSearchHistory = Atom.family((key: string) =>
+  LocalBackend.runtime.fn<void>()(() =>
+    LocalBackend.use((client) =>
+      Effect.gen(function* () {
+        const split = key.indexOf(":");
+        const machine = key.slice(0, split) as DeviceId;
+        const threadId = key.slice(split + 1) as ThreadId;
+        const batches: Array<ReadonlyArray<AgentEvent>> = [];
+        let before: number | undefined;
+        for (;;) {
+          const page = yield* client("CloudThreadHistory", {
+            machine,
+            threadId,
+            ...(before === undefined ? {} : { before }),
+          });
+          batches.push(
+            page.events.filter(
+              (event) =>
+                event.payload._tag === "TurnInput" ||
+                event.payload._tag === "MessageCompleted" ||
+                event.payload._tag === "ConversationRewound",
+            ),
+          );
+          if (!page.more || page.before === undefined) break;
+          before = page.before;
+          yield* Effect.yieldNow;
+        }
+        return batches.reverse().flat();
+      }),
+    ),
+  ),
+);
 
 /**
  * Whether this computer's own agents are working while the window drives another machine; the
@@ -379,6 +536,8 @@ export const effortRouterStatusAtom = Backend.runtime.atom((get) => {
 
 /** How long a thread's events are kept after it closes, so going back to it shows it at once. */
 const CLOSED_THREAD_TTL = "5 minutes";
+const olderThreadAtom = Atom.family((_id: ThreadId) => Atom.make(0));
+const historyTargetAtom = Atom.family((_id: ThreadId) => Atom.make<HistoryCursor | undefined>(undefined));
 
 /**
  * A thread's events: its history merged with live events, streamed text included. History is read
@@ -389,38 +548,112 @@ const CLOSED_THREAD_TTL = "5 minutes";
 export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
   Backend.runtime
     .atom((get) => {
-      // Screenshots are most of a long thread's bytes: each is read when the transcript shows it.
-      const history = Backend.use((client) =>
-        client("ThreadEvents", { threadId, withoutImages: true, streamed: true }),
-      ).pipe(
-        Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
-        // What the window holds stays; the next subscription reads again.
-        Effect.option,
-      );
+      const log = new ThreadLog();
+      let after: number | undefined;
+      let before: HistoryCursor | undefined;
+      let more = true;
+      let pageRevision = 0;
+      let loadError: string | undefined;
+      const machine = get.once(machineAtom);
+      const loadOlder = () =>
+        get.set(olderThreadAtom(threadId), get.registry.get(olderThreadAtom(threadId)) + 1);
+      const loadThrough = (cursor: HistoryCursor) => get.set(historyTargetAtom(threadId), { ...cursor });
+      const paged = () => {
+        if (machine === undefined) return true;
+        const state = AsyncResult.getOrElse(get.registry.get(accountAtom), () => undefined);
+        return (
+          state?._tag === "SignedIn" &&
+          (state.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0) >= 45
+        );
+      };
+      const history = (older: boolean) =>
+        Backend.use((client) =>
+          Effect.gen(function* () {
+            if (!paged()) {
+              log.add(yield* client("ThreadEvents", { threadId, withoutImages: true, streamed: true }));
+              more = false;
+              return;
+            }
+            if (older && (!more || before === undefined)) return;
+            // Subscribe first, then read. Live events queue while every missed durable page is taken.
+            // Only durable reads advance after: a live event may still be waiting to be persisted.
+            do {
+              const initial = after === undefined;
+              const page = yield* client("ThreadHistory", {
+                threadId,
+                page: older ? { before: before! } : after === undefined ? {} : { after },
+              });
+              log.add(
+                older || initial
+                  ? page.events
+                  : page.events.filter((event) => inHistoryWindow(event, before, more)),
+              );
+              if (older || after === undefined) {
+                before = page.before;
+                more = page.more;
+              }
+              if (!older) after = page.after;
+              if (older || initial || !page.more) break;
+            } while (true);
+          }),
+        ).pipe(Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }), Effect.option);
       return Stream.unwrap(
-        Effect.map(subscribeLive(get), (live) => {
-          const log = new ThreadLog();
-          return Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+        Effect.map(subscribeLive(get), (live) =>
+          Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+            Stream.filter((each) => each._tag === "Subscribed" || each.event.threadId === threadId),
+            Stream.merge(
+              get
+                .stream(olderThreadAtom(threadId), { withoutInitialValue: true })
+                .pipe(Stream.map(() => ({ _tag: "Older" as const }))),
+            ),
+            Stream.merge(
+              get.stream(historyTargetAtom(threadId), { withoutInitialValue: true }).pipe(
+                Stream.filter((cursor) => cursor !== undefined),
+                Stream.map((cursor) => ({ _tag: "Through" as const, cursor })),
+              ),
+            ),
             Stream.chunks,
             Stream.mapEffect((batch) =>
               Effect.gen(function* () {
-                let changed = log.add(
-                  batch.flatMap((each) =>
-                    each._tag === "Event" && each.event.threadId === threadId ? [each.event] : [],
-                  ),
-                );
-                if (batch.some((each) => each._tag === "Subscribed")) {
-                  const read = yield* history;
-                  // Shown once read, even when empty, so a new thread doesn't wait for its first event.
-                  changed = Option.isSome(read) ? log.add(read.value) || true : changed;
+                // History can contain a completion of a queued live delta: complete first, then dedupe live.
+                let changed = false;
+                if (batch.some((each) => each._tag === "Subscribed"))
+                  changed = Option.isSome(yield* history(false));
+                const target = batch.findLast((each) => each._tag === "Through");
+                const needsTarget = () =>
+                  target?._tag === "Through" &&
+                  !log.hasEvent(target.cursor.id) &&
+                  more &&
+                  before !== undefined &&
+                  (target.cursor.at < before.at ||
+                    (target.cursor.at === before.at &&
+                      (target.cursor.sequence < before.sequence ||
+                        (target.cursor.sequence === before.sequence && target.cursor.id < before.id))));
+                if (batch.some((each) => each._tag === "Older") || needsTarget()) {
+                  const read = yield* history(true);
+                  pageRevision++;
+                  loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
+                  changed = true;
+                  // Keep the loaded suffix contiguous: each request is bounded and lets queued live
+                  // events through before the next page. Never fold disconnected navigation pages.
+                  if (Option.isSome(read) && needsTarget() && target?._tag === "Through")
+                    loadThrough(target.cursor);
                 }
-                return changed ? Option.some(log.snapshot()) : Option.none();
+                changed =
+                  log.add(
+                    batch.flatMap((each) =>
+                      each._tag === "Event" && inHistoryWindow(each.event, before, more) ? [each.event] : [],
+                    ),
+                  ) || changed;
+                return changed
+                  ? Option.some({ ...log.state(), more, loadOlder, loadThrough, pageRevision, loadError })
+                  : Option.none();
               }),
             ),
             Stream.filter(Option.isSome),
-            Stream.map((events) => events.value),
-          );
-        }),
+            Stream.map((read) => read.value),
+          ),
+        ),
       );
     })
     .pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
@@ -436,11 +669,58 @@ const sameEvents = (a: ReadonlyArray<AgentEvent>, b: ReadonlyArray<AgentEvent>) 
  * streamed word, which took 60 ms in a window listing 140 threads.
  */
 export const settledEventsAtom = Atom.family((threadId: ThreadId) =>
-  Atom.make((get) =>
-    AsyncResult.map(get(threadEventsAtom(threadId)), (events) =>
-      events.filter((event) => !isStreamDelta(event.payload._tag)),
-    ),
-  ).pipe(Atom.withEquality(sameRead(sameEvents))),
+  Backend.runtime
+    .atom((get) => {
+      const log = new ThreadLog();
+      const machine = get.once(machineAtom);
+      let after = 0;
+      const read = Backend.use((client) =>
+        Effect.gen(function* () {
+          const account = AsyncResult.getOrElse(get.registry.get(accountAtom), () => undefined);
+          const version =
+            machine === undefined
+              ? Infinity
+              : account?._tag === "SignedIn"
+                ? (account.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0)
+                : 0;
+          if (version < 47) {
+            log.add(
+              (yield* client("ThreadEvents", { threadId, withoutImages: true })).filter((event) =>
+                stateTags.has(event.payload._tag),
+              ),
+            );
+            return;
+          }
+          for (;;) {
+            const page = yield* client("ThreadHistory", { threadId, page: { after, state: true } });
+            log.add(page.events);
+            after = page.after;
+            if (!page.more) break;
+            yield* Effect.yieldNow;
+          }
+        }),
+      );
+      return Stream.unwrap(
+        Effect.map(subscribeLive(get), (live) =>
+          Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+            Stream.filter(
+              (each) =>
+                each._tag === "Subscribed" ||
+                (each.event.threadId === threadId && stateTags.has(each.event.payload._tag)),
+            ),
+            Stream.chunks,
+            Stream.mapEffect((batch) =>
+              Effect.gen(function* () {
+                if (batch.some((each) => each._tag === "Subscribed")) yield* read;
+                log.add(batch.flatMap((each) => (each._tag === "Event" ? [each.event] : [])));
+                return log.state().settled;
+              }),
+            ),
+          ),
+        ),
+      ).pipe(resubscribe);
+    })
+    .pipe(Atom.withEquality(sameRead(Object.is)), Atom.setIdleTTL(CLOSED_THREAD_TTL)),
 );
 
 /**
@@ -471,6 +751,7 @@ const FILE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set(["FileChanged"]);
 
 const QUEUE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
   "MessageQueued",
+  "MessageHeld",
   "TurnInput",
   "TurnCompleted",
   "MessageWithdrawn",

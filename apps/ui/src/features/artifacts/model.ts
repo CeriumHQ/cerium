@@ -3,6 +3,7 @@ import type { AgentEvent } from "@cerium/protocol";
 import type { ListedArtifact } from "@cerium/rpc";
 
 import { REVEAL_EVENT } from "../transcript/useStickToBottom.ts";
+import { rangeOf, showRange } from "../transcript/find.ts";
 
 // What the artifacts panel lists: the pages agents drew, apart from the conversations they're in.
 
@@ -62,8 +63,8 @@ export const projectArtifacts = (listed: ReadonlyArray<ListedArtifact>): Readonl
  */
 export const revealArtifact = (id: string): Promise<boolean> =>
   new Promise((resolve) => {
-    window.dispatchEvent(new Event("cerium:history"));
-    const deadline = performance.now() + 4000;
+    window.dispatchEvent(new CustomEvent("cerium:history", { detail: { artifact: id } }));
+    const deadline = performance.now() + 30_000;
     // The conversation in view, not one kept out of sight (KeptViews).
     const find = () =>
       [...document.querySelectorAll<HTMLElement>(`[data-artifact-id="${CSS.escape(id)}"]`)].find((element) =>
@@ -79,10 +80,7 @@ export const revealArtifact = (id: string): Promise<boolean> =>
       found.dispatchEvent(new Event(REVEAL_EVENT, { bubbles: true }));
       // A short way glides there; a long one, across a long conversation, jumps at once.
       const away = Math.abs(found.getBoundingClientRect().top - window.innerHeight / 2);
-      found.scrollIntoView({
-        block: "center",
-        behavior: away < window.innerHeight * 1.5 ? "smooth" : "instant",
-      });
+      showRange(rangeOf(found), away < window.innerHeight * 1.5);
       found.removeAttribute("data-found");
       // Restarts the ring when the same artifact is shown again.
       void found.offsetWidth;
@@ -91,7 +89,7 @@ export const revealArtifact = (id: string): Promise<boolean> =>
       setTimeout(() => {
         const box = found.getBoundingClientRect();
         if (Math.abs(box.top + box.height / 2 - window.innerHeight / 2) > window.innerHeight / 3) {
-          found.scrollIntoView({ block: "center" });
+          showRange(rangeOf(found), false);
         }
       }, 700);
       setTimeout(() => found.removeAttribute("data-found"), 1700);

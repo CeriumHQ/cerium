@@ -954,6 +954,7 @@ function Workspace() {
     ).then((archived) => {
       settlePutAway(threadId, archived);
       if (!archived) return false;
+      previewDocks.retire(threadId);
       refreshThreads();
       return true;
     });
@@ -967,6 +968,7 @@ function Workspace() {
   const continueFresh = (threadId: string): Promise<boolean> =>
     attempt(
       continueIn({ payload: { threadId: threadId as ThreadId } }).then(({ thread, brief }) => {
+        previewDocks.retire(threadId);
         registry.set(
           draftsAtom,
           withDraft(registry.get(draftsAtom), thread.id, () => ({

@@ -205,6 +205,7 @@ export const Handlers = MachineRpcs.toLayer(
 
     return MachineRpcs.of({
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
+      WatchThreadOverviews: () => orchestrator.watchThreadOverviews,
       ThreadHistory: ({ threadId, page }) =>
         orchestrator.threadHistory(threadId, page).pipe(Effect.mapError(refuse)),
       ThreadMessagePage: ({ agentId, before }) =>
@@ -678,6 +679,7 @@ const working = Effect.gen(function* () {
  * and what its threads need the user for.
  */
 const DeviceHandlers = deviceHandlers({
+  overviews: Effect.map(Orchestrator, (orchestrator) => orchestrator.watchThreadOverviews),
   working,
   notifications: Effect.gen(function* () {
     return (yield* Notifications).told;

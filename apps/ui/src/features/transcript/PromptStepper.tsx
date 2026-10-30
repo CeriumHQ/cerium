@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { HISTORY_EVENT } from "./HistoryWindow.tsx";
@@ -37,6 +37,8 @@ export const markWidth = (label: string): number =>
 const READING_LINE = 0.3;
 /** How long a jump waits for older history to come in before giving up, in milliseconds. */
 const JUMP_WAIT_MS = 1000;
+const MARK_HEIGHT = 10;
+const MOUNTED_MARKS = 128;
 
 const promptElement = (viewport: HTMLElement, id: string) =>
   viewport.querySelector<HTMLElement>(`[data-prompt="${CSS.escape(id)}"]`);
@@ -48,7 +50,7 @@ const promptElement = (viewport: HTMLElement, id: string) =>
 const bringToTop = (viewport: HTMLElement, id: string) => {
   viewport.dispatchEvent(new Event(REVEAL_EVENT, { bubbles: true }));
   const drawn = promptElement(viewport, id) !== null;
-  if (!drawn) window.dispatchEvent(new Event(HISTORY_EVENT));
+  if (!drawn) window.dispatchEvent(new CustomEvent(HISTORY_EVENT, { detail: { id } }));
   const deadline = performance.now() + JUMP_WAIT_MS;
   const go = () => {
     const target = promptElement(viewport, id);
@@ -71,13 +73,20 @@ const bringToTop = (viewport: HTMLElement, id: string) => {
 export function PromptStepper({
   prompts,
   viewport,
+  onReveal,
 }: {
   prompts: ReadonlyArray<Prompt>;
   viewport: RefObject<HTMLDivElement | null>;
+  onReveal?: (() => void) | undefined;
 }) {
   const [reading, setReading] = useState<string>();
   const strip = useRef<HTMLDivElement>(null);
   const ids = prompts.map((prompt) => prompt.id).join(" ");
+  const [first, setFirst] = useState(() => Math.max(0, prompts.length - MOUNTED_MARKS));
+  const start = Math.min(first, Math.max(0, prompts.length - MOUNTED_MARKS));
+  const end = Math.min(prompts.length, start + MOUNTED_MARKS);
+  const readingIndex =
+    reading === undefined ? prompts.length - 1 : prompts.findIndex((prompt) => prompt.id === reading);
 
   // Which prompt is being read follows the scroll: the last one above the reading line, or at the
   // end, the last one in view.
@@ -91,12 +100,14 @@ export function PromptStepper({
       const box = element.getBoundingClientRect();
       const atEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= 2;
       const line = atEnd ? box.bottom : box.top + box.height * READING_LINE;
-      // Prompts the history window hasn't drawn are older than any it has, so above the line.
-      let found = order[0];
-      for (const id of order) {
-        const top = promptElement(element, id)?.getBoundingClientRect().top ?? -Infinity;
+      // A bounded window has undrawn prompts on both sides. Measure only mounted prompts, whose
+      // DOM order is the conversation's order, rather than treating every missing prompt as older.
+      const mounted = [...element.querySelectorAll<HTMLElement>("[data-prompt]")];
+      let found = mounted[0]?.dataset["prompt"] ?? order[0];
+      for (const prompt of mounted) {
+        const top = prompt.getBoundingClientRect().top;
         if (top > line) break;
-        found = id;
+        found = prompt.dataset["prompt"];
       }
       setReading(found);
     };
@@ -115,12 +126,14 @@ export function PromptStepper({
   }, [ids, viewport]);
 
   // A long thread's marks scroll in their strip, which keeps the one being read in view.
-  useEffect(() => {
-    if (reading === undefined) return;
-    strip.current
-      ?.querySelector(`[data-mark="${CSS.escape(reading)}"]`)
-      ?.scrollIntoView({ block: "nearest" });
-  }, [reading]);
+  useLayoutEffect(() => {
+    const element = strip.current;
+    if (!element || readingIndex < 0) return;
+    const top = readingIndex * MARK_HEIGHT;
+    if (top < element.scrollTop || top + MARK_HEIGHT > element.scrollTop + element.clientHeight) {
+      element.scrollTop = Math.max(0, top - element.clientHeight / 2);
+    }
+  }, [readingIndex]);
 
   if (prompts.length < 2) return null;
   return (
@@ -130,9 +143,13 @@ export function PromptStepper({
     >
       <div
         ref={strip}
+        onScroll={(event) =>
+          setFirst(Math.max(0, Math.floor(event.currentTarget.scrollTop / MARK_HEIGHT) - 20))
+        }
         className="group/steps flex max-h-[min(60vh,32rem)] flex-col overflow-y-auto [scrollbar-width:none]"
       >
-        {prompts.map((prompt) => {
+        <div aria-hidden className="shrink-0" style={{ height: start * MARK_HEIGHT }} />
+        {prompts.slice(start, end).map((prompt) => {
           const current = prompt.id === reading;
           return (
             <Tooltip
@@ -145,6 +162,7 @@ export function PromptStepper({
                 aria-label={prompt.label}
                 aria-current={current ? "location" : undefined}
                 onClick={() => {
+                  onReveal?.();
                   if (viewport.current) bringToTop(viewport.current, prompt.id);
                 }}
                 className="group/mark flex h-2.5 w-7 shrink-0 items-center px-1.5 outline-none"
@@ -159,6 +177,7 @@ export function PromptStepper({
             </Tooltip>
           );
         })}
+        <div aria-hidden className="shrink-0" style={{ height: (prompts.length - end) * MARK_HEIGHT }} />
       </div>
     </nav>
   );

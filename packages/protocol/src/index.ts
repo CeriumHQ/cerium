@@ -11,6 +11,7 @@ export * from "./images.ts";
 export * from "./imports.ts";
 export * from "./models.ts";
 export * from "./orchestration.ts";
+export * from "./overviews.ts";
 export * from "./savedPrompts.ts";
 export * from "./push.ts";
 export * from "./restore.ts";

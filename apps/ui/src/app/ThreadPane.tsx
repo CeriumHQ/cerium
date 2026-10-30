@@ -22,6 +22,7 @@ import {
 
 import {
   cloudEventsAtom,
+  cloudHistoryAtom,
   queueEventsAtom,
   settingsAtom,
   summaryEventsAtom,
@@ -55,12 +56,22 @@ import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
 import type { Queue } from "../features/composer/QueueTray.tsx";
-import { buildTranscript, holdsQueue, queuedMessages } from "../features/transcript/model.ts";
+import {
+  buildTranscript,
+  IncrementalTranscript,
+  holdsQueue,
+  queuedMessages,
+} from "../features/transcript/model.ts";
+import { ThreadLog, type ThreadHistory, type AgentHistory } from "../backend/threadLog.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./mode.ts";
 
 type EventsAtom = Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>>;
+type HistoryAtom = Atom.Atom<AsyncResult.AsyncResult<ThreadHistory, unknown>>;
+const emptyHistory = new ThreadLog().state();
+const emptyAgent: AgentHistory = { events: [], generation: 0, live: new Map() };
+const noHistory = Atom.make(AsyncResult.success(emptyHistory));
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 
@@ -248,7 +259,11 @@ export function ThreadPane({
   const cloudEvents = cloud ? cloudEventsAtom(`${cloud.machine}:${cloud.overview.thread.id}`) : noEvents;
   // Every event, streamed text included, for the conversation alone; the pane around it, with its
   // message box and approvals, reads only those its agents' summaries come from.
-  const eventsAtom: EventsAtom = selected ? threadEventsAtom(selected.thread.id) : cloudEvents;
+  const eventsAtom: HistoryAtom = selected
+    ? threadEventsAtom(selected.thread.id)
+    : cloud
+      ? cloudHistoryAtom(`${cloud.machine}:${cloud.overview.thread.id}`)
+      : noHistory;
   const summaryAtom: EventsAtom = selected ? summaryEventsAtom(selected.thread.id) : cloudEvents;
   const queueAtom: EventsAtom = selected ? queueEventsAtom(selected.thread.id) : cloudEvents;
   const events = AsyncResult.getOrElse(useAtomValue(summaryAtom), (): ReadonlyArray<AgentEvent> => []);
@@ -309,6 +324,7 @@ export function ThreadPane({
                     sameModel={sameModel}
                     folder={viewed.thread.cwd}
                     threadId={viewed.thread.id}
+                    searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
                     focused={focused}
                     agent={{ provider: lead.provider }}
                     modelName={(model, provider) => modelLabel(models, provider, model)}
@@ -511,20 +527,25 @@ function LeadTranscript({
   focused,
   ...props
 }: Omit<ComponentProps<typeof Transcript>, "blocks" | "queued"> & {
-  readonly events: EventsAtom;
+  readonly events: HistoryAtom;
   readonly lead: AgentId;
   /** Whether two of the lead's model ids name the same model. */
   readonly sameModel: (a: string, b: string) => boolean;
 }) {
   const hidden = useKeptHidden();
-  const events = AsyncResult.getOrElse(useKeptResult(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
-  const leadEvents = events.filter((event) => event.agentId === lead);
+  const history = AsyncResult.getOrElse(useKeptResult(eventsAtom), () => emptyHistory);
+  const leadHistory = history.agents.get(lead) ?? emptyAgent;
+  const [projection] = useState(() => new IncrementalTranscript());
+  const transcript = projection.project(leadHistory.events, leadHistory.generation, sameModel);
   return (
     <Transcript
       {...props}
       focused={focused === true && !hidden}
-      blocks={buildTranscript(leadEvents, sameModel)}
-      queued={queuedMessages(leadEvents)}
+      blocks={transcript.blocks}
+      queued={transcript.queued}
+      live={leadHistory.live}
+      history={history}
+      searchAgent={lead}
     />
   );
 }
@@ -538,12 +559,12 @@ function LeadActivity({
   lead,
   sameModel,
 }: {
-  readonly events: EventsAtom;
+  readonly events: HistoryAtom;
   readonly lead: AgentId;
   readonly sameModel: (a: string, b: string) => boolean;
 }) {
-  const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
-  const leadEvents = events.filter((event) => event.agentId === lead);
+  const history = AsyncResult.getOrElse(useAtomValue(eventsAtom), () => emptyHistory);
+  const leadEvents = (history.agents.get(lead) ?? emptyAgent).events;
   // The step lies in the running turn: folding only that keeps each batch cheap in a long thread.
   const turn = leadEvents.slice(
     Math.max(

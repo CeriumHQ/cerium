@@ -1,9 +1,13 @@
 import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
+import { artifactBlocks, artifactId } from "@cerium/artifacts";
+import type { AgentEvent, AgentId } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
+import { readCloudSearchHistory, readSearchHistory } from "../../backend/atoms.ts";
+import type { ThreadHistory } from "../../backend/threadLog.ts";
 import { useKeptHidden } from "../../components/KeptViews.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import {
@@ -11,75 +15,153 @@ import {
   findRanges,
   FIND_EVENT,
   jumpCandidates,
-  JUMP_WAIT_MS,
   markFor,
   matchedWords,
   rangeOf,
   ringMessage,
   showRange,
   wordRanges,
-  type FindJump,
 } from "./find.ts";
-import type { TranscriptBlock } from "./model.ts";
 import { HISTORY_EVENT } from "./HistoryWindow.tsx";
+import type { TranscriptBlock } from "./model.ts";
+import {
+  messagesFromHistory,
+  modelMatches,
+  searchMessages,
+  type ModelMatch,
+  type SearchMessage,
+} from "./searchModel.ts";
 
-/** How long the conversation has to settle before a streaming reply is searched again while the bar is open. */
 const RESCAN_MS = 200;
-
 const iconButton =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40";
+interface Pending {
+  readonly message: SearchMessage;
+  readonly ordinal: number;
+  readonly query: string;
+  readonly words?: ReadonlyArray<string>;
+  readonly jump?: boolean;
+}
 
-/**
- * The find bar over a thread's conversation, Ctrl F: matches highlight as the user types, a count shows
- * which one is current, and Enter, Shift Enter or the arrows step through them. It searches the messages
- * and replies the conversation shows, folded ones included; tool runs and reasoning are left out. Also
- * brings in the message a palette search picked, and marks the words it matched.
- */
+/** Search the message model; only the bounded window containing a chosen match is mounted. */
 export function TranscriptFind({
   scope,
+  viewport,
   threadId,
+  agentId,
+  cloudKey,
   focused,
   blocks,
+  live,
+  history,
 }: {
-  /** The column that holds the conversation's messages. */
   readonly scope: RefObject<HTMLDivElement | null>;
+  readonly viewport: RefObject<HTMLDivElement | null>;
   readonly threadId: string | undefined;
-  /** The pane has focus: Ctrl F opens the bar here and in no other pane. */
+  readonly agentId?: AgentId | undefined;
+  readonly cloudKey?: string | undefined;
   readonly focused: boolean;
   readonly blocks: ReadonlyArray<TranscriptBlock>;
+  readonly live?: ReadonlyMap<string, AgentEvent> | undefined;
+  readonly history?: ThreadHistory | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [matches, setMatches] = useState<ReadonlyArray<Range>>([]);
   const [current, setCurrent] = useState(0);
-  /** Bumped each time Ctrl F asks for the bar, so an open bar takes the cursor again. */
   const [asked, setAsked] = useState(0);
+  const [index, setIndex] = useState<ReadonlyArray<SearchMessage>>([]);
+  const [readState, setReadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [pending, setPending] = useState<Pending>();
+  const [artifact, setArtifact] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const [overlay, setOverlay] = useState<ReadonlyMap<string, string>>(new Map());
   const input = useRef<HTMLInputElement>(null);
-  /** Where the cursor was before the bar took it, which it goes back to. */
   const returnTo = useRef<HTMLElement | null>(null);
+  const reading = useRef(false);
+  const visibleFrames = useRef(0);
+  const hidden = useKeptHidden();
   const jump = useAtomValue(findJumpAtom);
   const takeJump = useAtomSet(findJumpAtom);
-  const hidden = useKeptHidden();
+  const read = useAtomSet(
+    cloudKey
+      ? readCloudSearchHistory(cloudKey)
+      : readSearchHistory(JSON.stringify([threadId, agentId, null])),
+    { mode: "promise" },
+  );
 
-  /** Finds `typed` in the conversation again; `reveal` brings the first match into view. */
-  const search = (typed: string, reveal: boolean) => {
-    const column = scope.current;
-    const found = column && typed !== "" ? findRanges(column, typed) : [];
-    setMatches(found);
-    setCurrent((index) => (reveal ? 0 : Math.max(0, Math.min(index, found.length - 1))));
-    const first = found[0];
-    if (reveal && first) requestAnimationFrame(() => showRange(first, false));
+  const active =
+    open ||
+    pending !== undefined ||
+    (jump !== undefined && jump.threadId === threadId) ||
+    artifact !== undefined;
+  const messages = new Map((active ? index : []).map((message) => [message.id, message]));
+  for (const message of active ? searchMessages(blocks) : []) {
+    const previous = messages.get(message.id);
+    messages.set(
+      message.id,
+      previous?.text === message.text
+        ? previous
+        : { ...message, ...(previous?.cursor ? { cursor: previous.cursor } : {}) },
+    );
+  }
+  for (const [id, text] of overlay) {
+    const previous = messages.get(id);
+    if (previous) messages.set(id, { ...previous, text });
+  }
+  const all = [...messages.values()];
+  const matches = modelMatches(all, query);
+  const at = Math.max(0, Math.min(current, matches.length - 1));
+
+  const ensureIndex = useEffectEvent((retry = false) => {
+    if (
+      reading.current ||
+      readState === "ready" ||
+      (readState === "error" && !retry) ||
+      (agentId === undefined && cloudKey === undefined)
+    )
+      return;
+    reading.current = true;
+    setReadState("loading");
+    void read(undefined)
+      .then(
+        (events) => {
+          setIndex(
+            messagesFromHistory(
+              agentId === undefined ? events : events.filter((event) => event.agentId === agentId),
+            ),
+          );
+          setReadState("ready");
+        },
+        () => setReadState("error"),
+      )
+      .finally(() => {
+        reading.current = false;
+      });
+  });
+  const navigate = useEffectEvent((target: Pending) => {
+    visibleFrames.current = 0;
+    setPending(target);
+    window.dispatchEvent(new CustomEvent(HISTORY_EVENT, { detail: { id: target.message.id } }));
+  });
+  // A jump can precede the first page, or survive a restarted runtime. Use the current reader's
+  // callback once it arrives instead of leaving the request attached to a disposed subscription.
+  const loadThrough = history?.loadThrough;
+  useEffect(() => {
+    if (pending?.message.cursor) loadThrough?.(pending.message.cursor);
+  }, [pending, loadThrough]);
+  const go = (match: ModelMatch | undefined) => {
+    if (match) navigate({ ...match, query });
   };
 
   const askFind = useEffectEvent(() => {
-    window.dispatchEvent(new Event(HISTORY_EVENT));
     if (!open) {
       const active = document.activeElement;
       returnTo.current = active instanceof HTMLElement ? active : null;
       setOpen(true);
-      search(query, true);
     }
-    setAsked((count) => count + 1);
+    ensureIndex(true);
+    setAsked((value) => value + 1);
+    go(matches[at]);
   });
   useEffect(() => {
     if (!focused) return;
@@ -87,18 +169,87 @@ export function TranscriptFind({
     window.addEventListener(FIND_EVENT, listener);
     return () => window.removeEventListener(FIND_EVENT, listener);
   }, [focused]);
-
   useEffect(() => {
     if (!open) return;
     input.current?.focus();
     input.current?.select();
   }, [open, asked]);
 
-  /** Searches again as the conversation changes, which a reply still streaming in does until it pauses. */
-  const rescan = useEffectEvent(() => search(query, false));
+  // Locate only after model / DOM changes. A deep jump pages through a contiguous suffix; it never
+  // forces all of those messages into the DOM or polls the entire thread every animation frame.
+  const locate = useEffectEvent(() => {
+    if (!pending || hidden) return false;
+    const column = scope.current;
+    if (!column) return false;
+    const message = column.querySelector<HTMLElement>('[data-find="' + CSS.escape(pending.message.id) + '"]');
+    if (!message) {
+      visibleFrames.current = 0;
+      window.dispatchEvent(new CustomEvent(HISTORY_EVENT, { detail: { id: pending.message.id } }));
+      return false;
+    }
+    const ranges = wordRanges(message, pending.words ?? [pending.query]);
+    let range = ranges[pending.ordinal] ?? ranges[0] ?? rangeOf(message);
+    if (range.getBoundingClientRect().height === 0) range = rangeOf(message);
+    const rect = range.getBoundingClientRect();
+    const view = viewport.current;
+    if (!view) return false;
+    const fits = (bounds: DOMRect) =>
+      rect.height > bounds.height
+        ? rect.bottom > bounds.top && rect.top < bounds.bottom
+        : rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1;
+    let visible = fits(view.getBoundingClientRect());
+    for (
+      let parent = message.parentElement;
+      visible && parent && parent !== view;
+      parent = parent.parentElement
+    ) {
+      const overflow = getComputedStyle(parent).overflowY;
+      if (overflow === "hidden" || overflow === "clip") visible = fits(parent.getBoundingClientRect());
+    }
+    if (!visible) {
+      visibleFrames.current = 0;
+      showRange(range, false);
+      return false;
+    }
+    // A disclosure can contain the node while its clip is still opening. Finish only after two
+    // frames of actual visibility, using a fresh Range each time rather than a stale text node.
+    if (++visibleFrames.current < 2) return false;
+    if (pending.jump) {
+      ringMessage(message);
+      if (ranges.length) markFor("find-jump", ranges);
+      takeJump(undefined);
+    }
+    setPending(undefined);
+    setRevision((value) => value + 1);
+    return true;
+  });
+  useEffect(() => {
+    if (!pending || hidden) return;
+    window.dispatchEvent(new CustomEvent(HISTORY_EVENT, { detail: { id: pending.message.id } }));
+    // A target inside an earlier version needs a few commits: mount its outer window, open the
+    // disclosure, then mount its inner window. Retry only that bounded DOM during those commits.
+    let frame = 0;
+    let attempts = 0;
+    const look = () => {
+      if (!locate() && ++attempts < 120) frame = requestAnimationFrame(look);
+    };
+    frame = requestAnimationFrame(look);
+    return () => cancelAnimationFrame(frame);
+  }, [pending, blocks, history?.pageRevision, hidden]);
+
+  const rescan = useEffectEvent(() => {
+    const text = new Map<string, string>();
+    for (const [id, event] of live ?? []) {
+      const payload = event.payload;
+      if (payload._tag === "MessageDelta") text.set(id, payload.text);
+    }
+    setOverlay(text);
+    setRevision((value) => value + 1);
+    locate();
+  });
   useEffect(() => {
     const column = scope.current;
-    if (!open || !column) return;
+    if (!column || (!open && !pending)) return;
     let timer = 0;
     const observer = new MutationObserver(() => {
       window.clearTimeout(timer);
@@ -109,94 +260,99 @@ export function TranscriptFind({
       observer.disconnect();
       window.clearTimeout(timer);
     };
-  }, [open, scope]);
+  }, [open, pending, scope]);
 
-  // The matches light up while the bar is open, the current one stronger; the names are the ones the stylesheet gives.
+  const followMatch = useEffectEvent(() => go(matches[at]));
   useEffect(() => {
-    if (!open) return;
-    CSS.highlights.set("find", new Highlight(...matches));
-    const active = matches[current];
+    if (!open || query === "") return;
+    const frame = requestAnimationFrame(() => followMatch());
+    return () => cancelAnimationFrame(frame);
+  }, [query, readState, open]);
+  useEffect(() => {
+    if (!open || !scope.current) return;
+    const ranges = findRanges(scope.current, query);
+    CSS.highlights.set("find", new Highlight(...ranges));
+    const match = matches[at];
+    const message =
+      match && scope.current.querySelector('[data-find="' + CSS.escape(match.message.id) + '"]');
+    const active = message && wordRanges(message, [query])[match.ordinal];
     if (active) CSS.highlights.set("find-current", new Highlight(active));
     else CSS.highlights.delete("find-current");
     return () => {
       CSS.highlights.delete("find");
       CSS.highlights.delete("find-current");
     };
-  }, [open, matches, current]);
+  }, [open, query, current, revision, blocks, index, scope, at, matches]);
+
+  const paletteJump = useEffectEvent(() => {
+    if (hidden || !jump || jump.threadId !== threadId) return;
+    ensureIndex();
+    const id = jumpCandidates(all, jump.passage)[0];
+    const message = id === undefined ? undefined : messages.get(id);
+    if (message) navigate({ message, ordinal: 0, query: "", words: matchedWords(jump.passage), jump: true });
+  });
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => paletteJump());
+    return () => cancelAnimationFrame(frame);
+  }, [jump, threadId, hidden, readState]);
+
+  const artifactJump = useEffectEvent(() => {
+    if (!artifact || hidden) return;
+    ensureIndex();
+    const message = all.findLast((message) =>
+      artifactBlocks(message.text).some((code) => artifactId(code) === artifact),
+    );
+    if (message) {
+      navigate({ message, ordinal: 0, query: "" });
+      setArtifact(undefined);
+    }
+  });
+  useEffect(() => {
+    const requested = (event: Event) => {
+      const id = (event as CustomEvent<{ artifact?: string }>).detail?.artifact;
+      if (id && scope.current?.checkVisibility()) setArtifact(id);
+    };
+    window.addEventListener(HISTORY_EVENT, requested);
+    return () => window.removeEventListener(HISTORY_EVENT, requested);
+  }, [scope]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => artifactJump());
+    return () => cancelAnimationFrame(frame);
+  }, [artifact, readState, hidden]);
 
   const close = () => {
     setOpen(false);
+    setPending(undefined);
     const back = returnTo.current;
     returnTo.current = null;
     if (back?.isConnected) back.focus();
   };
-
   const step = (by: number) => {
-    if (matches.length === 0) return;
-    const next = (current + by + matches.length) % matches.length;
-    const target = matches[next];
+    if (!matches.length) return;
+    const next = (at + by + matches.length) % matches.length;
     setCurrent(next);
-    if (target) showRange(target, true);
+    go(matches[next]);
   };
-
   const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    // Escape closes the bar alone: a running turn's Escape stops it only when the bar is shut.
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       close();
-    } else if (event.key === "Enter") {
+    } else if (event.key === "Enter" || event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      step(event.shiftKey ? -1 : 1);
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      step(event.key === "ArrowDown" ? 1 : -1);
+      step(event.shiftKey || event.key === "ArrowUp" ? -1 : 1);
     }
   };
-
-  // A message a palette search picked is brought in once its thread has drawn it, which can take a moment.
-  const dropJump = useEffectEvent(() => takeJump(undefined));
-  const locate = useEffectEvent((request: FindJump): boolean => {
-    const column = scope.current;
-    if (!column) return false;
-    const messages = blocks.flatMap((block) =>
-      block.kind === "user" || block.kind === "message" ? [{ id: block.id, text: block.text }] : [],
-    );
-    for (const id of jumpCandidates(messages, request.passage)) {
-      const message = column.querySelector<HTMLElement>(`[data-find="${CSS.escape(id)}"]`);
-      if (message === null) continue;
-      const words = wordRanges(message, matchedWords(request.passage));
-      showRange(words[0] ?? rangeOf(message), true);
-      ringMessage(message);
-      if (words.length > 0) markFor("find-jump", words);
-      return true;
-    }
-    return false;
-  });
-  useEffect(() => {
-    // A conversation kept out of sight leaves it to the one showing the thread, or takes it once it shows.
-    if (hidden || jump === undefined || jump.threadId !== threadId) return;
-    if (Date.now() - jump.at > JUMP_WAIT_MS) {
-      dropJump();
-      return;
-    }
-    const deadline = performance.now() + JUMP_WAIT_MS;
-    window.dispatchEvent(new Event(HISTORY_EVENT));
-    let frame = 0;
-    const look = () => {
-      if (locate(jump)) dropJump();
-      else if (performance.now() < deadline) frame = requestAnimationFrame(look);
-      else dropJump();
-    };
-    frame = requestAnimationFrame(look);
-    return () => cancelAnimationFrame(frame);
-  }, [jump, threadId, hidden]);
-
   if (!open) return null;
   const count =
-    query === "" ? "" : matches.length === 0 ? "No matches" : `${current + 1} / ${matches.length}`;
+    query === ""
+      ? ""
+      : readState === "loading"
+        ? "Searching…"
+        : matches.length === 0
+          ? "No matches"
+          : at + 1 + " / " + matches.length;
   return (
-    // The keys the bar takes are read wherever focus is inside it, the input or a button.
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <search
       aria-label="Find in thread"
@@ -208,19 +364,26 @@ export function TranscriptFind({
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
-          search(event.target.value, true);
+          setCurrent(0);
         }}
         placeholder="Find in thread"
         aria-label="Find in thread"
         className="w-40 min-w-0 bg-transparent outline-none placeholder:text-fg-tertiary max-md:text-base"
       />
-      <output aria-live="polite" className="shrink-0 px-1.5 text-meta text-fg-tertiary tabular-nums">
+      <output
+        aria-live="polite"
+        title={
+          readState === "error" ? "Older messages couldn’t be searched. Close find and try again." : undefined
+        }
+        className="shrink-0 px-1.5 text-meta text-fg-tertiary tabular-nums"
+      >
         {count}
+        {pending ? " · Loading match…" : ""}
       </output>
       <Tooltip label="Previous match" shortcut="Shift Enter">
         <Button
           aria-label="Previous match"
-          disabled={matches.length === 0}
+          disabled={!matches.length}
           onClick={() => step(-1)}
           className={iconButton}
         >
@@ -230,7 +393,7 @@ export function TranscriptFind({
       <Tooltip label="Next match" shortcut="Enter">
         <Button
           aria-label="Next match"
-          disabled={matches.length === 0}
+          disabled={!matches.length}
           onClick={() => step(1)}
           className={iconButton}
         >

@@ -69,6 +69,7 @@ describe("splitBlocks", () => {
       "Tilde test.\n\n~~~text\na\n~~~oops\n~~~\n\nNext.",
       "Math test.\n\n$$\nx^2\n$$\n\nNext.",
       "Invalid closer.\n\n```ts\na\n``` x\n    ```\n``\n```\n\nNext.",
+      "    ```ts\n    Indented code, not a fence.\n\nA paragraph after indented code.",
     ]) {
       for (let end = 1; end <= text.length; end++) {
         const source = text.slice(0, end);

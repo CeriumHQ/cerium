@@ -19,11 +19,25 @@ export const REVEAL_EVENT = "cerium:reveal";
  */
 export function useStickToBottom(pinKey: unknown) {
   const viewport = useRef<HTMLDivElement>(null);
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const attachViewport = (node: HTMLDivElement | null) => {
+    viewport.current = node;
+    setElement(node);
+  };
   const pinned = useRef(true);
+  const tailMounted = useRef(true);
   const [following, setFollowing] = useState(true);
+  const [endRevision, setEndRevision] = useState(0);
+  const [lastPin, setLastPin] = useState(pinKey);
+  if (lastPin !== pinKey) {
+    setLastPin(pinKey);
+    setFollowing(true);
+  }
+  const onTailMounted = (mounted: boolean) => {
+    tailMounted.current = mounted;
+  };
 
   useEffect(() => {
-    const element = viewport.current;
     const content = element?.firstElementChild;
     if (!element || !content) return;
     let lastTop = element.scrollTop;
@@ -35,7 +49,7 @@ export function useStickToBottom(pinKey: unknown) {
       // scroll position up, but it lands at the end, so it stays pinned. Reflows (a panel opening,
       // code highlighting) fire scroll events too and must not unpin.
       if (up && fromEnd > 1) pinned.current = false;
-      else if (!up && fromEnd <= SLACK) pinned.current = true;
+      else if (!up && fromEnd <= SLACK && tailMounted.current) pinned.current = true;
       lastTop = element.scrollTop;
       setFollowing(pinned.current);
     };
@@ -84,7 +98,7 @@ export function useStickToBottom(pinKey: unknown) {
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [element]);
 
   // Jumping to the end fires a scroll event, which marks the viewport as following again. It happens
   // before the first paint, so a conversation opens at its end without a frame of its start.
@@ -92,13 +106,19 @@ export function useStickToBottom(pinKey: unknown) {
     pinned.current = true;
     const element = viewport.current;
     if (element) element.scrollTop = element.scrollHeight;
-  }, [pinKey]);
+  }, [pinKey, endRevision]);
 
   const toEnd = () => {
     pinned.current = true;
     setFollowing(true);
-    viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" });
+    // The tail may not be mounted yet. Scroll after HistoryWindow swaps it into the DOM.
+    setEndRevision((revision) => revision + 1);
   };
 
-  return { viewport, following, toEnd };
+  const unfollow = () => {
+    pinned.current = false;
+    setFollowing(false);
+  };
+
+  return { viewport, attachViewport, following, toEnd, unfollow, onTailMounted };
 }

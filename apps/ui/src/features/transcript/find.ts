@@ -149,7 +149,22 @@ export const showRange = (range: Range, smooth: boolean): void => {
   at.dispatchEvent(new Event(UNFOLD_EVENT, { bubbles: true }));
   at.dispatchEvent(new Event(REVEAL_EVENT, { bubbles: true }));
   const glide = smooth && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-  at.scrollIntoView({ block: "center", behavior: glide ? "smooth" : "auto" });
+  // scrollIntoView also scrolls overflow:hidden disclosures. When their height animation ends,
+  // that inner scroll is clamped back to zero and the match disappears again. Move actual scroll
+  // viewports explicitly, from the innermost (a code block) to the conversation around it.
+  let scrolled = false;
+  for (let parent = at.parentElement; parent !== null; parent = parent.parentElement) {
+    const overflow = getComputedStyle(parent).overflowY;
+    if (overflow !== "auto" && overflow !== "scroll") continue;
+    const target = range.getBoundingClientRect();
+    const viewport = parent.getBoundingClientRect();
+    parent.scrollBy({
+      top: target.top - viewport.top - Math.max(0, (viewport.height - target.height) / 2),
+      behavior: glide ? "smooth" : "instant",
+    });
+    scrolled = true;
+  }
+  if (!scrolled) at.scrollIntoView({ block: "center", behavior: glide ? "smooth" : "auto" });
 };
 
 /** Rings a message for a moment, as the artifacts panel rings an artifact it brings into view. */

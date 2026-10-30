@@ -83,6 +83,50 @@ describe("Store", () => {
           Array.from({ length: 300 }, (_, n) => n * 2),
         );
         assert.lengthOf(yield* store.listEvents(lead.id, { tags: ["MessageCompleted"] }), 300);
+        const question: AgentEvent = {
+          ...event(600),
+          at: 0,
+          payload: {
+            _tag: "QuestionAsked",
+            requestId: "pending-old",
+            questions: [
+              {
+                question: "Keep this older request?",
+                options: [],
+                multiSelect: false,
+                allowOther: true,
+              },
+            ],
+          },
+        };
+        yield* store.appendEvents([question]);
+        const recentState = yield* store.historyPage(thread.id, { state: true });
+        assert.isFalse(recentState.events.some((each) => each.id === question.id));
+        // Side panels read all their state, in bounded append pages, without decoding tool results.
+        let page = yield* store.historyPage(thread.id, { after: 0, state: true });
+        const state = [...page.events];
+        assert.lengthOf(page.events, 256);
+        while (page.more) {
+          page = yield* store.historyPage(thread.id, { after: page.after, state: true });
+          state.push(...page.events);
+        }
+        assert.lengthOf(state, 301);
+        assert.isTrue(state.some((each) => each.payload._tag === "QuestionAsked"));
+        assert.isFalse(state.some((each) => each.payload._tag === "ToolCallCompleted"));
+        const request = {
+          ...event(601),
+          at: 0,
+          payload: {
+            _tag: "AgentError" as const,
+            kind: "unknown" as const,
+            retryable: false,
+            message: "older state arriving late",
+          },
+        };
+        yield* store.appendEvents([request]);
+        const resumed = yield* store.historyPage(thread.id, { after: page.after, state: true });
+        assert.deepStrictEqual(resumed.events, [request]);
+        assert.isFalse(resumed.more);
       }),
     ),
   );

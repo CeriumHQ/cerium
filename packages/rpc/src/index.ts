@@ -45,6 +45,7 @@ import {
   ThreadNotification,
   ThreadOverview,
   ThreadOverviews,
+  ThreadOverviewUpdate,
   ThreadRef,
   TurnFilesReverted,
   UiEvent,
@@ -97,7 +98,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 45;
+export const RPC_VERSION = 47;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -184,6 +185,8 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  */
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("ListThreads", { success: ThreadOverviews, error: CeriumError }),
+  /** A full snapshot, then only changed/removed overviews. Since RPC_VERSION 46. */
+  Rpc.make("WatchThreadOverviews", { success: ThreadOverviewUpdate, stream: true, error: CeriumError }),
   /** Bounded compact history and durable reconnect catch-up. Since RPC_VERSION 45. */
   Rpc.make("ThreadHistory", {
     payload: { threadId: ThreadId, page: HistoryRequest },
@@ -736,6 +739,8 @@ export const MachineRpcs = RpcGroup.make(
  * signs it in or out and manages the account's devices.
  */
 export const DeviceRpcs = RpcGroup.make(
+  /** This device's thread ownership, independent of the driven machine. Since RPC_VERSION 46. */
+  Rpc.make("WatchLocalThreadOverviews", { success: ThreadOverviewUpdate, stream: true }),
   /** This device's Cerium account now, then every change. */
   Rpc.make("WatchAccount", { success: AccountState, stream: true }),
   /** Starts signing this device in; the UI opens `url`, where the user confirms in their browser. */

@@ -222,6 +222,8 @@ const userBlock = (item: FromUser, id: string): UserBlock => ({
  */
 const withDelta = (held: string | undefined, delta: { readonly text: string; readonly offset?: number }) => {
   const text = held ?? "";
+  // The live overlay leaves an empty first delta in the settled fold to keep its position.
+  if (held === undefined && delta.offset === 0 && delta.text === "") return "";
   if (delta.offset === undefined) return text + delta.text;
   if (delta.offset > text.length || delta.offset + delta.text.length <= text.length) return undefined;
   return text.slice(0, delta.offset) + delta.text;
@@ -234,10 +236,7 @@ export type AgentActivity = "running" | "idle" | "ended";
  * `sameModel` tells whether two of the agent's model ids are one model: a session reports the id it
  * resolved to (`claude-opus-5-5`), a switch the id it was picked by (`opus`).
  */
-export const buildTranscript = (
-  events: ReadonlyArray<AgentEvent>,
-  sameModel: (a: string, b: string) => boolean = (a, b) => a === b,
-): ReadonlyArray<TranscriptBlock> => {
+export const createTranscriptFold = (sameModel: (a: string, b: string) => boolean = (a, b) => a === b) => {
   const blocks: Array<TranscriptBlock> = [];
   const indexOf = new Map<string, number>();
   let lastUsage: Extract<TranscriptBlock, { kind: "turnEnd" }>["usage"];
@@ -279,325 +278,383 @@ export const buildTranscript = (
 
   /** Where each event's blocks begin, for a rewind to find what it replaced. */
   const startOf: Array<{ readonly sequence: number; readonly index: number }> = [];
+  let restoredVersion: string | undefined;
 
-  for (const { payload, id, sequence, at } of events) {
-    startOf.push({ sequence, index: blocks.length });
-    switch (payload._tag) {
-      case "ConversationRewound": {
-        const start = startOf.find((entry) => entry.sequence >= payload.fromSequence)?.index ?? blocks.length;
-        const replaced = blocks.splice(start);
-        for (const [key, index] of indexOf) if (index >= start) indexOf.delete(key);
-        if (replaced.length > 0) blocks.push({ kind: "replaced", id: `replaced:${id}`, blocks: replaced });
-        lastUsage = undefined;
-        break;
-      }
-      // A restore's files follow the rewind of its conversation.
-      case "FilesRestored": {
-        const index = blocks.findLastIndex((block) => block.kind === "replaced");
-        const block = blocks[index];
-        if (block?.kind === "replaced" && payload.paths.length > 0) {
-          blocks[index] = { ...block, files: payload.paths.length };
-        }
-        break;
-      }
-      case "SessionImported":
-        blocks.push({
-          kind: "imported",
-          id: `imported:${id}`,
-          provider: payload.provider,
-          ...(payload.history === "unavailable"
-            ? { unavailable: payload.detail === undefined ? {} : { detail: payload.detail } }
-            : {}),
-        });
-        break;
-      case "SessionStarted":
-      case "ModelChanged":
-      case "LeadHandedOff": {
-        const effort = payload.effort;
-        // A session's start says nothing of its speed: the switch that picked it did.
-        const speed = payload._tag === "SessionStarted" ? running?.speed : payload.speed;
-        const change =
-          payload._tag === "SessionStarted"
-            ? "start"
-            : payload._tag === "LeadHandedOff"
-              ? "handoff"
-              : running === undefined || !sameModel(running.model, payload.model)
-                ? "model"
-                : running.effort !== effort
-                  ? "effort"
-                  : running.speed !== speed
-                    ? "speed"
-                    : undefined;
-        const provider = payload._tag === "ModelChanged" ? running?.provider : payload.provider;
-        running = { model: payload.model, effort, speed, ...(provider ? { provider } : {}) };
-        // A switch to what the agent already ran on changes nothing to show.
-        if (
-          change === undefined ||
-          (change === "effort" && effort === undefined) ||
-          (change === "speed" && speed === undefined)
-        )
+  const add = (events: ReadonlyArray<AgentEvent>) => {
+    for (const { payload, id, sequence, at } of events) {
+      startOf.push({ sequence, index: blocks.length });
+      switch (payload._tag) {
+        case "ConversationRewound": {
+          const start =
+            startOf.find((entry) => entry.sequence >= payload.fromSequence)?.index ?? blocks.length;
+          const replaced = blocks.splice(start);
+          for (const [key, index] of indexOf) if (index >= start) indexOf.delete(key);
+          restoredVersion = replaced.length > 0 ? `replaced:${id}` : undefined;
+          if (restoredVersion) blocks.push({ kind: "replaced", id: restoredVersion, blocks: replaced });
+          lastUsage = undefined;
           break;
-        blocks.push({
-          kind: "model",
-          id: `model:${id}`,
-          ...(provider ? { provider } : {}),
-          model: payload.model,
-          ...(effort ? { effort } : {}),
-          ...(speed ? { speed } : {}),
-          change,
-        });
-        break;
-      }
-      // A routed level is the one the agent runs at from here, so a later switch to it is no change.
-      case "EffortRouted": {
-        const { _tag, ...decision } = payload;
-        blocks.push({ kind: "routed", id: `routed:${id}`, decision });
-        if (running !== undefined && payload.effort !== undefined) {
-          running = { ...running, effort: payload.effort };
         }
-        break;
-      }
-      case "TurnInput":
-        turnId = payload.turnId;
-        answering = true;
-        turnStartedAt ??= at;
-        payload.items.forEach((item, index) => {
-          const key = `${id}:${index}`;
-          // A message keeps the key it had while queued.
-          blocks.push(
-            item._tag === "FromUser"
-              ? { ...userBlock(item, item.id ?? key), ...(item.id ? { delivered: true as const } : {}) }
-              : { kind: "notice", id: key, item },
-          );
-        });
-        break;
-      case "MessageDelta": {
-        const key = `message:${payload.messageId}`;
-        const text = withDelta(existing(key, "message")?.text, payload);
-        if (text !== undefined) upsert(key, { kind: "message", id: key, text, streaming: true });
-        break;
-      }
-      case "MessageCompleted": {
-        const key = `message:${payload.messageId}`;
-        upsert(key, { kind: "message", id: key, text: payload.text, streaming: false });
-        break;
-      }
-      case "ReasoningDelta": {
-        const key = `reasoning:${payload.messageId}`;
-        const thought = existing(key, "reasoning");
-        const text = withDelta(thought?.text, payload);
-        const startedAt = thought?.startedAt ?? previousAt ?? at;
-        if (text !== undefined) {
-          upsert(key, { kind: "reasoning", id: key, text, streaming: true, startedAt });
+        // A restore's files follow the rewind of its conversation.
+        case "FilesRestored": {
+          const index = blocks.findLastIndex((block) => block.id === restoredVersion);
+          const block = blocks[index];
+          if (block?.kind === "replaced" && payload.paths.length > 0) {
+            blocks[index] = { ...block, files: payload.paths.length };
+          }
+          break;
         }
-        break;
-      }
-      case "ReasoningCompleted": {
-        const key = `reasoning:${payload.messageId}`;
-        const startedAt = existing(key, "reasoning")?.startedAt ?? previousAt ?? at;
-        upsert(key, {
-          kind: "reasoning",
-          id: key,
-          text: payload.text,
-          streaming: false,
-          startedAt,
-          endedAt: at,
-        });
-        break;
-      }
-      case "ToolCallStarted": {
-        const key = `tool:${payload.callId}`;
-        upsert(key, {
-          kind: "tool",
-          id: key,
-          toolName: payload.toolName,
-          input: payload.input,
-          status: "running",
-          changedFiles: [],
-          startedAt: at,
-        });
-        break;
-      }
-      case "ToolCallCompleted": {
-        const key = `tool:${payload.callId}`;
-        const started = existing(key, "tool");
-        if (started !== undefined) {
+        case "SessionImported":
+          blocks.push({
+            kind: "imported",
+            id: `imported:${id}`,
+            provider: payload.provider,
+            ...(payload.history === "unavailable"
+              ? { unavailable: payload.detail === undefined ? {} : { detail: payload.detail } }
+              : {}),
+          });
+          break;
+        case "SessionStarted":
+        case "ModelChanged":
+        case "LeadHandedOff": {
+          const effort = payload.effort;
+          // A session's start says nothing of its speed: the switch that picked it did.
+          const speed = payload._tag === "SessionStarted" ? running?.speed : payload.speed;
+          const change =
+            payload._tag === "SessionStarted"
+              ? "start"
+              : payload._tag === "LeadHandedOff"
+                ? "handoff"
+                : running === undefined || !sameModel(running.model, payload.model)
+                  ? "model"
+                  : running.effort !== effort
+                    ? "effort"
+                    : running.speed !== speed
+                      ? "speed"
+                      : undefined;
+          const provider = payload._tag === "ModelChanged" ? running?.provider : payload.provider;
+          running = { model: payload.model, effort, speed, ...(provider ? { provider } : {}) };
+          // A switch to what the agent already ran on changes nothing to show.
+          if (
+            change === undefined ||
+            (change === "effort" && effort === undefined) ||
+            (change === "speed" && speed === undefined)
+          )
+            break;
+          blocks.push({
+            kind: "model",
+            id: `model:${id}`,
+            ...(provider ? { provider } : {}),
+            model: payload.model,
+            ...(effort ? { effort } : {}),
+            ...(speed ? { speed } : {}),
+            change,
+          });
+          break;
+        }
+        // A routed level is the one the agent runs at from here, so a later switch to it is no change.
+        case "EffortRouted": {
+          const { _tag, ...decision } = payload;
+          blocks.push({ kind: "routed", id: `routed:${id}`, decision });
+          if (running !== undefined && payload.effort !== undefined) {
+            running = { ...running, effort: payload.effort };
+          }
+          break;
+        }
+        case "TurnInput":
+          turnId = payload.turnId;
+          answering = true;
+          turnStartedAt ??= at;
+          payload.items.forEach((item, index) => {
+            const key = `${id}:${index}`;
+            // A message keeps the key it had while queued.
+            blocks.push(
+              item._tag === "FromUser"
+                ? { ...userBlock(item, item.id ?? key), ...(item.id ? { delivered: true as const } : {}) }
+                : { kind: "notice", id: key, item },
+            );
+          });
+          break;
+        case "MessageDelta": {
+          const key = `message:${payload.messageId}`;
+          const text = withDelta(existing(key, "message")?.text, payload);
+          if (text !== undefined) upsert(key, { kind: "message", id: key, text, streaming: true });
+          break;
+        }
+        case "MessageCompleted": {
+          const key = `message:${payload.messageId}`;
+          upsert(key, { kind: "message", id: key, text: payload.text, streaming: false });
+          break;
+        }
+        case "ReasoningDelta": {
+          const key = `reasoning:${payload.messageId}`;
+          const thought = existing(key, "reasoning");
+          const text = withDelta(thought?.text, payload);
+          const startedAt = thought?.startedAt ?? previousAt ?? at;
+          if (text !== undefined) {
+            upsert(key, { kind: "reasoning", id: key, text, streaming: true, startedAt });
+          }
+          break;
+        }
+        case "ReasoningCompleted": {
+          const key = `reasoning:${payload.messageId}`;
+          const startedAt = existing(key, "reasoning")?.startedAt ?? previousAt ?? at;
           upsert(key, {
-            ...started,
-            output: payload.output,
-            status: payload.isError ? "error" : "done",
+            kind: "reasoning",
+            id: key,
+            text: payload.text,
+            streaming: false,
+            startedAt,
             endedAt: at,
           });
+          break;
         }
-        break;
-      }
-      case "FileChanged": {
-        // Attribute the change to the most recent tool call.
-        for (let index = blocks.length - 1; index >= 0; index--) {
-          const block = blocks[index];
-          if (block?.kind === "tool") {
-            blocks[index] = { ...block, changedFiles: [...block.changedFiles, payload.path] };
+        case "ToolCallStarted": {
+          const key = `tool:${payload.callId}`;
+          upsert(key, {
+            kind: "tool",
+            id: key,
+            toolName: payload.toolName,
+            input: payload.input,
+            status: "running",
+            changedFiles: [],
+            startedAt: at,
+          });
+          break;
+        }
+        case "ToolCallCompleted": {
+          const key = `tool:${payload.callId}`;
+          const started = existing(key, "tool");
+          if (started !== undefined) {
+            upsert(key, {
+              ...started,
+              output: payload.output,
+              status: payload.isError ? "error" : "done",
+              endedAt: at,
+            });
+          }
+          break;
+        }
+        case "FileChanged": {
+          // Attribute the change to the most recent tool call.
+          for (let index = blocks.length - 1; index >= 0; index--) {
+            const block = blocks[index];
+            if (block?.kind === "tool") {
+              blocks[index] = { ...block, changedFiles: [...block.changedFiles, payload.path] };
+              break;
+            }
+          }
+          break;
+        }
+        case "AgentSpawned":
+          blocks.push({
+            kind: "spawn",
+            id: `spawn:${payload.childId}`,
+            childId: payload.childId,
+            role: payload.role,
+            provider: payload.provider,
+            model: payload.model,
+            access: payload.access,
+          });
+          break;
+        case "PermissionRequested":
+          upsert(`permission:${payload.requestId}`, {
+            kind: "permission",
+            id: `permission:${payload.requestId}`,
+            toolName: payload.toolName,
+            summary: payload.summary,
+            input: payload.input,
+          });
+          break;
+        case "PermissionResolved": {
+          const key = `permission:${payload.requestId}`;
+          const request = existing(key, "permission");
+          if (request !== undefined) {
+            upsert(key, { ...request, resolution: { decision: payload.decision, scope: payload.scope } });
+          }
+          break;
+        }
+        case "QuestionAsked":
+          upsert(`question:${payload.requestId}`, {
+            kind: "question",
+            id: `question:${payload.requestId}`,
+            requestId: payload.requestId,
+            questions: payload.questions,
+            at,
+          });
+          break;
+        case "QuestionResolved": {
+          const key = `question:${payload.requestId}`;
+          const asked = existing(key, "question");
+          if (asked !== undefined) {
+            upsert(key, {
+              ...asked,
+              resolution: {
+                outcome: payload.outcome,
+                ...(payload.answers ? { answers: payload.answers } : {}),
+              },
+            });
+          }
+          break;
+        }
+        case "UsageReported":
+          lastUsage = {
+            inputTokens: payload.inputTokens + (payload.cachedInputTokens ?? 0),
+            outputTokens: payload.outputTokens,
+            ...(payload.costUsd === undefined ? {} : { costUsd: payload.costUsd }),
+          };
+          break;
+        case "ContextCompacted": {
+          const { _tag, ...compaction } = payload;
+          blocks.push({ kind: "compacted", id: `compacted:${id}`, ...compaction });
+          if (!answering) compacting = true;
+          break;
+        }
+        case "TurnCompleted":
+          if (!answering && compacting) {
+            compacting = false;
+            lastUsage = undefined;
+            turnStartedAt = undefined;
             break;
           }
-        }
-        break;
-      }
-      case "AgentSpawned":
-        blocks.push({
-          kind: "spawn",
-          id: `spawn:${payload.childId}`,
-          childId: payload.childId,
-          role: payload.role,
-          provider: payload.provider,
-          model: payload.model,
-          access: payload.access,
-        });
-        break;
-      case "PermissionRequested":
-        upsert(`permission:${payload.requestId}`, {
-          kind: "permission",
-          id: `permission:${payload.requestId}`,
-          toolName: payload.toolName,
-          summary: payload.summary,
-          input: payload.input,
-        });
-        break;
-      case "PermissionResolved": {
-        const key = `permission:${payload.requestId}`;
-        const request = existing(key, "permission");
-        if (request !== undefined) {
-          upsert(key, { ...request, resolution: { decision: payload.decision, scope: payload.scope } });
-        }
-        break;
-      }
-      case "QuestionAsked":
-        upsert(`question:${payload.requestId}`, {
-          kind: "question",
-          id: `question:${payload.requestId}`,
-          requestId: payload.requestId,
-          questions: payload.questions,
-          at,
-        });
-        break;
-      case "QuestionResolved": {
-        const key = `question:${payload.requestId}`;
-        const asked = existing(key, "question");
-        if (asked !== undefined) {
-          upsert(key, {
-            ...asked,
-            resolution: {
-              outcome: payload.outcome,
-              ...(payload.answers ? { answers: payload.answers } : {}),
-            },
-          });
-        }
-        break;
-      }
-      case "UsageReported":
-        lastUsage = {
-          inputTokens: payload.inputTokens + (payload.cachedInputTokens ?? 0),
-          outputTokens: payload.outputTokens,
-          ...(payload.costUsd === undefined ? {} : { costUsd: payload.costUsd }),
-        };
-        break;
-      case "ContextCompacted": {
-        const { _tag, ...compaction } = payload;
-        blocks.push({ kind: "compacted", id: `compacted:${id}`, ...compaction });
-        if (!answering) compacting = true;
-        break;
-      }
-      case "TurnCompleted":
-        if (!answering && compacting) {
+          answering = false;
           compacting = false;
+          // Its files arrive after it, named by the turn's id.
+          if (turnId !== undefined) indexOf.set(`turn:${turnId}`, blocks.length);
+          blocks.push({
+            kind: "turnEnd",
+            id: `turnEnd:${id}`,
+            stopReason: payload.stopReason,
+            ...(lastUsage ? { usage: lastUsage } : {}),
+            ...(turnStartedAt === undefined ? {} : { startedAt: turnStartedAt }),
+            endedAt: at,
+          });
           lastUsage = undefined;
           turnStartedAt = undefined;
           break;
+        case "TurnFilesChanged": {
+          const key = `turn:${payload.turnId}`;
+          const end = existing(key, "turnEnd");
+          if (end !== undefined) {
+            const { turnId: changedIn, before, after, files } = payload;
+            upsert(key, {
+              ...end,
+              changes: { turnId: changedIn, before, after, files, more: payload.more ?? 0 },
+            });
+          }
+          break;
         }
-        answering = false;
-        compacting = false;
-        // Its files arrive after it, named by the turn's id.
-        if (turnId !== undefined) indexOf.set(`turn:${turnId}`, blocks.length);
-        blocks.push({
-          kind: "turnEnd",
-          id: `turnEnd:${id}`,
-          stopReason: payload.stopReason,
-          ...(lastUsage ? { usage: lastUsage } : {}),
-          ...(turnStartedAt === undefined ? {} : { startedAt: turnStartedAt }),
-          endedAt: at,
-        });
-        lastUsage = undefined;
-        turnStartedAt = undefined;
-        break;
-      case "TurnFilesChanged": {
-        const key = `turn:${payload.turnId}`;
-        const end = existing(key, "turnEnd");
-        if (end !== undefined) {
-          const { turnId: changedIn, before, after, files } = payload;
-          upsert(key, {
-            ...end,
-            changes: { turnId: changedIn, before, after, files, more: payload.more ?? 0 },
+        case "TurnFilesReverted": {
+          const key = `turn:${payload.turnId}`;
+          const end = existing(key, "turnEnd");
+          if (end?.changes !== undefined) {
+            const { undone: _was, ...changes } = end.changes;
+            upsert(key, {
+              ...end,
+              changes:
+                payload.direction === "undone" ? { ...changes, undone: { kept: payload.kept } } : changes,
+            });
+          }
+          break;
+        }
+        case "LimitReached":
+          blocks.push({
+            kind: "limit",
+            id: `limit:${id}`,
+            state: "reached",
+            provider: payload.provider,
+            ...(payload.window ? { window: payload.window } : {}),
           });
+          break;
+        case "LimitPaused": {
+          const index = blocks.findLastIndex((block) => block.kind === "limit");
+          const block = blocks[index];
+          const paused = {
+            kind: "limit",
+            state: "paused",
+            provider: payload.provider,
+            ...(payload.window ? { window: payload.window } : {}),
+            until: payload.resumeAt,
+            reported: payload.reported,
+          } as const;
+          // The limit just reached and the wait it led to read as one line.
+          if (block?.kind === "limit" && block.state === "reached" && index === blocks.length - 1) {
+            blocks[index] = { ...paused, id: block.id };
+          } else blocks.push({ ...paused, id: `limit:${id}` });
+          break;
         }
-        break;
-      }
-      case "TurnFilesReverted": {
-        const key = `turn:${payload.turnId}`;
-        const end = existing(key, "turnEnd");
-        if (end?.changes !== undefined) {
-          const { undone: _was, ...changes } = end.changes;
-          upsert(key, {
-            ...end,
-            changes:
-              payload.direction === "undone" ? { ...changes, undone: { kept: payload.kept } } : changes,
-          });
+        case "LimitResumed": {
+          const index = blocks.findLastIndex((block) => block.kind === "limit");
+          const block = blocks[index];
+          if (block?.kind === "limit" && block.state === "paused") {
+            blocks[index] = { ...block, state: "resumed", by: payload.by };
+          }
+          break;
         }
-        break;
+        case "AgentError":
+          blocks.push({ kind: "error", id: `error:${id}`, message: payload.message });
+          if (!answering) compacting = true;
+          break;
+        default:
+          break;
       }
-      case "LimitReached":
-        blocks.push({
-          kind: "limit",
-          id: `limit:${id}`,
-          state: "reached",
-          provider: payload.provider,
-          ...(payload.window ? { window: payload.window } : {}),
-        });
-        break;
-      case "LimitPaused": {
-        const index = blocks.findLastIndex((block) => block.kind === "limit");
-        const block = blocks[index];
-        const paused = {
-          kind: "limit",
-          state: "paused",
-          provider: payload.provider,
-          ...(payload.window ? { window: payload.window } : {}),
-          until: payload.resumeAt,
-          reported: payload.reported,
-        } as const;
-        // The limit just reached and the wait it led to read as one line.
-        if (block?.kind === "limit" && block.state === "reached" && index === blocks.length - 1) {
-          blocks[index] = { ...paused, id: block.id };
-        } else blocks.push({ ...paused, id: `limit:${id}` });
-        break;
-      }
-      case "LimitResumed": {
-        const index = blocks.findLastIndex((block) => block.kind === "limit");
-        const block = blocks[index];
-        if (block?.kind === "limit" && block.state === "paused") {
-          blocks[index] = { ...block, state: "resumed", by: payload.by };
-        }
-        break;
-      }
-      case "AgentError":
-        blocks.push({ kind: "error", id: `error:${id}`, message: payload.message });
-        if (!answering) compacting = true;
-        break;
-      default:
-        break;
+      previousAt = at;
     }
-    previousAt = at;
-  }
-  return blocks;
+  };
+  return { add, snapshot: (): ReadonlyArray<TranscriptBlock> => blocks.slice() };
 };
+
+export const buildTranscript = (
+  events: ReadonlyArray<AgentEvent>,
+  sameModel?: (a: string, b: string) => boolean,
+): ReadonlyArray<TranscriptBlock> => {
+  const fold = createTranscriptFold(sameModel);
+  fold.add(events);
+  return fold.snapshot();
+};
+
+/** One agent's settled projection. Inserts / rewinds can rebuild; appended events fold only once. */
+export class IncrementalTranscript {
+  #fold = createTranscriptFold();
+  #queue = createQueueFold();
+  queued: QueuedMessages = { messages: [], held: [], behindTurn: false };
+  #events: ReadonlyArray<AgentEvent> = [];
+  #generation = -1;
+  #sameModel: ((a: string, b: string) => boolean) | undefined;
+  #blocks: ReadonlyArray<TranscriptBlock> = [];
+  #view = { blocks: this.#blocks, queued: this.queued };
+  /** One immutable return value gives React Compiler both projections' dependencies together. */
+  project(
+    events: ReadonlyArray<AgentEvent>,
+    generation: number,
+    sameModel: (a: string, b: string) => boolean,
+  ) {
+    this.read(events, generation, sameModel);
+    if (this.#view.blocks !== this.#blocks) this.#view = { blocks: this.#blocks, queued: this.queued };
+    return this.#view;
+  }
+  read(events: ReadonlyArray<AgentEvent>, generation: number, sameModel: (a: string, b: string) => boolean) {
+    if (events === this.#events && sameModel === this.#sameModel && generation === this.#generation)
+      return this.#blocks;
+    const reset =
+      (this.#events.length > 0 && events[this.#events.length - 1] !== this.#events.at(-1)) ||
+      generation !== this.#generation ||
+      sameModel !== this.#sameModel ||
+      events.length < this.#events.length;
+    if (reset) {
+      this.#fold = createTranscriptFold(sameModel);
+      this.#queue = createQueueFold();
+    }
+    const added = reset ? events : events.slice(this.#events.length);
+    this.#fold.add(added);
+    this.#queue.add(added);
+    this.queued = this.#queue.snapshot();
+    this.#events = events;
+    this.#generation = generation;
+    this.#sameModel = sameModel;
+    this.#blocks = this.#fold.snapshot();
+    return this.#blocks;
+  }
+}
 
 type NoticeBlock = Extract<TranscriptBlock, { kind: "notice" }>;
 
@@ -612,57 +669,66 @@ export interface QueuedMessages {
   readonly held: ReadonlyArray<NoticeBlock>;
 }
 
-export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessages => {
+const createQueueFold = () => {
   const queued = new Map<string, UserBlock>();
   const held = new Map<string, { readonly block: NoticeBlock; readonly sequence: number }>();
   let turnOpen = false;
-  for (const { payload, sequence } of events) {
-    switch (payload._tag) {
-      case "MessageQueued":
-        if (payload.message.id !== undefined) {
-          queued.set(payload.message.id, userBlock(payload.message, payload.message.id));
-        }
-        break;
-      case "MessageHeld":
-        if (payload.message.id !== undefined) {
-          const block: NoticeBlock = {
-            kind: "notice",
-            id: payload.message.id,
-            item: payload.message,
-            waiting: true,
-          };
-          held.set(payload.message.id, { block, sequence });
-        }
-        break;
-      case "TurnInput":
-        turnOpen = true;
-        for (const item of payload.items) {
-          if (item._tag === "FromUser" && item.id) queued.delete(item.id);
-          if (item._tag === "FromAgent" && item.id) held.delete(item.id);
-        }
-        break;
-      case "TurnCompleted":
-        turnOpen = false;
-        break;
-      case "MessageWithdrawn":
-        queued.delete(payload.messageId);
-        break;
-      // Every message queued before a rewind went with the turns it replaced, and so did those
-      // held during them.
-      case "ConversationRewound":
-        queued.clear();
-        for (const [id, each] of held) if (each.sequence >= payload.fromSequence) held.delete(id);
-        turnOpen = false;
-        break;
-      default:
-        break;
+  const add = (events: ReadonlyArray<AgentEvent>) => {
+    for (const { payload, sequence } of events) {
+      switch (payload._tag) {
+        case "MessageQueued":
+          if (payload.message.id !== undefined) {
+            queued.set(payload.message.id, userBlock(payload.message, payload.message.id));
+          }
+          break;
+        case "MessageHeld":
+          if (payload.message.id !== undefined) {
+            const block: NoticeBlock = {
+              kind: "notice",
+              id: payload.message.id,
+              item: payload.message,
+              waiting: true,
+            };
+            held.set(payload.message.id, { block, sequence });
+          }
+          break;
+        case "TurnInput":
+          turnOpen = true;
+          for (const item of payload.items) {
+            if (item._tag === "FromUser" && item.id) queued.delete(item.id);
+            if (item._tag === "FromAgent" && item.id) held.delete(item.id);
+          }
+          break;
+        case "TurnCompleted":
+          turnOpen = false;
+          break;
+        case "MessageWithdrawn":
+          queued.delete(payload.messageId);
+          break;
+        // Every message queued before a rewind went with the turns it replaced, and so did those
+        // held during them.
+        case "ConversationRewound":
+          queued.clear();
+          for (const [id, each] of held) if (each.sequence >= payload.fromSequence) held.delete(id);
+          turnOpen = false;
+          break;
+        default:
+          break;
+      }
     }
-  }
-  return {
+  };
+  const snapshot = (): QueuedMessages => ({
     messages: [...queued.values()],
     behindTurn: turnOpen,
     held: [...held.values()].map(({ block }) => block),
-  };
+  });
+  return { add, snapshot };
+};
+
+export const queuedMessages = (events: ReadonlyArray<AgentEvent>): QueuedMessages => {
+  const fold = createQueueFold();
+  fold.add(events);
+  return fold.snapshot();
 };
 
 /**

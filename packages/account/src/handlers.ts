@@ -1,4 +1,4 @@
-import type { ThreadNotification } from "@cerium/protocol";
+import type { ThreadNotification, ThreadOverviewUpdate } from "@cerium/protocol";
 import {
   CeriumError,
   DeviceRpcs,
@@ -43,11 +43,12 @@ export const noBrowserHosting: BrowserHosting = { host: Stream.empty, answer: ()
  * effort router's key, and `browser` hosts the agents' browser; a browser has none of them. Requires
  * `Account` and `CloudThreads`.
  */
-export const deviceHandlers = <W, N, K, B>(own: {
+export const deviceHandlers = <W, N, K, B, O = never>(own: {
   readonly working: Effect.Effect<Stream.Stream<boolean>, never, W>;
   readonly notifications: Effect.Effect<Stream.Stream<ThreadNotification>, never, N>;
   readonly saveEffortRouterKey: Effect.Effect<SaveEffortRouterKey, never, K>;
   readonly browser: Effect.Effect<BrowserHosting, never, B>;
+  readonly overviews?: Effect.Effect<Stream.Stream<ThreadOverviewUpdate>, never, O>;
 }) =>
   DeviceRpcs.toLayer(
     Effect.gen(function* () {
@@ -57,7 +58,12 @@ export const deviceHandlers = <W, N, K, B>(own: {
       const notifications = yield* own.notifications;
       const saveKey = yield* own.saveEffortRouterKey;
       const browser = yield* own.browser;
+      const overviews = yield* (
+        own.overviews ??
+          Effect.succeed(Stream.succeed<ThreadOverviewUpdate>({ _tag: "Reset", revision: 0, threads: [] }))
+      );
       return DeviceRpcs.of({
+        WatchLocalThreadOverviews: () => overviews,
         WatchAccount: () => account.changes,
         SignIn: () => account.signIn.pipe(Effect.mapError(refuse)),
         CancelSignIn: () => account.cancelSignIn,

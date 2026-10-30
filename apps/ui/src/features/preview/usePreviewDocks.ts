@@ -26,12 +26,17 @@ export interface PreviewDocks {
   readonly hide: (threadId: string) => void;
   /** Hides the thread's preview, and its page closes with it: an agent's next call opens a fresh one. */
   readonly close: (threadId: string) => void;
+  readonly retire: (threadId: string) => void;
 }
 
 /** Which threads show their preview, each its own: opening one thread's leaves the others' as they were. */
 export function usePreviewDocks(): PreviewDocks {
   const [open, setOpen] = useState(readOpen);
   useEffect(() => rememberForTab(OPEN_KEY, JSON.stringify(open)), [open]);
+  useEffect(
+    () => previewBridge()?.onClosed((threadId) => setOpen((ids) => ids.filter((id) => id !== threadId))),
+    [],
+  );
   const hide = (threadId: string) => setOpen((ids) => ids.filter((id) => id !== threadId));
   return {
     isOpen: (threadId) => open.includes(threadId),
@@ -39,6 +44,10 @@ export function usePreviewDocks(): PreviewDocks {
     hide,
     close: (threadId) => {
       previewBridge()?.close(threadId);
+      hide(threadId);
+    },
+    retire: (threadId) => {
+      previewBridge()?.retire?.(threadId);
       hide(threadId);
     },
   };

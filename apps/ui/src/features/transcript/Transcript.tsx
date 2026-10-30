@@ -1,5 +1,13 @@
 import { Button } from "@base-ui/react/button";
-import type { ProviderId, QuestionResponse, RestorePreview, ThreadId } from "@cerium/protocol";
+import type {
+  AgentEvent,
+  AgentId,
+  ProviderId,
+  QuestionResponse,
+  RestorePreview,
+  ThreadId,
+} from "@cerium/protocol";
+import type { ThreadHistory } from "../../backend/threadLog.ts";
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown, History } from "lucide-react";
 import {
@@ -8,6 +16,8 @@ import {
   memo,
   use,
   useMemo,
+  useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -68,6 +78,10 @@ import { HistoryWindow } from "./HistoryWindow.tsx";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
+  readonly live?: ReadonlyMap<string, AgentEvent>;
+  readonly history?: ThreadHistory;
+  readonly searchAgent?: AgentId | undefined;
+  readonly searchCloudKey?: string | undefined;
   /** The user's messages that haven't reached the agent yet. */
   readonly queued: QueuedMessages;
   /** The lead's provider, which a switch that names none ran on. */
@@ -173,8 +187,20 @@ const arrivalKeys = (items: ReadonlyArray<Item>) =>
     item.kind === "run" ? [item.id, ...item.steps.map((step) => step.id)] : [item.id],
   );
 
+const containsBlock = (item: Item, id: string): boolean => {
+  if (item.id === id) return true;
+  if (item.kind === "input") return item.blocks.some((block) => block.id === id);
+  if (item.kind === "run") return item.steps.some((step) => containsBlock(step, id));
+  if (item.kind === "replaced") return item.items.some((each) => containsBlock(each, id));
+  return false;
+};
+
 export function Transcript({
   blocks,
+  live,
+  history,
+  searchAgent,
+  searchCloudKey,
   queued,
   agent,
   modelName,
@@ -209,7 +235,7 @@ export function Transcript({
   const shown = holdsQueue(queued, activity)
     ? [...blocks, ...queued.held]
     : [...blocks, ...queued.held, ...queued.messages];
-  const { viewport, following, toEnd } = useStickToBottom(
+  const { viewport, attachViewport, following, toEnd, unfollow, onTailMounted } = useStickToBottom(
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
   const items = layout(shown);
@@ -250,8 +276,15 @@ export function Transcript({
   // the user can't be answered any more.
   const renderItem = (item: Item, replaced: boolean): ReactNode =>
     item.kind === "replaced" ? (
-      <EarlierVersion key={item.id} turns={item.turns} files={item.files}>
-        {item.items.map((each) => renderItem(each, true))}
+      <EarlierVersion key={item.id} item={item} turns={item.turns} files={item.files}>
+        <HistoryWindow
+          items={item.items}
+          viewport={viewport}
+          following={false}
+          onReveal={unfollow}
+          contains={containsBlock}
+          render={(each) => renderItem(each, true)}
+        />
       </EarlierVersion>
     ) : (
       <Fragment key={item.id}>
@@ -288,56 +321,79 @@ export function Transcript({
     );
 
   return (
-    <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
-      {/* An image opened from the conversation steps through all of the thread's others. */}
-      <ImageGallery images={() => threadImages(shown)}>
-        <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
-          {/* Content fades out where the floating composer sits instead of showing through its glass. */}
-          <ScrollArea
-            viewportRef={viewport}
-            className={`h-full ${
-              oneLine
-                ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
-                : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
-            }`}
-          >
-            <div
-              ref={column}
-              className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
-              // The inset is in screen pixels; the column's zoom would scale it.
-              style={{
-                zoom: scale,
-                paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
-              }}
+    <LiveText value={live ?? emptyLive}>
+      <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
+        {/* An image opened from the conversation steps through all of the thread's others. */}
+        <ImageGallery images={() => threadImages(shown)}>
+          <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
+            {/* Content fades out where the floating composer sits instead of showing through its glass. */}
+            <ScrollArea
+              viewportRef={attachViewport}
+              // Following owns the scroll position; a reader keeps native anchors during reflows.
+              viewportClassName={following ? "[overflow-anchor:none]" : ""}
+              className={`h-full ${
+                oneLine
+                  ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
+                  : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
+              }`}
             >
-              <HistoryWindow items={items} viewport={viewport} render={(item) => renderItem(item, false)} />
-              {working ? (
-                <div className="arrive-late">
-                  <Working />
-                </div>
-              ) : null}
-            </div>
-          </ScrollArea>
-          <PromptStepper prompts={promptsOf(items)} viewport={viewport} />
-          <SelectionReply within={column} />
-          {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
-          <Button
-            onClick={toEnd}
-            aria-label="Jump to latest"
-            inert={following}
-            style={{
-              bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
-            }}
-            className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
-              following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
-            }`}
-          >
-            <ArrowDown size={15} strokeWidth={2} />
-          </Button>
-          <TranscriptFind scope={column} threadId={threadId} focused={focused} blocks={shown} />
-        </div>
-      </ImageGallery>
-    </ThreadContext>
+              <div
+                ref={column}
+                className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
+                // The inset is in screen pixels; the column's zoom would scale it.
+                style={{
+                  zoom: scale,
+                  paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
+                }}
+              >
+                <HistoryWindow
+                  items={items}
+                  viewport={viewport}
+                  history={history}
+                  following={following}
+                  onTailMounted={onTailMounted}
+                  onReveal={unfollow}
+                  contains={containsBlock}
+                  render={(item) => renderItem(item, false)}
+                />
+                {working ? (
+                  <div className="arrive-late">
+                    <Working />
+                  </div>
+                ) : null}
+              </div>
+            </ScrollArea>
+            <PromptStepper prompts={promptsOf(items)} viewport={viewport} onReveal={unfollow} />
+            <SelectionReply within={column} />
+            {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
+            <Button
+              onClick={toEnd}
+              aria-label="Jump to latest"
+              inert={following}
+              style={{
+                bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
+              }}
+              className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
+                following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
+              }`}
+            >
+              <ArrowDown size={15} strokeWidth={2} />
+            </Button>
+            <TranscriptFind
+              scope={column}
+              viewport={viewport}
+              threadId={threadId}
+              agentId={searchAgent}
+              cloudKey={searchCloudKey}
+              focused={focused}
+              blocks={shown}
+              live={live}
+              history={history}
+            />
+          </div>
+        </ImageGallery>
+      </ThreadContext>
+    </LiveText>
   );
 }
 
@@ -544,20 +600,26 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   );
 }
 
+const emptyLive: ReadonlyMap<string, AgentEvent> = new Map();
+const LiveText = createContext(emptyLive);
+
 function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: AgentActivity }) {
+  const payload = use(LiveText).get(block.id)?.payload;
+  const text =
+    payload?._tag === "MessageDelta" || payload?._tag === "ReasoningDelta" ? payload.text : undefined;
   switch (block.kind) {
     case "notice":
       return <NoticeBlock block={block} />;
     case "message":
       return (
-        <MessageMenuArea text={block.text} className="select-text">
+        <MessageMenuArea text={text ?? block.text} className="select-text">
           <div data-reply-source data-find={block.id}>
-            <Markdown text={block.text} streaming={block.streaming} />
+            <Markdown text={text ?? block.text} streaming={block.streaming} />
           </div>
         </MessageMenuArea>
       );
     case "reasoning":
-      return <Reasoning block={block} />;
+      return <Reasoning block={text === undefined ? block : { ...block, text }} />;
     case "permission":
       return <PermissionBlock block={block} expired={activity === "ended"} />;
     case "question":
@@ -638,17 +700,31 @@ function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: 
 
 /** The turns the conversation went back on, folded under one line until the user opens them. */
 function EarlierVersion({
+  item,
   turns,
   files,
   children,
 }: {
+  item: Extract<Item, { kind: "replaced" }>;
   turns: number;
   /** The files a restore put back, when it did. */
   files: number | undefined;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const reveal = useEffectEvent((event: Event) => {
+    const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+    if (id !== undefined && containsBlock(item, id)) setOpen(true);
+  });
+  useEffect(() => {
+    const listener = (event: Event) => reveal(event);
+    window.addEventListener("cerium:history", listener);
+    return () => window.removeEventListener("cerium:history", listener);
+  }, []);
   return (
     <Disclosure
+      open={open}
+      onOpenChange={setOpen}
       summary={
         <span className="flex items-center gap-1.5">
           <History size={13} strokeWidth={1.75} className="text-fg-tertiary" />

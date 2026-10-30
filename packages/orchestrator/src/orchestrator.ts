@@ -46,6 +46,7 @@ import {
   type ThreadInfo,
   type ThreadMode,
   type ThreadOverview,
+  type ThreadOverviewUpdate,
   type ThreadWorktree,
   type TurnFilesReverted,
   type WorktreeChanges,
@@ -91,6 +92,7 @@ import {
 } from "./effort.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
+import { makeOverviewWatch } from "./overviewWatch.ts";
 import {
   failoverNotice,
   failoverTarget,
@@ -658,6 +660,7 @@ export class Orchestrator extends Context.Service<
     listAgents(threadId: ThreadId): Effect.Effect<ReadonlyArray<AgentInfo>, OrchestratorError>;
     /** Every thread with its agents and whether it waits on the user, oldest first, read at once. */
     readonly threadOverviews: Effect.Effect<ReadonlyArray<ThreadOverview>, OrchestratorError>;
+    readonly watchThreadOverviews: Stream.Stream<ThreadOverviewUpdate>;
     /** Live events from every agent; subscribers see events published after they subscribe. */
     readonly events: Stream.Stream<AgentEvent>;
 
@@ -874,6 +877,12 @@ export class Orchestrator extends Context.Service<
       /** Each live reviewer's review, settled with its final message once its turn ends. */
       const reviews = new Map<AgentId, Deferred.Deferred<string, OrchestratorError>>();
       const feed = yield* PubSub.unbounded<AgentEvent>();
+      const overviewDirty = yield* Queue.sliding<void>(1);
+      const metadataChanges = yield* store.overviewChanges;
+      yield* Stream.fromSubscription(metadataChanges).pipe(
+        Stream.runForEach(() => Queue.offer(overviewDirty, undefined)),
+        Effect.forkScoped,
+      );
       /** Threads still waiting for their first message to name them, with the title they started with. */
       const untitled = new Map<ThreadId, string>();
       /** What a lead picked back up after a rewind keeps for the user's next message. */
@@ -1044,6 +1053,15 @@ export class Orchestrator extends Context.Service<
           noteWork(info.id, event.at, payload);
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
           yield* PubSub.publish(feed, event);
+          switch (payload._tag) {
+            case "PermissionRequested":
+            case "PermissionResolved":
+            case "QuestionAsked":
+            case "QuestionResolved":
+            case "SpawnApprovalRequested":
+            case "SpawnApprovalResolved":
+              yield* Queue.offer(overviewDirty, undefined);
+          }
         });
 
       /** Records a runtime's event, keeping the provider's message only with the first it makes. */
@@ -3631,6 +3649,29 @@ export class Orchestrator extends Context.Service<
         );
       };
 
+      const readOverviews = Effect.gen(function* () {
+        const threads = yield* store.listThreads;
+        const byThread = Map.groupBy(yield* store.listAllAgents, (agent) => agent.threadId);
+        const waiting = new Set<ThreadId>();
+        for (const rt of runtimes.values()) {
+          if (
+            (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0 ||
+            (openQuestions.get(rt.info.id)?.size ?? 0) > 0
+          )
+            waiting.add(rt.info.threadId);
+        }
+        for (const { leadId } of pendingSpawns.values()) {
+          const rt = runtimes.get(leadId);
+          if (rt !== undefined) waiting.add(rt.info.threadId);
+        }
+        return threads.map((thread): ThreadOverview => ({
+          thread,
+          agents: byThread.get(thread.id) ?? [],
+          awaitingApproval: waiting.has(thread.id),
+        }));
+      }).pipe(Effect.mapError(unavailable));
+      const watchThreadOverviews = yield* makeOverviewWatch(readOverviews, overviewDirty);
+
       const orchestrator: Orchestrator["Service"] = Orchestrator.of({
         createThread,
 
@@ -4224,15 +4265,8 @@ export class Orchestrator extends Context.Service<
 
         listAgents: (threadId) => store.listAgents(threadId).pipe(Effect.mapError(unavailable)),
 
-        threadOverviews: Effect.gen(function* () {
-          const threads = yield* store.listThreads;
-          const byThread = Map.groupBy(yield* store.listAllAgents, (agent) => agent.threadId);
-          return threads.map((thread): ThreadOverview => ({
-            thread,
-            agents: byThread.get(thread.id) ?? [],
-            awaitingApproval: waitsOnUser(thread.id),
-          }));
-        }).pipe(Effect.mapError(unavailable)),
+        threadOverviews: readOverviews,
+        watchThreadOverviews,
 
         events: Stream.fromPubSub(feed),
 
@@ -4670,7 +4704,10 @@ export class Orchestrator extends Context.Service<
           store.historyPage(threadId, page).pipe(
             Effect.map((read) => ({
               ...read,
-              events: page.before === undefined ? [...read.events, ...streamed.soFar(threadId)] : read.events,
+              events:
+                page.before === undefined && page.state !== true
+                  ? [...read.events, ...streamed.soFar(threadId)]
+                  : read.events,
             })),
             Effect.mapError(unavailable),
           ),

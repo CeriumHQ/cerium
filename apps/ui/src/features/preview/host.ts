@@ -1,4 +1,5 @@
 import type { BrowserCall, BrowserOutcome } from "@cerium/rpc";
+import { applyOverviewUpdate, type ThreadOverview } from "@cerium/protocol";
 import { Effect, Schedule, Stream } from "effect";
 
 import { LocalBackend } from "../../backend/client.ts";
@@ -20,6 +21,29 @@ export interface AgentOpened {
   readonly seq: number;
   readonly threadId: string;
 }
+
+/** Always this computer's ownership, even while the window drives a different machine. */
+export const previewOwnershipAtom = LocalBackend.runtime.atom(
+  Stream.unwrap(
+    LocalBackend.use((client) => Effect.succeed(client("WatchLocalThreadOverviews", undefined))),
+  ).pipe(
+    Stream.scan(() => [] as ReadonlyArray<ThreadOverview>, applyOverviewUpdate),
+    Stream.tap((threads) =>
+      Effect.sync(() =>
+        previewBridge()?.threads?.(
+          threads.map(({ thread, agents, awaitingApproval }) => ({
+            id: thread.id,
+            retired: thread.archivedAt !== undefined,
+            active:
+              awaitingApproval ||
+              agents.some((agent) => agent.state === "queued" || agent.state === "running"),
+          })),
+        ),
+      ),
+    ),
+    Stream.retry(Schedule.spaced("1 second")),
+  ),
+);
 
 /**
  * Hosts the browser while mounted, and holds the latest thread an agent opened a page in. Mounted

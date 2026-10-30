@@ -65,14 +65,15 @@ const blockStarts = (text: string, from = 0, keepLeading = true): Split => {
   const offset = last?.position?.start.offset;
   if ((last?.type === "code" || last?.type === "math") && offset !== undefined) {
     const start = offset + from;
+    const indent = start - (text.lastIndexOf("\n", start - 1) + 1);
     const end = text.indexOf("\n", start);
     const opening = /^ {0,3}(`{3,}|~{3,}|\${2,})([^\n]*)$/.exec(text.slice(start, end));
-    if (end !== -1 && opening !== null) {
+    if (indent <= 3 && end !== -1 && opening !== null) {
       const tail = advanceFence(text, end + 1, {
         marker: opening[1]!,
         body: end + 1,
         language: last.type === "math" ? "math" : (last.lang?.toLowerCase() ?? ""),
-        indent: start - (text.lastIndexOf("\n", start - 1) + 1),
+        indent,
         line: { indent: 0, marks: 0, trailing: false },
       });
       if (tail.fence !== undefined) return { starts, fence: tail.fence };

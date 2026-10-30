@@ -17,7 +17,10 @@ import {
   type BrowserWindow,
   type Rectangle,
   type WebContents,
+  type NavigationEntry,
 } from "electron";
+
+import { releasablePreviews } from "./previewRetention.ts";
 
 // The Preview pane's browser: one page per thread, in a view of its own over the window, which the
 // user watches and the thread's agents drive. The UI says where its pane is (or that it's away), and
@@ -64,6 +67,9 @@ interface Preview {
   parkedUntil: number;
   page: Promise<Page> | undefined;
   error: string | undefined;
+  calls: number;
+  lastUsed: number;
+  restoring: Promise<void> | undefined;
 }
 
 /** CDP over the view's own debugger: no port is opened, and no other program reaches the page. */
@@ -139,6 +145,13 @@ const isThread = (value: unknown): value is string =>
 /** Lays out the threads' pages over `window()` and answers the UI's and agents' calls on them. */
 export const previews = (window: () => BrowserWindow | undefined) => {
   const all = new Map<string, Preview>();
+  const saved = new Map<string, { entries: Array<NavigationEntry>; index: number }>();
+  let activeThreads = new Set<string>();
+  let retiredThreads = new Set<string>();
+  let archivedThreads = new Set<string>();
+  let knownThreads = new Set<string>();
+  let lifecycleKnown = false;
+  let cleanupTimer: NodeJS.Timeout | undefined;
   let configured = false;
 
   const previewSession = () => {
@@ -170,6 +183,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
   };
 
   const report = (preview: Preview) => {
+    if (all.get(preview.threadId) !== preview) return;
     const owner = window();
     if (owner === undefined || owner.isDestroyed() || preview.view.webContents.isDestroyed()) return;
     owner.webContents.send("cerium:preview-state", stateOf(preview));
@@ -207,6 +221,9 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     const owner = window();
     if (owner === undefined || owner.isDestroyed()) return;
     const { view } = preview;
+    view.webContents.setBackgroundThrottling(
+      preview.calls === 0 && !activeThreads.has(preview.threadId) && Date.now() >= preview.parkedUntil,
+    );
     if (preview.shown !== undefined) {
       moveTo(preview, owner);
       view.setBounds(preview.shown);
@@ -249,8 +266,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
-        // Agents drive pages the user isn't looking at; their timers keep running.
-        backgroundThrottling: false,
+        backgroundThrottling: true,
       },
     });
     view.setBackgroundColor("#ffffff");
@@ -266,6 +282,9 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       parkedUntil: 0,
       page: undefined,
       error: undefined,
+      calls: 0,
+      lastUsed: Date.now(),
+      restoring: undefined,
     };
     const contents = view.webContents;
     // http and https only, wherever a page tries to go; a popup opens in the same view.
@@ -297,23 +316,70 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       changed();
     });
     // A crashed page's view shows nothing: it's dropped, and the next call opens a fresh one.
-    contents.on("render-process-gone", () => close(threadId));
+    contents.on("render-process-gone", () => {
+      if (all.get(threadId) === preview) close(threadId);
+    });
     all.set(threadId, preview);
+    const history = saved.get(threadId);
+    if (history !== undefined) {
+      saved.delete(threadId);
+      preview.restoring = contents.navigationHistory
+        .restore({ entries: history.entries, index: history.index })
+        .catch(() => undefined);
+    }
+    scheduleCleanup();
     return preview;
   };
 
   const open = (threadId: string) => all.get(threadId) ?? create(threadId);
 
-  const close = (threadId: string) => {
+  const close = (threadId: string, remember = false) => {
+    if (!remember) saved.delete(threadId);
     const preview = all.get(threadId);
     if (preview === undefined) return;
     all.delete(threadId);
+    retiredThreads.delete(threadId);
+    if (remember && !preview.view.webContents.isDestroyed()) {
+      const history = preview.view.webContents.navigationHistory;
+      const active = history.getActiveIndex();
+      const from = Math.max(0, active - 10);
+      const entries = history
+        .getAllEntries()
+        .slice(from, from + 20)
+        .map(({ url, title }) => ({ url, title }));
+      if (entries.length > 0) saved.set(threadId, { entries, index: active - from });
+      if (saved.size > 100) saved.delete(saved.keys().next().value!);
+    }
     if (!preview.view.webContents.isDestroyed()) preview.view.webContents.close();
     if (!preview.parent.isDestroyed()) preview.parent.contentView.removeChildView(preview.view);
     releaseParking();
     const owner = window();
     if (owner === undefined || owner.isDestroyed()) return;
     owner.webContents.send("cerium:preview-closed", threadId);
+  };
+
+  const cleanup = () => {
+    if (!lifecycleKnown) return;
+    const pages = [...all.values()].map((preview) => ({
+      threadId: preview.threadId,
+      shown: preview.shown !== undefined,
+      active: activeThreads.has(preview.threadId),
+      calls: preview.calls,
+      lastUsed: preview.lastUsed,
+      parkedUntil: preview.parkedUntil,
+      retired: retiredThreads.has(preview.threadId),
+    }));
+    for (const threadId of releasablePreviews(pages, Date.now())) close(threadId, true);
+  };
+
+  const scheduleCleanup = () => {
+    if (cleanupTimer !== undefined || all.size === 0) return;
+    cleanupTimer = setTimeout(() => {
+      cleanupTimer = undefined;
+      cleanup();
+      scheduleCleanup();
+    }, 30_000);
+    cleanupTimer.unref();
   };
 
   /**
@@ -324,6 +390,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     const contents = preview.view.webContents;
     if (preview.page === undefined || !contents.debugger.isAttached()) {
       const attached = (async () => {
+        await preview.restoring;
         if (contents.getURL() === "") await contents.loadURL("about:blank");
         if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
         const page = await Page.attach(debuggerSession(contents));
@@ -356,6 +423,8 @@ export const previews = (window: () => BrowserWindow | undefined) => {
   /** Runs an agent's call on `threadId`'s page, opening it first if it isn't. */
   const run = async (threadId: string, command: BrowserCommand): Promise<BrowserReport> => {
     const preview = open(threadId);
+    preview.calls++;
+    preview.lastUsed = Date.now();
     preview.parkedUntil = Date.now() + PARKED_MS;
     place(preview);
     try {
@@ -365,7 +434,17 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       }
       return await runCommand(page, command, (url) => load(preview, url));
     } finally {
+      preview.calls--;
+      preview.lastUsed = Date.now();
       preview.parkedUntil = Date.now() + PARKED_MS;
+      if (
+        all.get(threadId) === preview &&
+        retiredThreads.has(threadId) &&
+        preview.calls === 0 &&
+        !activeThreads.has(threadId)
+      )
+        close(threadId, true);
+      else cleanup();
       setTimeout(() => {
         if (all.get(threadId) === preview) place(preview);
       }, PARKED_MS + 100);
@@ -390,6 +469,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     if (owner === undefined || event.sender !== owner.webContents) return;
     const preview = bounds === null ? all.get(threadId) : open(threadId);
     if (preview === undefined) return;
+    preview.lastUsed = Date.now();
     if (bounds === null) preview.shown = undefined;
     else {
       const zoom = owner.webContents.getZoomFactor();
@@ -426,6 +506,53 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     if (isThread(threadId)) close(threadId);
   });
 
+  ipcMain.on("cerium:preview-retire", (event, threadId: unknown) => {
+    const owner = window();
+    if (
+      owner === undefined ||
+      event.sender !== owner.webContents ||
+      !isThread(threadId) ||
+      !all.has(threadId)
+    )
+      return;
+    // A successful archive already stopped the agents; the shell still owns any outstanding call.
+    activeThreads.delete(threadId);
+    retiredThreads.add(threadId);
+    if (all.get(threadId)!.calls === 0) close(threadId, true);
+  });
+
+  // Only the main window hosts the local backend's browser; remote and other windows own none.
+  ipcMain.on("cerium:preview-threads", (event, threads: unknown) => {
+    const owner = window();
+    if (owner === undefined || event.sender !== owner.webContents || !Array.isArray(threads)) return;
+    if (
+      !threads.every(
+        (thread: unknown) =>
+          typeof thread === "object" &&
+          thread !== null &&
+          isThread((thread as { id?: unknown }).id) &&
+          typeof (thread as { active?: unknown }).active === "boolean" &&
+          typeof (thread as { retired?: unknown }).retired === "boolean",
+      )
+    )
+      return;
+    const known = threads as Array<{ id: string; active: boolean; retired: boolean }>;
+    activeThreads = new Set(known.filter((thread) => thread.active).map((thread) => thread.id));
+    const archived = new Set(known.filter((thread) => thread.retired).map((thread) => thread.id));
+    for (const thread of known) {
+      if (thread.retired && !archivedThreads.has(thread.id) && all.has(thread.id))
+        retiredThreads.add(thread.id);
+      if (!thread.retired) retiredThreads.delete(thread.id);
+    }
+    archivedThreads = archived;
+    const ids = new Set(known.map((thread) => thread.id));
+    for (const id of knownThreads) if (!ids.has(id) && all.has(id)) retiredThreads.add(id);
+    knownThreads = ids;
+    lifecycleKnown = true;
+    cleanup();
+    for (const preview of all.values()) place(preview);
+  });
+
   /** What the page shows now, as a PNG data URL, for the pane to draw while something covers it. */
   ipcMain.handle("cerium:preview-still", async (_event, threadId: unknown) => {
     const preview = isThread(threadId) ? all.get(threadId) : undefined;
@@ -449,7 +576,10 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     },
     /** The window closed: the pages go with it. */
     closeAll: () => {
+      if (cleanupTimer !== undefined) clearTimeout(cleanupTimer);
+      cleanupTimer = undefined;
       for (const threadId of [...all.keys()]) close(threadId);
+      saved.clear();
     },
   };
 };

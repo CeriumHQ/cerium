@@ -206,6 +206,10 @@ export interface PreviewBridge {
   readonly go: (threadId: string, go: "back" | "forward" | "reload" | "stop") => void;
   /** Closes the thread's page. */
   readonly close: (threadId: string) => void;
+  /** Releases a successfully archived page after any browser call still in flight finishes. */
+  readonly retire?: (threadId: string) => void;
+  /** The local threads owning pages, including archives/deletions made by another client. */
+  readonly threads?: (threads: ReadonlyArray<{ id: string; active: boolean; retired: boolean }>) => void;
   /** What the page shows now, as a PNG data URL. */
   readonly still: (threadId: string) => Promise<string | undefined>;
   /** Every page open now. */

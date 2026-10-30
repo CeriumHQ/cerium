@@ -124,6 +124,9 @@ contextBridge.exposeInMainWorld("cerium", {
     go: (threadId: string, go: "back" | "forward" | "reload" | "stop"): void =>
       ipcRenderer.send("cerium:preview-go", threadId, go),
     close: (threadId: string): void => ipcRenderer.send("cerium:preview-close", threadId),
+    retire: (threadId: string): void => ipcRenderer.send("cerium:preview-retire", threadId),
+    threads: (threads: ReadonlyArray<{ id: string; active: boolean; retired: boolean }>): void =>
+      ipcRenderer.send("cerium:preview-threads", threads),
     still: (threadId: string): Promise<string | undefined> =>
       ipcRenderer.invoke("cerium:preview-still", threadId),
     states: (): Promise<unknown> => ipcRenderer.invoke("cerium:preview-states"),
