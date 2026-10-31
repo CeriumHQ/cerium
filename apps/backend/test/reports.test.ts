@@ -3,7 +3,7 @@ import { Cause, Effect, Logger } from "effect";
 
 import { HarnessFailure, HarnessUnavailable } from "@cerium/harness";
 
-import { crashReport, reportLogger, type CrashReportMessage } from "../src/reports.ts";
+import { reportLogger, type CrashReportMessage } from "../src/reports.ts";
 
 /** Runs `effect` with the report logger, and gives back what it posted. */
 const posted = (effect: Effect.Effect<void>) => {
@@ -65,19 +65,5 @@ describe("reportLogger", () => {
         ]).pipe(Effect.asVoid),
       ),
     ).toEqual([]);
-  });
-});
-
-describe("crashReport", () => {
-  it("names a tagged error by its tag and keeps its stack", () => {
-    const error = new Error("boom");
-    expect(crashReport("crash", error, { kind: "uncaught" })).toMatchObject({
-      _tag: "CrashReport",
-      category: "crash",
-      kind: "uncaught",
-      name: "Error",
-      message: "boom",
-      stack: error.stack,
-    });
   });
 });

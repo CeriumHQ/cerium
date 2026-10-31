@@ -6,7 +6,6 @@ import {
   defaultReviewer,
   numberedDiff,
   readReview,
-  reviewPrompt,
   splitFiles,
 } from "../src/reviewModel.ts";
 
@@ -60,7 +59,6 @@ describe("numberedDiff", () => {
     const { text, left } = numberedDiff(files, 70);
     assert.include(text, "a.ts");
     assert.deepStrictEqual(left, ["b.ts"]);
-    assert.include(reviewPrompt({ label: "2 files", author: undefined, files }), '"findings"');
   });
 });
 

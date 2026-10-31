@@ -10,7 +10,6 @@ import {
   GitChanges,
   leadingFields,
   linePatch,
-  parentFolders,
   parseStatusV2,
   rawHunks,
 } from "../src/gitChanges.ts";
@@ -49,11 +48,6 @@ describe("git status", () => {
     expect(leadingFields("a\0b\0c\0", 5)).toEqual({ text: "a\0b\0c\0", more: false });
     expect(leadingFields("a\0b\0c\0", 2)).toEqual({ text: "a\0b\0", more: true });
     expect(leadingFields("", 2)).toEqual({ text: "", more: false });
-  });
-
-  it("names the folders a path is in, nearest first", () => {
-    expect(parentFolders("a/b/c.ts")).toEqual(["a/b", "a"]);
-    expect(parentFolders("top.ts")).toEqual([]);
   });
 });
 

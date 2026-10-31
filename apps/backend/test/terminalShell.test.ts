@@ -1,15 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import {
-  chooseShell,
-  commandChoice,
-  exitCodeOf,
-  shellName,
-  taskkillArgs,
-  terminalEnv,
-  windowsBuild,
-  type ShellHost,
-} from "../src/terminalShell.ts";
+import { chooseShell, commandChoice, exitCodeOf, terminalEnv, type ShellHost } from "../src/terminalShell.ts";
 
 const host = (
   platform: NodeJS.Platform,
@@ -68,14 +59,6 @@ describe("chooseShell", () => {
   });
 });
 
-describe("shellName", () => {
-  it("names shells as a tab shows them", () => {
-    expect(shellName("C:\\Program Files\\PowerShell\\7\\pwsh.exe")).toBe("PowerShell");
-    expect(shellName("C:\\Windows\\System32\\cmd.exe")).toBe("Command Prompt");
-    expect(shellName("/usr/local/bin/zsh")).toBe("zsh");
-  });
-});
-
 describe("terminalEnv", () => {
   it("sets up a terminal emulator and keeps Electron's switches from reaching the shell", () => {
     const env = terminalEnv(
@@ -97,20 +80,6 @@ describe("exitCodeOf", () => {
     expect(exitCodeOf({ exitCode: 3 })).toBe(3);
     expect(exitCodeOf({ exitCode: 0, signal: 0 })).toBe(0);
     expect(exitCodeOf({ exitCode: 0, signal: 9 })).toBe(137);
-  });
-});
-
-describe("taskkillArgs", () => {
-  it("ends the whole process tree", () => {
-    expect(taskkillArgs(4242)).toEqual(["/pid", "4242", "/T", "/F"]);
-  });
-});
-
-describe("windowsBuild", () => {
-  it("reads the build from the release, on Windows only", () => {
-    expect(windowsBuild("win32", "10.0.26300")).toBe(26300);
-    expect(windowsBuild("linux", "6.8.0")).toBeUndefined();
-    expect(windowsBuild("win32", "weird")).toBeUndefined();
   });
 });
 

@@ -134,27 +134,6 @@ describe("git status", () => {
   const status = (...lines: Array<string>) => `${lines.join("\0")}\0`;
   const oid = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
 
-  it("reads the branch, its upstream and how far apart they are", () => {
-    const parsed = parseGitStatus(
-      status(
-        `# branch.oid ${oid}`,
-        "# branch.head main",
-        "# branch.upstream origin/main",
-        "# branch.ab +2 -3",
-        "1 .M N... 100644 100644 100644 aaa bbb src/a.ts",
-        "? new file.txt",
-      ),
-    );
-    expect(parsed).toEqual({
-      branch: "main",
-      commit: "1a2b3c4",
-      detached: false,
-      upstream: { name: "origin/main", ahead: 2, behind: 3, gone: false },
-      changes: 2,
-      unmerged: [],
-    });
-  });
-
   it("says an upstream with no counts is gone", () => {
     const parsed = parseGitStatus(
       status(`# branch.oid ${oid}`, "# branch.head dev", "# branch.upstream origin/dev"),

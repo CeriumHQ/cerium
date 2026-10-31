@@ -259,7 +259,7 @@ describe("Terminals.openProject", () => {
 });
 
 describe("Terminals.attach", () => {
-  it.live("sends the screen as it stands, then what the shell prints, until it ends with its code", () => {
+  it.live("sends live output and the final screen and exit code to a viewer that arrives later", () => {
     const { spawned, provide } = withTerminals();
     return provide(
       Effect.gen(function* () {
@@ -289,25 +289,12 @@ describe("Terminals.attach", () => {
         yield* Fiber.join(viewer.fiber);
         assert.deepStrictEqual(viewer.seen.at(-1), { _tag: "Exit", code: 3 });
         assert.strictEqual((yield* terminals.list)[0]?.exitCode, 3);
-      }),
-    );
-  });
 
-  it.live("hands a viewer that arrives after the shell ended its last screen and the code", () => {
-    const { spawned, provide } = withTerminals();
-    return provide(
-      Effect.gen(function* () {
-        const terminals = yield* Terminals;
-        yield* workThread("thr_a");
-        const { id } = yield* terminals.open(at("thr_a"), size);
-        spawned[0]?.print("done\r\n");
-        spawned[0]?.end(0);
-        yield* settle;
-        const viewer = yield* watch(terminals, id);
-        yield* Fiber.join(viewer.fiber);
-        assert.strictEqual(viewer.seen.length, 2);
-        assert.include(text(viewer.seen), "done");
-        assert.deepStrictEqual(viewer.seen[1], { _tag: "Exit", code: 0 });
+        const late = yield* watch(terminals, id);
+        yield* Fiber.join(late.fiber);
+        assert.strictEqual(late.seen.length, 2);
+        assert.include(text(late.seen), "one two");
+        assert.deepStrictEqual(late.seen[1], { _tag: "Exit", code: 3 });
       }),
     );
   });

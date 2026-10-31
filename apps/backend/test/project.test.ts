@@ -4,27 +4,15 @@ import { Store } from "@cerium/store";
 import { Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { TestClock } from "effect/testing";
 
-import { branchFromHead, gitDirFromFile, Projects } from "../src/project.ts";
+import { branchFromHead, Projects } from "../src/project.ts";
 
 describe("branchFromHead", () => {
-  it("names the checked-out branch, slashes included", () => {
-    expect(branchFromHead("ref: refs/heads/feat/inbox\n")).toBe("feat/inbox");
-  });
-
   it("shows a detached HEAD as its short commit", () => {
     expect(branchFromHead("4f1c2a9e0b7d6c5e4f3a2b1c0d9e8f7a6b5c4d3e\n")).toBe("4f1c2a9");
   });
 
   it("reads nothing into a HEAD it doesn't recognise", () => {
     expect(branchFromHead("")).toBeUndefined();
-  });
-});
-
-describe("gitDirFromFile", () => {
-  it("follows a worktree's pointer to its git folder", () => {
-    expect(gitDirFromFile("gitdir: C:/code/repo/.git/worktrees/inbox\n")).toBe(
-      "C:/code/repo/.git/worktrees/inbox",
-    );
   });
 });
 

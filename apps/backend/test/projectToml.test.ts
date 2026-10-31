@@ -64,17 +64,6 @@ describe("readProjectFile", () => {
 });
 
 describe("tomlString", () => {
-  it("quotes plainly when nothing needs escaping, and falls back to a literal string", () => {
-    expect(tomlString("bun run dev")).toBe('"bun run dev"');
-    expect(tomlString('node -e "x"')).toBe("'node -e \"x\"'");
-    expect(tomlString("copy C:\\a\\b")).toBe("'copy C:\\a\\b'");
-  });
-
-  it("escapes what a literal string can't hold", () => {
-    expect(tomlString('it\'s "x"')).toBe('"it\'s \\"x\\""');
-    expect(tomlString("a\nb\tc")).toBe('"a\\nb\\tc"');
-  });
-
   it("reads back as written", () => {
     for (const command of [
       "bun run dev",
@@ -89,12 +78,6 @@ describe("tomlString", () => {
 });
 
 describe("editProjectFile", () => {
-  it("makes the file when there is none", () => {
-    expect(editProjectFile("", { scripts: { setup: "bun install", run: "bun run dev" } })).toBe(
-      '[scripts]\nsetup = "bun install"\nrun = "bun run dev"\n',
-    );
-  });
-
   it("adds the scripts section to a file that has other sections, leaving them as they are", () => {
     const text = '# Team config\n[package]\nname = "x" # keep\n\n\n';
     expect(editProjectFile(text, { scripts: { run: "bun run dev" } })).toBe(

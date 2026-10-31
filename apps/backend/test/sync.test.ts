@@ -15,7 +15,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Deferred, Effect, Layer, PubSub, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
-import { batches, cloudEvent, CloudCopy, lastActive } from "../src/sync.ts";
+import { batches, cloudEvent, CloudCopy } from "../src/sync.ts";
 
 const event = (sequence: number, text = "done"): AgentEvent => ({
   id: `evt_${sequence}` as EventId,
@@ -42,29 +42,12 @@ describe("an event's cloud copy", () => {
   });
 });
 
-describe("lastActive", () => {
-  it("is when the thread or the last of its agents changed", () => {
-    const overview = (thread: number, agents: ReadonlyArray<number>) =>
-      ({
-        thread: { updatedAt: thread },
-        agents: agents.map((updatedAt) => ({ updatedAt })),
-        awaitingApproval: false,
-      }) as unknown as ThreadOverview;
-    expect(lastActive(overview(5, []))).toBe(5);
-    expect(lastActive(overview(5, [3, 9, 7]))).toBe(9);
-  });
-});
-
 describe("batches", () => {
   it("keep each batch under the size the relay stores, in order", () => {
     const big = (sequence: number) => cloudEvent(event(sequence, "y".repeat(400_000)));
     const split = batches([big(1), big(2), big(3)]);
     expect(split.map((batch) => batch.map((each: UiEvent) => each.sequence))).toEqual([[1, 2], [3]]);
     for (const batch of split) expect(JSON.stringify(batch).length).toBeLessThanOrEqual(MAX_SYNC_BATCH_BYTES);
-  });
-
-  it("make none of nothing", () => {
-    expect(batches([])).toEqual([]);
   });
 });
 

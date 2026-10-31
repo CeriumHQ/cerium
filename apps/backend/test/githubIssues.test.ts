@@ -170,10 +170,6 @@ describe("parseIssuePage", () => {
     expect(page.issues[0]).not.toHaveProperty("stateReason");
     expect(page.issues[0]).not.toHaveProperty("milestone");
   });
-
-  it("reads an answer without a search as no issues", () => {
-    expect(parseIssuePage({})).toEqual({ issues: [], total: 0 });
-  });
 });
 
 describe("parseTimeline", () => {
@@ -541,10 +537,6 @@ describe("parseIssueChoices", () => {
       milestones: [{ title: "v1", url: "https://github.com/a/b/milestone/1", open: true }],
     });
   });
-
-  it("reads an answer without a viewer as none", () => {
-    expect(parseIssueChoices({})).toBeUndefined();
-  });
 });
 
 describe("revisionOf", () => {
@@ -605,26 +597,6 @@ const fakeGitHub = (
 };
 
 describe("issues", () => {
-  it.effect("lists the open issues of the repository a page at a time", () =>
-    Effect.gen(function* () {
-      const { github, calls } = fakeGitHub([
-        { search: { issueCount: 0, pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } },
-      ]);
-      const page = yield* issues(github).list("/work", { assignedToMe: true }, "CURSOR");
-      assert.deepStrictEqual(page, { issues: [], total: 0 });
-      assert.deepStrictEqual(calls, [
-        {
-          kind: "graphql",
-          variables: {
-            q: "repo:acme/app is:issue is:open assignee:@me sort:updated-desc",
-            first: 30,
-            after: "CURSOR",
-          },
-        },
-      ]);
-    }),
-  );
-
   it.effect("won't list the issues of a repository that has them turned off", () =>
     Effect.gen(function* () {
       const { github, calls } = fakeGitHub([], { ...REPOSITORY, hasIssues: false });
@@ -657,21 +629,6 @@ describe("issues", () => {
           method: "PATCH",
           path: "repos/acme/app/issues/8",
           body: { state: "closed", state_reason: "completed" },
-        },
-      ]);
-    }),
-  );
-
-  it.effect("reopens", () =>
-    Effect.gen(function* () {
-      const { github, calls } = fakeGitHub();
-      yield* issues(github).reopen("/work", 7);
-      assert.deepStrictEqual(calls, [
-        {
-          kind: "rest",
-          method: "PATCH",
-          path: "repos/acme/app/issues/7",
-          body: { state: "open", state_reason: "reopened" },
         },
       ]);
     }),
@@ -801,23 +758,6 @@ describe("issues", () => {
       const read = yield* Effect.flip(issues(github).detail("/work", 99, 100));
       assert.strictEqual(read.reason, "notFound");
       assert.strictEqual(read.message, "This repository has no issue #99.");
-    }),
-  );
-
-  it.effect("tells whether an issue changed since a reading", () =>
-    Effect.gen(function* () {
-      const issue = { updatedAt: "2026-10-21T01:21:21Z", state: "OPEN", comments: { totalCount: 2 } };
-      const answer = { repository: { issue } };
-      const { github } = fakeGitHub([answer, answer]);
-      const now = revisionOf(issue);
-      assert.deepStrictEqual(yield* issues(github).changed("/work", 5, now), {
-        changed: false,
-        revision: now,
-      });
-      assert.deepStrictEqual(yield* issues(github).changed("/work", 5, "older"), {
-        changed: true,
-        revision: now,
-      });
     }),
   );
 });

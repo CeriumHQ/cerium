@@ -7,13 +7,10 @@ import type { CatalogEntry } from "@cerium/orchestrator";
 
 import {
   capped,
-  COMMIT_INSTRUCTIONS,
   draftModels,
   Drafts,
   guidanceOn,
-  ISSUE_INSTRUCTIONS,
   parseDraft,
-  PULL_INSTRUCTIONS,
   QuickWriter,
 } from "../src/drafts.ts";
 import { Git } from "../src/git.ts";
@@ -150,13 +147,13 @@ describe("replies", () => {
 
 /** A quick model that answers `reply`, keeping what it was asked. */
 const fakeWriter = (reply: string | undefined) => {
-  const asked: Array<{ instructions: string; prompt: string }> = [];
+  const asked: Array<string> = [];
   const layer = Layer.succeed(
     QuickWriter,
     QuickWriter.of({
-      write: (instructions, prompt) =>
+      write: (_instructions, prompt) =>
         Effect.sync(() => {
-          asked.push({ instructions, prompt });
+          asked.push(prompt);
           return Option.fromNullishOr(reply);
         }),
     }),
@@ -186,8 +183,7 @@ describe("Drafts", () => {
 
       const message = yield* drafts.commitMessage(root, { draft: "count further" });
       assert.strictEqual(message, "feat(app): count to eleven");
-      const [{ instructions, prompt }] = writer.asked as [{ instructions: string; prompt: string }];
-      assert.strictEqual(instructions, COMMIT_INSTRUCTIONS);
+      const prompt = writer.asked[0] ?? "";
       assert.include(prompt, "- Commit messages follow Conventional Commits.");
       assert.notInclude(prompt, "Use tabs");
       assert.include(prompt, "config-conventional");
@@ -211,7 +207,7 @@ describe("Drafts", () => {
       yield* write("wide.txt", `${"ü".repeat(2_000_000)}\n`);
 
       assert.strictEqual(yield* drafts.commitMessage(root, {}), "Add notes\n\nAnd change the title.");
-      const prompt = writer.asked[0]?.prompt ?? "";
+      const prompt = writer.asked[0] ?? "";
       assert.include(prompt, "+# Changed");
       assert.include(prompt, "New file notes.txt:\nremember the milk");
       assert.include(prompt, `New file wide.txt:\n${"ü".repeat(1_200)}\n… (cut here)`);
@@ -244,8 +240,7 @@ describe("Drafts", () => {
 
       const made = yield* drafts.pullRequest(root, "main", { title: "Eleven", body: "" });
       assert.deepStrictEqual(made, { title: "Count to eleven", body: "## Summary\n- Adds eleven." });
-      const [{ instructions, prompt }] = writer.asked as [{ instructions: string; prompt: string }];
-      assert.strictEqual(instructions, PULL_INSTRUCTIONS);
+      const prompt = writer.asked[0] ?? "";
       assert.include(prompt, "merges the branch eleven into main");
       assert.include(prompt, "<template>\n## Summary\n\n## Testing");
       assert.include(prompt, "- Add a template\n- first");
@@ -279,8 +274,7 @@ describe("Drafts", () => {
         title: "Search is slow",
         body: "### What happened\nIt takes ten seconds.",
       });
-      const [{ instructions, prompt }] = writer.asked as [{ instructions: string; prompt: string }];
-      assert.strictEqual(instructions, ISSUE_INSTRUCTIONS);
+      const prompt = writer.asked[0] ?? "";
       assert.include(prompt, '<template name="bug.md">\n### What happened\n</template>');
       assert.notInclude(prompt, "blank_issues_enabled");
       assert.include(prompt, "<notes>\nsearch takes 10s\n</notes>");

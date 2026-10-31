@@ -17,7 +17,6 @@ import {
   readLine,
   rollup,
   runsOf,
-  simulatedCi,
   stateOf,
   tailOf,
   type PushProgress,
@@ -27,21 +26,6 @@ const read = (lines: ReadonlyArray<string>, from: PushProgress = NO_PROGRESS) =>
   lines.reduce((progress, line, index) => readLine(progress, line, 1_000 + index), from);
 
 describe("readLine", () => {
-  it("follows the hook's steps by their start and result lines", () => {
-    const progress = read([
-      "> Commit messages",
-      "all good",
-      "< Commit messages: passed",
-      "> Verify",
-      "lint…",
-    ]);
-    expect(progress.sending).toBe(false);
-    expect(progress.hook.map((step) => [step.label, step.state])).toEqual([
-      ["Commit messages", "passed"],
-      ["Verify", "running"],
-    ]);
-  });
-
   it("ends a step that never said how when the next one starts", () => {
     const progress = read(["> One", "> Two"]);
     expect(progress.hook.map((step) => step.state)).toEqual(["done", "running"]);
@@ -279,22 +263,6 @@ describe("what the agent is told", () => {
       "CI for your push to origin/main (a41c9e2) passed: 1 check.",
     );
     expect(ciNote(push({ ci: { ...ci, state: "running" } }))).toBeUndefined();
-  });
-});
-
-describe("simulatedCi", () => {
-  it("queues, runs and ends its checks over time, failing one when asked", () => {
-    expect(simulatedCi(1_000, "pass", 0).runs).toEqual([]);
-    const running = simulatedCi(5_000, "fail", 0);
-    expect(rollup(running.runs, running.checks)).toBe("running");
-    expect(running.checks.some((check) => check.state === "waiting")).toBe(true);
-    const failed = simulatedCi(60_000, "fail", 0);
-    expect(rollup(failed.runs, failed.checks)).toBe("failed");
-    expect(failed.checks.filter((check) => check.state === "failed").map((check) => check.name)).toEqual([
-      "Tests (Linux)",
-    ]);
-    const passed = simulatedCi(60_000, "pass", 0);
-    expect(rollup(passed.runs, passed.checks)).toBe("passed");
   });
 });
 

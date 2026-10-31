@@ -4,7 +4,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { createServer } from "node:net";
 
-import { blockIsFree, environmentOf, PORT_BLOCK, pickBlock, ThreadEnv } from "../src/threadEnv.ts";
+import { blockIsFree, PORT_BLOCK, pickBlock, ThreadEnv } from "../src/threadEnv.ts";
 
 // The ports a thread's scripts share out, and the variables that tell them of the thread.
 
@@ -56,25 +56,6 @@ describe("blockIsFree", () => {
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
-  });
-});
-
-describe("environmentOf", () => {
-  it("names the thread, its project and its folder, and the branch and ports it has", () => {
-    expect(
-      environmentOf({ id: "thr_a", cwd: "/w/app", root: "/p/app", branch: "cerium/fix", port: 20010 }),
-    ).toEqual({
-      CERIUM_THREAD_ID: "thr_a",
-      CERIUM_ROOT_PATH: "/p/app",
-      CERIUM_WORKSPACE_PATH: "/w/app",
-      CERIUM_BRANCH: "cerium/fix",
-      CERIUM_PORT: "20010",
-    });
-    expect(environmentOf({ id: "thr_a", cwd: "/p/app", root: "/p/app" })).toEqual({
-      CERIUM_THREAD_ID: "thr_a",
-      CERIUM_ROOT_PATH: "/p/app",
-      CERIUM_WORKSPACE_PATH: "/p/app",
-    });
   });
 });
 

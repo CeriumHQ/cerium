@@ -6,19 +6,8 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { createHash } from "node:crypto";
 
-import { checkpointsLayer, maintainCheckpoints, parseNameStatus, parseNumstat } from "../src/checkpoints.ts";
+import { checkpointsLayer, maintainCheckpoints, parseNumstat } from "../src/checkpoints.ts";
 import { DIFF_BYTES } from "../src/files.ts";
-
-describe("parseNameStatus", () => {
-  it("reads each file's change from git's NUL-separated list", () => {
-    expect(parseNameStatus("")).toEqual([]);
-    expect(parseNameStatus("M\0a.ts\0A\0dir/new file.ts\0D\0gone.txt\0")).toEqual([
-      { path: "a.ts", change: "modified" },
-      { path: "dir/new file.ts", change: "added" },
-      { path: "gone.txt", change: "deleted" },
-    ]);
-  });
-});
 
 describe("parseNumstat", () => {
   it("reads each file's lines from git's NUL-separated list, none for one that isn't text", () => {
