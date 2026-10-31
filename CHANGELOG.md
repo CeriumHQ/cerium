@@ -22,6 +22,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Dev-server addresses in a terminal are read through colour codes and trailing brackets, and one cut off at the end of the output waits for the rest, so agents and the preview get the full URL.
 - A file still being prepared in a draft survives another window saving drafts.
 - Pausing, editing or deleting an automation reports an error and keeps the automation as it was when its file can't be saved, instead of appearing to succeed and reverting after a restart.
+- `read_thread` over remote MCP leaves out messages a rewind replaced and queued messages the user withdrew.
 
 ### Changed
 

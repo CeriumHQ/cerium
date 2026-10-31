@@ -282,4 +282,44 @@ describe("the cloud copy, read", () => {
       { from: "user", text: "And docs", at: 7 },
     ]);
   });
+
+  it("leaves out what a rewind replaced and the queued messages the user took back", () => {
+    const turn = (sequence: number, id: string, text: string) => ({
+      agentId: "lead",
+      sequence,
+      at: sequence,
+      payload: { _tag: "TurnInput", items: [{ _tag: "FromUser", id, text }] },
+    });
+    const reply = (sequence: number, text: string) => ({
+      agentId: "lead",
+      sequence,
+      at: sequence,
+      payload: { _tag: "MessageCompleted", text },
+    });
+    const events = [
+      turn(1, "msg_1", "Add dark mode"),
+      reply(2, "Dark mode is in."),
+      turn(3, "msg_2", "Use a toggle"),
+      reply(4, "Toggle added."),
+      {
+        agentId: "lead",
+        sequence: 5,
+        at: 5,
+        payload: { _tag: "ConversationRewound", fromSequence: 3, messageId: "msg_2", via: "fork" },
+      },
+      turn(6, "msg_3", "Follow the system theme"),
+      {
+        agentId: "lead",
+        sequence: 7,
+        at: 7,
+        payload: { _tag: "MessageQueued", message: { _tag: "FromUser", id: "msg_4", text: "Never mind" } },
+      },
+      { agentId: "lead", sequence: 8, at: 8, payload: { _tag: "MessageWithdrawn", messageId: "msg_4" } },
+    ];
+    expect(threadMessages(overview(), events)).toEqual([
+      { from: "user", text: "Add dark mode", at: 1 },
+      { from: "lead", text: "Dark mode is in.", at: 2 },
+      { from: "user", text: "Follow the system theme", at: 6 },
+    ]);
+  });
 });

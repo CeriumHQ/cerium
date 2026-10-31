@@ -125,19 +125,25 @@ interface StoredMessage {
 
 interface StoredEvent {
   readonly agentId?: string;
+  readonly sequence?: number;
   readonly at?: number;
   readonly payload?: {
     readonly _tag?: string;
     readonly text?: string;
     readonly message?: StoredMessage;
     readonly items?: ReadonlyArray<StoredMessage>;
+    /** A `ConversationRewound`'s first replaced event. */
+    readonly fromSequence?: number;
+    /** A `MessageWithdrawn`'s message. */
+    readonly messageId?: string;
   };
 }
 
 /**
  * The user's messages and the lead's replies among a thread's events, the latest `THREAD_MESSAGES`. A
  * user's message is in the `TurnInput` that delivered it, and in its `MessageQueued` when it waited:
- * told once, by its id.
+ * told once, by its id. What the conversation no longer holds is left out, as the app leaves it out:
+ * the events a rewind replaced, and the queued messages the user took back.
  */
 export const threadMessages = (
   overviewJson: string,
@@ -152,7 +158,21 @@ export const threadMessages = (
   }
   const cut = (text: string) =>
     text.length <= MESSAGE_CHARS ? text : `${text.slice(0, MESSAGE_CHARS)}… (cut short)`;
-  const told = new Set<string>();
+  const live: Array<StoredEvent> = [];
+  const withdrawn = new Set<string>();
+  for (const event of events as ReadonlyArray<StoredEvent>) {
+    if (event.agentId !== lead) continue;
+    const { payload } = event;
+    if (payload?._tag === "ConversationRewound" && typeof payload.fromSequence === "number") {
+      const from = payload.fromSequence;
+      while (live.length > 0 && (live.at(-1)?.sequence ?? -1) >= from) live.pop();
+    }
+    if (payload?._tag === "MessageWithdrawn" && typeof payload.messageId === "string") {
+      withdrawn.add(payload.messageId);
+    }
+    live.push(event);
+  }
+  const told = new Set<string>(withdrawn);
   const fromUser = (message: StoredMessage | undefined, at: number): ReadonlyArray<ThreadMessage> => {
     if (message?._tag !== "FromUser" || typeof message.text !== "string") return [];
     if (message.id !== undefined) {
@@ -161,9 +181,8 @@ export const threadMessages = (
     }
     return [{ from: "user", text: cut(message.text), at }];
   };
-  return (events as ReadonlyArray<StoredEvent>)
+  return live
     .flatMap((event): ReadonlyArray<ThreadMessage> => {
-      if (event.agentId !== lead) return [];
       const payload = event.payload;
       const at = event.at ?? 0;
       switch (payload?._tag) {
