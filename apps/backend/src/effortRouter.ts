@@ -85,12 +85,14 @@ export class EffortRouter extends Context.Service<
       const settings = yield* UserSettings;
       const failed = (message: string) => () => new EffortDecisionError({ message });
 
-      // Read from the vault once and kept in memory, so a turn doesn't wait on the shell for it.
+      // Cache successful reads only: a shell timeout must not hide a saved key until restart.
       const loaded = yield* Ref.make<Option.Option<string | undefined>>(Option.none());
       const currentKey = Effect.gen(function* () {
         const known = yield* Ref.get(loaded);
         if (Option.isSome(known)) return known.value;
-        const key = yield* vault.read.pipe(Effect.orElseSucceed(() => undefined));
+        const key = yield* vault.read.pipe(
+          Effect.mapError(failed("Couldn't read the saved OpenRouter key.")),
+        );
         yield* Ref.set(loaded, Option.some(key));
         return key;
       });
@@ -165,7 +167,10 @@ export class EffortRouter extends Context.Service<
         });
 
       const decider: EffortDecider["Service"] = {
-        ready: currentKey.pipe(Effect.map((key) => key !== undefined)),
+        ready: currentKey.pipe(
+          Effect.map((key) => key !== undefined),
+          Effect.orElseSucceed(() => false),
+        ),
         decide: (question) =>
           Effect.gen(function* () {
             const key = yield* currentKey;
