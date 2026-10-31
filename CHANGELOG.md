@@ -18,6 +18,7 @@ All notable changes to Cerium are recorded here. The format follows
 - The mobile Settings list scrolls to all its categories.
 - A link inside the thread's folder can no longer bring a file from outside it into an artifact preview's data or a cross-harness review's untracked files.
 - When a child agent's harness session crashes, its lead is told and receives the results its siblings already reported, instead of those results waiting on the crashed child.
+- Cloud sync measures events in UTF-8 bytes and caps each event to fit one stored batch, so multibyte or heavily structured output no longer fails upload over and over. An event too large even with its strings shortened is replaced in the cloud copy by a note.
 
 ### Changed
 

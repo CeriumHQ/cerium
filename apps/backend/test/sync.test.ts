@@ -40,6 +40,21 @@ describe("an event's cloud copy", () => {
     expect(text.length).toBeLessThan(60_000);
     expect(text.endsWith("(shortened in the cloud copy)")).toBe(true);
   });
+
+  it("fits the relay's byte budget with multibyte text and many strings each short of the cut", () => {
+    const bytes = (copy: UiEvent) => Buffer.byteLength(JSON.stringify(copy), "utf8");
+    const accented = cloudEvent(event(3, "é".repeat(600_000)));
+    expect(bytes(accented)).toBeLessThan(MAX_SYNC_BATCH_BYTES);
+    const todos = cloudEvent({
+      ...event(4),
+      payload: {
+        _tag: "TodosUpdated",
+        items: Array.from({ length: 40 }, () => ({ text: "z".repeat(45_000), status: "pending" as const })),
+      },
+    });
+    expect(bytes(todos)).toBeLessThan(MAX_SYNC_BATCH_BYTES);
+    expect(todos.payload._tag).toBe("TodosUpdated");
+  });
 });
 
 describe("batches", () => {

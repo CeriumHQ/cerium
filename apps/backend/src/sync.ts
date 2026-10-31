@@ -35,27 +35,48 @@ const UPLOADS = 4;
  * starting from the threads active last, so a new message goes up within a few seconds meanwhile.
  */
 const ROUND_BUDGET = 2_000;
-/** Strings longer than this are cut in the cloud copy of an event too big for one batch. */
-const LONG_STRING = 50_000;
+/**
+ * How long strings may stay in the cloud copy of an event too big for one batch, tried in turn until
+ * it fits.
+ */
+const LONG_STRINGS = [50_000, 4_000, 256];
+/** The most one event may take, so it fits a batch on its own (`batches` adds its brackets). */
+const EVENT_BYTES = MAX_SYNC_BATCH_BYTES - 2;
 
 const encodeEvent = Schema.encodeSync(UiEvent);
 
+/** What a value takes on the wire: UTF-8 bytes of its JSON, not UTF-16 code units. */
+const wireBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), "utf8");
+
 /**
  * An event's cloud copy: as the UI sees it without the images of tool outputs, which stay on this
- * machine, and with very long strings cut when it's too big to store.
+ * machine, and with long strings cut when it's too big to store. One that still doesn't fit, all its
+ * strings short, is told in its place.
  */
 export const cloudEvent = (event: AgentEvent): UiEvent => {
   const ui = encodeEvent(withoutImages(event)) as UiEvent;
-  if (JSON.stringify(ui).length <= MAX_SYNC_BATCH_BYTES) return ui;
-  const cut = (value: unknown): unknown =>
-    typeof value === "string" && value.length > LONG_STRING
-      ? `${value.slice(0, LONG_STRING)}\n… (shortened in the cloud copy)`
-      : Array.isArray(value)
-        ? value.map(cut)
-        : typeof value === "object" && value !== null
-          ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, cut(inner)]))
-          : value;
-  return { ...ui, payload: cut(ui.payload) as UiEvent["payload"] };
+  if (wireBytes(ui) <= EVENT_BYTES) return ui;
+  for (const limit of LONG_STRINGS) {
+    const cut = (value: unknown): unknown =>
+      typeof value === "string" && value.length > limit
+        ? `${value.slice(0, limit)}\n… (shortened in the cloud copy)`
+        : Array.isArray(value)
+          ? value.map(cut)
+          : typeof value === "object" && value !== null
+            ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, cut(inner)]))
+            : value;
+    const shortened = { ...ui, payload: cut(ui.payload) as UiEvent["payload"] };
+    if (wireBytes(shortened) <= EVENT_BYTES) return shortened;
+  }
+  return {
+    ...ui,
+    payload: {
+      _tag: "AgentError",
+      kind: "unknown",
+      message: `A ${ui.payload._tag} event here was too large for the cloud copy; it is on the machine that ran the thread.`,
+      retryable: false,
+    },
+  };
 };
 
 /** When something last happened in a thread, as its overview says: the thread or one of its agents changed. */
@@ -68,7 +89,7 @@ export const batches = (events: ReadonlyArray<UiEvent>): Array<Array<UiEvent>> =
   let current: Array<UiEvent> = [];
   let size = 2;
   for (const event of events) {
-    const bytes = JSON.stringify(event).length + 1;
+    const bytes = wireBytes(event) + 1;
     if (current.length > 0 && size + bytes > MAX_SYNC_BATCH_BYTES) {
       out.push(current);
       current = [];
