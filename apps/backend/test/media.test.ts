@@ -21,5 +21,7 @@ describe("byteRange", () => {
   it("can't serve a range past the end", () => {
     expect(byteRange("bytes=100-", 100)).toEqual({ _tag: "Unsatisfiable" });
     expect(byteRange("bytes=-0", 100)).toEqual({ _tag: "Unsatisfiable" });
+    expect(byteRange("bytes=-1", 0)).toEqual({ _tag: "Unsatisfiable" });
+    expect(byteRange("bytes=-300", 0)).toEqual({ _tag: "Unsatisfiable" });
   });
 });

@@ -106,7 +106,7 @@ export const resolveInside = (root: string, relative: string, api: PathApi = pat
 /** Whether `child` is `folder` or lies under it. */
 export const isInside = (folder: string, child: string, api: PathApi = pathApi): boolean => {
   const relative = api.relative(folder, child);
-  return relative === "" || (!relative.startsWith("..") && !api.isAbsolute(relative));
+  return relative !== ".." && !relative.startsWith(`..${api.sep}`) && !api.isAbsolute(relative);
 };
 
 const joinPath = (folder: string, name: string) => (folder === "" ? name : `${folder}/${name}`);

@@ -27,7 +27,7 @@ export const byteRange = (header: string | undefined, size: number): ByteRange =
   if (from === "") {
     // The last `to` bytes.
     const length = Number(to);
-    if (length === 0) return { _tag: "Unsatisfiable" };
+    if (length === 0 || size === 0) return { _tag: "Unsatisfiable" };
     return { _tag: "Part", start: Math.max(0, size - length), end: size - 1 };
   }
   const start = Number(from);
