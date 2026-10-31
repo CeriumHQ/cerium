@@ -109,19 +109,46 @@ export class Automations extends Context.Service<
         // -------------------------------------------------------------------------------------
         // The file
 
-        const persist = Effect.gen(function* () {
+        const write = Effect.gen(function* () {
           const encoded = yield* Schema.encodeEffect(AutomationFile)({ automations: [...entries.values()] });
           yield* fs.makeDirectory(path.dirname(options.file), { recursive: true });
           const scratch = `${options.file}.tmp`;
           yield* fs.writeFileString(scratch, JSON.stringify(encoded));
           yield* fs.rename(scratch, options.file);
-        }).pipe(
+        });
+
+        /** Saves what runs recorded; the next change saves it again when this can't. */
+        const persist = write.pipe(
           Effect.catch((error) => Effect.logWarning(`Couldn't save the automations: ${String(error)}`)),
         );
 
         const changed = Effect.andThen(persist, PubSub.publish(changes, undefined));
 
         const set = (entry: Stored) => Effect.sync(() => entries.set(entry.automation.id, entry));
+
+        /**
+         * What the user changed of one automation (`undefined` removes it), kept only once the file
+         * holds it: when the file can't be written, the change is undone and the user told.
+         */
+        const commit = (id: string, next: Stored | undefined) =>
+          Effect.gen(function* () {
+            const before = entries.get(id);
+            if (next === undefined) entries.delete(id);
+            else entries.set(id, next);
+            yield* write.pipe(
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  if (before === undefined) entries.delete(id);
+                  else entries.set(id, before);
+                  yield* Effect.logWarning(`Couldn't save the automations: ${String(error)}`);
+                  return yield* new AutomationError({
+                    message: "Cerium couldn't save the automations file, so nothing changed.",
+                  });
+                }),
+              ),
+            );
+            yield* PubSub.publish(changes, undefined);
+          });
 
         const find = (id: string) =>
           Effect.fromNullishOr(entries.get(id)).pipe(
@@ -349,7 +376,7 @@ export class Automations extends Context.Service<
                   JSON.stringify(before.automation.when) !== JSON.stringify(input.when);
                 const handled =
                   rescheduled && isSchedule(input.when) ? previousSlot(input.when, now) : before?.handled;
-                yield* set({
+                yield* commit(automation.id, {
                   automation,
                   runs: before?.runs ?? [],
                   ...(handled === undefined ? {} : { handled }),
@@ -358,7 +385,6 @@ export class Automations extends Context.Service<
                     ? {}
                     : { failure: before.failure }),
                 });
-                yield* changed;
                 return automation;
               }),
             ),
@@ -373,12 +399,11 @@ export class Automations extends Context.Service<
                 // Resuming starts from now: what came round while paused is dropped, not missed.
                 const handled =
                   !paused && isSchedule(automation.when) ? previousSlot(automation.when, now) : entry.handled;
-                yield* set({
+                yield* commit(id, {
                   ...entry,
                   automation: { ...automation, paused, updatedAt: now },
                   ...(handled === undefined ? {} : { handled }),
                 });
-                yield* changed;
               }),
             ),
 
@@ -386,8 +411,7 @@ export class Automations extends Context.Service<
             permit.withPermits(1)(
               Effect.gen(function* () {
                 yield* find(id);
-                entries.delete(id);
-                yield* changed;
+                yield* commit(id, undefined);
               }),
             ),
 

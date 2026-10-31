@@ -83,7 +83,7 @@ const backend = Effect.gen(function* () {
   const views = Stream.runHead(automations.watch).pipe(
     Effect.map((head) => (head._tag === "Some" ? head.value : ([] as ReadonlyArray<AutomationView>))),
   );
-  return { automations, input, started, overviews, ended, wait, views, project };
+  return { automations, input, started, overviews, ended, wait, views, project, root };
 });
 
 const failedPush = (project: string, overrides: Partial<PushRecord> = {}): PushRecord => ({
@@ -209,6 +209,22 @@ describe("Automations", () => {
       const run = yield* automations.runNow(saved.id);
       assert.strictEqual(started.length, 0);
       assert.match(run.failed ?? "", /isn't there/);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("fails a pause or deletion the file can't keep, and keeps the automation as it was", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(at(26, 12));
+      const { automations, input, views, root } = yield* backend;
+      const saved = yield* automations.save(undefined, input({ _tag: "Daily", at: 9 * 60 }));
+      // The file's scratch copy can't be written over a folder.
+      yield* (yield* FileSystem.FileSystem).makeDirectory(`${root}/automations.json.tmp`);
+      const paused = yield* automations.pause(saved.id, true).pipe(Effect.flip);
+      assert.match(paused.message, /couldn't save/);
+      yield* automations.remove(saved.id).pipe(Effect.flip);
+      const [view] = yield* views;
+      assert.strictEqual(view?.automation.id, saved.id);
+      assert.strictEqual(view?.automation.paused, false);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });
