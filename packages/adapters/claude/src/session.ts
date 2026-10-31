@@ -257,6 +257,9 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
       control("Could not change Claude's speed", () =>
         session.applyFlagSettings({ fastMode: speed === "fast" }),
       ),
+    // Claude Code drops the task from its next `background_tasks_changed`.
+    stopBackgroundTask: (taskId) =>
+      control("Could not stop the Claude background task", () => session.stopTask(taskId)),
     // Claude Code's own command, which runs as a turn and reports its `compact_boundary`.
     compact: Queue.offer(input, {
       type: "user",

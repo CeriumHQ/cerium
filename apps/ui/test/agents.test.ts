@@ -82,6 +82,7 @@ const summary = (
   questions: [],
   usage: { inputTokens: 0, outputTokens: 0 },
   todos: [],
+  background: [],
   startedAt: 0,
   ...overrides,
 });

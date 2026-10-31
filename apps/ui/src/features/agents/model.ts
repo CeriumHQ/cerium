@@ -1,6 +1,7 @@
 import type {
   AccessMode,
   AgentState,
+  BackgroundTask,
   ProviderId,
   Question,
   ModelSpeed,
@@ -85,6 +86,8 @@ export interface AgentSummary {
   readonly todos: ReadonlyArray<TodoItem>;
   /** Why the agent last changed its plan, when its harness said. */
   readonly todosNote?: string;
+  /** The work its harness runs in the background right now, oldest first; empty when none. */
+  readonly background: ReadonlyArray<BackgroundTask>;
   /** The agent's latest completed message. */
   readonly lastMessage?: string;
   /** What its harness last reported going wrong; what a failed agent stopped on. */

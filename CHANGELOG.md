@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The mobile Settings list scrolls to all its categories.
+
 ### Changed
 
 - Package audit tests retain parser, artifact and credential-safety regressions while removing duplicate cases, generic package conformance examples and assertions tied to the vault's internal write mechanism.
@@ -21,6 +25,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 - Subagent spawns use a minimal, collapsible thread line with real provider marks, live status counts and provider groups instead of bordered cards. Agent transcripts and right-click actions remain available.
 
+- Agent instructions limit new unit and integration tests to exact user-supplied cases, prefer end-to-end checks, and require existing tests to keep passing without adding tests that merely restate the implementation.
 - Click a subagent card or select a child in the agents panel to read its live transcript with the same messages, reasoning and tool details as the lead. Child transcripts have no composer, edit, restore or execution controls; Back to lead returns to the lead's conversation.
 
 - Snapshots of work threads' folders keep their files in one object store instead of one per folder, so a file several worktrees of a repository share is stored once, and that store is packed in the background instead of growing by a file per version. A minute after the app starts, older per-folder stores move into it, each one's own copies removed only once the shared store holds every object; nothing is pruned, so every message can still be restored, and git run on a folder's store by hand still reads it. On one machine's 13 stores, 233 MB became 46 MB.
@@ -64,6 +69,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- Work an agent leaves running in the background shows at the top of the message box: Claude Code's background shells, monitors and subagents, Codex commands still running after the model moved on, and Muse Code's backgrounded tool calls. One task is its own row with its command and clock; several fold into one line that opens to list them. Claude and Muse tasks have a stop button. A session with background work is no longer retired while idle, which ended that work, and a Codex command that outlives its turn is no longer marked failed: its row completes when it exits. Events add `BackgroundTasksChanged`; `@cerium/rpc` adds `StopBackgroundTask` (`RPC_VERSION` 48).
 - `bun run live-check --compare-usage` compares a short native harness turn with the same turn through Cerium, using the same model, effort, speed, folder and user connections.
 - Remote MCP: Cerium is now a remote MCP server, at `https://cerium.nonlooped.xyz/mcp`, for managing your threads from any MCP client: Claude, ChatGPT, Grok, your editor or your own scripts. From there you can start threads on your computer, one per task, list them with their status, read their latest messages, and send their agents follow-ups. The app signs you in to Cerium on Cerium's own page, which names it and where it sends you back, before you allow it. A computer takes the server's requests only once you turn on Settings → Remote MCP there, which is off by default. That page also sets the access threads started over MCP get (Ask first by default) and lists the connected apps to disconnect. Messages sent over MCP say which app sent them ("Sent from Claude"), and connected apps start at most 12 threads per computer in half an hour.
 - Continue in new thread, in a thread's menu, the command palette and the message box's `/` list: a long thread goes on in a new one on the same harness, model, effort and access, in the same folder, worktree and branch, and the old thread is archived. The new thread's message box holds a brief Cerium writes from what it already has, without asking a model: the thread's title, its first and last requests, the agent's last reply, its plan, and the branch with its commits, uncommitted files and pull request. Edit it and send, and the new session starts small: a thread whose session had reached 235k tokens went on at 45k, most of that the harness's own start. Resuming a long thread after its prompt cache expired writes its whole context to the cache again, and compacting still reads it once.

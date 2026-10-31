@@ -395,6 +395,14 @@ export const MachineRpcs = RpcGroup.make(
    */
   Rpc.make("CompactAgent", { payload: { agentId: AgentId }, error: CeriumError }),
   /**
+   * Stops one of the agent's background tasks, by the id its `BackgroundTasksChanged` gave it, where
+   * the task is `stoppable`. Since `RPC_VERSION` 48.
+   */
+  Rpc.make("StopBackgroundTask", {
+    payload: { agentId: AgentId, taskId: Schema.NonEmptyString },
+    error: CeriumError,
+  }),
+  /**
    * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps nothing:
    * no event, no message in the lead's session, no effect on its turn. `earlier` holds the side
    * questions already asked in the same pop-over, so a follow-up has them. Since `RPC_VERSION` 44.

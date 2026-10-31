@@ -1,5 +1,11 @@
 import type { AdapterEvent } from "@cerium/harness";
-import { sameTodos, type EventPayload, type ReasoningEffort, type TodoItem } from "@cerium/protocol";
+import {
+  sameTodos,
+  type BackgroundTask,
+  type EventPayload,
+  type ReasoningEffort,
+  type TodoItem,
+} from "@cerium/protocol";
 import type { TurnOutcome } from "@muse-code/sdk";
 import type {
   Item,
@@ -64,6 +70,8 @@ export class MuseTranslator {
   readonly #finished = new Set<string>();
   /** Open tool calls whose start was emitted. */
   readonly #startedTools = new Set<string>();
+  /** Tool calls Muse sent to the background (`item.background`), until they finish. */
+  readonly #background = new Map<string, BackgroundTask>();
   /** `item/delta` frames that arrived before their item, waiting to learn its kind. */
   readonly #earlyDeltas = new Map<string, Array<ItemDeltaParams>>();
   /** The summary part each open reasoning item streams. */
@@ -275,6 +283,11 @@ export class MuseTranslator {
             : [];
         }
         const payloads: Array<EventPayload> = [];
+        const wasBackground = this.#background.has(id);
+        if (finishing) this.#background.delete(id);
+        else if (item.background === true && !wasBackground)
+          this.#background.set(id, backgroundTask(item, Date.now()));
+        const backgroundChanged = wasBackground !== this.#background.has(id);
         if (!this.#startedTools.has(id)) {
           this.#startedTools.add(id);
           payloads.push({
@@ -295,6 +308,8 @@ export class MuseTranslator {
           });
           if (succeeded) payloads.push(...fileChanges(item, this.#workspace));
         }
+        if (backgroundChanged)
+          payloads.push({ _tag: "BackgroundTasksChanged", tasks: [...this.#background.values()] });
         return payloads;
       }
       case "compaction":
@@ -511,6 +526,23 @@ const turnErrors = (params: TurnCompletedParams): ReadonlyArray<EventPayload> =>
 };
 
 /** Tool arguments are the model's JSON verbatim; anything unparsable is kept as text. */
+/** A backgrounded tool call as a task: `task/stop` takes the item's id. */
+const backgroundTask = (item: Item, at: number): BackgroundTask => {
+  const args = parseArgs(item.args);
+  const command =
+    Predicate.isObject(args) && "command" in args && typeof args.command === "string"
+      ? args.command
+      : undefined;
+  return {
+    id: item.itemId,
+    kind: command === undefined ? "other" : "command",
+    description: command ?? item.tool ?? "Background task",
+    callId: item.itemId,
+    startedAt: at,
+    stoppable: true,
+  };
+};
+
 const parseArgs = (args: string | undefined): unknown => {
   if (args === undefined || args === "") return {};
   try {

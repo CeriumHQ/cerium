@@ -461,6 +461,12 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
         { discard: true },
       ),
     ),
+    // The task's item completes as stopped, which drops it from the background set.
+    stopBackgroundTask: (taskId) =>
+      command("task/stop", { sessionId, taskId }, connection.mintCommandId()).pipe(
+        Effect.mapError(({ cause }) => failure("Could not stop the Muse background task")(cause)),
+        Effect.asVoid,
+      ),
     setModel: (model) => setModel(model),
     setEffort: (effort) => setEffort(effort),
     // Muse compacts outside any turn and acks only the admission; the compaction's terminal item

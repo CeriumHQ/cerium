@@ -204,6 +204,11 @@ export interface AgentSession {
    * the manifest's `compact` is.
    */
   readonly compact?: Effect.Effect<void, HarnessFailure>;
+  /**
+   * Stops one of the session's background tasks, by the id its `BackgroundTasksChanged` gave it. The
+   * next set leaves it out. Present when the harness can stop the tasks it marks `stoppable`.
+   */
+  stopBackgroundTask?(taskId: string): Effect.Effect<void, HarnessFailure>;
 }
 
 export interface HarnessAdapter {

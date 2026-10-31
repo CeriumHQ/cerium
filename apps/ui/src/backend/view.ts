@@ -1,4 +1,11 @@
-import type { AgentEvent, AgentInfo, ModelInfo, ProviderId, TodoItem } from "@cerium/protocol";
+import type {
+  AgentEvent,
+  AgentInfo,
+  BackgroundTask,
+  ModelInfo,
+  ProviderId,
+  TodoItem,
+} from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
 
 import type {
@@ -82,6 +89,7 @@ export const toAgentSummaries = (
     let costUsd: number | undefined;
     let todos: ReadonlyArray<TodoItem> = [];
     let todosNote: string | undefined;
+    let background: ReadonlyArray<BackgroundTask> = [];
     let lastMessage: string | undefined;
     let error: string | undefined;
     let model = agent.model;
@@ -103,6 +111,9 @@ export const toAgentSummaries = (
         case "TodosUpdated":
           todos = payload.items;
           todosNote = payload.explanation;
+          break;
+        case "BackgroundTasksChanged":
+          background = payload.tasks;
           break;
         case "ContextReported": {
           const window = payload.window ?? context?.window;
@@ -187,6 +198,8 @@ export const toAgentSummaries = (
       ...(context ? { context } : {}),
       todos,
       ...(todosNote ? { todosNote } : {}),
+      // Its background tasks ended with its session.
+      background: ended ? [] : background,
       ...(lastMessage ? { lastMessage } : {}),
       ...(error ? { error } : {}),
       startedAt: agent.createdAt,

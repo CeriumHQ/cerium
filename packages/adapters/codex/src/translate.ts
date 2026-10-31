@@ -55,7 +55,16 @@ const isToolItem = (item: ThreadItem): item is ToolItem => TOOL_TYPES.has(item.t
 export class CodexTranslator {
   #threadId: string | undefined;
   /** Items between `item/started` and `item/completed`: approval requests only name the item. */
-  readonly #items = new Map<string, { readonly item: ThreadItem; readonly turnId: string }>();
+  readonly #items = new Map<
+    string,
+    { readonly item: ThreadItem; readonly turnId: string; readonly at: number }
+  >();
+  /**
+   * Commands still running after the model got its turn back: Codex's unified exec hands the model
+   * the output so far and leaves the process running, and completes the item when it exits, even
+   * after the turn ends.
+   */
+  readonly #background = new Set<string>();
   /** Which reasoning stream an item's deltas come from, and the summary part they are in. */
   readonly #reasoning = new Map<string, { readonly source: "summary" | "content"; readonly part: number }>();
   /** The first and latest usage update of each running turn. */
@@ -145,8 +154,13 @@ export class CodexTranslator {
     switch (notification.method) {
       case "item/started": {
         const { item, turnId } = notification.params;
-        if (!isToolItem(item)) return item.type === "contextCompaction" ? [] : this.#flushCompaction();
-        this.#items.set(item.id, { item, turnId });
+        if (!isToolItem(item)) {
+          if (item.type === "contextCompaction") return [];
+          // The model writes again only once every call of its last response returned.
+          const moved = item.type === "agentMessage" || item.type === "reasoning";
+          return [...this.#flushCompaction(), ...(moved ? this.#backgroundRunning(turnId) : [])];
+        }
+        this.#items.set(item.id, { item, turnId, at: Date.now() });
         return [...this.#flushCompaction(), toolStarted(item)];
       }
       case "item/completed":
@@ -249,9 +263,40 @@ export class CodexTranslator {
       default: {
         if (!isToolItem(item)) return [];
         const started = this.#items.delete(item.id) ? [] : [toolStarted(item)];
-        return [...started, toolCompleted(item), ...fileChanges(item)];
+        const ended = this.#background.delete(item.id) ? [this.#backgroundTasks()] : [];
+        return [...started, toolCompleted(item), ...fileChanges(item), ...ended];
       }
     }
+  }
+
+  /** The turn's commands still running when the model went on, which go on in the background. */
+  #backgroundRunning(turnId: string): ReadonlyArray<EventPayload> {
+    let changed = false;
+    for (const [id, { item, turnId: itemTurn }] of this.#items) {
+      if (itemTurn !== turnId || this.#background.has(id) || !runsOn(item)) continue;
+      this.#background.add(id);
+      changed = true;
+    }
+    return changed ? [this.#backgroundTasks()] : [];
+  }
+
+  #backgroundTasks(): EventPayload {
+    return {
+      _tag: "BackgroundTasksChanged",
+      tasks: [...this.#background].flatMap((id) => {
+        const entry = this.#items.get(id);
+        if (entry?.item.type !== "commandExecution") return [];
+        return [
+          {
+            id,
+            kind: "command" as const,
+            description: displayCommand(entry.item),
+            callId: id,
+            startedAt: entry.at,
+          },
+        ];
+      }),
+    };
   }
 
   /**
@@ -285,10 +330,13 @@ export class CodexTranslator {
     readonly status: string;
     readonly error: TurnError | null;
   }): ReadonlyArray<EventPayload> {
+    // A turn that ended on its own leaves its running commands in the background, to complete as they
+    // exit.
+    const background = turn.status === "completed" ? this.#backgroundRunning(turn.id) : [];
     // Tool calls an interruption cut short never complete on their own.
     const unfinished: Array<EventPayload> = [];
     for (const [callId, entry] of this.#items) {
-      if (entry.turnId !== turn.id) continue;
+      if (entry.turnId !== turn.id || this.#background.has(callId)) continue;
       this.#items.delete(callId);
       unfinished.push({ _tag: "ToolCallCompleted", callId, output: { status: turn.status }, isError: true });
     }
@@ -300,6 +348,7 @@ export class CodexTranslator {
 
     return [
       ...unfinished,
+      ...background,
       ...this.#flushCompaction(),
       ...(failed && turn.error !== null ? [turnError(turn.error, this.#limits)] : []),
       turnUsage(usage),
@@ -405,6 +454,10 @@ const displayCommand = (item: Extract<ThreadItem, { type: "commandExecution" }>)
   const [only, ...rest] = item.commandActions;
   return only !== undefined && rest.length === 0 ? only.command : item.command;
 };
+
+/** A unified-exec command, whose process outlives its call when it runs past the call's wait. */
+const runsOn = (item: ThreadItem) =>
+  item.type === "commandExecution" && item.processId !== null && item.source !== "userShell";
 
 /** Tool names follow the model-facing Codex tools, and Claude's `mcp__<server>__<tool>` for MCP. */
 const toolCall = (item: ToolItem): { readonly toolName: string; readonly input: unknown } => {

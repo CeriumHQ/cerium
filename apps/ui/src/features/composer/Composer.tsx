@@ -63,6 +63,7 @@ import { providerName } from "../threads/model.ts";
 import { contextLabel, ContextRing } from "../agents/ContextMeter.tsx";
 import type { AgentContext } from "../agents/model.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
+import { BackgroundTray, type Background } from "./BackgroundTray.tsx";
 import { CommentTray } from "./CommentTray.tsx";
 import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
 import {
@@ -258,6 +259,8 @@ interface ComposerProps {
   readonly activity?: ReactNode;
   /** The user's messages waiting for the lead, listed at the top of the box. */
   readonly queue?: Queue | undefined;
+  /** The work the thread's agents run in the background, above the queue. */
+  readonly background?: Background | undefined;
   /**
    * The command palette's actions the `/` list offers: new thread, find in thread, and so on. The
    * box adds switching models and stopping its turn beside them.
@@ -285,6 +288,7 @@ export function Composer({
   takesFocus = true,
   activity,
   queue,
+  background,
   slashCommands = [],
   seat,
 }: ComposerProps) {
@@ -1378,6 +1382,11 @@ export function Composer({
           {dictates ? <DictationNotice dictation={dictation} /> : null}
           {/* Each tray grows the box as it comes and folds away as it goes. min-w-0: a tray's
               truncated lines would otherwise widen it past the one-line box. */}
+          {background ? (
+            <div className={inline ? "min-w-0 basis-full" : ""}>
+              <BackgroundTray background={background} />
+            </div>
+          ) : null}
           <Reveal className={inline ? "min-w-0 basis-full" : ""}>
             {queue ? (
               <QueueTray
