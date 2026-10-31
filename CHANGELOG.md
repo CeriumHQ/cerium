@@ -12,6 +12,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Failed harness startups close their process scopes and bus registrations immediately, sleeping sessions can retry a failed wake, and interrupted turns release folder-activity bookkeeping even when stopped before sending their input.
+- Codex requests fail promptly after its app-server exits and release pending replies when cancelled, so stopping a crashed agent cannot hang on an unanswered interrupt.
 - Turning computer use off or quitting ends the sessions currently using the desktop, releasing their cursors and cancelling their calls; cleanup no longer uses the empty session list from startup.
 - Snapshotting many folders no longer retains a recursive filesystem watcher and an empty save queue for every worktree until quit. Only the 32 most recently used watchers stay warm; evicted folders are read afresh on their next save.
 - Windows terminals release their output workers and input pipes after closing, including Cursor's periodic usage checks. Idle backends no longer retain another worker on each check and grow by several gigabytes over a day.

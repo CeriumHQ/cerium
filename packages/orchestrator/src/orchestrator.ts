@@ -1654,7 +1654,7 @@ export class Orchestrator extends Context.Service<
             ),
           );
           // A stopped agent's turn ends here too, so it isn't counted as working in the folder for good.
-          yield* Deferred.await(rt.turn).pipe(Effect.onInterrupt(() => Effect.asVoid(endWork(rt.info.id))));
+          yield* Deferred.await(rt.turn);
           rt.turn = undefined;
           rt.currentTurnId = undefined;
           rt.currentRequestId = undefined;
@@ -1690,7 +1690,7 @@ export class Orchestrator extends Context.Service<
               rt.scope,
             );
           }
-        });
+        }).pipe(Effect.ensuring(Effect.asVoid(endWork(rt.info.id))));
 
       /**
        * A compaction the user asked for: a turn with no input, which the harness's own events report and
@@ -2478,62 +2478,76 @@ export class Orchestrator extends Context.Service<
             const info = rt.info;
             const sessionScope = yield* Scope.fork(scope);
             rt.sessionScope = sessionScope;
-            const { advisor } = yield* settings.get;
-            if (rt.instructions === undefined) {
-              const previous =
-                options.resume === undefined
-                  ? []
-                  : yield* store
-                      .listEvents(info.id, { tags: ["SessionStarted"] })
-                      .pipe(Effect.mapError(unavailable));
-              const saved = previous.findLast(
-                (e) =>
-                  e.payload._tag === "SessionStarted" &&
-                  e.payload.ceriumInstructions !== undefined &&
-                  e.payload.ceriumPromptVersion === PROMPT_VERSION,
-              );
-              rt.instructions =
-                saved?.payload._tag === "SessionStarted" ? saved.payload.ceriumInstructions : undefined;
-              rt.instructions ??= systemPrompt(info, bus.serverName, {
-                advisor: advisor.enabled && advisor.model !== undefined,
-                neighbours: yield* neighboursOf(info, cwd),
-                worktree: threadWorktrees.get(info.threadId),
-              });
-            }
-            const busSpec = yield* bus.register(info.id, info.parentId === undefined ? "lead" : "child");
-            yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
-            const session = yield* adapter
-              .startSession({
-                cwd,
-                model: info.model,
-                ...(info.effort ? { effort: info.effort } : {}),
-                ...(info.speed ? { speed: info.speed } : {}),
-                ...(resume === undefined ? {} : { resume }),
-                access: info.access,
-                mcpServers: isHelper(info) ? {} : { [bus.serverName]: busSpec },
-                includeUserMcpServers:
-                  !isHelper(info) && (info.parentId === undefined || options.includeUserMcpServers === true),
-                trustedMcpServers: [bus.serverName],
-                appendSystemPrompt: rt.instructions,
-              })
-              .pipe(
-                Scope.provide(sessionScope),
-                // A harness that isn't installed or signed in is the user's to fix; anything else is
-                // reported (apps/backend/src/reports.ts).
-                Effect.tapError((error) =>
-                  error._tag === "HarnessUnavailable"
-                    ? Effect.void
-                    : Effect.logError("Harness session failed to start", Cause.fail(error)).pipe(
-                        Effect.annotateLogs({ report: "harness", harness: info.provider, phase: "start" }),
-                      ),
+            return yield* Effect.gen(function* () {
+              const { advisor } = yield* settings.get;
+              if (rt.instructions === undefined) {
+                const previous =
+                  options.resume === undefined
+                    ? []
+                    : yield* store
+                        .listEvents(info.id, { tags: ["SessionStarted"] })
+                        .pipe(Effect.mapError(unavailable));
+                const saved = previous.findLast(
+                  (e) =>
+                    e.payload._tag === "SessionStarted" &&
+                    e.payload.ceriumInstructions !== undefined &&
+                    e.payload.ceriumPromptVersion === PROMPT_VERSION,
+                );
+                rt.instructions =
+                  saved?.payload._tag === "SessionStarted" ? saved.payload.ceriumInstructions : undefined;
+                rt.instructions ??= systemPrompt(info, bus.serverName, {
+                  advisor: advisor.enabled && advisor.model !== undefined,
+                  neighbours: yield* neighboursOf(info, cwd),
+                  worktree: threadWorktrees.get(info.threadId),
+                });
+              }
+              const busSpec = yield* bus.register(info.id, info.parentId === undefined ? "lead" : "child");
+              yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
+              const session = yield* adapter
+                .startSession({
+                  cwd,
+                  model: info.model,
+                  ...(info.effort ? { effort: info.effort } : {}),
+                  ...(info.speed ? { speed: info.speed } : {}),
+                  ...(resume === undefined ? {} : { resume }),
+                  access: info.access,
+                  mcpServers: isHelper(info) ? {} : { [bus.serverName]: busSpec },
+                  includeUserMcpServers:
+                    !isHelper(info) &&
+                    (info.parentId === undefined || options.includeUserMcpServers === true),
+                  trustedMcpServers: [bus.serverName],
+                  appendSystemPrompt: rt.instructions,
+                })
+                .pipe(
+                  Scope.provide(sessionScope),
+                  // A harness that isn't installed or signed in is the user's to fix; anything else is
+                  // reported (apps/backend/src/reports.ts).
+                  Effect.tapError((error) =>
+                    error._tag === "HarnessUnavailable"
+                      ? Effect.void
+                      : Effect.logError("Harness session failed to start", Cause.fail(error)).pipe(
+                          Effect.annotateLogs({ report: "harness", harness: info.provider, phase: "start" }),
+                        ),
+                  ),
+                  Effect.mapError(
+                    (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+                  ),
+                );
+              rt.session = session;
+              yield* Effect.forkIn(consumeEvents(rt, session), sessionScope);
+              yield* Deferred.succeed(rt.started, session);
+            }).pipe(
+              Effect.onError(() =>
+                Scope.close(sessionScope, Exit.void).pipe(
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      rt.sessionScope = undefined;
+                      rt.session = undefined;
+                    }),
+                  ),
                 ),
-                Effect.mapError(
-                  (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
-                ),
-              );
-            rt.session = session;
-            yield* Effect.forkIn(consumeEvents(rt, session), sessionScope);
-            yield* Deferred.succeed(rt.started, session);
+              ),
+            );
           });
           rt.wakeSession = rt.sessionPermit.withPermits(1)(
             Effect.gen(function* () {
@@ -2545,7 +2559,12 @@ export class Orchestrator extends Context.Service<
               // have saved it (Codex keeps a thread only once it runs a turn): a new one takes its place.
               resume = rt.fresh ? undefined : rt.info.providerSessionId;
               yield* start.pipe(
-                Effect.catch((error) => Deferred.fail(rt.started, error)),
+                Effect.catch((error) =>
+                  Effect.gen(function* () {
+                    rt.sleeping = true;
+                    yield* Deferred.fail(rt.started, error);
+                  }),
+                ),
                 Effect.asVoid,
               );
             }),
@@ -2798,7 +2817,12 @@ export class Orchestrator extends Context.Service<
           // Stopping a paused lead ends its pause; quitting leaves it for the next start to pick up.
           if (!quitting) yield* endPause(rt, "stopped").pipe(Effect.ignore);
           runtimes.delete(rt.info.id);
+          yield* endWork(rt.info.id);
           pendingPermissions.delete(rt.info.id);
+          pendingSpawns.delete(rt.info.id);
+          allowedTools.delete(rt.info.id);
+          held.delete(rt.info.id);
+          briefsOwed.delete(rt.info.id);
           leadRequests.delete(rt.info.id);
           // A resumed session finds what it hadn't heard in the thread's history.
           heldNotices.delete(rt.info.id);

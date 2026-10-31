@@ -225,9 +225,24 @@ export const connect = Effect.fn("CodexAdapter.connect")(function* (executablePa
       const id = nextId++;
       const response = yield* Deferred.make<unknown, RpcError | HarnessFailure>();
       pending.set(id, { method, response });
-      yield* send({ id, method, params });
       // Results are trusted to match the generated protocol of the version the adapter was tested with.
-      return (yield* Deferred.await(response)) as Methods[M][1];
+      return (yield* send({ id, method, params }).pipe(
+        Effect.andThen(Deferred.await(response)),
+        Effect.raceFirst(
+          Deferred.await(exited).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new HarnessFailure({
+                  provider: "codex",
+                  message: "The Codex app-server exited",
+                  cause: stderr.join("\n"),
+                }),
+              ),
+            ),
+          ),
+        ),
+        Effect.ensuring(Effect.sync(() => pending.delete(id))),
+      )) as Methods[M][1];
     });
 
   const { codexHome } = yield* request("initialize", {
