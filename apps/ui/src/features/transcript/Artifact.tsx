@@ -19,10 +19,10 @@ import {
 import legacyCss from "@cerium/artifacts/legacy.css?raw";
 import { Button } from "@base-ui/react/button";
 import { Dialog } from "@base-ui/react/dialog";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import redHatMono from "@fontsource-variable/red-hat-mono/files/red-hat-mono-latin-wght-normal.woff2?inline";
 import redHatText from "@fontsource-variable/red-hat-text/files/red-hat-text-latin-wght-normal.woff2?inline";
-import { AsyncResult } from "effect/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import {
   Download,
   ExternalLink,
@@ -60,12 +60,13 @@ const NO_FILES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The height each artifact last reported, so one the transcript mounts again (scrolling back, a
- * reload of the list) opens at its size instead of growing from the placeholder.
+ * reload of the list) opens at its size instead of growing from the placeholder. Keyed by
+ * `artifactId`, not the page itself: a page can run to megabytes and 200 of them would stay in memory.
  */
 const heights = new Map<string, number>();
-const rememberHeight = (code: string, height: number) => {
-  heights.delete(code);
-  heights.set(code, height);
+const rememberHeight = (id: string, height: number) => {
+  heights.delete(id);
+  heights.set(id, height);
   if (heights.size > 200) heights.delete(heights.keys().next().value!);
 };
 
@@ -351,6 +352,24 @@ const savePngAs = async (image: { readonly mediaType: string; readonly data: str
   download(new Blob([bytes], { type: image.mediaType }), fileName);
 };
 
+/**
+ * `renderArtifact` is one atom for every menu, and holds the page it was given and the image it drew
+ * until it is reset: reset it once the last render is saved, never under one still running.
+ */
+let renders = 0;
+const renderPng = async <Payload, Image>(
+  registry: AtomRegistry.AtomRegistry,
+  render: (arg: { readonly payload: Payload }) => Promise<Image>,
+  payload: Payload,
+) => {
+  renders++;
+  try {
+    return await render({ payload });
+  } finally {
+    if (--renders === 0) registry.set(renderArtifact, Atom.Reset);
+  }
+};
+
 /** Taking the artifact out of the conversation: an image or a page to keep, or a browser tab. */
 function ArtifactMenu({
   code,
@@ -365,6 +384,7 @@ function ArtifactMenu({
 }) {
   const files = useArtifactFiles(code);
   const render = useAtomSet(renderArtifact, { mode: "promise" });
+  const registry = useContext(RegistryContext);
   const [saving, setSaving] = useState(false);
   const bridge = shellBridge();
   const name = title ?? "Artifact";
@@ -387,7 +407,7 @@ function ArtifactMenu({
       mode: theme.mode,
       variables: theme.variables,
     };
-    await render({ payload })
+    await renderPng(registry, render, payload)
       .then((image) => savePngAs(image, artifactFileName(title, "png")))
       .catch((error: unknown) =>
         onError(`Couldn't save as PNG: ${error instanceof Error ? error.message : String(error)}`),
@@ -473,7 +493,8 @@ function ArtifactFrame({
 }) {
   const themeKey = useSyncExternalStore(subscribeTheme, themeSnapshot);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(() => (remember ? heights.get(code) : startHeight));
+  const id = artifactId(code);
+  const [height, setHeight] = useState(() => (remember ? heights.get(id) : startHeight));
   const [drawn, setDrawn] = useState(false);
   const [hostReady, setHostReady] = useState(false);
   const rendered = useRef(false);
@@ -506,7 +527,7 @@ function ArtifactFrame({
           const next = Math.min(Math.max(Math.ceil(message.height), 1), ARTIFACT_MAX_HEIGHT);
           setHeight(next);
           setDrawn(true);
-          if (remember) rememberHeight(code, next);
+          if (remember) rememberHeight(id, next);
           return;
         }
         case "link":
@@ -532,7 +553,7 @@ function ArtifactFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [code, remember, onError, onPointer, onReply]);
+  }, [id, remember, onError, onPointer, onReply]);
 
   // A new theme goes to the page, which restyles in place. Before the page is drawn, the host page
   // ignores it and the page starts in the theme it's sent with.

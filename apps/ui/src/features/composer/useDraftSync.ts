@@ -3,7 +3,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useContext, useEffect, useEffectEvent } from "react";
 
 import { accountDraftsAtom, saveDrafts } from "../../backend/atoms.ts";
-import { draftsAtom, readStamps, writeStamps } from "./drafts.ts";
+import { draftsAtom, readStamps, revokeLostPreviews, writeStamps } from "./drafts.ts";
 import { applyTaken, draftBatches, reconcileDrafts } from "./draftSync.ts";
 
 /** How long writing pauses before the latest edit goes to the account's other devices. */
@@ -26,7 +26,10 @@ export function useDraftSync(signedIn: boolean, here: string | undefined) {
     if (take.length > 0) {
       // Stamped first, so the drafts' own writer sees nothing of its own to stamp.
       writeStamps({ ...readStamps(), ...Object.fromEntries(take.map(({ key, stamp }) => [key, stamp])) });
-      registry.set(draftsAtom, applyTaken(registry.get(draftsAtom), take));
+      const current = registry.get(draftsAtom);
+      const taken = applyTaken(current, take);
+      revokeLostPreviews(current, taken);
+      registry.set(draftsAtom, taken);
     }
     // Unsent, a draft goes the next time the cloud's drafts or this window's change.
     for (const batch of draftBatches(send)) void save({ payload: { drafts: batch } }).catch(() => undefined);

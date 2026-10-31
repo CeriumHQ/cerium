@@ -235,7 +235,9 @@ export const draftsAtom: Atom.Writable<Drafts> = Atom.writable(
     const onStorage = (event: StorageEvent) => {
       if (event.key !== DRAFTS_KEY) return;
       const current = Option.getOrElse(get.self<Drafts>(), () => ({}));
-      get.setSelf(mergeDrafts(current, parseDrafts(event.newValue ?? undefined)));
+      const merged = mergeDrafts(current, parseDrafts(event.newValue ?? undefined));
+      revokeLostPreviews(current, merged);
+      get.setSelf(merged);
     };
     window.addEventListener("storage", onStorage);
     get.addFinalizer(() => window.removeEventListener("storage", onStorage));
@@ -263,6 +265,21 @@ export const withDraft = (drafts: Drafts, key: string, update: (draft: Draft) =>
   return next.start === undefined && !hasContent(next)
     ? withoutDraft(drafts, key)
     : { ...drafts, [key]: next };
+};
+
+/**
+ * Lets go of the image previews of `before`'s drafts that `after` no longer holds. A draft dropped or
+ * replaced without a send never gets them back; one the send is still delivering does, if the send
+ * fails, so a plain write to the drafts doesn't call this.
+ */
+export const revokeLostPreviews = (before: Drafts, after: Drafts) => {
+  for (const [key, draft] of Object.entries(before)) {
+    if (after[key] === draft) continue;
+    const held = new Set(after[key]?.attachments.flatMap((each) => (each.preview ? [each.preview] : [])));
+    for (const { preview } of draft.attachments) {
+      if (preview && !held.has(preview)) URL.revokeObjectURL(preview);
+    }
+  }
 };
 
 /** `drafts` without `key`'s. */

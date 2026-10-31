@@ -78,7 +78,15 @@ import {
   type DraftStart,
   type Trigger,
 } from "./draft.ts";
-import { draftAtom, draftsAtom, isNewDraftKey, startedNow, withDraft, withoutDraft } from "./drafts.ts";
+import {
+  draftAtom,
+  draftsAtom,
+  isNewDraftKey,
+  revokeLostPreviews,
+  startedNow,
+  withDraft,
+  withoutDraft,
+} from "./drafts.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
 import type { MessageBox } from "./messageBox.ts";
 import {
@@ -846,6 +854,7 @@ export function Composer({
     const asked = thread?.onAskSide ? sideQuestionOf(text) : undefined;
     if (asked !== undefined) {
       // A side question never joins the thread: the box empties and the pop-over answers.
+      revokeLostPreviews({ [draftKey]: draft }, {});
       setDrafts((current) => withoutDraft(current, draftKey));
       setEpoch((current) => current + 1);
       setTrigger(undefined);

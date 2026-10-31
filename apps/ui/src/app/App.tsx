@@ -142,6 +142,7 @@ import {
   draftStartAtom,
   isNewDraftKey,
   newDraftKey,
+  revokeLostPreviews,
   startedNow,
   withDraft,
   withoutDraft,
@@ -2713,7 +2714,10 @@ function Workspace() {
             ).then((deleted) => {
               settlePutAway(threadId, deleted);
               if (!deleted) return false;
-              registry.set(draftsAtom, withoutDraft(registry.get(draftsAtom), threadId));
+              const held = registry.get(draftsAtom);
+              const rest = withoutDraft(held, threadId);
+              revokeLostPreviews(held, rest);
+              registry.set(draftsAtom, rest);
               previewDocks.close(threadId);
               refreshThreads();
               return true;

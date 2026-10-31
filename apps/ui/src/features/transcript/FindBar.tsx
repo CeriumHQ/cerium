@@ -2,9 +2,18 @@ import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
 import { artifactBlocks, artifactId } from "@cerium/artifacts";
 import type { AgentEvent, AgentId } from "@cerium/protocol";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
 
 import { readCloudSearchHistory, readSearchHistory } from "../../backend/atoms.ts";
 import type { ThreadHistory } from "../../backend/threadLog.ts";
@@ -33,6 +42,7 @@ import {
 } from "./searchModel.ts";
 
 const RESCAN_MS = 200;
+const INDEX_KEEP_MS = 60_000;
 const iconButton =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40";
 interface Pending {
@@ -82,12 +92,11 @@ export function TranscriptFind({
   const hidden = useKeptHidden();
   const jump = useAtomValue(findJumpAtom);
   const takeJump = useAtomSet(findJumpAtom);
-  const read = useAtomSet(
-    cloudKey
-      ? readCloudSearchHistory(cloudKey)
-      : readSearchHistory(JSON.stringify([threadId, agentId, null])),
-    { mode: "promise" },
-  );
+  const registry = useContext(RegistryContext);
+  const historyAtom = cloudKey
+    ? readCloudSearchHistory(cloudKey)
+    : readSearchHistory(JSON.stringify([threadId, agentId, null]));
+  const read = useAtomSet(historyAtom, { mode: "promise" });
 
   const active =
     open ||
@@ -136,8 +145,20 @@ export function TranscriptFind({
       )
       .finally(() => {
         reading.current = false;
+        // The atom keeps every event it read; the index above is all find needs.
+        registry.set(historyAtom, Atom.Reset);
       });
   });
+  // The index is every message of the thread: once find is closed and nothing waits on a jump, drop it
+  // after a while (a reopening soon after keeps it) and read it again on the next find.
+  useEffect(() => {
+    if (active || readState === "idle") return;
+    const timer = window.setTimeout(() => {
+      setIndex([]);
+      setReadState("idle");
+    }, INDEX_KEEP_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, readState]);
   const navigate = useEffectEvent((target: Pending) => {
     visibleFrames.current = 0;
     setPending(target);
