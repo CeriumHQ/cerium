@@ -12,6 +12,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Snapshotting many folders no longer retains a recursive filesystem watcher and an empty save queue for every worktree until quit. Only the 32 most recently used watchers stay warm; evicted folders are read afresh on their next save.
 - Windows terminals release their output workers and input pipes after closing, including Cursor's periodic usage checks. Idle backends no longer retain another worker on each check and grow by several gigabytes over a day.
 - Development servers stay inside a thread's reserved `CERIUM_PORT` block instead of taking another checkout's default ports.
 - Editing an automation preserves its latest CI failure for Run now in the same project.

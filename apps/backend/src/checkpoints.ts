@@ -61,6 +61,9 @@ const WAIT_TIMEOUT = "15 seconds";
 /** How long one save may run before it is stopped: a folder too big to save in that time gets none. */
 const RUN_TIMEOUT = "5 minutes";
 
+/** Recursive watchers are only an optimization: retain the most recently used folders, not every worktree. */
+const WATCHED_LIMIT = 32;
+
 type Pending = Deferred.Deferred<string, CheckpointError>;
 
 /** What a folder's watcher has seen since its last save began, and that save's snapshot. */
@@ -532,9 +535,18 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         }),
       );
 
+      const recentWatcher = (store: string) => {
+        const entry = watched.get(store);
+        if (entry !== undefined) {
+          watched.delete(store);
+          watched.set(store, entry);
+        }
+        return entry;
+      };
+
       /** `folder`'s watcher, started on its first save; none while the OS can't watch it. */
       const watchedFolder = (store: string, folder: string): Watched | undefined => {
-        const existing = watched.get(store);
+        const existing = recentWatcher(store);
         if (existing !== undefined) return existing;
         try {
           let close = () => {};
@@ -570,6 +582,11 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
             if (watched.get(store) === entry) watched.delete(store);
           });
           watched.set(store, entry);
+          if (watched.size > WATCHED_LIMIT) {
+            const [oldest, idle] = watched.entries().next().value!;
+            watched.delete(oldest);
+            idle.close();
+          }
           return entry;
         } catch {
           return undefined;
@@ -728,8 +745,12 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
             Effect.suspend(() => {
               const state = saves.get(store) ?? {};
               const next = state.next;
-              saves.set(store, next === undefined ? {} : { running: next });
-              return next === undefined ? Effect.void : launch(store, folder, next);
+              if (next === undefined) {
+                saves.delete(store);
+                return Effect.void;
+              }
+              saves.set(store, { running: next });
+              return launch(store, folder, next);
             }),
           ),
           Effect.forkIn(layerScope),
@@ -742,8 +763,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
       ) {
         const store = storeOf(folder);
         const state = saves.get(store) ?? {};
-        saves.set(store, state);
-        const entry = watched.get(store);
+        const entry = recentWatcher(store);
         if (
           options.reuse === true &&
           entry?.tree !== undefined &&
@@ -753,6 +773,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         ) {
           return entry.tree;
         }
+        saves.set(store, state);
         // A save queued behind the running one starts after this call, so it holds the files as they
         // are now or later: it serves this caller too.
         let pending = state.next;
