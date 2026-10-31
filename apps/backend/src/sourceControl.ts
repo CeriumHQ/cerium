@@ -724,7 +724,8 @@ export class SourceControl extends Context.Service<
                     yield* Effect.sleep("1 second");
                     if (yield* busy()) continue;
                     preparing.set(threadId, "Preparing destination…");
-                    yield* orchestrator.moveThread(threadId, choice);
+                    // The lead ended its turn to let the move through: it carries on once it lands.
+                    yield* orchestrator.moveThread(threadId, choice, { carryOn: true });
                     preparing.set(threadId, "Ready");
                     return;
                   }

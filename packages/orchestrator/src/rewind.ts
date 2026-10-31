@@ -129,17 +129,19 @@ export const rewindPoint = (
 
 /**
  * Whether the agent's next session starts anew: the last rewind didn't fork, or the lead was handed to
- * another harness, and no session has started since.
+ * another harness or moved, and no turn has run since; or no turn ever ran. A session that took no turn
+ * holds nothing, and its harness may never have saved it (Codex keeps a thread only once it runs a
+ * turn), so resuming it would fail.
  */
 export const startsAnew = (live: ReadonlyArray<AgentEvent>): boolean => {
   for (let index = live.length - 1; index >= 0; index--) {
     const { payload } = live[index] ?? {};
-    if (payload?._tag === "SessionStarted") return false;
+    if (payload?._tag === "TurnInput") return false;
     if (payload?._tag === "ConversationRewound") return payload.via !== "fork";
     if (payload?._tag === "LeadHandedOff") return true;
     if (payload?._tag === "WorkspaceMoved") return true;
   }
-  return false;
+  return true;
 };
 
 /** A rewind that didn't fork, or a handoff: the session after it holds none of the turns before. */

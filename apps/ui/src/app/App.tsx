@@ -318,7 +318,7 @@ import type { SidePanelId } from "./panelLayout.ts";
 import { Rail } from "./Rail.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
-import { ThreadPane, type PaneHandles, type ThreadPaneActions } from "./ThreadPane.tsx";
+import { ThreadPane, type PaneHandles, type SetupRun, type ThreadPaneActions } from "./ThreadPane.tsx";
 import { besideThread, soloThread, threadWindowOpener, useSharedPreferences } from "./threadWindow.ts";
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
@@ -1134,10 +1134,23 @@ function Workspace() {
     runThreadId === undefined || scriptsProject === undefined || !actionsOk
       ? noProjectScripts
       : projectScriptsAtom(scriptsProject);
+  const projectScripts = AsyncResult.getOrElse(useAtomValue(projectScriptsFor), () => undefined);
+  /** The thread's project setup while it runs: the lead may wait on it, and it on the user's input. */
+  const setupTerminal =
+    runThreadId === undefined || selected === undefined
+      ? undefined
+      : scriptTerminalOf(machineTerminals, { threadId: selected.thread.id }, "setup");
+  const setupRun: SetupRun | undefined =
+    setupTerminal === undefined || setupTerminal.exitCode !== undefined || !terminal.available
+      ? undefined
+      : {
+          id: setupTerminal.id,
+          command: projectScripts?.setup?.text,
+          startedAt: setupTerminal.openedAt,
+          onShow: () => terminal.reveal(setupTerminal.id),
+        };
   /** The project's named actions (Test, Lint, Migrate), each with whether its terminal is running. */
-  const projectActions = (
-    AsyncResult.getOrElse(useAtomValue(projectScriptsFor), () => undefined)?.actions ?? []
-  ).map((action) => {
+  const projectActions = (projectScripts?.actions ?? []).map((action) => {
     const own =
       selected === undefined
         ? undefined
@@ -2262,6 +2275,7 @@ function Workspace() {
         bar={barFor(resolved, lead)}
         // The window's notices and its terminal go with the open thread.
         {...(opened ? { notices, drawer: terminal.drawer } : {})}
+        {...(opened && setupRun !== undefined ? { setup: setupRun } : {})}
         {...(previewed !== undefined && previewDocks.isOpen(previewed)
           ? {
               preview: (
