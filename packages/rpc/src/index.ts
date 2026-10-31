@@ -9,6 +9,7 @@ import {
   AgentInfo,
   Attachment,
   CapabilityManifest,
+  ComputerUseStatus,
   DeviceId,
   DeviceName,
   DraftEntry,
@@ -102,7 +103,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 48;
+export const RPC_VERSION = 49;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -748,6 +749,20 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("EffortRouterStatus", { success: EffortRouterStatus, error: CeriumError }),
   /** Forgets the effort router's key and turns the router off. Since `RPC_VERSION` 23. */
   Rpc.make("RemoveEffortRouterKey", { success: EffortRouterStatus, error: CeriumError }),
+  /**
+   * Computer use on this machine now and after every change: whether agent-desktop is installed, the
+   * system's permission, and which agents are using the computer. Since `RPC_VERSION` 49.
+   */
+  Rpc.make("WatchComputerUse", { success: ComputerUseStatus, stream: true }),
+  /** Installs agent-desktop again after it failed. Since `RPC_VERSION` 49. */
+  Rpc.make("InstallComputerUse", { error: CeriumError }),
+  /** Opens the system's settings at the permission computer use needs (macOS). Since `RPC_VERSION` 49. */
+  Rpc.make("OpenComputerPermissions", { error: CeriumError }),
+  /**
+   * Ends a thread's use of the computer and refuses its agents until the user next writes in it.
+   * Since `RPC_VERSION` 49.
+   */
+  Rpc.make("StopComputerUse", { payload: { threadId: ThreadId }, error: CeriumError }),
 ).merge(
   TerminalRpcs,
   ScriptRpcs,

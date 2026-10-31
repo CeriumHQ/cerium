@@ -2,6 +2,7 @@ import { Effect, Schema, Struct } from "effect";
 
 import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { LenientArray, withFallback } from "./compat.ts";
+import { ComputerUseSettings, defaultComputerUse } from "./computerUse.ts";
 import { ProviderId } from "./ids.ts";
 import { AccessMode, LimitPolicy } from "./orchestration.ts";
 import { PromptsSettings } from "./savedPrompts.ts";
@@ -153,6 +154,7 @@ const SettingsFields = Schema.Struct({
   slimThreadsAfter: SlimThreadsAfter,
   assistants: AssistantSettings,
   limits: LimitSettings,
+  computerUse: ComputerUseSettings,
 });
 
 /**
@@ -181,6 +183,8 @@ export const Settings = Schema.Struct({
   assistants: AssistantSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultAssistants))),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 44). */
   limits: LimitSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultLimits))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 49). */
+  computerUse: ComputerUseSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultComputerUse))),
 });
 export type Settings = typeof Settings.Type;
 
@@ -201,4 +205,5 @@ export const defaultSettings: Settings = {
   slimThreadsAfter: defaultSlimThreadsAfter,
   assistants: defaultAssistants,
   limits: defaultLimits,
+  computerUse: defaultComputerUse,
 };

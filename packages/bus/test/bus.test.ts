@@ -1,3 +1,4 @@
+import { Computer } from "@cerium/computer";
 import type { McpServerSpec } from "@cerium/harness";
 import {
   Adapters,
@@ -33,6 +34,7 @@ const stack = (fake: ReturnType<typeof makeFakeAdapter>) =>
     Layer.provideMerge(BusRegistryLive),
     Layer.provideMerge(BrowserHost.layer),
     Layer.provideMerge(PushHost.unavailable),
+    Layer.provideMerge(Computer.unavailable),
     Layer.provideMerge(UserSettings.layer),
     Layer.provide(
       Layer.mergeAll(

@@ -2,6 +2,7 @@ export * from "./account.ts";
 export * from "./assistants.ts";
 export * from "./capabilities.ts";
 export * from "./compat.ts";
+export * from "./computerUse.ts";
 export * from "./events.ts";
 export * from "./harness.ts";
 export * from "./history.ts";
