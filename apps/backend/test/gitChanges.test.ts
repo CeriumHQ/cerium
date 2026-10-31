@@ -6,13 +6,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { PickedHunk } from "@cerium/rpc";
 
 import { Git } from "../src/git.ts";
-import {
-  GitChanges,
-  leadingFields,
-  linePatch,
-  parseStatusV2,
-  rawHunks,
-} from "../src/gitChanges.ts";
+import { GitChanges, leadingFields, linePatch, parseStatusV2, rawHunks } from "../src/gitChanges.ts";
 import { madeOnce, sameFolder } from "./repositories.ts";
 
 describe("git status", () => {

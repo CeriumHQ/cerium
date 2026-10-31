@@ -1,13 +1,7 @@
 import type { CatalogEntry } from "@cerium/orchestrator";
 import { assert, describe, it } from "@effect/vitest";
 
-import {
-  addedFile,
-  defaultReviewer,
-  numberedDiff,
-  readReview,
-  splitFiles,
-} from "../src/reviewModel.ts";
+import { addedFile, defaultReviewer, numberedDiff, readReview, splitFiles } from "../src/reviewModel.ts";
 
 const patch = [
   "diff --git a/src/a.ts b/src/a.ts",
