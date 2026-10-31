@@ -23,6 +23,7 @@ All notable changes to Cerium are recorded here. The format follows
 - A file still being prepared in a draft survives another window saving drafts.
 - Pausing, editing or deleting an automation reports an error and keeps the automation as it was when its file can't be saved, instead of appearing to succeed and reverting after a restart.
 - `read_thread` over remote MCP leaves out messages a rewind replaced and queued messages the user withdrew.
+- Find highlights in one pane or thread no longer erase or replace another's.
 
 ### Changed
 

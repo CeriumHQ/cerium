@@ -14,11 +14,13 @@ import {
   findJumpAtom,
   findRanges,
   FIND_EVENT,
+  hideMatches,
   jumpCandidates,
   markFor,
   matchedWords,
   rangeOf,
   ringMessage,
+  showMatches,
   showRange,
   wordRanges,
 } from "./find.ts";
@@ -80,6 +82,8 @@ export function TranscriptFind({
   const reading = useRef(false);
   const visibleFrames = useRef(0);
   const hidden = useKeptHidden();
+  /** Who this find bar's highlights belong to, among every pane's. */
+  const [owner] = useState(() => ({}));
   const jump = useAtomValue(findJumpAtom);
   const takeJump = useAtomSet(findJumpAtom);
   const read = useAtomSet(
@@ -269,20 +273,16 @@ export function TranscriptFind({
     return () => cancelAnimationFrame(frame);
   }, [query, readState, open]);
   useEffect(() => {
-    if (!open || !scope.current) return;
+    // A thread kept mounted out of sight shows nothing; its find comes back with it.
+    if (!open || hidden || !scope.current) return;
     const ranges = findRanges(scope.current, query);
-    CSS.highlights.set("find", new Highlight(...ranges));
     const match = matches[at];
     const message =
       match && scope.current.querySelector('[data-find="' + CSS.escape(match.message.id) + '"]');
-    const active = message && wordRanges(message, [query])[match.ordinal];
-    if (active) CSS.highlights.set("find-current", new Highlight(active));
-    else CSS.highlights.delete("find-current");
-    return () => {
-      CSS.highlights.delete("find");
-      CSS.highlights.delete("find-current");
-    };
-  }, [open, query, current, revision, blocks, index, scope, at, matches]);
+    const active = (message && wordRanges(message, [query])[match.ordinal]) || undefined;
+    showMatches(owner, ranges, active);
+    return () => hideMatches(owner);
+  }, [open, hidden, query, current, revision, blocks, index, scope, at, matches, owner]);
 
   const paletteJump = useEffectEvent(() => {
     if (hidden || !jump || jump.threadId !== threadId) return;

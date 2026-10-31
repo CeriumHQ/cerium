@@ -176,6 +176,31 @@ export const ringMessage = (message: HTMLElement): void => {
   window.setTimeout(() => message.removeAttribute("data-found"), RING_MS);
 };
 
+// `CSS.highlights` names are the document's, not a pane's: every find bar (split panes, and threads
+// kept mounted out of sight) adds its matches here, and the two highlights draw them all together,
+// so one pane's update or close never takes another's away.
+const shownMatches = new Map<object, { readonly all: ReadonlyArray<Range>; readonly current?: Range }>();
+
+const drawMatches = () => {
+  const all = [...shownMatches.values()].flatMap((shown) => shown.all);
+  const current = [...shownMatches.values()].flatMap((shown) => (shown.current ? [shown.current] : []));
+  if (all.length > 0) CSS.highlights.set("find", new Highlight(...all));
+  else CSS.highlights.delete("find");
+  if (current.length > 0) CSS.highlights.set("find-current", new Highlight(...current));
+  else CSS.highlights.delete("find-current");
+};
+
+/** Highlights one find bar's matches, and its current one, in place of what it showed before. */
+export const showMatches = (owner: object, all: ReadonlyArray<Range>, current: Range | undefined): void => {
+  shownMatches.set(owner, current ? { all, current } : { all });
+  drawMatches();
+};
+
+/** Takes one find bar's matches away, leaving the others'. */
+export const hideMatches = (owner: object): void => {
+  if (shownMatches.delete(owner)) drawMatches();
+};
+
 /** Marks `ranges` for a moment, under the name `CSS.highlights` knows them by, then lets them go. */
 export const markFor = (name: string, ranges: ReadonlyArray<Range>): void => {
   CSS.highlights.set(name, new Highlight(...ranges));
