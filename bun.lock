@@ -152,6 +152,19 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/adapters/acp": {
+      "name": "@cerium/adapter-acp",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
     "packages/adapters/claude": {
       "name": "@cerium/adapter-claude",
       "version": "0.0.0",
@@ -424,6 +437,8 @@
     "@bufbuild/protobuf": ["@bufbuild/protobuf@1.10.0", "", {}, "sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag=="],
 
     "@cerium/account": ["@cerium/account@workspace:packages/account"],
+
+    "@cerium/adapter-acp": ["@cerium/adapter-acp@workspace:packages/adapters/acp"],
 
     "@cerium/adapter-claude": ["@cerium/adapter-claude@workspace:packages/adapters/claude"],
 

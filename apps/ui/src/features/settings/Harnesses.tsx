@@ -28,6 +28,8 @@ export const harnessName: Record<ProviderId, string> = {
   muse: "Muse Code",
   cursor: "Cursor",
   opencode: "OpenCode",
+  grok: "Grok Build",
+  antigravity: "Antigravity CLI",
 };
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;

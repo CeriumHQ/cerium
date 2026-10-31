@@ -1,13 +1,29 @@
 import { Schema } from "effect";
 
-export const ProviderId = Schema.Literals(["claude", "codex", "muse", "cursor", "opencode"]);
+export const ProviderId = Schema.Literals([
+  "claude",
+  "codex",
+  "muse",
+  "cursor",
+  "opencode",
+  "grok",
+  "antigravity",
+]);
 export type ProviderId = typeof ProviderId.Type;
 
 /**
  * The harnesses this build offers, in display order. A harness switched off leaves this list, while its
  * id stays valid so threads it ran still load.
  */
-export const OFFERED_PROVIDERS: ReadonlyArray<ProviderId> = ["claude", "codex", "muse", "cursor", "opencode"];
+export const OFFERED_PROVIDERS: ReadonlyArray<ProviderId> = [
+  "claude",
+  "codex",
+  "muse",
+  "cursor",
+  "opencode",
+  "grok",
+  "antigravity",
+];
 
 export const ThreadId = Schema.NonEmptyString.pipe(Schema.brand("cerium/ThreadId"));
 export type ThreadId = typeof ThreadId.Type;

@@ -32,6 +32,9 @@
       "path": "./packages/account"
     },
     {
+      "path": "./packages/adapters/acp"
+    },
+    {
       "path": "./packages/adapters/claude"
     },
     {

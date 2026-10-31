@@ -30,6 +30,8 @@ export const harnessName: Record<ProviderId, string> = {
   muse: "Muse Code",
   cursor: "Cursor",
   opencode: "OpenCode",
+  grok: "Grok Build",
+  antigravity: "Antigravity CLI",
 };
 
 /** The events that can change what the activity says: agents starting and stopping, and waits on the user. */
