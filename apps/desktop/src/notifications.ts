@@ -57,6 +57,9 @@ export const nameAppForNotifications = () => {
     app.setAppUserModelId(app.isPackaged ? "app.cerium.desktop" : process.execPath);
 };
 
+/** How many toasts are kept to report their click; the oldest is let go past it. */
+const MAX_SHOWING = 50;
+
 export const nativeNotifications = (options: {
   readonly window: () => BrowserWindow | undefined;
   /** Brings the window back, from the tray too. */
@@ -64,7 +67,8 @@ export const nativeNotifications = (options: {
   /** The thread's own window, when it has one: a click on its toast brings that forward instead. */
   readonly threadWindow?: (threadId: string) => BrowserWindow | undefined;
 }) => {
-  // Kept until dismissed: a toast whose object is collected no longer reports its click.
+  // Kept until dismissed: a toast whose object is collected no longer reports its click. macOS and
+  // Linux don't always say when one expires, so only the latest are kept.
   const showing = new Set<Notification>();
 
   const notify = (request: NotificationRequest) => {
@@ -75,6 +79,7 @@ export const nativeNotifications = (options: {
       silent: request.silent,
     });
     showing.add(toast);
+    if (showing.size > MAX_SHOWING) showing.delete(showing.values().next().value!);
     const forget = () => showing.delete(toast);
     toast.on("click", () => {
       forget();

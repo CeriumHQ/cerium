@@ -25,18 +25,32 @@ const KEPT = 16;
 
 let worker: Worker | undefined;
 let nextId = 0;
-const waiting = new Map<number, (lines: ReadonlyArray<Line> | undefined) => void>();
+/** Settles a request; `remember` is whether its answer is kept, which a lost worker's is not. */
+const waiting = new Map<number, (lines: ReadonlyArray<Line> | undefined, remember: boolean) => void>();
 const kept = new Map<string, ReadonlyArray<Line> | undefined>();
 
 const keyOf = (text: string, path: string) => `${path}\0${text}`;
 
+/** The worker died or sent what can't be read: what waits shows uncoloured, and the next ask starts anew. */
+const lose = (lost: Worker) => {
+  if (worker !== lost) return;
+  worker = undefined;
+  lost.terminate();
+  const settles = [...waiting.values()];
+  waiting.clear();
+  for (const settle of settles) settle(undefined, false);
+};
+
 const getWorker = () => {
   if (worker === undefined) {
-    worker = new Worker(new URL("./highlight.worker.ts", import.meta.url), { type: "module" });
-    worker.addEventListener("message", (event: MessageEvent<HighlightResponse>) => {
-      waiting.get(event.data.id)?.(event.data.lines);
+    const created = new Worker(new URL("./highlight.worker.ts", import.meta.url), { type: "module" });
+    worker = created;
+    created.addEventListener("message", (event: MessageEvent<HighlightResponse>) => {
+      waiting.get(event.data.id)?.(event.data.lines, true);
       waiting.delete(event.data.id);
     });
+    created.addEventListener("error", () => lose(created));
+    created.addEventListener("messageerror", () => lose(created));
   }
   return worker;
 };
@@ -48,10 +62,12 @@ export const highlight = (text: string, path: string): Promise<ReadonlyArray<Lin
   if (typeof Worker === "undefined") return Promise.resolve(undefined);
   const id = nextId++;
   return new Promise((resolve) => {
-    waiting.set(id, (lines) => {
-      kept.delete(key);
-      kept.set(key, lines);
-      if (kept.size > KEPT) kept.delete(kept.keys().next().value!);
+    waiting.set(id, (lines, remember) => {
+      if (remember) {
+        kept.delete(key);
+        kept.set(key, lines);
+        if (kept.size > KEPT) kept.delete(kept.keys().next().value!);
+      }
       resolve(lines);
     });
     getWorker().postMessage({ id, text, path } satisfies HighlightRequest);

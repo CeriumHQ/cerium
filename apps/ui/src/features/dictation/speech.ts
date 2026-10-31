@@ -1,7 +1,8 @@
 import type { DictationProblem, SpeechModelId } from "./model.ts";
 
 // The window's side of the speech worker (speech.worker.ts): one worker for every composer, started
-// the first time someone dictates, which keeps its model loaded for the next time.
+// the first time someone dictates, which keeps its model loaded for the next time until it has been
+// idle a few minutes.
 
 export type SpeechRequest =
   /** Loads the model now, so its download runs while the user is still talking. */
@@ -36,15 +37,48 @@ export class SpeechError extends Error {
   }
 }
 
+/** How long the worker, and the model it holds, stay up after the last request or answer. */
+const IDLE_MS = 5 * 60_000;
+
 let worker: Worker | undefined;
+let idle: ReturnType<typeof setTimeout> | undefined;
 let nextId = 0;
 const waiting = new Map<number, { resolve: (text: string) => void; reject: (error: SpeechError) => void }>();
 const listeners = new Set<(response: SpeechResponse) => void>();
 
+/** Ends the worker, which takes the model's memory with it; the next request starts a new one. */
+const stopWorker = () => {
+  clearTimeout(idle);
+  idle = undefined;
+  worker?.terminate();
+  worker = undefined;
+};
+
+/** Counts the worker's time from now; a transcription still waiting keeps it up. */
+const touch = () => {
+  clearTimeout(idle);
+  idle = setTimeout(() => {
+    if (waiting.size > 0) touch();
+    else stopWorker();
+  }, IDLE_MS);
+};
+
+/** The worker died or sent what can't be read: everyone waiting on it hears it failed. */
+const lose = (message: string) => {
+  stopWorker();
+  const response = { kind: "failed", problem: "failed", message } satisfies SpeechResponse;
+  const lost = [...waiting.values()];
+  waiting.clear();
+  for (const pending of lost) pending.reject(new SpeechError(response.problem, message));
+  for (const listener of listeners) listener(response);
+};
+
 const getWorker = () => {
   if (worker === undefined) {
-    worker = new Worker(new URL("./speech.worker.ts", import.meta.url), { type: "module" });
-    worker.addEventListener("message", (event: MessageEvent<SpeechResponse>) => {
+    const created = new Worker(new URL("./speech.worker.ts", import.meta.url), { type: "module" });
+    worker = created;
+    created.addEventListener("message", (event: MessageEvent<SpeechResponse>) => {
+      touch();
       const response = event.data;
       if (response.kind === "done" || (response.kind === "failed" && response.id !== undefined)) {
         const pending = waiting.get(response.id!);
@@ -54,7 +88,15 @@ const getWorker = () => {
       }
       for (const listener of listeners) listener(response);
     });
+    // A worker that fails to start, or runs out of memory, otherwise leaves its requests unanswered.
+    created.addEventListener("error", (event) => {
+      if (worker === created) lose(event.message || "The speech worker stopped.");
+    });
+    created.addEventListener("messageerror", () => {
+      if (worker === created) lose("The speech worker sent something unreadable.");
+    });
   }
+  touch();
   return worker;
 };
 

@@ -24,6 +24,8 @@ vi.mock("electron", () => {
     entries: Array<{ url: string; title: string }> = [];
     debugger = {
       on() {},
+      once() {},
+      off() {},
       isAttached: () => this.attached,
       attach: () => {
         this.attached = true;

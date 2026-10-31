@@ -10,6 +10,8 @@ import { previewBridge, previewStates, shortUrl, subscribePreviews } from "./mod
 /** How far in from the pane's edges the page sits, and how long the pane watches its place after a change. */
 const INSET = 6;
 const SETTLING_MS = 600;
+/** How long a still stays under the page once it is placed again, for the page to draw over it. */
+const STILL_KEPT_MS = 400;
 
 const sameBox = (a: PreviewBounds | undefined, b: PreviewBounds | undefined) =>
   a !== undefined &&
@@ -68,6 +70,7 @@ function useLaidOver(
     let hidden = true;
     let frame = 0;
     let until = 0;
+    let release = 0;
     const check = () => {
       frame = 0;
       const rect = element.getBoundingClientRect();
@@ -76,13 +79,16 @@ function useLaidOver(
         if (!hidden) {
           hidden = true;
           placed = undefined;
+          window.clearTimeout(release);
           // Out of sight, the page goes at once. Under a popup, the still is taken before the page
           // goes, so the pane never flashes empty.
           if (gone) bridge.place(threadId, null);
           else
             void bridge.still(threadId).then((image) => {
+              // The page came back before its still arrived: the still has nothing left to stand in for.
+              if (!hidden) return;
               setStill(image);
-              if (hidden) bridge.place(threadId, null);
+              bridge.place(threadId, null);
             });
         }
       } else {
@@ -91,6 +97,9 @@ function useLaidOver(
           hidden = false;
           placed = box;
           bridge.place(threadId, box);
+          // Once the page is drawn over the pane its still, a whole screenshot, is let go.
+          window.clearTimeout(release);
+          release = window.setTimeout(() => setStill(undefined), STILL_KEPT_MS);
         }
       }
       if (performance.now() < until) frame = requestAnimationFrame(check);
@@ -116,6 +125,7 @@ function useLaidOver(
     const slow = setInterval(watch, 1000);
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(release);
       resized.disconnect();
       layers.disconnect();
       window.removeEventListener("resize", watch);
