@@ -577,7 +577,9 @@ export class Computer extends Context.Service<
             yield* publishSessions;
           });
 
-        const endAll = Effect.forEach([...threads.keys()], endThread, { discard: true });
+        const endAll = Effect.suspend(() =>
+          Effect.forEach([...threads.keys()], endThread, { discard: true }),
+        );
 
         // A backend that stopped without ending its sessions left its cursors on screen: end those of
         // backends no longer running, then clear away ended sessions.
