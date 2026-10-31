@@ -75,9 +75,18 @@ interface Preview {
 /** CDP over the view's own debugger: no port is opened, and no other program reaches the page. */
 const debuggerSession = (contents: WebContents): CdpSession => {
   const listeners = new Map<string, Set<Listener>>();
-  contents.debugger.on("message", (_event, method, params) => {
+  const onMessage = (_event: Electron.Event, method: string, params: any) => {
     for (const listener of listeners.get(method) ?? []) listener(params);
-  });
+  };
+  // A session ends with its attachment: the next attachment's session takes the debugger's messages
+  // alone, rather than every page the view was ever driven as hearing them too.
+  const release = () => {
+    contents.debugger.removeListener("message", onMessage);
+    contents.debugger.removeListener("detach", release);
+    listeners.clear();
+  };
+  contents.debugger.on("message", onMessage);
+  contents.debugger.on("detach", release);
   const on = (method: string, listener: Listener) => {
     const set = listeners.get(method) ?? new Set();
     set.add(listener);
@@ -123,7 +132,9 @@ const debuggerSession = (contents: WebContents): CdpSession => {
         });
       }),
     close: () => {
-      if (!contents.isDestroyed() && contents.debugger.isAttached()) contents.debugger.detach();
+      if (contents.isDestroyed()) return;
+      release();
+      if (contents.debugger.isAttached()) contents.debugger.detach();
     },
   };
 };
@@ -393,11 +404,18 @@ export const previews = (window: () => BrowserWindow | undefined) => {
         await preview.restoring;
         if (contents.getURL() === "") await contents.loadURL("about:blank");
         if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
-        const page = await Page.attach(debuggerSession(contents));
-        // The page takes the agents' clicks and keys as if it had focus: the window's own page
-        // holds it, and Chromium drops input to a view without it, whether or not the user sees it.
-        await page.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-        return page;
+        const session = debuggerSession(contents);
+        try {
+          const page = await Page.attach(session);
+          // The page takes the agents' clicks and keys as if it had focus: the window's own page
+          // holds it, and Chromium drops input to a view without it, whether or not the user sees it.
+          await page.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+          return page;
+        } catch (error) {
+          // The next call attaches afresh, with a session of its own.
+          session.close();
+          throw error;
+        }
       })();
       preview.page = attached;
       // A failed attach is tried again on the next call.
