@@ -88,4 +88,20 @@ describe("skillFrontMatter", () => {
     });
     expect(skillFrontMatter("no front matter")).toEqual({});
   });
+
+  it("keeps a skill's name free of its YAML comment", () => {
+    expect(skillFrontMatter('---\nname: review # comment\ndescription: "Reviews \\"code\\""\n---\n')).toEqual(
+      {
+        name: "review",
+        description: 'Reviews "code"',
+      },
+    );
+  });
+
+  it("ignores malformed or non-mapping front matter and non-string fields", () => {
+    expect(skillFrontMatter("---\nname: [unterminated\n---\n")).toEqual({});
+    expect(skillFrontMatter("---\n- list\n---\n")).toEqual({});
+    expect(skillFrontMatter("---\nname: 42\ndescription: false\n---\n")).toEqual({});
+    expect(skillFrontMatter("---\nname: a\nname: b\n---\n")).toEqual({});
+  });
 });

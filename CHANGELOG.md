@@ -8,7 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
-- The package audit keeps existing contract tests and live smoke checks without adding parser edge-case matrices or a mocked desktop vault test suite.
+- Package audit tests retain parser, artifact and credential-safety regressions while removing duplicate cases, generic package conformance examples and assertions tied to the vault's internal write mechanism.
 
 - Artifact documents use HTML parser source locations for safe head insertion, and artifact discovery uses the transcript's Markdown grammar for nested fences, comments and indentation. Repeated discovery reuses bounded results and messages without artifact fences skip parsing.
 - Project TOML edits use parsed keys and source ranges, worktree include rules use Git-ignore-compatible matching, and skill front matter uses YAML parsing for comments, escapes and block values.
