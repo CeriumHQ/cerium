@@ -2,8 +2,9 @@
 // the team's, checked into the repository, so only two sections are Cerium's: `[scripts]` (the
 // commands of `setup`, `run`, and the `teardown` kept for them) and `[actions]` (named commands, one
 // `name = "command"` each). Everything else in it, comments and blank lines included, is left as it
-// is. A reader of a whole TOML file isn't needed for that: lines are scanned for the section
-// headers and the `key = "string"` entries under them.
+// is. The parser identifies keys and ranges; edits preserve the surrounding text.
+
+import { parseTOML, type AST } from "toml-eslint-parser";
 
 /** A `key = value` line of the file, or the lines of a multi-line string value that starts on one. */
 interface Entry {
@@ -77,10 +78,20 @@ const HEADER = /^\s*(\[\[?)\s*([^[\]]+?)\s*\]\]?\s*(?:#.*)?$/;
 const BARE_KEY = /^[A-Za-z0-9_-]+/;
 
 /** A header's name without the spaces and quotes TOML allows around its dotted parts. */
-const sectionName = (open: string, raw: string): string =>
-  (open === "[[" ? "[[" : "") + raw.replace(/\s+/g, "").replace(/["']/g, "");
+const sectionName = (open: string, raw: string): string => {
+  try {
+    const table = parseTOML(`${open}${raw}${open === "[[" ? "]]" : "]"}`).body[0].body[0];
+    if (table?.type === "TOMLTable" && table.key.keys.length === 1 && table.kind === "standard") {
+      const key = table.key.keys[0]!;
+      return key.type === "TOMLBare" ? key.name : key.value;
+    }
+  } catch {
+    // A malformed header is not one of Cerium's sections.
+  }
+  return `\0${raw}`;
+};
 
-const scan = (lines: ReadonlyArray<string>): Scan => {
+const scanTolerant = (lines: ReadonlyArray<string>): Scan => {
   const headers: Array<{ name: string; line: number }> = [];
   const entries: Entry[] = [];
   let section = "";
@@ -134,6 +145,49 @@ const scan = (lines: ReadonlyArray<string>): Scan => {
       entries.push({ section, key, value: undefined, from: index, to: index, comment: "" });
     } else {
       entries.push({ section, key, value: string.value, from: index, to: index, comment: rest[1] ?? "" });
+    }
+  }
+  return { headers, entries, inlined };
+};
+
+/** Parse valid TOML as a whole. The tolerant scanner retains the historical behavior for invalid files. */
+const scan = (lines: ReadonlyArray<string>): Scan => {
+  const text = lines.join("\n");
+  let program: AST.TOMLProgram;
+  try {
+    program = parseTOML(text);
+  } catch {
+    return scanTolerant(lines);
+  }
+  const headers: Array<{ name: string; line: number }> = [];
+  const entries: Entry[] = [];
+  const inlined = new Set<string>();
+  const keyName = (key: AST.TOMLBare | AST.TOMLQuoted) => (key.type === "TOMLBare" ? key.name : key.value);
+  for (const node of program.body[0].body) {
+    if (node.type === "TOMLKeyValue") {
+      inlined.add(keyName(node.key.keys[0]!));
+      continue;
+    }
+    const section =
+      node.kind === "standard" && node.key.keys.length === 1 ? keyName(node.key.keys[0]!) : "\0other";
+    headers.push({ name: section, line: node.loc.start.line - 1 });
+    for (const entry of node.body) {
+      // Dotted keys are not command entries and must not be rewritten as a single key.
+      if (entry.key.keys.length !== 1) continue;
+      const value = entry.value;
+      const from = entry.loc.start.line - 1;
+      const to = entry.loc.end.line - 1;
+      const rest = to === from ? lines[to]!.slice(value.loc.end.column) : "";
+      const comment = /^\s*(#.*)$/.exec(rest)?.[1] ?? "";
+      entries.push({
+        section,
+        key: keyName(entry.key.keys[0]!),
+        value:
+          value.type === "TOMLValue" && value.kind === "string" && !value.multiline ? value.value : undefined,
+        from,
+        to,
+        comment,
+      });
     }
   }
   return { headers, entries, inlined };
