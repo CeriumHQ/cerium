@@ -41,6 +41,8 @@ export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   // Free on OpenCode Zen, so it names threads even without a provider signed in.
   { provider: "opencode", model: "opencode/big-pickle" },
   { provider: "muse", model: "muse-spark-1.3-contributor" },
+  // Grok Build's default as 1.0.70 lists it; a title runs at its lowest effort.
+  { provider: "grok", model: "grok-4.6" },
 ];
 
 /** How Cerium names a new thread from its first message. */

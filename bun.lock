@@ -19,6 +19,7 @@
         "@cerium/adapter-claude": "workspace:*",
         "@cerium/adapter-codex": "workspace:*",
         "@cerium/adapter-cursor": "workspace:*",
+        "@cerium/adapter-grok": "workspace:*",
         "@cerium/adapter-muse": "workspace:*",
         "@cerium/adapter-opencode": "workspace:*",
         "@cerium/artifacts": "workspace:*",
@@ -206,6 +207,21 @@
         "effect": "4.0.5",
         "node-pty": "1.2.0-beta.15",
         "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/adapters/grok": {
+      "name": "@cerium/adapter-grok",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/adapter-acp": "workspace:*",
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+        "smol-toml": "1.8.0",
       },
       "devDependencies": {
         "@effect/platform-node": "4.0.5",
@@ -445,6 +461,8 @@
     "@cerium/adapter-codex": ["@cerium/adapter-codex@workspace:packages/adapters/codex"],
 
     "@cerium/adapter-cursor": ["@cerium/adapter-cursor@workspace:packages/adapters/cursor"],
+
+    "@cerium/adapter-grok": ["@cerium/adapter-grok@workspace:packages/adapters/grok"],
 
     "@cerium/adapter-muse": ["@cerium/adapter-muse@workspace:packages/adapters/muse"],
 
@@ -2269,6 +2287,8 @@
     "simple-update-notifier": ["simple-update-notifier@2.0.0", "", { "dependencies": { "semver": "^7.5.3" } }, "sha512-a2B9Y0KlNXl9u/vsW6sTIu9vGEpfKu2wRV6l1H3XEas/0gUIzGzBoP/IouTcUQbm9JWZLH3COxyn03TYlFax6w=="],
 
     "sirv": ["sirv@3.0.2", "", { "dependencies": { "@polka/url": "^1.0.0-next.24", "mrmime": "^2.0.0", "totalist": "^3.0.0" } }, "sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g=="],
+
+    "smol-toml": ["smol-toml@1.8.0", "", {}, "sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ=="],
 
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 

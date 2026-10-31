@@ -28,6 +28,7 @@ const preferred: Partial<Record<ProviderId, RegExp>> = {
   claude: /haiku/i,
   codex: /mini|spark/i,
   opencode: /big-pickle|free/i,
+  grok: /build|fast|mini/i,
 };
 
 /** A session whose turns can be awaited, each resolving with its reply. */

@@ -106,6 +106,11 @@ export interface AcpAdapterSpec {
   readonly installHint: string;
   /** Finds the harness and reads its sign-in. */
   readonly probe: Effect.Effect<HarnessStatus, HarnessFailure, Platform>;
+  /**
+   * The models an agent names in `initialize` (Grok's `_meta.modelState`), read before opening a
+   * throwaway session to find them. None falls back to the session's config options.
+   */
+  readonly models?: (initialized: InitializeResponse) => ReadonlyArray<ModelInfo>;
   /** Models to offer when the agent lists none over ACP (an agent that picks models by flag). */
   readonly fallbackModels?: (
     executablePath: string,
@@ -165,6 +170,26 @@ export const makeAcpAdapter = Effect.fn("AcpAdapter.make")(function* (spec: AcpA
     return status.executablePath;
   });
 
+  /** A session in an access mode the machine can't run yet (a sandbox still to set up) can't start. */
+  const runnable = (options: SessionOptions) =>
+    Effect.gen(function* () {
+      const status = yield* probes.kept;
+      if (status._tag !== "HarnessInstalled") return;
+      const blocked =
+        status.setup?.blocks.includes(options.access) === true
+          ? `${status.setup.reason} Run \`${status.setup.command}\`${status.setup.elevated ? " as an administrator" : ""}, or pick another access mode.`
+          : status.limit?.blocks.includes(options.access) === true
+            ? `${harness.name} can't run in this access mode here: ${status.limit.reason}`
+            : undefined;
+      if (blocked !== undefined) {
+        return yield* new HarnessFailure({
+          provider: harness.provider,
+          message: blocked,
+          cause: options.access,
+        });
+      }
+    });
+
   /** The connections of the sessions running now, by session id, for side questions put to them. */
   const live = new Map<string, AcpConnection>();
 
@@ -172,7 +197,9 @@ export const makeAcpAdapter = Effect.fn("AcpAdapter.make")(function* (spec: AcpA
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope> =>
     Effect.gen(function* () {
-      const session = yield* provide(startAcpSession(harness, yield* ready, options));
+      const executablePath = yield* ready;
+      yield* runnable(options);
+      const session = yield* provide(startAcpSession(harness, executablePath, options));
       const { connection, sessionId } = session.opened;
       yield* remember(connection.initialized);
       live.set(sessionId, connection);
@@ -184,6 +211,18 @@ export const makeAcpAdapter = Effect.fn("AcpAdapter.make")(function* (spec: AcpA
 
   const listModels = Effect.gen(function* () {
     const executablePath = yield* ready;
+    if (spec.models !== undefined) {
+      const announced = yield* provide(
+        withAcpAgent(harness, executablePath, "probe", (agent) =>
+          Effect.gen(function* () {
+            yield* remember(agent.connection.initialized);
+            if (!agent.signedIn) return yield* signedOut();
+            return spec.models!(agent.connection.initialized);
+          }),
+        ),
+      );
+      if (announced.length > 0) return announced;
+    }
     const inspection = yield* provide(inspectAcpAgent(harness, executablePath));
     yield* remember(inspection.initialized);
     if (!inspection.signedIn) return yield* signedOut();

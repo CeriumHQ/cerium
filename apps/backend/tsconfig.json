@@ -40,6 +40,9 @@
       "path": "../../packages/adapters/opencode"
     },
     {
+      "path": "../../packages/adapters/grok"
+    },
+    {
       "path": "../../packages/rpc"
     },
     {

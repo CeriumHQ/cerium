@@ -60,6 +60,7 @@ const quick: Partial<Record<ProviderId, RegExp>> = {
   cursor: /composer|auto/i,
   opencode: /big-pickle|free/i,
   muse: /fast|lite|mini/i,
+  grok: /build|fast|mini/i,
 };
 
 const CODE = "PELICAN-42";

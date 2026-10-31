@@ -27,6 +27,8 @@ const offered = [
   model("codex", "gpt-5.6-terra", { description: "Older balanced model" }),
   model("codex", "gpt-5.6-luna", { isDefault: true }),
   model("opencode", "opencode/nemotron", { description: "opencode/nemotron" }),
+  model("grok", "grok-4.6", { isDefault: true }),
+  model("grok", "grok-build-0.1"),
 ];
 const empty: RosterSettings = { models: [], edited: [] };
 const summary = (settings: RosterSettings) =>
@@ -38,6 +40,8 @@ describe("starterRoster", () => {
     expect(starterRoster("codex", offered).map((entry) => entry.model)).toEqual(["gpt-5.6-luna"]);
     expect(starterRoster("opencode", offered).map((entry) => entry.model)).toEqual(["opencode/nemotron"]);
     expect(starterRoster("cursor", offered)).toEqual([]);
+    expect(starterRoster("grok", offered).map((entry) => entry.model)).toEqual(["grok-build-0.1"]);
+    expect(starterRoster("grok", offered.slice(0, -1)).map((entry) => entry.model)).toEqual(["grok-4.6"]);
   });
 });
 
@@ -49,6 +53,7 @@ describe("rosterMembers", () => {
       "codex/gpt-5.6-luna: GPT-5.6-LUNA",
       // A description that only repeats the id says nothing, so the label stands in.
       "opencode/opencode/nemotron: OPENCODE/NEMOTRON",
+      "grok/grok-build-0.1: Everyday coding",
     ]);
   });
 

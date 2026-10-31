@@ -216,7 +216,17 @@ export class AcpTranslator {
 
   /** How a call reads in the transcript, for permission requests and history. */
   describe(call: ToolCallState): DescribedTool {
-    return this.#options.describeTool?.(call, this.#servers) ?? describeByKind(call, this.#servers);
+    const described =
+      this.#options.describeTool?.(call, this.#servers) ?? describeByKind(call, this.#servers);
+    const cwd = this.#options.cwd;
+    if (cwd === undefined || !isRecord(described.input)) return described;
+    // Paths the transcript reads, against the session's folder where the agent sent them relative.
+    const input: Record<string, unknown> = { ...described.input };
+    for (const key of ["path", "file_path"]) {
+      const value = input[key];
+      if (typeof value === "string" && value !== "" && !isAbsolute(value)) input[key] = resolve(cwd, value);
+    }
+    return { ...described, input };
   }
 
   #payloads(record: AcpRecord): ReadonlyArray<EventPayload> {

@@ -12,6 +12,7 @@ const accountOf: Record<string, { readonly brand: string; readonly alone: string
   cursorLogin: { brand: "Cursor", alone: "Cursor account" },
   apiKey: { brand: "API key", alone: "API key" },
   opencodeFree: { brand: "Free models", alone: "Free models" },
+  "grok.com": { brand: "Grok", alone: "Grok account" },
 };
 
 /** A plan as it's sold: "max" is Max, "max_20x" is Max 20x. */

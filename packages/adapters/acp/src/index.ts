@@ -8,3 +8,4 @@ export * from "./translate.ts";
 export * from "./adapter.ts";
 export * from "./history.ts";
 export * from "./models.ts";
+export * from "./fixtures.ts";

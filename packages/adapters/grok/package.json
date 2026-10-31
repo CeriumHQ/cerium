@@ -1,0 +1,21 @@
+{
+  "name": "@cerium/adapter-grok",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@cerium/adapter-acp": "workspace:*",
+    "@cerium/harness": "workspace:*",
+    "@cerium/protocol": "workspace:*",
+    "effect": "4.0.5",
+    "smol-toml": "1.8.0"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.5",
+    "@effect/vitest": "4.0.5"
+  }
+}

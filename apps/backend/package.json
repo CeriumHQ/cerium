@@ -12,6 +12,7 @@
     "@cerium/adapter-claude": "workspace:*",
     "@cerium/adapter-codex": "workspace:*",
     "@cerium/adapter-cursor": "workspace:*",
+    "@cerium/adapter-grok": "workspace:*",
     "@cerium/adapter-muse": "workspace:*",
     "@cerium/adapter-opencode": "workspace:*",
     "@cerium/artifacts": "workspace:*",
