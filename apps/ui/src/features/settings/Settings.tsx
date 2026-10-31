@@ -11,6 +11,7 @@ import { AccountSettings, DeviceSettings } from "./Account.tsx";
 import { AdvisorSettings, RosterSettings, ThreadSettings } from "./Agents.tsx";
 import { AssistantSettings } from "./Assistants.tsx";
 import { AppearanceSettings } from "./Appearance.tsx";
+import { ComputerUseSettings } from "./ComputerUse.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
@@ -36,6 +37,7 @@ export type SettingsCategory =
   | "advisor"
   | "prompts"
   | "effortRouter"
+  | "computerUse"
   | "harnesses"
   | "mcp"
   | "skills"
@@ -100,6 +102,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
       ...page("advisor", "Advisor", "Experimental second opinion", settingsGlyphs.advisor),
       ...page("prompts", "Prompts", "Text and commands on /", settingsGlyphs.prompts),
       ...page("effortRouter", "Effort router", "Effort picked per turn", settingsGlyphs.router),
+      ...page("computerUse", "Computer use", "Agents using your apps", settingsGlyphs.computer),
     ],
   },
   {
@@ -175,6 +178,9 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["prompts", "Saved prompts"],
     ["effortRouter", "Pick effort automatically"],
     ["effortRouter", "OpenRouter key"],
+    ["computerUse", "Let agents use this computer"],
+    ["computerUse", "Mouse and keyboard"],
+    ["computerUse", "Accessibility permission"],
     ["harnesses", "Installed CLIs"],
     ["harnesses", "Sign-ins"],
     ["mcp", "MCP servers"],
@@ -437,6 +443,8 @@ function SettingsContent({
       return <PromptSettings />;
     case "effortRouter":
       return <EffortRouterSettings />;
+    case "computerUse":
+      return <ComputerUseSettings />;
     case "harnesses":
       return <HarnessSettings />;
     case "mcp":

@@ -10,6 +10,7 @@ import {
   Worktrees,
 } from "@cerium/orchestrator";
 import { BrowserHost, BusHttpServer, BusRegistryLive, BusServer, PushHost } from "@cerium/bus";
+import { Computer } from "@cerium/computer";
 import type { EventPayload } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { Deferred, Effect, Layer, Stream } from "effect";
@@ -82,6 +83,7 @@ export const compareUsage = Effect.fn("Live.compareUsage")(function* (
     Layer.provideMerge(BusRegistryLive),
     Layer.provide(BrowserHost.layer),
     Layer.provide(PushHost.unavailable),
+    Layer.provide(Computer.unavailable),
     Layer.provideMerge(UserSettings.layer),
     Layer.provide(
       Layer.mergeAll(

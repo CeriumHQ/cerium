@@ -261,6 +261,8 @@ interface ComposerProps {
   readonly queue?: Queue | undefined;
   /** The work the thread's agents run in the background, above the queue. */
   readonly background?: Background | undefined;
+  /** The thread's agents using the user's computer, above everything else in the box. */
+  readonly computer?: ReactNode;
   /**
    * The command palette's actions the `/` list offers: new thread, find in thread, and so on. The
    * box adds switching models and stopping its turn beside them.
@@ -289,6 +291,7 @@ export function Composer({
   activity,
   queue,
   background,
+  computer,
   slashCommands = [],
   seat,
 }: ComposerProps) {
@@ -1382,6 +1385,7 @@ export function Composer({
           {dictates ? <DictationNotice dictation={dictation} /> : null}
           {/* Each tray grows the box as it comes and folds away as it goes. min-w-0: a tray's
               truncated lines would otherwise widen it past the one-line box. */}
+          {computer ? <div className={inline ? "min-w-0 basis-full" : ""}>{computer}</div> : null}
           {background ? (
             <div className={inline ? "min-w-0 basis-full" : ""}>
               <BackgroundTray background={background} />

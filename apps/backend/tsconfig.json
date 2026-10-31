@@ -22,6 +22,9 @@
       "path": "../../packages/bus"
     },
     {
+      "path": "../../packages/computer"
+    },
+    {
       "path": "../../packages/adapters/claude"
     },
     {

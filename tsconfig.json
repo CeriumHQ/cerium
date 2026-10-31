@@ -23,6 +23,9 @@
       "path": "./packages/browser"
     },
     {
+      "path": "./packages/computer"
+    },
+    {
       "path": "./packages/rpc"
     },
     {

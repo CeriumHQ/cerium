@@ -1,6 +1,7 @@
 import { deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
 import { BrowserHost } from "@cerium/bus";
+import { Computer } from "@cerium/computer";
 import { previewArtifact } from "@cerium/artifacts/preview";
 import type { HarnessAdapter } from "@cerium/harness";
 import {
@@ -153,6 +154,7 @@ export const Handlers = MachineRpcs.toLayer(
     const usage = yield* SubscriptionUsage;
     const releases = yield* Releases;
     const effortRouter = yield* EffortRouter;
+    const computer = yield* Computer;
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
     const pushes = yield* Pushes;
@@ -625,6 +627,29 @@ export const Handlers = MachineRpcs.toLayer(
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
       RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
+      WatchComputerUse: () =>
+        Stream.unwrap(computer.checkPermission.pipe(Effect.as(computer.changes))).pipe(
+          // macOS asks for the permission in System Settings, outside Cerium: look again while it's missing.
+          Stream.merge(
+            Stream.tick("3 seconds").pipe(
+              Stream.mapEffect(() =>
+                computer.status.pipe(
+                  Effect.flatMap((now) =>
+                    now.permission === "needed" ? computer.checkPermission : Effect.void,
+                  ),
+                ),
+              ),
+              Stream.drain,
+            ),
+          ),
+        ),
+      InstallComputerUse: () =>
+        computer.install.pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
+      OpenComputerPermissions: () =>
+        computer.openPermissionGuide.pipe(
+          Effect.mapError((error) => new CeriumError({ message: error.message })),
+        ),
+      StopComputerUse: ({ threadId }) => computer.stop(threadId),
       ...terminalHandlers(terminals),
       WatchAutomations: () => automations.watch,
       SaveAutomation: ({ id, input }) => automations.save(id, input).pipe(Effect.mapError(refuseAutomation)),

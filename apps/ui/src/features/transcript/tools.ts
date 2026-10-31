@@ -5,6 +5,8 @@ import {
   FolderOpen,
   Globe,
   ListChecks,
+  MousePointer2,
+  ScanEye,
   Search,
   Square,
   SquareTerminal,
@@ -198,6 +200,38 @@ const namedTools: Readonly<
   BashOutput: { icon: SquareTerminal, verb: "Check task" },
 };
 
+/**
+ * Cerium's computer tools (bus/computer.ts) by what they did: looked at an app or the screen, acted
+ * as the agent described, or read the guide.
+ */
+const computerTool = (
+  name: string,
+  input: unknown,
+): { readonly icon: LucideIcon; readonly verb: string; readonly detail?: string } | undefined => {
+  const args = isRecord(input) && isRecord(input["args"]) ? input["args"] : undefined;
+  const command = field(input, "command");
+  switch (name) {
+    case "computer_act": {
+      const description = firstLine(field(input, "description"));
+      return { icon: MousePointer2, verb: "Use computer", ...(description ? { detail: description } : {}) };
+    }
+    case "computer_read": {
+      const where = field(args, "app") ?? field(args, "window_id");
+      const what = command === "screenshot" ? "Screenshot" : "Look at";
+      const detail = where ?? command?.replaceAll("-", " ");
+      return { icon: ScanEye, verb: what, ...(detail ? { detail } : {}) };
+    }
+    case "computer_guide":
+      return {
+        icon: BookOpen,
+        verb: "Read guide",
+        detail: field(input, "topic")?.replaceAll("-", " ") ?? "computer use",
+      };
+    default:
+      return undefined;
+  }
+};
+
 /** A tool's name as words: `ui_act` reads "UI act", `ToolSearch` "Tool search". */
 const toolWords = (name: string) => {
   const words = name
@@ -263,6 +297,8 @@ export const describeTool = (
         return { icon: known.icon, verb: known.verb, ...(known.detail && detail ? { detail } : {}) };
       }
       const [, server, name] = /^mcp__(.+?)__(.+)$/.exec(tool.toolName) ?? [];
+      const computer = server === "cerium" && name ? computerTool(name, input) : undefined;
+      if (computer) return computer;
       if (server && name) return { icon: Workflow, verb: toolWords(name), detail: detail ?? server };
       return { icon: Wrench, verb: toolWords(tool.toolName), ...(detail ? { detail } : {}) };
     }

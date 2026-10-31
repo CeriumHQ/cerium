@@ -23,6 +23,7 @@
         "@cerium/adapter-opencode": "workspace:*",
         "@cerium/artifacts": "workspace:*",
         "@cerium/bus": "workspace:*",
+        "@cerium/computer": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
@@ -256,6 +257,7 @@
       "dependencies": {
         "@cerium/artifacts": "workspace:*",
         "@cerium/browser": "workspace:*",
+        "@cerium/computer": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/orchestrator": "workspace:*",
         "@cerium/protocol": "workspace:*",
@@ -265,6 +267,17 @@
       },
       "devDependencies": {
         "@cerium/store": "workspace:*",
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/computer": {
+      "name": "@cerium/computer",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+      },
+      "devDependencies": {
         "@effect/vitest": "4.0.5",
       },
     },
@@ -429,6 +442,8 @@
     "@cerium/browser": ["@cerium/browser@workspace:packages/browser"],
 
     "@cerium/bus": ["@cerium/bus@workspace:packages/bus"],
+
+    "@cerium/computer": ["@cerium/computer@workspace:packages/computer"],
 
     "@cerium/desktop": ["@cerium/desktop@workspace:apps/desktop"],
 

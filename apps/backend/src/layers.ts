@@ -24,6 +24,7 @@ import { Releases } from "./releases.ts";
 import { Repositories } from "./clone.ts";
 import { CatalogLive, OfferedModels } from "./catalog.ts";
 import { checkpointsLayer } from "./checkpoints.ts";
+import { ComputerLive, computerUseFollowsUser } from "./computerUse.ts";
 import { thisMachine } from "./device.ts";
 import { AssistantCalls } from "./assistants.ts";
 import { discordPresence } from "./discord.ts";
@@ -155,10 +156,12 @@ export const backendLayer = (options: BackendOptions) => {
       // tells the account's browsers when a thread here needs the user, finished or failed. Shows
       // what the agents do on the user's Discord profile when they ask for it. Keeps the harnesses'
       // subscription usage for Settings → Limits. Slims threads gone quiet for the days the user chose.
-      // Answers the assistants the user connected to their account, when they let them in.
+      // Answers the assistants the user connected to their account, when they let them in. Keeps
+      // computer use in step with its setting.
       Layer.provideMerge(
         Layer.mergeAll(
           AssistantCalls,
+          computerUseFollowsUser,
           CloudCopy,
           CloudThreads.layer,
           Notifications.layer,
@@ -224,8 +227,9 @@ export const backendLayer = (options: BackendOptions) => {
         ),
       ),
       // With the catalog: the roster in the user's settings, applied to what the harnesses offer.
-      // With the browser the desktop window hosts for the bus's browser tools.
-      Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive, BrowserHost.layer)),
+      // With the browser the desktop window hosts for the bus's browser tools, and the user's own
+      // desktop for its computer tools.
+      Layer.provideMerge(Layer.mergeAll(BusRegistryLive, CatalogLive, BrowserHost.layer, ComputerLive)),
       Layer.provideMerge(UserSettings.layer),
       Layer.provideMerge(
         Layer.mergeAll(
