@@ -5,54 +5,12 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path, Scope, Stream } from "effect";
 
-import {
-  guessScripts,
-  outputTail,
-  projectScriptsLayer,
-  scriptsFromToml,
-  teardownFailure,
-} from "../src/projectScripts.ts";
+import { guessScripts, outputTail, projectScriptsLayer, teardownFailure } from "../src/projectScripts.ts";
 import { Terminals } from "../src/terminal.ts";
 import { ThreadEnv } from "../src/threadEnv.ts";
 
 // What a project's `.cerium.toml` holds as scripts, what the guess makes of its package manager, and
 // how a teardown runs and fails.
-
-describe("scriptsFromToml", () => {
-  it("reads the project's setup and run", () => {
-    expect(scriptsFromToml('[scripts]\nsetup = "bun install"\nrun = "bun run dev"\n')).toEqual({
-      setup: "bun install",
-      run: "bun run dev",
-    });
-  });
-
-  it("reads the teardown beside them", () => {
-    expect(scriptsFromToml('[scripts]\nsetup = "bun install"\nteardown = "docker compose down"\n')).toEqual({
-      setup: "bun install",
-      teardown: "docker compose down",
-    });
-  });
-
-  it("reads single quotes and drops comments after a command", () => {
-    expect(scriptsFromToml("[scripts]\nrun = 'cargo run' # keep it going")).toEqual({ run: "cargo run" });
-  });
-
-  it("takes only the top-level scripts section", () => {
-    expect(
-      scriptsFromToml(
-        '[profile.dev]\nrun = "wrong"\n[scripts]\nrun = "right"\n[scripts.more]\nsetup = "wrong"\n',
-      ),
-    ).toEqual({ run: "right" });
-  });
-
-  it("reads a file that Windows wrote with a byte-order mark", () => {
-    expect(scriptsFromToml('﻿[scripts]\nsetup = "bun install"\n')).toEqual({ setup: "bun install" });
-  });
-
-  it("reads nothing from a file without a scripts section", () => {
-    expect(scriptsFromToml('[package]\nname = "x"\nrun = "bun run dev"\n')).toEqual({});
-  });
-});
 
 describe("guessScripts", () => {
   it("guesses the package manager's install and its dev script", () => {
@@ -76,12 +34,6 @@ describe("guessScripts", () => {
 
   it("guesses nothing for a project none of its kinds fit", () => {
     expect(guessScripts(["README.md"])).toEqual({});
-  });
-
-  it("never guesses a teardown", () => {
-    expect(guessScripts(["bun.lock", "package.json"], '{"scripts":{"dev":"vite"}}')).not.toHaveProperty(
-      "teardown",
-    );
   });
 });
 

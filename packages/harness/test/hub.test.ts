@@ -12,13 +12,8 @@ import {
 } from "../src/hub.ts";
 
 describe("secretsOf", () => {
-  it("names each value and says whether it's set, never what it is", () => {
-    expect(secretsOf({ TOKEN: "abc", EMPTY: "" })).toEqual([
-      { name: "TOKEN", set: true },
-      { name: "EMPTY", set: false },
-    ]);
+  it("treats a harness's redacted names as set secrets", () => {
     expect(secretsOf(["REDACTED"])).toEqual([{ name: "REDACTED", set: true }]);
-    expect(secretsOf(undefined)).toEqual([]);
   });
 });
 

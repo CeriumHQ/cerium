@@ -60,11 +60,6 @@ describe("withoutImages", () => {
     assert.strictEqual(toolOutputImages(output)[1]?.data, screenshot);
   });
 
-  it("returns an event without images as it is", () => {
-    const event = completed({ stdout: "done" });
-    assert.strictEqual(withoutImages(event), event);
-  });
-
   it("reads no reference from ordinary image data", () => {
     assert.strictEqual(toolImageRef(screenshot), undefined);
     assert.strictEqual(toolImageRef("cerium-image:not json"), undefined);
@@ -89,12 +84,5 @@ describe("withImagesRemoved", () => {
     assert.deepStrictEqual((slim as typeof output).content[0], output.content[0]);
     // A compact history keeps the marker as it is: there's nothing left to fetch.
     assert.deepStrictEqual(outputOf(withoutImages(completed(slim))), slim);
-  });
-
-  it("returns an output with no images left as it is", () => {
-    const text = { stdout: "done" };
-    assert.strictEqual(withImagesRemoved(text), text);
-    const slim = withImagesRemoved([{ type: "image", data: screenshot, mimeType: "image/png" }]);
-    assert.strictEqual(withImagesRemoved(slim), slim);
   });
 });

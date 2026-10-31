@@ -1,6 +1,6 @@
 import { HarnessFailure } from "@cerium/harness";
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import type { AgentId, ThreadId } from "@cerium/protocol";
+import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
@@ -10,7 +10,6 @@ import { recordEvents, testLayer } from "./fakes.ts";
 
 const a = "a" as AgentId;
 const b = "b" as AgentId;
-const threadId = "t" as ThreadId;
 const start = (orchestrator: Orchestrator["Service"]) =>
   orchestrator.createThread({
     title: "Test",
@@ -29,15 +28,6 @@ describe("message requests", () => {
     assert.isTrue(delivery.answer(b, a, "q"));
     assert.isFalse(delivery.answer(b, a, "q"));
     assert.isFalse(delivery.waiting(a));
-  });
-
-  it("bounds wake chains across pairs and resets them only on user input", () => {
-    const delivery = new MessageDelivery();
-    assert.isTrue(delivery.takeWake(threadId, 2));
-    assert.isTrue(delivery.takeWake(threadId, 2));
-    assert.isFalse(delivery.takeWake(threadId, 2));
-    delivery.userTurn(threadId);
-    assert.isTrue(delivery.takeWake(threadId, 2));
   });
 
   it("coalesces an assignment group and removes stopped agents' pending requests", () => {

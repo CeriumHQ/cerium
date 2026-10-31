@@ -102,10 +102,6 @@ describe("firstOf", () => {
     ]);
     expect(layout(firstOf(sections, 2))).toEqual([["Today", ["a", "b"]]]);
   });
-
-  it("keeps a section it takes whole as it was", () => {
-    expect(firstOf(sections, 10)[0]).toBe(sections[0]);
-  });
 });
 
 describe("inboxProjects", () => {

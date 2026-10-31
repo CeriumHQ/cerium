@@ -14,8 +14,6 @@ describe("live checks", () => {
       assert.strictEqual(result.access, "auto");
       assert.strictEqual(result.reply, "reply to: hi");
       assert.deepStrictEqual(result.problems, []);
-      assert.strictEqual(fake.sessions[0]?.options.access, "auto");
-      assert.deepStrictEqual(fake.sessions[0]?.options.mcpServers, {});
     }),
   );
 

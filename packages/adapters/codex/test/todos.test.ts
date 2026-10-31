@@ -49,17 +49,15 @@ describe("CodexTranslator on turn/plan/updated", () => {
       ),
     );
     const payloads = events.map((event) => event.payload);
-    for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
+    for (const event of events) {
+      expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+      expect(event.raw).toMatchObject({ method: "turn/plan/updated" });
+    }
     expect(lists(payloads).map((each) => compact(each.items))).toEqual([
       ["inProgress:Read the failing test", "pending:Fix the race"],
       ["completed:Read the failing test", "inProgress:Fix the race", "pending:Add a regression test"],
     ]);
     expect(lists(payloads).map((each) => each.explanation)).toEqual([undefined, "The fix needs a test"]);
-  });
-
-  it("keeps the raw notification on the event", () => {
-    const [event] = run(planned([{ step: "One", status: "pending" }]));
-    expect(event?.raw).toMatchObject({ method: "turn/plan/updated" });
   });
 
   it("leaves out an update that changes nothing, but not a new reason for the same plan", () => {

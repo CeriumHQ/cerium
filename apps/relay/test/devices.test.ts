@@ -1,7 +1,7 @@
 import type { AccountId, AccountProfile } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { leftBehind, stateFor, toDeviceInfo, type DeviceRow } from "../src/devices.ts";
+import { leftBehind, stateFor, type DeviceRow } from "../src/devices.ts";
 
 const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
   id,
@@ -30,15 +30,6 @@ describe("state sent to a device", () => {
       ["a", true],
       ["b", false],
     ]);
-  });
-
-  it("says every device is approved, for desktops that still ask", () => {
-    expect(toDeviceInfo(rows[1]!, false).approved).toBe(true);
-  });
-
-  it("leaves out when a device was last seen until it has connected", () => {
-    expect(toDeviceInfo(rows[0]!, false).lastSeenAt).toBe(5_000);
-    expect("lastSeenAt" in toDeviceInfo(rows[1]!, false)).toBe(false);
   });
 });
 

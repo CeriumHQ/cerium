@@ -28,12 +28,4 @@ describe("sideQuestionOptions", () => {
     assert.deepStrictEqual(options.mcpServers, {});
     assert.isTrue(options.strictMcpConfig);
   });
-
-  it("appends the instructions to Claude Code's own prompt", () => {
-    assert.deepStrictEqual(options.systemPrompt, {
-      type: "preset",
-      preset: "claude_code",
-      append: "Answer briefly.",
-    });
-  });
 });

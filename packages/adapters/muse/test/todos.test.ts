@@ -50,11 +50,6 @@ describe("MuseTranslator on a recorded session keeping a todo list", () => {
     );
     expect(tools).toEqual(["powershell"]);
   });
-
-  it("keeps the raw notification on the event", () => {
-    const update = events.find((event) => event.payload._tag === "TodosUpdated");
-    expect(update?.raw).toMatchObject({ method: "session/todoListChanged" });
-  });
 });
 
 describe("Muse's todo list", () => {

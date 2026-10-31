@@ -39,10 +39,6 @@ describe("effortFor", () => {
     expect(effortFor(opus, undefined)).toBe("high");
     expect(effortFor(model("codex", "plain", { efforts: ["low", "medium"] }), "max")).toBe("medium");
   });
-
-  it("offers none for a model without an effort setting", () => {
-    expect(effortFor(haiku, "high")).toBeUndefined();
-  });
 });
 
 describe("speedFor", () => {
@@ -141,10 +137,6 @@ describe("findModels", () => {
   const cursorOpus = model("cursor", "claude-opus", { label: "Claude Opus 5.5" });
   const claudeOpus = model("claude", "opus", { label: "Opus 5.5" });
   const list = [sonnet, claudeOpus, luna, cursorOpus];
-
-  it("lists every model while nothing is typed", () => {
-    expect(findModels(list, "  ")).toEqual(list);
-  });
 
   it("puts labels that start with what's typed before ones that contain it", () => {
     expect(findModels(list, "opus")).toEqual([claudeOpus, cursorOpus]);

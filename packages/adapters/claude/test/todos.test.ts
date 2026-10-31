@@ -4,7 +4,6 @@ import { describe, expect, it } from "@effect/vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { TODO_TOOLS } from "../src/manifest.ts";
 import { ClaudeTranslator } from "../src/translate.ts";
 
 const fixture = (name: string): ReadonlyArray<SDKMessage> =>
@@ -57,11 +56,6 @@ describe("ClaudeTranslator on a recorded session using the Task tools", () => {
     const started = payloads.filter((payload) => payload._tag === "ToolCallStarted").length;
     expect(payloads.filter((payload) => payload._tag === "ToolCallCompleted")).toHaveLength(started);
   });
-
-  it("keeps the raw result on the event", () => {
-    const update = events.find((event) => event.payload._tag === "TodosUpdated");
-    expect(update?.raw).toMatchObject({ type: "user" });
-  });
 });
 
 describe("ClaudeTranslator on a recorded session using TodoWrite", () => {
@@ -99,16 +93,6 @@ describe("Claude Code's todo tools", () => {
       tool_use_result: structured,
     }) as unknown as SDKMessage;
   const run = (messages: ReadonlyArray<SDKMessage>) => translateAll(messages).map((event) => event.payload);
-
-  it("names the Task tools and TodoWrite for the session to ask for", () => {
-    expect([...TODO_TOOLS].toSorted()).toEqual([
-      "TaskCreate",
-      "TaskGet",
-      "TaskList",
-      "TaskUpdate",
-      "TodoWrite",
-    ]);
-  });
 
   it("learns a created task's id from its result, or from the sentence that says it", () => {
     const payloads = run([

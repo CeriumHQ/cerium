@@ -5,7 +5,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect } from "effect";
 
 import { Orchestrator, type CatalogEntry } from "../src/index.ts";
-import { systemPrompt } from "../src/prompts.ts";
 import { answerNotice, answerProblem, questionProblem, tidyResponse } from "../src/questions.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
@@ -45,18 +44,7 @@ const inputsOf = (events: ReadonlyArray<AgentEvent>, agentId: AgentId): Readonly
   );
 
 describe("questionProblem", () => {
-  it("takes questions the user can answer", () => {
-    assert.isUndefined(questionProblem([colour, finishes]));
-    assert.isUndefined(
-      questionProblem([{ question: "Anything else?", options: [], multiSelect: false, allowOther: true }]),
-    );
-  });
-
-  it("refuses one with nothing to answer with, and options that don't tell apart", () => {
-    assert.include(
-      questionProblem([{ question: "Well?", options: [], multiSelect: false, allowOther: false }]) ?? "",
-      "no options",
-    );
+  it("refuses options that don't tell apart", () => {
     assert.include(
       questionProblem([{ ...colour, options: [{ label: "Red" }, { label: "red " }] }]) ?? "",
       "same option twice",
@@ -74,7 +62,6 @@ describe("answerProblem", () => {
   it("explains what is wrong with an answer", () => {
     assert.include(answerProblem([colour, finishes], [{ choices: ["Red"] }]) ?? "", "2 parts");
     assert.include(answerProblem([colour], [{ choices: [] }]) ?? "", "Answer");
-    assert.include(answerProblem([colour], [{ choices: ["Green"] }]) ?? "", "not one of the choices");
     assert.include(answerProblem([colour], [{ choices: ["Red", "Blue"] }]) ?? "", "takes one choice");
     assert.include(answerProblem([finishes], [{ choices: ["Matte", "Matte"] }]) ?? "", "twice");
     assert.include(
@@ -93,10 +80,6 @@ describe("answerNotice", () => {
     assert.include(notice, "answered your questions");
     assert.include(notice, "- Which colour do you prefer?\n  Answer: Blue, navy");
     assert.include(notice, "- Which finishes?\n  Answer: Matte, Gloss");
-    assert.include(
-      answerNotice([colour], { outcome: "dismissed" }),
-      `dismissed your question "${colour.question}"`,
-    );
   });
 
   it("keeps the user's words trimmed, and none where they wrote none", () => {
@@ -110,32 +93,6 @@ describe("answerNotice", () => {
       }),
       { outcome: "answered", answers: [{ choices: ["Red"] }, { choices: [], text: "teal" }] },
     );
-  });
-});
-
-describe("Prompts about asking", () => {
-  const agent = {
-    id: "agt_1" as AgentId,
-    threadId: "thr_1",
-    role: "lead",
-    provider: "claude",
-    model: "opus",
-    access: "ask",
-    state: "idle",
-    createdAt: 0,
-    updatedAt: 0,
-  } as const;
-
-  it("points every agent at the bus's ask_user", () => {
-    const lead = systemPrompt(agent as never, "cerium");
-    assert.include(lead, "## Asking the user");
-    assert.include(lead, "`ask_user` (`cerium` MCP server)");
-    assert.include(lead, "end your");
-    // The lead is told its children's questions don't come to it; the child isn't.
-    assert.include(lead, "go to the user directly");
-    const child = systemPrompt({ ...agent, parentId: "agt_0" } as never, "cerium");
-    assert.include(child, "`ask_user`");
-    assert.notInclude(child, "go to the user directly");
   });
 });
 

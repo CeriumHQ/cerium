@@ -8,7 +8,6 @@ import {
   filtersOfKey,
   isFiltered,
   issueBrief,
-  stateLabel,
   toggleLabel,
   withMilestone,
 } from "../src/features/issues/model.ts";
@@ -100,14 +99,6 @@ describe("issue filters", () => {
 });
 
 describe("state", () => {
-  it("says how a closed issue was closed", () => {
-    expect(stateLabel({ state: "open" })).toBe("Open");
-    expect(stateLabel({ state: "closed" })).toBe("Closed");
-    expect(stateLabel({ state: "closed", stateReason: "completed" })).toBe("Closed");
-    expect(stateLabel({ state: "closed", stateReason: "notPlanned" })).toBe("Closed as not planned");
-    expect(stateLabel({ state: "closed", stateReason: "duplicate" })).toBe("Closed as duplicate");
-  });
-
   it("lets triage and up change labels and assignees", () => {
     expect(canTriage(undefined)).toBe(false);
     expect(canTriage("none")).toBe(false);

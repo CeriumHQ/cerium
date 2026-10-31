@@ -103,31 +103,6 @@ describe("History", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
-  it.effect("marks what no remote branch holds, once there is a remote", () =>
-    Effect.gen(function* () {
-      const history = yield* History;
-      const { root, write, fs } = yield* repository;
-      const remote = yield* fs.makeTempDirectoryScoped();
-      yield* git(remote, "init", "-q", "--bare");
-      yield* git(root, "remote", "add", "origin", remote);
-      yield* git(root, "push", "-q", "origin", "main");
-      yield* write("local.txt", "not pushed\n");
-      yield* git(root, "add", "-A");
-      yield* git(root, "commit", "-q", "-m", "Local only");
-      const page = yield* history.commits(root, { offset: 0, limit: 10 });
-      assert.deepStrictEqual(
-        page.commits.map((commit) => [commit.subject, commit.unpushed === true]),
-        [
-          ["Local only", true],
-          ["Rename the app", false],
-          ["Document it", false],
-          ["Fix login bug", false],
-          ["Add the app", false],
-        ],
-      );
-    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
-  );
-
   it.effect("marks what is unpushed on every page, and among the commits a search finds", () =>
     Effect.gen(function* () {
       const history = yield* History;

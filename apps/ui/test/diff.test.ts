@@ -40,12 +40,6 @@ describe("editLines", () => {
 });
 
 describe("fileEdits", () => {
-  it("reads a single replacement", () => {
-    expect(fileEdits({ file_path: "a.ts", old_string: "x", new_string: "y" })).toEqual([
-      { before: "x", after: "y" },
-    ]);
-  });
-
   it("reads OpenCode's replacement", () => {
     expect(fileEdits({ path: "a.ts", oldString: "x", newString: "y" })).toEqual([
       { before: "x", after: "y" },

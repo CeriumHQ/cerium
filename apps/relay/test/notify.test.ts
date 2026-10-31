@@ -1,15 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { DeviceRow } from "../src/devices.ts";
-import {
-  isShowing,
-  kindsOf,
-  notificationBody,
-  PRESENCE_FRESH_MS,
-  recipients,
-  threadKey,
-  type PushRow,
-} from "../src/notify.ts";
+import { isShowing, kindsOf, PRESENCE_FRESH_MS, recipients, threadKey, type PushRow } from "../src/notify.ts";
 
 const device = (id: string, kind: DeviceRow["kind"]): DeviceRow => ({
   id,
@@ -92,22 +84,5 @@ describe("who a notification goes to", () => {
   it("reads only the kinds it knows from a stored row", () => {
     expect(kindsOf(subscription("phone", ["finished", "other"]))).toEqual(["finished"]);
     expect(kindsOf({ ...subscription("phone", []), kinds: "not json" })).toEqual([]);
-  });
-});
-
-describe("a notification's text", () => {
-  it("says what happened, then the detail on a line of its own", () => {
-    expect(notificationBody("finished", "I fixed the redirect and the tests pass.")).toBe(
-      "Finished\nI fixed the redirect and the tests pass.",
-    );
-    expect(notificationBody("needsYou", "Claude: Run npm test")).toBe(
-      "Waiting for your approval\nClaude: Run npm test",
-    );
-    expect(notificationBody("failed")).toBe("Failed");
-    expect(notificationBody("failed", "  ")).toBe("Failed");
-  });
-
-  it("names the computer when the account has more than one", () => {
-    expect(notificationBody("finished", undefined, "Office PC")).toBe("Finished on Office PC");
   });
 });

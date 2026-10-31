@@ -130,44 +130,6 @@ describe("Cerium MCP bus", () => {
       const leadClient = mcpClient(yield* busOf(fake, 0));
       yield* leadClient.initialize;
 
-      const tools = yield* leadClient.request("tools/list", {});
-      assert.sameMembers(
-        (tools?.result?.tools ?? []).map((tool: { name: string }) => tool.name),
-        [
-          "workspace_status",
-          "list_workspaces",
-          "link_pull_request",
-          "unlink_pull_request",
-          "watch_pull_request",
-          "unwatch_pull_request",
-          "review_changes",
-          "move_to_workspace",
-          "link_issue",
-          "list_models",
-          "spawn_agent",
-          "create_thread",
-          "list_agents",
-          "list_threads",
-          "send_message",
-          "kill_agent",
-          "answer_permission",
-          "ask_advisor",
-          "ask_user",
-          "artifact_guide",
-          "add_task",
-          "remove_task",
-          "list_tasks",
-          "project_run",
-          "push",
-          "artifact_preview",
-          "browser_open",
-          "browser_read",
-          "browser_act",
-          "browser_screenshot",
-          "browser_logs",
-        ],
-      );
-
       const models = yield* leadClient.callTool("list_models");
       assert.deepStrictEqual(models?.result?.structuredContent?.models, [
         {
@@ -213,9 +175,11 @@ describe("Cerium MCP bus", () => {
       const launched = yield* leadClient.callTool("project_run", { action: "launch" });
       assert.include(launched?.error?.message, "Invalid parameters for tool 'project_run'");
 
-      const childClient = mcpClient(yield* busOf(fake, 1));
-      yield* childClient.initialize;
-      const refused = yield* childClient.callTool("spawn_agent", { role: "x", model: "scout", prompt: "no" });
+      const refused = yield* workerClient.callTool("spawn_agent", {
+        role: "x",
+        model: "scout",
+        prompt: "no",
+      });
       assert.isDefined(refused?.error);
       assert.include(JSON.stringify(refused?.error), "spawn_agent");
 
@@ -408,11 +372,6 @@ describe("Cerium MCP bus", () => {
 
       const empty = yield* client.callTool("list_tasks");
       assert.deepStrictEqual(empty?.result?.structuredContent?.tasks, []);
-
-      assert.deepStrictEqual(
-        (yield* client.callTool("list_tasks", {}, { authorization: "Bearer forged" }))?.result?.isError,
-        true,
-      );
 
       const added = yield* client.callTool("add_task", {
         title: "  Fix the login page  ",

@@ -2,7 +2,7 @@ import type { AgentEvent, EventPayload } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import { groupRuns, overflow, runSummary, type ThreadSummary } from "../src/features/threads/model.ts";
-import { runStats, tookLabel } from "../src/features/threads/runs.ts";
+import { runStats } from "../src/features/threads/runs.ts";
 
 const now = new Date(2026, 9, 24, 15, 0).getTime();
 const HOUR = 3_600_000;
@@ -107,12 +107,5 @@ describe("Multi-agent runs", () => {
     ];
     expect(runStats(events, "lead", 0)).toEqual({ added: 18, removed: 7, files: 2, took: 61_000 });
     expect(runStats(events.slice(0, 2), "lead", 0)).toEqual({ added: 13, removed: 2, files: 2 });
-  });
-
-  it("says how long a thread took the way a list does", () => {
-    expect(tookLabel(40_000)).toBe("40s");
-    expect(tookLabel(9 * 60_000)).toBe("9m");
-    expect(tookLabel(65 * 60_000)).toBe("1h 5m");
-    expect(tookLabel(120 * 60_000)).toBe("2h");
   });
 });

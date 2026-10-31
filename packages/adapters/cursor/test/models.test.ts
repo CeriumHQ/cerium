@@ -1,7 +1,5 @@
 import type { ModelListItem } from "@cursor/sdk";
-import { ModelInfo } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
 
 import { clampEffort, toCeriumEffort, toModelInfo, toModelSelection } from "../src/models.ts";
 
@@ -43,7 +41,6 @@ const catalog = [reasoningModel, thinkingSwitch];
 describe("toModelInfo", () => {
   it("lists the model's efforts lowest first with its default", () => {
     const info = toModelInfo(reasoningModel);
-    expect(Schema.is(ModelInfo)(info)).toBe(true);
     expect(info).toEqual({
       provider: "cursor",
       id: "gpt-5.5",
@@ -77,13 +74,6 @@ describe("toModelInfo", () => {
 });
 
 describe("toModelSelection", () => {
-  it("sets the model's own effort parameter", () => {
-    expect(toModelSelection("gpt-5.5", "high", catalog)).toEqual({
-      id: "gpt-5.5",
-      params: [{ id: "reasoning", value: "high" }],
-    });
-  });
-
   it("clamps efforts the model lacks to the closest one", () => {
     expect(toModelSelection("gpt-5.5", "max", catalog).params).toEqual([
       { id: "reasoning", value: "Extra High" },

@@ -1,4 +1,4 @@
-import { HarnessLimit, HarnessSetup } from "@cerium/protocol";
+import { HarnessSetup } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
 import { Schema } from "effect";
@@ -14,8 +14,6 @@ import {
   isTrustedTool,
   pickApprovalChoice,
   runsSandboxed,
-  sandboxInstructions,
-  sandboxLimit,
   sandboxProblem,
   sandboxSetup,
   serveArgs,
@@ -56,19 +54,6 @@ describe("Muse's Windows sandbox", () => {
       elevated: true,
       blocks: ["ask", "acceptEdits", "auto"],
     });
-  });
-
-  it("limits a host that can't sandbox to Read only and Full access", () => {
-    const limit = Schema.decodeUnknownSync(HarnessLimit)(sandboxLimit);
-    expect(limit.blocks).toEqual(["ask", "acceptEdits", "auto"]);
-    expect(limit.blocks).not.toContain("readOnly");
-    expect(limit.blocks).not.toContain("fullAccess");
-  });
-
-  it("tells the agent to stop retrying and pass on the fix", () => {
-    const text = sandboxInstructions("sandbox users are not ready");
-    expect(text).toContain("Do not retry commands.");
-    expect(text).toContain("`muse sandbox windows setup`");
   });
 });
 

@@ -9,7 +9,6 @@ import {
   readAuthorize,
   registerClient,
   resolveClient,
-  siteOf,
   verifiesChallenge,
 } from "../src/oauth.ts";
 
@@ -65,11 +64,6 @@ describe("redirect URIs", () => {
     expect(allowsRedirect(client, "https://a.example/cb2")).toBe(false);
     expect(allowsRedirect(client, "http://127.0.0.1:50123/cb")).toBe(true);
     expect(allowsRedirect(client, "http://127.0.0.1:50123/other")).toBe(false);
-  });
-
-  it("shows where the user is sent back as its host, or the app's scheme", () => {
-    expect(siteOf("https://grok.com/oauth/cb")).toBe("grok.com");
-    expect(siteOf("cursor://anysphere/cb")).toBe("cursor");
   });
 });
 

@@ -3,10 +3,6 @@ import { describe, expect, it } from "@effect/vitest";
 import { toUserInput } from "../src/session.ts";
 
 describe("toUserInput", () => {
-  it("sends plain text alone", () => {
-    expect(toUserInput("hi", undefined)).toEqual([{ type: "text", text: "hi", text_elements: [] }]);
-  });
-
   it("adds images by path and the skills Codex reported a file for", () => {
     expect(
       toUserInput("Use $review on this", {

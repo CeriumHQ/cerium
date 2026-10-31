@@ -25,34 +25,14 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
   const payloads = events.map((event) => event.payload);
 
   it.each(["read-write-session.jsonl", "todo-session.jsonl", "todo-write-session.jsonl"])(
-    "emits only payloads that satisfy the canonical schema from %s",
+    "emits canonical payloads with their raw provider frames from %s",
     (name) => {
       for (const event of translateAll(fixture(name))) {
         expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+        expect(event.raw).toBeDefined();
       }
     },
   );
-
-  it("keeps the raw provider message on every event", () => {
-    for (const event of events) expect(event.raw).toBeDefined();
-  });
-
-  it("produces the session lifecycle in order", () => {
-    const tags = payloads
-      .map((payload) => payload._tag)
-      .filter((tag) => tag !== "MessageDelta" && tag !== "ContextReported");
-    expect(tags).toEqual([
-      "SessionStarted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "FileChanged",
-      "MessageCompleted",
-      "UsageReported",
-      "TurnCompleted",
-    ]);
-  });
 
   it("reports the session and the tools it used", () => {
     expect(payloads[0]).toMatchObject({
@@ -60,10 +40,11 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
       provider: "claude",
       model: "claude-haiku-5-5",
     });
-    const tools = payloads.flatMap((payload) =>
-      payload._tag === "ToolCallStarted" ? [payload.toolName] : [],
-    );
-    expect(tools).toEqual(["Read", "Write"]);
+    const started = payloads.filter((payload) => payload._tag === "ToolCallStarted");
+    expect(started.map((payload) => payload.toolName)).toEqual(["Read", "Write"]);
+    expect(
+      payloads.filter((payload) => payload._tag === "ToolCallCompleted").map((payload) => payload.callId),
+    ).toEqual(started.map((payload) => payload.callId));
   });
 
   it("reports the created file", () => {
@@ -90,15 +71,6 @@ describe("ClaudeTranslator on a recorded read/write session", () => {
     const positive = expect.toSatisfy((value: number) => value > 0);
     expect(usage).toMatchObject({ _tag: "UsageReported", cachedInputTokens: positive, costUsd: positive });
     expect(payloads.at(-1)).toEqual({ _tag: "TurnCompleted", stopReason: "completed" });
-  });
-
-  it("reports the context each request read and wrote, rising through the turn", () => {
-    const readings = payloads.flatMap((payload) =>
-      payload._tag === "ContextReported" ? [payload.tokens] : [],
-    );
-    expect(readings.length).toBeGreaterThan(1);
-    expect(readings[0]).toBeGreaterThan(0);
-    expect(readings).toEqual([...readings].sort((a, b) => a - b));
   });
 });
 

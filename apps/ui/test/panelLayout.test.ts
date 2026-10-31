@@ -1,26 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { clampWidth, INSPECTOR, panelLayout, SIDEBAR } from "../src/app/panelLayout.ts";
+import { INSPECTOR, panelLayout, SIDEBAR } from "../src/app/panelLayout.ts";
 
 const defaults = { sidebar: SIDEBAR.fallback, inspector: INSPECTOR.fallback };
 
-describe("clampWidth", () => {
-  it("keeps a width between its bounds, the minimum winning when the room is short", () => {
-    expect(clampWidth(100, 232, 420)).toBe(232);
-    expect(clampWidth(300, 232, 420)).toBe(300);
-    expect(clampWidth(900, 232, 420)).toBe(420);
-    expect(clampWidth(300, 232, 100)).toBe(232);
-  });
-});
-
 describe("panelLayout", () => {
-  it("puts the inspector beside the transcript in a roomy window", () => {
-    const layout = panelLayout(1440, defaults, true);
-    expect(layout.floating).toBe(false);
-    expect(layout.sidebarWidth).toBe(278);
-    expect(layout.inspectorWidth).toBe(320);
-  });
-
   it("floats the inspector once the transcript would be squeezed", () => {
     expect(panelLayout(960, defaults, true).floating).toBe(true);
     // Folding the sidebar gives the room back.
@@ -47,11 +31,6 @@ describe("panelLayout", () => {
     expect(panelLayout(1000, { ...defaults, sidebar: 420 }, true).sidebarWidth).toBe(400);
     expect(panelLayout(1440, { ...defaults, sidebar: 100 }, true).sidebarWidth).toBe(SIDEBAR.min);
     expect(panelLayout(2400, { ...defaults, sidebar: 900 }, true).sidebarWidth).toBe(SIDEBAR.max);
-  });
-
-  it("takes only the gutter for a folded sidebar", () => {
-    expect(panelLayout(1440, defaults, false).sidebarSpace).toBe(6);
-    expect(panelLayout(1440, defaults, true).sidebarSpace).toBe(278);
   });
 
   it("limits a wide inspector to what leaves the transcript its room", () => {

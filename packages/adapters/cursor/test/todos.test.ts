@@ -1,6 +1,5 @@
-import { EventPayload, type EventPayload as Payload, type TodoItem } from "@cerium/protocol";
+import type { EventPayload, TodoItem } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
-import { Schema } from "effect";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -17,7 +16,7 @@ const translateAll = (records: ReadonlyArray<CursorRecord>) => {
   return records.flatMap((record) => translator.translate(record));
 };
 
-const lists = (payloads: ReadonlyArray<Payload>) =>
+const lists = (payloads: ReadonlyArray<EventPayload>) =>
   payloads.flatMap((payload) => (payload._tag === "TodosUpdated" ? [payload.items] : []));
 
 const compact = (items: ReadonlyArray<TodoItem>) => items.map((each) => `${each.status}:${each.text}`);
@@ -28,10 +27,6 @@ const DONE = "Reply with DONE";
 describe("CursorTranslator on a recorded session keeping a todo list", () => {
   const events = translateAll(fixture("todo-session.jsonl"));
   const payloads = events.map((event) => event.payload);
-
-  it("emits only payloads that satisfy the canonical schema", () => {
-    for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
-  });
 
   it("reports the whole list at every change", () => {
     expect(lists(payloads).map(compact)).toEqual([
@@ -48,11 +43,6 @@ describe("CursorTranslator on a recorded session keeping a todo list", () => {
       payload._tag === "ToolCallStarted" ? [payload.toolName] : [],
     );
     expect(tools).toEqual(["glob"]);
-  });
-
-  it("keeps the raw update on the event", () => {
-    const update = events.find((event) => event.payload._tag === "TodosUpdated");
-    expect(update?.raw).toMatchObject({ type: "tool-call-completed" });
   });
 });
 

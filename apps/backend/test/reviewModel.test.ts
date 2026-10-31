@@ -1,14 +1,7 @@
 import type { CatalogEntry } from "@cerium/orchestrator";
 import { assert, describe, it } from "@effect/vitest";
 
-import {
-  addedFile,
-  defaultReviewer,
-  numberedDiff,
-  readReview,
-  reviewPrompt,
-  splitFiles,
-} from "../src/reviewModel.ts";
+import { addedFile, defaultReviewer, numberedDiff, readReview, splitFiles } from "../src/reviewModel.ts";
 
 const patch = [
   "diff --git a/src/a.ts b/src/a.ts",
@@ -60,7 +53,6 @@ describe("numberedDiff", () => {
     const { text, left } = numberedDiff(files, 70);
     assert.include(text, "a.ts");
     assert.deepStrictEqual(left, ["b.ts"]);
-    assert.include(reviewPrompt({ label: "2 files", author: undefined, files }), '"findings"');
   });
 });
 

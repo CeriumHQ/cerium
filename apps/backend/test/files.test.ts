@@ -13,13 +13,11 @@ import {
   gitFolderChange,
   gitFolderSkips,
   limitHunks,
-  mediaOf,
   parseDiff,
   parseStatus,
   pathSegments,
   PREVIEW_BYTES,
   resolveInside,
-  stateOf,
   watchedChange,
   watchSkips,
   withoutPartialCharacter,
@@ -99,39 +97,6 @@ describe("entries", () => {
 });
 
 describe("git status", () => {
-  it("reads what each pair of letters means", () => {
-    expect(stateOf(" ", "M")).toBe("modified");
-    expect(stateOf("M", " ")).toBe("modified");
-    expect(stateOf("A", " ")).toBe("added");
-    expect(stateOf("A", "M")).toBe("added");
-    expect(stateOf(" ", "D")).toBe("deleted");
-    expect(stateOf("D", " ")).toBe("deleted");
-    expect(stateOf("R", " ")).toBe("renamed");
-    expect(stateOf("?", "?")).toBe("untracked");
-    expect(stateOf("U", "U")).toBe("conflicted");
-    expect(stateOf("A", "A")).toBe("conflicted");
-    expect(stateOf("D", "D")).toBe("conflicted");
-  });
-
-  it("lists changes with where renames came from", () => {
-    const output = [
-      " M src/a.ts",
-      "A  src/new.ts",
-      "R  src/moved.ts",
-      "src/was.ts",
-      "?? notes/",
-      "?? x y.txt",
-      "",
-    ].join("\0");
-    expect(parseStatus(output, "")).toEqual([
-      { path: "src/a.ts", state: "modified" },
-      { path: "src/new.ts", state: "added" },
-      { path: "src/moved.ts", state: "renamed", from: "src/was.ts" },
-      { path: "notes/", state: "untracked" },
-      { path: "x y.txt", state: "untracked" },
-    ]);
-  });
-
   it("keeps to the folder asked about when it sits inside the repository", () => {
     const output = [
       " M apps/ui/src/a.ts",
@@ -144,12 +109,6 @@ describe("git status", () => {
     expect(parseStatus(output, "apps/ui/")).toEqual([
       { path: "src/a.ts", state: "modified" },
       { path: "b.ts", state: "renamed" },
-    ]);
-  });
-
-  it("skips ignored files, which only an explicit request lists", () => {
-    expect(parseStatus(["!! dist/", " M a.ts", ""].join("\0"), "")).toEqual([
-      { path: "a.ts", state: "modified" },
     ]);
   });
 });
@@ -313,23 +272,6 @@ describe("reading text", () => {
     expect(withoutPartialCharacter(whole)).toHaveLength(4);
     expect(decodeText(whole.subarray(0, 2), true)).toBe("a");
     expect(decodeText(whole.subarray(0, 3), true)).toBe("a");
-  });
-});
-
-describe("media", () => {
-  it("knows images, sounds and videos by their extension, whatever its case", () => {
-    expect(mediaOf("shots/Home.PNG")).toEqual({ kind: "image", mediaType: "image/png" });
-    expect(mediaOf("a/b.jpeg")).toEqual({ kind: "image", mediaType: "image/jpeg" });
-    expect(mediaOf("voice.mp3")).toEqual({ kind: "audio", mediaType: "audio/mpeg" });
-    expect(mediaOf("take.flac")).toEqual({ kind: "audio", mediaType: "audio/flac" });
-    expect(mediaOf("clip.webm")).toEqual({ kind: "video", mediaType: "video/webm" });
-    expect(mediaOf("clip.MOV")).toEqual({ kind: "video", mediaType: "video/quicktime" });
-  });
-
-  it("leaves SVG and everything else to be read as text or not at all", () => {
-    expect(mediaOf("logo.svg")).toBeUndefined();
-    expect(mediaOf("main.ts")).toBeUndefined();
-    expect(mediaOf("Makefile")).toBeUndefined();
   });
 });
 

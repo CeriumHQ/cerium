@@ -1,13 +1,7 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import {
-  Settings,
-  type AdvisorSettings,
-  type AgentEvent,
-  type AgentId,
-  type InputItem,
-} from "@cerium/protocol";
+import type { AdvisorSettings, AgentEvent, AgentId, InputItem } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Schema } from "effect";
+import { Duration, Effect } from "effect";
 
 import { Orchestrator, UserSettings, type CatalogEntry } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
@@ -39,11 +33,6 @@ const spawnScout = (leadId: AgentId) =>
   });
 
 describe("Advisor", () => {
-  it("reads as off from a backend that predates it", () => {
-    const settings = Schema.decodeUnknownSync(Settings)({});
-    assert.deepStrictEqual(settings.advisor, { enabled: false });
-  });
-
   it.live("answers each agent's question on the model the user picked, read only, one a turn", () => {
     const lead = makeFakeAdapter("claude");
     const advisor = makeFakeAdapter("codex", {

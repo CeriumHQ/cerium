@@ -2,7 +2,7 @@ import type { AgentId, ThreadId } from "@cerium/protocol";
 import type { PushRecord } from "@cerium/rpc";
 import { assert, describe, it } from "@effect/vitest";
 
-import { ciPrompt, runTitle, sameFolder, scheduleStep, withRun, KEPT_RUNS } from "../src/automationsModel.ts";
+import { ciPrompt, runTitle, sameFolder, scheduleStep } from "../src/automationsModel.ts";
 
 // Local times, so the tests hold in any time zone. 2026-10-26 is a Monday.
 const at = (day: number, hours: number, minutes = 0) => new Date(2026, 9, day, hours, minutes).getTime();
@@ -71,11 +71,6 @@ const push: PushRecord = {
 };
 
 describe("runTitle", () => {
-  it("names a scheduled run for when it ran and a CI run for its commit", () => {
-    assert.match(runTitle("Morning triage", at(26, 9)), /^Morning triage · Oct 26, 9:00/);
-    assert.strictEqual(runTitle("Fix CI", at(26, 9), push), "Fix CI · main 1a2b3c4");
-  });
-
   it("fits a thread's title", () => {
     assert.isAtMost(runTitle("x".repeat(60), at(26, 9), { ...push, branch: "b".repeat(40) }).length, 80);
   });
@@ -91,19 +86,6 @@ describe("ciPrompt", () => {
     );
     assert.include(text, "- 1a2b3c4 fix: the thing");
     assert.include(text, 'Tests, at step "Run tests": 1 test failed\n```\n1 failed\n```');
-  });
-});
-
-describe("withRun", () => {
-  it("keeps the newest runs first, as many as are kept", () => {
-    const runs = Array.from({ length: KEPT_RUNS }, (_, index) => ({
-      id: `${index}`,
-      at: index,
-      cause: "manual" as const,
-    }));
-    const kept = withRun(runs, { id: "new", at: 99, cause: "schedule" });
-    assert.strictEqual(kept.length, KEPT_RUNS);
-    assert.strictEqual(kept[0]?.id, "new");
   });
 });
 

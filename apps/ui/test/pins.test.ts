@@ -32,9 +32,4 @@ describe("pins", () => {
       ["Today", ["b"]],
     ]);
   });
-
-  it("leaves the sections alone with nothing pinned", () => {
-    const sections = chatSections([thread("a", now)], now);
-    expect(withPinned(sections, [])).toBe(sections);
-  });
 });

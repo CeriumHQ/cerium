@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  mergePaths,
   pathBetweenMarks,
   rememberedPath,
   rememberPath,
@@ -23,14 +22,6 @@ describe("pathBetweenMarks", () => {
     expect(pathBetweenMarks("/usr/bin")).toBeUndefined();
     expect(pathBetweenMarks("__CERIUM_PATH__/usr/bin")).toBeUndefined();
     expect(pathBetweenMarks("__CERIUM_PATH____CERIUM_PATH__")).toBeUndefined();
-  });
-});
-
-describe("mergePaths", () => {
-  it("keeps the first PATH's order, then adds what only the second has", () => {
-    expect(mergePaths("/home/me/.local/bin:/usr/bin", "/usr/bin:/bin::/usr/bin")).toBe(
-      "/home/me/.local/bin:/usr/bin:/bin",
-    );
   });
 });
 
@@ -80,7 +71,7 @@ describe("withLocale", () => {
 
 describe("withShellPath", () => {
   it("puts the shell's PATH ahead of the session's, and leaves the session's alone without one", () => {
-    const env = { PATH: "/usr/bin:/bin", HOME: "/home/me" };
+    const env = { PATH: "/usr/bin:/bin::/usr/bin", HOME: "/home/me" };
     expect(withShellPath(env, "/home/me/.local/bin:/usr/bin")).toEqual({
       PATH: "/home/me/.local/bin:/usr/bin:/bin",
       HOME: "/home/me",

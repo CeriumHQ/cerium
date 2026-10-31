@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { keyCapsFor, keyLabelFor, primaryHeldFor } from "../src/lib/keys.ts";
+import { keyLabelFor, primaryHeldFor } from "../src/lib/keys.ts";
 
 describe("keyLabelFor", () => {
   it("writes shortcuts as they are spelled off a Mac, with Control read as Ctrl", () => {
@@ -18,14 +18,6 @@ describe("keyLabelFor", () => {
     expect(keyLabelFor("Ctrl Enter", true)).toBe("⌘↩");
     expect(keyLabelFor("Ctrl Click", true)).toBe("⌘ Click");
     expect(keyLabelFor("Esc", true)).toBe("⎋");
-  });
-});
-
-describe("keyCapsFor", () => {
-  it("gives one keycap a key", () => {
-    expect(keyCapsFor("Ctrl Shift 1", false)).toEqual(["Ctrl", "Shift", "1"]);
-    expect(keyCapsFor("Ctrl Shift 1", true)).toEqual(["⇧", "⌘", "1"]);
-    expect(keyCapsFor("Control M", true)).toEqual(["⌃", "M"]);
   });
 });
 

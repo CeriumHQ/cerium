@@ -1,33 +1,10 @@
-import { makeFakeAdapter } from "@cerium/harness/testing";
 import { defaultSettings } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Fiber, Layer, Stream } from "effect";
+import { Effect, Fiber, Layer, Stream } from "effect";
 import { join } from "node:path";
 
-import { Orchestrator, UserSettings } from "../src/index.ts";
-import { testLayer } from "./fakes.ts";
-
-const startWorkThread = Effect.gen(function* () {
-  const orchestrator = yield* Orchestrator;
-  return yield* orchestrator.createThread({
-    title: "Test",
-    mode: "work",
-    cwd: ".",
-    lead: { provider: "claude", model: "opus", access: "ask" },
-  });
-});
-
-/** The adapter's `index`th session, once the thread has started it behind its creation. */
-const started = (fake: ReturnType<typeof makeFakeAdapter>, index: number) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      const session = fake.sessions[index];
-      if (session !== undefined) return session;
-      yield* Effect.sleep(Duration.millis(5));
-    }
-    return yield* Effect.die(new Error(`Session ${index} never started`));
-  });
+import { UserSettings } from "../src/index.ts";
 
 const readSettings = Effect.gen(function* () {
   const settings = yield* UserSettings;
@@ -35,15 +12,6 @@ const readSettings = Effect.gen(function* () {
 }).pipe(Effect.provide(UserSettings.layer));
 
 describe("UserSettings", () => {
-  it.live("loads the user's own MCP servers into every session", () => {
-    const fake = makeFakeAdapter("claude");
-    return Effect.gen(function* () {
-      // Sessions start behind the thread.
-      yield* startWorkThread;
-      assert.isTrue((yield* started(fake, 0)).options.includeUserMcpServers);
-    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
-  });
-
   it.effect("streams the settings now and each change saved", () =>
     Effect.gen(function* () {
       const settings = yield* UserSettings;

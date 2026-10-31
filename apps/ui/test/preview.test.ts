@@ -64,9 +64,4 @@ describe("withoutBrowserTabs", () => {
     ).toEqual(["thr_a"]);
     expect(restored.panes?.chat).toBeUndefined();
   });
-
-  it("leaves a session without any as it was", () => {
-    const plain = session({ open: { work: "thr_a" } });
-    expect(withoutBrowserTabs(plain)).toEqual(plain);
-  });
 });

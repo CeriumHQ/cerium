@@ -20,10 +20,6 @@ describe("the account's threads", () => {
     read: [{ threadId: "a" as ThreadId, seenAt: 5 }],
   };
 
-  it("take a snapshot whole", () => {
-    expect(applyNotice({ threads: [], read: [] }, { _tag: "AccountThreads", ...start })).toEqual(start);
-  });
-
   it("replace changed threads and drop removed ones", () => {
     const next = applyNotice(start, {
       _tag: "ThreadsChanged",

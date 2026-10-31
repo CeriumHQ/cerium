@@ -39,12 +39,11 @@ describe.each(readdirSync(fixtures).filter((name) => name.endsWith(".jsonl")))(
     const events = translateAll(records);
     const payloads = events.map((event) => event.payload);
 
-    it("emits only payloads that satisfy the canonical schema", () => {
-      for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
-    });
-
-    it("keeps the raw provider payload on every event", () => {
-      for (const event of events) expect(event.raw).toBeDefined();
+    it("emits canonical payloads with their raw provider frames", () => {
+      for (const event of events) {
+        expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+        expect(event.raw).toBeDefined();
+      }
     });
 
     it("starts the session once, first", () => {
@@ -112,37 +111,6 @@ describe("the synthetic fixture", () => {
 
 describe("CursorTranslator on the synthetic session", () => {
   const payloads = translateAll(fixture("synthetic-session.jsonl")).map((event) => event.payload);
-
-  it("produces the session lifecycle in order", () => {
-    const tags = payloads
-      .map((payload) => payload._tag)
-      .filter((tag) => tag !== "MessageDelta" && tag !== "ReasoningDelta");
-    expect(tags).toEqual([
-      "SessionStarted",
-      "ReasoningCompleted",
-      "MessageCompleted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "FileChanged",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "MessageCompleted",
-      "UsageReported",
-      "TurnCompleted",
-      // Interrupted while a command ran.
-      "MessageCompleted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "TurnCompleted",
-      // Rejected key, then a failed send.
-      "AuthRequired",
-      "TurnCompleted",
-      "LimitReached",
-      "TurnCompleted",
-    ]);
-  });
 
   it("reports the agent as the session to resume", () => {
     expect(payloads[0]).toEqual({

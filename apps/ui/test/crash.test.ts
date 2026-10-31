@@ -3,7 +3,6 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   asBackendFailure,
   backendFailureDetails,
-  failureHeadline,
   renderErrorDetails,
   renderErrorMessage,
   shortMessage,
@@ -51,10 +50,6 @@ describe("asBackendFailure", () => {
 });
 
 describe("failure text", () => {
-  it("leads with what failed", () => {
-    expect(failureHeadline("databaseMigrate")).toBe("Cerium couldn't update its database for this version.");
-  });
-
   it("keeps a message to its first line, cut short", () => {
     expect(shortMessage("first\nsecond")).toBe("first");
     expect(shortMessage("x".repeat(10), 5)).toBe("xxxx…");

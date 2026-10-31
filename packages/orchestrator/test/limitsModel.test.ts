@@ -20,16 +20,10 @@ const paused = (resumeAt = 10) =>
 describe("pauseEnd", () => {
   const timing = { retry: 1_000, margin: 30 };
 
-  it("waits for a reported reset, and a little past it", () => {
+  it("waits past a future reset and backs off when no future reset is reported", () => {
     assert.deepEqual(pauseEnd({ resetsAt: 5_000 }, 1_000, 0, timing), { resumeAt: 5_030, reported: true });
-  });
-
-  it("guesses when no reset is reported, longer with each pause in a row", () => {
     assert.deepEqual(pauseEnd({}, 1_000, 0, timing), { resumeAt: 2_000, reported: false });
     assert.deepEqual(pauseEnd({}, 1_000, 2, timing), { resumeAt: 4_000, reported: false });
-  });
-
-  it("treats a reset already past as none", () => {
     assert.deepEqual(pauseEnd({ resetsAt: 500 }, 1_000, 0, timing), { resumeAt: 2_000, reported: false });
   });
 });

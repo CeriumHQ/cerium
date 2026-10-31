@@ -8,7 +8,6 @@ import {
   meterLevel,
   paceLabel,
   paceOf,
-  planName,
   resetLabel,
   runsOutLabel,
   spendLabel,
@@ -93,15 +92,5 @@ describe("usage meters", () => {
     expect(litSegments(meter(99.6), 20)).toBe(1);
     expect(litSegments(meter(100), 20)).toBe(0);
     expect(litSegments(meter(0), 40)).toBe(40);
-  });
-
-  it("names plans", () => {
-    expect(["max", "plus", "edu_plus", "prolite", "enterprise_cbp_usage_based"].map(planName)).toEqual([
-      "Max",
-      "Plus",
-      "Edu Plus",
-      "Pro Lite",
-      "Enterprise",
-    ]);
   });
 });

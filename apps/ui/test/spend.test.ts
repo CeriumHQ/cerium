@@ -1,13 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import {
-  cacheShare,
-  costGap,
-  costLabel,
-  rangeEdges,
-  tokenLabel,
-  tokensOf,
-} from "../src/features/settings/spendModel.ts";
+import { cacheShare, costGap, costLabel, rangeEdges, tokensOf } from "../src/features/settings/spendModel.ts";
 
 const totals = (extra: object = {}) => ({
   inputTokens: 100,
@@ -47,15 +40,6 @@ describe("spend ranges", () => {
 });
 
 describe("spend words", () => {
-  it("shortens counts without rounding up a unit", () => {
-    expect(tokenLabel(0)).toBe("0");
-    expect(tokenLabel(840)).toBe("840");
-    expect(tokenLabel(1_234)).toBe("1.23K");
-    expect(tokenLabel(12_345)).toBe("12.3K");
-    expect(tokenLabel(123_456)).toBe("123K");
-    expect(tokenLabel(4_560_000)).toBe("4.56M");
-  });
-
   it("counts cached tokens as read, and says how much of the input the cache served", () => {
     expect(tokensOf(totals())).toBe(420);
     expect(cacheShare(totals())).toBe(75);

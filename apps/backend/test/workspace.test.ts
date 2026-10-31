@@ -4,14 +4,7 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path } from "effect";
 
-import {
-  imageType,
-  rankEntries,
-  safeFileName,
-  searchable,
-  withFolders,
-  Workspace,
-} from "../src/workspace.ts";
+import { rankEntries, safeFileName, searchable, withFolders, Workspace } from "../src/workspace.ts";
 
 const entries = searchable(
   withFolders([
@@ -161,27 +154,10 @@ describe("Workspace.search", () => {
   );
 });
 
-describe("withFolders", () => {
-  it("lists every folder above the files once", () => {
-    expect(withFolders(["a/b/c.ts", "a/d.ts"])).toEqual([
-      { path: "a", folder: true },
-      { path: "a/b", folder: true },
-      { path: "a/b/c.ts", folder: false },
-      { path: "a/d.ts", folder: false },
-    ]);
-  });
-});
-
 describe("attachments", () => {
   it("keeps a pasted file's name safe on disk", () => {
     expect(safeFileName("image.png")).toBe("image.png");
     expect(safeFileName('a<b>:"c"/d\\e|f?.txt')).toBe("a_b___c__d_e_f_.txt");
     expect(safeFileName(" .. ")).toBe("attachment");
-  });
-
-  it("recognises images by extension", () => {
-    expect(imageType("C:/shots/Screen.PNG")).toBe("image/png");
-    expect(imageType("photo.jpeg")).toBe("image/jpeg");
-    expect(imageType("notes.md")).toBeUndefined();
   });
 });

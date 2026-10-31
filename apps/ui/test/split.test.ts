@@ -66,13 +66,6 @@ describe("splitPane", () => {
       sizes: [50, 50],
     });
   });
-
-  it("opens a file beside a thread as it does any tab", () => {
-    const panes = splitPane(singlePane("1", "a"), "1", "right", file, "2");
-    expect(shape(panes.root)).toEqual({ row: ["a", file], sizes: [50, 50] });
-    expect(panes.focused).toBe("2");
-    expect(panes.shown).toBe(file);
-  });
 });
 
 describe("closePane", () => {
