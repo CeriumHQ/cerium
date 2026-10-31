@@ -21,7 +21,7 @@ const CACHE_LIMIT = 1_000_000;
  */
 export const artifactBlocks = (markdown: string): ReadonlyArray<string> => {
   // Only a rejection filter: the Markdown parser still decides whether a candidate is a code block.
-  if (!/(?:`{3,}|~{3,})[ \t]*artifact\b/i.test(markdown)) return [];
+  if (!/(?:`{3,}|~{3,})[^\r\n]*(?:artifact|[&\\])/i.test(markdown)) return [];
   const previous = parsed.get(markdown);
   if (previous !== undefined) {
     parsed.delete(markdown);

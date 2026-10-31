@@ -337,6 +337,11 @@ describe("finding artifacts", () => {
     assert.deepStrictEqual(artifactBlocks("$$\n```artifact\n<p>math</p>\n```\n$$"), []);
   });
 
+  it("decodes entities in artifact fence languages before rejecting candidates", () => {
+    assert.deepStrictEqual(artifactBlocks("```artif&#97;ct\n<p>entity</p>\n```"), ["<p>entity</p>"]);
+    assert.deepStrictEqual(artifactBlocks("ordinary prose without a code fence"), []);
+  });
+
   it("lists pages newest first, each once", () => {
     const messages = [
       { text: "```artifact\n<p>b</p>\n```\n```artifact\n<p>c</p>\n```", at: 2 },
