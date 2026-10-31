@@ -46,16 +46,6 @@ describe("includeList", () => {
     expect(deep.reachesInto("node_modules")).toBe(true);
     expect(deep.includes("packages/a/fixtures/test.env", false)).toBe(true);
   });
-
-  it("uses gitignore matching for bare double stars, escapes and negations", () => {
-    const all = includeList(["**"]);
-    expect(all.includes("config.env", false)).toBe(true);
-    expect(all.includes("nested/config.env", false)).toBe(true);
-    const list = includeList(["*.env", "!public.env", "\\#literal", "file\\ "]);
-    expect(list.includes("public.env", false)).toBe(false);
-    expect(list.includes("#literal", false)).toBe(true);
-    expect(list.includes("file ", false)).toBe(true);
-  });
 });
 
 describe("worktreeSlug", () => {

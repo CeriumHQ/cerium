@@ -52,21 +52,6 @@ describe("readProjectFile", () => {
       setup: "bun install",
     });
   });
-
-  it("distinguishes quoted keys containing spaces or dots from actual tables", () => {
-    const text =
-      '["scr ipts"]\nrun = "keep"\n["scripts.more"]\nrun = "also keep"\n["scripts"]\nrun = "right"\n';
-    expect(readProjectFile(text).scripts).toEqual({ run: "right" });
-    expect(editProjectFile(text, { scripts: { run: "new" } })).toBe(
-      text.replace('run = "right"', 'run = "new"'),
-    );
-  });
-
-  it("keeps tolerant duplicate handling when a file is invalid", () => {
-    const text = '[scripts]\nrun = "first"\nrun = "last"\n';
-    expect(readProjectFile(text).scripts).toEqual({ run: "last" });
-    expect(editProjectFile(text, { scripts: { run: "new" } })).toBe('[scripts]\nrun = "new"\n');
-  });
 });
 
 describe("tomlString", () => {

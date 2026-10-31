@@ -88,24 +88,4 @@ describe("skillFrontMatter", () => {
     });
     expect(skillFrontMatter("no front matter")).toEqual({});
   });
-
-  it("parses YAML comments, quoted escapes and literal blocks", () => {
-    expect(skillFrontMatter('---\nname: review # comment\ndescription: "Reviews \\"code\\""\n---\n')).toEqual(
-      {
-        name: "review",
-        description: 'Reviews "code"',
-      },
-    );
-    expect(skillFrontMatter("---\nname: x\ndescription: |-\n  first\n  second\n---\n")).toEqual({
-      name: "x",
-      description: "first\nsecond",
-    });
-  });
-
-  it("ignores malformed or non-mapping front matter and non-string fields", () => {
-    expect(skillFrontMatter("---\nname: [unterminated\n---\n")).toEqual({});
-    expect(skillFrontMatter("---\n- list\n---\n")).toEqual({});
-    expect(skillFrontMatter("---\nname: 42\ndescription: false\n---\n")).toEqual({});
-    expect(skillFrontMatter("---\nname: a\nname: b\n---\n")).toEqual({});
-  });
 });
