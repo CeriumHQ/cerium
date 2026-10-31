@@ -9,12 +9,25 @@ import { unified } from "unified";
 export const ARTIFACT_LANGUAGE = "artifact";
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
+// Galleries and find read settled messages repeatedly. Bound retained source and results, including
+// false positives such as artifact fences inside comments; streaming versions evict normally.
+const parsed = new Map<string, { readonly blocks: ReadonlyArray<string>; readonly size: number }>();
+let retained = 0;
+const CACHE_LIMIT = 1_000_000;
 
 /**
  * The artifacts in a message's markdown, in order: the body of each closed ` ```artifact ` fence,
  * as the transcript renders it. A fence still open (a message being written) holds none yet.
  */
 export const artifactBlocks = (markdown: string): ReadonlyArray<string> => {
+  // Only a rejection filter: the Markdown parser still decides whether a candidate is a code block.
+  if (!/(?:`{3,}|~{3,})[ \t]*artifact\b/i.test(markdown)) return [];
+  const previous = parsed.get(markdown);
+  if (previous !== undefined) {
+    parsed.delete(markdown);
+    parsed.set(markdown, previous);
+    return previous.blocks;
+  }
   const found: Array<string> = [];
   const visit = (
     node: ReturnType<typeof parser.parse> | ReturnType<typeof parser.parse>["children"][number],
@@ -43,7 +56,19 @@ export const artifactBlocks = (markdown: string): ReadonlyArray<string> => {
     if ("children" in node) for (const child of node.children) visit(child);
   };
   visit(parser.parse(markdown));
-  return found;
+  const blocks = Object.freeze(found);
+  const size = markdown.length + found.reduce((sum, block) => sum + block.length, 0);
+  if (size <= CACHE_LIMIT / 4) {
+    while (parsed.size >= 64 || retained + size > CACHE_LIMIT) {
+      const oldest = parsed.entries().next().value;
+      if (oldest === undefined) break;
+      parsed.delete(oldest[0]);
+      retained -= oldest[1].size;
+    }
+    parsed.set(markdown, { blocks, size });
+    retained += size;
+  }
+  return blocks;
 };
 
 /**
