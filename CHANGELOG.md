@@ -20,6 +20,7 @@ All notable changes to Cerium are recorded here. The format follows
 - When a child agent's harness session crashes, its lead is told and receives the results its siblings already reported, instead of those results waiting on the crashed child.
 - Cloud sync measures events in UTF-8 bytes and caps each event to fit one stored batch, so multibyte or heavily structured output no longer fails upload over and over. An event too large even with its strings shortened is replaced in the cloud copy by a note.
 - Dev-server addresses in a terminal are read through colour codes and trailing brackets, and one cut off at the end of the output waits for the rest, so agents and the preview get the full URL.
+- A file still being prepared in a draft survives another window saving drafts.
 
 ### Changed
 

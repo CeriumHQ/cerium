@@ -219,15 +219,27 @@ export const parseDrafts = (text: string | undefined): Drafts => {
 
 /**
  * `incoming` (another tab's drafts) with this window's own copy of each draft that didn't change
- * there, so files it is still preparing and its image previews survive.
+ * there, so its image previews survive, and the files it is still preparing (or failed to) in those
+ * that did. Storage never holds those files, so a draft of nothing else, which the other tab never
+ * saw, is kept; one storage held and the other tab dropped was sent or cleared there.
  */
-export const mergeDrafts = (current: Drafts, incoming: Drafts): Drafts =>
-  Object.fromEntries(
-    Object.entries(incoming).map(([key, draft]) => {
-      const own = current[key];
-      return [key, own && JSON.stringify(toStored(own)) === JSON.stringify(toStored(draft)) ? own : draft];
-    }),
-  );
+export const mergeDrafts = (current: Drafts, incoming: Drafts): Drafts => {
+  const merged: Record<string, Draft> = {};
+  for (const [key, draft] of Object.entries(incoming)) {
+    const own = current[key];
+    if (own === undefined) merged[key] = draft;
+    else if (JSON.stringify(toStored(own)) === JSON.stringify(toStored(draft))) merged[key] = own;
+    else {
+      const unsaved = own.attachments.filter((attachment) => attachment.state._tag !== "Ready");
+      merged[key] =
+        unsaved.length === 0 ? draft : { ...draft, attachments: [...draft.attachments, ...unsaved] };
+    }
+  }
+  for (const [key, own] of Object.entries(current)) {
+    if (!(key in incoming) && keptDraft(own) === undefined) merged[key] = own;
+  }
+  return merged;
+};
 
 /** The window's drafts, kept in local storage and in step with its other tabs. */
 export const draftsAtom: Atom.Writable<Drafts> = Atom.writable(

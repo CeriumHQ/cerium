@@ -116,6 +116,16 @@ describe("mergeDrafts", () => {
     expect(merged["new:1"]).toBe(work);
     expect(merged["new:2"]?.segments).toEqual([text("other tab")]);
   });
+
+  it("keeps a file still preparing when another tab saves, but not a draft that tab sent", () => {
+    const preparing: Draft = {
+      segments: [],
+      attachments: [{ id: "p", name: "big.pdf", mediaType: "application/pdf", state: { _tag: "Preparing" } }],
+    };
+    const merged = mergeDrafts({ thr_a: preparing, thr_b: work }, parseDrafts(serializeDrafts({})));
+    expect(merged["thr_a"]).toBe(preparing);
+    expect(merged["thr_b"]).toBeUndefined();
+  });
 });
 
 describe("withComments", () => {
