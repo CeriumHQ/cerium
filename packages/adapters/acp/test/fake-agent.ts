@@ -257,6 +257,8 @@ const handle = async (message: Message) => {
           ],
         },
       });
+    case "authenticate":
+      return send({ id, result: {} });
     case "session/set_mode":
     case "session/close":
     case "session/delete":

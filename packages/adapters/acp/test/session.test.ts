@@ -342,6 +342,66 @@ describe("startAcpSession against a scripted agent", () => {
     ));
 });
 
+describe("sign-in and copies", () => {
+  it("signs in with the method the harness picks before opening the session", () =>
+    run(
+      Effect.gen(function* () {
+        const log = freshLog();
+        const definition: AcpHarness = {
+          ...harness(log),
+          signIn: () => ({ _tag: "Authenticate", methodId: "login", meta: { headless: true } }),
+        };
+        yield* startAcpSession(definition, process.execPath, options());
+        const methods = requests(log).map((entry) => entry.method);
+        expect(methods.indexOf("authenticate")).toBeLessThan(methods.indexOf("session/new"));
+        expect(requests(log).find((entry) => entry.method === "authenticate")?.params).toEqual({
+          methodId: "login",
+          _meta: { headless: true },
+        });
+      }),
+    ));
+
+  it("reads an interactive-only sign-in as signed out", () =>
+    run(
+      Effect.gen(function* () {
+        const definition: AcpHarness = { ...harness(freshLog()), signIn: () => ({ _tag: "SignedOut" }) };
+        const error = yield* startAcpSession(definition, process.execPath, options()).pipe(Effect.flip);
+        expect(error._tag).toBe("HarnessUnavailable");
+      }),
+    ));
+
+  it("answers aside on a copy made with session/fork, deleted when it ends", () =>
+    run(
+      Effect.gen(function* () {
+        const log = freshLog();
+        yield* Effect.gen(function* () {
+          const copy = yield* startAcpSession(harness(log), process.execPath, options({ mcpServers: {} }), {
+            purpose: "sideQuestion",
+            ephemeral: true,
+            forkOf: { sessionId: "fake-7" },
+          });
+          const { first } = yield* collect(copy);
+          expect(first).toMatchObject({ _tag: "SessionStarted" });
+          expect((first as { providerSessionId: string }).providerSessionId).toMatch(/^fork-/);
+        }).pipe(Effect.scoped);
+        expect(requests(log).find((entry) => entry.method === "session/fork")?.params.sessionId).toBe(
+          "fake-7",
+        );
+        expect(requests(log).some((entry) => entry.method === "session/delete")).toBe(true);
+      }),
+    ));
+
+  it("can't copy part of a session without the harness's own fork", () =>
+    run(
+      Effect.gen(function* () {
+        const error = yield* startAcpSession(harness(freshLog()), process.execPath, options(), {
+          forkOf: { sessionId: "fake-7", promptIndex: 1 },
+        }).pipe(Effect.flip);
+        expect(error._tag).toBe("HarnessFailure");
+      }),
+    ));
+});
+
 describe("inspection and history", () => {
   it("lists models and efforts from a fresh session, then deletes it", () =>
     run(
