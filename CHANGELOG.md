@@ -13,6 +13,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Stopping a child sends one parent notification after its session closes and waits for the rest of its assignment group before waking the parent.
 - Suffix byte ranges on empty media return an unsatisfiable range, and workspace files beginning with `..`, such as `..notes`, open normally.
 - Failed effort-router vault reads can retry instead of caching a missing key.
+- Historical token spend stays attributed to the provider that ran each session after a cross-provider handoff.
 
 - The mobile Settings list scrolls to all its categories.
 

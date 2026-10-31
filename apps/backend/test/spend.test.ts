@@ -59,6 +59,30 @@ const threads = [thread("t1", "Fix the build"), thread("t2", "Ask a question")];
 const edges = [0, 100, 200, 300];
 
 describe("spendReport", () => {
+  it("keeps historical usage on its session's provider after a cross-provider handoff", () => {
+    const report = spendReport({
+      agents: [agent("lead", "t1", "codex", "gpt")],
+      threads,
+      edges,
+      events: [
+        { ...mark("lead", "SessionStarted", 1, "claude-sonnet"), provider: "claude" },
+        usage("lead", "t1", 10),
+        usage("lead", "t1", 15, { provider: "opencode", model: "helper", inputTokens: 1 }),
+        usage("lead", "t1", 20),
+        { ...mark("lead", "SessionStarted", 30, "gpt"), provider: "codex" },
+        usage("lead", "t1", 40),
+      ],
+    });
+    assert.deepStrictEqual(
+      report.models.map(({ provider, model, turns }) => [provider, model, turns]),
+      [
+        ["claude", "claude-sonnet", 2],
+        ["codex", "gpt", 1],
+        ["opencode", "helper", 1],
+      ],
+    );
+  });
+
   it("sums tokens and reported cost, and counts a turn without a cost as unpriced", () => {
     const report = spendReport({
       agents,
