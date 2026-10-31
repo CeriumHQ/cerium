@@ -1,4 +1,5 @@
 import { Button } from "@base-ui/react/button";
+import { Dialog } from "@base-ui/react/dialog";
 import type { PastSession } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -68,7 +69,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   /** The step whose parts have all come in. */
   const [settled, setSettled] = useState<StepId>();
   const [visited, setVisited] = useState(index);
-  const stage = useRef<HTMLDialogElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
 
   const go = (to: number) => {
     const next = steps[to];
@@ -151,86 +152,89 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     { id: step, state: settled === step ? ("shown" as const) : ("enter" as const) },
   ];
   return (
-    // Open as the page's own layer rather than the top layer, so the dialogs a harness's sign-in opens
-    // show over it; the window under it is inert meanwhile, so it's as modal as one. Focusable itself,
-    // so a click on its glass keeps the keys on the welcome.
-    <dialog
-      open
-      ref={stage}
-      tabIndex={-1}
-      onKeyDown={onKey}
-      aria-modal="true"
-      aria-labelledby={titleIdOf(step)}
-      data-welcome=""
-      data-direction={leaving?.direction === -1 ? "back" : "forward"}
-      data-closing={closing ? "" : undefined}
-      className="fixed inset-0 m-0 flex size-full max-h-none max-w-none flex-col overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
-    >
-      {/* The window can be moved by its top edge; the system draws its buttons over the right of it. */}
-      <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
-      <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
-        {/* The mark that flies to and from the window's: the glass one while hello shows, else this. */}
-        <CeriumMark size={18} landing={step !== "hello"} className="text-fg-primary" />
-        <span className="text-body font-medium tracking-tight text-fg-secondary">Cerium</span>
-      </header>
+    <Dialog.Root open disablePointerDismissal>
+      <Dialog.Portal>
+        <Dialog.Popup
+          ref={stage}
+          tabIndex={-1}
+          initialFocus={() =>
+            stage.current?.querySelector<HTMLElement>(`#${titleIdOf(step)}`) ?? stage.current
+          }
+          onKeyDown={onKey}
+          aria-modal="true"
+          aria-labelledby={titleIdOf(step)}
+          data-welcome=""
+          data-direction={leaving?.direction === -1 ? "back" : "forward"}
+          data-closing={closing ? "" : undefined}
+          className="fixed inset-0 m-0 flex size-full max-h-none max-w-none flex-col overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
+        >
+          {/* The window can be moved by its top edge; the system draws its buttons over the right of it. */}
+          <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
+          <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
+            {/* The mark that flies to and from the window's: the glass one while hello shows, else this. */}
+            <CeriumMark size={18} landing={step !== "hello"} className="text-fg-primary" />
+            <span className="text-body font-medium tracking-tight text-fg-secondary">Cerium</span>
+          </header>
 
-      <main className="relative grid min-h-0 flex-1">
-        {shown.map(({ id, state }) => (
-          <section
-            key={id}
-            data-step={id}
-            data-state={state}
-            data-after={entry.after ? "" : undefined}
-            aria-hidden={state === "leave" ? true : undefined}
-            inert={state === "leave"}
-            className="col-start-1 row-start-1 min-h-0"
-          >
-            <Step
-              id={id}
-              number={steps.indexOf(id) + 1}
-              titleId={titleIdOf(id)}
-              active={state !== "leave" && !closing}
-              sessions={offered}
-              importer={importer}
-            />
-          </section>
-        ))}
-      </main>
+          <main className="relative grid min-h-0 flex-1">
+            {shown.map(({ id, state }) => (
+              <section
+                key={id}
+                data-step={id}
+                data-state={state}
+                data-after={entry.after ? "" : undefined}
+                aria-hidden={state === "leave" ? true : undefined}
+                inert={state === "leave"}
+                className="col-start-1 row-start-1 min-h-0"
+              >
+                <Step
+                  id={id}
+                  number={steps.indexOf(id) + 1}
+                  titleId={titleIdOf(id)}
+                  active={state !== "leave" && !closing}
+                  sessions={offered}
+                  importer={importer}
+                />
+              </section>
+            ))}
+          </main>
 
-      <footer className="relative flex shrink-0 items-center gap-8 px-(--welcome-gutter) pt-4 pb-6">
-        <Progress steps={steps} index={index} visited={visited} onPick={go} />
-        <div className="flex shrink-0 items-center gap-2">
-          {last && !(importing && picks > 0) ? null : (
-            <Button
-              onClick={close}
-              className="mr-2 h-9 rounded-full px-3 text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
-            >
-              Skip
-            </Button>
-          )}
-          {index === 0 ? null : (
-            <Button
-              onClick={back}
-              aria-label="Back"
-              className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-            >
-              <ArrowLeft size={16} strokeWidth={1.5} />
-            </Button>
-          )}
-          <ContinueButton onClick={next}>
-            {importing && picks > 0
-              ? importer.state._tag === "importing"
-                ? "Importing…"
-                : `Import ${picks}`
-              : last
-                ? "Open Cerium"
-                : index === 0
-                  ? "Begin"
-                  : "Continue"}
-          </ContinueButton>
-        </div>
-      </footer>
-    </dialog>
+          <footer className="relative flex shrink-0 items-center gap-8 px-(--welcome-gutter) pt-4 pb-6">
+            <Progress steps={steps} index={index} visited={visited} onPick={go} />
+            <div className="flex shrink-0 items-center gap-2">
+              {last && !(importing && picks > 0) ? null : (
+                <Button
+                  onClick={close}
+                  className="mr-2 h-9 rounded-full px-3 text-meta text-fg-tertiary transition-colors hover:text-fg-primary"
+                >
+                  Skip
+                </Button>
+              )}
+              {index === 0 ? null : (
+                <Button
+                  onClick={back}
+                  aria-label="Back"
+                  className="grid size-10 place-items-center rounded-full border border-line-subtle text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                >
+                  <ArrowLeft size={16} strokeWidth={1.5} />
+                </Button>
+              )}
+              <ContinueButton onClick={next}>
+                {importing && picks > 0
+                  ? importer.state._tag === "importing"
+                    ? "Importing…"
+                    : `Import ${picks}`
+                  : last
+                    ? "Open Cerium"
+                    : index === 0
+                      ? "Begin"
+                      : "Continue"}
+              </ContinueButton>
+            </div>
+          </footer>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
