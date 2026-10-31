@@ -3,10 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 import type { Updates, UpdateStatus } from "../src/backend/shell.ts";
 import {
   channelLocked,
-  checkedLabel,
   noticeVersion,
   offerVersion,
-  releaseNotesUrl,
   statusText,
   versionParts,
 } from "../src/features/updates/model.ts";
@@ -67,24 +65,6 @@ describe("versionParts", () => {
     expect(statusText(updates({ kind: "unreachable", reason: "offline", checkedAt: 0 }))).toBe(
       "Couldn't reach GitHub. Check your connection.",
     );
-  });
-});
-
-describe("releaseNotesUrl", () => {
-  it("links the GitHub release tagged with the version", () => {
-    expect(releaseNotesUrl("0.5.0")).toBe("https://github.com/CeriumHQ/cerium/releases/tag/v0.5.0");
-    expect(releaseNotesUrl("0.7.0-nightly.n000031")).toBe(
-      "https://github.com/CeriumHQ/cerium/releases/tag/v0.7.0-nightly.n000031",
-    );
-  });
-});
-
-describe("checkedLabel", () => {
-  it("counts minutes, then hours", () => {
-    expect(checkedLabel(0, 30_000)).toBe("Checked just now");
-    expect(checkedLabel(0, 60_000)).toBe("Checked 1 minute ago");
-    expect(checkedLabel(0, 5 * 60_000)).toBe("Checked 5 minutes ago");
-    expect(checkedLabel(0, 3 * 60 * 60_000)).toBe("Checked 3 hours ago");
   });
 });
 

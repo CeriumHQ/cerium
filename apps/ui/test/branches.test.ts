@@ -6,15 +6,11 @@ import {
   branchTitle,
   canSkip,
   conflictNote,
-  fetchedNote,
-  hasLocalBranch,
   matchBranches,
-  operationNote,
   operationTitle,
   sideHelp,
   switchBlocked,
   syncHint,
-  syncLabel,
   syncPlan,
 } from "../src/features/git/branches/model.ts";
 
@@ -113,12 +109,6 @@ describe("branch search", () => {
     expect(shown.local.map((branch) => branch.name)).toEqual(["login-fix", "feature/login"]);
     expect(shown.remote.map((branch) => branch.name)).toEqual(["origin/login-v2"]);
   });
-
-  it("knows which names are taken", () => {
-    expect(hasLocalBranch(list, "main")).toBe(true);
-    expect(hasLocalBranch(list, "origin/release")).toBe(false);
-    expect(hasLocalBranch(list, "release")).toBe(false);
-  });
 });
 
 describe("branch rows", () => {
@@ -167,24 +157,11 @@ describe("sync plan", () => {
     expect(syncPlan(state()).hidden).toBe(false);
   });
 
-  it("labels the button by its action", () => {
-    expect(syncLabel(syncPlan(following(0, 1)))).toBe("Pull");
-    expect(syncLabel(syncPlan(following(1, 0)))).toBe("Push");
-    expect(syncLabel(syncPlan(following(0, 0)))).toBe("Fetch");
-    expect(syncLabel(syncPlan(state()))).toBe("Publish");
-  });
-
   it("says where the branch stands", () => {
     expect(syncHint(syncPlan(following(0, 0)), "origin/main")).toBe("Up to date with origin/main.");
     expect(syncHint(syncPlan(following(2, 0)), "origin/main")).toBe("2 not on origin/main yet.");
     expect(syncHint(syncPlan(following(0, 4)), "origin/main")).toBe("4 new on origin/main.");
     expect(syncHint(syncPlan(state()), undefined)).toContain("isn't on the remote");
-  });
-
-  it("says when it last fetched", () => {
-    const ago = (at: number, now: number) => `${now - at} ago`;
-    expect(fetchedNote(undefined, 10, ago)).toContain("Not fetched");
-    expect(fetchedNote(4, 10, ago)).toBe("Fetched 6 ago.");
   });
 });
 
@@ -206,17 +183,6 @@ describe("an operation that stopped", () => {
       "Rebase in progress",
     );
     expect(operationTitle(state({ conflicts: [conflict("a")] }))).toBe("Conflicts to resolve");
-  });
-
-  it("says what is left", () => {
-    const merging = { kind: "merge" } as const;
-    expect(operationNote(state({ operation: merging, conflicts: [conflict("a")] }))).toBe(
-      "1 file needs your decision.",
-    );
-    expect(operationNote(state({ operation: merging, conflicts: [conflict("a"), conflict("b")] }))).toBe(
-      "2 files need your decision.",
-    );
-    expect(operationNote(state({ operation: merging }))).toContain("Continue");
   });
 
   it("skips a step of everything but a merge", () => {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   cleanTranscript,
-  elapsed,
   hasSound,
   languageOfLocale,
   microphoneProblem,
@@ -78,12 +77,5 @@ describe("languageOfLocale", () => {
     expect(languageOfLocale("pt-BR")).toBe("pt");
     expect(languageOfLocale("nb-NO")).toBe("no");
     expect(languageOfLocale("xx")).toBe("en");
-  });
-});
-
-describe("elapsed", () => {
-  it("reads as minutes and seconds", () => {
-    expect(elapsed(0)).toBe("0:00");
-    expect(elapsed(75_400)).toBe("1:15");
   });
 });

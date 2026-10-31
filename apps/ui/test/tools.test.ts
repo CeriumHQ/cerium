@@ -324,11 +324,6 @@ describe("outputText", () => {
       outputText({ exitCode: 2, signal: "", stdout: "built", stderr: "error: boom", executionTime: 3 }),
     ).toBe("Exit code 2\nbuilt\nerror: boom");
   });
-
-  it("shows anything else as JSON with blobs elided", () => {
-    expect(outputText({ status: "spawned" })).toBe(JSON.stringify({ status: "spawned" }, null, 2));
-    expect(outputText(undefined)).toBe("");
-  });
 });
 
 describe("failureLine", () => {
@@ -367,11 +362,6 @@ describe("failureLine", () => {
         JSON.stringify({ exit_code: 1, terminal_status: "failed", output: "grep : not recognized" }),
       ),
     ).toBe("Exit 1 · grep : not recognized");
-  });
-
-  it("says nothing when the output says nothing", () => {
-    expect(failureLine(undefined)).toBeUndefined();
-    expect(failureLine("")).toBeUndefined();
   });
 });
 

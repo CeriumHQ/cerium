@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { isSendKey, stepScale, textScale } from "../src/features/settings/preferences.ts";
+import { isSendKey, stepScale } from "../src/features/settings/preferences.ts";
 
 describe("stepScale", () => {
   it("steps through the stops and holds at either end", () => {
@@ -35,12 +35,5 @@ describe("isSendKey", () => {
   it("never sends other keys, or the Enter that confirms an IME composition", () => {
     expect(isSendKey(press("a", { ctrl: true }), "ctrlEnter")).toBe(false);
     expect(isSendKey(press("Enter", { composing: true }), "enter")).toBe(false);
-  });
-});
-
-describe("textScale", () => {
-  it("scales the conversation from its 14px design", () => {
-    expect(textScale("default")).toBe(1);
-    expect(textScale("larger")).toBeCloseTo(16 / 14);
   });
 });

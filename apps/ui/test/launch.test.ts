@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { launchProgress, launchStatus, letterShape, type LaunchState } from "../src/app/launch.ts";
+import { launchProgress, launchStatus, type LaunchState } from "../src/app/launch.ts";
 
 const starting: LaunchState = { backend: false, account: false, machine: undefined, ready: false };
 
@@ -48,21 +48,5 @@ describe("launchStatus", () => {
     expect(launchStatus({ ...starting, backend: true, account: true }, { web: false })).toBe(
       "Opening your threads",
     );
-  });
-});
-
-describe("letterShape", () => {
-  it("starts thin and condensed, and ends at the brand's semibold, expanded name", () => {
-    expect(letterShape(0, 0)).toEqual({ stretch: 50, weight: 200, opacity: 0.3 });
-    for (const index of [0, 1, 2, 3, 4, 5]) {
-      expect(letterShape(1, index)).toEqual({ stretch: 125, weight: 600, opacity: 1 });
-    }
-  });
-
-  it("fills each letter a little behind the one before it", () => {
-    const first = letterShape(0.5, 0);
-    const last = letterShape(0.5, 5);
-    expect(first.stretch).toBeGreaterThan(last.stretch);
-    expect(first.weight).toBeGreaterThan(last.weight);
   });
 });

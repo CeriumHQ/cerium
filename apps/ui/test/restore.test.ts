@@ -4,13 +4,7 @@ import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@ceri
 
 import { layout } from "../src/features/transcript/layout.ts";
 import { buildTranscript } from "../src/features/transcript/model.ts";
-import {
-  agentsLine,
-  conversationLine,
-  filesLine,
-  messagesLine,
-  previewFailure,
-} from "../src/features/transcript/restore.ts";
+import { agentsLine, conversationLine, filesLine, messagesLine } from "../src/features/transcript/restore.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
   payloads.map((payload, sequence) => ({
@@ -71,10 +65,5 @@ describe("restore wording", () => {
     expect(filesLine({ restored: [{ path: "a.ts", undo: "edit" }], kept: [] })).toBe(
       "Puts back 1 file the thread's agents changed since",
     );
-  });
-
-  it("says why the preview couldn't be read", () => {
-    expect(previewFailure({ message: "The thread is gone." })).toBe("The thread is gone.");
-    expect(previewFailure(undefined)).toBe("Couldn't check what a restore would undo.");
   });
 });

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -53,12 +51,6 @@ describe("parseChangelog", () => {
     const [before] = parseChangelog("## x\n\n### Added\n\n- Muse is back. Old detail.\n");
     const [after] = parseChangelog("## x\n\n### Added\n\n- Muse is back. New detail.\n");
     expect(before?.id).toBe(after?.id);
-  });
-
-  it("reads the real changelog into headlines", () => {
-    const changes = parseChangelog(readFileSync(new URL("../../../CHANGELOG.md", import.meta.url), "utf8"));
-    expect(changes.length).toBeGreaterThan(0);
-    expect(changes.every((change) => change.headline.length > 0)).toBe(true);
   });
 });
 

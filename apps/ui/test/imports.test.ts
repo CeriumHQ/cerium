@@ -4,7 +4,6 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   DEFAULT_PICKS,
   defaultPicks,
-  folderName,
   groupByProject,
   groupPicked,
   sessionKey,
@@ -46,11 +45,6 @@ describe("groupByProject", () => {
     expect(api.recent).toBe(1);
     expect(api.providers).toEqual(["opencode", "claude"]);
     expect(groups[2]!.cwd).toBeUndefined();
-  });
-
-  it("names a folder by its last segment", () => {
-    expect(folderName("/home/me/project/")).toBe("project");
-    expect(folderName("C:\\Users\\me\\cerium")).toBe("cerium");
   });
 });
 

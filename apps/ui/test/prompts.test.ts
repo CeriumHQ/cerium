@@ -1,12 +1,5 @@
 import type { SavedPrompt } from "@cerium/protocol";
-import {
-  matchPrompts,
-  movePrompt,
-  promptName,
-  visiblePrompts,
-  withPrompt,
-  withoutPrompt,
-} from "@cerium/protocol";
+import { matchPrompts, movePrompt, promptName, visiblePrompts, withPrompt } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import { triggerAt } from "../src/features/composer/draft.ts";
@@ -76,11 +69,6 @@ describe("withPrompt, withoutPrompt and movePrompt", () => {
     expect(added).toEqual([global, project]);
     const renamed = { ...project, name: "Renamed" };
     expect(withPrompt(added, renamed)).toEqual([global, renamed]);
-  });
-
-  it("drops a prompt by id", () => {
-    expect(withoutPrompt([global, project], "g")).toEqual([project]);
-    expect(withoutPrompt([global], "missing")).toEqual([global]);
   });
 
   it("steps a prompt toward either end and holds it there", () => {

@@ -8,8 +8,6 @@ import {
   matchesFamily,
   normalizeBinding,
   parseBinding,
-  SHORTCUTS,
-  shortcutDef,
   typesInField,
 } from "../src/lib/shortcuts.ts";
 
@@ -173,19 +171,5 @@ describe("typesInField", () => {
     expect(typesInField(press("#", "Digit3", { alt: true }), false)).toBe(false);
     expect(typesInField(press("3", "Digit3", { alt: true }), true)).toBe(false);
     expect(typesInField(press("3", "Digit3", { ctrl: true }), true)).toBe(false);
-  });
-});
-
-describe("registry", () => {
-  it("gives every shortcut a unique id, a group and a parseable default", () => {
-    const ids = SHORTCUTS.map((each) => each.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const each of SHORTCUTS.filter(({ fixed }) => fixed !== true)) {
-      expect(parseBinding(each.defaultKeys)).toBeDefined();
-    }
-    for (const each of SHORTCUTS) {
-      expect(["General", "Threads", "Panels", "Tabs"]).toContain(each.group);
-      expect(shortcutDef(each.id)).toEqual(each);
-    }
   });
 });

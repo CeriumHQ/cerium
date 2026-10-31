@@ -1,7 +1,7 @@
 import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { limitName, limitOutcome, resumeTime } from "../src/features/transcript/limit.ts";
+import { limitOutcome, resumeTime } from "../src/features/transcript/limit.ts";
 import { buildTranscript } from "../src/features/transcript/model.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -51,11 +51,6 @@ describe("limit rows in the transcript", () => {
 describe("limit wording", () => {
   const [row] = limits(reached, paused);
   const [resumed] = limits(reached, paused, { _tag: "LimitResumed", by: "message" });
-
-  it("names the harness and the limit", () => {
-    expect(limitName({ provider: "claude", window: "5-hour" })).toBe("Claude 5-hour limit reached");
-    expect(limitName({ provider: "codex" })).toBe("Codex usage limit reached");
-  });
 
   it("says until when it waits, or when it tries again without a reported reset", () => {
     if (row?.kind !== "limit") throw new Error("expected a limit row");

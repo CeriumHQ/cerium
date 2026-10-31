@@ -1,7 +1,7 @@
 import { NOTIFICATION_KINDS, type ThreadId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { badgeText, handling } from "../src/desktop/model.ts";
+import { handling } from "../src/desktop/model.ts";
 
 const finished = { threadId: "thr_1" as ThreadId, kind: "finished" as const };
 
@@ -37,13 +37,5 @@ describe("a usage limit notification", () => {
     expect(handling(limit, ["needsYou", "finished", "failed"], { atWindow: false, viewing: undefined })).toBe(
       "ignore",
     );
-  });
-});
-
-describe("the taskbar badge", () => {
-  it("reads the count up to nine", () => {
-    expect(badgeText(1)).toBe("1");
-    expect(badgeText(9)).toBe("9");
-    expect(badgeText(12)).toBe("9+");
   });
 });

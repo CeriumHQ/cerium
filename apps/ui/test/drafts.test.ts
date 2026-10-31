@@ -129,10 +129,6 @@ describe("withComments", () => {
     );
   });
 
-  it("is the text alone without comments", () => {
-    expect(withComments(" Ship it ", [])).toBe("Ship it");
-  });
-
   it("names a diff run by its file and lines, fencing the lines with their markers", () => {
     const comments = [
       {

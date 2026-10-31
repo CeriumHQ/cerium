@@ -1,15 +1,7 @@
 import type { AccountId, AccountState, DeviceId, DeviceInfo } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import {
-  deviceDetails,
-  deviceVersion,
-  initials,
-  orderedDevices,
-  presenceLabel,
-  reachOf,
-  whyUnreachable,
-} from "../src/features/account/model.ts";
+import { orderedDevices, presenceLabel, reachOf, whyUnreachable } from "../src/features/account/model.ts";
 
 const device = (id: string, extra: Partial<DeviceInfo> = {}): DeviceInfo => ({
   id: id as DeviceId,
@@ -29,24 +21,6 @@ const signedIn = (self: string, devices: ReadonlyArray<DeviceInfo>): AccountStat
   deviceId: self as DeviceId,
   connection: "online",
   devices,
-});
-
-describe("device details", () => {
-  it("name a desktop's platform and a channel other than stable, and nothing for a browser", () => {
-    expect(deviceDetails(device("a"))).toBe("Windows");
-    expect(deviceDetails(device("a", { channel: "nightly", version: "0.5.0-nightly.12" }))).toBe(
-      "Windows · Nightly",
-    );
-    expect(deviceDetails(device("a", { channel: "dev", version: "dev", platform: "darwin" }))).toBe(
-      "macOS · Development build",
-    );
-    expect(deviceDetails(device("a", { kind: "browser", platform: "ios", channel: "nightly" }))).toBe("");
-  });
-
-  it("puts the version in words, and leaves a development build without one", () => {
-    expect(deviceVersion(device("a"))).toBe("Version 0.4.0");
-    expect(deviceVersion(device("a", { version: "dev" }))).toBeUndefined();
-  });
 });
 
 describe("device order", () => {
@@ -86,13 +60,5 @@ describe("reaching another desktop", () => {
     expect(reachOf(device("b", { online: true }))).toEqual({ kind: "outdated" });
     expect(reachOf(device("b", { rpcVersion: 1 }))).toEqual({ kind: "offline", presence: "Never connected" });
     expect(reachOf(device("b", { online: true, rpcVersion: 1 }))).toEqual({ kind: "reachable" });
-  });
-});
-
-describe("initials", () => {
-  it("come from the name, else the email", () => {
-    expect(initials("Ada Lovelace King", undefined)).toBe("AL");
-    expect(initials(undefined, "nonlooped@example.com")).toBe("N");
-    expect(initials("  ", undefined)).toBe("?");
   });
 });

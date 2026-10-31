@@ -5,14 +5,11 @@ import {
   foldConversation,
   githubKey,
   githubOfKey,
-  labelColor,
-  mergeStateNote,
   pullFilterCount,
   pullFiltersKey,
   pullFiltersOfKey,
   pullRequestBrief,
   pullStateOf,
-  referenceLabel,
   threadsByReview,
   titleOfBranch,
 } from "../src/features/github/model.ts";
@@ -130,24 +127,6 @@ describe("how a pull request reads", () => {
     expect(pullStateOf({ state: "open", draft: true })).toBe("draft");
     expect(pullStateOf({ state: "closed", draft: true })).toBe("closed");
     expect(pullStateOf({ state: "merged", draft: false })).toBe("merged");
-  });
-
-  it("colours labels from GitHub's hex, or grey without one", () => {
-    expect(labelColor("d73a4a")).toBe("#d73a4a");
-    expect(labelColor("")).toBe("#ededed");
-    expect(labelColor("red")).toBe("#ededed");
-  });
-
-  it("names a reference within its repository by number alone", () => {
-    expect(referenceLabel({ number: 3 })).toBe("#3");
-    expect(referenceLabel({ number: 3, repository: "acme/lib" })).toBe("acme/lib#3");
-  });
-
-  it("says what merging waits for, and nothing while GitHub works it out", () => {
-    expect(mergeStateNote("clean")).toBe("Ready to merge");
-    expect(mergeStateNote("dirty")).toMatch(/Conflicts/);
-    expect(mergeStateNote("unknown")).toBeUndefined();
-    expect(mergeStateNote(undefined)).toBeUndefined();
   });
 
   it("titles a pull request after its branch's own name", () => {

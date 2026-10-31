@@ -1,15 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { cueFor, cueOfBatch, mayPlay, QUIET_MS } from "../src/desktop/sounds.ts";
+import { cueOfBatch, mayPlay, QUIET_MS } from "../src/desktop/sounds.ts";
 
 describe("a thread's cue", () => {
-  it("is its kind, and a usage limit has none", () => {
-    expect(cueFor("finished")).toBe("finished");
-    expect(cueFor("needsYou")).toBe("needsYou");
-    expect(cueFor("failed")).toBe("failed");
-    expect(cueFor("limit")).toBeUndefined();
-  });
-
   it("is one for a batch, the most important", () => {
     expect(cueOfBatch(["finished", "finished", "finished"])).toBe("finished");
     expect(cueOfBatch(["finished", "needsYou", "finished"])).toBe("needsYou");

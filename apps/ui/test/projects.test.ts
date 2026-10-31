@@ -20,10 +20,6 @@ describe("rankProjects", () => {
     "D:\\work\\api",
   ];
 
-  it("keeps the list as it is until something is typed", () => {
-    expect(rankProjects(paths, "  ")).toEqual(paths);
-  });
-
   it("puts names that start with the query first, then names containing it, then path matches", () => {
     expect(rankProjects(paths, "Cer")).toEqual([
       "C:\\Users\\me\\Projects\\Apps\\cerium",

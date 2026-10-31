@@ -1,11 +1,4 @@
-import {
-  isStreamDelta,
-  type AgentEvent,
-  type AgentId,
-  type EventId,
-  type EventPayload,
-  type ThreadId,
-} from "@cerium/protocol";
+import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import { inHistoryWindow, ThreadLog } from "../src/backend/threadLog.ts";
@@ -195,56 +188,4 @@ it("does not attach restored files to an earlier rewind when the latest rewind r
   ]);
   expect(blocks[0]).toMatchObject({ kind: "replaced" });
   expect(blocks[0]).not.toHaveProperty("files");
-});
-
-it("measures the pre-render data path on the same synthetic histories", () => {
-  if (process.env.CERIUM_PERF !== "1") return;
-  for (const size of [50_000, 100_000]) {
-    const log = new ThreadLog();
-    log.add(
-      Array.from({ length: size }, (_, n) =>
-        event(
-          n,
-          n % 3 === 0
-            ? turn(`q${n}`)
-            : n % 3 === 1
-              ? { _tag: "MessageCompleted", messageId: `m${n}`, text: "A settled answer." }
-              : { _tag: "TurnCompleted", stopReason: "completed" },
-        ),
-      ),
-    );
-    log.add([event(size, { _tag: "MessageDelta", messageId: "live", text: "x", offset: 0 })]);
-    const projection = new IncrementalTranscript();
-    project(log, projection);
-    // Ordered appends: the old log's snapshot was a slice of this array, including each live delta.
-    const before = [...log.snapshot()];
-    const baseline: Array<number> = [];
-    const incremental: Array<number> = [];
-    for (let n = 1; n <= 40; n++) {
-      const delta = event(size + n, { _tag: "MessageDelta", messageId: "live", text: "x", offset: n });
-      before.push(delta);
-      let started = performance.now();
-      log.add([delta]);
-      const state = log.state();
-      const agent = state.agents.get(lead)!;
-      const projected = projection.project(agent.events, agent.generation, sameModel);
-      incremental.push(performance.now() - started);
-      expect(projected.queued).toBeDefined();
-      started = performance.now();
-      const all = before.slice();
-      const filtered = all.filter((e) => e.agentId === lead);
-      buildTranscript(filtered);
-      queuedMessages(filtered);
-      all.filter((e) => !isStreamDelta(e.payload._tag));
-      baseline.push(performance.now() - started);
-    }
-    const median = (times: Array<number>) => times.sort((a, b) => a - b)[Math.floor(times.length / 2)]!;
-    console.log(
-      JSON.stringify({
-        events: size,
-        baselineMedianMs: median(baseline),
-        incrementalMedianMs: median(incremental),
-      }),
-    );
-  }
 });

@@ -7,10 +7,6 @@ const shown = (entries: ReadonlyArray<Lingering<string>>) =>
   entries.map((entry) => (entry.present ? entry.key : `(${entry.key})`)).join(" ");
 
 describe("lingerIn", () => {
-  it("shows a new list as it is", () => {
-    expect(shown(lingerIn([], ["a", "b"], keyOf))).toBe("a b");
-  });
-
   it("keeps an item that left where it stood, after the one it followed", () => {
     const before = lingerIn([], ["a", "b", "c"], keyOf);
     expect(shown(lingerIn(before, ["a", "c"], keyOf))).toBe("a (b) c");

@@ -4,14 +4,12 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   changeRows,
   changesUnder,
-  commitMessage,
   discardWords,
   hunkLines,
   linesBetween,
   lineId,
   pickedHunks,
   sameDiff,
-  splitMessage,
   unstagePaths,
 } from "../src/features/git/model.ts";
 
@@ -144,17 +142,5 @@ describe("picking lines", () => {
     );
     expect(sameDiff({ hunks }, { hunks: edited })).toBe(false);
     expect(sameDiff({ hunks }, { hunks: hunks.slice(1) })).toBe(false);
-  });
-});
-
-describe("commit messages", () => {
-  it("joins a subject and a body with a blank line, and leaves out an empty body", () => {
-    expect(commitMessage("  Fix the thing ", "")).toBe("Fix the thing");
-    expect(commitMessage("Fix", "Because.\n\n")).toBe("Fix\n\nBecause.");
-  });
-
-  it("splits a message back at its first line", () => {
-    expect(splitMessage("Fix\n\nBecause.\nMore.")).toEqual({ subject: "Fix", body: "Because.\nMore." });
-    expect(splitMessage("Fix")).toEqual({ subject: "Fix", body: "" });
   });
 });

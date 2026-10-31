@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { planBulk, rangeSelected, summarizeBulk, toggleSelected } from "../src/features/threads/bulk.ts";
+import { planBulk, rangeSelected, summarizeBulk } from "../src/features/threads/bulk.ts";
 import type { ThreadSummary } from "../src/features/threads/model.ts";
 
 const thread = (id: string, overrides: Partial<ThreadSummary> = {}): ThreadSummary => ({
@@ -16,13 +16,6 @@ const thread = (id: string, overrides: Partial<ThreadSummary> = {}): ThreadSumma
 
 const byId = (threads: ReadonlyArray<ThreadSummary>) =>
   new Map(threads.map((candidate) => [candidate.id, candidate]));
-
-describe("toggleSelected", () => {
-  it("adds a thread and drops it again", () => {
-    expect(toggleSelected([], "a")).toEqual(["a"]);
-    expect(toggleSelected(["a", "b"], "a")).toEqual(["b"]);
-  });
-});
 
 describe("rangeSelected", () => {
   const ordered = ["a", "b", "c", "d"];

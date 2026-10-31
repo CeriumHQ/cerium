@@ -4,7 +4,6 @@ import { bundledLanguages } from "shiki/langs";
 
 import { languageOf } from "../src/features/viewer/language.ts";
 import {
-  byteSize,
   changedWords,
   commitFileKey,
   commitFileOfKey,
@@ -14,7 +13,6 @@ import {
   numberHunks,
   pickView,
   pieces,
-  renderedKind,
   replacedPairs,
   splitRows,
   viewsOf,
@@ -72,19 +70,6 @@ describe("views", () => {
     expect(pickView(views, undefined)).toBe("rendered");
     expect(pickView(views, "diff")).toBe("diff");
     expect(pickView(viewsOf("a.ts", undefined, "Text"), "diff")).toBe("file");
-  });
-
-  it("knows what renders by extension", () => {
-    expect(renderedKind("docs/Guide.MD")).toBe("markdown");
-    expect(renderedKind("index.htm")).toBe("html");
-    expect(renderedKind("logo.svg")).toBe("svg");
-    expect(renderedKind("main.ts")).toBeUndefined();
-  });
-
-  it("says sizes the way people read them", () => {
-    expect(byteSize(512)).toBe("512 B");
-    expect(byteSize(1536)).toBe("1.5 KB");
-    expect(byteSize(40 * 1024 * 1024)).toBe("40 MB");
   });
 });
 

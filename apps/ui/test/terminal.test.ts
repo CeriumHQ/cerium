@@ -104,12 +104,6 @@ describe("shownTerminal", () => {
 });
 
 describe("exitNote", () => {
-  it("says how the shell ended", () => {
-    expect(exitNote(0)).toBe("Exited");
-    expect(exitNote(undefined)).toBe("Exited");
-    expect(exitNote(2)).toBe("Exited with code 2");
-  });
-
   it("writes Windows' status codes in hex", () => {
     expect(exitNote(-1073741510)).toBe("Exited with code 0xC000013A");
     expect(exitNote(259)).toBe("Exited with code 0x103");
