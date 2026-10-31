@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Fixed
 
 - Windows terminals release their output workers and input pipes after closing, including Cursor's periodic usage checks. Idle backends no longer retain another worker on each check and grow by several gigabytes over a day.
+- Development servers stay inside a thread's reserved `CERIUM_PORT` block instead of taking another checkout's default ports.
 - The mobile Settings list scrolls to all its categories.
 
 ### Changed

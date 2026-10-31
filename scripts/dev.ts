@@ -3,8 +3,8 @@
 // (apps/relay/.dev.vars, written by apps/relay/scripts/setup-clerk.sh). Each line is labelled with its
 // source. When any of them stops (closing the window, say) or on Ctrl+C, all of them stop.
 //
-// The UI is served on the first free port from 5173, whose URL is written to .cerium-dev/ui-url while
-// it runs. When this checkout's dev servers already run, they are reused: `--browser` only says where,
+// The UI uses the thread's CERIUM_PORT block, or the first free port from 5173, writing its URL to
+// .cerium-dev/ui-url while it runs. Existing servers are reused: `--browser` only says where,
 // and the full command starts just the desktop shell against them.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
@@ -103,10 +103,15 @@ const freeOn = (port: number, host: string) =>
 /** Free on both loopbacks: Vite's `localhost` may be either, and another server may hold just one. */
 const portFree = async (port: number) => (await freeOn(port, "127.0.0.1")) && (await freeOn(port, "::1"));
 
-/** The first free port from 5173: another checkout or app may hold the usual one. */
+/** Stay in the thread's ten reserved ports when present; otherwise try the usual dev ports. */
 const freePort = async () => {
-  for (let port = 5173; port < 5273; port++) if (await portFree(port)) return port;
-  throw new Error("No free port for the UI's dev server between 5173 and 5272.");
+  const assigned = process.env["CERIUM_PORT"];
+  const first = assigned === undefined ? 5173 : Number(assigned);
+  const count = assigned === undefined ? 100 : 10;
+  if (!Number.isInteger(first) || first < 1 || first + count - 1 > 65535)
+    throw new Error("CERIUM_PORT must start a valid block of ten TCP ports.");
+  for (let port = first; port < first + count; port++) if (await portFree(port)) return port;
+  throw new Error(`No free port for the UI's dev server between ${first} and ${first + count - 1}.`);
 };
 
 /** Whether this process started the servers .cerium-dev/ui-url points at, and so removes it on stopping. */
