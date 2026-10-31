@@ -1,14 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { DeviceRow } from "../src/devices.ts";
-import {
-  isShowing,
-  kindsOf,
-  PRESENCE_FRESH_MS,
-  recipients,
-  threadKey,
-  type PushRow,
-} from "../src/notify.ts";
+import { isShowing, kindsOf, PRESENCE_FRESH_MS, recipients, threadKey, type PushRow } from "../src/notify.ts";
 
 const device = (id: string, kind: DeviceRow["kind"]): DeviceRow => ({
   id,

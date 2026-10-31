@@ -10,6 +10,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 - Package audit tests retain parser, artifact and credential-safety regressions while removing duplicate cases, generic package conformance examples and assertions tied to the vault's internal write mechanism.
 
+- Trim redundant tests across the app, providers and shared packages, consolidating overlapping cases while retaining behavior, boundary, regression and browser coverage.
 - Artifact documents use HTML parser source locations for safe head insertion, and artifact discovery uses the transcript's Markdown grammar for nested fences, comments and indentation. Repeated discovery reuses bounded results and messages without artifact fences skip parsing.
 - Project TOML edits use parsed keys and source ranges, worktree include rules use Git-ignore-compatible matching, and skill front matter uses YAML parsing for comments, escapes and block values.
 - The remote MCP endpoint uses the official protocol server and stateless HTTP transport. Desktop credential storage uses Electron's asynchronous encryption APIs so operating-system credential prompts do not block the main thread.

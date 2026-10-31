@@ -175,7 +175,11 @@ describe("Cerium MCP bus", () => {
       const launched = yield* leadClient.callTool("project_run", { action: "launch" });
       assert.include(launched?.error?.message, "Invalid parameters for tool 'project_run'");
 
-      const refused = yield* workerClient.callTool("spawn_agent", { role: "x", model: "scout", prompt: "no" });
+      const refused = yield* workerClient.callTool("spawn_agent", {
+        role: "x",
+        model: "scout",
+        prompt: "no",
+      });
       assert.isDefined(refused?.error);
       assert.include(JSON.stringify(refused?.error), "spawn_agent");
 
