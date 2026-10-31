@@ -205,6 +205,8 @@ export interface ThreadPaneProps {
   readonly notices?: ReactNode;
   /** The thread's terminal drawer, docked under it. */
   readonly drawer?: ReactNode;
+  /** The project's setup while it runs in one of the thread's terminals, which `onShow` opens. */
+  readonly setup?: SetupRun;
   /** The thread's browser, docked beside it. */
   readonly preview?: ReactNode;
   /** The pane has focus: opening a thread in it puts the cursor in its message box. */
@@ -219,6 +221,17 @@ export interface ThreadPaneProps {
   readonly actions: ThreadPaneActions;
   /** The command palette's actions the message box's `/` list offers. */
   readonly slashCommands: ReadonlyArray<PaletteCommand>;
+}
+
+/** The project's setup running in a thread's terminal, as its message box shows it. */
+export interface SetupRun {
+  /** Its terminal's id, which keys its row. */
+  readonly id: string;
+  /** The command, once the project's scripts have resolved. */
+  readonly command: string | undefined;
+  readonly startedAt: number;
+  /** Opens the terminal drawer on it. */
+  readonly onShow: () => void;
 }
 
 /** A pane's message box, as the rest of the window reaches it. */
@@ -242,6 +255,7 @@ export function ThreadPane({
   bar,
   notices,
   drawer,
+  setup,
   preview,
   focused,
   onHandles,
@@ -316,17 +330,35 @@ export function ThreadPane({
               }),
         }
       : undefined;
-  // Every agent's background work, the lead's first. A thread read from the cloud copy can't stop
-  // any: that takes its machine.
+  // The project's setup while it runs, which the lead may wait on and which may wait on the user in
+  // its terminal; then every agent's background work, the lead's first. A thread read from the cloud
+  // copy can't stop any: that takes its machine.
   const { stopBackground } = actions;
   const background: Background = {
-    entries: agents.flatMap((agent) =>
-      agent.background.map((task) => ({
-        agentId: agent.id,
-        ...(agent.parentId === undefined ? {} : { role: agent.role }),
-        task,
-      })),
-    ),
+    entries: [
+      ...(setup === undefined
+        ? []
+        : [
+            {
+              agentId: "terminal",
+              task: {
+                id: setup.id,
+                kind: "command" as const,
+                description: "Project setup",
+                ...(setup.command === undefined ? {} : { command: setup.command }),
+                startedAt: setup.startedAt,
+              },
+              onShow: setup.onShow,
+            },
+          ]),
+      ...agents.flatMap((agent) =>
+        agent.background.map((task) => ({
+          agentId: agent.id,
+          ...(agent.parentId === undefined ? {} : { role: agent.role }),
+          task,
+        })),
+      ),
+    ],
     ...(cloud || !stopBackground
       ? {}
       : {

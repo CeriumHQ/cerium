@@ -10,6 +10,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 - The mobile Settings list scrolls to all its categories.
 - A thread moved to another checkout no longer gets stuck as Failed, queueing every message: a lead whose new session went idle before its first turn starts a new session, instead of resuming one its harness never saved (Codex's "no rollout found"). A move the lead queued now lets it carry on with its task once it lands, told where it works and what setup runs there.
+- A project setup running in the thread's terminal shows above the message box with how long it has run, and Show opens its terminal, so a setup waiting on input is never out of sight.
 
 ### Changed
 

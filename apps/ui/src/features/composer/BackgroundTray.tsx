@@ -1,6 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import type { BackgroundTask } from "@cerium/protocol";
-import { Bot, ChevronDown, Radio, Square, SquareTerminal, Workflow } from "lucide-react";
+import { Bot, ChevronDown, PanelBottomOpen, Radio, Square, SquareTerminal, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Reveal } from "../../components/Reveal.tsx";
@@ -11,12 +11,17 @@ import { elapsed } from "../dictation/model.ts";
 /** The backend version that stops background tasks (`StopBackgroundTask`). */
 export const STOP_BACKGROUND_VERSION = 48;
 
-/** One background task, with the agent that runs it when that isn't the lead. */
+/**
+ * One background task, with the agent that runs it when that isn't the lead; or a project script
+ * running in one of the thread's terminals, which opens there.
+ */
 export interface BackgroundEntry {
   readonly agentId: string;
   /** The child's role; absent for the lead's own tasks. */
   readonly role?: string;
   readonly task: BackgroundTask;
+  /** Shows the terminal it runs in; only a project script's entry has one. */
+  readonly onShow?: () => void;
 }
 
 export interface Background {
@@ -35,7 +40,8 @@ const readsAsCommand = (task: BackgroundTask) => task.kind === "command" && task
 
 /**
  * The work the thread's agents left running in the background (a dev server, a long build, a watcher),
- * at the top of the message box, so it is never out of sight while it runs. A single task is its own
+ * and the project's setup running in the thread's terminal, which may wait on the user there, at the
+ * top of the message box, so it is never out of sight while it runs. A single task is its own
  * row; several fold under one line that opens to list them. Each can be stopped where its harness can.
  */
 export function BackgroundTray({ background }: { readonly background: Background }) {
@@ -93,10 +99,21 @@ export function BackgroundTray({ background }: { readonly background: Background
         </span>
         {/* A lone task's row is the whole tray, so it says where it runs. */}
         <span className="shrink-0 text-caption text-fg-tertiary tabular-nums">
-          {several ? "" : "In background"}
+          {several ? "" : entry.onShow ? "In terminal" : "In background"}
           {!several && task.startedAt !== undefined ? " · " : ""}
           {task.startedAt === undefined ? "" : elapsed(now - task.startedAt)}
         </span>
+        {entry.onShow ? (
+          <Tooltip label="Show its terminal">
+            <Button
+              onClick={entry.onShow}
+              className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+            >
+              <PanelBottomOpen size={12} strokeWidth={1.75} />
+              Show
+            </Button>
+          </Tooltip>
+        ) : null}
         {onStop && task.stoppable ? (
           <Tooltip label="Stop">
             <Button
