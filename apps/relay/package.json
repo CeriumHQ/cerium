@@ -15,6 +15,7 @@
   "dependencies": {
     "@cerium/protocol": "workspace:*",
     "@clerk/backend": "3.22.0",
+    "@modelcontextprotocol/server": "2.4.0",
     "drizzle-orm": "1.0.0-rc.5",
     "effect": "4.0.5"
   },

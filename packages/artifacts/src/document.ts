@@ -2,6 +2,8 @@
 // without `allow-same-origin`, so the page runs in an opaque origin: its scripts run and it may load
 // from the web, but it can't reach the app, its storage or the user's machine.
 
+import { parse, type DefaultTreeAdapterMap } from "parse5";
+
 import {
   artifactRuntime,
   MESSAGE_PREFIX,
@@ -129,32 +131,44 @@ export const artifactDocument = (
     `<style id="cerium-base">${options.fonts ?? ""}\n${BASE_CSS}${options.standalone ? `\n${STANDALONE_CSS}` : ""}${legacy ? `\n${options.legacyCss}` : ""}</style>`,
     `<script>(${artifactRuntime.toString()})(${scriptJson(runtime)});</script>`,
   ];
-  const scan = blankRawText(html);
-  if (options.title !== undefined && !/<title[\s>]/i.test(html)) {
+  const document = parse(html, { sourceCodeLocationInfo: true });
+  const root = document.childNodes.find(
+    (node): node is DefaultTreeAdapterMap["element"] => "tagName" in node && node.tagName === "html",
+  );
+  const pageHead = root?.childNodes.find(
+    (node): node is DefaultTreeAdapterMap["element"] => "tagName" in node && node.tagName === "head",
+  );
+  if (options.title !== undefined && !pageHead?.childNodes.some((node) => node.nodeName === "title")) {
     head.push(`<title>${escapeHtml(options.title)}</title>`);
   }
-  return withHead(html, scan, head.join("\n"));
+  return withHead(html, document, head.join("\n"));
 };
 
 const escapeHtml = (text: string): string =>
   text.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]!);
 
 /** `html` with `head` put in at the start of its own head, made if it has none. */
-const withHead = (html: string, scan: string, head: string): string => {
-  const headOpen = /<head(?:\s[^>]*)?>/i.exec(scan);
-  const htmlOpen = /<html(?:\s[^>]*)?>/i.exec(scan);
-  const doctype = /^\s*<!doctype[^>]*>/i.exec(scan);
+const withHead = (html: string, document: DefaultTreeAdapterMap["document"], head: string): string => {
+  const root = document.childNodes.find(
+    (node): node is DefaultTreeAdapterMap["element"] => "tagName" in node && node.tagName === "html",
+  );
+  const pageHead = root?.childNodes.find(
+    (node): node is DefaultTreeAdapterMap["element"] => "tagName" in node && node.tagName === "head",
+  );
+  const headOpen = pageHead?.sourceCodeLocation?.startTag;
+  const htmlOpen = root?.sourceCodeLocation?.startTag;
+  const doctype = document.childNodes.find((node) => node.nodeName === "#documentType")?.sourceCodeLocation;
   const prefix = doctype ? "" : "<!doctype html>";
   if (headOpen) {
-    const at = headOpen.index + headOpen[0].length;
+    const at = headOpen.endOffset;
     return `${prefix}${html.slice(0, at)}\n${head}\n${html.slice(at)}`;
   }
   if (htmlOpen) {
-    const at = htmlOpen.index + htmlOpen[0].length;
+    const at = htmlOpen.endOffset;
     return `${prefix}${html.slice(0, at)}<head>\n${head}\n</head>${html.slice(at)}`;
   }
   if (doctype) {
-    const at = doctype[0].length;
+    const at = doctype.endOffset;
     return `${html.slice(0, at)}<html><head>\n${head}\n</head>${html.slice(at)}`;
   }
   return `<!doctype html>\n<html><head>\n${head}\n</head>\n<body>\n${html}\n</body></html>`;

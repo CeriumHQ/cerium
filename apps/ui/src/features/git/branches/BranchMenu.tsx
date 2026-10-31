@@ -1,4 +1,5 @@
 import { Popover } from "@base-ui/react/popover";
+import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { GitBranchList, LocalBranch, RemoteBranch } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { Fragment, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { Fragment, useState } from "react";
 
 import { branchListAtom } from "../../../backend/branches.ts";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../../components/ui/Menu.tsx";
@@ -29,8 +30,6 @@ type Entry =
   | { readonly kind: "local"; readonly branch: LocalBranch }
   | { readonly kind: "remote"; readonly branch: RemoteBranch }
   | { readonly kind: "create"; readonly name: string };
-
-const entryId = (index: number) => `branch-entry-${index}`;
 
 /**
  * What is checked out, as a button that opens the branches: search them, switch to one (a remote
@@ -128,14 +127,9 @@ function BranchList({
   const [highlight, setHighlight] = useState(0);
   const state = controls.state;
 
-  // Kept by hand: the list reads the rows after its own hooks, where the React Compiler can't keep them,
-  // and it would match every branch again, and draw every row again, as the highlight moves.
-  const entries = useMemo(() => entriesOf(list, query), [list, query]);
+  const entries = entriesOf(list, query);
   const active = Math.min(highlight, Math.max(0, entries.length - 1));
-
-  useEffect(() => {
-    document.getElementById(entryId(active))?.scrollIntoView({ block: "nearest" });
-  }, [active]);
+  const highlighted = entries[active];
 
   /** Switches to a branch, asking first what to do with uncommitted changes. */
   const choose = (branch: string, here: boolean) => {
@@ -158,35 +152,32 @@ function BranchList({
     } else choose(entry.branch.name, false);
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setHighlight((entries.length + active + step) % Math.max(1, entries.length));
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const entry = entries[active];
-      if (entry !== undefined) pick(entry);
-    }
-  };
-
   return (
-    <>
-      <input
+    <Autocomplete.Root
+      open
+      inline
+      items={entries}
+      filter={null}
+      autoHighlight="always"
+      keepHighlight
+      value={query}
+      onValueChange={setQuery}
+      itemToStringValue={(entry: Entry) => (entry.kind === "create" ? entry.name : entry.branch.name)}
+      onItemHighlighted={(_entry, details) => setHighlight(details.index)}
+    >
+      <Autocomplete.Input
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
           setHighlight(0);
         }}
-        onKeyDown={onKeyDown}
         placeholder="Find or make a branch"
         aria-label="Find or make a branch"
-        aria-activedescendant={entries.length > 0 ? entryId(active) : undefined}
         spellCheck={false}
         autoComplete="off"
         className="h-9 shrink-0 border-b border-line-subtle bg-transparent px-3 text-body text-fg-primary outline-none placeholder:text-fg-tertiary max-md:h-12 max-md:text-[15px]"
       />
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
+      <Autocomplete.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
         {list === undefined ? (
           <p className="px-2 py-3 text-meta text-fg-tertiary">
             {AsyncResult.isFailure(result) ? "Couldn't list the branches." : "Loading branches…"}
@@ -201,16 +192,7 @@ function BranchList({
             {at === 0 || entries[at - 1]!.kind !== entry.kind ? (
               <Section label={sectionLabel[entry.kind]} />
             ) : null}
-            <Row
-              id={entryId(at)}
-              at={at}
-              entry={entry}
-              highlighted={at === active}
-              controls={controls}
-              onHover={setHighlight}
-              onPick={pick}
-              onAsk={onAsk}
-            />
+            <Row entry={entry} highlighted={at === active} onPick={pick} />
           </Fragment>
         ))}
         {list?.truncated === true ? (
@@ -218,7 +200,13 @@ function BranchList({
             More branches exist than are listed. Search to find them.
           </p>
         ) : null}
-      </div>
+      </Autocomplete.List>
+      {highlighted !== undefined && highlighted.kind !== "create" ? (
+        <div className="flex h-9 shrink-0 items-center gap-2 border-t border-line-subtle px-3 text-body text-fg-secondary">
+          <span className="min-w-0 flex-1 truncate">Actions for {highlighted.branch.name}</span>
+          <RowActions entry={highlighted} here={controls.state?.branch} controls={controls} onAsk={onAsk} />
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={() => onAsk({ kind: "create" })}
@@ -227,7 +215,7 @@ function BranchList({
         <Plus size={14} strokeWidth={1.75} />
         New branch…
       </button>
-    </>
+    </Autocomplete.Root>
   );
 }
 
@@ -242,36 +230,22 @@ function Section({ label }: { readonly label: string }) {
 }
 
 function Row({
-  id,
-  at,
   entry,
   highlighted,
-  controls,
-  onHover,
   onPick,
-  onAsk,
 }: {
-  readonly id: string;
-  /** Where it is in the list. */
-  readonly at: number;
   readonly entry: Entry;
   readonly highlighted: boolean;
-  readonly controls: BranchControls;
-  readonly onHover: (at: number) => void;
   readonly onPick: (entry: Entry) => void;
-  readonly onAsk: (dialog: BranchDialog) => void;
 }) {
-  const here = controls.state?.branch;
   const blocked = entry.kind === "local" ? switchBlocked(entry.branch) : undefined;
   const name = entry.kind === "create" ? entry.name : entry.branch.name;
   const mainClass = `flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-body outline-none max-md:py-2.5 max-md:text-[15px] ${
     blocked === undefined ? "text-fg-secondary" : "text-fg-tertiary"
   }`;
   const main = (
-    <button
-      id={id}
-      type="button"
-      tabIndex={-1}
+    <Autocomplete.Item
+      value={entry}
       // Not `disabled`, which would keep the tooltip that says why from opening.
       aria-disabled={blocked !== undefined}
       onClick={blocked === undefined ? () => onPick(entry) : undefined}
@@ -308,11 +282,10 @@ function Row({
           </span>
         </>
       )}
-    </button>
+    </Autocomplete.Item>
   );
   return (
     <div
-      onMouseEnter={() => onHover(at)}
       data-highlighted={highlighted ? "" : undefined}
       className="group flex items-center rounded-lg data-highlighted:bg-surface-hover"
     >
@@ -322,9 +295,6 @@ function Row({
         <Tooltip label={blocked} side="left">
           {main}
         </Tooltip>
-      )}
-      {entry.kind === "create" ? null : (
-        <RowActions entry={entry} here={here} controls={controls} onAsk={onAsk} />
       )}
     </div>
   );
@@ -376,9 +346,8 @@ function RowActions({
       <MenuTrigger>
         <button
           type="button"
-          tabIndex={-1}
           aria-label={`Actions for ${branch}`}
-          className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary opacity-0 transition-opacity outline-none group-data-highlighted:opacity-100 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 data-popup-open:opacity-100 max-md:size-9 max-md:opacity-100"
+          className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary outline-none hover:bg-surface-active hover:text-fg-primary focus-visible:bg-surface-active data-popup-open:bg-surface-active max-md:size-9"
         >
           <Ellipsis size={14} strokeWidth={1.75} />
         </button>

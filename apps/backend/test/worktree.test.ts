@@ -46,6 +46,12 @@ describe("includeList", () => {
     expect(deep.reachesInto("node_modules")).toBe(true);
     expect(deep.includes("packages/a/fixtures/test.env", false)).toBe(true);
   });
+
+  it("copies root and nested files selected by a double-star include rule", () => {
+    const all = includeList(["**"]);
+    expect(all.includes("config.env", false)).toBe(true);
+    expect(all.includes("nested/config.env", false)).toBe(true);
+  });
 });
 
 describe("worktreeSlug", () => {

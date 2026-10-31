@@ -10,6 +10,7 @@ import type {
 } from "@cerium/protocol";
 import { Effect, FileSystem, Path, Schema } from "effect";
 import { applyEdits, modify, parse, type JSONPath, type ParseError } from "jsonc-parser";
+import { isMap, parseDocument } from "yaml";
 
 import type { HarnessFailure, HarnessUnavailable } from "./adapter.ts";
 
@@ -222,26 +223,19 @@ export const blankValues = blanks;
 export const skillFrontMatter = (text: string): { readonly name?: string; readonly description?: string } => {
   const match = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(text);
   if (match === null) return {};
-  const lines = (match[1] ?? "").split(/\r?\n/);
-  const field = (key: string): string | undefined => {
-    const index = lines.findIndex((line) => line.startsWith(`${key}:`));
-    if (index === -1) return undefined;
-    let value = (lines[index] ?? "").slice(key.length + 1).trim();
-    // A folded or literal block (`>`, `|`) continues on the indented lines under it.
-    if (/^[>|][-+]?$/.test(value)) {
-      const block: Array<string> = [];
-      for (const line of lines.slice(index + 1)) {
-        if (!/^\s/.test(line) && line.trim() !== "") break;
-        block.push(line.trim());
-      }
-      value = block.join(" ").trim();
-    }
-    if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1);
-    return value === "" ? undefined : value;
-  };
-  const name = field("name");
-  const description = field("description");
-  return { ...(name ? { name } : {}), ...(description ? { description } : {}) };
+  try {
+    const document = parseDocument(match[1] ?? "");
+    if (document.errors.length > 0 || !isMap(document.contents)) return {};
+    const field = (key: string): string | undefined => {
+      const value: unknown = document.get(key);
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+    };
+    const name = field("name");
+    const description = field("description");
+    return { ...(name ? { name } : {}), ...(description ? { description } : {}) };
+  } catch {
+    return {};
+  }
 };
 
 /**

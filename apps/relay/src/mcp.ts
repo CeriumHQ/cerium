@@ -6,6 +6,7 @@ import {
   type DeviceId,
   type ThreadId,
 } from "@cerium/protocol";
+import { Server, WebStandardStreamableHTTPServerTransport, type Tool } from "@modelcontextprotocol/server";
 import { Option, Schema } from "effect";
 
 // The relay's remote MCP server (Streamable HTTP, answering with plain JSON), for managing the
@@ -285,7 +286,7 @@ type ToolName = (typeof TOOLS)[number]["name"];
 
 /** A tool's answer: text for the model, and the same as JSON for clients that read it. */
 interface ToolResult {
-  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
+  readonly content: Array<{ readonly type: "text"; readonly text: string }>;
   readonly structuredContent?: Record<string, unknown>;
   readonly isError?: boolean;
 }
@@ -484,68 +485,43 @@ export const callTool = async (desk: AssistantDesk, name: string, args: unknown)
   }
 };
 
-// ---- JSON-RPC ------------------------------------------------------------------------------
-
-type Id = string | number | null;
-
-const rpcError = (id: Id, code: number, message: string) => ({
-  jsonrpc: "2.0",
-  id,
-  error: { code, message },
-});
-const rpcResult = (id: Id, result: unknown) => ({ jsonrpc: "2.0", id, result });
-
-const isId = (id: unknown): id is string | number => typeof id === "string" || typeof id === "number";
-
-/** One JSON-RPC message's answer; none for a notification, or a response from the client. */
-const handleOne = async (message: unknown, desk: AssistantDesk): Promise<unknown> => {
-  if (typeof message !== "object" || message === null || (message as { jsonrpc?: unknown }).jsonrpc !== "2.0")
-    return rpcError(null, -32600, "Not a JSON-RPC 2.0 message.");
-  const { id, method, params } = message as { id?: unknown; method?: unknown; params?: unknown };
-  if (typeof method !== "string") return undefined;
-  if (!isId(id)) return undefined;
-  const p = (typeof params === "object" && params !== null ? params : {}) as Record<string, unknown>;
-  switch (method) {
-    case "initialize": {
-      const asked = typeof p.protocolVersion === "string" ? p.protocolVersion : undefined;
-      return rpcResult(id, {
-        protocolVersion: asked !== undefined && MCP_PROTOCOLS.includes(asked) ? asked : MCP_PROTOCOLS[0],
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "cerium", title: "Cerium", version: "1.0.0" },
-        instructions: INSTRUCTIONS,
-      });
-    }
-    case "ping":
-      return rpcResult(id, {});
-    case "tools/list":
-      return rpcResult(id, { tools: TOOLS });
-    case "tools/call": {
-      if (typeof p.name !== "string") return rpcError(id, -32602, "tools/call needs a tool's name.");
-      return rpcResult(id, await callTool(desk, p.name, p.arguments));
-    }
-    case "resources/list":
-      return rpcResult(id, { resources: [] });
-    case "prompts/list":
-      return rpcResult(id, { prompts: [] });
-    default:
-      return rpcError(id, -32601, `Cerium doesn't offer ${method}.`);
-  }
-};
-
-/**
- * A POST to the MCP endpoint: one message or a batch. Answers with what to send back, or none when
- * it held only notifications and responses, which are acknowledged with 202 and no body.
- */
+// The official stateless HTTP transport handles JSON-RPC validation, negotiation and dispatch.
+// A fresh server is scoped to one authorized account request; no session or desktop state escapes it.
 export const handleMcp = async (body: unknown, desk: AssistantDesk): Promise<unknown> => {
-  if (Array.isArray(body)) {
-    if (body.length === 0) return rpcError(null, -32600, "An empty batch.");
-    const answers = (await Promise.all(body.map((message) => handleOne(message, desk)))).filter(
-      (each) => each !== undefined,
-    );
-    return answers.length === 0 ? undefined : answers;
+  const server = new Server(
+    { name: "cerium", title: "Cerium", version: "1.0.0" },
+    {
+      capabilities: { tools: { listChanged: false }, resources: {}, prompts: {} },
+      instructions: INSTRUCTIONS,
+    },
+  );
+  server.setRequestHandler("tools/list", () => ({ tools: JSON.parse(JSON.stringify(TOOLS)) as Tool[] }));
+  server.setRequestHandler("tools/call", async ({ params }) => ({
+    ...(await callTool(desk, params.name, params.arguments)),
+  }));
+  server.setRequestHandler("resources/list", () => ({ resources: [] }));
+  server.setRequestHandler("prompts/list", () => ({ prompts: [] }));
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  await server.connect(transport);
+  try {
+    // The public endpoint accepts JSON without an Accept header, as it did before the SDK migration.
+    const request = new Request("https://cerium.invalid/mcp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+    });
+    const response = await transport.handleRequest(request, { parsedBody: body });
+    return response.status === 202 ? undefined : await response.json();
+  } finally {
+    await server.close();
   }
-  return handleOne(body, desk);
 };
 
 /** A body that isn't JSON. */
-export const parseError = rpcError(null, -32700, "The body isn't JSON.");
+export const parseError = {
+  jsonrpc: "2.0",
+  id: null,
+  error: { code: -32700, message: "The body isn't JSON." },
+};

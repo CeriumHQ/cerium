@@ -3,6 +3,8 @@
 // these rules pick from that list: asking git to match the list itself walks every ignored folder,
 // node_modules included, which on Windows (where git follows bun's workspace links) took a minute.
 
+import ignore from "ignore";
+
 /** One line of an include list. */
 interface Rule {
   readonly negated: boolean;
@@ -61,24 +63,6 @@ const parseRule = (line: string): Rule | undefined => {
   return { negated, folderOnly, anchored, segments };
 };
 
-/** Whether `rule`'s segments from `at` match all of `path`'s from `from`. */
-const matchesFrom = (
-  rule: Rule["segments"],
-  at: number,
-  path: ReadonlyArray<string>,
-  from: number,
-): boolean => {
-  if (at === rule.length) return from === path.length;
-  const segment = rule[at]!;
-  if (segment === "**") {
-    for (let next = from; next <= path.length; next++) {
-      if (matchesFrom(rule, at + 1, path, next)) return true;
-    }
-    return false;
-  }
-  return from < path.length && segment.test(path[from]!) && matchesFrom(rule, at + 1, path, from + 1);
-};
-
 /** Whether `rule` can match something inside the folder `path`, its segments matching the folder's so far. */
 const reachesFrom = (
   rule: Rule["segments"],
@@ -91,13 +75,6 @@ const reachesFrom = (
   const segment = rule[at]!;
   if (segment === "**") return true;
   return segment.test(path[from]!) && reachesFrom(rule, at + 1, path, from + 1);
-};
-
-const ruleMatches = (rule: Rule, segments: ReadonlyArray<string>, folder: boolean) => {
-  if (rule.folderOnly && !folder) return false;
-  if (rule.anchored) return matchesFrom(rule.segments, 0, segments, 0);
-  const only = rule.segments[0];
-  return only !== undefined && only !== "**" && only.test(segments.at(-1) ?? "");
 };
 
 export interface IncludeList {
@@ -116,18 +93,11 @@ const segmentsOf = (path: string) => path.split("/").filter((segment) => segment
 /** The include list `lines` (a `.worktreeinclude`'s, or the default patterns) as rules to match by. */
 export const includeList = (lines: ReadonlyArray<string>): IncludeList => {
   const rules = lines.flatMap((line) => parseRule(line) ?? []);
-  /** The last matching line decides, as in gitignore. */
-  const decides = (segments: ReadonlyArray<string>, folder: boolean) =>
-    rules.findLast((rule) => ruleMatches(rule, segments, folder))?.negated === false;
+  const matcher = ignore({ ignorecase: false }).add(lines);
   return {
     includes: (path, folder) => {
       const segments = segmentsOf(path);
-      // A folder the list takes brings everything in it, as gitignore can't take back a file of a
-      // folder it ignores.
-      for (let depth = 1; depth < segments.length; depth++) {
-        if (decides(segments.slice(0, depth), true)) return true;
-      }
-      return segments.length > 0 && decides(segments, folder);
+      return segments.length > 0 && matcher.ignores(`${segments.join("/")}${folder ? "/" : ""}`);
     },
     reachesInto: (path) => {
       const segments = segmentsOf(path);

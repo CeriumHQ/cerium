@@ -1,37 +1,74 @@
 // Finding artifacts in agents' markdown, for the gallery that lists them apart from the conversation.
 
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+
 /** The code fence language that marks an artifact in agent markdown. */
 export const ARTIFACT_LANGUAGE = "artifact";
 
-const OPENING = /^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)/;
-const CLOSING = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
+// Galleries and find read settled messages repeatedly. Bound retained source and results, including
+// false positives such as artifact fences inside comments; streaming versions evict normally.
+const parsed = new Map<string, { readonly blocks: ReadonlyArray<string>; readonly size: number }>();
+let retained = 0;
+const CACHE_LIMIT = 1_000_000;
 
 /**
  * The artifacts in a message's markdown, in order: the body of each closed ` ```artifact ` fence,
  * as the transcript renders it. A fence still open (a message being written) holds none yet.
  */
 export const artifactBlocks = (markdown: string): ReadonlyArray<string> => {
-  const found: Array<string> = [];
-  let open: { readonly fence: string; readonly artifact: boolean; readonly body: Array<string> } | undefined;
-  for (const raw of markdown.split("\n")) {
-    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-    if (open === undefined) {
-      const start = OPENING.exec(line);
-      // A backtick fence's info string can't hold a backtick, so "```artifact```" isn't one.
-      if (start && !(start[1]!.startsWith("`") && line.slice(start[0].length).includes("`"))) {
-        open = { fence: start[1]!, artifact: start[2]!.toLowerCase() === ARTIFACT_LANGUAGE, body: [] };
-      }
-      continue;
-    }
-    const end = CLOSING.exec(line);
-    if (end && end[1]![0] === open.fence[0] && end[1]!.length >= open.fence.length) {
-      if (open.artifact && open.body.join("").trim() !== "") found.push(open.body.join("\n"));
-      open = undefined;
-    } else {
-      open.body.push(line);
-    }
+  // Only a rejection filter: the Markdown parser still decides whether a candidate is a code block.
+  if (!/(?:`{3,}|~{3,})[^\r\n]*(?:artifact|[&\\])/i.test(markdown)) return [];
+  const previous = parsed.get(markdown);
+  if (previous !== undefined) {
+    parsed.delete(markdown);
+    parsed.set(markdown, previous);
+    return previous.blocks;
   }
-  return found;
+  const found: Array<string> = [];
+  const visit = (
+    node: ReturnType<typeof parser.parse> | ReturnType<typeof parser.parse>["children"][number],
+  ): void => {
+    if (node.type === "code" && node.lang?.toLowerCase() === ARTIFACT_LANGUAGE && node.value.trim() !== "") {
+      const position = node.position;
+      const start = position?.start.offset;
+      const end = position?.end.offset;
+      if (start !== undefined && end !== undefined && position !== undefined) {
+        const opening = /^(`{3,}|~{3,})/.exec(markdown.slice(start))?.[1];
+        const lastLine = markdown.slice(markdown.lastIndexOf("\n", end - 1) + 1, end);
+        const closing = /(`+|~+)[ \t]*$/.exec(lastLine)?.[1];
+        // A closed fence has an extra source line beyond its opening and normalized body.
+        // Checking this too rejects marker-shaped body lines indented too far to close it.
+        const bodyLines = node.value.split("\n").length;
+        if (
+          opening &&
+          closing &&
+          opening[0] === closing[0] &&
+          closing.length >= opening.length &&
+          position.end.line - position.start.line === bodyLines + 1
+        )
+          found.push(node.value);
+      }
+    }
+    if ("children" in node) for (const child of node.children) visit(child);
+  };
+  visit(parser.parse(markdown));
+  const blocks = Object.freeze(found);
+  const size = markdown.length + found.reduce((sum, block) => sum + block.length, 0);
+  if (size <= CACHE_LIMIT / 4) {
+    while (parsed.size >= 64 || retained + size > CACHE_LIMIT) {
+      const oldest = parsed.entries().next().value;
+      if (oldest === undefined) break;
+      parsed.delete(oldest[0]);
+      retained -= oldest[1].size;
+    }
+    parsed.set(markdown, { blocks, size });
+    retained += size;
+  }
+  return blocks;
 };
 
 /**
