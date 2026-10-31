@@ -987,7 +987,7 @@ describe("Store", () => {
         ]);
         const rest = { agentId: lead.id, threadId: thread.id };
         assert.deepStrictEqual(yield* store.listSpendEvents(10, 30), [
-          { ...rest, at: 1, tag: "SessionStarted", model: "m1" },
+          { ...rest, at: 1, tag: "SessionStarted", model: "m1", provider: "claude" },
           { ...rest, at: 2, tag: "TurnInput" },
           { ...rest, at: 15, tag: "ModelChanged", model: "m2" },
           {

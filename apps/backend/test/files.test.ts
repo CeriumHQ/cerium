@@ -30,6 +30,8 @@ describe("paths", () => {
     expect(resolveInside("/work/app", "", posix)).toBe("/work/app");
     expect(resolveInside("/work/app", "./a//b/./c", posix)).toBe("/work/app/a/b/c");
     expect(resolveInside("C:\\Work\\app", "src/ui/App.tsx", win32)).toBe("C:\\Work\\app\\src\\ui\\App.tsx");
+    expect(resolveInside("/work/app", "..notes", posix)).toBe("/work/app/..notes");
+    expect(resolveInside("C:\\Work\\app", "..notes", win32)).toBe("C:\\Work\\app\\..notes");
   });
 
   it("refuses a path that climbs out, however it is spelled", () => {

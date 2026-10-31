@@ -145,7 +145,7 @@ export interface MessageMatch {
 
 /**
  * What the spend report reads of one event: the turns' usage, and the events that say which model
- * those turns ran on. Counts are absent for any other event.
+ * those turns ran on, including their session's provider. Counts are absent for any other event.
  */
 export interface SpendEvent {
   readonly provider?: ProviderId;
@@ -884,7 +884,8 @@ export class Store extends Context.Service<
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.outputTokens') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.cachedInputTokens') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.costUsd') END,
-                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.provider') END,
+                  CASE WHEN tag IN ('UsageReported', 'SessionStarted')
+                    THEN json_extract(payload, '$.provider') END,
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.unreported') END
                 FROM events
                 WHERE tag IN ('SessionStarted', 'ModelChanged', 'TurnInput')

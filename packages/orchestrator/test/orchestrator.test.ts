@@ -1074,6 +1074,12 @@ describe("Orchestrator", () => {
           .find((item) => item._tag === "SystemNotice"),
       );
       assert.include(notice._tag === "SystemNotice" ? notice.text : "", childId);
+      yield* Effect.sleep("100 millis");
+      const events = yield* orchestrator.threadEvents((yield* orchestrator.agent(lead.id)).threadId);
+      const stopped = turnInputs(events, lead.id)
+        .flat()
+        .filter((item) => item._tag === "SystemNotice" && item.text.includes(childId));
+      assert.lengthOf(stopped, 1);
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [haiku] })), Effect.scoped);
   });
 

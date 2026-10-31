@@ -186,8 +186,14 @@ describe("Automations", () => {
       yield* Queue.offer(ended, failedPush(project, { id: "push-5", head: "9f8e7d6c5b4a" }));
       yield* wait(1);
       assert.strictEqual(started.length, 1);
+      yield* automations.save(view!.automation.id, {
+        ...input({ _tag: "CiFailed" }),
+        name: "Repair CI",
+        prompt: "Fix the failing checks.",
+      });
       const run = yield* automations.runNow(view!.automation.id);
       assert.strictEqual(run.detail, "CI failed on main at 9f8e7d6");
+      assert.match(started[1]?.text ?? "", /^Fix the failing checks\./);
       assert.match(started[1]?.text ?? "", /CI failed on main at 9f8e7d6/);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );

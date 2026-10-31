@@ -206,6 +206,46 @@ describe("message requests", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [scout] })), Effect.scoped);
   });
 
+  it.live("stopping one sibling waits for the group's remaining child before waking the parent", () => {
+    const fake = makeFakeAdapter("claude", { turnDuration: "300 millis" });
+    const children = makeFakeAdapter("codex", { turnDuration: "1 second", reply: (text) => text });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* start(orchestrator);
+      yield* orchestrator.sendUserMessage(lead.id, "parallel work");
+      yield* waitFor(() => (fake.sessions[0]?.sent.length ? true : undefined));
+      const one = yield* orchestrator.spawn(lead.id, { model: "scout", role: "one", prompt: "inspect one" });
+      const two = yield* orchestrator.spawn(lead.id, { model: "scout", role: "two", prompt: "inspect two" });
+      if (one._tag !== "Spawned" || two._tag !== "Spawned") throw new Error("Expected children");
+      yield* waitFor(() => (children.sessions[1]?.sent.length ? true : undefined));
+      yield* orchestrator.stopAgent(one.agentId);
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === lead.id && event.payload._tag === "TurnCompleted"),
+      );
+      yield* Effect.sleep("100 millis");
+      assert.lengthOf(fake.sessions[0]!.sent, 1, "a stopped sibling must not wake the parent early");
+      const before = yield* orchestrator.threadEvents((yield* orchestrator.agent(lead.id)).threadId);
+      assert.isFalse(
+        before.some(
+          (event) =>
+            event.agentId === lead.id &&
+            event.payload._tag === "TurnInput" &&
+            event.payload.items.some(
+              (item) => item._tag === "SystemNotice" && item.text.includes(one.agentId),
+            ),
+        ),
+      );
+      yield* waitFor(() => (fake.sessions[0]?.sent.length === 2 ? true : undefined));
+      assert.include(fake.sessions[0]!.sent[1]!, "inspect two");
+    }).pipe(
+      Effect.provide(
+        testLayer([fake.adapter, children.adapter], { catalog: [{ ...scout, provider: "codex" }] }),
+      ),
+      Effect.scoped,
+    );
+  });
+
   it.live("keeps an assignment open while its worker waits on a blocking answer", () => {
     const fake = makeFakeAdapter("claude", { turnDuration: "100 millis" });
     return Effect.gen(function* () {

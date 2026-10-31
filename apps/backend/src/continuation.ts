@@ -13,6 +13,7 @@ import { pullRequests } from "./githubPulls.ts";
 /** The events the brief reads; rewinds too, so what they replaced is left out. */
 const BRIEF_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
   "MessageQueued",
+  "MessageWithdrawn",
   "TurnInput",
   "MessageCompleted",
   "TodosUpdated",
