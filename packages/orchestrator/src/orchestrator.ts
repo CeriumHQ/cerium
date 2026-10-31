@@ -2796,6 +2796,9 @@ export class Orchestrator extends Context.Service<
           heldNotices.delete(rt.info.id);
           const cancelled = messageDelivery.taskFor(rt.info.id);
           messageDelivery.remove(rt.info.id);
+          yield* setState(rt, "stopped").pipe(Effect.ignore);
+          rt.ended = true;
+          yield* Scope.close(rt.scope, Exit.void);
           const parent = cancelled === undefined ? undefined : runtimes.get(cancelled.from);
           if (
             cancelled !== undefined &&
@@ -2808,9 +2811,6 @@ export class Orchestrator extends Context.Service<
               text: `Agent ${rt.info.id} stopped. Any completed results in its group are included with this notice.`,
             });
           }
-          yield* setState(rt, "stopped").pipe(Effect.ignore);
-          rt.ended = true;
-          yield* Scope.close(rt.scope, Exit.void);
         });
 
       const threadInfo = (threadId: ThreadId) =>
@@ -4354,10 +4354,12 @@ export class Orchestrator extends Context.Service<
 
         stopAgent: Effect.fn("Orchestrator.stopAgent")(function* (agentId: AgentId) {
           const rt = yield* runtime(agentId);
+          const assigned = messageDelivery.taskFor(agentId) !== undefined;
           yield* stopRuntime(rt);
           // A lead waiting on this child would otherwise wait for a result that never comes. An
           // advisor's askers hear from `releaseAdvisor` instead, and a reviewer reports to nobody.
-          if (rt.info.parentId !== undefined && !isHelper(rt.info)) {
+          // An assignment's stop is reported by stopRuntime when its group is finished.
+          if (!assigned && rt.info.parentId !== undefined && !isHelper(rt.info)) {
             yield* deliver(rt.info.parentId, {
               _tag: "SystemNotice",
               text: `The user stopped agent ${rt.info.id} "${rt.info.role}"; it will not report back. Carry on without it, or spawn a new agent if you still need that work.`,
@@ -4541,6 +4543,7 @@ export class Orchestrator extends Context.Service<
               title: thread.title,
               mode: thread.mode,
               ...(thread.cwd === undefined ? {} : { cwd: thread.cwd }),
+              ...(thread.onLimit === undefined ? {} : { onLimit: thread.onLimit }),
               lead: {
                 provider: lead.provider,
                 model: lead.model,

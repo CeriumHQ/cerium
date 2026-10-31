@@ -28,6 +28,23 @@ const turn = (id: string, text: string): EventPayload => ({
 const reply = (text: string): EventPayload => ({ _tag: "MessageCompleted", messageId: text, text });
 
 describe("continuation briefs", () => {
+  it("leaves withdrawn queued prompts out of both request positions", () => {
+    const brief = continuationBrief(
+      log(
+        queued("m1", "Withdrawn first request"),
+        { _tag: "MessageWithdrawn", messageId: "m1" },
+        queued("m2", "Keep this request"),
+        turn("m2", "Keep this request"),
+        queued("m3", "Withdrawn last request"),
+        { _tag: "MessageWithdrawn", messageId: "m3" },
+      ),
+      { title: "Continue" },
+    );
+    assert.include(brief, "## Original request\n\nKeep this request");
+    assert.notInclude(brief, "Withdrawn");
+    assert.notInclude(brief, "## Last message from the user");
+  });
+
   it("quotes the first and last requests, the last reply, the plan and the branch", () => {
     const events = log(
       queued("m1", "  Add a cache to the parser  "),

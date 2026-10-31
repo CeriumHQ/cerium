@@ -73,7 +73,11 @@ export const continuationParts = (events: ReadonlyArray<AgentEvent>) => {
   const seen = new Set<string>();
   let reply: string | undefined;
   let todos: ReadonlyArray<TodoItem> = [];
-  for (const { payload } of liveEvents(events)) {
+  const live = liveEvents(events);
+  const withdrawn = new Set(
+    live.flatMap(({ payload }) => (payload._tag === "MessageWithdrawn" ? [payload.messageId] : [])),
+  );
+  for (const { payload } of live) {
     // A message is queued, then delivered by a turn; each is counted once, by its id.
     const messages =
       payload._tag === "MessageQueued"
@@ -82,7 +86,7 @@ export const continuationParts = (events: ReadonlyArray<AgentEvent>) => {
           ? payload.items.flatMap((item) => (item._tag === "FromUser" ? [item] : []))
           : [];
     for (const message of messages) {
-      if (message.id !== undefined && seen.has(message.id)) continue;
+      if (message.id !== undefined && (seen.has(message.id) || withdrawn.has(message.id))) continue;
       if (message.id !== undefined) seen.add(message.id);
       if (message.text.trim() !== "") asked.push(message.text.trim());
     }

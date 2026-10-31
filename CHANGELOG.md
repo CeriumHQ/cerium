@@ -9,6 +9,8 @@ All notable changes to Cerium are recorded here. The format follows
 ### Fixed
 
 - Editing an automation preserves its latest CI failure for Run now in the same project.
+- Continuation briefs leave out withdrawn queued prompts, and continued threads keep their explicit usage-limit policy.
+- Stopping a child sends one parent notification after its session closes and waits for the rest of its assignment group before waking the parent.
 
 - The mobile Settings list scrolls to all its categories.
 

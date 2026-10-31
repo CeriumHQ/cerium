@@ -376,11 +376,13 @@ describe("Orchestrator continuing threads", () => {
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const { thread: old } = yield* start;
+      yield* orchestrator.setThreadOnLimit(old.id, "wait");
       const { thread, lead } = yield* orchestrator.continueThread(old.id);
       assert.notStrictEqual(thread.id, old.id);
       assert.strictEqual(thread.title, "Fix it");
       assert.strictEqual(thread.cwd, old.cwd);
       assert.deepStrictEqual(thread.worktree, old.worktree);
+      assert.strictEqual(thread.onLimit, "wait");
       assert.strictEqual(lead.provider, "claude");
       assert.strictEqual(lead.model, "opus");
       assert.strictEqual(lead.access, "ask");
