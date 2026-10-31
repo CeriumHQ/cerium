@@ -538,7 +538,7 @@ function CompactFrame({
             "settings",
             <div key="settings" className="flex h-full flex-col">
               <CompactBar back={{ label: listLabel, onBack: settings.onClose }} title="Settings" />
-              <div className={`${notchSides} min-h-0 flex-1`}>{settings.nav}</div>
+              <div className={`${notchSides} min-h-0 flex-1 overflow-y-auto`}>{settings.nav}</div>
             </div>,
           ],
           [

@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The mobile Settings list scrolls to all its categories.
+
 ### Changed
 
 - Package audit tests retain parser, artifact and credential-safety regressions while removing duplicate cases, generic package conformance examples and assertions tied to the vault's internal write mechanism.
