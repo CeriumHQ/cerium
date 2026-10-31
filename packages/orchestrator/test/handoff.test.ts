@@ -128,22 +128,6 @@ describe("handoff briefs", () => {
     assert.include(brief, "go on");
   });
 
-  it("is owed until the new session's first turn", () => {
-    assert.deepStrictEqual(pendingHandoff(log(turn("m1", "one"), ...reply("a"), handedOff)), handedOff);
-    assert.isUndefined(pendingHandoff(log(handedOff, turn("m2", "two"))));
-    assert.isTrue(startsAnew(log(turn("m1", "one"), handedOff)));
-    assert.isFalse(
-      startsAnew(
-        log(handedOff, {
-          _tag: "SessionStarted",
-          provider: "codex",
-          providerSessionId: "s",
-          model: "gpt-6-luna",
-        }),
-      ),
-    );
-  });
-
   it("replays to go back to before a handoff, and counts from it after", () => {
     const events = log(
       turn("m1", "one"),

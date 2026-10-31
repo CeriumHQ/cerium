@@ -37,7 +37,7 @@ const startWorkThread = Effect.gen(function* () {
 });
 
 describe("Orchestrator", () => {
-  it.live("runs a user turn on the lead and persists everything but deltas", () => {
+  it.live("rejects empty input, runs a user turn and persists everything but deltas", () => {
     const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
@@ -45,6 +45,8 @@ describe("Orchestrator", () => {
       const { waitFor } = yield* recordEvents;
       const { lead } = yield* startWorkThread;
 
+      const refused = yield* Effect.flip(orchestrator.sendUserMessage(lead.id, "  "));
+      assert.strictEqual(refused.reason, "invalid");
       yield* orchestrator.sendUserMessage(lead.id, "hello");
       yield* waitFor((events) =>
         events.find((event) => event.payload._tag === "AgentStateChanged" && event.payload.state === "idle"),
@@ -52,6 +54,7 @@ describe("Orchestrator", () => {
 
       assert.deepStrictEqual(fake.sessions[0]?.sent, ["hello"]);
       assert.deepStrictEqual(fake.sessions[0]?.options.trustedMcpServers, ["cerium"]);
+      assert.isTrue(fake.sessions[0]?.options.includeUserMcpServers);
       assert.include(fake.sessions[0]?.options.appendSystemPrompt ?? "", "lead agent");
       const stored = (yield* store.listEvents(lead.id)).map((event) => event.payload._tag);
       assert.includeMembers(stored, ["SessionStarted", "TurnInput", "MessageCompleted", "TurnCompleted"]);
@@ -236,16 +239,6 @@ describe("Orchestrator", () => {
         ["hello", "again"],
       );
       assert.isUndefined(fake.sessions[0]?.options.resume);
-    }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
-  });
-
-  it.live("refuses an empty message", () => {
-    const fake = makeFakeAdapter("claude");
-    return Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator;
-      const { lead } = yield* startWorkThread;
-      const refused = yield* Effect.flip(orchestrator.sendUserMessage(lead.id, "  "));
-      assert.strictEqual(refused.reason, "invalid");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 

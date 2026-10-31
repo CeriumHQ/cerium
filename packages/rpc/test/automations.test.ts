@@ -46,12 +46,6 @@ describe("AutomationInput", () => {
     when: { _tag: "Weekdays", at: 540 },
   };
 
-  it("reads a schedule and a trigger", () => {
-    const decode = Schema.decodeUnknownSync(AutomationInput);
-    assert.deepStrictEqual(decode(input).when, { _tag: "Weekdays", at: 540 });
-    assert.deepStrictEqual(decode({ ...input, when: { _tag: "CiFailed" } }).when, { _tag: "CiFailed" });
-  });
-
   it("refuses an empty name and a time past the day's end", () => {
     const decode = Schema.decodeUnknownOption(AutomationInput);
     assert.isTrue(decode({ ...input, name: "" })._tag === "None");

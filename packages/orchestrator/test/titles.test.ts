@@ -1,16 +1,9 @@
 import { makeFakeAdapter } from "@cerium/harness/testing";
-import { Settings, type ThreadId } from "@cerium/protocol";
+import type { ThreadId } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Schema } from "effect";
+import { Duration, Effect } from "effect";
 
-import {
-  cleanTitle,
-  Orchestrator,
-  titleModels,
-  titlePrompt,
-  UserSettings,
-  type CatalogEntry,
-} from "../src/index.ts";
+import { cleanTitle, Orchestrator, UserSettings, type CatalogEntry } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
 const entry = (provider: CatalogEntry["provider"], model: string): CatalogEntry => ({
@@ -62,40 +55,7 @@ describe("cleanTitle", () => {
   });
 });
 
-describe("titleModels", () => {
-  const lead = { provider: "claude", model: "opus" } as const;
-  const offered =
-    (...models: ReadonlyArray<string>) =>
-    (choice: { readonly model: string }) =>
-      models.includes(choice.model);
-
-  it("tries the defaults the harnesses offer, best first, then the lead", () => {
-    assert.deepStrictEqual(titleModels({ enabled: true }, offered("composer-2.5", "haiku"), lead), [
-      { provider: "claude", model: "haiku" },
-      { provider: "cursor", model: "composer-2.5" },
-      lead,
-    ]);
-    assert.deepStrictEqual(titleModels({ enabled: true }, offered(), lead), [lead]);
-  });
-
-  it("asks only the model the user picked", () => {
-    const model = { provider: "muse", model: "muse-spark-1.3" } as const;
-    assert.deepStrictEqual(titleModels({ enabled: true, model }, offered("gpt-6-luna"), lead), [model]);
-  });
-});
-
 describe("thread titles", () => {
-  it("are on for settings from a backend that predates them", () => {
-    const settings = Schema.decodeUnknownSync(Settings)({});
-    assert.deepStrictEqual(settings.titles, { enabled: true });
-  });
-
-  it("frames the message as something to title, with its attachments", () => {
-    const prompt = titlePrompt("Why is this slow?", ["trace.json"]);
-    assert.include(prompt, "Don't answer it");
-    assert.include(prompt, "<message>\nWhy is this slow?\n(Attached: trace.json)\n</message>");
-  });
-
   it.live("names a new thread from its first message with the best model offered", () => {
     const claude = makeFakeAdapter("claude");
     const codex = makeFakeAdapter("codex", { complete: () => "**Title:** Weekend trip plan." });

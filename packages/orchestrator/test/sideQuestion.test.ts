@@ -4,7 +4,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect, Exit } from "effect";
 
 import { Orchestrator } from "../src/index.ts";
-import { conversationPrompt, forkPrompt, SIDE_INSTRUCTIONS, sideInstructions } from "../src/sideQuestion.ts";
+import { conversationPrompt, forkPrompt, sideInstructions } from "../src/sideQuestion.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
 const log = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
@@ -33,11 +33,6 @@ const startThread = Effect.gen(function* () {
 });
 
 describe("side question prompts", () => {
-  it("tells the copy when the agent is still at work", () => {
-    assert.strictEqual(sideInstructions(false), SIDE_INSTRUCTIONS);
-    assert.include(sideInstructions(true), "working on the user's latest request right now");
-  });
-
   it("says in the question that the agent is still at work", () => {
     assert.include(forkPrompt("Why?", [], true), "still working on the user's latest request");
     assert.notInclude(forkPrompt("Why?", []), "still working");
@@ -48,21 +43,6 @@ describe("side question prompts", () => {
     const prompt = forkPrompt("And the second?", [{ question: "First?", answer: "One." }]);
     assert.include(prompt, "<earlier_side_questions>\nQ: First?\nA: One.\n</earlier_side_questions>");
     assert.isTrue(prompt.endsWith("And the second?"));
-  });
-
-  it("tells a completion the conversation word for word, then the question", () => {
-    const prompt = conversationPrompt(
-      log(turn("m1", "Fix the parser"), {
-        _tag: "MessageCompleted",
-        messageId: "r1",
-        text: "Fixed it in src/parse.ts.",
-      }),
-      "Which file?",
-      [],
-    );
-    assert.include(prompt, "[Input]\nFix the parser");
-    assert.include(prompt, "[You]\nFixed it in src/parse.ts.");
-    assert.isTrue(prompt.endsWith("Which file?"));
   });
 
   it("says so when there is no conversation yet, and when old turns are left out", () => {

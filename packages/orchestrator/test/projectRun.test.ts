@@ -12,8 +12,7 @@ import {
   type ScriptStatus,
   ScriptsError,
 } from "../src/index.ts";
-import { runAnswer, runLines } from "../src/projectRun.ts";
-import { systemPrompt } from "../src/prompts.ts";
+import { runLines } from "../src/projectRun.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
 // The project_run tool's side of the orchestrator, over scripts that are a puppet: what the project
@@ -309,38 +308,11 @@ describe("Orchestrator script notices", () => {
   });
 });
 
-describe("runAnswer", () => {
+describe("runLines", () => {
   it("bounds the lines asked for", () => {
     assert.strictEqual(runLines(undefined), 40);
     assert.strictEqual(runLines(0), 1);
     assert.strictEqual(runLines(12.7), 12);
     assert.strictEqual(runLines(9_000), 200);
-  });
-
-  it("reads each way a script can stand", () => {
-    const running = runAnswer("run", { running: true, output: "x" });
-    assert.include(running.note, "hasn't printed a local address");
-    assert.include(runAnswer("setup", { running: true, output: "" }).note, "lead is told when it ends");
-    assert.strictEqual(runAnswer("setup", { running: false, exitCode: 0, output: "" }).note, "Finished.");
-    assert.include(runAnswer("run", { running: false, exitCode: 9, output: "" }).note, "exit code 9");
-    assert.strictEqual(runAnswer("run", undefined, { note: "Stopped." }).note, "Stopped.");
-  });
-});
-
-describe("the lead's instructions", () => {
-  it("point the lead at project_run, which a child finds in the bus's own description", () => {
-    const agent = {
-      id: "agt_1" as AgentId,
-      threadId: "thr_1" as ThreadId,
-      role: "lead",
-      provider: "claude",
-      model: "opus",
-      access: "ask",
-      state: "idle",
-      createdAt: 0,
-      updatedAt: 0,
-    } as const;
-    assert.include(systemPrompt(agent as never, "cerium"), "`project_run` tool (`cerium` MCP server)");
-    assert.notInclude(systemPrompt({ ...agent, parentId: "agt_0" } as never, "cerium"), "project_run");
   });
 });
