@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Editing an automation preserves its latest CI failure for Run now in the same project.
+
 - The mobile Settings list scrolls to all its categories.
 
 ### Changed

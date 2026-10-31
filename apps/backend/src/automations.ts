@@ -354,6 +354,9 @@ export class Automations extends Context.Service<
                   runs: before?.runs ?? [],
                   ...(handled === undefined ? {} : { handled }),
                   ...(before?.pushes === undefined ? {} : { pushes: before.pushes }),
+                  ...(before?.failure === undefined || !sameFolder(before.automation.project, input.project)
+                    ? {}
+                    : { failure: before.failure }),
                 });
                 yield* changed;
                 return automation;
