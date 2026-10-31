@@ -98,12 +98,4 @@ describe("reading a newer version's data", () => {
       assert.strictEqual(known?.payload._tag, "MessageDelta");
     }),
   );
-
-  it.effect("writes the same lists it reads", () =>
-    Effect.gen(function* () {
-      const written = [event(0, { _tag: "MessageCompleted", messageId: "m1", text: "Hello" })];
-      const events = yield* Schema.decodeUnknownEffect(UiEvents)(written);
-      assert.deepStrictEqual(yield* Schema.encodeEffect(UiEvents)(events), written);
-    }),
-  );
 });

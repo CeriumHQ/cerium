@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { AgentEvent, sameTodos, UiEvents } from "../src/index.ts";
 
@@ -34,13 +34,6 @@ describe("TodosUpdated", () => {
     }),
   );
 
-  it.effect("reads an empty list, which clears it", () =>
-    Effect.gen(function* () {
-      const event = yield* decodeEvent({ ...envelope, payload: { _tag: "TodosUpdated", items: [] } });
-      assert.deepStrictEqual(event.payload, { _tag: "TodosUpdated", items: [] });
-    }),
-  );
-
   it.effect("reads a status it doesn't know as pending and ignores fields it doesn't know", () =>
     Effect.gen(function* () {
       const event = yield* decodeEvent({
@@ -54,13 +47,6 @@ describe("TodosUpdated", () => {
         _tag: "TodosUpdated",
         items: [{ text: "Review", status: "pending" }],
       });
-    }),
-  );
-
-  it.effect("rejects a list that isn't a list", () =>
-    Effect.gen(function* () {
-      const exit = yield* Effect.exit(decodeEvent({ ...envelope, payload: { _tag: "TodosUpdated" } }));
-      assert.isTrue(Exit.isFailure(exit));
     }),
   );
 

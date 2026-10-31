@@ -42,12 +42,11 @@ describe.each(readdirSync(fixtures).filter((name) => name.endsWith(".jsonl")))(
     const events = records.flatMap((record) => instance.translate(record));
     const payloads = events.map((entry) => entry.payload);
 
-    it("emits only payloads that satisfy the canonical schema", () => {
-      for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
-    });
-
-    it("keeps the raw provider payload on every event", () => {
-      for (const entry of events) expect(entry.raw).toBeDefined();
+    it("emits canonical payloads with their raw provider frames", () => {
+      for (const event of events) {
+        expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+        expect(event.raw).toBeDefined();
+      }
     });
 
     it("starts the session once, first", () => {

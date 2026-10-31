@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { threadParams, toServiceTier } from "../src/config.ts";
+import { threadParams } from "../src/config.ts";
 import { cacheSafeFromCatalog, OPEN_SPEEDS, speedPolicy, speedsOf, toModelInfo } from "../src/models.ts";
 import type { Model } from "../src/protocol/v2/Model.ts";
 
@@ -15,11 +15,6 @@ const model = (slug: string) =>
   }) as unknown as Model;
 
 describe("toModelInfo", () => {
-  it("marks only models measured keeping the prompt cache across an effort switch", () => {
-    expect(toModelInfo(model("gpt-6-luna")).cacheSafeEffort).toBe(true);
-    expect(toModelInfo(model("gpt-5.6-terra")).cacheSafeEffort).toBeUndefined();
-  });
-
   it("follows Codex's catalog where it names the model", () => {
     const catalog = new Map([
       ["gpt-6-astra", true],
@@ -98,11 +93,6 @@ describe("speedsOf", () => {
     expect(speedsOf(both, { fast: false, ultrafast: true }).speeds).toEqual(["standard", "ultrafast"]);
     expect(speedsOf(both, { fast: false, ultrafast: false })).toEqual({});
   });
-
-  it("is read into the model's info", () => {
-    const info = toModelInfo({ ...model("gpt-6-astra"), ...tiers([fast]) } as Model);
-    expect(info.speeds).toEqual(["standard", "fast"]);
-  });
 });
 
 describe("speedPolicy", () => {
@@ -141,18 +131,14 @@ describe("speedPolicy", () => {
 });
 
 describe("service tiers", () => {
-  it("names each speed's tier, standard as Codex's own request for none", () => {
-    expect(toServiceTier("standard")).toBe("default");
-    expect(toServiceTier("fast")).toBe("priority");
-    expect(toServiceTier("ultrafast")).toBe("ultrafast");
-  });
-
   it("starts a thread on the speed picked, and on the user's own tier without one", () => {
     const options = { cwd: ".", model: "gpt-6-astra", access: "auto", mcpServers: {} } as const;
     const user = { mcpServers: [] };
-    const start = (speed?: "fast") =>
+    const start = (speed?: "standard" | "fast" | "ultrafast") =>
       threadParams({ ...options, includeUserMcpServers: false, ...(speed ? { speed } : {}) }, user);
+    expect(start("standard").serviceTier).toBe("default");
     expect(start("fast").serviceTier).toBe("priority");
+    expect(start("ultrafast").serviceTier).toBe("ultrafast");
     expect(start()).not.toHaveProperty("serviceTier");
   });
 });

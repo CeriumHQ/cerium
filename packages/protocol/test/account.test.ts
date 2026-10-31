@@ -68,11 +68,8 @@ describe("DeviceDraft", () => {
   };
   const decode = Schema.decodeUnknownOption(DeviceDraft);
 
-  it("takes a machine's own description", () => {
-    expect(Option.isSome(decode(draft))).toBe(true);
-  });
-
   it("refuses names that are empty, padded or longer than 64 characters", () => {
+    expect(Option.isSome(decode(draft))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: "" }))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: " Studio PC" }))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: "x".repeat(65) }))).toBe(true);

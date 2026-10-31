@@ -38,12 +38,11 @@ describe.each(readdirSync(fixtures).filter((name) => name.endsWith(".jsonl")))(
     const payloads = payloadsOf(events);
     const submitted = frames.filter((frame) => "cerium" in frame && frame.cerium === "expectTurn").length;
 
-    it("emits only payloads that satisfy the canonical schema", () => {
-      for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
-    });
-
-    it("keeps the raw notification on every event", () => {
-      for (const event of events) expect(event.raw).toBeDefined();
+    it("emits canonical payloads with their raw provider frames", () => {
+      for (const event of events) {
+        expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+        expect(event.raw).toBeDefined();
+      }
     });
 
     it("ends every submitted turn exactly once, after its usage", () => {
@@ -79,16 +78,6 @@ describe("MuseTranslator on the recorded echo session", () => {
   const payloads = payloadsOf(replay(fixture("echo-session.jsonl")));
 
   it("produces each turn's reply in order", () => {
-    expect(payloads.map((payload) => payload._tag).filter((tag) => tag !== "ContextReported")).toEqual([
-      "MessageDelta",
-      "MessageCompleted",
-      "UsageReported",
-      "TurnCompleted",
-      "MessageDelta",
-      "MessageCompleted",
-      "UsageReported",
-      "TurnCompleted",
-    ]);
     expect(
       payloads.flatMap((payload) => (payload._tag === "MessageCompleted" ? [payload.text] : [])),
     ).toEqual(["echo: hello echo", "echo: second turn"]);

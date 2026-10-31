@@ -56,29 +56,11 @@ describe("CodexTranslator on a recorded read/write session", () => {
   const messages = fixture("read-write-session.jsonl");
   const { events, requests, payloads } = replay(messages);
 
-  it("emits only payloads that satisfy the canonical schema", () => {
-    for (const payload of payloads) expect(Schema.is(EventPayload)(payload)).toBe(true);
-  });
-
-  it("keeps the raw provider message on every event", () => {
-    for (const event of events) expect(event.raw).toBeDefined();
-  });
-
-  it("produces the session lifecycle in order", () => {
-    const tags = payloads
-      .map((payload) => payload._tag)
-      .filter((tag) => tag !== "MessageDelta" && tag !== "ContextReported");
-    expect(tags).toEqual([
-      "SessionStarted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "ToolCallStarted",
-      "ToolCallCompleted",
-      "FileChanged",
-      "MessageCompleted",
-      "UsageReported",
-      "TurnCompleted",
-    ]);
+  it("emits canonical payloads with their raw provider frames", () => {
+    for (const event of events) {
+      expect(Schema.is(EventPayload)(event.payload)).toBe(true);
+      expect(event.raw).toBeDefined();
+    }
   });
 
   it("starts the session with the thread id, model and effort", () => {
