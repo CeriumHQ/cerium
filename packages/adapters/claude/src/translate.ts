@@ -1,6 +1,6 @@
 import type { SDKMessage, SDKRateLimitInfo, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { AdapterEvent } from "@cerium/harness";
-import type { ContextCompacted, EventPayload } from "@cerium/protocol";
+import type { BackgroundTask, ContextCompacted, EventPayload } from "@cerium/protocol";
 
 import { LOGIN_COMMAND } from "./manifest.ts";
 import { ClaudeTodos } from "./todos.ts";
@@ -40,6 +40,12 @@ export class ClaudeTranslator {
   readonly #toolNames = new Map<string, string>();
   /** The todo tools' calls, which report the agent's todo list instead of tool calls. */
   readonly #todos = new ClaudeTodos();
+  /** The command lines of shell and monitor calls, by tool call, until their task ends. */
+  readonly #commands = new Map<string, string>();
+  /** The live background tasks, as Claude Code last listed them. */
+  #background: ReadonlyArray<SDKBackgroundTask> = [];
+  /** What the list leaves out of each live task: its tool call, and when it was first seen. */
+  readonly #taskFacts = new Map<string, { callId?: string; readonly startedAt: number }>();
   /** Claude Code repeats `init` every turn; only the first starts the session. */
   #started = false;
   /** `total_cost_usd` is cumulative for the session; turns report the difference. */
@@ -126,6 +132,8 @@ export class ClaudeTranslator {
             },
           ];
         }
+        if (message.subtype === "background_tasks_changed") return this.#backgroundChanged(message.tasks);
+        if (message.subtype === "task_started") return this.#taskStarted(message);
         if (message.subtype !== "init") return [];
         // Each turn's `init` names the model it runs, and another model has another window.
         if (message.model !== this.#model) this.#window = undefined;
@@ -250,6 +258,10 @@ export class ClaudeTranslator {
         case "mcp_tool_use":
           if (block.type === "tool_use" && this.#todos.call(block.id, block.name, block.input)) return [];
           this.#toolNames.set(block.id, block.name);
+          if (block.type === "tool_use" && COMMAND_TOOLS.has(block.name)) {
+            const command = (block.input as { readonly command?: unknown } | null)?.command;
+            if (typeof command === "string" && command !== "") this.#commands.set(block.id, command);
+          }
           return [{ _tag: "ToolCallStarted", callId: block.id, toolName: block.name, input: block.input }];
         default:
           return [];
@@ -286,12 +298,66 @@ export class ClaudeTranslator {
       };
       const toolName = this.#toolNames.get(block.tool_use_id);
       this.#toolNames.delete(block.tool_use_id);
+      // A command that went on in the background keeps its line for the task's row.
+      if (![...this.#taskFacts.values()].some((facts) => facts.callId === block.tool_use_id))
+        this.#commands.delete(block.tool_use_id);
       const changed =
         !isError && toolName !== undefined && FILE_TOOLS.has(toolName)
           ? fileChange(message.tool_use_result)
           : undefined;
       return changed === undefined ? [completed] : [completed, changed];
     });
+  }
+
+  /** Claude Code's whole set of live background tasks, which replaces the one before. */
+  #backgroundChanged(tasks: ReadonlyArray<SDKBackgroundTask>): ReadonlyArray<EventPayload> {
+    // Housekeeping tasks aren't the agent's work.
+    this.#background = tasks.filter((task) => task.ambient !== true);
+    const live = new Set(this.#background.map((task) => task.task_id));
+    for (const [id, facts] of this.#taskFacts) {
+      if (live.has(id)) continue;
+      this.#taskFacts.delete(id);
+      if (facts.callId !== undefined) this.#commands.delete(facts.callId);
+    }
+    const now = Date.now();
+    for (const task of this.#background)
+      if (!this.#taskFacts.has(task.task_id)) this.#taskFacts.set(task.task_id, { startedAt: now });
+    return [this.#backgroundTasks()];
+  }
+
+  /**
+   * A task's start names the tool call behind it, which the set leaves out; a task that already
+   * joined the set (it joins before its start arrives) is listed again with its command.
+   */
+  #taskStarted(message: Extract<SDKMessage, { subtype: "task_started" }>): ReadonlyArray<EventPayload> {
+    if (message.tool_use_id === undefined) return [];
+    const facts = this.#taskFacts.get(message.task_id);
+    if (facts === undefined) {
+      this.#taskFacts.set(message.task_id, { callId: message.tool_use_id, startedAt: Date.now() });
+      return [];
+    }
+    if (facts.callId === message.tool_use_id) return [];
+    facts.callId = message.tool_use_id;
+    return this.#background.some((task) => task.task_id === message.task_id) ? [this.#backgroundTasks()] : [];
+  }
+
+  #backgroundTasks(): EventPayload {
+    return {
+      _tag: "BackgroundTasksChanged",
+      tasks: this.#background.map((task): BackgroundTask => {
+        const facts = this.#taskFacts.get(task.task_id);
+        const command = facts?.callId === undefined ? undefined : this.#commands.get(facts.callId);
+        return {
+          id: task.task_id,
+          kind: taskKind(task.task_type),
+          description: task.description,
+          ...(command !== undefined && command !== task.description ? { command } : {}),
+          ...(facts?.callId === undefined ? {} : { callId: facts.callId }),
+          ...(facts === undefined ? {} : { startedAt: facts.startedAt }),
+          stoppable: true,
+        };
+      }),
+    };
   }
 
   /** One `LimitReached` for the turn: the rejected-limit event and the error after it say the same. */
@@ -336,6 +402,18 @@ export class ClaudeTranslator {
     };
   }
 }
+
+type SDKBackgroundTask = Extract<SDKMessage, { subtype: "background_tasks_changed" }>["tasks"][number];
+
+/** Built-in tools whose input names the command a background task runs. */
+const COMMAND_TOOLS = new Set(["Bash", "Monitor"]);
+
+const taskKind = (type: string): BackgroundTask["kind"] => {
+  if (type === "local_bash") return "command";
+  if (type.includes("monitor")) return "monitor";
+  if (type.includes("agent") || type.includes("teammate")) return "agent";
+  return "other";
+};
 
 const count = (value: number) => Math.max(0, Math.round(value));
 

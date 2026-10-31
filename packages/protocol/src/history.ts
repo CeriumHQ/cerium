@@ -11,6 +11,7 @@ export const HISTORY_STATE_TAGS = [
   "ContextCompacted",
   "ConversationRewound",
   "TodosUpdated",
+  "BackgroundTasksChanged",
   "SessionStarted",
   "ModelChanged",
   "LeadHandedOff",

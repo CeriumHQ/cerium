@@ -298,6 +298,8 @@ interface Runtime {
   userWaiting: boolean;
   /** The tool calls of the turn in progress that haven't finished. */
   readonly openCalls: Set<string>;
+  /** How many background tasks the session runs, which keep it from being retired while idle. */
+  background: number;
   /** Cerium interrupted the turn in progress to hand the agent the user's waiting messages. */
   steering: boolean;
   /**
@@ -605,6 +607,11 @@ export class Orchestrator extends Context.Service<
      * Refused while the agent works, and for a harness that can't compact when asked.
      */
     compactAgent(agentId: AgentId): Effect.Effect<void, OrchestratorError>;
+    /**
+     * Asks the agent's harness to stop one of its background tasks. Refused for a harness that can't;
+     * a task that already ended is no error.
+     */
+    stopBackgroundTask(agentId: AgentId, taskId: string): Effect.Effect<void, OrchestratorError>;
     /**
      * Answers a question about a thread from its lead's conversation, even mid-turn, and keeps
      * nothing: no event, no message in the lead's session, no effect on its turn. `earlier` is the
@@ -1242,6 +1249,14 @@ export class Orchestrator extends Context.Service<
         return found;
       };
 
+      /** Records that the agent's background tasks are gone, when it had any. */
+      const clearBackground = (rt: Runtime) =>
+        Effect.suspend(() => {
+          if (rt.background === 0) return Effect.void;
+          rt.background = 0;
+          return emit(rt, { _tag: "BackgroundTasksChanged", tasks: [] });
+        });
+
       /** Closes the agent's waiting questions as expired: it was stopped or interrupted, or its session ended. */
       const expireQuestions = (rt: Runtime) =>
         Effect.forEach(
@@ -1422,6 +1437,9 @@ export class Orchestrator extends Context.Service<
                 case "TurnCompleted":
                   rt.openCalls.clear();
                   return yield* finishTurn(rt);
+                case "BackgroundTasksChanged":
+                  rt.background = payload.tasks.length;
+                  return;
                 default:
                   return;
               }
@@ -1436,6 +1454,8 @@ export class Orchestrator extends Context.Service<
           ),
           Effect.ensuring(
             Effect.gen(function* () {
+              // The harness's background tasks end with its session.
+              yield* clearBackground(rt).pipe(Effect.ignore);
               if (rt.sleeping) return;
               rt.ended = true;
               yield* expireQuestions(rt).pipe(Effect.ignore);
@@ -2414,6 +2434,7 @@ export class Orchestrator extends Context.Service<
             halted: false,
             userWaiting: false,
             openCalls: new Set(),
+            background: 0,
             steering: false,
             applied: choiceOf(info),
             fresh: options.resume === undefined,
@@ -2436,6 +2457,15 @@ export class Orchestrator extends Context.Service<
             turnCause: "notice",
           };
           runtimes.set(info.id, rt);
+          // Background tasks a session left listed when Cerium went away without ending it died with it.
+          if (options.resume !== undefined) {
+            const listed = yield* store
+              .listEvents(info.id, { tags: ["BackgroundTasksChanged"] })
+              .pipe(Effect.mapError(unavailable));
+            const latest = listed.at(-1)?.payload;
+            rt.background = latest?._tag === "BackgroundTasksChanged" ? latest.tasks.length : 0;
+            yield* clearBackground(rt);
+          }
 
           let resume = options.resume;
           const start = Effect.gen(function* () {
@@ -3608,7 +3638,9 @@ export class Orchestrator extends Context.Service<
                 !adapters.get(rt.info.provider)?.manifest.session.resume ||
                 waitsOnUser(rt.info.threadId) ||
                 working(rt.info.threadId) ||
-                rt.openCalls.size > 0
+                rt.openCalls.size > 0 ||
+                // Closing the session would end the work it runs in the background.
+                rt.background > 0
               )
                 return;
               const sessionScope = rt.sessionScope;
@@ -4214,6 +4246,29 @@ export class Orchestrator extends Context.Service<
             compactTurn(rt, compact).pipe(Effect.ensuring(rt.turnPermit.release(1))),
             rt.scope,
           );
+        }),
+
+        stopBackgroundTask: Effect.fn("Orchestrator.stopBackgroundTask")(function* (
+          agentId: AgentId,
+          taskId: string,
+        ) {
+          const rt = yield* runtime(agentId);
+          // No session, no tasks: they ended with it.
+          if (rt.ended || rt.session === undefined || rt.background === 0) return;
+          const session = rt.session;
+          if (session.stopBackgroundTask === undefined) {
+            return yield* new OrchestratorError({
+              reason: "invalid",
+              message: `${rt.info.provider} can't stop its background tasks.`,
+            });
+          }
+          yield* session
+            .stopBackgroundTask(taskId)
+            .pipe(
+              Effect.mapError(
+                (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+              ),
+            );
         }),
 
         askSideQuestion: Effect.fn("Orchestrator.askSideQuestion")(function* (

@@ -104,6 +104,36 @@ export const TodosUpdated = Schema.TaggedStruct("TodosUpdated", {
   explanation: Schema.optionalKey(Schema.String),
 });
 
+/**
+ * Work the agent's harness keeps running past the tool call that started it: a command left running
+ * in the background, a backgrounded subagent, a monitor. Kinds a newer version adds read as `other`.
+ */
+export const BackgroundTask = Schema.Struct({
+  /** The harness's own id for the task, which `AgentSession.stopBackgroundTask` names it by. */
+  id: Schema.NonEmptyString,
+  kind: withFallback(Schema.Literals(["command", "agent", "monitor", "other"]), "other"),
+  /** What it does, in the harness's words: the command's description, or the command itself. */
+  description: Schema.String,
+  /** The command line, for a command whose description says something else. */
+  command: Schema.optionalKey(Schema.String),
+  /** The tool call that started it, when the harness links them. */
+  callId: Schema.optionalKey(Schema.NonEmptyString),
+  /** When it started, as the harness reports it or as the adapter first saw it. */
+  startedAt: Schema.optionalKey(EpochMillis),
+  /** The harness can stop it when asked. */
+  stoppable: Schema.optionalKey(Schema.Boolean),
+});
+export type BackgroundTask = typeof BackgroundTask.Type;
+
+/**
+ * The agent's background tasks changed. Like `TodosUpdated`, it carries the whole current set, so the
+ * latest event is the set; an empty one means nothing runs. Cerium records an empty set when the
+ * session ends, as its tasks end with it.
+ */
+export const BackgroundTasksChanged = Schema.TaggedStruct("BackgroundTasksChanged", {
+  tasks: Schema.Array(BackgroundTask),
+});
+
 export const PermissionRequested = Schema.TaggedStruct("PermissionRequested", {
   requestId: Schema.NonEmptyString,
   toolName: Schema.NonEmptyString,
@@ -658,6 +688,7 @@ export const EventPayload = Schema.Union([
   ToolCallCompleted,
   FileChanged,
   TodosUpdated,
+  BackgroundTasksChanged,
   PermissionRequested,
   PermissionResolved,
   QuestionAsked,
