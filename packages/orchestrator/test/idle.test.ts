@@ -91,6 +91,43 @@ it.live("hibernates an idle host without stopping its agent and resumes its sess
   );
 });
 
+it.live("wakes a host that slept before its first turn on a new session, not the one it never saved", () => {
+  const fake = makeFakeAdapter("codex");
+  const closed: number[] = [];
+  const adapter = {
+    ...fake.adapter,
+    startSession: (options: Parameters<typeof fake.adapter.startSession>[0]) =>
+      Effect.gen(function* () {
+        const session = yield* fake.adapter.startSession(options);
+        const index = fake.sessions.length - 1;
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            closed.push(index);
+          }),
+        );
+        return session;
+      }),
+  };
+  return Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator;
+    const { waitFor } = yield* recordEvents;
+    const { lead } = yield* orchestrator.createThread({
+      title: "Moved",
+      mode: "work",
+      cwd: ".",
+      lead: { provider: "codex", model: "gpt", access: "readOnly" },
+    });
+    yield* waitFor(() => (closed.includes(0) ? true : undefined));
+    yield* orchestrator.sendUserMessage(lead.id, "so what are we waiting for");
+    yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
+    assert.isUndefined(fake.sessions[1]?.options.resume);
+    assert.include(fake.sessions[1]?.sent[0] ?? "", "so what are we waiting for");
+  }).pipe(
+    Effect.provide(testLayer([adapter], { idleSessionTTL: Duration.millis(60), warmSessions: 0 })),
+    Effect.scoped,
+  );
+});
+
 it.live("retains quiet notices over a backend restart and delivers each once", () => {
   const fake = makeFakeAdapter("claude");
   const database = join(mkdtempSync(join(tmpdir(), "cerium-notices-")), "store.db");

@@ -639,9 +639,15 @@ export class Orchestrator extends Context.Service<
       threadId: ThreadId,
     ): Effect.Effect<{ readonly agents: number; readonly approvals: number }, OrchestratorError>;
     readonly listThreads: Effect.Effect<ReadonlyArray<ThreadInfo>, OrchestratorError>;
+    /**
+     * Moves a thread's conversation to another checkout, on a new session there. With `carryOn`, for
+     * a move the lead asked for and ended its turn to let through, the lead is told where it now works
+     * and goes on with its task at once; otherwise it waits for the user's next message.
+     */
     moveThread(
       threadId: ThreadId,
       choice: import("@cerium/protocol").WorkspaceChoice,
+      options?: { readonly carryOn?: boolean },
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
     /** Renames a thread; the title is trimmed and must be 1 to `MAX_THREAD_TITLE` characters. */
     renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
@@ -2535,7 +2541,9 @@ export class Orchestrator extends Context.Service<
               if (!rt.sleeping || rt.ended) return;
               rt.sleeping = false;
               rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
-              resume = rt.info.providerSessionId;
+              // A session put to sleep before it took a turn holds nothing, and its harness may never
+              // have saved it (Codex keeps a thread only once it runs a turn): a new one takes its place.
+              resume = rt.fresh ? undefined : rt.info.providerSessionId;
               yield* start.pipe(
                 Effect.catch((error) => Deferred.fail(rt.started, error)),
                 Effect.asVoid,
@@ -4418,7 +4426,7 @@ export class Orchestrator extends Context.Service<
 
         listThreads: store.listThreads.pipe(Effect.mapError(unavailable)),
 
-        moveThread: Effect.fn("Orchestrator.moveThread")(function* (threadId, choice) {
+        moveThread: Effect.fn("Orchestrator.moveThread")(function* (threadId, choice, options = {}) {
           if (working(threadId) || waitsOnUser(threadId))
             return yield* notAllowed("Finish the current turn before moving this conversation.");
           const thread = yield* threadInfo(threadId);
@@ -4462,9 +4470,27 @@ export class Orchestrator extends Context.Service<
               });
               threadDirectories.set(threadId, planned.cwd);
               threadWorktrees.set(threadId, planned.worktree);
-              const { undelivered, notices } = yield* resumeLead(lead.id);
-              held.set(lead.id, { undelivered, notices });
-              if (choice.path === undefined) yield* setUp(threadId, planned.worktree, planned.cwd);
+              const { rt, undelivered, notices } = yield* resumeLead(lead.id);
+              // A new worktree starts empty of what setup installs; an existing checkout has its own.
+              const setup =
+                choice.path === undefined
+                  ? setupNote(Option.getOrUndefined(yield* setUp(threadId, planned.worktree, planned.cwd)))
+                  : "";
+              const moved: InputItem = {
+                _tag: "SystemNotice",
+                text:
+                  `The thread now works in \`${planned.cwd}\`, on branch \`${planned.worktree.branch}\`.` +
+                  (options.carryOn === true ? " Carry on with your task there. " : " ") +
+                  setup +
+                  portsNote(yield* scripts.ports(threadId)),
+              };
+              if (options.carryOn === true) {
+                rt.userWaiting = undelivered.length > 0;
+                yield* Queue.offerAll(rt.inbox, [...undelivered, ...notices, moved]);
+              } else {
+                held.set(lead.id, { undelivered, notices });
+                heldNotices.set(lead.id, [...(heldNotices.get(lead.id) ?? []), moved]);
+              }
               return updated;
             }),
           );
