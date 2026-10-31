@@ -74,10 +74,21 @@ const call = async (target: AssistantDesk, name: string, args: unknown) => {
 describe("the MCP endpoint", () => {
   it("agrees on a protocol version it speaks, and offers tools", async () => {
     const { desk: target } = desk();
-    expect(await handleMcp(rpc("initialize", { protocolVersion: "2025-06-18" }), target)).toMatchObject({
+    const clientInfo = { name: "test", version: "1" };
+    expect(
+      await handleMcp(
+        rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo }),
+        target,
+      ),
+    ).toMatchObject({
       result: { protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "cerium" } },
     });
-    expect(await handleMcp(rpc("initialize", { protocolVersion: "1999-01-01" }), target)).toMatchObject({
+    expect(
+      await handleMcp(
+        rpc("initialize", { protocolVersion: "1999-01-01", capabilities: {}, clientInfo }),
+        target,
+      ),
+    ).toMatchObject({
       result: { protocolVersion: "2025-11-25" },
     });
     const listed = (await handleMcp(rpc("tools/list"), target)) as { result: { tools: typeof TOOLS } };
@@ -89,7 +100,7 @@ describe("the MCP endpoint", () => {
     expect(await handleMcp(notification("notifications/initialized"), target)).toBeUndefined();
     expect(await handleMcp([notification("notifications/initialized")], target)).toBeUndefined();
     expect(await handleMcp(rpc("sampling/createMessage"), target)).toMatchObject({ error: { code: -32601 } });
-    expect(await handleMcp({ hello: "there" }, target)).toMatchObject({ error: { code: -32600 } });
+    expect(await handleMcp({ hello: "there" }, target)).toMatchObject({ error: { code: -32700 } });
   });
 
   it("answers a batch with one answer per request", async () => {

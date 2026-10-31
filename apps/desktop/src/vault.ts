@@ -37,9 +37,18 @@ const subject = (name: SecretName | undefined) =>
 
 const missing = (error: unknown) => (error as { code?: unknown }).code === "ENOENT";
 
+const unavailable = (name: SecretName | undefined) =>
+  new Error(
+    process.platform === "win32"
+      ? `Windows can't protect ${subject(name)} on this PC, so it wasn't saved.`
+      : process.platform === "darwin"
+        ? `Your Keychain can't protect ${subject(name)} on this Mac, so it wasn't saved.`
+        : `No keyring can protect ${subject(name)} on this computer, so it wasn't saved.`,
+  );
+
 const read = async (name: SecretName | undefined): Promise<string | null> => {
   try {
-    return safeStorage.decryptString(await readFile(vaultFile(name)));
+    return (await safeStorage.decryptStringAsync(await readFile(vaultFile(name)))).result;
   } catch (error) {
     if (missing(error)) return null;
     throw error;
@@ -48,19 +57,14 @@ const read = async (name: SecretName | undefined): Promise<string | null> => {
 
 const write = async (name: SecretName | undefined, value: string | null) => {
   if (value === null) return rm(vaultFile(name), { force: true });
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error(
-      process.platform === "win32"
-        ? `Windows can't protect ${subject(name)} on this PC, so it wasn't saved.`
-        : process.platform === "darwin"
-          ? `Your Keychain can't protect ${subject(name)} on this Mac, so it wasn't saved.`
-          : `No keyring can protect ${subject(name)} on this computer, so it wasn't saved.`,
-    );
-  }
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) throw unavailable(name);
+  const encrypted = await safeStorage.encryptStringAsync(value);
+  // Electron 44 reports async initialization as available even when Linux uses its known v10 key.
+  if (process.platform === "linux" && encrypted.subarray(0, 3).toString() === "v10") throw unavailable(name);
   // Written beside it and moved into place, so a crash never leaves half a secret. Only this user
   // may read it: without a keyring, Linux encrypts it with a key every app knows.
   const next = `${vaultFile(name)}.next`;
-  await writeFile(next, safeStorage.encryptString(value), { mode: 0o600 });
+  await writeFile(next, encrypted, { mode: 0o600 });
   await rename(next, vaultFile(name));
 };
 
