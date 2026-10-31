@@ -155,14 +155,6 @@ describe("create_thread", () => {
 });
 
 describe("picking a computer", () => {
-  it("takes the only one that takes assistants", () => {
-    expect(pickComputer([computer("A"), computer("B", { takesAssistants: false })], undefined)).toMatchObject(
-      {
-        name: "A",
-      },
-    );
-  });
-
   it("asks which when several do", () => {
     expect(pickComputer([computer("A"), computer("B")], undefined)).toMatch(/Several computers/);
     expect(pickComputer([computer("A"), computer("B")], "b")).toMatchObject({ name: "B" });

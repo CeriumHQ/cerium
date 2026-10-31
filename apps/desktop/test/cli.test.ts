@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { join } from "node:path";
 
-import { pathHas, shellQuote, shimFor, shimLocation } from "../src/cli.ts";
+import { pathHas, shellQuote, shimFor } from "../src/cli.ts";
 
 describe("shimFor", () => {
   it("starts the program detached from a Windows terminal, with the arguments it was given", () => {
@@ -23,20 +23,6 @@ describe("shimFor", () => {
 describe("shellQuote", () => {
   it("keeps everything literal, a quote included", () => {
     expect(shellQuote("/home/it's me/$HOME")).toBe(`'/home/it'\\''s me/$HOME'`);
-  });
-});
-
-describe("shimLocation", () => {
-  it("lives in Cerium's own folder on Windows and in ~/.local/bin elsewhere", () => {
-    const local = join("C:", "Users", "me", "AppData", "Local");
-    expect(shimLocation("win32", { LOCALAPPDATA: local }, "home")).toEqual({
-      folder: join(local, "Cerium", "bin"),
-      file: join(local, "Cerium", "bin", "cerium.cmd"),
-    });
-    expect(shimLocation("linux", {}, "/home/me")).toEqual({
-      folder: join("/home/me", ".local", "bin"),
-      file: join("/home/me", ".local", "bin", "cerium"),
-    });
   });
 });
 

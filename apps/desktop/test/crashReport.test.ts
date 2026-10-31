@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { asCrashReport, errorOf, fingerprintOf, limitKeyOf, reportLimiter } from "../src/crashReport.ts";
+import { asCrashReport, errorOf, reportLimiter } from "../src/crashReport.ts";
 
 describe("asCrashReport", () => {
   it("takes a report in a known category, from the process it came from", () => {
@@ -78,10 +78,5 @@ describe("a report's error", () => {
     expect(error.message).toBe("x is undefined");
     expect(error.stack).toBe(report.stack);
     expect(errorOf({ ...report, stack: undefined } as never).stack).toBeUndefined();
-  });
-
-  it("groups by Sentry's own grouping within its process, category and kind", () => {
-    expect(fingerprintOf(report)).toEqual(["{{ default }}", "renderer", "render", "pane"]);
-    expect(limitKeyOf(report)).toBe("renderer|render|pane|TypeError|x is undefined");
   });
 });

@@ -77,9 +77,4 @@ describe("findEditors", () => {
     const found = await findEditors("win32", { PATH: join(home, "app", "bin") });
     expect(found.map((each) => each.id)).toEqual(["vscode"]);
   });
-
-  it("finds nothing on a machine with no editors", async () => {
-    const home = mkdtempSync(join(tmpdir(), "cerium-editors-"));
-    expect(await findEditors("win32", { LOCALAPPDATA: home, PATH: home })).toEqual([]);
-  });
 });

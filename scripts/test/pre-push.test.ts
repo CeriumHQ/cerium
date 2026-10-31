@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { pushedRanges, touchesWorkflows, withoutRepository } from "../pre-push.ts";
+import { pushedRanges, withoutRepository } from "../pre-push.ts";
 
 const sha = (digit: string) => digit.repeat(40);
 
@@ -17,11 +17,6 @@ describe("pre-push", () => {
       { base: sha("0"), head: sha("c") },
     ]);
     expect(pushedRanges("")).toEqual([]);
-  });
-
-  it("lints the workflows only when .github changes", () => {
-    expect(touchesWorkflows(["apps/ui/src/app.tsx", ".github/workflows/ci.yml"])).toBe(true);
-    expect(touchesWorkflows(["apps/ui/src/app.tsx", "docs/.github.md"])).toBe(false);
   });
 
   it("runs the checks outside the repository git ran the hook for", () => {

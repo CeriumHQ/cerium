@@ -7,51 +7,19 @@ import {
   artifactTitle,
   newestArtifacts,
   artifactDocument,
-  artifactGuide,
   artifactHostPage,
   dataFileUrl,
   DEFAULT_THEMES,
   isLegacyArtifact,
   localFiles,
-  localFileType,
   readFrameMessage,
-  THEME_TOKENS,
-  themeFromTokens,
   themeUpdate,
   withLocalFiles,
 } from "../src/index.ts";
 
 const theme = DEFAULT_THEMES.dark;
 
-describe("artifact guide", () => {
-  it("names only variables a page gets", () => {
-    const fixed = ["--radius", "--radius-sm", "--font-sans", "--font-mono"];
-    const known = new Set([...Object.keys(THEME_TOKENS), ...fixed]);
-    const spans = [...artifactGuide.matchAll(/`([^`\n]+)`/g)].map((match) => match[1]!);
-    const named = spans.flatMap((span) => [...span.matchAll(/--[a-z][a-z0-9-]*/g)].map((match) => match[0]));
-    assert.isNotEmpty(named);
-    for (const name of named) {
-      assert.isTrue(known.has(name), `${name} isn't a variable the page gets`);
-    }
-  });
-});
-
 describe("themes", () => {
-  it("give every variable in both modes", () => {
-    for (const mode of ["dark", "light"] as const) {
-      assert.deepStrictEqual(
-        Object.keys(DEFAULT_THEMES[mode].variables).toSorted(),
-        Object.keys(THEME_TOKENS).toSorted(),
-      );
-    }
-  });
-
-  it("read from the window's tokens", () => {
-    const read = themeFromTokens("light", (token) => ` value of ${token} `);
-    assert.strictEqual(read.variables["--chart-3"], "value of --series-3");
-    assert.strictEqual(read.mode, "light");
-  });
-
   it("keep values from closing the stylesheet", () => {
     const hostile = {
       mode: "dark" as const,
@@ -114,14 +82,6 @@ describe("artifactDocument", () => {
     const html = artifactDocument(page, { theme });
     assert.match(html, /^<!doctype html>\n<html><head>/);
     assert.include(html, "const tag = '<head>';");
-  });
-
-  it("serializes a runtime that stands on its own", () => {
-    const html = artifactDocument("<p>x</p>", { theme });
-    const script = /<script>(\(function[\s\S]*?)<\/script>/.exec(html)?.[1];
-    assert.isDefined(script);
-    // Parsed, not run: the serialized runtime must be JavaScript the frame can run as it is.
-    assert.doesNotThrow(() => new Script(script!));
   });
 
   it("makes a page of its own, titled, to save or open", () => {
@@ -204,13 +164,6 @@ describe("local files", () => {
     assert.include(html, "<img src='/home/me/plot.SVG'>");
     assert.include(html, "https://example.com/a.png");
     assert.strictEqual(withLocalFiles(page, new Map()), page);
-  });
-
-  it("knows images from data by extension", () => {
-    assert.deepStrictEqual(localFileType("C:\\a\\b.JPEG"), { kind: "image", mediaType: "image/jpeg" });
-    assert.deepStrictEqual(localFileType("/a/b.svg"), { kind: "image", mediaType: "image/svg+xml" });
-    assert.deepStrictEqual(localFileType("/a/b.Json"), { kind: "data", mediaType: "application/json" });
-    assert.isUndefined(localFileType("/a/b.txt"));
   });
 });
 

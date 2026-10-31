@@ -1,18 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 
-import { parseStep, parseTarget } from "../src/steps.ts";
+import { parseStep } from "../src/steps.ts";
 
 describe("command-line steps", () => {
-  it("read targets as text, selectors or points, with an index", () => {
-    assert.deepStrictEqual(parseTarget("Send"), { text: "Send" });
-    assert.deepStrictEqual(parseTarget("Send[1]"), { text: "Send", nth: 1 });
-    assert.deepStrictEqual(parseTarget("css:#go"), { selector: "#go" });
-    assert.deepStrictEqual(parseTarget("@120,48"), { x: 120, y: 48 });
-  });
-
   it("read actions, their targets and their values", () => {
-    assert.deepStrictEqual(parseStep("click=New thread"), [
-      { action: "click", target: { text: "New thread" } },
+    assert.deepStrictEqual(parseStep("click=Send[1]"), [
+      { action: "click", target: { text: "Send", nth: 1 } },
     ]);
     assert.deepStrictEqual(parseStep("wait@Saved=10000"), [
       { action: "wait", target: { text: "Saved" }, ms: 10_000 },

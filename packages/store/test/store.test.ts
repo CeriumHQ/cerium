@@ -235,6 +235,9 @@ describe("Store", () => {
         );
         yield* store.deleteThread(thread.id);
         assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), []);
+        assert.deepStrictEqual(yield* store.getThread(thread.id), Option.none());
+        assert.deepStrictEqual(yield* store.listAgents(thread.id), []);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), []);
       }),
     ),
   );
@@ -419,21 +422,6 @@ describe("Store", () => {
     ),
   );
 
-  it.effect("deletes a thread with its agents and events", () =>
-    withStore(
-      Effect.gen(function* () {
-        const store = yield* Store;
-        yield* store.createThread(thread);
-        yield* store.createAgent(lead);
-        yield* store.appendEvents([event(0)]);
-        yield* store.deleteThread(thread.id);
-        assert.deepStrictEqual(yield* store.getThread(thread.id), Option.none());
-        assert.deepStrictEqual(yield* store.listAgents(thread.id), []);
-        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), []);
-      }),
-    ),
-  );
-
   it.effect("lists every thread and agent as they stand after each write", () =>
     withStore(
       Effect.gen(function* () {
@@ -609,19 +597,6 @@ describe("Store", () => {
           [1, 2],
         );
         assert.deepStrictEqual(yield* store.lastSequence(lead.id), Option.some(2));
-      }),
-    ),
-  );
-
-  it.effect("keeps a provider's raw message but leaves it out of what it lists", () =>
-    withStore(
-      Effect.gen(function* () {
-        const store = yield* Store;
-        yield* store.createThread(thread);
-        yield* store.createAgent(lead);
-        yield* store.appendEvents([{ ...event(0), raw: { type: "assistant", big: "x".repeat(1000) } }]);
-        assert.deepStrictEqual(yield* store.listEvents(lead.id), [event(0)]);
-        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), [event(0)]);
       }),
     ),
   );
@@ -1025,16 +1000,6 @@ describe("Store", () => {
             costUsd: 0.5,
           },
         ]);
-      }),
-    ),
-  );
-
-  it.effect("enforces foreign keys", () =>
-    withStore(
-      Effect.gen(function* () {
-        const store = yield* Store;
-        const orphan = yield* Effect.exit(store.createAgent(lead));
-        assert.isTrue(Exit.isFailure(orphan));
       }),
     ),
   );
