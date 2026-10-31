@@ -653,6 +653,31 @@ describe("Terminals.served", () => {
     );
   });
 
+  it.live("reads an address through colours and brackets, and waits for one cut at its port", () => {
+    const { spawned, provide } = withTerminals();
+    return provide(
+      Effect.gen(function* () {
+        const terminals = yield* Terminals;
+        const cwd = yield* workThread("thr_a");
+        const { seen, fiber } = yield* collect(terminals);
+        const { id } = yield* terminals.openScript(at("thr_a"), "Run", shell, cwd, size);
+        spawned[0]?.print("Local: \u001b[36mhttp://localhost:\u001b[1m51");
+        yield* settle;
+        spawned[0]?.print("73\u001b[22m/\u001b[39m\r\n");
+        yield* settle;
+        spawned[0]?.end(0);
+        yield* terminals.restart(id, size);
+        spawned[1]?.print("ready [http://localhost:3000/]\r\n");
+        yield* settle;
+        assert.deepStrictEqual(
+          seen.map((event) => event.url),
+          ["http://localhost:5173/", "http://localhost:3000/"],
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+  });
+
   it.live("leaves plain shells alone, and finds an address cut across two pieces of output", () => {
     const { spawned, provide } = withTerminals();
     return provide(

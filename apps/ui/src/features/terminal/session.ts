@@ -1,4 +1,4 @@
-import { localUrlsIn } from "@cerium/browser/url";
+import { localUrlsIn, withoutEscapes } from "@cerium/browser/url";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal, type ITheme } from "@xterm/xterm";
@@ -260,15 +260,10 @@ export class TerminalSession {
   }
 
   #watchForLocalUrl(data: string) {
-    // Colours and cursor moves come out first: a dev server colours its port apart from its host.
-    const text = `${this.#tail}${data}`.replace(
-      // oxlint-disable-next-line no-control-regex -- escape sequences are control characters
-      /\u001b\[[\d;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g,
-      "",
-    );
+    const text = withoutEscapes(`${this.#tail}${data}`);
     this.#tail = text.slice(-200);
     if (!text.includes("://")) return;
-    const found = localUrlsIn(text).at(-1);
+    const found = localUrlsIn(text, true).at(-1);
     if (found === undefined || found === this.#localUrl) return;
     this.#localUrl = found;
     for (const listener of this.#localUrlListeners) listener();

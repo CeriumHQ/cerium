@@ -41,6 +41,9 @@
     },
     {
       "path": "../../packages/artifacts"
+    },
+    {
+      "path": "../../packages/browser"
     }
   ]
 }

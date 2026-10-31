@@ -40,11 +40,22 @@ export const isLocalUrl = (url: string): boolean => {
   }
 };
 
-/** The local addresses in a line of terminal output, such as Vite's `Local: http://localhost:5173/`. */
-export const localUrlsIn = (text: string): ReadonlyArray<string> => {
+/** Colours, cursor moves and window titles in terminal output. */
+// oxlint-disable-next-line no-control-regex -- escape sequences are control characters
+const ESCAPES = /\u001b\[[\d;?]*[ -/]*[@-~]|\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
+
+/** Terminal output as the text it shows: a dev server colours its port apart from its host. */
+export const withoutEscapes = (text: string): string => text.replace(ESCAPES, "");
+
+/**
+ * The local addresses in terminal output without its escapes (`withoutEscapes`), such as Vite's
+ * `Local: http://localhost:5173/`. With `partial`, the text is the latest output, which can stop
+ * partway through an address: one running to its very end waits for the output after it.
+ */
+export const localUrlsIn = (text: string, partial = false): ReadonlyArray<string> => {
   const found: Array<string> = [];
-  // Terminal colours split a URL from its port at times; they're gone before this sees the text.
   for (const match of text.matchAll(/\bhttps?:\/\/[^\s"'<>`]+/gi)) {
+    if (partial && match.index + match[0].length === text.length) continue;
     const url = match[0].replace(/[.,;:)\]]+$/, "");
     const normalized = previewUrl(url);
     if (normalized !== undefined && isLocalUrl(normalized) && !found.includes(normalized)) {

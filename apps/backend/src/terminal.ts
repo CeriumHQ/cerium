@@ -8,6 +8,7 @@ import {
   type TerminalOutput,
   type TerminalSize,
 } from "@cerium/rpc";
+import { localUrlsIn, withoutEscapes } from "@cerium/browser/url";
 import { Store, type StoreError } from "@cerium/store";
 import { Clock, Context, Effect, FileSystem, Layer, Option, Path, PubSub, Stream } from "effect";
 import { randomUUID } from "node:crypto";
@@ -63,16 +64,12 @@ export const SCRIPT_LABELS = ["Setup", "Run"] as const;
 export type ScriptLabel = (typeof SCRIPT_LABELS)[number];
 
 /**
- * Addresses a dev server serves itself at in the shell's output: only hosts the same machine's
- * browser can reach, as `Url` output pieces. Sites a page links to read the same, so no more is
- * taken.
+ * Addresses a dev server serves itself at in the shell's output, read as the terminal's viewer reads
+ * them: only hosts the same machine's browser can reach, as `Url` output pieces. Sites a page links to
+ * read the same, so no more is taken. `partial` output can stop partway through one, which waits.
  */
-const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/[^\s"'`<>()\\]*)?/gi;
-
-/** Addresses the output holds, without the punctuation a sentence may end on. */
-export const urlsIn = (text: string): ReadonlyArray<string> => [
-  ...new Set((text.match(LOCAL_URL) ?? []).map((url) => url.replace(/[.,;:!?]+$/, ""))),
-];
+const urlsIn = (output: string, partial = false): ReadonlyArray<string> =>
+  localUrlsIn(withoutEscapes(output), partial);
 
 /**
  * An address as a browser on this machine reaches it: a server that listens on every interface prints
@@ -294,9 +291,10 @@ export class Terminals extends Context.Service<
           }
           send(entry, { _tag: "Data", seq: ++entry.seq, data });
           // A dev server's address goes beside the output that printed it, for a preview to open.
-          // An address cut across two pieces is found when they join here; those on the screen are
-          // found again by the viewers that join later.
-          for (const url of urlsIn(`${entry.tail}${data}`)) {
+          // An address cut across two pieces is found when they join here, and one at the very end
+          // waits to be finished; those on the screen are found again by the viewers that join later.
+          const joined = `${entry.tail}${data}`;
+          for (const url of urlsIn(joined, true)) {
             if (entry.urls.has(url)) continue;
             entry.urls.add(url);
             send(entry, { _tag: "Url", seq: ++entry.seq, url });
@@ -309,7 +307,7 @@ export class Terminals extends Context.Service<
               });
             }
           }
-          entry.tail = data.length > 256 ? "" : data.slice(-256);
+          entry.tail = joined.slice(-512);
           // A shell that prints faster than the screen reads waits for it, rather than piling up output.
           if (!entry.paused && entry.unread > PAUSE_ABOVE) {
             entry.paused = true;
