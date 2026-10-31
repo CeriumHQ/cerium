@@ -2474,6 +2474,15 @@ export class Orchestrator extends Context.Service<
           }
 
           let resume = options.resume;
+          const startFailure = (cause: Cause.Cause<OrchestratorError>) => {
+            const error = Cause.squash(cause);
+            return error instanceof OrchestratorError
+              ? error
+              : new OrchestratorError({
+                  reason: "unavailable",
+                  message: error instanceof Error ? error.message : String(error),
+                });
+          };
           const start = Effect.gen(function* () {
             const info = rt.info;
             const sessionScope = yield* Scope.fork(scope);
@@ -2559,10 +2568,11 @@ export class Orchestrator extends Context.Service<
               // have saved it (Codex keeps a thread only once it runs a turn): a new one takes its place.
               resume = rt.fresh ? undefined : rt.info.providerSessionId;
               yield* start.pipe(
-                Effect.catch((error) =>
+                Effect.catchCause((cause) =>
                   Effect.gen(function* () {
                     rt.sleeping = true;
-                    yield* Deferred.fail(rt.started, error);
+                    yield* Deferred.fail(rt.started, startFailure(cause));
+                    if (Cause.hasInterrupts(cause)) return yield* Effect.interrupt;
                   }),
                 ),
                 Effect.asVoid,
@@ -2575,8 +2585,12 @@ export class Orchestrator extends Context.Service<
               Deferred.into(prepared),
               Effect.andThen(Deferred.await(prepared)),
               Effect.andThen(start),
-              Effect.catch((error) =>
-                Effect.gen(function* () {
+              Effect.catchCause((cause) => {
+                const error = startFailure(cause);
+                if (Cause.hasInterrupts(cause)) {
+                  return Deferred.fail(rt.started, error).pipe(Effect.andThen(Effect.interrupt));
+                }
+                return Effect.gen(function* () {
                   rt.ended = true;
                   yield* emit(rt, {
                     _tag: "AgentError",
@@ -2593,8 +2607,8 @@ export class Orchestrator extends Context.Service<
                       text: `Agent ${info.id} (${info.role}) could not start: ${error.message}. Completed sibling results are included with this notice.`,
                     });
                   }
-                }).pipe(Effect.ensuring(Deferred.fail(rt.started, error)), Effect.ignore),
-              ),
+                }).pipe(Effect.ensuring(Deferred.fail(rt.started, error)), Effect.ignore);
+              }),
             ),
             scope,
           );
@@ -2819,7 +2833,9 @@ export class Orchestrator extends Context.Service<
           runtimes.delete(rt.info.id);
           yield* endWork(rt.info.id);
           pendingPermissions.delete(rt.info.id);
-          pendingSpawns.delete(rt.info.id);
+          for (const [requestId, pending] of pendingSpawns) {
+            if (pending.leadId === rt.info.id) pendingSpawns.delete(requestId);
+          }
           allowedTools.delete(rt.info.id);
           held.delete(rt.info.id);
           briefsOwed.delete(rt.info.id);

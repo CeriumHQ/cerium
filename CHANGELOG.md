@@ -12,6 +12,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Harness startup defects settle their waiting turns instead of leaving an unanswered startup promise, and stopped leads release pending spawn prompts by their request ids.
 - Failed harness startups close their process scopes and bus registrations immediately, sleeping sessions can retry a failed wake, and interrupted turns release folder-activity bookkeeping even when stopped before sending their input.
 - Codex requests fail promptly after its app-server exits and release pending replies when cancelled, so stopping a crashed agent cannot hang on an unanswered interrupt.
 - Turning computer use off or quitting ends the sessions currently using the desktop, releasing their cursors and cancelling their calls; cleanup no longer uses the empty session list from startup.
