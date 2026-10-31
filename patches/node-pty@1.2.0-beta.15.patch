@@ -1,0 +1,16 @@
+diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
+--- a/lib/windowsPtyAgent.js
++++ b/lib/windowsPtyAgent.js
+@@ -90,6 +90,12 @@
+             writable: true
+         });
+         this._inSocket.setEncoding('utf8');
++        // ConPTY DLL closes output when the shell exits. Release the input pipe
++        // and output worker too, including when no more data follows a kill.
++        this._outSocket.once('close', function () {
++            _this._inSocket.destroy();
++            _this._conoutSocketWorker.dispose();
++        });
+     }
+     Object.defineProperty(WindowsPtyAgent.prototype, "onError", {
+         get: function () {

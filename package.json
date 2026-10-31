@@ -46,6 +46,9 @@
     "node": ">=24.11.0"
   },
   "packageManager": "bun@1.4.3",
+  "patchedDependencies": {
+    "node-pty@1.2.0-beta.15": "patches/node-pty@1.2.0-beta.15.patch"
+  },
   "trustedDependencies": [
     "electron"
   ]
