@@ -67,6 +67,7 @@ import {
   accountThreadsAtom,
   cloudEventsAtom,
   compactAgent,
+  stopBackgroundTask,
   askSideQuestion,
   continueThread,
   createThread,
@@ -233,6 +234,7 @@ import {
   WITHDRAW_VERSION,
 } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
+import { STOP_BACKGROUND_VERSION } from "../features/composer/BackgroundTray.tsx";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
@@ -889,6 +891,7 @@ function Workspace() {
   const revertTurn = useAtomSet(revertTurnFiles, { mode: "promise" });
   const switchLead = useAtomSet(switchModel, { mode: "promise" });
   const compactLead = useAtomSet(compactAgent, { mode: "promise" });
+  const stopBackground = useAtomSet(stopBackgroundTask, { mode: "promise" });
   const setOnLimit = useAtomSet(setThreadOnLimit, { mode: "promise" });
   const askSide = useAtomSet(askSideQuestion, { mode: "promise" });
   const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
@@ -2120,6 +2123,10 @@ function Workspace() {
         : undefined,
     switchLead: (agentId, choice) => switchLead({ payload: { agentId, ...choice } }),
     compact: (agentId) => compactLead({ payload: { agentId } }),
+    stopBackground:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STOP_BACKGROUND_VERSION
+        ? (agentId, taskId) => stopBackground({ payload: { agentId, taskId } })
+        : undefined,
     setOnLimit:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= LIMIT_POLICY_VERSION
         ? (threadId, policy) =>

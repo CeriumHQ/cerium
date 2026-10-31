@@ -57,6 +57,7 @@ import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
 import type { Queue } from "../features/composer/QueueTray.tsx";
+import type { Background } from "../features/composer/BackgroundTray.tsx";
 import {
   buildTranscript,
   IncrementalTranscript,
@@ -144,6 +145,8 @@ export interface ThreadPaneActions {
   readonly switchLead: (agentId: AgentId, choice: ModelSwitch) => Promise<unknown>;
   /** Asks a lead's harness to compact its conversation. */
   readonly compact: (agentId: AgentId) => Promise<unknown>;
+  /** Stops one of an agent's background tasks; absent when the machine's backend can't. */
+  readonly stopBackground?: ((agentId: AgentId, taskId: string) => Promise<unknown>) | undefined;
   /**
    * Sets what a thread does when its harness's usage runs out; absent when the machine's backend
    * can't.
@@ -313,6 +316,26 @@ export function ThreadPane({
               }),
         }
       : undefined;
+  // Every agent's background work, the lead's first. A thread read from the cloud copy can't stop
+  // any: that takes its machine.
+  const { stopBackground } = actions;
+  const background: Background = {
+    entries: agents.flatMap((agent) =>
+      agent.background.map((task) => ({
+        agentId: agent.id,
+        ...(agent.parentId === undefined ? {} : { role: agent.role }),
+        task,
+      })),
+    ),
+    ...(cloud || !stopBackground
+      ? {}
+      : {
+          onStop: (agentId: string, taskId: string) =>
+            attempt(stopBackground(agentId as AgentId, taskId)).then((done) =>
+              done ? undefined : Promise.reject(new Error("Not stopped")),
+            ),
+        }),
+  };
 
   return (
     // The browser docks beside the conversation and its terminal drawer, which docks under the
@@ -521,6 +544,7 @@ export function ThreadPane({
                     ) : undefined
                   }
                   queue={queue}
+                  background={viewed && lead ? background : undefined}
                   above={
                     cloud ? (
                       <ConnectingNote machine={cloud.name} />

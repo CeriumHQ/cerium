@@ -735,6 +735,7 @@ const SUMMARY_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
   "ContextCompacted",
   "ConversationRewound",
   "TodosUpdated",
+  "BackgroundTasksChanged",
   "SessionStarted",
   "ModelChanged",
   "LeadHandedOff",
@@ -787,6 +788,7 @@ export const restoreBefore = Backend.mutation("RestoreBefore");
 export const switchModel = Backend.mutation("SwitchModel");
 export const handOffLead = Backend.mutation("HandOffLead");
 export const compactAgent = Backend.mutation("CompactAgent");
+export const stopBackgroundTask = Backend.mutation("StopBackgroundTask");
 export const askSideQuestion = Backend.mutation("AskSideQuestion");
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");
