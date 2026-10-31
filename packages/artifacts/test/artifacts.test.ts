@@ -88,6 +88,23 @@ describe("artifactDocument", () => {
     assert.isBelow(ours, html.indexOf(":root{--foreground:red}"));
   });
 
+  it("inserts after the entire head tag, even with a quoted greater-than sign", () => {
+    const page = '<!doctype html><html><head data-example="a > b"><script>first()</script></head></html>';
+    const html = artifactDocument(page, { theme });
+    assert.include(html, '<head data-example="a > b">\n<meta charset="utf-8">');
+    assert.isBelow(html.indexOf("Content-Security-Policy"), html.indexOf("first()"));
+  });
+
+  it("puts policy before an implicit head's content and ignores fake heads and titles", () => {
+    const page = '<!doctype html><html lang="en"><title>Own</title><script>first()</script><body>x</body>';
+    const html = artifactDocument(page, { theme, title: "Other" });
+    assert.include(html, '<html lang="en"><head>');
+    assert.isBelow(html.indexOf("Content-Security-Policy"), html.indexOf("first()"));
+    assert.notInclude(html, "<title>Other</title>");
+    const fragment = artifactDocument("<!-- <head><title>fake</title> --><p>x</p>", { theme, title: "Real" });
+    assert.include(fragment, "<title>Real</title>");
+  });
+
   it("adds a doctype to a document without one", () => {
     assert.match(artifactDocument("<html><body>x</body></html>", { theme }), /^<!doctype html><html><head>/);
   });
@@ -274,6 +291,50 @@ describe("finding artifacts", () => {
     assert.deepStrictEqual(artifactBlocks("```artifact\n\n```"), []);
     assert.deepStrictEqual(artifactBlocks("```artifact``` in a sentence"), []);
     assert.deepStrictEqual(artifactBlocks("```html\n```artifact\n```\n"), []);
+  });
+
+  it("extracts nested fences with the renderer's normalized content and ignores HTML comments", () => {
+    const text = [
+      "<!--",
+      "```artifact",
+      "<p>hidden</p>",
+      "```",
+      "-->",
+      "",
+      "> ```artifact",
+      "> <p>quoted</p>",
+      "> ```",
+      "",
+      "  ```artifact",
+      "  <div>",
+      "    content",
+      "  </div>",
+      "  ```",
+      "",
+      "- item",
+      "",
+      "  ```artifact",
+      "  <p>listed</p>",
+      "  ```",
+    ].join("\n");
+    assert.deepStrictEqual(artifactBlocks(text), [
+      "<p>quoted</p>",
+      "<div>\n  content\n</div>",
+      "<p>listed</p>",
+    ]);
+    assert.strictEqual(artifactId(artifactBlocks(text)[1]!), artifactId("<div>\n  content\n</div>"));
+  });
+
+  it("requires a real closing fence, including in containers", () => {
+    assert.deepStrictEqual(artifactBlocks("> ```artifact\n> <p>unfinished</p>\nnext"), []);
+    assert.deepStrictEqual(artifactBlocks("```artifact\n<p>unfinished</p>\n    ```"), []);
+    assert.deepStrictEqual(artifactBlocks("````artifact\n<p>x</p>\n```"), []);
+    assert.deepStrictEqual(artifactBlocks("```artifact\n<p>x</p>\n``` trailing"), []);
+    assert.deepStrictEqual(artifactBlocks("```artifact\n<p>x</p>\n\n```"), ["<p>x</p>\n"]);
+  });
+
+  it("does not extract fences inside a math block", () => {
+    assert.deepStrictEqual(artifactBlocks("$$\n```artifact\n<p>math</p>\n```\n$$"), []);
   });
 
   it("lists pages newest first, each once", () => {
