@@ -1219,6 +1219,23 @@ export class Orchestrator extends Context.Service<
         rt.turn === undefined ? Effect.void : Deferred.succeed(rt.turn, undefined);
 
       /**
+       * A child that ended without reporting gives up its assignment, so its group stops waiting on it,
+       * and its lead hears why, with the results its siblings already sent.
+       */
+      const abandonAssignment = (rt: Runtime, why: string) =>
+        Effect.gen(function* () {
+          const assignment = messageDelivery.taskFor(rt.info.id);
+          messageDelivery.remove(rt.info.id);
+          if (assignment === undefined) return;
+          const parent = runtimes.get(assignment.from);
+          if (parent === undefined || parent.ended) return;
+          yield* deliver(parent.info.id, {
+            _tag: "SystemNotice",
+            text: `Agent ${rt.info.id} (${rt.info.role}) ${why}. Completed sibling results are included with this notice.`,
+          });
+        });
+
+      /**
        * Hands the agent the user's messages waiting behind its turn: the turn is interrupted, and they
        * start the next one, the same way on every harness. So a message reaches the agent at its next
        * step rather than once it is done: Cerium steers when the turn's tool calls have all finished,
@@ -1463,6 +1480,8 @@ export class Orchestrator extends Context.Service<
               if (rt.info.parentId === undefined) yield* releaseLeadRequests(rt.info.id);
               yield* finishTurn(rt);
               if (rt.info.state !== "stopped") yield* setState(rt, "failed").pipe(Effect.ignore);
+              // Stopping already gave the assignment up; a crash leaves it to this.
+              yield* abandonAssignment(rt, "ended before finishing its assignment").pipe(Effect.ignore);
             }),
           ),
         );
@@ -2558,14 +2577,7 @@ export class Orchestrator extends Context.Service<
                     retryable: false,
                   });
                   yield* setState(rt, "failed");
-                  const assignment = messageDelivery.taskFor(info.id);
-                  messageDelivery.remove(info.id);
-                  if (assignment !== undefined) {
-                    yield* deliver(assignment.from, {
-                      _tag: "SystemNotice",
-                      text: `Agent ${info.id} (${info.role}) could not start: ${error.message}. Completed sibling results are included with this notice.`,
-                    });
-                  }
+                  yield* abandonAssignment(rt, `could not start: ${error.message}`);
                 }).pipe(Effect.ensuring(Deferred.fail(rt.started, error)), Effect.ignore),
               ),
             ),

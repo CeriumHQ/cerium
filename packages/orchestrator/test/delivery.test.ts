@@ -3,7 +3,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { AgentId } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import { MessageDelivery } from "../src/delivery.ts";
 import { Orchestrator, UserSettings } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
@@ -332,6 +332,53 @@ describe("message requests", () => {
       );
       assert.include(fake.sessions[0]!.sent[0]!, "child unavailable");
     }).pipe(Effect.provide(testLayer([adapter], { catalog: [scout] })), Effect.scoped);
+  });
+  it.live("hands the lead a healthy sibling's report when its group-mate's session crashes", () => {
+    const fake = makeFakeAdapter("claude", { turnDuration: "150 millis" });
+    const adapter = {
+      ...fake.adapter,
+      startSession: (options: Parameters<typeof fake.adapter.startSession>[0]) =>
+        fake.adapter.startSession(options).pipe(
+          Effect.map((session) =>
+            options.model === "sonnet"
+              ? {
+                  ...session,
+                  // The harness's process dies partway through the child's first turn.
+                  events: session.events.pipe(
+                    Stream.takeWhile((event) => event.payload._tag !== "MessageDelta"),
+                    Stream.concat(
+                      Stream.fail(
+                        new HarnessFailure({ provider: "claude", message: "crashed", cause: null }),
+                      ),
+                    ),
+                  ),
+                }
+              : session,
+          ),
+        ),
+    };
+    const crasher = {
+      alias: "crasher",
+      provider: "claude",
+      model: "sonnet",
+      description: "Crashes",
+    } as const;
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const { lead } = yield* start(orchestrator);
+      yield* orchestrator.sendUserMessage(lead.id, "split it");
+      yield* waitFor(() => (fake.sessions[0]?.sent.length ? true : undefined));
+      yield* orchestrator.spawn(lead.id, { model: "scout", role: "healthy", prompt: "inspect" });
+      yield* orchestrator.spawn(lead.id, { model: "crasher", role: "doomed", prompt: "inspect" });
+      yield* waitFor((events) =>
+        events.find((event) => event.agentId === lead.id && event.payload._tag === "MessageHeld"),
+      );
+      const woken = yield* waitFor(() =>
+        fake.sessions[0]?.sent.find((text) => text.includes("ended before finishing its assignment")),
+      );
+      assert.include(woken, "reply to: [Cerium] Request");
+    }).pipe(Effect.provide(testLayer([adapter], { catalog: [scout, crasher] })), Effect.scoped);
   });
   it.live("keeps a child assignment pending through a user question and unblocks a dismissal", () => {
     const fake = makeFakeAdapter("claude", { turnDuration: "100 millis" });

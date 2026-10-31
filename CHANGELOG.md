@@ -17,6 +17,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 - The mobile Settings list scrolls to all its categories.
 - A link inside the thread's folder can no longer bring a file from outside it into an artifact preview's data or a cross-harness review's untracked files.
+- When a child agent's harness session crashes, its lead is told and receives the results its siblings already reported, instead of those results waiting on the crashed child.
 
 ### Changed
 
