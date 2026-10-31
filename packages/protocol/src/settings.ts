@@ -43,6 +43,7 @@ export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   { provider: "muse", model: "muse-spark-1.3-contributor" },
   // Grok Build's default as 1.0.70 lists it; a title runs at its lowest effort.
   { provider: "grok", model: "grok-4.6" },
+  { provider: "antigravity", model: "gemini-3.8-flash" },
 ];
 
 /** How Cerium names a new thread from its first message. */

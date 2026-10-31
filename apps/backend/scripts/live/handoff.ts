@@ -61,6 +61,7 @@ const quick: Partial<Record<ProviderId, RegExp>> = {
   opencode: /big-pickle|free/i,
   muse: /fast|lite|mini/i,
   grok: /build|fast|mini/i,
+  antigravity: /flash/i,
 };
 
 const CODE = "PELICAN-42";

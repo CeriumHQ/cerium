@@ -120,6 +120,7 @@ const preferred: Partial<Record<ProviderId, RegExp>> = {
   opencode: /big-pickle|free/i,
   muse: /fast|lite|mini/i,
   grok: /build|fast|mini/i,
+  antigravity: /flash/i,
 };
 
 const listFiles = (folder: string): ReadonlyArray<string> => {

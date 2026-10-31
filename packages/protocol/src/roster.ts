@@ -22,6 +22,7 @@ const MODEL_USES: ReadonlyMap<string, string> = new Map([
   [key("muse", "muse-spark-1.3"), "Everyday coding"],
   [key("opencode", "opencode/big-pickle"), "Free, for small low-stakes tasks"],
   [key("grok", "grok-build-0.1"), "Everyday coding"],
+  [key("antigravity", "gemini-3.8-flash"), "Everyday coding"],
 ]);
 
 /** The models each harness starts the roster with, best first, while the user hasn't changed its roster. */
@@ -36,6 +37,7 @@ const STARTER: ReadonlyArray<readonly [ProviderId, string]> = [
   ["opencode", "opencode/big-pickle"],
   // xAI's coding model, where the plan offers it; else Grok's own default.
   ["grok", "grok-build-0.1"],
+  ["antigravity", "gemini-3.8-flash"],
 ];
 
 /** What a lead is told to use `model` for: the user's words, else Cerium's, else the harness's. */

@@ -1829,7 +1829,7 @@ function Workspace() {
       group: "Actions",
       label: "Import sessions…",
       icon: History,
-      keywords: "bring sessions claude code codex opencode muse history resume",
+      keywords: "bring sessions claude code codex opencode muse grok antigravity history resume",
       run: () => openImport(true),
     },
     ...settingsPages.map(({ id, label, icon, group }): PaletteCommand => ({

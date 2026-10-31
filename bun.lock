@@ -16,6 +16,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@cerium/account": "workspace:*",
+        "@cerium/adapter-antigravity": "workspace:*",
         "@cerium/adapter-claude": "workspace:*",
         "@cerium/adapter-codex": "workspace:*",
         "@cerium/adapter-cursor": "workspace:*",
@@ -160,6 +161,20 @@
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/adapters/antigravity": {
+      "name": "@cerium/adapter-antigravity",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+        "yaml": "2.9.1",
       },
       "devDependencies": {
         "@effect/platform-node": "4.0.5",
@@ -455,6 +470,8 @@
     "@cerium/account": ["@cerium/account@workspace:packages/account"],
 
     "@cerium/adapter-acp": ["@cerium/adapter-acp@workspace:packages/adapters/acp"],
+
+    "@cerium/adapter-antigravity": ["@cerium/adapter-antigravity@workspace:packages/adapters/antigravity"],
 
     "@cerium/adapter-claude": ["@cerium/adapter-claude@workspace:packages/adapters/claude"],
 

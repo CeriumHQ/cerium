@@ -23,9 +23,12 @@
   <img alt="Works with Muse Code" src="https://img.shields.io/badge/Muse%20Code-0467DF?style=for-the-badge&logo=meta&logoColor=white" />
   <img alt="Works with Cursor" src="https://img.shields.io/badge/Cursor-1c1c1c?style=for-the-badge&logo=cursor&logoColor=white" />
   <img alt="Works with OpenCode" src="https://img.shields.io/badge/OpenCode-211e1e?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2IDZIOHYxMmg4VjZ6bTQgMTZINFYyaDE2djIweiIvPjwvc3ZnPg==" />
+  <img alt="Works with Grok Build" src="https://img.shields.io/badge/Grok%20Build-000000?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik05LjI3IDE1LjI5bDcuOTc4LTUuODk3Yy4zOTEtLjI5Ljk1LS4xNzcgMS4xMzcuMjcyLjk4IDIuMzY5LjU0MiA1LjIxNS0xLjQxIDcuMTY5LTEuOTUxIDEuOTU0LTQuNjY3IDIuMzgyLTcuMTQ5IDEuNDA2bC0yLjcxMSAxLjI1N2MzLjg4OSAyLjY2MSA4LjYxMSAyLjAwMyAxMS41NjItLjk1MyAyLjM0MS0yLjM0NCAzLjA2Ni01LjUzOSAyLjM4OC04LjQybC4wMDYuMDA3Yy0uOTgzLTQuMjMyLjI0Mi01LjkyNCAyLjc1LTkuMzgzLjA2LS4wODIuMTItLjE2NC4xNzktLjI0OGwtMy4zMDEgMy4zMDV2LS4wMUw5LjI2NyAxNS4yOTJNNy42MjMgMTYuNzIzYy0yLjc5Mi0yLjY3LTIuMzEtNi44MDEuMDcxLTkuMTg0IDEuNzYxLTEuNzYzIDQuNjQ3LTIuNDgzIDcuMTY2LTEuNDI1bDIuNzA1LTEuMjVhNy44MDggNy44MDggMCAwMC0xLjgyOS0xQTguOTc1IDguOTc1IDAgMDA1Ljk4NCA1LjgzYy0yLjUzMyAyLjUzNi0zLjMzIDYuNDM2LTEuOTYyIDkuNzY0IDEuMDIyIDIuNDg3LS42NTMgNC4yNDYtMi4zNCA2LjAyMi0uNTk5LjYzLTEuMTk5IDEuMjU5LTEuNjgyIDEuOTI1bDcuNjItNi44MTUiLz48L3N2Zz4=" />
+  <img alt="Works with Antigravity CLI" src="https://img.shields.io/badge/Antigravity%20CLI-3C7BF4?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0yMS43NTEgMjIuNjA3YzEuMzQgMS4wMDUgMy4zNS4zMzUgMS41MDgtMS41MDhDMTcuNzMgMTUuNzQgMTguOTA0IDEgMTIuMDM3IDEgNS4xNyAxIDYuMzQyIDE1Ljc0LjgxNSAyMS4xYy0yLjAxIDIuMDA5LjE2NyAyLjUxMSAxLjUwNyAxLjUwNiA1LjE5Mi0zLjUxNyA0Ljg1Ny05LjcxNCA5LjcxNS05LjcxNCA0Ljg1NyAwIDQuNTIyIDYuMTk3IDkuNzE0IDkuNzE1eiIvPjwvc3ZnPg==" />
 </p>
 
-Ask once. A lead agent splits the job across Claude Code, Codex, Cursor, OpenCode and Muse Code, the
+Ask once. A lead agent splits the job across Claude Code, Codex, Cursor, OpenCode, Muse Code, Grok Build
+and Antigravity CLI, the
 helpers work in parallel and talk to each other, and you get one answer back.
 
 [**Download**](https://github.com/CeriumHQ/cerium/releases/latest) ·
@@ -94,7 +97,7 @@ push". Your phone hears about it when it's done.
   <tr>
     <td valign="top"><b>From your phone</b><br />Sign in and your computer's threads come along, with a ping when an agent needs you.</td>
     <td valign="top"><b>Side by side</b><br />Split the window into panes, or send one prompt to four models and compare.</td>
-    <td valign="top"><b>Bring your sessions</b><br />Import the Claude Code, Codex, OpenCode and Muse sessions you already have.</td>
+    <td valign="top"><b>Bring your sessions</b><br />Import the Claude Code, Codex, OpenCode, Muse, Grok Build and Antigravity sessions you already have.</td>
   </tr>
 </table>
 
@@ -107,18 +110,23 @@ push". Your phone hears about it when it's done.
 Each agent is the real harness, driven through its official SDK on your own subscription. Cerium
 starts each harness's own sign-in and never reads its tokens or keys.
 
-| Harness         | Driven through                                      | Sign in                  |
-| --------------- | --------------------------------------------------- | ------------------------ |
-| **Claude Code** | Claude Agent SDK, running your installed `claude`   | `claude` login           |
-| **Codex**       | `codex app-server`, with types from your install    | `codex login`            |
-| **Muse Code**   | `@muse-code/sdk`, over a private `muse serve`       | `muse login`             |
-| **Cursor**      | `@cursor/sdk`, running Cursor's agent locally       | Cursor's browser sign-in |
-| **OpenCode**    | `@opencode/client`, over a private `opencode serve` | `opencode auth login`    |
+| Harness             | Driven through                                                     | Sign in                       |
+| ------------------- | ------------------------------------------------------------------ | ----------------------------- |
+| **Claude Code**     | Claude Agent SDK, running your installed `claude`                  | `claude` login                |
+| **Codex**           | `codex app-server`, with types from your install                   | `codex login`                 |
+| **Muse Code**       | `@muse-code/sdk`, over a private `muse serve`                      | `muse login`                  |
+| **Cursor**          | `@cursor/sdk`, running Cursor's agent locally                      | Cursor's browser sign-in      |
+| **OpenCode**        | `@opencode/client`, over a private `opencode serve`                | `opencode auth login`         |
+| **Grok Build**      | Agent Client Protocol, over a private `grok agent stdio`           | `grok login`                  |
+| **Antigravity CLI** | `agy` headless runs, with Cerium's agent, plugin and approval hook | `agy` (signs in on first run) |
 
 Install any of them and sign in as usual; Cerium finds them. OpenCode's free models need no sign-in.
 On Windows, Muse runs commands with Full access only for now: `muse serve` can't sandbox them there.
+Grok Build needs a SuperGrok or X Premium+ plan (or an xAI API key); its read-only mode needs bubblewrap
+on Linux. Google's terms for Antigravity don't cover running `agy` from other apps on personal Google
+accounts: sign it in with a Gemini API key or Google Cloud to stay within them.
 Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-Anysphere or Anomaly.
+Anysphere, Anomaly, xAI or Google.
 
 <details>
 <summary><b>How it works</b></summary>
@@ -134,7 +142,9 @@ flowchart LR
   Backend --> Muse["Muse Code"]
   Backend --> Cursor["Cursor"]
   Backend --> OpenCode["OpenCode"]
-  Claude & Codex & Muse & Cursor & OpenCode <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
+  Backend --> Grok["Grok Build"]
+  Backend --> Antigravity["Antigravity CLI"]
+  Claude & Codex & Muse & Cursor & OpenCode & Grok & Antigravity <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
 ```
 
 Adapters translate each harness's stream into one event schema, stored as an append-only log. Cerium

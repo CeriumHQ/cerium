@@ -156,7 +156,8 @@ export default {
     executableName: "cerium",
     syncDesktopName: true,
     synopsis: "One thread, every agent",
-    description: "Runs Claude Code, Codex, Cursor and OpenCode side by side.",
+    description:
+      "Runs Claude Code, Codex, Cursor, OpenCode, Muse Code, Grok Build and Antigravity CLI side by side.",
     maintainer: "CeriumHQ",
   },
   appImage: { artifactName: "Cerium-${version}-${arch}.${ext}" },

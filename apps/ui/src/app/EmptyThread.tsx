@@ -94,7 +94,7 @@ export function EmptyThread({
           {onSetUp ? (
             <>
               <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-body leading-relaxed text-fg-tertiary">
-                Set up Claude, Codex, Muse, Cursor or OpenCode to start.
+                Set up Claude, Codex, Muse, Cursor, OpenCode, Grok or Antigravity to start.
               </p>
               <Button
                 onClick={onSetUp}

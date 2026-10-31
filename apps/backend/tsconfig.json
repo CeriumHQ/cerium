@@ -43,6 +43,9 @@
       "path": "../../packages/adapters/grok"
     },
     {
+      "path": "../../packages/adapters/antigravity"
+    },
+    {
       "path": "../../packages/rpc"
     },
     {
