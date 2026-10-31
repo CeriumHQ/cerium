@@ -1,6 +1,6 @@
 import { findBrowser, launchBrowser, Page, pickPage } from "@cerium/browser";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -70,12 +70,14 @@ const readLocalFiles = async (html: string, folder: string | undefined) => {
         urls.set(path, `data:${type.mediaType};base64,${(await readFile(path)).toString("base64")}`);
         continue;
       }
-      const inside = folder === undefined ? undefined : relative(resolve(folder), resolve(path));
+      // Where the file really is, so a link in the folder can't lead a page to one outside it.
+      const real = await realpath(path);
+      const inside = folder === undefined ? undefined : relative(await realpath(resolve(folder)), real);
       if (inside === undefined || inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
         throw new Error("data files are embedded only from the thread's folder");
       }
       if (size > MAX_DATA_BYTES) throw new Error("larger than 2 MB");
-      urls.set(path, dataFileUrl(type.mediaType, await readFile(path, "utf8")));
+      urls.set(path, dataFileUrl(type.mediaType, await readFile(real, "utf8")));
     } catch (cause) {
       const reason = cause instanceof Error && "code" in cause ? String(cause.code) : String(cause);
       missing.push({ level: "error", text: `Couldn't embed the local file ${path}: ${reason}` });

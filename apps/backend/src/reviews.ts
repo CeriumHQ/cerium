@@ -4,7 +4,7 @@ import { ReviewRecord, type FindingState, type ReviewerModel, type ReviewTarget 
 import { Context, Effect, FiberMap, FileSystem, Layer, Option, Path, PubSub, Schema, Stream } from "effect";
 import { randomUUID } from "node:crypto";
 
-import { resolveInside } from "./files.ts";
+import { isInside, resolveInside } from "./files.ts";
 import { Git } from "./git.ts";
 import {
   addedFile,
@@ -162,8 +162,13 @@ export class Reviews extends Context.Service<
             const fresh = (yield* look(top, ["ls-files", "--others", "--exclude-standard"]))
               .split("\n")
               .filter((name) => name !== "");
+            // An untracked link is read only where it leads inside the repository: what's outside it
+            // isn't the change's to show another harness.
+            const realTop = yield* fs.realPath(top).pipe(Effect.orElseSucceed(() => top));
             for (const name of fresh.slice(0, NEW_FILES_READ)) {
-              const text = yield* fs.stream(path.resolve(top, name), { bytesToRead: NEW_FILE_BYTES }).pipe(
+              const real = yield* fs.realPath(path.resolve(top, name)).pipe(Effect.option);
+              if (Option.isNone(real) || !isInside(realTop, real.value)) continue;
+              const text = yield* fs.stream(real.value, { bytesToRead: NEW_FILE_BYTES }).pipe(
                 Stream.runCollect,
                 Effect.map((chunks) => new TextDecoder().decode(Buffer.concat(chunks))),
                 Effect.option,

@@ -1,6 +1,6 @@
 import { findBrowser } from "@cerium/browser";
 import { assert, describe, it } from "@effect/vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,8 @@ describe.skipIf(findBrowser() === undefined)("previewArtifact", () => {
       writeFileSync(join(elsewhere, "dot.png"), DOT);
       writeFileSync(join(folder, "inside.csv"), "a,b");
       writeFileSync(join(elsewhere, "outside.csv"), "c,d");
+      // A link in the folder leading out of it.
+      symlinkSync(elsewhere, join(folder, "linked"), "junction");
       const preview = await previewArtifact({
         html: `<script>
           const image = new Image();
@@ -52,7 +54,8 @@ describe.skipIf(findBrowser() === undefined)("previewArtifact", () => {
             .then((response) => response.text())
             .then((text) => console.log("data", text));
         </script>
-        <img src="${join(elsewhere, "missing.png")}"><a href="${join(elsewhere, "outside.csv")}">data</a>`,
+        <img src="${join(elsewhere, "missing.png")}"><a href="${join(elsewhere, "outside.csv")}">data</a>
+        <a href="${join(folder, "linked", "outside.csv")}">linked</a>`,
         width: 400,
         mode: "dark",
         folder,
@@ -65,6 +68,10 @@ describe.skipIf(findBrowser() === undefined)("previewArtifact", () => {
       assert.include(
         texts,
         `Couldn't embed the local file ${join(elsewhere, "outside.csv")}: Error: data files are embedded only from the thread's folder`,
+      );
+      assert.include(
+        texts,
+        `Couldn't embed the local file ${join(folder, "linked", "outside.csv")}: Error: data files are embedded only from the thread's folder`,
       );
     } finally {
       rmSync(folder, { recursive: true, force: true });

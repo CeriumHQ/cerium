@@ -16,6 +16,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Historical token spend stays attributed to the provider that ran each session after a cross-provider handoff.
 
 - The mobile Settings list scrolls to all its categories.
+- A link inside the thread's folder can no longer bring a file from outside it into an artifact preview's data or a cross-harness review's untracked files.
 
 ### Changed
 
