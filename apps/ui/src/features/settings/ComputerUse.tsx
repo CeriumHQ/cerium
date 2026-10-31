@@ -78,7 +78,9 @@ export function ComputerUseSettings() {
             )}
           />
         ) : null}
-        {value.enabled && status !== undefined && !unsupported ? <ToolRow status={status} /> : null}
+        {value.enabled && status !== undefined && !unsupported && status.tool.state !== "ready" ? (
+          <ToolRow status={status} />
+        ) : null}
         {value.enabled && status?.permission === "needed" ? <PermissionRow /> : null}
       </SettingsList>
       {status !== undefined && status.sessions.length > 0 ? <InUse status={status} /> : null}
@@ -98,11 +100,11 @@ function ComputerUsePage({ children }: { children: ReactNode }) {
   );
 }
 
-/** agent-desktop, the program that does the work: installing, ready, or why it isn't. */
+/** Setup of the program that does the work, while it runs or when it failed; once ready, nothing. */
 function ToolRow({ status }: { readonly status: ComputerUseStatus }) {
   const install = useAtomSet(installComputerUse, { mode: "promise" });
   const [retrying, setRetrying] = useState(false);
-  const { state, version, message } = status.tool;
+  const { state, message } = status.tool;
   const retry = () => {
     setRetrying(true);
     install({ payload: undefined }).then(
@@ -112,23 +114,14 @@ function ToolRow({ status }: { readonly status: ComputerUseStatus }) {
   };
   return (
     <SettingsRow
-      label="agent-desktop"
-      hint={
-        state === "failed"
-          ? undefined
-          : state === "ready"
-            ? `Version ${version}`
-            : `Installing version ${version}…`
-      }
+      label={state === "failed" ? "Couldn't set up computer use" : "Setting up…"}
       error={state === "failed" ? message : undefined}
       control={() =>
         state === "failed" ? (
           <RowButton tone="primary" onClick={retry} disabled={retrying}>
-            {retrying ? "Installing…" : "Try again"}
+            {retrying ? "Setting up…" : "Try again"}
           </RowButton>
-        ) : (
-          <span className="shrink-0 text-meta text-fg-tertiary">{state === "ready" ? "Ready" : null}</span>
-        )
+        ) : null
       }
     />
   );
