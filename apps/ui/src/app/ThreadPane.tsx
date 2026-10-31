@@ -58,6 +58,7 @@ import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
 import type { Queue } from "../features/composer/QueueTray.tsx";
 import type { Background } from "../features/composer/BackgroundTray.tsx";
+import { ComputerTray } from "../features/composer/ComputerTray.tsx";
 import {
   buildTranscript,
   IncrementalTranscript,
@@ -545,6 +546,9 @@ export function ThreadPane({
                   }
                   queue={queue}
                   background={viewed && lead ? background : undefined}
+                  computer={
+                    viewed && cloud === undefined ? <ComputerTray threadId={viewed.thread.id} /> : undefined
+                  }
                   above={
                     cloud ? (
                       <ConnectingNote machine={cloud.name} />

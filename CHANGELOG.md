@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Computer use: agents in any harness can see and operate the apps on this computer through Cerium's `computer_guide`, `computer_read` and `computer_act` tools, built on agent-desktop's accessibility automation. It is off until turned on in Settings → Computer use, which downloads a pinned, checksum-verified agent-desktop build on first use, shows macOS permissions, and has a separate switch for real mouse and keyboard input. Looking needs no approval; acting asks by the agent's access like a command does. Each agent's labelled cursor shows on screen while it works, the message box shows which agents are using the computer with a Stop button, and stopped threads stay refused until the user writes in them again. Screenshots come back scaled to a model-friendly size, and sessions left behind by a backend that stopped unexpectedly are ended on the next start.
+
 ### Fixed
 
 - The mobile Settings list scrolls to all its categories.
