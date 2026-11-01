@@ -121,6 +121,7 @@ const preferred: Partial<Record<ProviderId, RegExp>> = {
   muse: /fast|lite|mini/i,
   // A plain Grok model: its Fast variants cost twice as much.
   grok: /^grok-[\d.]+$/,
+  antigravity: /flash/i,
 };
 
 const listFiles = (folder: string): ReadonlyArray<string> => {

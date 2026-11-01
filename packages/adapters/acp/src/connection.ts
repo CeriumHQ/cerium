@@ -60,6 +60,8 @@ export interface AcpCommand {
   readonly shell?: boolean;
   /** What the client calls itself in `initialize`. */
   readonly clientVersion?: string;
+  /** Vendor notices outside JSON-RPC (for example the harness's own browser sign-in URL). */
+  readonly onLine?: (line: string) => Effect.Effect<void>;
 }
 
 export interface AcpConnection {
@@ -187,7 +189,7 @@ export const connect = Effect.fn("Acp.connect")(function* (command: AcpCommand) 
 
   const dispatch = (line: string): Effect.Effect<void> => {
     const message = Option.getOrUndefined(parseLine(line));
-    if (!isRecord(message)) return Effect.void;
+    if (!isRecord(message)) return command.onLine?.(line) ?? Effect.void;
     const { id, method } = message;
     if (typeof method === "string") {
       const params: Params = isRecord(message["params"]) ? message["params"] : {};
@@ -253,7 +255,7 @@ export const connect = Effect.fn("Acp.connect")(function* (command: AcpCommand) 
       Effect.sync(() => {
         stderr.push(line);
         if (stderr.length > STDERR_LINES) stderr.shift();
-      }),
+      }).pipe(Effect.andThen(command.onLine?.(line) ?? Effect.void)),
     ),
     Effect.ignore,
     Effect.forkScoped,

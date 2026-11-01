@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "agentCapabilities": {
+    "loadSession": true,
+    "promptCapabilities": { "image": true, "audio": true, "embeddedContext": true },
+    "mcpCapabilities": { "http": true, "sse": true },
+    "sessionCapabilities": { "list": {}, "additionalDirectories": {}, "resume": {} },
+    "auth": { "logout": {} },
+    "_meta": { "antigravity": { "tier": true, "systemPrompt": { "append": true } } }
+  },
+  "authMethods": [
+    { "id": "oauth-personal", "name": "Log in with Google" },
+    { "id": "oauth-business", "name": "Log in with Gemini Enterprise" },
+    { "id": "gemini-api-key", "name": "Gemini API key" },
+    { "id": "agent-platform", "name": "Gemini Enterprise Agent Platform" }
+  ],
+  "agentInfo": { "name": "antigravity-acp", "title": "Google Antigravity", "version": "1.4.5" }
+}

@@ -58,6 +58,13 @@ export interface AcpHarness {
    * the agent's own `_meta`, a system prompt.
    */
   readonly sessionParams?: (options: SessionOptions) => Readonly<Record<string, unknown>>;
+  /** Enforces vendor settings before the first prompt, including after a cold resume. */
+  readonly prepare?: (
+    connection: AcpConnection,
+    sessionId: string,
+    options: SessionOptions,
+    setup: SessionSetup,
+  ) => Effect.Effect<void, AcpRequestError | HarnessFailure>;
   /**
    * Reads a notification for the session's readiness, where the agent connects MCP servers after
    * answering its setup: `true` once the session is ready for its first prompt, or the name of an MCP
@@ -71,6 +78,8 @@ export interface AcpHarness {
   readonly output?: (call: ToolCallState) => unknown;
   /** Whether the agent marks a call as only reading, where ACP's kind doesn't say. */
   readonly readsOnly?: (call: ToolCallState) => boolean | undefined;
+  /** Vendor interactions carried as permissions must never be auto-answered as tool approvals. */
+  readonly cancelPermission?: (request: PermissionRequest) => boolean;
   /** A turn's usage and context from the prompt's answer; ACP's `usage` by default. */
   readonly usage?: (result: PromptResult, session: TurnContext) => TurnTotals;
   /** What an error answer to a prompt stands for; `errorEvent` by default. */
@@ -280,6 +289,7 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
         });
       }
       if (replaying || interruptRequested) return { outcome: { outcome: "cancelled" } };
+      if (harness.cancelPermission?.(request) === true) return { outcome: { outcome: "cancelled" } };
       const call = translator.track(request.toolCall);
       const view = translator.view(call);
       const input = view.input as Readonly<Record<string, unknown>> | undefined;
@@ -398,6 +408,11 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
     );
   });
   configOptions = setup.configOptions ?? configOptions;
+  if (harness.prepare !== undefined) {
+    yield* harness
+      .prepare(connection, sessionId, options, setup)
+      .pipe(Effect.mapError(failure(`${harness.label} could not apply the session's access mode`)));
+  }
   if (harness.live !== undefined) yield* harness.live.hold(sessionId, connection);
 
   const applyOptions = (answer: unknown) => {

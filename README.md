@@ -108,19 +108,25 @@ push". Your phone hears about it when it's done.
 Each agent is the real harness, driven through its official SDK on your own subscription. Cerium
 starts each harness's own sign-in and never reads its tokens or keys.
 
-| Harness         | Driven through                                          | Sign in                  |
-| --------------- | ------------------------------------------------------- | ------------------------ |
-| **Claude Code** | Claude Agent SDK, running your installed `claude`       | `claude` login           |
-| **Codex**       | `codex app-server`, with types from your install        | `codex login`            |
-| **Muse Code**   | `@muse-code/sdk`, over a private `muse serve`           | `muse login`             |
-| **Cursor**      | `@cursor/sdk`, running Cursor's agent locally           | Cursor's browser sign-in |
-| **OpenCode**    | `@opencode/client`, over a private `opencode serve`     | `opencode auth login`    |
-| **Grok Build**  | `grok agent stdio`, Grok's Agent Client Protocol server | `grok login`             |
+| Harness         | Driven through                                          | Sign in                   |
+| --------------- | ------------------------------------------------------- | ------------------------- |
+| **Claude Code** | Claude Agent SDK, running your installed `claude`       | `claude` login            |
+| **Codex**       | `codex app-server`, with types from your install        | `codex login`             |
+| **Muse Code**   | `@muse-code/sdk`, over a private `muse serve`           | `muse login`              |
+| **Cursor**      | `@cursor/sdk`, running Cursor's agent locally           | Cursor's browser sign-in  |
+| **OpenCode**    | `@opencode/client`, over a private `opencode serve`     | `opencode auth login`     |
+| **Grok Build**  | `grok agent stdio`, Grok's Agent Client Protocol server | `grok login`              |
+| **Antigravity** | Google's official `antigravity-acp` runtime             | Browser sign-in in Cerium |
 
 Install any of them and sign in as usual; Cerium finds them. OpenCode's free models need no sign-in.
+For Antigravity, download the [official ACP runtime](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json),
+keep its executable and matching `localharness_external` helper together, and put the executable on PATH
+or set `CERIUM_ANTIGRAVITY_PATH`. Its Google sign-in is separate from the `agy` CLI and IDE. Cerium uses
+the supported custom ACP client interface, never Gemini CLI or a subscription-token API wrapper.
+See the [provider capability and verification notes](packages/adapters/antigravity/README.md).
 On Windows, Muse runs commands with Full access only for now: `muse serve` can't sandbox them there.
 Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-Anysphere, Anomaly or xAI.
+Anysphere, Anomaly, xAI or Google.
 
 <details>
 <summary><b>How it works</b></summary>

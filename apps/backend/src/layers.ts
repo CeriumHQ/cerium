@@ -1,3 +1,4 @@
+import { AntigravityAdapter } from "@cerium/adapter-antigravity";
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
 import { CursorAdapter } from "@cerium/adapter-cursor";
@@ -89,6 +90,7 @@ export const AdaptersLive = Layer.effect(
       yield* CursorAdapter,
       yield* OpenCodeAdapter,
       yield* GrokAdapter,
+      yield* AntigravityAdapter,
     ];
     return new Map(adapters.map((adapter) => [adapter.provider, adapter]));
   }),
@@ -101,6 +103,7 @@ export const AdaptersLive = Layer.effect(
       CursorAdapter.layer,
       OpenCodeAdapter.layer,
       GrokAdapter.layer,
+      AntigravityAdapter.layer,
     ),
   ),
 );

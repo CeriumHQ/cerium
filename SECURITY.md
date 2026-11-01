@@ -20,7 +20,7 @@ involved.
 - **The website**, served by the relay.
 
 Only the latest stable release gets fixes (a nightly gets them with the next build), so please check you're on it. Problems in a
-harness itself (Claude Code, Codex, Muse Code, Cursor, OpenCode or Grok Build) belong to its vendor; if you're
+harness itself (Claude Code, Codex, Muse Code, Cursor, OpenCode, Grok Build or Antigravity) belong to its vendor; if you're
 unsure where one belongs, report it here and it will be passed on.
 
 ## What to expect

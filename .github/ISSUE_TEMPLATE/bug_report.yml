@@ -47,6 +47,7 @@ body:
         - label: Cursor
         - label: OpenCode
         - label: Grok Build
+        - label: Antigravity
   - type: textarea
     id: harness-versions
     attributes:
