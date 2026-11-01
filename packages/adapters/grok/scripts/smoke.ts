@@ -169,6 +169,10 @@ const program = Effect.gen(function* () {
     stdio: "inherit",
     shell: /\.cmd$/i.test(probe.executablePath),
   });
-}).pipe(Effect.scoped, Effect.provide(GrokAdapter.layer.pipe(Layer.provide(NodeServices.layer))));
+}).pipe(
+  Effect.timeout("5 minutes"),
+  Effect.scoped,
+  Effect.provide(GrokAdapter.layer.pipe(Layer.provide(NodeServices.layer))),
+);
 
 NodeRuntime.runMain(program);

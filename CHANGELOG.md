@@ -20,6 +20,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- Grok's subscription-backed smoke and fixture-recording scripts now have deadlines, so a stalled runtime cannot leave an owner check waiting indefinitely.
+
 - ACP manifests remove image and resume support when the installed runtime does not negotiate them; attempting to send images to such a session fails explicitly instead of silently dropping the attachments.
 
 - Grok refuses to start a session that excludes the harness's MCP servers when `grok inspect --json` lists native servers, rather than silently loading them despite that setting. The user's configuration stays intact, with an explanation asking them to opt into inclusion.

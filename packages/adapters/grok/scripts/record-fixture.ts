@@ -68,6 +68,12 @@ const child = spawn(executable, ["agent", "--no-leader", "stdio"], {
   stdio: ["pipe", "pipe", "inherit"],
   env: { ...process.env, GROK_SUBAGENTS: "0" },
 });
+const deadline = setTimeout(() => {
+  console.error("Grok fixture recording exceeded three minutes. Review any initialize fixture changes.");
+  child.kill();
+  process.exit(1);
+}, 180_000);
+deadline.unref();
 let nextId = 1;
 const waiting = new Map<number, (msg: Record<string, unknown>) => void>();
 let permission: "allow_once" | "reject_once" = "allow_once";
@@ -157,6 +163,7 @@ await request("_x.ai/compact_conversation", { sessionId });
 await request("_x.ai/session/delete", { sessionId });
 child.stdin.end();
 child.kill();
+clearTimeout(deadline);
 
 const out = join(import.meta.dirname, "..", "test", "fixtures", "session.jsonl");
 writeFileSync(out, `${records.join("\n")}\n`);
