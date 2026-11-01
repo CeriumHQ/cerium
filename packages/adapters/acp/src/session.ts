@@ -32,10 +32,12 @@ import {
   PromptResult,
   SessionNotification,
   SessionSetup,
+  type Initialized,
   type PermissionOption,
 } from "./schema.ts";
 import {
   AcpTranslator,
+  type CompactionCounts,
   type ToolCallState,
   type ToolView,
   type TurnEnd,
@@ -56,18 +58,27 @@ export interface AcpHarness {
    * the agent's own `_meta`, a system prompt.
    */
   readonly sessionParams?: (options: SessionOptions) => Readonly<Record<string, unknown>>;
-  /** A notification that says the session is ready for its first prompt, such as its MCP servers loaded. */
-  readonly readyNotification?: string;
+  /**
+   * Reads a notification for the session's readiness, where the agent connects MCP servers after
+   * answering its setup: `true` once the session is ready for its first prompt, or the name of an MCP
+   * server that has finished connecting, ready or not. The first prompt waits for every server Cerium
+   * passed, so its turn sees their tools, and never for the user's own.
+   */
+  readonly ready?: (method: string, params: Params) => boolean | string | undefined;
   /** Names tool calls; `defaultToolView` by default. */
   readonly view?: (call: ToolCallState) => ToolView;
+  /** What a finished call shows as its result; `outputOf` by default. */
+  readonly output?: (call: ToolCallState) => unknown;
   /** Whether the agent marks a call as only reading, where ACP's kind doesn't say. */
   readonly readsOnly?: (call: ToolCallState) => boolean | undefined;
   /** A turn's usage and context from the prompt's answer; ACP's `usage` by default. */
-  readonly usage?: (result: PromptResult) => TurnTotals;
+  readonly usage?: (result: PromptResult, session: TurnContext) => TurnTotals;
   /** What an error answer to a prompt stands for; `errorEvent` by default. */
   readonly errorEvent?: (error: AcpRequestError) => EventPayload;
   /** The agent's own notifications about the session, as events. */
   readonly notification?: (method: string, params: Params) => ReadonlyArray<AdapterEvent>;
+  /** A compaction the agent reports in a notification of its own, where ACP's update doesn't say. */
+  readonly compaction?: (method: string, params: Params) => CompactionCounts | undefined;
   /**
    * Compacts the session's conversation, resolving once it has, with the counts it reports. Present
    * when the agent can.
@@ -75,7 +86,16 @@ export interface AcpHarness {
   readonly compact?: (
     connection: AcpConnection,
     sessionId: string,
-  ) => Effect.Effect<Compaction, AcpRequestError | HarnessFailure>;
+  ) => Effect.Effect<CompactionCounts, AcpRequestError | HarnessFailure>;
+  /** Where the adapter finds its running sessions again, for requests about one of them. */
+  readonly live?: LiveSessions;
+}
+
+/** What a turn's usage is read against. */
+export interface TurnContext {
+  readonly initialized: Initialized;
+  /** The session's model when the turn ended. */
+  readonly model: string;
 }
 
 export interface TurnTotals {
@@ -83,10 +103,24 @@ export interface TurnTotals {
   readonly context?: { readonly tokens: number; readonly window?: number };
 }
 
-export interface Compaction {
-  readonly tokensBefore?: number;
-  readonly tokensAfter?: number;
-  readonly summary?: string;
+/** The sessions an adapter runs right now, by the agent's session id, each with its connection. */
+export class LiveSessions {
+  readonly #sessions = new Map<string, AcpConnection>();
+
+  get(sessionId: string): AcpConnection | undefined {
+    return this.#sessions.get(sessionId);
+  }
+
+  /** Holds `sessionId` as running on `connection` until the scope closes. */
+  hold(sessionId: string, connection: AcpConnection) {
+    return Effect.acquireRelease(
+      Effect.sync(() => void this.#sessions.set(sessionId, connection)),
+      () =>
+        Effect.sync(() => {
+          if (this.#sessions.get(sessionId) === connection) this.#sessions.delete(sessionId);
+        }),
+    );
+  }
 }
 
 const decodeNotification = Schema.decodeUnknownOption(SessionNotification);
@@ -98,8 +132,11 @@ const decodeOptions = Schema.decodeUnknownOption(
 );
 const decodeOption = Schema.decodeUnknownOption(ConfigOption);
 
-/** How long a new session may take to say it's ready. */
-const READY_TIMEOUT = Duration.seconds(45);
+/**
+ * How long a new session may take to say it's ready. Past it the turn starts anyway: an agent that
+ * finds its tools as it goes only misses them from the start.
+ */
+const READY_TIMEOUT = Duration.seconds(15);
 /** How long closing waits for a turn to stop and the session to close. */
 const STOP_GRACE = Duration.seconds(5);
 
@@ -155,6 +192,18 @@ const stopReasonOf = (reason: string, interrupted: boolean): TurnEnd["stopReason
   }
 };
 
+/**
+ * A turn that opens with a skill the user picked (`$name`) runs it as ACP runs a command: `/name` at
+ * the start of the prompt, where the agent offers one by that name.
+ */
+export const withCommand = (text: string, extras: TurnExtras | undefined, offered: ReadonlySet<string>) => {
+  const opening = /^(\s*)\$([\w:.-]+)/.exec(text);
+  if (opening === null) return text;
+  const [whole, space = "", name = ""] = opening;
+  if (!offered.has(name) || !(extras?.skills ?? []).some((skill) => skill.name === name)) return text;
+  return `${space}/${name}${text.slice(whole.length)}`;
+};
+
 type Turn = { readonly text: string; readonly extras?: TurnExtras } | { readonly compact: true };
 
 interface Ask {
@@ -197,15 +246,20 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
   const translator = new AcpTranslator({
     provider: harness.provider,
     ...(harness.view === undefined ? {} : { view: harness.view }),
+    ...(harness.output === undefined ? {} : { output: harness.output }),
   });
 
   let sessionId = options.resume ?? "";
   let configOptions: ReadonlyArray<ConfigOption> = [];
+  /** The slash commands the agent offers, its skills among them. */
+  let commands = new Set<string>();
   /** History `session/load` replays, which the transcript already holds. */
   let replaying = false;
   let closing = false;
   const ready = yield* Deferred.make<void>();
-  if (harness.readyNotification === undefined) yield* Deferred.succeed(ready, undefined);
+  /** Cerium's MCP servers still connecting. */
+  const connecting = new Set(Object.keys(options.mcpServers));
+  if (harness.ready === undefined || connecting.size === 0) yield* Deferred.succeed(ready, undefined);
 
   /** Sends not yet answered by their `TurnCompleted`, including ones waiting to start. */
   let pending = 0;
@@ -272,11 +326,21 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
           if (notification === undefined) return;
           const { update } = notification;
           if (update.sessionUpdate === "config_option_update") configOptions = update.configOptions;
+          if (update.sessionUpdate === "available_commands_update") {
+            commands = new Set(update.availableCommands.map((command) => command.name));
+          }
           if (!replaying) emit(translator.update(update, params));
           return;
         }
-        if (method === harness.readyNotification) yield* Deferred.succeed(ready, undefined);
-        if (!replaying && harness.notification !== undefined) emit(harness.notification(method, params));
+        const settled = harness.ready?.(method, params);
+        if (typeof settled === "string") connecting.delete(settled);
+        if (settled === true || (settled !== undefined && connecting.size === 0)) {
+          yield* Deferred.succeed(ready, undefined);
+        }
+        if (replaying) return;
+        if (harness.notification !== undefined) emit(harness.notification(method, params));
+        const compaction = harness.compaction?.(method, params);
+        if (compaction !== undefined) emit(translator.compactionReported(compaction, params));
       }),
     request: (method, params) =>
       method === "session/request_permission"
@@ -332,6 +396,7 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
     );
   });
   configOptions = setup.configOptions ?? configOptions;
+  if (harness.live !== undefined) yield* harness.live.hold(sessionId, connection);
 
   const applyOptions = (answer: unknown) => {
     const decoded = Option.getOrUndefined(decodeOptions(answer));
@@ -378,13 +443,13 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
   let effort = options.effort;
   if (model !== "" && model !== currentModel(configOptions, setup.models)) yield* applyModel(model);
   if (effort !== undefined) yield* applyEffort(effort);
-  // The agent's own MCP servers and tools may still be loading; the first turn waits for them.
+  // Cerium's MCP servers may still be connecting; the first turn waits for them.
   yield* Deferred.await(ready).pipe(Effect.timeout(READY_TIMEOUT), Effect.ignore);
   if (model === "") model = currentModel(configOptions, setup.models) ?? "default";
   emit(translator.opened(sessionId, model, effort));
 
   const promptBlocks = (text: string, extras?: TurnExtras) => [
-    { type: "text", text },
+    { type: "text", text: withCommand(text, extras, commands) },
     ...(capabilities.images
       ? (extras?.images ?? []).map((image) => ({
           type: "image",
@@ -409,7 +474,10 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
     connection.request("session/prompt", { sessionId, prompt: promptBlocks(text, extras) }).pipe(
       Effect.flatMap(decodePrompt),
       Effect.map((result): TurnEnd => {
-        const totals = (harness.usage ?? standardUsage)(result);
+        const totals = (harness.usage ?? standardUsage)(result, {
+          initialized: connection.initialized,
+          model,
+        });
         return {
           stopReason: stopReasonOf(result.stopReason, interruptRequested),
           ...(totals.usage === undefined ? {} : { usage: totals.usage }),
@@ -418,7 +486,7 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
       }),
     );
 
-  const compactTurn = (compact: NonNullable<AcpHarness["compact"]>) =>
+  const compactTurn = (compact: NonNullable<AcpHarness["compact"]>): Effect.Effect<TurnEnd, unknown> =>
     Effect.gen(function* () {
       translator.compacting();
       const done = yield* compact(connection, sessionId);

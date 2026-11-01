@@ -78,6 +78,7 @@ export const readAcpSession = (
     readonly provider: ProviderId;
     readonly cwd: string;
     readonly view?: (call: ToolCallState) => ToolView;
+    readonly output?: (call: ToolCallState) => unknown;
   },
 ) =>
   Effect.scoped(
@@ -85,6 +86,7 @@ export const readAcpSession = (
       const translator = new AcpTranslator({
         provider: options.provider,
         ...(options.view === undefined ? {} : { view: options.view }),
+        ...(options.output === undefined ? {} : { output: options.output }),
       });
       const turns: Array<Gathering> = [];
       const close = () => {

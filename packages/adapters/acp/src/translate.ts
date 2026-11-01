@@ -148,6 +148,21 @@ export const outputOf = (call: ToolCallState): unknown => {
   return "";
 };
 
+const count = (value: number | undefined) =>
+  value === undefined ? undefined : Math.max(0, Math.round(value));
+
+const compactedPayload = (trigger: "manual" | "auto", counts: CompactionCounts): EventPayload => {
+  const tokensBefore = count(counts.tokensBefore);
+  const tokensAfter = count(counts.tokensAfter);
+  return {
+    _tag: "ContextCompacted",
+    trigger,
+    ...(tokensBefore === undefined ? {} : { tokensBefore }),
+    ...(tokensAfter === undefined ? {} : { tokensAfter }),
+    ...(counts.summary === undefined || counts.summary === "" ? {} : { summary: counts.summary }),
+  };
+};
+
 const TODO_STATUS: Readonly<Record<string, TodoItem["status"]>> = {
   pending: "pending",
   in_progress: "inProgress",
@@ -158,8 +173,17 @@ export interface TranslatorOptions {
   readonly provider: ProviderId;
   /** Names each tool call; `defaultToolView` by default. */
   readonly view?: (call: ToolCallState) => ToolView;
+  /** What a finished call shows as its result; `outputOf` by default. */
+  readonly output?: (call: ToolCallState) => unknown;
   /** Ids for messages, thoughts and permission requests; random UUIDs by default. */
   readonly newId?: () => string;
+}
+
+/** What an agent reports of a compaction. */
+export interface CompactionCounts {
+  readonly tokensBefore?: number;
+  readonly tokensAfter?: number;
+  readonly summary?: string;
 }
 
 interface Stream {
@@ -177,6 +201,7 @@ interface Ask {
 export class AcpTranslator {
   readonly #provider: ProviderId;
   readonly #view: (call: ToolCallState) => ToolView;
+  readonly #output: (call: ToolCallState) => unknown;
   readonly #newId: () => string;
   #message: Stream | undefined;
   #reasoning: Stream | undefined;
@@ -194,6 +219,7 @@ export class AcpTranslator {
   constructor(options: TranslatorOptions) {
     this.#provider = options.provider;
     this.#view = options.view ?? defaultToolView;
+    this.#output = options.output ?? outputOf;
     this.#newId = options.newId ?? randomUUID;
   }
 
@@ -221,29 +247,22 @@ export class AcpTranslator {
     this.#compactedThisTurn = false;
   }
 
-  /** The compaction Cerium asked for is done; reported here unless the agent's own update did. */
-  compacted(counts: {
-    readonly tokensBefore?: number;
-    readonly tokensAfter?: number;
-    readonly summary?: string;
-  }): ReadonlyArray<AdapterEvent> {
+  /** The compaction Cerium asked for is done; reported here unless the agent's own notice did. */
+  compacted(counts: CompactionCounts): ReadonlyArray<AdapterEvent> {
     if (this.#compactedThisTurn) return [];
     this.#compactedThisTurn = true;
-    return [
-      {
-        payload: {
-          _tag: "ContextCompacted",
-          trigger: "manual",
-          ...(counts.tokensBefore === undefined
-            ? {}
-            : { tokensBefore: Math.max(0, Math.round(counts.tokensBefore)) }),
-          ...(counts.tokensAfter === undefined
-            ? {}
-            : { tokensAfter: Math.max(0, Math.round(counts.tokensAfter)) }),
-          ...(counts.summary === undefined || counts.summary === "" ? {} : { summary: counts.summary }),
-        },
-      },
-    ];
+    return [{ payload: compactedPayload("manual", counts) }];
+  }
+
+  /**
+   * The agent says it compacted the conversation: the compaction Cerium asked for, while one is under
+   * way, else one the agent started itself.
+   */
+  compactionReported(counts: CompactionCounts, raw?: unknown): ReadonlyArray<AdapterEvent> {
+    if (!this.#compacting) return [{ payload: compactedPayload("auto", counts), raw }];
+    if (this.#compactedThisTurn) return [];
+    this.#compactedThisTurn = true;
+    return [{ payload: compactedPayload("manual", counts), raw }];
   }
 
   update(update: SessionUpdate, raw?: unknown): ReadonlyArray<AdapterEvent> {
@@ -289,11 +308,7 @@ export class AcpTranslator {
       case "compaction_update": {
         if (update.status !== "completed") return [];
         const summary = textOf(update.summary ?? []);
-        const trigger = this.#compacting ? "manual" : "auto";
-        if (this.#compacting) this.#compactedThisTurn = true;
-        return [
-          { payload: { _tag: "ContextCompacted", trigger, ...(summary === "" ? {} : { summary }) }, raw },
-        ];
+        return this.compactionReported(summary === "" ? {} : { summary }, raw);
       }
       case "notice":
         return update.severity === "error"
@@ -380,7 +395,7 @@ export class AcpTranslator {
       if (!call.started || call.done) continue;
       call.done = true;
       const denied = this.#denied.has(call.id);
-      const output = outputOf(call);
+      const output = this.#output(call);
       events.push({
         payload: {
           _tag: "ToolCallCompleted",
@@ -510,7 +525,7 @@ export class AcpTranslator {
     const failed = call.status === "failed";
     if (!failed) events.push(...this.#changes(call));
     events.push({
-      payload: { _tag: "ToolCallCompleted", callId: call.id, output: outputOf(call), isError: failed },
+      payload: { _tag: "ToolCallCompleted", callId: call.id, output: this.#output(call), isError: failed },
       raw,
     });
     return events;
