@@ -46,6 +46,7 @@ body:
         - label: Muse Code
         - label: Cursor
         - label: OpenCode
+        - label: Grok Build
   - type: textarea
     id: harness-versions
     attributes:
