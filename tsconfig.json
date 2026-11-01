@@ -47,6 +47,9 @@
       "path": "./packages/adapters/opencode"
     },
     {
+      "path": "./packages/adapters/acp"
+    },
+    {
       "path": "./apps/backend"
     },
     {

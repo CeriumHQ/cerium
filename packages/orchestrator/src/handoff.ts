@@ -28,6 +28,8 @@ const harnessName: Record<ProviderId, string> = {
   muse: "Muse Code",
   cursor: "Cursor",
   opencode: "OpenCode",
+  grok: "Grok Build",
+  antigravity: "Antigravity CLI",
 };
 
 /** How much of the conversation a handoff tells word for word, in characters (about 12k tokens). */

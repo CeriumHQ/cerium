@@ -38,7 +38,9 @@ export const agents = sqliteTable(
     /** Null for the thread's lead. */
     parentId: text("parent_id"),
     role: text("role").notNull(),
-    provider: text("provider", { enum: ["claude", "codex", "muse", "cursor", "opencode"] }).notNull(),
+    provider: text("provider", {
+      enum: ["claude", "codex", "muse", "cursor", "opencode", "grok", "antigravity"],
+    }).notNull(),
     model: text("model").notNull(),
     effort: text("effort", { enum: ["minimal", "low", "medium", "high", "xhigh", "max"] }),
     /** Null for agents never set to Auto. */

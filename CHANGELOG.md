@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- A shared Agent Client Protocol client, `@cerium/adapter-acp`, for harnesses that speak ACP over stdio: each session gets Cerium's MCP servers, asks for approval through Cerium by the agent's access (read-only sessions refuse edits and commands without asking, and trusted bus tools never ask), resumes or replays past sessions, takes its models and efforts from the session's settings, and reports usage, context and compaction. Grok Build and Antigravity CLI get their names and marks.
+
 - Computer use: agents in any harness can see and operate the apps on this computer through Cerium's `computer_guide`, `computer_read` and `computer_act` tools, built on agent-desktop's accessibility automation. It is off until turned on in Settings → Computer use, which sets it up on first use (a pinned, checksum-verified agent-desktop build), shows macOS permissions, and has a separate switch for real mouse and keyboard input. Looking needs no approval; acting asks by the agent's access like a command does. Each agent's labelled cursor shows on screen while it works, the message box shows which agents are using the computer with a Stop button, and stopped threads stay refused until the user writes in them again. Screenshots come back scaled to a model-friendly size, and sessions left behind by a backend that stopped unexpectedly are ended on the next start.
 
 ### Fixed
