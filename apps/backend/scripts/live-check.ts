@@ -52,6 +52,7 @@ if (process.argv.includes("--help")) {
       "  --trace                    print each event, with the start of its raw provider message",
       "  --compare-usage            two matched short turns per provider: native SDK vs Cerium",
       "  --usage                    read each harness's plan limits instead of running a turn",
+      "  --include-user-mcp         explicitly include the harness's configured MCP servers",
     ].join("\n"),
   );
   process.exit(0);
@@ -109,6 +110,7 @@ if (process.argv.includes("--usage")) {
 
 const todos = process.argv.includes("--todos");
 const input: unknown = {
+  ...(process.argv.includes("--include-user-mcp") ? { includeUserMcpServers: true } : {}),
   ...(list("providers") ? { providers: list("providers") } : {}),
   ...(flag("access") ? { access: flag("access") } : {}),
   ...(list("model")

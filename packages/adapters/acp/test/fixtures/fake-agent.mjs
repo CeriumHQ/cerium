@@ -154,7 +154,7 @@ const handle = async ({ id, method, params }) => {
         protocolVersion: 1,
         agentCapabilities: {
           loadSession: true,
-          promptCapabilities: { image: true },
+          promptCapabilities: { image: process.env.FAKE_NO_IMAGES !== "1" },
           mcpCapabilities: { http: true },
           sessionCapabilities: { list: {}, resume: {}, close: {} },
         },

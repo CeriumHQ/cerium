@@ -2,6 +2,7 @@ import {
   connect,
   listAcpSessions,
   LiveSessions,
+  negotiatedManifest,
   readAcpSession,
   signedOut,
   startAcpSession,
@@ -24,7 +25,7 @@ import { completeWithGrok } from "./complete.ts";
 import { grokHarness, grokOutput, grokToolView } from "./harness.ts";
 import { grokManifest, INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 import { lowestEffort, modelStateOf, toModelInfos } from "./models.ts";
-import { agentCommand, probeGrok, readAuth } from "./probe.ts";
+import { agentCommand, checkUserMcp, probeGrok, readAuth } from "./probe.ts";
 import { readGrokUsage } from "./usage.ts";
 
 /** How long the shared agent stays up after its last use. */
@@ -50,6 +51,7 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
       )(yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path>());
       const live = new LiveSessions();
       const harness = grokHarness(live);
+      let manifest = grokManifest;
 
       // Probing, listing models, skills and sessions, and reading usage talk to one agent, started on
       // first use in a folder of Cerium's own and stopped once nothing has needed it for a while.
@@ -59,6 +61,11 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
       const shared = yield* RcRef.make({
         acquire: scratch.pipe(
           Effect.flatMap((cwd) => connect(agentCommand(executable, cwd))),
+          Effect.tap((connection) =>
+            Effect.sync(() => {
+              manifest = negotiatedManifest(grokManifest, connection.initialized);
+            }),
+          ),
           Effect.provide(platform),
         ),
         idleTimeToLive: SHARED_IDLE,
@@ -105,6 +112,9 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
 
       const startSession = Effect.fn("GrokAdapter.startSession")(function* (options: SessionOptions) {
         const executablePath = yield* ready;
+        yield* checkUserMcp(executablePath, options.cwd, options.includeUserMcpServers).pipe(
+          Effect.provide(platform),
+        );
         const session = yield* startAcpSession(harness, agentCommand(executablePath), options).pipe(
           Effect.provide(platform),
         );
@@ -113,7 +123,9 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
 
       return GrokAdapter.of({
         provider: "grok",
-        manifest: grokManifest,
+        get manifest() {
+          return manifest;
+        },
         probe: probes.fresh,
         listModels: ready.pipe(
           Effect.flatMap(modelState),

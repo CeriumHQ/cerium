@@ -1,6 +1,7 @@
 import {
   connect,
   listAcpSessions,
+  negotiatedManifest,
   readAcpSession,
   startAcpSession,
   type AcpConnection,
@@ -35,7 +36,12 @@ export class AntigravityAdapter extends Context.Service<AntigravityAdapter, Harn
       const scratch = yield* scratchFolder("antigravity", "cerium-antigravity").pipe(
         Effect.provide(platform),
       );
-      const probes = yield* shareProbe(probeAntigravity(scratch).pipe(Effect.provide(platform)));
+      let manifest = antigravityManifest;
+      const probes = yield* shareProbe(
+        probeAntigravity(scratch, (initialized) => {
+          manifest = negotiatedManifest(antigravityManifest, initialized);
+        }).pipe(Effect.provide(platform)),
+      );
       const ready = probes.kept.pipe(
         Effect.flatMap((status) => {
           if (status._tag === "HarnessMissing")
@@ -65,7 +71,9 @@ export class AntigravityAdapter extends Context.Service<AntigravityAdapter, Harn
         }).pipe(Effect.scoped, Effect.provide(platform));
       return AntigravityAdapter.of({
         provider: "antigravity",
-        manifest: antigravityManifest,
+        get manifest() {
+          return manifest;
+        },
         probe: probes.fresh,
         login: loginAntigravity.pipe(Stream.provide(platform)),
         listModels: withAgent((connection) => listAntigravityModels(connection, scratch)),

@@ -49,6 +49,10 @@ export const LiveCheckRequest = Schema.Struct({
   access: Schema.optionalKey(AccessMode).annotate({
     description: "The access each harness runs with; default auto.",
   }),
+  includeUserMcpServers: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Explicitly include native MCP configuration for harnesses that cannot exclude it per session; default false.",
+  }),
   prompt: Schema.optionalKey(Schema.NonEmptyString).annotate({
     description:
       "The turn to run. Default: run a shell command that writes shell.txt, edit edit.txt, reply DONE (and expect both files).",
@@ -183,7 +187,7 @@ export const checkHarness = (
         model: record.model,
         access,
         mcpServers: {},
-        includeUserMcpServers: false,
+        includeUserMcpServers: request.includeUserMcpServers === true,
       });
       const done = yield* Deferred.make<void>();
       // Settled by the compaction's turn, when the check asks for one.

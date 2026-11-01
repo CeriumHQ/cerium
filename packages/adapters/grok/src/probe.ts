@@ -11,6 +11,34 @@ import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "grok", message, cause });
 
+const Inspection = Schema.Struct({ mcpServers: Schema.Array(Schema.Unknown) });
+const decodeInspection = Schema.decodeUnknownEffect(Schema.fromJsonString(Inspection));
+
+/** Grok merges native MCP with session injection and exposes no supported per-session exclusion. */
+export const checkUserMcp = Effect.fn("Grok.checkUserMcp")(function* (
+  executable: string,
+  cwd: string,
+  include: boolean,
+) {
+  if (include) return;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const inspection = yield* spawner
+    .string(
+      ChildProcess.make(executable, ["inspect", "--json"], {
+        cwd,
+        shell: /\.cmd$/i.test(executable),
+      }),
+    )
+    .pipe(
+      Effect.flatMap(decodeInspection),
+      Effect.mapError(failure("Could not inspect Grok's MCP configuration")),
+    );
+  if (inspection.mcpServers.length > 0)
+    return yield* failure(
+      "Grok loads its configured MCP servers alongside injected servers. Enable 'Include the harness's MCP servers' for this agent, or remove them with Grok's own settings. Cerium leaves that configuration unchanged.",
+    )(undefined);
+});
+
 /**
  * Finds the user's installed `grok`: where its installer puts it (`$GROK_HOME/bin`, `~/.grok/bin` by
  * default), else on PATH, where npm installs a `.cmd` shim on Windows.

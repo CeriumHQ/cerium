@@ -1,4 +1,10 @@
-import { AUTH_REQUIRED, connect, type AcpCommand, type AcpConnection } from "@cerium/adapter-acp";
+import {
+  AUTH_REQUIRED,
+  connect,
+  type AcpCommand,
+  type AcpConnection,
+  type Initialized,
+} from "@cerium/adapter-acp";
 import { findOnPath, HarnessFailure, scratchFolder } from "@cerium/harness";
 import type { HarnessStatus, LoginProgress } from "@cerium/protocol";
 import { Effect, FileSystem, Option, Path, Queue, Stream } from "effect";
@@ -36,56 +42,58 @@ export const agentCommand = (executable: string): AcpCommand => ({
 });
 
 /** Only noncredential configuration is inspected. Never opens OAuth files or keychains. */
-export const checkUserMcp = (include: boolean) =>
-  Effect.gen(function* () {
-    if (include) return;
-    const fs = yield* FileSystem.FileSystem;
-    const home = process.env["GEMINI_HOME"] || join(homedir(), ".gemini");
-    const path = join(home, "config", "mcp_config.json");
-    if (
-      !(yield* fs
-        .exists(path)
-        .pipe(Effect.mapError(failure("Could not inspect Antigravity's MCP configuration"))))
-    )
-      return;
-    const value = yield* fs
-      .readFileString(path)
-      .pipe(Effect.mapError(failure("Could not inspect Antigravity's MCP configuration")));
-    // The runtime has no documented per-session switch to suppress global MCP. Fail closed instead
-    // of editing it, copying credentials into an isolated profile, or silently loading those servers.
-    if (!/^\s*(?:\{\s*\}|\{\s*"mcpServers"\s*:\s*\{\s*\}\s*\})\s*$/.test(value)) {
-      return yield* failure(
-        "Antigravity loads global MCP servers. Enable 'Include the harness's MCP servers' for this agent, or remove them with Antigravity's own settings. Cerium leaves that configuration unchanged.",
-      )(path);
-    }
-  });
+export const checkUserMcp = Effect.fn("Antigravity.checkUserMcp")(function* (include: boolean) {
+  if (include) return;
+  const fs = yield* FileSystem.FileSystem;
+  const home = process.env["GEMINI_HOME"] || join(homedir(), ".gemini");
+  const path = join(home, "config", "mcp_config.json");
+  if (
+    !(yield* fs
+      .exists(path)
+      .pipe(Effect.mapError(failure("Could not inspect Antigravity's MCP configuration"))))
+  )
+    return;
+  const value = yield* fs
+    .readFileString(path)
+    .pipe(Effect.mapError(failure("Could not inspect Antigravity's MCP configuration")));
+  // The runtime has no documented per-session switch to suppress global MCP. Fail closed instead
+  // of editing it, copying credentials into an isolated profile, or silently loading those servers.
+  if (!/^\s*(?:\{\s*\}|\{\s*"mcpServers"\s*:\s*\{\s*\}\s*\})\s*$/.test(value)) {
+    return yield* failure(
+      "Antigravity loads global MCP servers. Enable 'Include the harness's MCP servers' for this agent, or remove them with Antigravity's own settings. Cerium leaves that configuration unchanged.",
+    )(path);
+  }
+});
 
-export const probeAntigravity = (cwd: string) =>
-  Effect.gen(function* () {
-    const executable = yield* findAntigravity;
-    if (Option.isNone(executable))
-      return {
-        _tag: "HarnessMissing",
-        provider: "antigravity",
-        installHint: INSTALL_HINT,
-      } satisfies HarnessStatus;
-    const connection = yield* connect(agentCommand(executable.value));
-    const auth = yield* connection.request("session/new", { cwd, mcpServers: [] }).pipe(
-      Effect.as({ _tag: "LoggedIn" } as const),
-      Effect.catchIf(
-        (error) => error._tag === "AcpRequestError" && error.code === AUTH_REQUIRED,
-        () => Effect.succeed({ _tag: "LoggedOut", browserLogin: true } as const),
-      ),
-      Effect.mapError(failure("Could not check Antigravity account access")),
-    );
+export const probeAntigravity = Effect.fn("Antigravity.probe")(function* (
+  cwd: string,
+  onInitialized?: (initialized: Initialized) => void,
+) {
+  const executable = yield* findAntigravity;
+  if (Option.isNone(executable))
     return {
-      _tag: "HarnessInstalled",
+      _tag: "HarnessMissing",
       provider: "antigravity",
-      executablePath: executable.value,
-      version: connection.initialized.agentInfo?.version ?? "unknown",
-      auth,
+      installHint: INSTALL_HINT,
     } satisfies HarnessStatus;
-  }).pipe(Effect.scoped);
+  const connection = yield* connect(agentCommand(executable.value));
+  onInitialized?.(connection.initialized);
+  const auth = yield* connection.request("session/new", { cwd, mcpServers: [] }).pipe(
+    Effect.as({ _tag: "LoggedIn" } as const),
+    Effect.catchIf(
+      (error) => error._tag === "AcpRequestError" && error.code === AUTH_REQUIRED,
+      () => Effect.succeed({ _tag: "LoggedOut", browserLogin: true } as const),
+    ),
+    Effect.mapError(failure("Could not check Antigravity account access")),
+  );
+  return {
+    _tag: "HarnessInstalled",
+    provider: "antigravity",
+    executablePath: executable.value,
+    version: connection.initialized.agentInfo?.version ?? "unknown",
+    auth,
+  } satisfies HarnessStatus;
+}, Effect.scoped);
 
 /** Native ACP 1.4 prints this notice outside JSON-RPC. No credential is parsed or returned. */
 export const authorizationUrl = (line: string): string | undefined => {
@@ -102,30 +110,29 @@ export const authorizationUrl = (line: string): string | undefined => {
   }
 };
 
-export const loginWith = (
+export const loginWith = Effect.fn("Antigravity.login")(function* (
   executable: string,
   cwd: string,
   emit: (progress: LoginProgress) => Effect.Effect<void>,
-) =>
-  Effect.gen(function* () {
-    let last = "";
-    const connection: AcpConnection = yield* connect({
-      ...agentCommand(executable),
-      onLine: (line) => {
-        const url = authorizationUrl(line);
-        if (url === undefined || url === last) return Effect.void;
-        last = url;
-        return emit({ _tag: "OpenUrl", url });
-      },
-    });
-    yield* connection
-      .request("authenticate", { methodId: "oauth-personal" })
-      .pipe(Effect.mapError(failure("Antigravity sign-in failed")));
-    yield* connection
-      .request("session/new", { cwd, mcpServers: [] })
-      .pipe(Effect.mapError(failure("Antigravity signed in but could not confirm account access")));
-    yield* emit({ _tag: "SignedIn" });
-  }).pipe(Effect.scoped);
+) {
+  let last = "";
+  const connection: AcpConnection = yield* connect({
+    ...agentCommand(executable),
+    onLine: (line) => {
+      const url = authorizationUrl(line);
+      if (url === undefined || url === last) return Effect.void;
+      last = url;
+      return emit({ _tag: "OpenUrl", url });
+    },
+  });
+  yield* connection
+    .request("authenticate", { methodId: "oauth-personal" })
+    .pipe(Effect.mapError(failure("Antigravity sign-in failed")));
+  yield* connection
+    .request("session/new", { cwd, mcpServers: [] })
+    .pipe(Effect.mapError(failure("Antigravity signed in but could not confirm account access")));
+  yield* emit({ _tag: "SignedIn" });
+}, Effect.scoped);
 
 export const loginAntigravity = Stream.callback<
   LoginProgress,

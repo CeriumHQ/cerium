@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- Provider setup and verification notes describe Grok Build's live coverage, Antigravity's signed-out and fixture coverage, native ACP extensions, and the capabilities each runtime cannot expose through Cerium.
+
 - Google Antigravity through Google's official, separately authenticated ACP runtime: browser sign-in stays in the harness, with per-session MCP injection, Cerium approvals, read-only policy, images, model and thinking-level switching, skills, session resume and history import. Native subagents cannot be disabled; fork, side questions, manual compaction, subscription meters and unsaved tool-free helper completions are not advertised. When the runtime would load global MCP servers despite the agent's include setting, Cerium refuses startup with an explanation instead of altering the user's configuration.
 
 - A shared Agent Client Protocol client, `@cerium/adapter-acp`, for harnesses that speak ACP over stdio: each session gets Cerium's MCP servers (through a small stdio bridge, shipped beside the backend, for an agent that starts only stdio ones), asks for approval through Cerium by the agent's access (read-only sessions refuse edits and commands without asking, and trusted bus tools never ask), resumes or replays past sessions, takes its models and efforts from the session's settings, and reports usage, context and compaction. Grok Build and Antigravity CLI get their names and marks.
@@ -17,6 +19,10 @@ All notable changes to Cerium are recorded here. The format follows
 - Computer use: agents in any harness can see and operate the apps on this computer through Cerium's `computer_guide`, `computer_read` and `computer_act` tools, built on agent-desktop's accessibility automation. It is off until turned on in Settings → Computer use, which sets it up on first use (a pinned, checksum-verified agent-desktop build), shows macOS permissions, and has a separate switch for real mouse and keyboard input. Looking needs no approval; acting asks by the agent's access like a command does. Each agent's labelled cursor shows on screen while it works, the message box shows which agents are using the computer with a Stop button, and stopped threads stay refused until the user writes in them again. Screenshots come back scaled to a model-friendly size, and sessions left behind by a backend that stopped unexpectedly are ended on the next start.
 
 ### Fixed
+
+- ACP manifests remove image and resume support when the installed runtime does not negotiate them; attempting to send images to such a session fails explicitly instead of silently dropping the attachments.
+
+- Grok refuses to start a session that excludes the harness's MCP servers when `grok inspect --json` lists native servers, rather than silently loading them despite that setting. The user's configuration stays intact, with an explanation asking them to opt into inclusion.
 
 - Harness startup defects settle their waiting turns instead of leaving an unanswered startup promise, and stopped leads release pending spawn prompts by their request ids.
 - Failed harness startups close their process scopes and bus registrations immediately, sleeping sessions can retry a failed wake, and interrupted turns release folder-activity bookkeeping even when stopped before sending their input.

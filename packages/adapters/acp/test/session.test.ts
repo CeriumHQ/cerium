@@ -69,6 +69,20 @@ const first = <T extends Tag>(payloads: ReadonlyArray<EventPayload>, tag: T): Of
 const tags = (payloads: ReadonlyArray<EventPayload>) => payloads.map((payload) => payload._tag);
 
 describe("startAcpSession", () => {
+  it.live("rejects an image when the runtime did not negotiate image input", () =>
+    Effect.gen(function* () {
+      const session = yield* startAcpSession(
+        harness,
+        { ...command, env: { FAKE_NO_IMAGES: "1" } },
+        options(),
+      );
+      const result = yield* session
+        .send("Inspect this", { images: [{ path: "a.png", mediaType: "image/png", data: "AA==" }] })
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      if (result._tag === "Failure") assert.include(result.failure.message, "did not negotiate image input");
+    }).pipe(Effect.scoped, Effect.timeout("20 seconds"), Effect.provide(NodeServices.layer)),
+  );
   it.live("streams a turn on the model and effort asked for, with its usage", () =>
     Effect.gen(function* () {
       const session = yield* startAcpSession(harness, command, options());

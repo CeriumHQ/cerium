@@ -1,4 +1,4 @@
-import { LenientArray } from "@cerium/protocol";
+import { LenientArray, type CapabilityManifest } from "@cerium/protocol";
 import { Schema } from "effect";
 
 // The Agent Client Protocol (v1) messages Cerium reads, after the official schema
@@ -302,6 +302,22 @@ export const capabilitiesOf = (initialized: Initialized) => {
   };
 };
 export type AgentCapabilities = ReturnType<typeof capabilitiesOf>;
+
+/** Negotiation can take a claimed capability away; it cannot promise an unimplemented one. */
+export const negotiatedManifest = (
+  manifest: CapabilityManifest,
+  initialized: Initialized,
+): CapabilityManifest => {
+  const capabilities = capabilitiesOf(initialized);
+  return {
+    ...manifest,
+    session: {
+      ...manifest.session,
+      resume: manifest.session.resume && (capabilities.resume || capabilities.load),
+    },
+    input: { images: manifest.input.images && capabilities.images },
+  };
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

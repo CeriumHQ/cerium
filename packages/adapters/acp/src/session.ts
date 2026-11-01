@@ -581,7 +581,10 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
 
   const session: AgentSession = {
     events: Stream.fromQueue(events),
-    send: (text, extras) => enqueue({ text, ...(extras === undefined ? {} : { extras }) }),
+    send: (text, extras) =>
+      extras?.images?.length && !capabilities.images
+        ? Effect.fail(failure(`${harness.label} did not negotiate image input`)(undefined))
+        : enqueue({ text, ...(extras === undefined ? {} : { extras }) }),
     respondToPermission,
     interrupt: Effect.suspend(() => {
       if (pending > 0) interruptRequested = true;

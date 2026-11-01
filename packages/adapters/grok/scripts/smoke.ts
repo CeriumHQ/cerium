@@ -94,7 +94,9 @@ const program = Effect.gen(function* () {
         args: [join(import.meta.dirname, "..", "..", "cursor", "scripts", "echo-mcp.ts")],
       },
     },
-    includeUserMcpServers: false,
+    // Grok cannot suppress native MCP per session. Opt in explicitly; the adapter refuses to
+    // silently load those servers when a caller leaves inclusion off.
+    includeUserMcpServers: true,
     trustedMcpServers: ["smoke"],
     appendSystemPrompt: "Keep every reply as short as the task allows.",
   };
