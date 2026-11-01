@@ -1,5 +1,7 @@
 import type { McpServerSpec } from "@cerium/harness";
 import type { AccessMode } from "@cerium/protocol";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 import type { PermissionOption } from "./schema.ts";
 
@@ -98,18 +100,32 @@ export const outcomeFor = (options: ReadonlyArray<PermissionOption>, allow: bool
   return { outcome: "cancelled" };
 };
 
-/** ACP's MCP server entry for one of Cerium's: lists of name and value where Cerium keeps records. */
-export const toAcpMcpServer = (name: string, spec: McpServerSpec) =>
-  spec.type === "http"
-    ? {
-        type: "http",
-        name,
-        url: spec.url,
-        headers: Object.entries(spec.headers ?? {}).map(([header, value]) => ({ name: header, value })),
-      }
-    : {
-        name,
-        command: spec.command,
-        args: [...spec.args],
-        env: Object.entries(spec.env ?? {}).map(([variable, value]) => ({ name: variable, value })),
-      };
+const pairs = (record: Readonly<Record<string, string>> | undefined) =>
+  Object.entries(record ?? {}).map(([name, value]) => ({ name, value }));
+
+/**
+ * The stdio MCP server that carries an agent to an HTTP one (`mcp-bridge.ts`): bundled beside the
+ * packaged app's backend, its TypeScript source while developing.
+ */
+const bridgeScript = () => {
+  const bundled = join(import.meta.dirname, "mcp-bridge.mjs");
+  return existsSync(bundled) ? bundled : join(import.meta.dirname, "mcp-bridge.ts");
+};
+
+/**
+ * ACP's MCP server entry for one of Cerium's: lists of name and value where Cerium keeps records. An
+ * agent that starts only stdio servers (`httpMcp` false: all ACP requires of one) reaches an HTTP
+ * server through the bridge, run by the Node running Cerium (Electron's own, as Node, once packaged).
+ */
+export const toAcpMcpServer = (name: string, spec: McpServerSpec, httpMcp: boolean) => {
+  if (spec.type === "stdio") {
+    return { name, command: spec.command, args: [...spec.args], env: pairs(spec.env) };
+  }
+  if (httpMcp) return { type: "http", name, url: spec.url, headers: pairs(spec.headers) };
+  return {
+    name,
+    command: process.execPath,
+    args: [bridgeScript(), spec.url],
+    env: pairs({ ELECTRON_RUN_AS_NODE: "1", CERIUM_MCP_HEADERS: JSON.stringify(spec.headers ?? {}) }),
+  };
+};

@@ -76,20 +76,29 @@ describe("grants and outcomes", () => {
   });
 
   it("passes Cerium's MCP servers in ACP's shape", () => {
-    expect(
-      toAcpMcpServer("cerium", {
-        type: "http",
-        url: "http://127.0.0.1:9/mcp",
-        headers: { Authorization: "Bearer t" },
-      }),
-    ).toEqual({
+    const bus = {
+      type: "http",
+      url: "http://127.0.0.1:9/mcp",
+      headers: { Authorization: "Bearer t" },
+    } as const;
+    expect(toAcpMcpServer("cerium", bus, true)).toEqual({
       type: "http",
       name: "cerium",
       url: "http://127.0.0.1:9/mcp",
       headers: [{ name: "Authorization", value: "Bearer t" }],
     });
+    // An agent without HTTP MCP reaches it through the stdio bridge.
+    expect(toAcpMcpServer("cerium", bus, false)).toEqual({
+      name: "cerium",
+      command: process.execPath,
+      args: [expect.stringMatching(/mcp-bridge\.(?:ts|mjs)$/), "http://127.0.0.1:9/mcp"],
+      env: [
+        { name: "ELECTRON_RUN_AS_NODE", value: "1" },
+        { name: "CERIUM_MCP_HEADERS", value: '{"Authorization":"Bearer t"}' },
+      ],
+    });
     expect(
-      toAcpMcpServer("local", { type: "stdio", command: "node", args: ["s.js"], env: { A: "1" } }),
+      toAcpMcpServer("local", { type: "stdio", command: "node", args: ["s.js"], env: { A: "1" } }, false),
     ).toEqual({
       name: "local",
       command: "node",

@@ -354,7 +354,9 @@ export const startAcpSession = Effect.fn("Acp.startSession")(function* (
           ),
   };
 
-  const mcpServers = Object.entries(options.mcpServers).map(([name, spec]) => toAcpMcpServer(name, spec));
+  const mcpServers = Object.entries(options.mcpServers).map(([name, spec]) =>
+    toAcpMcpServer(name, spec, capabilities.httpMcp),
+  );
   const params = { cwd, mcpServers, ...harness.sessionParams?.(options) };
   /** A session request, with a refusal read as a sign-out where the agent says so. */
   const setUp = (method: string, body: unknown) =>

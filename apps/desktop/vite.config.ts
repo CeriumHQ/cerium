@@ -37,5 +37,13 @@ export default defineConfig({
       },
       dts: false,
     },
+    // The stdio bridge to Cerium's MCP bus for agents that start only stdio MCP servers, found beside
+    // the backend (packages/adapters/acp/src/policy.ts). It uses Node's own modules only.
+    {
+      entry: { "mcp-bridge": "../../packages/adapters/acp/src/mcp-bridge.ts" },
+      format: "esm",
+      platform: "node",
+      dts: false,
+    },
   ],
 });
