@@ -19,6 +19,7 @@
         "@cerium/adapter-claude": "workspace:*",
         "@cerium/adapter-codex": "workspace:*",
         "@cerium/adapter-cursor": "workspace:*",
+        "@cerium/adapter-grok": "workspace:*",
         "@cerium/adapter-muse": "workspace:*",
         "@cerium/adapter-opencode": "workspace:*",
         "@cerium/artifacts": "workspace:*",
@@ -206,6 +207,20 @@
         "effect": "4.0.5",
         "node-pty": "1.2.0-beta.15",
         "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/adapters/grok": {
+      "name": "@cerium/adapter-grok",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/adapter-acp": "workspace:*",
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
       },
       "devDependencies": {
         "@effect/platform-node": "4.0.5",
@@ -445,6 +460,8 @@
     "@cerium/adapter-codex": ["@cerium/adapter-codex@workspace:packages/adapters/codex"],
 
     "@cerium/adapter-cursor": ["@cerium/adapter-cursor@workspace:packages/adapters/cursor"],
+
+    "@cerium/adapter-grok": ["@cerium/adapter-grok@workspace:packages/adapters/grok"],
 
     "@cerium/adapter-muse": ["@cerium/adapter-muse@workspace:packages/adapters/muse"],
 

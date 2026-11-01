@@ -21,6 +21,8 @@ const MODEL_USES: ReadonlyMap<string, string> = new Map([
   [key("cursor", "composer-2.5"), "Fast edits and refactors"],
   [key("muse", "muse-spark-1.3"), "Everyday coding"],
   [key("opencode", "opencode/big-pickle"), "Free, for small low-stakes tasks"],
+  [key("grok", "grok-4.7"), "Everyday coding"],
+  [key("grok", "grok-4.7-build-fast"), "Everyday coding where speed matters, at twice the cost"],
 ]);
 
 /** The models each harness starts the roster with, best first, while the user hasn't changed its roster. */
@@ -33,6 +35,8 @@ const STARTER: ReadonlyArray<readonly [ProviderId, string]> = [
   // Not its default, the contributor tier, which lets Meta train on what it reads.
   ["muse", "muse-spark-1.3"],
   ["opencode", "opencode/big-pickle"],
+  // Not its default, the Fast variant, which costs twice as much.
+  ["grok", "grok-4.7"],
 ];
 
 /** What a lead is told to use `model` for: the user's words, else Cerium's, else the harness's. */

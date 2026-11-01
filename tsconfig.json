@@ -50,6 +50,9 @@
       "path": "./packages/adapters/acp"
     },
     {
+      "path": "./packages/adapters/grok"
+    },
+    {
       "path": "./apps/backend"
     },
     {

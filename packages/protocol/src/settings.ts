@@ -41,6 +41,8 @@ export const TITLE_MODELS: ReadonlyArray<ModelChoice> = [
   // Free on OpenCode Zen, so it names threads even without a provider signed in.
   { provider: "opencode", model: "opencode/big-pickle" },
   { provider: "muse", model: "muse-spark-1.3-contributor" },
+  // Last: Grok sends its whole agent prompt with each job, some 16k tokens of the user's plan.
+  { provider: "grok", model: "grok-4.7" },
 ];
 
 /** How Cerium names a new thread from its first message. */
