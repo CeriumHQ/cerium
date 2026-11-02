@@ -2,6 +2,8 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type SideQuestionRequest } from "@cerium/harness";
 import { Effect } from "effect";
 
+import { claudeEnvironment } from "./environment.ts";
+
 /** What a side question may use: reading and searching the project, nothing that changes anything. */
 const SIDE_TOOLS = ["Read", "Glob", "Grep"];
 
@@ -32,7 +34,7 @@ export const sideQuestionOptions = (
   strictMcpConfig: true,
   maxTurns: MAX_TURNS,
   systemPrompt: { type: "preset", preset: "claude_code", append: request.instructions },
-  env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
+  env: { ...claudeEnvironment(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
   abortController,
 });
 
