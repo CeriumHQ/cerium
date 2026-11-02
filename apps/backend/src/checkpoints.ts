@@ -559,6 +559,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
               if (entry.dirty) return;
               // A report without a name may be an overflow: anything could have changed.
               if (name === null) {
+                console.log("CHECKPOINT INVALIDATED", { folder, event, name, started });
                 entry.dirty = true;
                 return;
               }
@@ -582,6 +583,8 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
               ) {
                 return;
               }
+              console.log("CHECKPOINT INVALIDATED", { folder, event, relative, started,
+                stat: statSync(path.join(folder, relative), { throwIfNoEntry: false }) });
               entry.dirty = true;
             },
           );
