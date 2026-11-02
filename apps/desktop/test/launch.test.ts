@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { resolve } from "node:path";
 
-import { launchArguments, parseLaunch, threadOfLink } from "../src/launch.ts";
+import { diskCase, launchArguments, parseLaunch, threadOfLink } from "../src/launch.ts";
 
 const cwd = resolve("/work/app");
 const folders = new Set([resolve("/work/app"), resolve("/work/app/src"), resolve("/other")]);
@@ -89,5 +89,42 @@ describe("parseLaunch", () => {
   it("cuts a very long prompt", () => {
     const request = parseLaunch(["a".repeat(50_000)], cwd, exists);
     expect(request?.kind === "prompt" && request.text.length).toBe(20_000);
+  });
+});
+
+describe("diskCase", () => {
+  const folders: Record<string, ReadonlyArray<string>> = {
+    [resolve("/")]: ["Users"],
+    [resolve("/Users")]: ["ada"],
+    [resolve("/Users/ada")]: ["Code", "code-old"],
+    [resolve("/Users/ada/Code")]: ["App", "app.bak"],
+  };
+  const list = (folder: string) => {
+    const names = folders[folder];
+    if (names === undefined) throw new Error("no such folder");
+    return names;
+  };
+
+  it("spells each part of a folder as the disk lists it", () => {
+    expect(diskCase(resolve("/users/ADA/code/app"), list)).toBe(resolve("/Users/ada/Code/App"));
+  });
+
+  it("keeps a name the folder lists exactly, and what it can't read as written", () => {
+    expect(diskCase(resolve("/Users/ada/code-old"), list)).toBe(resolve("/Users/ada/code-old"));
+    expect(diskCase(resolve("/Users/ada/Code/App/src/Lib"), list)).toBe(
+      resolve("/Users/ada/Code/App/src/Lib"),
+    );
+  });
+
+  it("spells the folder a command names, and the one a prompt runs in", () => {
+    const spell = (path: string) => diskCase(path, list);
+    const exists = () => true;
+    expect(parseLaunch(["."], resolve("/users/ada/code/app"), exists, spell)).toEqual({
+      kind: "folder",
+      folder: resolve("/Users/ada/Code/App"),
+    });
+    expect(parseLaunch(["fix", "it"], resolve("/users/ada/code/app"), exists, spell)).toMatchObject({
+      folder: resolve("/Users/ada/Code/App"),
+    });
   });
 });

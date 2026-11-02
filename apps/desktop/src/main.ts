@@ -169,17 +169,68 @@ const syncCaptionButtons = (window: BrowserWindow, zoom: number) => {
   else window.setTitleBarOverlay(titleBarOverlay(zoom));
 };
 
+/** What the menu bar and the Dock's menu ask the main window to do (preload.ts). */
+type MenuCommand = "open-settings" | "new-thread";
+
+/** Brings the main window forward, from the menu bar too, and has its page run `command`. */
+const runMenuCommand = (command: MenuCommand) => {
+  background.show();
+  const contents = mainWindow?.webContents;
+  if (contents !== undefined && !contents.isDestroyed()) contents.send("cerium:menu-command", command);
+};
+
+/**
+ * The Mac's app menu and File menu. Settings and New Thread show the keys the page itself answers
+ * (⌘, and ⌘N, lib/shortcuts.ts). The page hears a key first and takes it, so the menu's only act
+ * when it didn't (the user rebound them in Cerium, say); those and a click ask the page through
+ * `cerium:menu-command`. File holds no Close Window, which would take ⌘W from the thread tabs.
+ */
+const macMenus = (): Electron.MenuItemConstructorOptions[] => [
+  {
+    label: app.name,
+    submenu: [
+      { role: "about" },
+      { type: "separator" },
+      {
+        label: "Settings…",
+        accelerator: "Command+,",
+        registerAccelerator: false,
+        click: () => runMenuCommand("open-settings"),
+      },
+      { type: "separator" },
+      { role: "services" },
+      { type: "separator" },
+      { role: "hide" },
+      { role: "hideOthers" },
+      { role: "unhide" },
+      { type: "separator" },
+      { role: "quit" },
+    ],
+  },
+  {
+    label: "File",
+    submenu: [
+      {
+        label: "New Thread",
+        accelerator: "Command+N",
+        registerAccelerator: false,
+        click: () => runMenuCommand("new-thread"),
+      },
+    ],
+  },
+];
+
 /**
  * The menu a desktop app needs, with the browser's keys left out: no Close (Ctrl+W closes a thread
  * tab), no Reload rows (a reload tears the whole UI down), no zoom items (the UI keeps the scale the
  * user picked and applies it through `cerium:set-zoom`, so Ctrl + and Ctrl − reach the page, and
  * Ctrl 0 opens a thread), and DevTools only while the app isn't packaged. macOS shows it in the menu
- * bar, so it leads with the app's own menu (About, Hide, Quit) in place of File, whose Close Window
- * would take ⌘W from the thread tabs, and keeps the Window menu's Zoom and Bring All to Front.
+ * bar, so it leads with the app's own menu (About, Settings, Hide, Quit) and a File menu of its own
+ * (macMenus), and keeps the Window menu's Zoom and Bring All to Front.
  */
 const applicationMenu = () =>
   Menu.buildFromTemplate([
-    mac ? { role: "appMenu" } : { role: "fileMenu" },
+    ...(mac ? macMenus() : [{ role: "fileMenu" } as const]),
     { role: "editMenu" },
     {
       label: "View",
@@ -286,6 +337,19 @@ const appWindow = ({
   ipcMain.on("cerium:window-ready", onReady);
   window.once("ready-to-show", () => setTimeout(showOnce, WINDOW_READY_TIMEOUT_MS));
   window.on("closed", () => ipcMain.off("cerium:window-ready", onReady));
+  // In full screen macOS hides the traffic lights and stops reporting their corner (Window Controls
+  // Overlay), so the page's titlebar would keep a gap for them; it hears so and starts at the edge.
+  if (mac) {
+    const sendFullScreen = () => {
+      if (!window.isDestroyed()) window.webContents.send("cerium:full-screen", window.isFullScreen());
+    };
+    window.on("enter-full-screen", sendFullScreen);
+    window.on("leave-full-screen", sendFullScreen);
+    // A reload in full screen starts the page over, without the attribute.
+    window.webContents.on("did-finish-load", () => {
+      if (window.isFullScreen()) sendFullScreen();
+    });
+  }
   notifications.watch(window);
   forwardTextMenus(window.webContents);
   return window;
@@ -519,6 +583,19 @@ ipcMain.handle("cerium:microphone-access", () =>
     : "granted",
 );
 
+/**
+ * Asks macOS for the microphone before dictation first opens it, with the system's own prompt
+ * (NSMicrophoneUsageDescription, electron-builder.ts): opened without asking, the first recording
+ * can start while the prompt still shows and hear nothing. Answers the access the system then gives;
+ * once the user has answered, it only reports it. Only the Mac's preload offers it.
+ */
+ipcMain.handle("cerium:request-microphone-access", async () => {
+  if (!mac) return "granted";
+  const status = systemPreferences.getMediaAccessStatus("microphone");
+  if (status !== "not-determined") return status;
+  return (await systemPreferences.askForMediaAccess("microphone")) ? "granted" : "denied";
+});
+
 /** The system's microphone privacy page, for dictation the settings there block. */
 ipcMain.handle("cerium:open-microphone-settings", async () => {
   if (windows) await shell.openExternal("ms-settings:privacy-microphone");
@@ -534,7 +611,7 @@ ipcMain.handle("cerium:open-path", (_event, target: unknown) => openPath(target)
 const shellPathNow = () => (windows ? Promise.resolve(undefined) : loginShellPath(sessionEnvironment()));
 ipcMain.handle("cerium:cli", () => cliState(app.isPackaged, shellPathNow));
 ipcMain.handle("cerium:install-cli", async () => {
-  if (app.isPackaged) await installCli();
+  if (app.isPackaged) await installCli(shellPathNow);
   return cliState(app.isPackaged, shellPathNow);
 });
 ipcMain.handle("cerium:remove-cli", async () => {
@@ -661,6 +738,12 @@ void app.whenReady().then(() => {
   nativeTheme.themeSource = "dark";
   // `bun run dev` on macOS runs Electron's own bundle, whose dock icon is Electron's.
   if (mac && devUrl !== undefined) app.dock?.setIcon(appIcon);
+  if (mac) {
+    // A right-click on the Dock icon starts a thread, from the menu bar's hidden window too.
+    app.dock?.setMenu(
+      Menu.buildFromTemplate([{ label: "New Thread", click: () => runMenuCommand("new-thread") }]),
+    );
+  }
   threads = threadWindows({
     file: join(app.getPath("userData"), THREAD_WINDOWS_FILE),
     create: createThreadWindow,

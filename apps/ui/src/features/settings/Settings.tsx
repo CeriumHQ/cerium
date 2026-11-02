@@ -158,6 +158,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["notifications", "Show notifications"],
     ["notifications", "Play a sound"],
     ["notifications", "Count on the taskbar"],
+    ["notifications", "Count on the Dock icon"],
     ["notifications", "Notify me when"],
     ["keyboard", "Send messages with"],
     ["keyboard", "Shortcuts"],

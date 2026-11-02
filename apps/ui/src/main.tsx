@@ -24,6 +24,11 @@ if (platform) document.documentElement.dataset["platform"] = platform;
 if (window.cerium?.platform === "win32" || window.cerium?.platform === "darwin") {
   document.documentElement.dataset["acrylic"] = "";
 }
+// In macOS's full screen the traffic lights hide, and the titlebar starts at the edge (app.css).
+window.cerium?.onFullScreenChange?.((fullScreen) => {
+  if (fullScreen) document.documentElement.dataset["fullscreen"] = "";
+  else delete document.documentElement.dataset["fullscreen"];
+});
 document.documentElement.dataset["theme"] ??= "dark";
 // The web client runs on phones too, with their keyboards and touch.
 if (WEB) {

@@ -5,6 +5,7 @@ import { EllipsisVertical, Play, Share, SquarePlus } from "lucide-react";
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { accountAtom, subscribePush, unsubscribePush } from "../../backend/atoms.ts";
+import { onMac } from "../../backend/shell.ts";
 import { WEB } from "../../backend/target.ts";
 import { thisBrowser } from "../../web/device.ts";
 import {
@@ -293,7 +294,7 @@ function DesktopNotificationSettings() {
               )}
             />
             <SettingsRow
-              label="Count on the taskbar"
+              label={onMac() ? "Count on the Dock icon" : "Count on the taskbar"}
               hint="Threads that notified since you last opened them."
               control={(labelledBy) => (
                 <SettingsSwitch

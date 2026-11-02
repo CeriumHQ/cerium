@@ -106,6 +106,11 @@ export function useDictation(onText: (text: string) => void): Dictation {
     // The model loads while the user talks; the first time, that's its download.
     prepareSpeech(model);
     try {
+      // macOS asks the user the first time, before Chromium opens the device; a refusal fails below.
+      await shellBridge()
+        ?.requestMicrophoneAccess?.()
+        .catch(() => undefined);
+      if (own !== session.current) return;
       const opened = await openMicrophone();
       if (own !== session.current) {
         opened.stop();

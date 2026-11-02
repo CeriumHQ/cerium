@@ -147,6 +147,16 @@ export interface ShellBridge {
   /** Calls back with the thread of each clicked notification; returns how to stop. */
   readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
   /**
+   * Calls back with what the Mac's menu bar or Dock menu asks of the main window: Settings…, New
+   * Thread; returns how to stop.
+   */
+  readonly onMenuCommand?: (listener: (command: "open-settings" | "new-thread") => void) => () => void;
+  /**
+   * Calls back whenever the window enters or leaves macOS's full screen, which hides the traffic
+   * lights; returns how to stop.
+   */
+  readonly onFullScreenChange?: (listener: (fullScreen: boolean) => void) => () => void;
+  /**
    * Opens one of this computer's threads in a window of its own, or brings forward the one it has;
    * only the main window asks (apps/desktop/src/threadWindows.ts).
    */
@@ -155,6 +165,11 @@ export interface ShellBridge {
   readonly preview?: PreviewBridge;
   /** Whether the system's privacy settings let Cerium use the microphone: `denied` when they block it. */
   readonly microphoneAccess?: () => Promise<string>;
+  /**
+   * Asks macOS for the microphone with its own prompt the first time, before dictation opens it;
+   * resolves with the access given. Only the Mac app offers it.
+   */
+  readonly requestMicrophoneAccess?: () => Promise<string>;
   /**
    * Opens Windows' or macOS's microphone privacy settings, where dictation's access is turned back
    * on; absent on Linux, which has no such page.
@@ -230,6 +245,8 @@ export interface NativeNotification {
 export interface StartAtLogin {
   readonly available: boolean;
   readonly enabled: boolean;
+  /** macOS holds the login item back until the user allows Cerium in System Settings' Login Items. */
+  readonly needsApproval?: boolean;
 }
 
 /** Mirrors the shell's own type in apps/desktop/src/crashReports.ts. */
@@ -294,6 +311,9 @@ export const onWindows = (): boolean => window.cerium?.platform === "win32";
  * browser preview stands in for it with `?platform=darwin` (main.tsx).
  */
 export const onMac = (): boolean => document.documentElement.dataset["platform"] === "darwin";
+
+/** Where Cerium waits while its window is closed, by the system's own name: the Mac's menu bar, or the tray. */
+export const trayName = (): string => (onMac() ? "the menu bar" : "the tray");
 
 /**
  * Where revealing a file shows it, by the system's own name, for "Show in …": File Explorer, Finder,

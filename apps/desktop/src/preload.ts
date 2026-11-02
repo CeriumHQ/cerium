@@ -112,6 +112,18 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.on("cerium:open-thread", forward);
     return () => ipcRenderer.off("cerium:open-thread", forward);
   },
+  onMenuCommand: (listener: (command: "open-settings" | "new-thread") => void): (() => void) => {
+    const forward = (_event: unknown, command: unknown) => {
+      if (command === "open-settings" || command === "new-thread") listener(command);
+    };
+    ipcRenderer.on("cerium:menu-command", forward);
+    return () => ipcRenderer.off("cerium:menu-command", forward);
+  },
+  onFullScreenChange: (listener: (fullScreen: boolean) => void): (() => void) => {
+    const forward = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true);
+    ipcRenderer.on("cerium:full-screen", forward);
+    return () => ipcRenderer.off("cerium:full-screen", forward);
+  },
   // The Preview pane's pages, which the shell lays over the window where the pane says, and the
   // agents' calls on them, which the page hands on from its backend.
   preview: {
@@ -144,6 +156,13 @@ contextBridge.exposeInMainWorld("cerium", {
     },
   },
   microphoneAccess: (): Promise<string> => ipcRenderer.invoke("cerium:microphone-access"),
+  // Only macOS asks for the microphone with a prompt of its own, before dictation first opens it.
+  ...(process.platform === "darwin"
+    ? {
+        requestMicrophoneAccess: (): Promise<string> =>
+          ipcRenderer.invoke("cerium:request-microphone-access"),
+      }
+    : {}),
   // Linux has no microphone privacy page to open.
   ...(process.platform === "win32" || process.platform === "darwin"
     ? {
