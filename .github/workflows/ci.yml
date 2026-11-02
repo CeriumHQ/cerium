@@ -203,6 +203,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # macOS: its own shells, case-insensitive disk and processes, on the standard Apple silicon runner,
+  # wherever the Mac apps are packaged.
+  # It doesn't hold back the nightly yet: the packaged Mac app's smoke test does
+  # (.github/actions/package), until this has a record of passing.
+  test-macos:
+    name: Test (macOS)
+    needs: plan
+    if: ${{ needs.plan.outputs.everywhere == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: test
+        name: Test
+        run: bun run test --run
+        env:
+          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
+      - name: Keep the browser's logs
+        if: ${{ failure() && steps.test.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-logs-macOS
+          path: ${{ runner.temp }}/browser-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   # This version's web UI and website, built once for the publish job to deploy and release.
   web:
     name: Build the web app
