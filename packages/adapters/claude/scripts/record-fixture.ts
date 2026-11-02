@@ -14,6 +14,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
+import { claudeEnvironment } from "../src/environment.ts";
 import { TODO_TOOLS_ENV } from "../src/manifest.ts";
 
 const executable = process.argv[2];
@@ -46,11 +47,11 @@ const session = query({
     settingSources: [],
     disallowedTools: ["Agent", "Workflow", "SendMessage"],
     permissionMode: "default",
-    ...(todos
-      ? {
-          env: { ...process.env, ...TODO_TOOLS_ENV, ...(todoWrite ? { CLAUDE_CODE_ENABLE_TASKS: "0" } : {}) },
-        }
-      : {}),
+    env: {
+      ...claudeEnvironment(),
+      ...(todos ? TODO_TOOLS_ENV : {}),
+      ...(todoWrite ? { CLAUDE_CODE_ENABLE_TASKS: "0" } : {}),
+    },
     canUseTool: async (toolName, input, { toolUseID }) => {
       messages.push({ type: "cerium_permission_request", toolName, input });
       return { behavior: "allow", updatedInput: input, toolUseID };
