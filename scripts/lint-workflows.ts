@@ -1,9 +1,9 @@
 // Lints the GitHub Actions workflows and actions under .github. actionlint checks their syntax and
 // expressions, and every `run:` script through shellcheck; zizmor audits them for security, with the
 // settings in .github/zizmor.yml. All three are pinned here by version and checksum, downloaded once
-// into node_modules/.cache/workflow-linters, and run on Linux and Windows (x64). CI runs this in its
-// lint job, where zizmor's online audits, which look the pinned actions up on GitHub, run too: they
-// need GH_TOKEN.
+// into node_modules/.cache/workflow-linters, and run on Linux and Windows (x64) and macOS. CI runs this
+// in its lint job, where zizmor's online audits, which look the pinned actions up on GitHub, run too:
+// they need GH_TOKEN.
 //
 // Usage: bun run lint:workflows
 
@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-type Platform = "linux-x64" | "win32-x64";
+type Platform = "linux-x64" | "win32-x64" | "darwin-arm64" | "darwin-x64";
 
 interface Download {
   readonly url: string;
@@ -33,6 +33,16 @@ const tools = {
   actionlint: {
     version: "1.7.12",
     downloads: {
+      "darwin-arm64": {
+        url: github("rhysd/actionlint", "v1.7.12", "actionlint_1.7.12_darwin_arm64.tar.gz"),
+        sha256: "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+        binary: "actionlint",
+      },
+      "darwin-x64": {
+        url: github("rhysd/actionlint", "v1.7.12", "actionlint_1.7.12_darwin_amd64.tar.gz"),
+        sha256: "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644",
+        binary: "actionlint",
+      },
       "linux-x64": {
         url: github("rhysd/actionlint", "v1.7.12", "actionlint_1.7.12_linux_amd64.tar.gz"),
         sha256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
@@ -48,6 +58,16 @@ const tools = {
   shellcheck: {
     version: "0.11.0",
     downloads: {
+      "darwin-arm64": {
+        url: github("koalaman/shellcheck", "v0.11.0", "shellcheck-v0.11.0.darwin.aarch64.tar.gz"),
+        sha256: "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f",
+        binary: "shellcheck-v0.11.0/shellcheck",
+      },
+      "darwin-x64": {
+        url: github("koalaman/shellcheck", "v0.11.0", "shellcheck-v0.11.0.darwin.x86_64.tar.gz"),
+        sha256: "c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51",
+        binary: "shellcheck-v0.11.0/shellcheck",
+      },
       "linux-x64": {
         url: github("koalaman/shellcheck", "v0.11.0", "shellcheck-v0.11.0.linux.x86_64.tar.gz"),
         sha256: "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6",
@@ -63,6 +83,16 @@ const tools = {
   zizmor: {
     version: "1.31.1",
     downloads: {
+      "darwin-arm64": {
+        url: github("zizmorcore/zizmor", "v1.31.1", "zizmor-aarch64-apple-darwin.tar.gz"),
+        sha256: "ad5aa633cd56215b11e6c51d51f90c7e6b22904a75047d1215abbd422f61d698",
+        binary: "zizmor",
+      },
+      "darwin-x64": {
+        url: github("zizmorcore/zizmor", "v1.31.1", "zizmor-x86_64-apple-darwin.tar.gz"),
+        sha256: "72ae63bb85b67229c06242f04195cb43927e9fab5f43803c6434dc701a517d61",
+        binary: "zizmor",
+      },
       "linux-x64": {
         url: github("zizmorcore/zizmor", "v1.31.1", "zizmor-x86_64-unknown-linux-gnu.tar.gz"),
         sha256: "d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99",
@@ -81,8 +111,13 @@ const root = join(import.meta.dirname, "..");
 const cache = join(root, "node_modules", ".cache", "workflow-linters");
 
 const platform = `${process.platform}-${process.arch}`;
-if (platform !== "linux-x64" && platform !== "win32-x64") {
-  throw new Error(`The workflow linters are pinned for linux-x64 and win32-x64, not ${platform}.`);
+if (
+  platform !== "linux-x64" &&
+  platform !== "win32-x64" &&
+  platform !== "darwin-arm64" &&
+  platform !== "darwin-x64"
+) {
+  throw new Error(`The workflow linters aren't pinned for ${platform}.`);
 }
 
 // Windows' own tar reads zip archives; Git Bash's, which may come first on the PATH, doesn't.
