@@ -2,8 +2,6 @@ import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type CompletionRequest } from "@cerium/harness";
 import { Effect } from "effect";
 
-import { claudeEnvironment } from "./environment.ts";
-
 /**
  * The quickest answer the user's `claude` gives: the request's instructions in place of Claude Code's
  * own system prompt, no tools, MCP servers or settings to load, no thinking, and nothing saved. The
@@ -25,7 +23,7 @@ export const completionOptions = (
   persistSession: false,
   maxTurns: 1,
   thinking: { type: "disabled" },
-  env: { ...claudeEnvironment(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
+  env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" },
   abortController,
 });
 

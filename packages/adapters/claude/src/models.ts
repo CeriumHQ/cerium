@@ -10,8 +10,6 @@ import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
 import { Cause, Effect, Queue, Stream } from "effect";
 
-import { claudeEnvironment } from "./environment.ts";
-
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
 
@@ -26,7 +24,6 @@ export const inspectOptions = (executablePath: string, cwd: string | undefined):
   ...(cwd === undefined ? { mcpServers: {}, strictMcpConfig: true, settings: { fastMode: true } } : { cwd }),
   persistSession: false,
   settingSources: ["user", "project", "local"],
-  env: claudeEnvironment(),
 });
 
 /**
