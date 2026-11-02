@@ -583,8 +583,13 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
               ) {
                 return;
               }
-              console.log("CHECKPOINT INVALIDATED", { folder, event, relative, started,
-                stat: statSync(path.join(folder, relative), { throwIfNoEntry: false }) });
+              console.log("CHECKPOINT INVALIDATED", {
+                folder,
+                event,
+                relative,
+                started,
+                stat: statSync(path.join(folder, relative), { throwIfNoEntry: false }),
+              });
               entry.dirty = true;
             },
           );
