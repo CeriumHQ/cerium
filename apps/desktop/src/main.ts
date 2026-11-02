@@ -775,8 +775,8 @@ void app.whenReady().then(() => {
 app.on("window-all-closed", () => app.quit());
 
 // Quitting waits for the backend to shut down, so it closes its harness sessions and database. On
-// Windows the downloaded update's installer starts then (updater.ts), unless Windows itself is
-// shutting down, which would stop it partway: the update installs another time.
+// Windows and for ad hoc Mac builds, the downloaded update's installer starts then (updater.ts),
+// unless the system is shutting down, which would stop it partway: the update installs another time.
 app.on("will-quit", (event) => {
   if (backend !== undefined && !backendStopped) {
     event.preventDefault();

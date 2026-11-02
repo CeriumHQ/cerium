@@ -1,11 +1,20 @@
-import { app, BrowserWindow, shell } from "electron";
-import electronUpdater, { type BaseUpdater } from "electron-updater";
+import { app, BrowserWindow, net, shell } from "electron";
+import electronUpdater, { type BaseUpdater, type UpdateInfo } from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { reportCrash } from "./crashReports.ts";
 import { linuxInstall } from "./linuxInstall.ts";
-import { diskImageUrl, updatesInPlace } from "./macUpdates.ts";
+import {
+  diskImageUrl,
+  downloadMacUpdate,
+  installMacUpdate,
+  macBundlePath,
+  macUpdateMode,
+  prepareMacUpdate,
+  type PreparedMacUpdate,
+} from "./macUpdates.ts";
 
 // Updating Cerium from within. The installed app follows one release
 // channel's GitHub Releases through electron-updater: stable's latest release, or the newest
@@ -45,8 +54,8 @@ export interface Updates {
   readonly buildChannel: UpdateChannel;
   readonly status: UpdateStatus;
   /**
-   * This build can't install updates itself (a Mac build signed ad hoc, macUpdates.ts): downloading
-   * one opens its disk image in the browser.
+   * This installation can't be replaced (a Mac app on a read-only volume, macUpdates.ts):
+   * downloading one opens its disk image in the browser.
    */
   readonly manual: boolean;
   /** An update downloads as soon as a check finds it; off, each waits for the user to start it. */
@@ -94,7 +103,7 @@ export const offline = (error: unknown): boolean => {
 };
 
 /** Reports an update that failed for a reason of its own, with electron-updater's code. */
-const reportUpdateFailure = (phase: "check" | "download", error: unknown) => {
+const reportUpdateFailure = (phase: "check" | "download" | "install", error: unknown) => {
   const { code, name, message, stack } = (error ?? {}) as Partial<
     Record<"code" | "name" | "message" | "stack", unknown>
   >;
@@ -158,14 +167,20 @@ export const startUpdater = (host: UpdaterHost) => {
   // for the user's password (linuxInstall.ts). Anything else, a build run from a folder, doesn't.
   const updatable = app.isPackaged && (process.platform !== "linux" || linuxInstall() !== undefined);
   let status: UpdateStatus = updatable ? { kind: "checking" } : { kind: "unsupported" };
-  // A Mac build counts as manual until codesign says otherwise, well before the first check.
+  // Resolve the installation mode before checking, including a check requested immediately at launch.
   let manual = process.platform === "darwin";
-  if (updatable && manual) {
-    void updatesInPlace().then((inPlace) => {
-      manual = !inPlace;
-      set(status);
-    });
-  }
+  let adHocMac = false;
+  let macRelease: UpdateInfo | undefined;
+  let preparedMac: PreparedMacUpdate | undefined;
+  let macInstalling: Promise<void> | undefined;
+  const modeReady =
+    updatable && manual
+      ? macUpdateMode(macBundlePath()).then((mode) => {
+          manual = mode === "manual";
+          adHocMac = mode === "adhoc";
+          set(status);
+        })
+      : Promise.resolve();
 
   const snapshot = (): Updates => ({
     channel,
@@ -215,11 +230,12 @@ export const startUpdater = (host: UpdaterHost) => {
     if (!updatable || settled()) return Promise.resolve();
     if (checking !== undefined) return checking;
     set({ kind: "checking" });
-    checking = autoUpdater
-      .checkForUpdates()
+    checking = modeReady
+      .then(() => autoUpdater.checkForUpdates())
       .then(
         (result) => {
           if (result?.isUpdateAvailable !== true) return set({ kind: "current", checkedAt: Date.now() });
+          macRelease = result.updateInfo;
           set({ kind: "available", version: result.updateInfo.version });
           if (autoDownload && !manual) void download("background");
         },
@@ -251,7 +267,26 @@ export const startUpdater = (host: UpdaterHost) => {
     }
     set({ kind: "downloading", version, percent: 0 });
     try {
-      await autoUpdater.downloadUpdate();
+      if (adHocMac) {
+        if (macRelease?.version !== version)
+          throw new Error("The checked Mac release is no longer available.");
+        const folder = await mkdtemp(join(app.getPath("temp"), "cerium-download-"));
+        try {
+          const archive = await downloadMacUpdate(
+            macRelease,
+            folder,
+            (url) => net.fetch(url),
+            (percent) => {
+              if (status.kind === "downloading") set({ ...status, percent });
+            },
+          );
+          preparedMac = await prepareMacUpdate(macBundlePath(), archive, version, app.getVersion());
+        } finally {
+          await rm(folder, { recursive: true, force: true });
+        }
+      } else {
+        await autoUpdater.downloadUpdate();
+      }
       set({ kind: "ready", version });
     } catch (error) {
       log("error")(error);
@@ -267,6 +302,19 @@ export const startUpdater = (host: UpdaterHost) => {
     setTimeout(() => void check(), LAUNCH_CHECK_DELAY_MS);
     setInterval(() => void check(), CHECK_INTERVAL_MS);
   }
+
+  const installMac = (restart: boolean): Promise<void> => {
+    if (macInstalling !== undefined) return macInstalling;
+    if (preparedMac === undefined) return Promise.reject(new Error("No Mac update is staged."));
+    macInstalling = installMacUpdate(preparedMac, restart, logFile).catch((error: unknown) => {
+      macInstalling = undefined;
+      log("error")(error);
+      reportUpdateFailure("install", error);
+      if (status.kind === "installing") set({ kind: "ready", version: status.version });
+      throw error;
+    });
+    return macInstalling;
+  };
 
   return {
     updates: snapshot,
@@ -296,23 +344,31 @@ export const startUpdater = (host: UpdaterHost) => {
     /**
      * Restarts into the downloaded update, unless agents are working and the user hasn't said to
      * stop them. On Windows Cerium stops first, its window saying so, and the installer runs once it
-     * has (installOnExit). On macOS electron-updater puts the new app in the old one's place, and on
-     * Linux the new AppImage or package; then the new build starts.
+     * has (installOnExit). On macOS Squirrel or the ad hoc build's helper puts the new app in the old
+     * one's place, and on Linux the new AppImage or package; then the new build starts.
      */
     install: (anyway: boolean): InstallResult => {
       if (status.kind !== "ready") return "unavailable";
       if (!anyway && host.working()) return "working";
       set({ kind: "installing", version: status.version });
       if (windows) void host.stopBackend().then(() => app.quit());
+      else if (adHocMac)
+        void installMac(true).then(
+          () => app.quit(),
+          () => undefined,
+        );
       else autoUpdater.quitAndInstall(true, true);
       return "started";
     },
     /**
-     * Runs the downloaded update's installer as Cerium exits on Windows, once the backend has
-     * stopped: with its window, which starts Cerium again when Cerium restarted for the update. Its
-     * processes are gone by then, so it neither waits for them nor kills them.
+     * Runs the downloaded update's installer once the backend has stopped. The ad hoc Mac helper
+     * waits for this process to exit; Windows shows its installer, restarting Cerium when requested.
      */
     installOnExit: () => {
+      if (adHocMac && (status.kind === "ready" || status.kind === "installing")) {
+        void installMac(status.kind === "installing").catch(() => undefined);
+        return;
+      }
       if (!windows || (status.kind !== "ready" && status.kind !== "installing")) return;
       (autoUpdater as BaseUpdater).install(false, status.kind === "installing");
     },
