@@ -6,6 +6,11 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A response's work (its tool calls, thoughts and what the agent said along the way) folds under one Working line ahead of its final message. It stays open while the agent works, showing a running clock, and folds as soon as the final message begins or the turn ends; agents it started, pushes, questions, approvals waiting on you and turn errors stay in view below it. The copy button under a response copies only that final message.
+- Failed tool calls no longer show in red: a run's line stops counting them, and their rows, icons and output look like any other call's, since the agent deals with its own failures.
+
 ### Added
 
 - Computer use: agents in any harness can see and operate the apps on this computer through Cerium's `computer_guide`, `computer_read` and `computer_act` tools, built on agent-desktop's accessibility automation. It is off until turned on in Settings → Computer use, which sets it up on first use (a pinned, checksum-verified agent-desktop build), shows macOS permissions, and has a separate switch for real mouse and keyboard input. Looking needs no approval; acting asks by the agent's access like a command does. Each agent's labelled cursor shows on screen while it works, the message box shows which agents are using the computer with a Stop button, and stopped threads stay refused until the user writes in them again. Screenshots come back scaled to a model-friendly size, and sessions left behind by a backend that stopped unexpectedly are ended on the next start.

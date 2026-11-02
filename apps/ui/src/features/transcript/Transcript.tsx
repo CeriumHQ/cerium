@@ -74,6 +74,7 @@ import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
+import { WorkSection } from "./Work.tsx";
 import { useArrivals } from "../../lib/motion.ts";
 import { HistoryWindow } from "./HistoryWindow.tsx";
 
@@ -155,6 +156,7 @@ const entrance = (item: Item): string => {
       return "arrive";
     // A run writes in its own line, and brings in each of its steps as they come.
     case "run":
+    case "work":
     case "replaced":
       return "";
     case "tools":
@@ -182,16 +184,18 @@ const entrance = (item: Item): string => {
   }
 };
 
-/** Every item's id, and those of the steps inside runs, which come in one by one as a run grows. */
-const arrivalKeys = (items: ReadonlyArray<Item>) =>
-  items.flatMap((item) =>
-    item.kind === "run" ? [item.id, ...item.steps.map((step) => step.id)] : [item.id],
-  );
+/** An item's id, and those of the steps inside it, which come in one by one as a run or work grows. */
+const idsOf = (item: Item): ReadonlyArray<string> =>
+  item.kind === "run" || item.kind === "work" ? [item.id, ...item.steps.flatMap(idsOf)] : [item.id];
+
+/** A work's steps with its runs opened up: its calls and thoughts, each with its time. */
+const workSteps = (steps: ReadonlyArray<Item>) =>
+  steps.flatMap((step) => (step.kind === "run" ? step.steps : [step]));
 
 const containsBlock = (item: Item, id: string): boolean => {
   if (item.id === id) return true;
   if (item.kind === "input") return item.blocks.some((block) => block.id === id);
-  if (item.kind === "run") return item.steps.some((step) => containsBlock(step, id));
+  if (item.kind === "run" || item.kind === "work") return item.steps.some((step) => containsBlock(step, id));
   if (item.kind === "replaced") return item.items.some((each) => containsBlock(each, id));
   return false;
 };
@@ -241,7 +245,7 @@ export function Transcript({
   );
   const items = layout(shown);
   // What comes in while the thread is open rises into place; what it opened with stays still.
-  const arrived = useArrivals(arrivalKeys(items));
+  const arrived = useArrivals(items.flatMap(idsOf));
   const last = items.at(-1);
   const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
@@ -312,8 +316,8 @@ export function Transcript({
             model={item.kind === "switch" ? modelLabel(item.model, item.provider) : ""}
             replaced={replaced}
             fresh={
-              !replaced && item.kind === "run"
-                ? [item.id, ...item.steps.map((step) => step.id)].filter(arrived).join(" ")
+              !replaced && (item.kind === "run" || item.kind === "work")
+                ? idsOf(item).filter(arrived).join(" ")
                 : ""
             }
           />
@@ -489,7 +493,8 @@ interface ItemProps {
 const TranscriptItem = memo(
   function TranscriptItem({ item, last, activity, provider, model, replaced, fresh }: ItemProps) {
     const arrived = new Set(fresh.split(" "));
-    const render = (each: Item): ReactNode => {
+    /** `tail` is the step a running agent is on: the transcript's latest, or the last of live work. */
+    const render = (each: Item, tail: boolean, quiet = false): ReactNode => {
       switch (each.kind) {
         case "input":
           return (
@@ -520,17 +525,37 @@ const TranscriptItem = memo(
               key={each.id}
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               timings={runTimings(each.steps)}
-              live={last && activity === "running"}
+              live={tail && activity === "running"}
               activity={activity}
               arrived={arrived.has(each.id)}
             >
               {each.steps.map((step) => (
                 <div key={step.id} className={arrived.has(step.id) ? entrance(step) : ""}>
-                  {render(step)}
+                  {render(step, false)}
                 </div>
               ))}
             </ToolRun>
           );
+        case "work": {
+          const live = !each.done && activity === "running";
+          const steps = workSteps(each.steps);
+          return (
+            <WorkSection
+              key={each.id}
+              tools={steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
+              timings={runTimings(steps)}
+              live={live}
+              arrived={arrived.has(each.id)}
+              contains={(id) => containsBlock(each, id)}
+            >
+              {each.steps.map((step, index) => (
+                <div key={step.id} className={arrived.has(step.id) ? entrance(step) : ""}>
+                  {render(step, live && index === each.steps.length - 1, true)}
+                </div>
+              ))}
+            </WorkSection>
+          );
+        }
         case "tools":
           return <ToolGroup key={each.id} tools={each.tools} activity={activity} />;
         case "spawns":
@@ -540,7 +565,7 @@ const TranscriptItem = memo(
         case "push":
           return <PushItem key={each.id} call={each.call} />;
         case "block":
-          return <ResponseBlock key={each.id} block={each.block} activity={activity} />;
+          return <ResponseBlock key={each.id} block={each.block} activity={activity} quiet={quiet} />;
         case "turnEnd":
           return <TurnFooter key={each.id} block={each.block} text={each.text} routed={each.routed} />;
         // Laid out by the transcript itself, around the items it holds.
@@ -548,7 +573,7 @@ const TranscriptItem = memo(
           return null;
       }
     };
-    return render(item);
+    return render(item, last);
   },
   (before, after) =>
     before.last === after.last &&
@@ -557,7 +582,8 @@ const TranscriptItem = memo(
     before.model === after.model &&
     before.replaced === after.replaced &&
     before.fresh === after.fresh &&
-    same(before.item, after.item),
+    // Deep enough for the calls inside a work's runs.
+    same(before.item, after.item, 9),
 );
 
 /** The files a turn changed; renders again when they or what became of them changes. */
@@ -648,7 +674,16 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
 const emptyLive: ReadonlyMap<string, AgentEvent> = new Map();
 const LiveText = createContext(emptyLive);
 
-function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: AgentActivity }) {
+/** `quiet` for a message the agent wrote along the way, which sits in its work under the final one. */
+function ResponseBlock({
+  block,
+  activity,
+  quiet,
+}: {
+  block: TranscriptBlock;
+  activity: AgentActivity;
+  quiet: boolean;
+}) {
   const payload = use(LiveText).get(block.id)?.payload;
   const text =
     payload?._tag === "MessageDelta" || payload?._tag === "ReasoningDelta" ? payload.text : undefined;
@@ -659,7 +694,7 @@ function ResponseBlock({ block, activity }: { block: TranscriptBlock; activity: 
       return (
         <MessageMenuArea text={text ?? block.text} className="select-text">
           <div data-reply-source data-find={block.id}>
-            <Markdown text={text ?? block.text} streaming={block.streaming} />
+            <Markdown text={text ?? block.text} streaming={block.streaming} compact={quiet} />
           </div>
         </MessageMenuArea>
       );

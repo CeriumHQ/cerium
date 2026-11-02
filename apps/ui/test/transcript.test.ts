@@ -34,7 +34,9 @@ describe("buildTranscript", () => {
     expect(blocks.find((block) => block.id === "tool:d")).not.toHaveProperty("endedAt");
     expect(blocks.at(-1)).toMatchObject({ kind: "turnEnd", startedAt: 0, endedAt: 5 });
     // A run times its thoughts along with its calls.
-    const run = layout(blocks).find((item) => item.kind === "run");
+    const run = layout(blocks)
+      .flatMap((item) => (item.kind === "work" ? item.steps : [item]))
+      .find((item) => item.kind === "run");
     expect(run?.kind === "run" ? runTimings(run.steps) : []).toEqual([
       expect.objectContaining({ kind: "reasoning", startedAt: 0, endedAt: 1 }),
       expect.objectContaining({ id: "tool:c", startedAt: 2, endedAt: 4 }),

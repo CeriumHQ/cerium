@@ -30,7 +30,6 @@ import { STEP_HEADER, StepChevron, Took, TraceNode } from "./Trace.tsx";
 import {
   describeTool,
   exitCodeOf,
-  failureLine,
   hasToolMenu,
   outputText,
   sameTool,
@@ -132,7 +131,6 @@ export function ToolRun({
   children: ReactNode;
 }) {
   const [toggled, setToggled] = useState<boolean>();
-  const failed = tools.filter((tool) => tool.status === "error").length;
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
   const images = tools.flatMap(shownImages);
   const open = toggled ?? live;
@@ -149,11 +147,6 @@ export function ToolRun({
         <Strip tools={tools} activity={activity} />
         <span className="flex min-w-0">
           <span className="min-w-0 truncate">{summarizeTools(tools)}</span>
-          {failed > 0 ? (
-            <span className="shrink-0 whitespace-pre">
-              , <span className="text-error-text">{failed} failed</span>
-            </span>
-          ) : null}
           {interrupted > 0 ? (
             <span className="shrink-0 whitespace-pre">, {interrupted} interrupted</span>
           ) : null}
@@ -197,7 +190,10 @@ export function ToolRun({
   );
 }
 
-/** A run's calls in order, a tick each in the colour of how it went: the run's shape at a glance. */
+/**
+ * A run's calls in order, a tick each: the run's shape at a glance. A failed call looks like any
+ * finished one; the agent deals with its own failures, and there's nothing in it for the user to do.
+ */
 function Strip({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity: AgentActivity }) {
   return (
     <span aria-hidden className="flex h-3 w-max max-w-16 shrink-0 items-stretch gap-px">
@@ -205,13 +201,11 @@ function Strip({ tools, activity }: { tools: ReadonlyArray<ToolBlock>; activity:
         <span
           key={tool.id}
           className={`max-w-[3px] min-w-px flex-[1_1_3px] rounded-full ${
-            tool.status === "error"
-              ? "bg-error-text"
-              : tool.status === "done"
-                ? "bg-fg-tertiary/55"
-                : activity === "running"
-                  ? "animate-pulse bg-running-text"
-                  : "bg-line-strong"
+            tool.status !== "running"
+              ? "bg-fg-tertiary/55"
+              : activity === "running"
+                ? "animate-pulse bg-running-text"
+                : "bg-line-strong"
           }`}
         />
       ))}
@@ -257,8 +251,6 @@ const ToolRow = memo(
     const input = toolInputView(tool);
     const counts = input?.kind === "diff" ? editCounts(input.edits) : undefined;
     const interrupted = tool.status === "running" && activity !== "running";
-    // A failed call says why on its row, so a folded run opens onto what went wrong.
-    const reason = tool.status === "error" ? failureLine(tool.output) : undefined;
     const header = (
       <Collapsible.Trigger className={STEP_HEADER}>
         <span className="flex h-7 w-full items-center gap-2 px-1.5 max-md:h-9">
@@ -291,9 +283,6 @@ const ToolRow = memo(
             <StepChevron />
           </span>
         </span>
-        {reason && !open ? (
-          <span className="block w-full truncate px-1.5 pb-1.5 text-meta text-error-text">{reason}</span>
-        ) : null}
       </Collapsible.Trigger>
     );
     return (
@@ -326,8 +315,8 @@ const ToolRow = memo(
 );
 
 /**
- * A call's node on the trace: what kind of call it is, or while it runs a spinner. A failed call's
- * icon turns the error's colour; one cut off when its agent's turn ended shows it was stopped.
+ * A call's node on the trace: what kind of call it is, or while it runs a spinner. One cut off when
+ * its agent's turn ended shows it was stopped; a failed one looks like any other finished call.
  */
 function ToolNode({
   icon: Icon,
@@ -342,13 +331,7 @@ function ToolNode({
   const finished = useChanged(status);
   if (interrupted) return <Ban size={12} strokeWidth={2} className="text-fg-tertiary" />;
   if (status === "running") return <LoaderCircle size={13} className="animate-spin text-running-text" />;
-  return (
-    <Icon
-      size={13}
-      strokeWidth={1.75}
-      className={`${status === "error" ? "text-error-text" : "text-fg-tertiary"} ${finished ? "swap-in" : ""}`}
-    />
-  );
+  return <Icon size={13} strokeWidth={1.75} className={`text-fg-tertiary ${finished ? "swap-in" : ""}`} />;
 }
 
 /**
@@ -530,13 +513,7 @@ function Pane({
   // A failure's earlier lines are above what it shows, so its controls sit in the header; the rest
   // of a long output is below, so its controls sit under it.
   return (
-    <Frame
-      label={label}
-      badge={badge}
-      failed={failed}
-      copy={text === "" ? undefined : text}
-      aside={failed ? controls : null}
-    >
+    <Frame label={label} badge={badge} copy={text === "" ? undefined : text} aside={failed ? controls : null}>
       {text === "" ? null : (
         <>
           <pre
@@ -562,31 +539,23 @@ function Pane({
 function Frame({
   label,
   badge,
-  failed = false,
   copy,
   aside = null,
   children,
 }: {
   label: string;
   badge?: string | undefined;
-  failed?: boolean;
   copy?: string | undefined;
   /** Controls at the header's end, before the copy button. */
   aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div
-      className={`group/pane overflow-hidden rounded-lg border bg-surface-sunken ${failed ? "border-error/25" : "border-line-subtle"}`}
-    >
+    <div className="group/pane overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken">
       <div className="flex h-7 items-center gap-2 pr-1 pl-3 text-caption text-fg-tertiary">
         <span>{label}</span>
         {badge ? (
-          <span
-            className={`rounded px-1.5 tabular-nums ${failed ? "bg-error/12 text-error-text" : "bg-surface-hover text-fg-secondary"}`}
-          >
-            {badge}
-          </span>
+          <span className="rounded bg-surface-hover px-1.5 text-fg-secondary tabular-nums">{badge}</span>
         ) : null}
         <span className="ml-auto flex items-center gap-3">
           {aside}

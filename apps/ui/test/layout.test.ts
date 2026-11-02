@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { foldOf } from "../src/features/transcript/FoldedText.tsx";
-import { layout, showsProgress } from "../src/features/transcript/layout.ts";
+import { layout, showsProgress, type Item } from "../src/features/transcript/layout.ts";
 import type { TranscriptBlock } from "../src/features/transcript/model.ts";
 
 const user = (id: string, text = "Hi"): TranscriptBlock => ({
@@ -36,12 +36,17 @@ const turnEnd = (id: string, stopReason = "completed"): TranscriptBlock => ({
   id: `turnEnd:${id}`,
   stopReason,
 });
+const reasoning = (id: string): TranscriptBlock => ({ kind: "reasoning", id, text: "hmm", streaming: false });
+
+/** The items with each response's work opened up into its steps. */
+const opened = (items: ReadonlyArray<Item>): ReadonlyArray<Item> =>
+  items.flatMap((item) => (item.kind === "work" ? item.steps : [item]));
 
 describe("layout", () => {
   it("groups long consecutive stretches without changing their order, ids or earlier layouts", () => {
     const calls = Array.from({ length: 10_000 }, (_, index) => tool(String(index), "Read"));
-    const first = layout(calls);
-    const next = layout([...calls, tool("last", "Read")]);
+    const first = opened(layout(calls));
+    const next = opened(layout([...calls, tool("last", "Read")]));
     const run = first[0];
     expect(run?.kind).toBe("run");
     if (run?.kind !== "run") return;
@@ -58,7 +63,7 @@ describe("layout", () => {
     ]);
   });
 
-  it("puts the text each response said on its end", () => {
+  it("gathers a response's work ahead of its final message, and puts that message on its end", () => {
     const items = layout([
       user("u1"),
       message("m1", "First."),
@@ -71,27 +76,59 @@ describe("layout", () => {
     ]);
     expect(items.map((item) => item.kind)).toEqual([
       "input",
-      "block",
-      "run",
+      "work",
       "block",
       "turnEnd",
       "input",
       "block",
       "turnEnd",
     ]);
+    const work = items[1];
+    expect(work?.kind === "work" && work.done).toBe(true);
+    expect(work?.kind === "work" && work.steps.map((step) => step.id)).toEqual(["m1", "run:tool:t1"]);
     expect(
       items.filter((item) => item.kind === "turnEnd").map((item) => "text" in item && item.text),
-    ).toEqual(["First.\n\nSecond.", "Third."]);
+    ).toEqual(["Second.", "Third."]);
+  });
+
+  it("counts a message as final until a call follows it, and the work as live until then", () => {
+    const writing = layout([user("u"), tool("t1", "Read"), message("m1", "Look", true)]);
+    expect(writing.map((item) => item.kind)).toEqual(["input", "work", "block"]);
+    expect(writing[1]?.kind === "work" && writing[1].done).toBe(true);
+
+    const onward = layout([user("u"), tool("t1", "Read"), message("m1", "Look"), tool("t2", "Grep")]);
+    expect(onward.map((item) => item.kind)).toEqual(["input", "work"]);
+    expect(onward[1]?.kind === "work" && onward[1].done).toBe(false);
+    expect(showsProgress(onward[1])).toBe(true);
+  });
+
+  it("keeps what the user should see out of the work: agents started, failures, waiting approvals", () => {
+    const items = layout([
+      user("u"),
+      tool("t1", "Read"),
+      {
+        kind: "spawn",
+        id: "spawn:a",
+        childId: "a",
+        role: "scout",
+        provider: "claude",
+        model: "m",
+        access: "readOnly",
+      },
+      tool("t2", "Read"),
+      { kind: "error", id: "err", message: "The model is overloaded." },
+    ]);
+    expect(items.map((item) => item.kind)).toEqual(["input", "work", "spawns", "block"]);
+    // The turn ended with nothing more to say: its work is over, and its end copies nothing.
+    const ended = layout([user("u"), tool("t1", "Read"), turnEnd("e")]);
+    expect(ended.map((item) => item.kind)).toEqual(["input", "work", "turnEnd"]);
+    expect(ended[1]?.kind === "work" && ended[1].done).toBe(true);
+    expect(ended[2]?.kind === "turnEnd" && ended[2].text).toBe("");
   });
 
   it("folds a stretch of tool calls and the reasoning between them into one run", () => {
-    const items = layout([
-      user("u1"),
-      tool("t1", "Read"),
-      { kind: "reasoning", id: "r1", text: "hmm", streaming: false },
-      tool("t2", "Grep"),
-    ]);
-    expect(items.map((item) => item.kind)).toEqual(["input", "run"]);
+    const items = layout([user("u1"), tool("t1", "Read"), reasoning("r1"), tool("t2", "Grep")]);
+    expect(opened(items).map((item) => item.kind)).toEqual(["input", "run"]);
   });
 
   it("leaves a spawn call to its agent's card, unless the call made none", () => {
@@ -99,7 +136,7 @@ describe("layout", () => {
     expect(layout([user("u"), spawned]).map((item) => item.kind)).toEqual(["input"]);
 
     const refused = tool("s2", "mcp__cerium__spawn_agent", "Only a lead can spawn agents.", "error");
-    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "run"]);
+    expect(opened(layout([user("u"), refused])).map((item) => item.kind)).toEqual(["input", "run"]);
 
     const asked = tool("s3", "mcp__cerium__spawn_agent", [
       { type: "text", text: JSON.stringify({ status: "pendingApproval", requestId: "r" }) },
@@ -124,14 +161,14 @@ describe("layout", () => {
       tool("c", "Bash", "ok"),
       permission({ decision: "allow", scope: "once" }),
     ]);
-    expect(decided.map((item) => item.kind)).toEqual(["input", "run"]);
+    expect(opened(decided).map((item) => item.kind)).toEqual(["input", "run"]);
     // A decided request whose call left no row still tells what was decided.
     const alone = layout([
       user("u"),
       tool("other", "Bash", "ok"),
       permission({ decision: "deny", scope: "once" }),
     ]);
-    expect(alone.map((item) => item.kind)).toEqual(["input", "run", "block"]);
+    expect(opened(alone).map((item) => item.kind)).toEqual(["input", "run", "block"]);
   });
 
   it("shows a question as its card, and what the agent does with the answer as a new response", () => {
@@ -159,7 +196,7 @@ describe("layout", () => {
     expect(items.map((item) => item.kind)).toEqual(["input", "block", "turnEnd", "block"]);
 
     const refused = tool("c2", "mcp__cerium__ask_user", "Ask at most four questions.", "error");
-    expect(layout([user("u"), refused]).map((item) => item.kind)).toEqual(["input", "run"]);
+    expect(opened(layout([user("u"), refused])).map((item) => item.kind)).toEqual(["input", "run"]);
   });
 });
 
