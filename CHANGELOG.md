@@ -17,6 +17,9 @@ All notable changes to Cerium are recorded here. The format follows
 - On macOS, dictation asks for the microphone with the system's own prompt before its first recording, rather than starting while the prompt shows and hearing nothing.
 - On macOS, Install for the `cerium` command puts it in a folder the shell already finds (`~/.local/bin` when it's on the PATH, otherwise Homebrew's `/opt/homebrew/bin` or `/usr/local/bin`), so it works in a new terminal without editing the PATH. It never replaces another program's `cerium`, and Remove takes it out wherever it was installed.
 - On macOS, `cerium .` and `cerium "prompt"` spell the folder as the disk does, so a folder reached with `cd ~/code/app` opens the same project as `~/Code/App` and matches git's own paths.
+- On macOS, closing a terminal ends what its shell started instead of leaving it running: the shell's whole process group is hung up, as Linux does by itself, and whatever ignores that is stopped.
+- Projects and workspaces under a symbolic link (on macOS, anything in `/tmp` or `/var`) are recognised as what they are: git's folders for them match, a checkout's root is no longer refused as a subfolder or as another repository's, and Cerium-created workspaces there stay listed as Cerium's and can be cleaned up.
+- On macOS, a folder's first snapshot isn't taken again for files written just before it began, which macOS reports late.
 - On macOS, Open at login says when System Settings' Login Items needs to allow Cerium, and Settings calls the badge the Dock icon's and the tray the menu bar.
 - Harness startup defects settle their waiting turns instead of leaving an unanswered startup promise, and stopped leads release pending spawn prompts by their request ids.
 - Failed harness startups close their process scopes and bus registrations immediately, sleeping sessions can retry a failed wake, and interrupted turns release folder-activity bookkeeping even when stopped before sending their input.
