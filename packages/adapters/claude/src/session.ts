@@ -21,7 +21,6 @@ import type { AccessMode, ReasoningEffort } from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Stream } from "effect";
 import type { UUID } from "node:crypto";
 
-import { claudeEnvironment } from "./environment.ts";
 import { NATIVE_QUESTION_TOOLS, NATIVE_SUBAGENT_TOOLS, TODO_TOOLS, TODO_TOOLS_ENV } from "./manifest.ts";
 import { ClaudeTranslator } from "./translate.ts";
 
@@ -82,7 +81,7 @@ export const toSdkOptions = (
   settingSources: ["user", "project", "local"],
   disallowedTools: [...NATIVE_SUBAGENT_TOOLS, ...NATIVE_QUESTION_TOOLS],
   // Newer models get no todo tools unless asked; Cerium shows the list they keep.
-  env: { ...claudeEnvironment(), ...TODO_TOOLS_ENV },
+  env: { ...process.env, ...TODO_TOOLS_ENV },
   ...(options.access === "readOnly" ? { tools: READ_ONLY_TOOLS } : {}),
   permissionMode: permissionMode(options.access),
   // The SDK refuses `bypassPermissions` without this explicit opt-in, and never consults `canUseTool`
