@@ -163,6 +163,8 @@ export class SourceControl extends Context.Service<
           );
           yield* fs.rename(`${options.file}.tmp`, options.file);
         });
+        /** `folder` with its symbolic links resolved, as git names it; as given when it can't be. */
+        const realFolder = (folder: string) => fs.realPath(folder).pipe(Effect.orElseSucceed(() => folder));
         const remember = (workspace: ThreadWorktree | undefined) => {
           if (!workspace?.id || JSON.stringify(inventory.get(workspace.id)) === JSON.stringify(workspace))
             return false;
@@ -502,10 +504,17 @@ export class SourceControl extends Context.Service<
                 (yield* readGit(thread.cwd, ["rev-parse", "--show-toplevel"]).pipe(Effect.mapError(refuse))));
           if (command.action === "list") {
             const output = yield* readGit(root, ["worktree", "list", "--porcelain", "-z"]);
+            // Git lists each checkout with its symbolic links resolved (a Mac's /var is /private/var),
+            // so a workspace kept under a link is found by where it really is too.
+            const managedRoots: Array<string> = [];
+            for (const workspace of inventory.values())
+              if (workspace.managed === true) managedRoots.push(yield* realFolder(workspace.root));
             return {
               checkouts: parseCheckouts(output, yield* orchestrator.listThreads).map((checkout) => ({
                 ...checkout,
-                managed: inventory.get(checkout.id)?.managed === true,
+                managed:
+                  inventory.get(checkout.id)?.managed === true ||
+                  managedRoots.some((managedRoot) => sameCheckout(managedRoot, checkout.path)),
               })),
               note: "Existing checkouts and their conversations.",
             };
@@ -671,10 +680,12 @@ export class SourceControl extends Context.Service<
               yield* readGit(root, ["worktree", "list", "--porcelain", "-z"]),
               [],
             );
-            if (!registered.some((checkout) => sameCheckout(checkout.path, target)))
+            // Git names checkouts with their symbolic links resolved.
+            const realTarget = yield* realFolder(target);
+            if (!registered.some((checkout) => sameCheckout(checkout.path, realTarget)))
               return yield* fail("That workspace is no longer registered with Git.");
             const main = yield* readGit(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-            if (sameCheckout(path.dirname(main), target))
+            if (sameCheckout(path.dirname(main), realTarget))
               return yield* fail("The main checkout cannot be removed.");
             const state = yield* changes.status(target).pipe(Effect.mapError(refuse));
             const ignored = yield* readGit(target, [

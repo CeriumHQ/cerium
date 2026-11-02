@@ -153,7 +153,9 @@ describe("source control workspace service", () => {
       Reflect.deleteProperty(thread, "worktree");
       const restored = Context.get(yield* Layer.build(Layer.fresh(layer)), SourceControl);
       const list = yield* restored.run(id, { action: "list" });
-      assert.isTrue(list.checkouts?.find((checkout) => samePath(checkout.path, target))?.managed);
+      // Git lists the checkout with its symbolic links resolved: a Mac's temporary folder is a link.
+      const listed = yield* (yield* FileSystem.FileSystem).realPath(target);
+      assert.isTrue(list.checkouts?.find((checkout) => samePath(checkout.path, listed))?.managed);
       const removed = yield* restored.run(id, { action: "cleanup", targetPath: target });
       assert.include(removed.note, "Removed the clean workspace");
     }).pipe(Effect.scoped, Effect.provide(Base)),

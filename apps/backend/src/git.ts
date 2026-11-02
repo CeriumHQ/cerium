@@ -114,7 +114,12 @@ export const gitFailure = (result: Pick<GitResult, "stdout" | "stderr">, fallbac
   });
 };
 
-/** What `git rev-parse --is-inside-work-tree --show-toplevel --show-prefix --absolute-git-dir --git-common-dir` says. */
+/**
+ * What `git rev-parse --is-inside-work-tree --show-toplevel --show-prefix --absolute-git-dir
+ * --path-format=absolute --git-common-dir` says. Both folders come back absolute with symbolic links
+ * resolved, so they match outside a worktree even where the folder asked about sits under a link (a
+ * Mac's /var is /private/var). `resolve` places what is printed against the folder asked about.
+ */
 export const parseRepository = (
   stdout: string,
   resolve: (path: string) => string,
@@ -125,7 +130,6 @@ export const parseRepository = (
     top: resolve(top),
     prefix: prefix ?? "",
     gitDir: resolve(gitDir),
-    // Relative to the folder asked about outside a worktree; `resolve` puts it in place.
     commonDir: resolve(commonDir || gitDir),
   };
 };
@@ -236,6 +240,7 @@ export class Git extends Context.Service<
               "--show-toplevel",
               "--show-prefix",
               "--absolute-git-dir",
+              "--path-format=absolute",
               "--git-common-dir",
             ],
             { look: true },
