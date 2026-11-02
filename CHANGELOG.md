@@ -9,9 +9,18 @@ All notable changes to Cerium are recorded here. The format follows
 ### Added
 
 - Computer use: agents in any harness can see and operate the apps on this computer through Cerium's `computer_guide`, `computer_read` and `computer_act` tools, built on agent-desktop's accessibility automation. It is off until turned on in Settings → Computer use, which sets it up on first use (a pinned, checksum-verified agent-desktop build), shows macOS permissions, and has a separate switch for real mouse and keyboard input. Looking needs no approval; acting asks by the agent's access like a command does. Each agent's labelled cursor shows on screen while it works, the message box shows which agents are using the computer with a Stop button, and stopped threads stay refused until the user writes in them again. Screenshots come back scaled to a model-friendly size, and sessions left behind by a backend that stopped unexpectedly are ended on the next start.
+- On macOS, the menu bar's Cerium menu has Settings… (⌘,) and a File menu with New Thread (⌘N), and right-clicking the Dock icon offers New Thread too, bringing the window back from the menu bar.
 
 ### Fixed
 
+- On macOS, the titlebar starts at the window's edge in full screen instead of keeping a gap where the hidden traffic lights were.
+- On macOS, dictation asks for the microphone with the system's own prompt before its first recording, rather than starting while the prompt shows and hearing nothing.
+- On macOS, Install for the `cerium` command puts it in a folder the shell already finds (`~/.local/bin` when it's on the PATH, otherwise Homebrew's `/opt/homebrew/bin` or `/usr/local/bin`), so it works in a new terminal without editing the PATH. It never replaces another program's `cerium`, and Remove takes it out wherever it was installed.
+- On macOS, `cerium .` and `cerium "prompt"` spell the folder as the disk does, so a folder reached with `cd ~/code/app` opens the same project as `~/Code/App` and matches git's own paths.
+- On macOS, closing a terminal ends what its shell started instead of leaving it running: the shell's whole process group is hung up, as Linux does by itself, and whatever ignores that is stopped.
+- Projects and workspaces under a symbolic link (on macOS, anything in `/tmp` or `/var`) are recognised as what they are: git's folders for them match, a checkout's root is no longer refused as a subfolder or as another repository's, and Cerium-created workspaces there stay listed as Cerium's and can be cleaned up.
+- On macOS, a folder's first snapshot isn't taken again for files written just before it began, which macOS reports late.
+- On macOS, Open at login says when System Settings' Login Items needs to allow Cerium, and Settings calls the badge the Dock icon's and the tray the menu bar.
 - Harness startup defects settle their waiting turns instead of leaving an unanswered startup promise, and stopped leads release pending spawn prompts by their request ids.
 - Failed harness startups close their process scopes and bus registrations immediately, sleeping sessions can retry a failed wake, and interrupted turns release folder-activity bookkeeping even when stopped before sending their input.
 - Codex requests fail promptly after its app-server exits and release pending replies when cancelled, so stopping a crashed agent cannot hang on an unanswered interrupt.

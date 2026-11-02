@@ -335,9 +335,14 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               ["rev-parse", "--show-toplevel"],
               "This checkout is unavailable. Select another workspace.",
             );
+            // git names the checkout with its symbolic links resolved (a Mac's /var is /private/var),
+            // so the folder chosen is compared resolved too.
             const canonical = (value: string) =>
-              process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
-            if (canonical(root) !== canonical(actualRoot.trim()))
+              fs.realPath(path.resolve(value)).pipe(
+                Effect.orElseSucceed(() => path.resolve(value)),
+                Effect.map((real) => (process.platform === "win32" ? real.toLowerCase() : real)),
+              );
+            if ((yield* canonical(root)) !== (yield* canonical(actualRoot.trim())))
               return yield* new WorktreeError({
                 message: "Choose the checkout's root folder, rather than a subfolder.",
               });
@@ -351,7 +356,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               ["rev-parse", "--path-format=absolute", "--git-common-dir"],
               "This checkout is unavailable. Select another workspace.",
             );
-            if (canonical(common.trim()) !== canonical(other.trim()))
+            if ((yield* canonical(common.trim())) !== (yield* canonical(other.trim())))
               return yield* new WorktreeError({ message: "That checkout belongs to another repository." });
             const ref = yield* gitOk(
               root,

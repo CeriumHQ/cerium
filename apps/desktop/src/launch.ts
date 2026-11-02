@@ -1,5 +1,5 @@
-import { statSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, statSync } from "node:fs";
+import { join, parse, resolve, sep } from "node:path";
 
 // What starting Cerium again, or following a `cerium://` link, asks of the running app: `cerium .`
 // opens a folder, `cerium "fix login"` starts a thread in the folder the command ran in, and
@@ -33,6 +33,39 @@ export const isFolder = (path: string): boolean => {
 };
 
 /**
+ * `path` spelled as the disk spells it. A Mac's disk ignores case, but a shell's working folder keeps
+ * the case the user typed to `cd` there (`~/code/app` for `~/Code/App`), which would make the same
+ * folder a second project, and one git's own paths never match. Each part takes the name its folder
+ * lists for it, where one matches; symbolic links stay as they are. `list` reads a folder's names.
+ */
+export const diskCase = (
+  path: string,
+  list: (folder: string) => ReadonlyArray<string> = (folder) => readdirSync(folder),
+): string => {
+  const { root } = parse(path);
+  let current = root;
+  for (const part of path
+    .slice(root.length)
+    .split(sep)
+    .filter((each) => each !== "")) {
+    let names: ReadonlyArray<string> = [];
+    try {
+      names = list(current);
+    } catch {
+      // Unreadable: the rest stays as written.
+    }
+    const own = names.includes(part)
+      ? part
+      : (names.filter((name) => name.toLowerCase() === part.toLowerCase()).at(0) ?? part);
+    current = join(current, own);
+  }
+  return current;
+};
+
+/** How a folder from the command line is spelled for the app: as the disk has it, on a Mac. */
+const spelled = (path: string) => (process.platform === "darwin" ? diskCase(path) : path);
+
+/**
  * The arguments a start of Cerium was given, without the program and, in development, the app's
  * folder: `electron . <args>`. A second instance's own flags, Chromium's among them, may come before
  * that folder, so it is the first argument that is no flag.
@@ -53,6 +86,7 @@ export const parseLaunch = (
   args: ReadonlyArray<string>,
   cwd: string,
   folderExists: (path: string) => boolean = isFolder,
+  spell: (path: string) => string = spelled,
 ): LaunchRequest | undefined => {
   for (const arg of args) {
     const id = threadOfLink(arg);
@@ -62,8 +96,8 @@ export const parseLaunch = (
   if (words.length === 0) return undefined;
   if (words.length === 1) {
     const folder = resolve(cwd, words[0]!);
-    if (folderExists(folder)) return { kind: "folder", folder };
+    if (folderExists(folder)) return { kind: "folder", folder: spell(folder) };
   }
   const text = words.join(" ").trim().slice(0, MAX_PROMPT);
-  return text === "" ? undefined : { kind: "prompt", folder: cwd, text };
+  return text === "" ? undefined : { kind: "prompt", folder: spell(cwd), text };
 };

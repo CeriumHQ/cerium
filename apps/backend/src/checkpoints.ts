@@ -551,6 +551,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         try {
           let close = () => {};
           const entry: Watched = { dirty: true, close: () => close() };
+          const started = Date.now();
           const watcher = watchFolder(
             folder,
             { recursive: true, persistent: false, ignore: snapshotSkips },
@@ -568,6 +569,16 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
               if (
                 event === "change" &&
                 statSync(path.join(folder, relative), { throwIfNoEntry: false })?.isDirectory() === true
+              ) {
+                return;
+              }
+              // macOS's FSEvents can report, late, what was written just before the watcher started.
+              // A file whose status last changed before then hasn't changed since (nothing can set a
+              // status-change time back); one that's gone did.
+              if (
+                process.platform === "darwin" &&
+                (statSync(path.join(folder, relative), { throwIfNoEntry: false })?.ctimeMs ?? started) <
+                  started
               ) {
                 return;
               }

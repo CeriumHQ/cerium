@@ -378,7 +378,9 @@ function StartAtLoginRow() {
       hint={
         state?.available === false
           ? `Only the installed app can ${windows ? "start with Windows" : mac ? "open at login" : "start at login"}.`
-          : `Opens in ${tray}, so your other devices can reach this computer after a restart.`
+          : state?.needsApproval === true
+            ? "Allow Cerium in System Settings › General › Login Items to finish turning this on."
+            : `Opens in ${tray}, so your other devices can reach this computer after a restart.`
       }
       error={error}
       control={(labelledBy) => (

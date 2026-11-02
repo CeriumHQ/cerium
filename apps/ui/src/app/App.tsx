@@ -103,6 +103,7 @@ import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
+import { shellBridge } from "../backend/shell.ts";
 import {
   noProjectScripts,
   projectScriptsAtom,
@@ -1388,6 +1389,16 @@ function Workspace() {
     setSettingsPane(category ? "page" : "nav");
     setSettingsOpen(true);
   };
+  // The Mac's menu bar and Dock menu: Settings… opens settings; New Thread leaves them for a new thread.
+  const onMenuCommand = useEffectEvent((command: "open-settings" | "new-thread") => {
+    if (command === "open-settings") {
+      openSettings();
+      return;
+    }
+    setSettingsOpen(false);
+    newThread();
+  });
+  useEffect(() => shellBridge()?.onMenuCommand?.((command) => onMenuCommand(command)), []);
   // Back from settings or the welcome, the cursor returns to the message box; a phone's keyboard stays down.
   const welcoming = useAtomValue(welcomeShownAtom);
   useEffect(() => {

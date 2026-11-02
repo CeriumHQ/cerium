@@ -75,6 +75,8 @@ const dropOtherMacProcessor = (context: AfterPackContext) => {
 export default {
   appId: "app.cerium.desktop",
   productName: "Cerium",
+  // The Mac's About panel and the Windows executable's details show it; without it they name no one.
+  copyright: "Copyright © CeriumHQ",
   // Electron names the user-data folder after the packaged package.json's productName; the installer
   // names its own folders after `name`, which mustn't be the workspace's scoped name.
   extraMetadata: {

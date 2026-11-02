@@ -296,10 +296,19 @@ describe("Checkpoints", () => {
           .readDirectory(path.join(objects, "pack"))
           .pipe(Effect.map((names) => names.filter((name) => name.endsWith(".pack")).length));
       const trees: Array<string> = [];
+      // The store's files after each step, which a failure below names.
+      const steps: Array<string> = [];
+      const step = (name: string) =>
+        fs.readDirectory(path.join(objects, "pack")).pipe(
+          Effect.orElseSucceed(() => []),
+          Effect.map((names) => steps.push(`${name}: ${[...names].sort().join(", ")}`)),
+        );
       for (const version of ["v1", "v2", "v3"]) {
         yield* write("src/a.ts", `${version}\n`);
         trees.push(yield* checkpoints.save(folder));
+        yield* step(`${version} saved`);
         yield* maintain;
+        yield* step(`${version} maintained`);
         // Every loose object went into a pack.
         assert.deepStrictEqual(
           (yield* fs.readDirectory(objects)).filter((name) => /^[0-9a-f]{2}$/.test(name)).length,
@@ -307,7 +316,7 @@ describe("Checkpoints", () => {
         );
       }
       // Three packs were made into one.
-      assert.strictEqual(yield* packs(), 1);
+      assert.strictEqual(yield* packs(), 1, steps.join("\n"));
       // What an earlier pass was stopped in the middle of goes once it's old, never while git may still
       // be writing it.
       const leftover = (name: string, hoursAgo: number) =>

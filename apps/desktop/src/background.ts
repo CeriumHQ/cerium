@@ -33,9 +33,13 @@ export const startAtLogin = async () => {
     const available = app.isPackaged && autostartProgram() !== undefined;
     return { available, enabled: available && (await autostartEnabled()) };
   }
+  const settings = app.getLoginItemSettings({ args: [HIDDEN_FLAG] });
   return {
     available: app.isPackaged,
-    enabled: app.isPackaged && app.getLoginItemSettings({ args: [HIDDEN_FLAG] }).openAtLogin,
+    enabled: app.isPackaged && settings.openAtLogin,
+    // macOS 13 and later can hold a login item back until the user allows it in System Settings,
+    // which an app without Apple's Developer ID certificate often has to ask for.
+    needsApproval: app.isPackaged && process.platform === "darwin" && settings.status === "requires-approval",
   };
 };
 

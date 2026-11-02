@@ -1,14 +1,17 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, chmod, mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, join, normalize } from "node:path";
+import { delimiter, join, normalize, posix } from "node:path";
 
 import { linuxInstall } from "./linuxInstall.ts";
 
 // The `cerium` command: a small launcher the user can put on their PATH, which starts Cerium with the
 // arguments it was given (launch.ts). It lives in a folder of Cerium's own, never one the system
 // owns: on Windows `%LOCALAPPDATA%\Cerium\bin`, added to the user's PATH, and elsewhere
-// `~/.local/bin`, which most distributions and shells already have on it.
+// `~/.local/bin`, which most distributions and shells already have on it. A Mac's shells don't, unless
+// the user put it there, so a Mac takes the first folder its login shell's PATH has and the user can
+// write to: `~/.local/bin`, or Homebrew's (macShimFolder).
 
 /** What Settings shows of the command. */
 export interface CliState {
@@ -47,8 +50,67 @@ export const shimLocation = (
   const folder =
     platform === "win32"
       ? join(env["LOCALAPPDATA"] ?? join(home, "AppData", "Local"), "Cerium", "bin")
-      : join(home, ".local", "bin");
-  return { folder, file: join(folder, platform === "win32" ? `${NAME}.cmd` : NAME) };
+      : posix.join(home, ".local", "bin");
+  // A Mac's or Linux's own path, whichever system works it out (cli.test.ts runs on Windows too).
+  return { folder, file: platform === "win32" ? join(folder, `${NAME}.cmd`) : posix.join(folder, NAME) };
+};
+
+/**
+ * The folders after `~/.local/bin` a Mac's shim may go in: Homebrew's, on Apple silicon and on Intel,
+ * which belong to the user who installed it and which its setup puts on the shell's PATH.
+ */
+export const MAC_SHIM_FOLDERS: ReadonlyArray<string> = ["/opt/homebrew/bin", "/usr/local/bin"];
+
+/** Whether `text` is a shim Cerium wrote, for this install or another; a `cerium` of something else's isn't. */
+export const isShim = (platform: Platform, text: string): boolean =>
+  platform === "win32"
+    ? /^@echo off\r\nstart "" ".*" %\*\r\n$/s.test(text)
+    : /^#!\/bin\/sh\nnohup '.*' "\$@" >\/dev\/null 2>&1 &\n$/s.test(text);
+
+/** Every folder a shim of Cerium's may be in on `platform`, the default first. */
+const shimFolders = (platform: Platform, home: string = homedir()): ReadonlyArray<string> => {
+  const { folder } = shimLocation(platform, process.env, home);
+  return platform === "darwin" ? [folder, ...MAC_SHIM_FOLDERS] : [folder];
+};
+
+/** What `folder`'s `cerium` holds; undefined when there is none. */
+const shimIn = (folder: string): Promise<string | undefined> =>
+  readFile(join(folder, NAME), "utf8").catch(() => undefined);
+
+const writable = (folder: string): Promise<boolean> =>
+  access(folder, constants.W_OK).then(
+    () => true,
+    () => false,
+  );
+
+/**
+ * Where a Mac's shim goes: the folder that already holds one of Cerium's; else `~/.local/bin` when the
+ * login shell's PATH (`loginPath`) has it; else the first of Homebrew's folders on that PATH the user
+ * can write to, unless a `cerium` of something else's is there; else `~/.local/bin`, which Settings
+ * then asks the user to put on their PATH.
+ */
+export const macShimFolder = async (
+  loginPath: string | undefined,
+  home: string = homedir(),
+  candidates: ReadonlyArray<string> = MAC_SHIM_FOLDERS,
+  probe: {
+    readonly shimIn: (folder: string) => Promise<string | undefined>;
+    readonly writable: (folder: string) => Promise<boolean>;
+  } = { shimIn, writable },
+): Promise<string> => {
+  const own = shimLocation("darwin", {}, home).folder;
+  const folders = [own, ...candidates];
+  for (const folder of folders) {
+    const text = await probe.shimIn(folder);
+    if (text !== undefined && isShim("darwin", text)) return folder;
+  }
+  const path = loginPath ?? process.env["PATH"] ?? "";
+  if (pathHas(path, own, ":")) return own;
+  for (const folder of candidates) {
+    if (!pathHas(path, folder, ":") || !(await probe.writable(folder))) continue;
+    if ((await probe.shimIn(folder)) === undefined) return folder;
+  }
+  return own;
 };
 
 /** Whether `folder` is one of the folders in `path`, which is `PATH` or the user's registry value. */
@@ -129,11 +191,15 @@ export const cliState = async (
   shellPath?: () => Promise<string | undefined>,
   platform: Platform = process.platform as Platform,
 ): Promise<CliState> => {
-  const { folder, file } = shimLocation(platform);
   const program = packaged ? programOf(platform) : undefined;
+  const loginPath = platform === "win32" || program === undefined ? undefined : await shellPath?.();
+  const folder =
+    platform === "darwin" && program !== undefined
+      ? await macShimFolder(loginPath)
+      : shimLocation(platform).folder;
   if (program === undefined) return { available: false, installed: false, folder, onPath: false };
+  const file = join(folder, platform === "win32" ? `${NAME}.cmd` : NAME);
   const installed = await shimInstalled(platform, file, program);
-  const loginPath = platform === "win32" ? undefined : await shellPath?.();
   const onPath =
     loginPath === undefined
       ? await onPathNow(platform, folder)
@@ -141,20 +207,35 @@ export const cliState = async (
   return { available: true, installed, folder, onPath };
 };
 
-/** Writes the shim, and on Windows puts its folder on the user's PATH. */
-export const installCli = async (platform: Platform = process.platform as Platform): Promise<void> => {
+/**
+ * Writes the shim, and on Windows puts its folder on the user's PATH; on a Mac, in the folder its
+ * login shell's PATH (`shellPath`) already has, where it can.
+ */
+export const installCli = async (
+  shellPath?: () => Promise<string | undefined>,
+  platform: Platform = process.platform as Platform,
+): Promise<void> => {
   const program = programOf(platform);
   if (program === undefined) return;
-  const { folder, file } = shimLocation(platform);
+  const location = shimLocation(platform);
+  const folder = platform === "darwin" ? await macShimFolder(await shellPath?.()) : location.folder;
+  const file = platform === "darwin" ? join(folder, NAME) : location.file;
   await mkdir(folder, { recursive: true });
   await writeFile(file, shimFor(platform, program));
   if (platform !== "win32") await chmod(file, 0o755);
   else await setWindowsPath(folder, true);
 };
 
-/** Removes the shim and, on Windows, its folder from the user's PATH. */
+/** Removes the shim, from every folder a Mac's may be in, and on Windows its folder from the user's PATH. */
 export const removeCli = async (platform: Platform = process.platform as Platform): Promise<void> => {
   const { folder, file } = shimLocation(platform);
+  if (platform === "darwin") {
+    for (const each of shimFolders(platform)) {
+      const text = await shimIn(each);
+      if (text !== undefined && isShim(platform, text)) await rm(join(each, NAME), { force: true });
+    }
+    return;
+  }
   await rm(file, { force: true });
   if (platform === "win32") {
     await setWindowsPath(folder, false);
@@ -169,9 +250,13 @@ export const removeCli = async (platform: Platform = process.platform as Platfor
 export const refreshCli = async (platform: Platform = process.platform as Platform): Promise<void> => {
   const program = programOf(platform);
   if (program === undefined) return;
-  const { file } = shimLocation(platform);
-  const current = await readFile(file, "utf8").catch(() => undefined);
-  if (current === undefined || current === shimFor(platform, program)) return;
-  await writeFile(file, shimFor(platform, program));
-  if (platform !== "win32") await chmod(file, 0o755);
+  for (const folder of shimFolders(platform)) {
+    const file = join(folder, platform === "win32" ? `${NAME}.cmd` : NAME);
+    const current = await readFile(file, "utf8").catch(() => undefined);
+    if (current === undefined || current === shimFor(platform, program)) continue;
+    // Only a shim of Cerium's: Homebrew's folders hold everyone's commands.
+    if (platform === "darwin" && !isShim(platform, current)) continue;
+    await writeFile(file, shimFor(platform, program));
+    if (platform !== "win32") await chmod(file, 0o755);
+  }
 };

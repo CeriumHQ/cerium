@@ -41,6 +41,20 @@ export interface Pty {
 
 /** How long a shell gets to go once its processes were ended, before the pseudoterminal is closed on it. */
 const GRACE = "1500 millis";
+/** How often, and how many times within the grace, a hung-up process group is checked for leftovers. */
+const GROUP_POLL = "50 millis";
+const GROUP_POLLS = 30;
+
+/** Whether anything is left in the process group `pid` leads. */
+const groupAlive = (pid: number): boolean => {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    // Not allowed to signal it means something is there.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
 
 const reason = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
@@ -84,11 +98,17 @@ export class Ptys extends Context.Service<
                 .pipe(Effect.ignore);
             }
           } else {
-            // Hanging up lets an interactive shell hang up its jobs; whatever ignores it is killed.
+            // Hanging up lets an interactive shell hang up its jobs. The rest of its process group is
+            // hung up too, as Linux does when a terminal's shell goes and macOS doesn't always, so
+            // what the shell started doesn't outlive the terminal; whatever ignores it is killed.
             yield* Effect.try(() => pty.kill("SIGHUP")).pipe(Effect.ignore);
+            if (pid > 0) yield* Effect.try(() => process.kill(-pid, "SIGHUP")).pipe(Effect.ignore);
             yield* Deferred.await(gone).pipe(Effect.timeoutOption(GRACE));
-            if (!Deferred.isDoneUnsafe(gone) && pid > 0) {
-              yield* Effect.try(() => process.kill(-pid, "SIGKILL")).pipe(Effect.ignore);
+            if (pid > 0) {
+              yield* Effect.sleep(GROUP_POLL).pipe(
+                Effect.repeat({ while: () => groupAlive(pid), times: GROUP_POLLS }),
+              );
+              if (groupAlive(pid)) yield* Effect.try(() => process.kill(-pid, "SIGKILL")).pipe(Effect.ignore);
             }
           }
           // Releases the pseudoterminal itself, when the shell's end didn't.

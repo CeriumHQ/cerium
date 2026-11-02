@@ -38,6 +38,7 @@ import {
 } from "../../backend/automations.ts";
 import { harnessesAtom, settingsAtom, threadsAtom } from "../../backend/atoms.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
+import { trayName } from "../../backend/shell.ts";
 import { toThreadSummary } from "../../backend/view.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -163,7 +164,7 @@ export function AutomationList({
       {views.length === 0 ? (
         <div className="mt-6 flex flex-col items-start gap-1 rounded-xl border border-dashed border-line-subtle px-5 py-6 text-body text-fg-tertiary">
           <p className="text-fg-secondary">Start a thread on a schedule, or when CI fails.</p>
-          <p>It runs while Cerium is open or in the tray, and lands in your inbox.</p>
+          <p>It runs while Cerium is open or in {trayName()}, and lands in your inbox.</p>
         </div>
       ) : (
         <ul className="flex flex-col">
@@ -525,7 +526,7 @@ export function AutomationDetail({
             <p className="text-caption text-fg-tertiary">
               {repeat === "CiFailed"
                 ? "When an agent pushes with Cerium and that commit's CI fails, a thread starts with the failed checks' logs."
-                : "Runs while Cerium is open or in the tray. A time missed while it was closed runs once when it opens, unless the next is nearer."}
+                : `Runs while Cerium is open or in ${trayName()}. A time missed while it was closed runs once when it opens, unless the next is nearer.`}
             </p>
           </Field>
 
