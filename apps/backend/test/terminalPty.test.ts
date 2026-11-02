@@ -13,11 +13,12 @@ import { ThreadEnv } from "../src/threadEnv.ts";
 
 // The same service on a real pseudoterminal (ConPTY on Windows), with Node itself as the shell so the
 // test needs nothing installed: it echoes what it's typed, starts a child that outlives it, and exits
-// with a code on request.
+// with a code on request. The child ignores a hang-up, so ending it can't rest on the system hanging
+// up the terminal's process group when its shell goes, which Linux does and macOS doesn't always.
 
 const script = `
 const { spawn } = require("node:child_process");
-const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+const child = spawn(process.execPath, ["-e", "process.on('SIGHUP', () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });
 console.log("child:" + child.pid + ":end");
 process.stdin.on("data", (data) => {
   console.log("got:" + data.toString().trim());
