@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, chmod, mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, join, normalize } from "node:path";
+import { delimiter, join, normalize, posix } from "node:path";
 
 import { linuxInstall } from "./linuxInstall.ts";
 
@@ -50,8 +50,9 @@ export const shimLocation = (
   const folder =
     platform === "win32"
       ? join(env["LOCALAPPDATA"] ?? join(home, "AppData", "Local"), "Cerium", "bin")
-      : join(home, ".local", "bin");
-  return { folder, file: join(folder, platform === "win32" ? `${NAME}.cmd` : NAME) };
+      : posix.join(home, ".local", "bin");
+  // A Mac's or Linux's own path, whichever system works it out (cli.test.ts runs on Windows too).
+  return { folder, file: platform === "win32" ? join(folder, `${NAME}.cmd`) : posix.join(folder, NAME) };
 };
 
 /**
