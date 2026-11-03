@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -86,7 +87,7 @@ const stopBackend = (): Promise<void> =>
   (backendStop ??= (backend?.stop() ?? Promise.resolve()).then(() => {
     backendStopped = true;
   }));
-/** Windows is signing the user out or shutting down. */
+/** Windows is signing the user out or shutting down, or a Mac is shutting down. */
 let sessionEnding = false;
 
 const windows = process.platform === "win32";
@@ -724,6 +725,12 @@ void app.whenReady().then(() => {
     );
   }
   updater = startUpdater({ working: background.working, stopBackend });
+  // A Mac shutting down would stop the update helper partway too (installOnExit).
+  if (mac) {
+    powerMonitor.on("shutdown", () => {
+      sessionEnding = true;
+    });
+  }
   // Links open Cerium: this computer's own installed app takes them, never a development build that
   // would claim them from it. An installed command follows the app if an update moved it.
   if (app.isPackaged) {
@@ -775,8 +782,8 @@ void app.whenReady().then(() => {
 app.on("window-all-closed", () => app.quit());
 
 // Quitting waits for the backend to shut down, so it closes its harness sessions and database. On
-// Windows the downloaded update's installer starts then (updater.ts), unless Windows itself is
-// shutting down, which would stop it partway: the update installs another time.
+// Windows and for ad hoc Mac builds, the downloaded update's installer starts then (updater.ts),
+// unless the system is shutting down, which would stop it partway: the update installs another time.
 app.on("will-quit", (event) => {
   if (backend !== undefined && !backendStopped) {
     event.preventDefault();

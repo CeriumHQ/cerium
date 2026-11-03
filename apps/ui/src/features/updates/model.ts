@@ -51,7 +51,9 @@ export const statusText = (updates: Updates): string => {
         ? `No ${channelLabel[updates.channel].toLowerCase()} releases to update from yet.`
         : "Couldn't reach GitHub. Check your connection.";
     case "failed":
-      return `Couldn't download ${versionLabel(status.version)}.`;
+      return status.stage === "install"
+        ? `Couldn't install ${versionLabel(status.version)}. Download it again to retry.`
+        : `Couldn't download ${versionLabel(status.version)}.`;
   }
 };
 
