@@ -56,14 +56,23 @@ export const oklchFromHex = (hex: string): Oklch | undefined => {
 /** Hue bins a wallpaper's pixels are sorted into, 10° each. */
 const BINS = 36;
 
-/**
- * The colour of a picture, from its raw pixels (`BGRA`, as Chromium's bitmaps are): the hue that most
- * of its colour lies around, and its chroma averaged over every pixel, greys counting as none, so a
- * grey photo with one red door comes out a faint red and a field of poppies a strong one. Undefined
- * for a picture with no opaque pixels.
- */
-export const dominantColor = (pixels: Uint8Array): Oklch | undefined => {
+/** A picture's colour sorted by hue: its pixels' summed chroma, OKLab and lightness in each bin. */
+interface Hues {
+  readonly chroma: Float64Array;
+  /** Each bin's chroma summed squared, so dividing by `chroma` gives the bin's chroma-weighted mean. */
+  readonly squared: Float64Array;
+  readonly sumA: Float64Array;
+  readonly sumB: Float64Array;
+  readonly sumL: Float64Array;
+  readonly count: number;
+  readonly lightness: number;
+  /** The strongest run of three neighbouring bins, so a hue on a bin's edge isn't split in two. */
+  readonly best: readonly number[];
+}
+
+const hues = (pixels: Uint8Array): Hues | undefined => {
   const chroma = new Float64Array(BINS);
+  const squared = new Float64Array(BINS);
   const sumA = new Float64Array(BINS);
   const sumB = new Float64Array(BINS);
   const sumL = new Float64Array(BINS);
@@ -75,6 +84,7 @@ export const dominantColor = (pixels: Uint8Array): Oklch | undefined => {
     const c = Math.hypot(a, b);
     const bin = Math.floor(hueOf(a, b) / (360 / BINS)) % BINS;
     chroma[bin]! += c;
+    squared[bin]! += c * c;
     sumA[bin]! += a;
     sumB[bin]! += b;
     sumL[bin]! += l * c;
@@ -83,19 +93,54 @@ export const dominantColor = (pixels: Uint8Array): Oklch | undefined => {
   }
   if (count === 0) return undefined;
 
-  // The strongest run of three neighbouring bins, so a hue on a bin's edge isn't split in two.
   const around = (bin: number) => [(bin + BINS - 1) % BINS, bin, (bin + 1) % BINS];
   const strength = (bin: number) => around(bin).reduce((sum, each) => sum + chroma[each]!, 0);
   let best = 0;
   for (let bin = 1; bin < BINS; bin += 1) if (strength(bin) > strength(best)) best = bin;
+  return { chroma, squared, sumA, sumB, sumL, count, lightness, best: around(best) };
+};
 
-  const bins = around(best);
-  const a = bins.reduce((sum, each) => sum + sumA[each]!, 0);
-  const b = bins.reduce((sum, each) => sum + sumB[each]!, 0);
-  const weight = strength(best);
+const total = (values: Float64Array, bins: readonly number[]) =>
+  bins.reduce((sum, each) => sum + values[each]!, 0);
+
+/**
+ * The colour of a picture, from its raw pixels (`BGRA`, as Chromium's bitmaps are): the hue that most
+ * of its colour lies around, and its chroma averaged over every pixel, greys counting as none, so a
+ * grey photo with one red door comes out a faint red and a field of poppies a strong one. Undefined
+ * for a picture with no opaque pixels.
+ */
+export const dominantColor = (pixels: Uint8Array): Oklch | undefined => {
+  const picture = hues(pixels);
+  if (picture === undefined) return undefined;
+  const { best, count } = picture;
+  const weight = total(picture.chroma, best);
   return {
-    l: weight > 0 ? bins.reduce((sum, each) => sum + sumL[each]!, 0) / weight : lightness / count,
-    c: Math.hypot(a, b) / count,
-    h: hueOf(a, b),
+    l: weight > 0 ? total(picture.sumL, best) / weight : picture.lightness / count,
+    c: Math.hypot(total(picture.sumA, best), total(picture.sumB, best)) / count,
+    h: hueOf(total(picture.sumA, best), total(picture.sumB, best)),
+  };
+};
+
+/** Below this, the pixels of a picture's own hue are too grey to lend an accent. */
+const VIVID_ENOUGH = 0.03;
+
+/**
+ * An accent drawn from a picture, for a system that leaves the accent to the app: the hue of its
+ * dominant colour, as strong as the pixels of that hue are on average (the coloured ones counting
+ * most), doubled, since a photo's colours sit well under an accent's. The theme sets its lightness
+ * per mode and caps its chroma. Undefined for a picture too grey to lend one.
+ */
+export const vividColor = (pixels: Uint8Array): Oklch | undefined => {
+  const picture = hues(pixels);
+  if (picture === undefined) return undefined;
+  const { best } = picture;
+  const weight = total(picture.chroma, best);
+  if (weight === 0) return undefined;
+  const vivid = total(picture.squared, best) / weight;
+  if (vivid < VIVID_ENOUGH) return undefined;
+  return {
+    l: total(picture.sumL, best) / weight,
+    c: Math.min(vivid * 2, 0.2),
+    h: hueOf(total(picture.sumA, best), total(picture.sumB, best)),
   };
 };

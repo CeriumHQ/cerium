@@ -298,8 +298,10 @@
 }
 
 /*
- * Desktop: the user's own glass. The wallpaper tints it and the system's accent colour is the accent,
- * set at this mode's lightness, with any status hue the accent would be mistaken for turned from it.
+ * Desktop: the user's own glass. The wallpaper tints it, as strongly as the shipped glasses once the
+ * picture is about as colourful as an autumn hillside (chroma near 0.018 averaged over every pixel),
+ * and the system's accent colour (on a Mac left at Multicolor, the wallpaper's) is the accent, set at
+ * this mode's lightness, with any status hue the accent would be mistaken for turned from it.
  * The shell reads them and features/settings/desktopColors.ts sets the --desktop-* properties on the
  * root as they change, so this block only says how much of each colour each mode takes.
  */
@@ -308,8 +310,8 @@
 }
 
 [data-palette="desktop"][data-theme="dark"] {
-  --tint-c: min(var(--desktop-tint-c, 0) * 0.4, 0.026);
-  --glass-c: min(var(--desktop-tint-c, 0), 0.07);
+  --tint-c: min(var(--desktop-tint-c, 0) * 1.4, 0.024);
+  --glass-c: min(var(--desktop-tint-c, 0) * 3.6, 0.065);
 
   --accent: oklch(0.78 min(var(--desktop-accent-c, 0), 0.15) var(--desktop-accent-h, 0));
   --accent-strong: oklch(0.85 min(var(--desktop-accent-c, 0), 0.13) var(--desktop-accent-h, 0));
@@ -325,8 +327,8 @@
 }
 
 [data-palette="desktop"][data-theme="light"] {
-  --tint-c: min(var(--desktop-tint-c, 0) * 0.4, 0.024);
-  --glass-c: min(var(--desktop-tint-c, 0) * 0.75, 0.05);
+  --tint-c: min(var(--desktop-tint-c, 0) * 1.4, 0.026);
+  --glass-c: min(var(--desktop-tint-c, 0) * 2.8, 0.05);
 
   --accent: oklch(0.52 min(var(--desktop-accent-c, 0), 0.17) var(--desktop-accent-h, 0));
   --accent-strong: oklch(0.45 min(var(--desktop-accent-c, 0), 0.16) var(--desktop-accent-h, 0));

@@ -19,6 +19,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Fixed
 
+- On macOS, the Desktop theme takes its colours from the wallpaper instead of a pale blue. Before, it never read the wallpaper and tinted the glass with a faded copy of the system's blue accent. It now reads the main screen's wallpaper (JPEG, HEIC and the system's own dynamic wallpapers alike), shows it in the theme's sample, and checks it again when the wallpaper or the Space changes. With the accent left at Multicolor, the accent comes from the wallpaper's main colour too; an accent the user picked is kept. On every platform a colourful wallpaper now tints the glass about as strongly as the built-in glasses, where before it barely showed.
 - On macOS, the titlebar starts at the window's edge in full screen instead of keeping a gap where the hidden traffic lights were.
 - On macOS, dictation asks for the microphone with the system's own prompt before its first recording, rather than starting while the prompt shows and hearing nothing.
 - On macOS, Install for the `cerium` command puts it in a folder the shell already finds (`~/.local/bin` when it's on the PATH, otherwise Homebrew's `/opt/homebrew/bin` or `/usr/local/bin`), so it works in a new terminal without editing the PATH. It never replaces another program's `cerium`, and Remove takes it out wherever it was installed.

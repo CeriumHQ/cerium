@@ -1,13 +1,14 @@
-import { BrowserWindow, nativeImage, systemPreferences, type NativeImage } from "electron";
+import { BrowserWindow, nativeImage, screen, systemPreferences, type NativeImage } from "electron";
 import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
 
-import { dominantColor, oklchFromHex, type DesktopColors, type Oklch } from "./desktopColors.ts";
+import { dominantColor, oklchFromHex, vividColor, type DesktopColors, type Oklch } from "./desktopColors.ts";
 
 // The Desktop theme's colours, read from the system: its accent colour wherever Electron gives one,
-// and on Windows the wallpaper too. Read when a page first asks, then again whenever the accent or
-// the wallpaper changes, and sent to every window then.
+// and on Windows and macOS the wallpaper too. Read when a page first asks, then again whenever the
+// accent or the wallpaper changes, and sent to every window then.
 
 const SPI_GETDESKWALLPAPER = 0x0073;
 const MAX_PATH = 260;
@@ -70,7 +71,80 @@ const windowsWallpaper = async (): Promise<Pick<DesktopColors, "wallpaper" | "th
   };
 };
 
+const loadAppKit = async () => {
+  const { default: koffi } = await import("koffi");
+  const objc = koffi.load("/usr/lib/libobjc.A.dylib");
+  const getClass = objc.func("void *objc_getClass(const char *name)");
+  const selector = objc.func("void *sel_registerName(const char *name)");
+  // objc_msgSend takes whatever the method does, so it's declared once per shape used here.
+  const send = objc.func("objc_msgSend", "void *", ["void *", "void *"]);
+  const sendWith = objc.func("objc_msgSend", "void *", ["void *", "void *", "void *"]);
+  const sendForString = objc.func("objc_msgSend", "const char *", ["void *", "void *"]);
+  return {
+    /** The picture on the main screen's desktop (NSWorkspace's desktopImageURLForScreen:). */
+    desktopPicture: (): string | undefined => {
+      const workspace = send(getClass("NSWorkspace"), selector("sharedWorkspace"));
+      const main = send(getClass("NSScreen"), selector("mainScreen"));
+      if (workspace === null || main === null) return undefined;
+      const url = sendWith(workspace, selector("desktopImageURLForScreen:"), main);
+      if (url === null) return undefined;
+      const path = send(url, selector("path"));
+      return path === null ? undefined : (sendForString(path, selector("UTF8String")) ?? undefined);
+    },
+  };
+};
+
+let appKit: ReturnType<typeof loadAppKit> | undefined;
+
+/** Where macOS keeps its wallpaper choices; it rewrites the file whenever one changes. */
+const wallpaperStore = () =>
+  join(homedir(), "Library", "Application Support", "com.apple.wallpaper", "Store", "Index.plist");
+
+/**
+ * The macOS wallpaper's colour, an accent from it and a thumbnail of it. QuickLook draws the
+ * thumbnail, so HEIC and dynamic wallpapers read as well as a JPEG; one of macOS's own `.madesktop`
+ * wallpapers draws from the still it keeps beside it. The thumbnail takes the screen's shape, as the
+ * wallpaper fills the screen.
+ */
+const macWallpaper = async (): Promise<
+  Pick<DesktopColors, "wallpaper" | "thumbnail"> & { vivid?: Oklch | undefined }
+> => {
+  const picture = (await (appKit ??= loadAppKit())).desktopPicture();
+  if (picture === undefined) return {};
+  const path = picture.endsWith(".madesktop")
+    ? join(dirname(picture), ".thumbnails", `${basename(picture, ".madesktop")}.heic`)
+    : picture;
+  const { width, height } = screen.getPrimaryDisplay().size;
+  const image = await nativeImage.createThumbnailFromPath(path, {
+    width: 400,
+    height: Math.max(1, Math.round((400 * height) / width)),
+  });
+  if (image.isEmpty()) return {};
+  const pixels = image.resize({ width: 64, quality: "good" }).toBitmap();
+  return {
+    wallpaper: dominantColor(pixels),
+    vivid: vividColor(pixels),
+    thumbnail: `data:image/jpeg;base64,${image.resize({ width: 400, quality: "good" }).toJPEG(80).toString("base64")}`,
+  };
+};
+
+/** Whether the user left macOS's accent at Multicolor, its default, which is blue to Electron. */
+const macAccentUnset = () => {
+  try {
+    return systemPreferences.getUserDefault("AppleAccentColor", "string") === "";
+  } catch {
+    return false;
+  }
+};
+
 const read = async (): Promise<DesktopColors> => {
+  if (process.platform === "darwin") {
+    const { vivid, ...wallpaper } = await macWallpaper().catch(
+      () => ({}) as Awaited<ReturnType<typeof macWallpaper>>,
+    );
+    // A Multicolor accent is no choice at all, so the wallpaper lends its own instead of blue.
+    return { accent: (macAccentUnset() ? vivid : undefined) ?? accent(), ...wallpaper };
+  }
   const wallpaper = process.platform === "win32" ? await windowsWallpaper().catch(() => ({})) : {};
   return { accent: accent(), ...wallpaper };
 };
@@ -98,6 +172,18 @@ export const desktopTheme = () => {
   const follow = () => {
     if (process.platform === "darwin") {
       systemPreferences.subscribeNotification("AppleColorPreferencesChangedNotification", refresh);
+      // Each Space can have a wallpaper of its own.
+      systemPreferences.subscribeWorkspaceNotification(
+        "NSWorkspaceActiveSpaceDidChangeNotification",
+        refresh,
+      );
+      try {
+        watch(dirname(wallpaperStore()), (_event, name) => {
+          if (name === basename(wallpaperStore())) refresh();
+        }).on("error", () => undefined);
+      } catch {
+        // No wallpaper store (macOS before Sonoma): the wallpaper is read again on a Space change.
+      }
       return;
     }
     systemPreferences.on("accent-color-changed", refresh);

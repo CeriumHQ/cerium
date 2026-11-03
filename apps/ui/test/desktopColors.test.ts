@@ -58,6 +58,6 @@ describe("desktopProperties", () => {
     expect(desktopProperties({ wallpaper: field })["--desktop-accent-h"]).toBe("140");
     const accentOnly = desktopProperties({ accent: blue });
     expect(accentOnly["--desktop-tint-h"]).toBe("251");
-    expect(accentOnly["--desktop-tint-c"]).toBe(String(Number((blue.c * 0.25).toFixed(4))));
+    expect(accentOnly["--desktop-tint-c"]).toBe(String(Number((blue.c * 0.08).toFixed(4))));
   });
 });

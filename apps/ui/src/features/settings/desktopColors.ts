@@ -112,7 +112,7 @@ const STATUSES = { running: 245, attention: 78, error: 25, success: 152 } as con
  */
 export const desktopProperties = (colors: DesktopColors): Record<string, string> => {
   const accent = (colors.accent ?? colors.wallpaper)!;
-  const tint = colors.wallpaper ?? { ...accent, c: accent.c * 0.25 };
+  const tint = colors.wallpaper ?? { ...accent, c: accent.c * 0.08 };
   const round = (value: number, places: number) => String(Number(value.toFixed(places)));
   return {
     "--desktop-tint-h": round(tint.h, 1),
