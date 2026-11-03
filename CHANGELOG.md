@@ -6,6 +6,11 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A response's work (its tool calls, thoughts and what the agent said along the way) folds under one Working line ahead of its final message. It stays open while the agent works, showing a running clock, and folds once the turn ends, keeping a section you opened or closed that way; agents it started, pushes, questions, approvals waiting on you and turn errors stay in view below it. The copy button under a response copies only that final message.
+- Failed tool calls no longer show in red: a run's line stops counting them, and their rows, icons and output look like any other call's, since the agent deals with its own failures.
+
 ### Added
 
 - macOS builds signed ad hoc can download and install updates in the app. Updates are verified before a helper replaces Cerium after it quits, with the previous app restored if installation fails. An update that couldn't be installed says so, and its staged copy is removed then or on the next start. Install this release manually once to enable the new updater; apps running from a read-only disk image, or that this user can't move, still offer a download in the browser.

@@ -456,22 +456,6 @@ export const outputText = (output: unknown): string => {
 const inputText = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value, withoutBlobs, 2);
 
-/** The reason a JSON result gives for failing, in an `error` or `message` field near its top. */
-const reasonIn = (value: unknown, depth = 0): string | undefined => {
-  if (!isRecord(value) || depth > 2) return undefined;
-  for (const key of ["error", "message", "reason"]) {
-    if (typeof value[key] === "string" && value[key] !== "") return value[key];
-  }
-  for (const nested of Object.values(value)) {
-    const found = reasonIn(nested, depth + 1);
-    if (found) return found;
-  }
-  return undefined;
-};
-
-const ERROR_WORDS =
-  /\b(?:errors?|failed|failure|fatal|cannot|can't|couldn't|not found|no such|denied|refused|invalid|unexpected|missing|blocked)\b/i;
-
 const EXIT_LINE = /^Exit code (\d+)\r?\n?/;
 
 /** A shell command's exit code, from the first line Claude Code's Bash tool puts on a failure. */
@@ -482,32 +466,6 @@ export const exitCodeOf = (text: string): number | undefined => {
 
 /** The output without its leading exit-code line, which the output panel shows as a badge. */
 export const withoutExitLine = (text: string): string => text.trimStart().replace(EXIT_LINE, "");
-
-/**
- * One line saying why a call failed: the exit code and the line of output that names the problem,
- * or the reason a JSON result gives. Undefined when the output says nothing.
- */
-export const failureLine = (output: unknown): string | undefined => {
-  const text = outputText(output)
-    .replaceAll(/<\/?tool_use_error>/g, "")
-    .trim();
-  if (text.startsWith("{")) {
-    try {
-      const reason = firstLine(reasonIn(JSON.parse(text)));
-      if (reason) return reason;
-    } catch {
-      // Not JSON after all; read it as lines.
-    }
-  }
-  const exit = exitCodeOf(text);
-  const lines = (exit === undefined ? text : withoutExitLine(text))
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    // Lines of nothing but punctuation, such as JSON's braces, say nothing.
-    .filter((line) => /[\p{L}\p{N}]/u.test(line));
-  const line = lines.find((each) => ERROR_WORDS.test(each)) ?? lines.at(-1);
-  return [exit === undefined ? undefined : `Exit ${exit}`, line].filter(Boolean).join(" · ") || undefined;
-};
 
 /** What a tool row's right-click menu offers; each part is absent when the call has nothing for it. */
 export interface ToolMenuPlan {

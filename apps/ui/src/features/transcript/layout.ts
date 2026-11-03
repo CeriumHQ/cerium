@@ -45,6 +45,19 @@ export type Item =
       readonly routed?: RoutedDecision;
     }
   | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> }
+  /**
+   * The agent's work on a response before its final message: its runs of calls, its thoughts and
+   * what it said along the way. `done` once the response is over (its turn ended, or the user or
+   * another agent spoke), so the agent is no longer on it. A message after the work doesn't end it:
+   * most calls follow a line about what the agent is doing next, and the work would fold and open
+   * again around each one.
+   */
+  | {
+      readonly kind: "work";
+      readonly id: string;
+      readonly steps: ReadonlyArray<Item>;
+      readonly done: boolean;
+    }
   /** The turns a rewind replaced, laid out like the conversation, with how many of the user's messages began them. */
   | {
       readonly kind: "replaced";
@@ -125,8 +138,6 @@ const visible = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Transcri
 /** Turns blocks into display items: user inputs, and grouped tools and spawns. */
 export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<Item> => {
   const items: Array<BuildingItem> = [];
-  // What the agent has said since the user last spoke: what its end-of-response button copies.
-  let said: Array<string> = [];
   // The harness the agent runs on, for a switch to another model.
   let provider: ProviderId | undefined;
   // The router decides before the turn starts, and its word waits for the turn's footer.
@@ -157,7 +168,6 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
       continue;
     }
     if (block.kind === "replaced") {
-      said = [];
       routed = undefined;
       items.push({
         kind: "replaced",
@@ -169,17 +179,13 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
       continue;
     }
     if (block.kind === "user") {
-      said = [];
       if (last?.kind === "input") last.blocks.push(block);
       else items.push({ kind: "input", id: block.id, blocks: [block] });
       continue;
     }
     // The user's answer to a question shows on the question; what the agent does with it is a new
     // response, as after a message.
-    if (isAnswerNotice(block)) {
-      said = [];
-      continue;
-    }
+    if (isAnswerNotice(block)) continue;
     const previous = items.at(-1);
     if (isSpawnCall(block) && block.status !== "error") {
       items.push({ kind: "spawnAsk", id: block.id, call: block });
@@ -196,17 +202,16 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
         kind: "turnEnd",
         id: block.id,
         block,
-        text: said.join("\n\n"),
+        // The final message's, which gathering the response's work finds.
+        text: "",
         ...(routed?.effort === undefined ? {} : { routed }),
       });
-      said = [];
       routed = undefined;
     } else {
-      if (block.kind === "message") said.push(block.text);
       items.push({ kind: "block", id: block.id, block });
     }
   }
-  return fold(items);
+  return gather(fold(items));
 };
 
 const isStep = (item: Item) =>
@@ -245,9 +250,76 @@ const fold = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
   return folded;
 };
 
+/** Where one response ends and the next begins: what the agent was given, and the turn's end. */
+const isBoundary = (item: Item) =>
+  item.kind === "input" ||
+  item.kind === "switch" ||
+  item.kind === "imported" ||
+  item.kind === "replaced" ||
+  item.kind === "turnEnd" ||
+  // What the agent does with the user's answer is a new response, as after a message.
+  (item.kind === "block" && (item.block.kind === "notice" || item.block.kind === "question"));
+
+/**
+ * What a response shows whatever became of the work around it: what the user must answer, the
+ * agents and pushes it started, and what went wrong with the turn itself.
+ */
+const isOutcome = (item: Item) =>
+  item.kind === "spawns" ||
+  item.kind === "spawnAsk" ||
+  item.kind === "push" ||
+  (item.kind === "block" &&
+    (item.block.kind === "error" ||
+      item.block.kind === "limit" ||
+      item.block.kind === "compacted" ||
+      (item.block.kind === "permission" && item.block.resolution === undefined)));
+
+const messageText = (item: Item) =>
+  item.kind === "block" && item.block.kind === "message" ? item.block.text : undefined;
+
+/**
+ * Gathers each response's work under one item ahead of its final message, which is whatever the
+ * agent said after its last call or thought. A message the agent is still writing counts as final
+ * until another call follows it; then it joins the work. A turn's end copies the final message.
+ */
+const gather = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
+  const gathered: Array<Item> = [];
+  let segment: Array<Item> = [];
+  const flush = (next: Item | undefined) => {
+    const last = segment.findLastIndex((item) => messageText(item) === undefined && !isOutcome(item));
+    const steps = segment.filter((item, index) => index <= last && !isOutcome(item));
+    const rest = segment.filter((item, index) => index > last || isOutcome(item));
+    const final = rest.flatMap((item) => messageText(item) ?? []);
+    if (steps.length > 0) {
+      gathered.push({
+        kind: "work",
+        id: `work:${steps[0]!.id}`,
+        steps,
+        done: next !== undefined,
+      });
+    }
+    gathered.push(...rest);
+    if (next?.kind === "turnEnd") {
+      gathered.push({ ...next, text: final.join("\n\n") });
+    } else if (next !== undefined) {
+      gathered.push(next);
+    }
+    segment = [];
+  };
+  for (const item of items) {
+    if (isBoundary(item)) flush(item);
+    else segment.push(item);
+  }
+  flush(undefined);
+  return gathered;
+};
+
 /** Whether the end of the transcript already shows the agent at work, or waiting on the user. */
 export const showsProgress = (item: Item | undefined): boolean => {
   switch (item?.kind) {
+    // Work the agent is still on says so in its header.
+    case "work":
+      return !item.done;
     case "run":
       return showsProgress(item.steps.at(-1));
     case "tools":
