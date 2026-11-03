@@ -19,7 +19,7 @@ const nightly = version?.includes("-nightly.") === true;
  * A Developer ID certificate to sign the Mac app with (CSC_LINK, set by the release workflows when
  * the repository has one), which also has it notarized when APPLE_API_KEY and its ID and issuer are
  * set. Without one the app is signed ad hoc: it runs on Apple silicon, the user lets it open once in
- * Privacy & Security, and updates download in the browser (src/macUpdates.ts).
+ * Privacy & Security, and a helper installs updates after the app quits (src/macUpdates.ts).
  */
 const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
 /**
