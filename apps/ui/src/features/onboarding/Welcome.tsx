@@ -19,7 +19,8 @@ import { needsHarness, stepFromQuery, stepsFor, welcomeKey, type StepId } from "
 const LEAVE_MS = 520;
 /**
  * How long a step takes to come in, every part of it. Its parts' animations end then, so nothing on the
- * stage stays blurred or lifted, and a pane's glass blurs what's behind it again.
+ * stage stays faded or lifted, and a pane's glass blurs what's behind it again. The step after it is
+ * warmed from then on (below).
  */
 const ENTER_MS = 2_600;
 /** How long the welcome takes to close: its step and its foot fade, and the window is handed over. */
@@ -147,9 +148,18 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
     else close();
   };
 
+  /**
+   * The step after this one, drawn all but invisibly under it once this one has come in. The GPU builds
+   * the pipelines for each new kind of drawing the first time it meets it, stalling every frame while
+   * it does, and on a computer's first run none are built yet: drawn while the screen is still, the
+   * next step's are ready by the time it comes in, so its entrance doesn't stutter. It keeps its key,
+   * so it becomes the step that comes in.
+   */
+  const upcoming = settled === step && leaving === undefined && !closing ? steps[index + 1] : undefined;
   const shown = [
     ...(leaving === undefined ? [] : [{ id: leaving.step, state: "leave" as const }]),
     { id: step, state: settled === step ? ("shown" as const) : ("enter" as const) },
+    ...(upcoming === undefined ? [] : [{ id: upcoming, state: "warm" as const }]),
   ];
   return (
     <Dialog.Root open disablePointerDismissal>
@@ -183,15 +193,15 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
                 data-step={id}
                 data-state={state}
                 data-after={entry.after ? "" : undefined}
-                aria-hidden={state === "leave" ? true : undefined}
-                inert={state === "leave"}
+                aria-hidden={state === "leave" || state === "warm" ? true : undefined}
+                inert={state === "leave" || state === "warm"}
                 className="col-start-1 row-start-1 min-h-0"
               >
                 <Step
                   id={id}
                   number={steps.indexOf(id) + 1}
                   titleId={titleIdOf(id)}
-                  active={state !== "leave" && !closing}
+                  active={state !== "leave" && state !== "warm" && !closing}
                   sessions={offered}
                   importer={importer}
                 />

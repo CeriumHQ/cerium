@@ -305,11 +305,13 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
-/* The launch screen (app/LaunchScreen.tsx): the mark comes into focus, as if the frost were polished off. */
+/*
+ * The launch screen (app/LaunchScreen.tsx): the mark settles into place. Like the welcome's, it
+ * animates no blur: on a first run each blur radius stalls the GPU while it builds its pipeline.
+ */
 @keyframes launch-settle {
   from {
     opacity: 0;
-    filter: blur(12px);
     scale: 0.92;
   }
 }
@@ -320,11 +322,13 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
-/* A new thread's question (app/EmptyThread.tsx) comes into focus a line at a time, as the mark does. */
+/*
+ * A new thread's question (app/EmptyThread.tsx) settles a line at a time, as the mark does: the first
+ * thing a first run shows after the welcome, so it animates no blur either.
+ */
 @keyframes question-settle {
   from {
     opacity: 0;
-    filter: blur(6px);
     translate: 0 6px;
   }
 }

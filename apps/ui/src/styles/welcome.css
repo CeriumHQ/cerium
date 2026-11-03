@@ -1,7 +1,11 @@
 /*
  * The welcome (features/onboarding): its steps come in a part at a time and go together. A headline's
- * letters stretch out from narrow as they sharpen, on the display face's width axis; the step's other
- * parts rise after it; the step going lifts away, blurring, the way the next one came.
+ * letters stretch out from narrow as they appear, on the display face's width axis; the step's other
+ * parts rise after it; the step going lifts away, fading, the way the next one came.
+ *
+ * Nothing here animates a blur. A blur animated across its radii has the GPU build a pipeline for
+ * each radius it meets, and on a computer's first run, which is when the welcome shows, every one of
+ * those builds stalls the frames: the entrance stutters for seconds.
  */
 
 [data-welcome] {
@@ -35,11 +39,20 @@
   animation-name: welcome-leave-back;
 }
 
+/*
+ * The step after the one showing, drawn all but invisibly under it once it has come in (Welcome.tsx),
+ * so the GPU has what it needs to draw that step before it comes in: one step of alpha in 255, the
+ * least that is still drawn. Any more and a headline's letters, as large as they are, show through.
+ */
+[data-welcome] [data-state="warm"] {
+  opacity: 0.004;
+  pointer-events: none;
+}
+
 @keyframes welcome-letter {
   from {
     opacity: 0;
     font-stretch: 50%;
-    filter: blur(10px);
     translate: 0 0.14em;
   }
   40% {
@@ -50,7 +63,6 @@
 @keyframes welcome-rise {
   from {
     opacity: 0;
-    filter: blur(6px);
     translate: 0 16px;
   }
 }
@@ -58,7 +70,6 @@
 @keyframes welcome-leave {
   to {
     opacity: 0;
-    filter: blur(10px);
     translate: 0 -28px;
   }
 }
@@ -66,7 +77,6 @@
 @keyframes welcome-leave-back {
   to {
     opacity: 0;
-    filter: blur(10px);
     translate: 0 28px;
   }
 }
@@ -217,7 +227,6 @@ html:active-view-transition-type(glass)::view-transition-new(root) {
 @keyframes welcome-close {
   to {
     opacity: 0;
-    filter: blur(6px);
     scale: 0.985;
   }
 }

@@ -16,6 +16,7 @@ import {
   welcomeShownAtom,
   windowCoveredAtom,
 } from "../features/onboarding/state.ts";
+import { gpuSettled, WelcomeWarmUp } from "../features/onboarding/WarmUp.tsx";
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
 import { remember, stored } from "../lib/storage.ts";
@@ -122,6 +123,8 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
   const [settled, setSettled] = useState(false);
   const [talking, setTalking] = useState(false);
   const [gaveUp, setGaveUp] = useState(false);
+  // A computer that never finished the welcome may be on its first run, with nothing built for the GPU.
+  const [warm] = useState(() => !WEB && stored(WELCOMED_KEY) === undefined);
   const state: LaunchState = {
     backend,
     account,
@@ -131,19 +134,26 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
   const leaving = state.ready && settled;
   const { done, next } = launchProgress(state);
 
-  // Shown once painted in the user's theme: the desktop shell opens the window then.
+  // Shown once painted in the user's theme: the desktop shell opens the window then. On what may be a
+  // first run, the GPU then builds what the welcome draws (WelcomeWarmUp), stalling the window's first
+  // frames; the mark and name come in once it's done, so their entrance doesn't stutter.
   useEffect(() => {
     let frame = 0;
+    const stop = new AbortController();
     void themeSettled.then(() => {
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
           shellBridge()?.windowReady?.();
-          setShown(true);
+          if (warm) void gpuSettled(stop.signal).then(() => setShown(true));
+          else setShown(true);
         });
       });
     });
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    return () => {
+      cancelAnimationFrame(frame);
+      stop.abort();
+    };
+  }, [warm]);
   useEffect(() => {
     if (!shown) return;
     const timers = [
@@ -184,6 +194,7 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
       aria-busy="true"
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-surface-window pb-10"
     >
+      {warm ? <WelcomeWarmUp /> : null}
       {/* The window can still be moved while it starts; the system draws its buttons over this. */}
       <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
       {shown ? (
