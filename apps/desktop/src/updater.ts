@@ -7,12 +7,14 @@ import { join } from "node:path";
 import { reportCrash } from "./crashReports.ts";
 import { linuxInstall } from "./linuxInstall.ts";
 import {
+  discardMacUpdate,
   diskImageUrl,
   downloadMacUpdate,
   installMacUpdate,
   macBundlePath,
   macUpdateMode,
   prepareMacUpdate,
+  sweepMacUpdates,
   type PreparedMacUpdate,
 } from "./macUpdates.ts";
 
@@ -45,7 +47,8 @@ export type UpdateStatus =
   | { readonly kind: "installing"; readonly version: string }
   /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
   | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
-  | { readonly kind: "failed"; readonly version: string };
+  /** The download failed, or with `stage: "install"` the helper that installs it couldn't start. */
+  | { readonly kind: "failed"; readonly version: string; readonly stage?: "install" };
 
 export interface Updates {
   readonly channel: UpdateChannel;
@@ -179,6 +182,8 @@ export const startUpdater = (host: UpdaterHost) => {
           manual = mode === "manual";
           adHocMac = mode === "adhoc";
           set(status);
+          // Before the first check, so no download of this run is staged yet.
+          if (adHocMac) return sweepMacUpdates(macBundlePath());
         })
       : Promise.resolve();
 
@@ -276,8 +281,11 @@ export const startUpdater = (host: UpdaterHost) => {
             macRelease,
             folder,
             (url) => net.fetch(url),
+            // Every chunk reports; the windows hear only of each whole percent.
             (percent) => {
-              if (status.kind === "downloading") set({ ...status, percent });
+              if (status.kind === "downloading" && Math.floor(percent) !== Math.floor(status.percent)) {
+                set({ ...status, percent });
+              }
             },
           );
           preparedMac = await prepareMacUpdate(macBundlePath(), archive, version, app.getVersion());
@@ -306,11 +314,17 @@ export const startUpdater = (host: UpdaterHost) => {
   const installMac = (restart: boolean): Promise<void> => {
     if (macInstalling !== undefined) return macInstalling;
     if (preparedMac === undefined) return Promise.reject(new Error("No Mac update is staged."));
-    macInstalling = installMacUpdate(preparedMac, restart, logFile).catch((error: unknown) => {
+    const prepared = preparedMac;
+    // A helper that couldn't start says so, and the update downloads again from scratch.
+    macInstalling = installMacUpdate(prepared, restart, logFile).catch(async (error: unknown) => {
       macInstalling = undefined;
+      preparedMac = undefined;
       log("error")(error);
       reportUpdateFailure("install", error);
-      if (status.kind === "installing") set({ kind: "ready", version: status.version });
+      await discardMacUpdate(prepared).catch(() => undefined);
+      if (status.kind === "ready" || status.kind === "installing") {
+        set({ kind: "failed", version: status.version, stage: "install" });
+      }
       throw error;
     });
     return macInstalling;

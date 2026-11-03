@@ -280,7 +280,8 @@ export type UpdateStatus =
   | { readonly kind: "installing"; readonly version: string }
   /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
   | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
-  | { readonly kind: "failed"; readonly version: string };
+  /** The download failed, or with `stage: "install"` the helper that installs it couldn't start. */
+  | { readonly kind: "failed"; readonly version: string; readonly stage?: "install" };
 
 export interface Updates {
   readonly channel: UpdateChannel;

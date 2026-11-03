@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, constants, openSync, readFileSync } from "node:fs";
-import { access, lstat, mkdtemp, open, readdir, rm, writeFile } from "node:fs/promises";
+import { access, lstat, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -15,6 +15,9 @@ const exec = promisify(execFile);
 /** The repository the releases are published to (electron-builder.ts). */
 const RELEASES = "https://github.com/CeriumHQ/cerium/releases/download";
 
+/** An update is staged beside the installed app in a hidden folder named with this prefix. */
+const STAGING_PREFIX = ".cerium-update-";
+
 /** Whether `codesign -dv`'s report names a Developer ID certificate. */
 export const signedWithDeveloperId = (report: string): boolean =>
   /^Authority=Developer ID Application: /m.test(report);
@@ -24,13 +27,17 @@ export const macBundlePath = () => join(process.execPath, "..", "..", "..");
 
 export type MacUpdateMode = "native" | "adhoc" | "manual";
 
-/** Read-only volumes (including a mounted DMG or App Translocation) need a manual installation. */
+/**
+ * Read-only volumes (including a mounted DMG or App Translocation) need a manual installation, and
+ * so does an app this user can't move: moving a folder to another one rewrites its `..` entry, which
+ * takes write access to the folder itself as well as to the one it leaves.
+ */
 export const macUpdateMode = async (bundle: string): Promise<MacUpdateMode> => {
   try {
     const { stderr } = await exec("/usr/bin/codesign", ["-dv", "--verbose=2", bundle]);
     if (signedWithDeveloperId(stderr)) return "native";
     if (!/^Signature=adhoc$/m.test(stderr)) return "manual";
-    await access(dirname(bundle), constants.W_OK);
+    await Promise.all([access(dirname(bundle), constants.W_OK), access(bundle, constants.W_OK)]);
     return "adhoc";
   } catch {
     return "manual";
@@ -129,7 +136,10 @@ export const verifyMacBundle = async (bundle: string, version: string, arch: str
 
 // Arguments, never interpolated shell text: parent PID, installed app, work folder, restart, inode.
 // Everything is staged on the installation's volume before quitting. Keep the previous app until
-// the replacement and (when requested) Launch Services both succeed, restoring it on failure.
+// the replacement and (when requested) Launch Services both succeed, restoring it on failure. A
+// helper that gives up before touching the installed app removes its staging folder; one that
+// leaves the previous app behind keeps the folder, since that may be the only copy. It writes its
+// PID first, so a Cerium that starts meanwhile leaves its folder alone (sweepMacUpdates).
 export const MAC_INSTALL_SCRIPT = `
 set -eu
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
@@ -159,11 +169,14 @@ recover() {
     else
       echo "Restore Cerium manually from $backup"
     fi
+  elif [ "$result" -ne 0 ] && [ ! -e "$backup" ]; then
+    rm -rf "$work"
   fi
   exit "$result"
 }
 trap recover EXIT
 trap 'exit 1' HUP INT TERM
+echo "$$" > "$work/helper.pid"
 for ((attempt=0; attempt<600; attempt++)); do
   if ! kill -0 "$parent" 2>/dev/null; then break; fi
   sleep 0.2
@@ -210,7 +223,7 @@ export const prepareMacUpdate = async (
   if (!installed.isDirectory() || stdout.trim() !== runningVersion) {
     throw new Error("The installed Mac app changed; restart Cerium before updating.");
   }
-  const folder = await mkdtemp(join(dirname(bundle), ".cerium-update-"));
+  const folder = await mkdtemp(join(dirname(bundle), STAGING_PREFIX));
   try {
     await exec("/usr/bin/ditto", ["-x", "-k", archive, folder]);
     const entries = await readdir(folder);
@@ -224,6 +237,55 @@ export const prepareMacUpdate = async (
     throw error;
   }
 };
+
+/** Whether a process with this PID is still running. */
+const running = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it runs, as another user.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+/**
+ * Removes staging folders beside the app that nothing will install: a download Cerium quit without
+ * installing (a crash, a force quit, a shutdown) or a helper that gave up. Each holds a whole app.
+ * Skips a folder whose helper still runs, and one holding a previous app the helper couldn't put
+ * back, which may be the user's only copy.
+ */
+export const sweepMacUpdates = async (bundle: string): Promise<void> => {
+  const parent = dirname(bundle);
+  const names = await readdir(parent).catch(() => []);
+  await Promise.all(
+    names
+      .filter((name) => name.startsWith(STAGING_PREFIX))
+      .map(async (name) => {
+        const folder = join(parent, name);
+        try {
+          const stat = await lstat(folder);
+          if (!stat.isDirectory()) return;
+          if (
+            await access(join(folder, "previous.app")).then(
+              () => true,
+              () => false,
+            )
+          )
+            return;
+          const pid = Number.parseInt(await readFile(join(folder, "helper.pid"), "utf8").catch(() => ""), 10);
+          if (Number.isSafeInteger(pid) && pid > 0 && running(pid)) return;
+          await rm(folder, { recursive: true, force: true });
+        } catch {
+          // Another sweep or the helper removed it first, or it can't be read: leave it.
+        }
+      }),
+  );
+};
+
+/** Removes a staged update that won't be installed. */
+export const discardMacUpdate = (update: PreparedMacUpdate): Promise<void> =>
+  rm(update.folder, { recursive: true, force: true });
 
 /** A detached system shell survives Electron; no runtime inside the app being replaced is needed. */
 export const installMacUpdate = (
