@@ -91,10 +91,10 @@ describe("layout", () => {
     ).toEqual(["Second.", "Third."]);
   });
 
-  it("counts a message as final until a call follows it, and the work as live until then", () => {
+  it("counts a message as final until a call follows it, and the work as live until the turn ends", () => {
     const writing = layout([user("u"), tool("t1", "Read"), message("m1", "Look", true)]);
     expect(writing.map((item) => item.kind)).toEqual(["input", "work", "block"]);
-    expect(writing[1]?.kind === "work" && writing[1].done).toBe(true);
+    expect(writing[1]?.kind === "work" && writing[1].done).toBe(false);
 
     const onward = layout([user("u"), tool("t1", "Read"), message("m1", "Look"), tool("t2", "Grep")]);
     expect(onward.map((item) => item.kind)).toEqual(["input", "work"]);

@@ -1,6 +1,6 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ChevronRight } from "lucide-react";
-import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { createContext, use, useEffect, useEffectEvent, useState, type ReactNode } from "react";
 
 import { HISTORY_EVENT } from "./HistoryWindow.tsx";
 import { Took } from "./Trace.tsx";
@@ -8,16 +8,23 @@ import { summarizeTools, type ToolBlock } from "./tools.ts";
 import type { Timing } from "./ToolGroup.tsx";
 
 /**
+ * The reader's choice to open or close each work, by the last step it held then. A work's id is its
+ * first step's, which changes when an earlier page of history loads above it; its later steps don't.
+ */
+export const WorkToggles = createContext(new Map<string, boolean>());
+
+/**
  * Everything the agent did on a response before its final message, under one line: its calls, its
  * thoughts and what it said along the way. Open while the agent is on it, so its progress shows; it
- * folds once the final message begins or the turn ends, unless the reader opened or closed it
- * themselves. A find that lands on a message inside opens it.
+ * folds once the response is over, unless the reader opened or closed it themselves. A find that
+ * lands on a message inside opens it.
  */
 export function WorkSection({
   tools,
   timings,
   live,
   arrived = false,
+  stepIds,
   contains,
   children,
 }: {
@@ -29,11 +36,22 @@ export function WorkSection({
   live: boolean;
   /** The work came in while the thread was open, so its line writes itself in. */
   arrived?: boolean;
+  /** Its steps' ids, runs opened up, which remember the reader's choice. */
+  stepIds: ReadonlyArray<string>;
   /** Whether a block of the conversation is inside, which a find looks for. */
   contains: (id: string) => boolean;
   children: ReactNode;
 }) {
-  const [toggled, setToggled] = useState<boolean>();
+  const remembered = use(WorkToggles);
+  const [toggled, setToggledState] = useState(() => {
+    const id = stepIds.findLast((each) => remembered.has(each));
+    return id === undefined ? undefined : remembered.get(id);
+  });
+  const setToggled = (value: boolean) => {
+    setToggledState(value);
+    const id = stepIds.at(-1);
+    if (id !== undefined) remembered.set(id, value);
+  };
   const open = toggled ?? live;
   const reveal = useEffectEvent((event: Event) => {
     const id = (event as CustomEvent<{ id?: string }>).detail?.id;

@@ -47,8 +47,10 @@ export type Item =
   | { readonly kind: "run"; readonly id: string; readonly steps: ReadonlyArray<Item> }
   /**
    * The agent's work on a response before its final message: its runs of calls, its thoughts and
-   * what it said along the way. `done` once the final message has begun or something came after
-   * the work, so the agent is no longer on it.
+   * what it said along the way. `done` once the response is over (its turn ended, or the user or
+   * another agent spoke), so the agent is no longer on it. A message after the work doesn't end it:
+   * most calls follow a line about what the agent is doing next, and the work would fold and open
+   * again around each one.
    */
   | {
       readonly kind: "work";
@@ -293,7 +295,7 @@ const gather = (items: ReadonlyArray<Item>): ReadonlyArray<Item> => {
         kind: "work",
         id: `work:${steps[0]!.id}`,
         steps,
-        done: final.length > 0 || next !== undefined,
+        done: next !== undefined,
       });
     }
     gathered.push(...rest);

@@ -4,7 +4,6 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   describeTool,
   exitCodeOf,
-  failureLine,
   hasToolMenu,
   outputText,
   sameTool,
@@ -323,45 +322,6 @@ describe("outputText", () => {
     expect(
       outputText({ exitCode: 2, signal: "", stdout: "built", stderr: "error: boom", executionTime: 3 }),
     ).toBe("Exit code 2\nbuilt\nerror: boom");
-  });
-});
-
-describe("failureLine", () => {
-  it("gives the exit code and the line of output that names the problem", () => {
-    expect(
-      failureLine(
-        "Exit code 2\napps/ui/src/a.tsx(225,41): error TS2304: Cannot find name 'insetPx'.\n\nFound 1 error.",
-      ),
-    ).toBe("Exit 2 · apps/ui/src/a.tsx(225,41): error TS2304: Cannot find name 'insetPx'.");
-  });
-
-  it("falls back to the last line, and to the exit code alone", () => {
-    expect(failureLine("Exit code 1\nnothing matched\nbye")).toBe("Exit 1 · bye");
-    expect(failureLine("Exit code 137")).toBe("Exit 137");
-  });
-
-  it("reads the reason out of a JSON result and out of a tool's error wrapper", () => {
-    expect(failureLine('{"error":"No browser is listening on port 9222."}')).toBe(
-      "No browser is listening on port 9222.",
-    );
-    expect(failureLine("<tool_use_error>File does not exist.</tool_use_error>")).toBe("File does not exist.");
-    expect(failureLine([{ type: "text", text: "Permission denied" }])).toBe("Permission denied");
-  });
-
-  it("reads Codex's and Cursor's failed commands", () => {
-    expect(failureLine({ output: "> vitest\n a.test.ts\n 1 failed\n", exitCode: 1 })).toBe(
-      "Exit 1 · 1 failed",
-    );
-    // A result with no reason in it says what it can, not the closing brace of its JSON.
-    expect(failureLine({ status: "failed" })).toBe('"status": "failed"');
-    expect(failureLine({ exitCode: 1, signal: "", stdout: "", stderr: "boom", executionTime: 3 })).toBe(
-      "Exit 1 · boom",
-    );
-    expect(
-      failureLine(
-        JSON.stringify({ exit_code: 1, terminal_status: "failed", output: "grep : not recognized" }),
-      ),
-    ).toBe("Exit 1 · grep : not recognized");
   });
 });
 

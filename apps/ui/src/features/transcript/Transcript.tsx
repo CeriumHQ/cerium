@@ -74,7 +74,7 @@ import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
-import { WorkSection } from "./Work.tsx";
+import { WorkSection, WorkToggles } from "./Work.tsx";
 import { useArrivals } from "../../lib/motion.ts";
 import { HistoryWindow } from "./HistoryWindow.tsx";
 
@@ -244,6 +244,8 @@ export function Transcript({
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
   const items = layout(shown);
+  // Which works the reader opened or closed, kept as long as the thread is open.
+  const [workToggles] = useState(() => new Map<string, boolean>());
   // What comes in while the thread is open rises into place; what it opened with stays still.
   const arrived = useArrivals(items.flatMap(idsOf));
   const last = items.at(-1);
@@ -327,77 +329,79 @@ export function Transcript({
 
   return (
     <LiveText value={live ?? emptyLive}>
-      <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
-        {/* An image opened from the conversation steps through all of the thread's others. */}
-        <ImageGallery images={() => threadImages(shown)}>
-          <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
-            {/* Content fades out where the floating composer sits instead of showing through its glass. */}
-            <ScrollArea
-              viewportRef={attachViewport}
-              // Following owns the scroll position; a reader keeps native anchors during reflows.
-              viewportClassName={following ? "[overflow-anchor:none]" : ""}
-              className={`h-full ${
-                oneLine
-                  ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
-                  : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
-              }`}
-            >
-              <div
-                ref={column}
-                className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
-                // The inset is in screen pixels; the column's zoom would scale it.
-                style={{
-                  zoom: scale,
-                  paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
-                }}
+      <WorkToggles value={workToggles}>
+        <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
+          {/* An image opened from the conversation steps through all of the thread's others. */}
+          <ImageGallery images={() => threadImages(shown)}>
+            <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
+              {/* Content fades out where the floating composer sits instead of showing through its glass. */}
+              <ScrollArea
+                viewportRef={attachViewport}
+                // Following owns the scroll position; a reader keeps native anchors during reflows.
+                viewportClassName={following ? "[overflow-anchor:none]" : ""}
+                className={`h-full ${
+                  oneLine
+                    ? "mask-b-from-[calc(100%_-_max(4.5rem,_var(--composer)_+_1rem))] mask-b-to-[calc(100%_-_max(1rem,_var(--composer)_-_2.5rem))]"
+                    : "mask-b-from-[calc(100%_-_max(9rem,_var(--composer)_+_2rem))] mask-b-to-[calc(100%_-_max(2rem,_var(--composer)_-_5rem))]"
+                }`}
               >
-                <HistoryWindow
-                  items={items}
-                  viewport={viewport}
-                  history={history}
-                  following={following}
-                  onTailMounted={onTailMounted}
-                  onReveal={unfollow}
-                  contains={containsBlock}
-                  render={(item) => renderItem(item, false)}
-                />
-                {working ? (
-                  <div className="arrive-late">
-                    <Working />
-                  </div>
-                ) : null}
-              </div>
-            </ScrollArea>
-            <PromptStepper prompts={promptsOf(items)} viewport={viewport} onReveal={unfollow} />
-            <SelectionReply within={column} />
-            {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
-            <Button
-              onClick={toEnd}
-              aria-label="Jump to latest"
-              inert={following}
-              style={{
-                bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
-              }}
-              className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
-                following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
-              }`}
-            >
-              <ArrowDown size={15} strokeWidth={2} />
-            </Button>
-            <TranscriptFind
-              scope={column}
-              viewport={viewport}
-              threadId={threadId}
-              agentId={searchAgent}
-              cloudKey={searchCloudKey}
-              focused={focused}
-              blocks={shown}
-              live={live}
-              history={history}
-            />
-          </div>
-        </ImageGallery>
-      </ThreadContext>
+                <div
+                  ref={column}
+                  className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
+                  // The inset is in screen pixels; the column's zoom would scale it.
+                  style={{
+                    zoom: scale,
+                    paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
+                  }}
+                >
+                  <HistoryWindow
+                    items={items}
+                    viewport={viewport}
+                    history={history}
+                    following={following}
+                    onTailMounted={onTailMounted}
+                    onReveal={unfollow}
+                    contains={containsBlock}
+                    render={(item) => renderItem(item, false)}
+                  />
+                  {working ? (
+                    <div className="arrive-late">
+                      <Working />
+                    </div>
+                  ) : null}
+                </div>
+              </ScrollArea>
+              <PromptStepper prompts={promptsOf(items)} viewport={viewport} onReveal={unfollow} />
+              <SelectionReply within={column} />
+              {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
+              <Button
+                onClick={toEnd}
+                aria-label="Jump to latest"
+                inert={following}
+                style={{
+                  bottom: `max(${oneLine ? "4.5rem" : "7.75rem"}, calc(${bottomInset}px + ${oneLine ? "1rem" : "0.75rem"}))`,
+                }}
+                className={`absolute left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft hover:text-fg-primary ${
+                  following ? "pointer-events-none translate-y-1 opacity-0" : "opacity-100"
+                }`}
+              >
+                <ArrowDown size={15} strokeWidth={2} />
+              </Button>
+              <TranscriptFind
+                scope={column}
+                viewport={viewport}
+                threadId={threadId}
+                agentId={searchAgent}
+                cloudKey={searchCloudKey}
+                focused={focused}
+                blocks={shown}
+                live={live}
+                history={history}
+              />
+            </div>
+          </ImageGallery>
+        </ThreadContext>
+      </WorkToggles>
     </LiveText>
   );
 }
@@ -546,6 +550,7 @@ const TranscriptItem = memo(
               timings={runTimings(steps)}
               live={live}
               arrived={arrived.has(each.id)}
+              stepIds={steps.map((step) => step.id)}
               contains={(id) => containsBlock(each, id)}
             >
               {each.steps.map((step, index) => (
