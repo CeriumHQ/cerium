@@ -82,6 +82,12 @@ export const windowSolidAtom = Atom.writable(
   },
 ).pipe(Atom.keepAlive);
 
+/**
+ * Beta: the message box suggests what to send next once a turn finishes. On until turned off, which
+ * also drops a suggestion that is showing or on its way.
+ */
+export const autocompleteAtom = preference<"on" | "off">("cerium:autocomplete", ["on", "off"], "on");
+
 /** Which key sends a message; the other way of pressing Enter starts a new line. */
 export type SendKey = "enter" | "ctrlEnter";
 export const sendKeyAtom = preference<SendKey>("cerium:sendKey", ["enter", "ctrlEnter"], "enter");

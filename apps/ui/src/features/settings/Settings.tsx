@@ -148,6 +148,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["general", "Start with Windows"],
     ["general", "Open at login"],
     ["general", "Slim old threads"],
+    ["general", "Composer autocomplete (beta)"],
     ["general", "Send crash reports"],
     ["general", "Welcome tour"],
     ["general", "Chromium third-party notices"],

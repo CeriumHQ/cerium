@@ -859,6 +859,42 @@ export const handOffLead = Backend.mutation("HandOffLead");
 export const compactAgent = Backend.mutation("CompactAgent");
 export const stopBackgroundTask = Backend.mutation("StopBackgroundTask");
 export const askSideQuestion = Backend.mutation("AskSideQuestion");
+export const suggestFollowup = Backend.mutation("SuggestFollowup");
+
+/** Only the live feed can trigger autocomplete. Reading history or catching up after a disconnect cannot. */
+const followupBoundaries = new Set<EventPayload["_tag"]>([
+  "TurnCompleted",
+  "TurnInput",
+  "MessageQueued",
+  "MessageHeld",
+  "AgentError",
+  "ConversationRewound",
+  "ModelChanged",
+  "LeadHandedOff",
+  "WorkspaceMoved",
+]);
+export const followupEventAtom = Atom.family((lead: AgentId) =>
+  Backend.runtime.atom((get) =>
+    Stream.unwrap(
+      Effect.map(subscribeLive(get), (subscription) =>
+        Stream.fromSubscription(subscription).pipe(
+          Stream.filter(
+            (item) =>
+              item._tag === "Subscribed" ||
+              (item.event.agentId === lead && followupBoundaries.has(item.event.payload._tag)),
+          ),
+          Stream.map((item) =>
+            item._tag === "Event" &&
+            item.event.payload._tag === "TurnCompleted" &&
+            item.event.payload.stopReason === "completed"
+              ? item.event.sequence
+              : null,
+          ),
+        ),
+      ),
+    ),
+  ),
+);
 export const respondToPermission = Backend.mutation("RespondToPermission");
 export const answerQuestion = Backend.mutation("AnswerQuestion");
 export const resolveSpawnApproval = Backend.mutation("ResolveSpawnApproval");

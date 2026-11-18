@@ -41,6 +41,7 @@ import {
 } from "../features/agents/ApprovalTray.tsx";
 import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
 import type { AskSide } from "../features/composer/SideQuestion.tsx";
+import type { Followup } from "../features/composer/followup.ts";
 import { draftStartAtom } from "../features/composer/drafts.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
@@ -158,6 +159,13 @@ export interface ThreadPaneActions {
    * machine's backend can't.
    */
   readonly askSide?: ((agentId: AgentId, ...rest: Parameters<AskSide>) => ReturnType<AskSide>) | undefined;
+  /**
+   * Asks for a line the user might send a lead next, from its conversation up to its turn-completed
+   * event `afterSeq`; absent when the machine's backend can't.
+   */
+  readonly suggestFollowup?:
+    | ((threadId: ThreadId, agentId: AgentId, afterSeq: number) => Promise<string | null>)
+    | undefined;
   /** Hands a lead to a model of another harness; absent when the machine's backend can't. */
   readonly handOff?: ((agentId: AgentId, choice: HandoffChoice) => Promise<unknown>) | undefined;
   readonly respond: (
@@ -304,12 +312,13 @@ export function ThreadPane({
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const { attempt, restore, turnFiles, handOff, askSide } = actions;
+  const { attempt, restore, turnFiles, handOff, askSide, suggestFollowup } = actions;
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
     (lead !== undefined && modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b));
-  const queueEvents = AsyncResult.getOrElse(useAtomValue(queueAtom), (): ReadonlyArray<AgentEvent> => []);
+  const queueResult = useAtomValue(queueAtom);
+  const queueEvents = AsyncResult.getOrElse(queueResult, (): ReadonlyArray<AgentEvent> => []);
   const queued = queuedMessages(lead ? queueEvents.filter((event) => event.agentId === lead.id) : []);
   const leadActivity = leadRunning ? "running" : leadEnded ? "ended" : "idle";
   // Messages waiting behind a running turn, or for an ended lead, wait in the message box, where they
@@ -329,6 +338,21 @@ export function ThreadPane({
                   return (await attempt(taken)) && (await taken);
                 },
               }),
+        }
+      : undefined;
+  // What the message box needs to suggest a follow-up after a turn the lead finishes while the thread
+  // is in view. A thread read from the cloud copy can't ask: that takes its machine.
+  const followup: Followup | undefined =
+    focused && !cloud && suggestFollowup && viewed && lead
+      ? {
+          agentId: lead.id,
+          ready:
+            AsyncResult.isSuccess(queueResult) &&
+            leadEnded === undefined &&
+            queued.messages.length === 0 &&
+            queued.held.length === 0 &&
+            agents.every((agent) => !agent.awaitingApproval && agent.questions.length === 0),
+          suggest: (afterSeq) => suggestFollowup(viewed.thread.id, lead.id, afterSeq),
         }
       : undefined;
   // The project's setup while it runs, which the lead may wait on and which may wait on the user in
@@ -540,6 +564,7 @@ export function ThreadPane({
                                     ),
                                 },
                               }),
+                          ...(followup ? { followup } : {}),
                           ...(cloud || askSide === undefined
                             ? {}
                             : { onAskSide: (question, earlier) => askSide(lead.id, question, earlier) }),

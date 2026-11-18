@@ -2,6 +2,7 @@ import type { Mention } from "@cerium/protocol";
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useImperativeHandle,
   useRef,
   type ClipboardEvent,
@@ -62,6 +63,14 @@ interface PromptEditorProps {
   readonly inline?: boolean;
   /** Shown in place of the placeholder while the editor is empty, such as what a running turn is doing. */
   readonly cover?: ReactNode;
+  /**
+   * A line the user could send, drawn as ghost text while the editor is empty. It is only drawn:
+   * the box that owns it decides what Tab does with it.
+   */
+  readonly suggestion?: string | undefined;
+  readonly onAcceptSuggestion?: () => void;
+  /** The user is about to change the text (typing, pasting, dropping, composing), before it reports. */
+  readonly onEdit?: (() => void) | undefined;
 }
 
 const MENTION = "mention";
@@ -201,8 +210,12 @@ export function PromptEditor({
   activeOption,
   inline = false,
   cover,
+  suggestion,
+  onAcceptSuggestion,
+  onEdit,
 }: PromptEditorProps) {
   const root = useRef<HTMLDivElement>(null);
+  const suggestionId = useId();
   /** Where the caret was last inside the editor, for chips added while the user is elsewhere. */
   const caret = useRef<Range>(null);
 
@@ -374,8 +387,11 @@ export function PromptEditor({
     (segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "",
   );
 
+  // The ghost stands where the placeholder would, and only while nothing else covers the empty line.
+  const ghost = empty && suggestion !== undefined && !cover;
+
   return (
-    <div className={`group/editor ${inline ? "relative min-w-0 flex-1" : "relative"}`}>
+    <div className={`group/editor ${ghost ? "grid" : ""} ${inline ? "relative min-w-0 flex-1" : "relative"}`}>
       <div
         ref={(element) => {
           root.current = element;
@@ -393,11 +409,16 @@ export function PromptEditor({
         aria-placeholder={placeholder}
         aria-autocomplete="list"
         aria-controls={activeOption === undefined ? undefined : "mention-menu"}
+        aria-describedby={ghost ? suggestionId : undefined}
         aria-activedescendant={activeOption}
         contentEditable
         suppressContentEditableWarning
         spellCheck
         onInput={report}
+        // Anything that changes the text ends a suggestion, IME composition included, which reports
+        // only once it has put its first characters in.
+        onBeforeInput={() => onEdit?.()}
+        onCompositionStart={() => onEdit?.()}
         onSelect={() => {
           keepCaret();
           if (root.current) onTrigger(currentTrigger(root.current));
@@ -422,7 +443,7 @@ export function PromptEditor({
             placeCaretAtEnd(root.current);
         }}
         onBlur={() => onTrigger(undefined)}
-        className={`block w-full overflow-y-auto text-reading leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-base ${
+        className={`${ghost ? "col-start-1 row-start-1" : ""} block w-full overflow-y-auto text-reading leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-base ${
           inline
             ? "max-h-32 min-h-10 px-1 py-2 md:max-h-60"
             : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
@@ -435,7 +456,31 @@ export function PromptEditor({
           {cover}
         </div>
       ) : null}
-      {empty ? (
+      {ghost ? (
+        // Read out as the textbox's description, so a screen reader hears it and how to take it.
+        <span
+          data-followup=""
+          className={`pointer-events-none col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
+            inline ? "px-1 py-2" : "px-4 pt-3 pb-1"
+          }`}
+        >
+          <span id={suggestionId} className="min-w-0 break-words">
+            {suggestion}
+            <span className="sr-only"> Press Tab to use this suggestion, or Escape to dismiss it.</span>
+          </span>
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Accept suggestion"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onAcceptSuggestion}
+            className="pointer-events-auto shrink-0 cursor-pointer rounded-[5px] border border-line-subtle px-1.5 font-sans text-caption leading-[1.4] text-fg-tertiary hover:text-fg-primary"
+          >
+            <span className="pointer-coarse:hidden">Tab</span>
+            <span className="hidden pointer-coarse:inline">Use</span>
+          </button>
+        </span>
+      ) : empty ? (
         <span
           aria-hidden
           className={`pointer-events-none absolute text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-base ${

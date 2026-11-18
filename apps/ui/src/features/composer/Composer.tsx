@@ -107,6 +107,8 @@ import {
   type ModelSwitch,
 } from "./models.ts";
 import { handoffTarget, runningLow } from "./handoff.ts";
+import type { Followup } from "./followup.ts";
+import { useFollowup } from "./useFollowup.ts";
 import { HandoffDialog, LowLimitNotice, type Handoff } from "./HandoffDialog.tsx";
 import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
 import {
@@ -207,6 +209,11 @@ export type ComposerTarget =
        * thread (`/btw`). Absent where the machine can't.
        */
       readonly onAskSide?: AskSide;
+      /**
+       * What the empty box needs to suggest a follow-up after a turn the lead finishes in view; absent
+       * where the machine can't suggest one.
+       */
+      readonly followup?: Followup;
       /**
        * Hands the lead to a model of another harness, which the user confirms first; its model menu
        * then lists every harness. Absent where the machine can't.
@@ -399,6 +406,11 @@ export function Composer({
   );
   const comments = draft.comments ?? [];
   const written = text.trim() !== "" || ready.length > 0 || comments.length > 0;
+  // As the editor counts it: only line breaks left, no files, no comments.
+  const blankBox =
+    draft.segments.every((segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "") &&
+    draft.attachments.length === 0 &&
+    comments.length === 0;
   const sendable = written && !preparing && !connecting && (!isNew || starting.length > 0);
   const canSend = sendable && !needsFolder;
   /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
@@ -781,6 +793,17 @@ export function Composer({
   const dictation = useDictation((spoken) => editor.current?.insertText(spoken));
   const dictates = !WEB && !oneLine && navigator.mediaDevices !== undefined;
   const listening = dictation.state.phase === "recording" || dictation.state.phase === "starting";
+  // A line the user could send next, in the empty box after the lead finishes a turn in view.
+  const followup = useFollowup({
+    followup: target.kind === "thread" ? target.followup : undefined,
+    empty: blankBox && !listening,
+  });
+  const suggestion = running ? undefined : followup.text;
+  const acceptSuggestion = () => {
+    if (suggestion === undefined) return;
+    followup.dismiss();
+    editor.current?.insertText(suggestion);
+  };
   // Another thread's draft never takes what was said for this one.
   const stopDictating = useEffectEvent(() => dictation.cancel());
   useEffect(() => () => stopDictating(), [draftKey]);
@@ -918,6 +941,20 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // The suggestion answers only a plain Tab, which then writes it as ordinary text, and Esc, which
+    // drops it. Shift Tab, a composing IME and every other key go on as they would.
+    if (suggestion !== undefined && !event.nativeEvent.isComposing) {
+      if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        acceptSuggestion();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        followup.dismiss();
+        return;
+      }
+    }
     const count = results.options.length;
     if (menuOpen && count > 0 && !event.nativeEvent.isComposing) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1454,6 +1491,9 @@ export function Composer({
             }
             // While the lead works and nothing is written, the line says what it's doing.
             cover={compact && running ? activity : undefined}
+            suggestion={suggestion}
+            onAcceptSuggestion={acceptSuggestion}
+            onEdit={followup.dismiss}
           />
           <input
             ref={filePicker}

@@ -9,7 +9,7 @@ import {
   type ThreadId,
   type WorktreeChanges,
 } from "@cerium/protocol";
-import type { TeardownReport, ThreadOverview } from "@cerium/rpc";
+import { RPC_VERSION, type TeardownReport, type ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
@@ -71,6 +71,7 @@ import {
   compactAgent,
   stopBackgroundTask,
   askSideQuestion,
+  suggestFollowup,
   continueThread,
   createThread,
   deleteThread,
@@ -198,7 +199,7 @@ import {
 import { fittedSize } from "../features/terminal/session.ts";
 import { closeTerminal, terminalsAtom } from "../backend/terminals.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
-import { scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
+import { autocompleteAtom, scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
 import { canScale, useScale, useWindowSolid } from "../features/settings/scale.ts";
 import {
   settingsLabel,
@@ -232,6 +233,7 @@ import {
 } from "../features/transcript/model.ts";
 import { RESTORE_VERSION } from "../features/transcript/restore.ts";
 import { STOP_BACKGROUND_VERSION } from "../features/composer/BackgroundTray.tsx";
+import { FOLLOWUP_VERSION } from "../features/composer/followup.ts";
 import { revertTurnFiles, TURN_FILES_VERSION } from "../backend/turnFiles.ts";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { UpdateNotice } from "../features/updates/UpdateNotice.tsx";
@@ -885,6 +887,8 @@ function Workspace() {
   const stopBackground = useAtomSet(stopBackgroundTask, { mode: "promise" });
   const setOnLimit = useAtomSet(setThreadOnLimit, { mode: "promise" });
   const askSide = useAtomSet(askSideQuestion, { mode: "promise" });
+  const suggest = useAtomSet(suggestFollowup, { mode: "promise" });
+  const autocomplete = useAtomValue(autocompleteAtom);
   const handOffTo = useAtomSet(handOffLead, { mode: "promise" });
   const respond = useAtomSet(respondToPermission, { mode: "promise" });
   const answer = useAtomSet(answerQuestion, { mode: "promise" });
@@ -2163,6 +2167,16 @@ function Workspace() {
     askSide:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SIDE_QUESTION_VERSION
         ? (agentId, question, earlier) => askSide({ payload: { agentId, question, earlier } })
+        : undefined,
+    // This computer's own backend ships with the window; another machine that doesn't say is unavailable.
+    suggestFollowup:
+      autocomplete === "on" &&
+      !settingsOpen &&
+      !searchOpen &&
+      !welcoming &&
+      connection === "connected" &&
+      (driven === undefined ? RPC_VERSION : (drivenDevice?.rpcVersion ?? 0)) >= FOLLOWUP_VERSION
+        ? (threadId, agentId, afterSeq) => suggest({ payload: { threadId, agentId, afterSeq } })
         : undefined,
     handOff:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= HANDOFF_VERSION

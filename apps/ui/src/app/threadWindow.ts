@@ -5,6 +5,7 @@ import { shellBridge } from "../backend/shell.ts";
 import { WEB } from "../backend/target.ts";
 import {
   scaleAtom,
+  autocompleteAtom,
   sendKeyAtom,
   textSizeAtom,
   themeAtom,
@@ -77,6 +78,7 @@ export function useSharedPreferences() {
       registry.refresh(scaleAtom);
       registry.refresh(windowSolidAtom);
       registry.refresh(sendKeyAtom);
+      registry.refresh(autocompleteAtom);
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
