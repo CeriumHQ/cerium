@@ -10,8 +10,15 @@ All notable changes to Cerium are recorded here. The format follows
 
 - Desktop packages store Chromium's notices in a losslessly compressed HTML file. Open the full notices offline from Settings → General → About or from the app's resources folder, and download the original HTML from the reader.
 - Local and cloud threads open with saved side-panel state and a recent transcript page. Earlier messages still load on demand, and older versions can still read the original history.
-
 - Desktop releases download the ONNX WebAssembly runtime the first time you dictate and cache the verified copy for offline use. Dictation still transcribes on your computer and keeps its existing model cache.
+- Cerium releases the hidden main window after five minutes in the tray and restores its tabs and drafts when reopened. Agents, notifications and active previews continue in the background.
+- Idle resumable harness hosts expire even when they are among the most recently used sessions.
+- The workspace title bar refreshes Git status when the checkout changes or the window regains focus. Connected views share pending computer permission checks.
+- File and diff highlighting prioritizes visible lines and caps cached tokens.
+- The desktop startup catalog and model picker share discovery results. Attachment cleanup reads message history only if an old attachment folder needs checking.
+- SQLite stores a second event payload only for tool results with large images. Cloud sync tracks changed threads between reconnects.
+- Live text streams to windows displaying its thread, while activity elsewhere still updates the thread list.
+- Desktop packages omit unused dependency formats. Published nightlies use release compression, and optional English installers ship with a smaller set of Chromium locale resources.
 - A response's work (its tool calls, thoughts and what the agent said along the way) folds under one Working line ahead of its final message. It stays open while the agent works, showing a running clock, and folds once the turn ends, keeping a section you opened or closed that way; agents it started, pushes, questions, approvals waiting on you and turn errors stay in view below it. The copy button under a response copies only that final message.
 - Failed tool calls no longer show in red: a run's line stops counting them, and their rows, icons and output look like any other call's, since the agent deals with its own failures.
 
