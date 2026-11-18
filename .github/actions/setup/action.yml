@@ -1,14 +1,15 @@
 name: Set up the workspace
 description: >-
-  Installs Bun and Node 24, then the workspace's dependencies from the frozen lockfile, or only some
-  packages'. On Windows it first turns off Defender's real-time scanning.
+  Installs Bun, Node 24, and the selected workspace dependencies from the frozen lockfile.
+  On Windows it first configures Defender for the job.
 
 inputs:
   filter:
     description: >-
       Installs only the dependencies of the workspace packages these space-separated patterns match
       (`bun install --filter`, where `!` leaves a package out), for a job that runs only some
-      packages' scripts. Empty installs the whole workspace.
+      packages' scripts. Desktop packaging can use `!@cerium/relay !@cerium/site`. Empty installs the
+      whole workspace.
     required: false
     default: ""
   cpu:
@@ -25,17 +26,21 @@ runs:
     # Defender scans every file a process opens and every program that starts, which slows installing,
     # building, packaging and the thousands of git processes the tests start. The runner is a fresh
     # machine that lasts one job. Where scanning can't be turned off, the checkout and the temporary
-    # folder are left out of it instead. Windows on Arm's runners never let it be turned off, and
-    # asking took over half a minute there, so they only get the exclusions.
-    - if: runner.os == 'Windows'
+    # folder are left out of it instead. Windows on Arm's runners keep real-time scanning on, so
+    # apply the existing path exclusions there without querying Defender's real-time status.
+    - name: Configure Defender
+      if: runner.os == 'Windows'
       shell: pwsh
       run: |
         try {
-          if ($env:RUNNER_ARCH -ne 'ARM64') {
+          $isArm64 = $env:RUNNER_ARCH -eq 'ARM64'
+          if (-not $isArm64) {
             Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           }
           Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP -ErrorAction SilentlyContinue
-          "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
+          if (-not $isArm64) {
+            "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
+          }
         } catch {
           "Defender left as it was: $_"
         }
@@ -50,7 +55,8 @@ runs:
 
     # Installing also runs the root `prepare` script, which patches the Effect diagnostics into
     # TypeScript and Oxlint.
-    - shell: bash
+    - name: Install dependencies and run prepare
+      shell: bash
       run: |
         read -ra patterns <<<"$FILTER"
         filters=()
@@ -59,10 +65,9 @@ runs:
       env:
         FILTER: ${{ inputs.filter }}
         CPU: ${{ inputs.cpu }}
-        # Bun's package cache goes on the checkout's disk. Its default home on Windows is on C:, which
-        # is much slower than the D: the checkout is on, and Bun can't hard-link packages across the
-        # two, so installing there took several times as long. The cache isn't kept between runs:
-        # restoring it took longer than downloading the packages again, on Windows several times longer.
+        # Hosted Windows runners put the checkout and runner.temp on the same drive (C: on Arm64,
+        # D: on x64 in recent runs). Bun can hard-link within that drive. Keep the cache job-local:
+        # restoring the extracted package cache took longer than downloading packages again.
         BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-cache
         # CI only starts packaged builds, whose Electron electron-builder fetches itself, so the
         # development binary's download is skipped.

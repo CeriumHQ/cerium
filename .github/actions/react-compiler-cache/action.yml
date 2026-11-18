@@ -1,0 +1,52 @@
+name: Cache React compiler transforms
+description: Restores UI transforms for main and its PRs, and saves daily snapshots on main pushes.
+
+inputs:
+  mode:
+    description: The UI build mode, desktop or web.
+    required: true
+
+outputs:
+  file:
+    description: The transform cache file for Vite, empty when caching is disabled.
+    value: ${{ steps.scope.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    # GitHub lets a PR restore from its base branch, while main cannot restore from a PR merge ref.
+    # Only this repository's main pushes save snapshots. Stable releases and PRs restore only.
+    - id: scope
+      if: >-
+        github.repository == 'CeriumHQ/cerium' &&
+        ((github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) ||
+        (github.event_name == 'pull_request' && github.base_ref == 'main'))
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        prefix="cerium-react-compiler-v1-main-$RUNNER_OS-$RUNNER_ARCH-$MODE-"
+        {
+          echo "file=$RUNNER_TEMP/cerium-react-compiler-$MODE.cache"
+          echo "prefix=$prefix"
+          echo "key=$prefix$(date -u '+%Y-%m-%d')"
+        } >> "$GITHUB_OUTPUT"
+
+    # Each snapshot is capped at 16 MiB in Vite. Older daily snapshots expire under GitHub's
+    # standard eviction policy. Vite checks transform inputs and integrity after every restore.
+    - if: steps.scope.outputs.file != '' && github.event_name == 'push'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      continue-on-error: true
+      with:
+        path: ${{ steps.scope.outputs.file }}
+        key: ${{ steps.scope.outputs.key }}
+        restore-keys: ${{ steps.scope.outputs.prefix }}
+
+    - if: steps.scope.outputs.file != '' && github.event_name != 'push'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      continue-on-error: true
+      with:
+        path: ${{ steps.scope.outputs.file }}
+        key: ${{ steps.scope.outputs.key }}
+        restore-keys: ${{ steps.scope.outputs.prefix }}

@@ -1,0 +1,125 @@
+name: Deploy and publish the nightly
+
+on:
+  workflow_call:
+    inputs:
+      version: { type: string, required: true }
+      release: { type: string, required: true }
+    secrets:
+      CLOUDFLARE_API_TOKEN: { required: false }
+      CLOUDFLARE_ACCOUNT_ID: { required: false }
+    outputs:
+      published:
+        value: ${{ jobs.release.outputs.published }}
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Older nightlies are deleted, with their tags, once a newer one is published.
+  NIGHTLIES_KEPT: 10
+
+jobs:
+  # The caller admits one nightly at a time. Stable also admits one publisher, so a waiting
+  # stable cannot be displaced by another nightly while this shared group is occupied.
+  release:
+    name: Deploy and publish
+    concurrency: cerium-relay-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      published: ${{ steps.publish.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release plan reads the release tags and the commits since them.
+          fetch-depth: 0
+          persist-credentials: false
+      - id: replan
+        name: Plan the nightly again
+        run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER" --notes="$RUNNER_TEMP/notes.md"
+      # The packages carry the version planned when the run began; a stable release since then moves
+      # the nightly's.
+      - id: plan
+        name: Check the plan still holds
+        run: |
+          if [ "$PUBLISH" = true ] && [ "$VERSION" != "$PACKAGED" ]; then
+            echo "::warning::A stable release moved this nightly from $PACKAGED to $VERSION since the run began, so the next push publishes instead."
+            PUBLISH=false
+          fi
+          if [ "$PUBLISH" != true ] && [ -n "$RELEASE" ]; then gh release delete "$RELEASE" --yes || true; fi
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+        env:
+          PUBLISH: ${{ steps.replan.outputs.publish }}
+          VERSION: ${{ steps.replan.outputs.version }}
+          PACKAGED: ${{ inputs.version }}
+          RELEASE: ${{ inputs.release }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+      # Each runner's update files in a folder of their own, then all in one, with the ones two
+      # runners both wrote merged (scripts/merge-update-files.ts).
+      - name: Fetch the update files
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: update-files-*
+          path: ${{ runner.temp }}/update-files
+      - name: Merge the update files
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        run: node scripts/merge-update-files.ts "$RUNNER_TEMP/update-files" apps/desktop/out
+      - name: Fetch the web app
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web
+          path: apps
+      # Wrangler deploys the relay, which needs only the relay's own dependencies.
+      - if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/setup
+        with:
+          filter: "@cerium/relay"
+      - name: Deploy the relay
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/deploy-relay
+        with:
+          version: ${{ steps.replan.outputs.version }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          github-token: ${{ github.token }}
+      # Publishing the draft tags its commit.
+      - id: publish
+        name: Publish the nightly
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ inputs.release }}
+          TITLE: ${{ steps.replan.outputs.title }}
+          COMMIT: ${{ steps.replan.outputs.commit }}
+        run: |
+          gh release upload "$RELEASE" apps/desktop/out/*.yml apps/relay/dist/cerium-web-*.tar.gz --clobber
+          gh release edit "$RELEASE" --draft=false --prerelease --latest=false --target "$COMMIT" \
+            --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
+      # Drafts from runs that never published, which a later push's nightly replaced or a failed check
+      # stopped, go once they are a few hours old, past any run still uploading to one.
+      - name: Prune old nightlies
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --exclude-drafts --limit 200 --json tagName,isPrerelease,publishedAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-nightly[.]")))] | sort_by(.publishedAt) | reverse | .[].tagName' |
+            tail -n +"$((NIGHTLIES_KEPT + 1))" |
+            while read -r tag; do
+              gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Couldn't delete the nightly $tag"
+            done
+          gh release list --limit 200 --json tagName,isDraft,createdAt \
+            --jq '.[] | select(.isDraft and (.tagName | test("-nightly[.]")) and (.createdAt | fromdateiso8601) < now - 6 * 3600) | .tagName' |
+            while read -r tag; do
+              gh release delete "$tag" --yes || echo "::warning::Couldn't delete the draft nightly $tag"
+            done

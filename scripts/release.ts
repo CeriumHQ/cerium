@@ -244,10 +244,14 @@ const planStable = (options: { readonly commit?: string; readonly version?: stri
     return { skip: `nothing that ships changed since ${lastStable?.name ?? "the start"}` };
   }
 
+  const stable = formatVersion(version);
+  const tagged = tryGit("rev-parse", "--verify", `refs/tags/v${stable}^{commit}`);
+  if (tagged !== undefined && tagged !== commit) {
+    return { skip: `v${stable} already points to another commit` };
+  }
   const changelogAt = (rev: string | undefined) =>
     rev === undefined ? "" : (tryGit("show", `${rev}:CHANGELOG.md`) ?? "");
   const entries = newEntries(changelogAt(lastStable?.name), changelogAt(commit));
-  const stable = formatVersion(version);
   return {
     release: {
       version: stable,
