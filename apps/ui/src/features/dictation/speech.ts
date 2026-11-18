@@ -17,6 +17,7 @@ export type SpeechRequest =
     };
 
 export type SpeechResponse =
+  | { readonly kind: "runtime"; readonly model: SpeechModelId; readonly loading: boolean }
   /** How much of the model has downloaded, 0 to 1; only on its first use. */
   | { readonly kind: "progress"; readonly model: SpeechModelId; readonly share: number }
   | { readonly kind: "ready"; readonly model: SpeechModelId; readonly device: "webgpu" | "wasm" }
@@ -25,13 +26,15 @@ export type SpeechResponse =
       readonly kind: "failed";
       /** Absent when loading failed for a `prepare`. */
       readonly id?: number;
-      readonly problem: Extract<DictationProblem, "download" | "failed">;
+      readonly problem: SpeechProblem;
       readonly message: string;
     };
 
+type SpeechProblem = Extract<DictationProblem, "download" | "runtime" | "failed">;
+
 export class SpeechError extends Error {
-  readonly problem: Extract<DictationProblem, "download" | "failed">;
-  constructor(problem: Extract<DictationProblem, "download" | "failed">, message: string) {
+  readonly problem: SpeechProblem;
+  constructor(problem: SpeechProblem, message: string) {
     super(message);
     this.problem = problem;
   }

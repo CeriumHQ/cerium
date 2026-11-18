@@ -1,10 +1,12 @@
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { artifactHostPage } from "@cerium/artifacts";
-import { defineConfig, transformWithOxc, type Plugin } from "vite-plus";
+import { defaultClientConditions, defineConfig, transformWithOxc, type Plugin } from "vite-plus";
 
 /** Written by `bun run dev:backend`: where the development backend listens and its launch token. */
 const connectionFile = fileURLToPath(new URL("../../.cerium-dev/connection.json", import.meta.url));
@@ -167,6 +169,36 @@ const withoutSpeech = (): Plugin => ({
   load: (id) => (/[\\/]dictation[\\/]speech\.worker\.ts$/.test(id) ? "export {};" : undefined),
 });
 
+const onnxBinary = "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm";
+const optionalWasmId = "\0cerium-dictation-wasm";
+
+/** In release builds the worker reads the verified runtime through Electron's local protocol. */
+const optionalSpeechWorker = (): Plugin => ({
+  name: "cerium-optional-speech-worker",
+  enforce: "pre",
+  resolveId: (id) => (id === `${onnxBinary}?url` ? optionalWasmId : undefined),
+  load: (id) => (id === optionalWasmId ? 'export default "cerium-dictation://runtime/ort.wasm";' : undefined),
+});
+
+/** The release workflow publishes the binary, and the installer carries its manifest. */
+const speechReleaseAsset = (version: string): Plugin => ({
+  name: "cerium-speech-release-asset",
+  async generateBundle() {
+    const require = createRequire(import.meta.url);
+    const source = await readFile(require.resolve(onnxBinary));
+    const onnxVersion = JSON.parse(await readFile(new URL("package.json", import.meta.url), "utf8"))
+      .dependencies["onnxruntime-web"];
+    this.emitFile({ type: "asset", fileName: `cerium-dictation-${version}.wasm`, source });
+    const manifest = {
+      version,
+      onnxVersion,
+      size: source.byteLength,
+      sha256: createHash("sha256").update(source).digest("hex"),
+    };
+    this.emitFile({ type: "asset", fileName: "dictation-runtime.json", source: JSON.stringify(manifest) });
+  },
+});
+
 /** The version a build carries: the release's, which the release workflows set, else `dev`. */
 const version = process.env["CERIUM_VERSION"]?.trim() || "dev";
 // It names the web build's folder on the relay.
@@ -178,6 +210,8 @@ const relay = process.env["CERIUM_RELAY"] ?? "http://localhost:8787";
 
 export default defineConfig(async ({ command, mode }) => {
   const web = mode === "web";
+  const optionalSpeech = !web && command === "build" && process.env["CERIUM_OPTIONAL_DICTATION"] === "1";
+  if (optionalSpeech && version === "dev") throw new Error("Optional dictation requires CERIUM_VERSION.");
   return {
     // The packaged shell loads the built UI from a file, so asset URLs stay relative to index.html.
     // The relay serves each version's web build from a folder of its own; the dev server, from its
@@ -186,14 +220,19 @@ export default defineConfig(async ({ command, mode }) => {
     define: {
       __CERIUM_VERSION__: JSON.stringify(version),
     },
+    // ONNX's bundled glue also references the WASM, even when the worker sets its own path.
+    ...(optionalSpeech
+      ? { resolve: { conditions: [...defaultClientConditions, "onnxruntime-web-use-extern-wasm"] } }
+      : {}),
     build: web ? { outDir: "dist-web" } : {},
-    worker: { plugins: () => (web ? [withoutSpeech()] : []) },
+    worker: { plugins: () => (web ? [withoutSpeech()] : optionalSpeech ? [optionalSpeechWorker()] : []) },
     plugins: [
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),
       artifactHost(),
       web ? webClient(version) : devBackendConnection(),
+      ...(optionalSpeech ? [speechReleaseAsset(version)] : []),
     ],
     server: web
       ? {

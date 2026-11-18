@@ -61,7 +61,7 @@ function Elapsed({ since }: { since: number }) {
  */
 export function DictationControl({ dictation }: { dictation: Dictation }) {
   const dictateKeys = useShortcut("dictate");
-  const { state, download } = dictation;
+  const { state, download, preparingRuntime } = dictation;
   // Each of the microphone, the recording pill and the writing pill pops in as it takes the place.
   const form =
     state.phase === "recording" || state.phase === "starting"
@@ -70,10 +70,11 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
         ? "writing"
         : "idle";
   const swap = useChanged(form) ? "swap-in" : "";
-  const downloading =
-    download === undefined ? null : (
-      <span className="text-fg-tertiary tabular-nums">Model {Math.round(download * 100)}%</span>
-    );
+  const downloading = preparingRuntime ? (
+    <span className="text-fg-tertiary">Preparing speech runtime…</span>
+  ) : download === undefined ? null : (
+    <span className="text-fg-tertiary tabular-nums">Model {Math.round(download * 100)}%</span>
+  );
 
   if (form === "recording") {
     return (
@@ -109,7 +110,7 @@ export function DictationControl({ dictation }: { dictation: Dictation }) {
         className={`flex h-8 shrink-0 items-center gap-2 rounded-full bg-surface-hover px-3 text-meta text-fg-secondary ${swap}`}
       >
         <LoaderCircle size={13} className="animate-spin" />
-        {download === undefined ? "Writing…" : downloading}
+        {downloading ?? "Writing…"}
       </output>
     );
   }
@@ -136,7 +137,7 @@ export function DictationNotice({ dictation }: { dictation: Dictation }) {
   const action =
     state.problem === "blocked" && bridge?.openMicrophoneSettings
       ? { label: "Open privacy settings", run: () => void bridge.openMicrophoneSettings?.() }
-      : state.problem === "download" || state.problem === "busy"
+      : state.problem === "download" || state.problem === "runtime" || state.problem === "busy"
         ? { label: "Try again", run: dictation.toggle }
         : undefined;
   const quiet = state.problem === "silent";

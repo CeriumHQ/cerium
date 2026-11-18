@@ -39,6 +39,11 @@ Shipped in the app, the web client and the website as web fonts, under the SIL O
 The harnesses' logos, Apple's, Windows' and Tux identify those products and remain trademarks of
 their owners. Cerium is not affiliated with or endorsed by them.
 
+## Dictation runtime
+
+The desktop app uses ONNX Runtime Web, including its downloadable WebAssembly binary. Copyright (c)
+Microsoft Corporation. All rights reserved. MIT License (below).
+
 ## The website's scripts
 
 The website (`apps/site`) bundles three.js, Copyright © 2010-2026 three.js authors, https://threejs.org,

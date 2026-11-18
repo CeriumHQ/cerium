@@ -8,6 +8,7 @@ description: >-
   was packaged with --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the
   .deb as well, and uploads the packages as the `package-<OS>-<arch>` artifact, or to the draft
   release `release` names, with their update file as the `update-files-<OS>-<arch>` artifact.
+  Windows x64 also uploads the version's shared dictation runtime.
 
 inputs:
   version:
@@ -94,10 +95,16 @@ runs:
 
     - name: Build
       shell: bash
-      run: bun run build:desktop
+      run: |
+        bun run build:desktop
+        if compgen -G 'apps/ui/dist/assets/ort-wasm-*.wasm' > /dev/null; then
+          echo "::error::ONNX WebAssembly was bundled into the desktop UI."
+          exit 1
+        fi
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         CERIUM_SENTRY_DSN: ${{ inputs.sentry-dsn }}
+        CERIUM_OPTIONAL_DICTATION: "1"
 
     # electron-builder downloads Electron, NSIS, the AppImage tools, fpm and the rest into these folders.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -209,9 +216,17 @@ runs:
           prefix=Cerium-english
           CERIUM_SMOKE_LOCALE=en-US
         fi
+        # The WebAssembly is identical across platforms. Publish it from one runner, which also
+        # runs when a pull request only packages for Windows x64.
+        runtime=()
+        if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = X64 ] && [ "$CHROMIUM_LOCALES" = full ]; then
+          asset="cerium-dictation-$VERSION.wasm"
+          cp "apps/ui/dist/$asset" "$out/$asset"
+          runtime=("$out/$asset")
+        fi
         if [ -n "$RELEASE" ]; then
           shopt -s nullglob
-          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap})
+          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap} "${runtime[@]}")
           GH_TOKEN="$UPLOAD_TOKEN" gh release upload "$RELEASE" "${packages[@]}" --clobber \
             > "$RUNNER_TEMP/upload.log" 2>&1 &
           upload=$!
@@ -321,6 +336,7 @@ runs:
           apps/desktop/out/*.dmg
           apps/desktop/out/*-mac.zip
           apps/desktop/out/*-mac.zip.blockmap
+          apps/desktop/out/cerium-dictation-*.wasm
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
         if-no-files-found: error

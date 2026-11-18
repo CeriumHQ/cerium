@@ -474,7 +474,7 @@ export function DictationSettings() {
   return (
     <SettingsPage
       title="Dictation"
-      description="OpenAI's Whisper turns speech into text on this computer. Its model downloads once, the first time you dictate."
+      description="OpenAI's Whisper turns speech into text on this computer. The runtime and your chosen model download when you first need them."
     >
       <SettingsList>
         <SettingsRow

@@ -151,7 +151,7 @@ export default {
   // Cerium's own Apache-2.0 license goes along, as the license asks of every copy distributed, and so
   // do the notices for the fonts and icons the UI bundles under licenses of their own.
   extraResources: [
-    { from: "../ui/dist", to: "ui/dist" },
+    { from: "../ui/dist", to: "ui/dist", filter: ["**/*", "!cerium-dictation-*.wasm"] },
     { from: "../../LICENSE", to: "LICENSE" },
     { from: "../../THIRD_PARTY_NOTICES.md", to: "THIRD_PARTY_NOTICES.md" },
   ],

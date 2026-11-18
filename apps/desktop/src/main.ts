@@ -23,6 +23,7 @@ import { watchBackendActivity } from "./backendActivity.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
 import { desktopTheme } from "./desktopTheme.ts";
+import { serveDictationRuntime } from "./dictationProtocol.ts";
 import { cliState, installCli, refreshCli, removeCli } from "./cli.ts";
 import { listEditors, openInEditor } from "./editors.ts";
 import { launchArguments, parseLaunch, SCHEME, threadOfLink, type LaunchRequest } from "./launch.ts";
@@ -53,6 +54,9 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 
 /** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
 const smokeTest = prepareSmokeTest();
+
+const uiDirectory = join(import.meta.dirname, "..", "..", "ui", "dist");
+if (app.isPackaged) serveDictationRuntime(uiDirectory);
 
 // One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -370,7 +374,7 @@ const loadPage = (window: BrowserWindow, thread?: { threadId: string; mode: Thre
   // Not `thread`, which a tapped notification's address uses (apps/ui/src/web/push.ts).
   const query = thread ? { window: thread.threadId, mode: thread.mode } : undefined;
   if (devUrl === undefined) {
-    const page = join(import.meta.dirname, "..", "..", "ui", "dist", "index.html");
+    const page = join(uiDirectory, "index.html");
     void window.loadFile(page, query ? { query } : {});
   } else {
     const url = new URL(devUrl);

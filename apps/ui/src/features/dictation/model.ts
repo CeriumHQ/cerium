@@ -139,6 +139,8 @@ export type DictationProblem =
   | "busy"
   /** The speech model couldn't be downloaded. */
   | "download"
+  /** The runtime couldn't be downloaded or verified. */
+  | "runtime"
   /** The recording ended without any speech in it. */
   | "silent"
   | "failed";
@@ -157,6 +159,7 @@ export const problemText: Record<DictationProblem, string> = {
   noMicrophone: "No microphone found",
   busy: "The microphone is in use by another app",
   download: "Couldn't download the speech model",
+  runtime: "Couldn't download the speech runtime",
   silent: "Didn't hear anything",
   failed: "Dictation stopped working",
 };

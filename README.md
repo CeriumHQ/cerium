@@ -204,8 +204,10 @@ anonymous crash report, which you can turn off.
 - **Updates.** The app checks this repository's GitHub Releases at launch and every six hours, and
   downloads an update only when you ask. Settings → Harnesses looks up each harness's newest version
   on npm or GitHub to tell you when one is out.
-- **Dictation.** The speech model you pick downloads from Hugging Face on first use, and your voice is
-  transcribed on your machine.
+- **Dictation.** The first use downloads the desktop build's speech runtime from GitHub Releases
+  and your chosen model from Hugging Face. If the release asset has been removed, the app can fetch
+  the same pinned runtime from the npm CDN Unpkg. The runtime and model are cached on your machine,
+  where your voice is transcribed.
 - **Artifacts.** Pages an agent draws can load scripts over HTTPS, such as the chart libraries
   Cerium suggests from `cdn.jsdelivr.net`, so viewing one may fetch from that CDN.
 
