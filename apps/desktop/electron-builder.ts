@@ -113,6 +113,9 @@ export default {
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
     "!node_modules/**/*.{ts,cts,mts,tsx,map}",
     "!node_modules/{@sentry/bundler-plugins,sentry,oxc-parser,@oxc-parser}/**",
+    // The packaged backend imports both packages as ESM from Electron's Node runtime.
+    "!**/node_modules/@cursor/sdk/dist/{cjs,bundled}/**",
+    "!**/node_modules/drizzle-orm/**/*.cjs",
   ],
   // main.ts loads the UI from ../../ui/dist beside dist/, which is resources/ui/dist once packaged.
   // Cerium's own Apache-2.0 license goes along, as the license asks of every copy distributed, and so
