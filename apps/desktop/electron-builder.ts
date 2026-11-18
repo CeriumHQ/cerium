@@ -1,9 +1,11 @@
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { Arch, type AfterPackContext, type Configuration } from "electron-builder";
+
+import { englishArtifact } from "./src/chromiumLocales.ts";
 
 // Packages the desktop shell and its backend for the platform and processor it runs on: an unsigned
 // installer on Windows, an AppImage, a .deb and an .rpm on Linux, a disk image on macOS, each for x64
@@ -18,6 +20,8 @@ import { Arch, type AfterPackContext, type Configuration } from "electron-builde
 
 const version = process.env["CERIUM_VERSION"];
 const nightly = version?.includes("-nightly.") === true;
+const english = process.env["CERIUM_CHROMIUM_LOCALES"] === "english";
+const artifact = (name: string) => (english ? englishArtifact(name) : name);
 /**
  * A Developer ID certificate to sign the Mac app with (CSC_LINK, set by the release workflows when
  * the repository has one), which also has it notarized when APPLE_API_KEY and its ID and issuer are
@@ -32,6 +36,48 @@ const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
  * somewhat larger, and installed the same way.
  */
 const fastPacking = process.env["ELECTRON_BUILDER_COMPRESSION_LEVEL"] !== undefined;
+
+/**
+ * Takes the npm packages built for the other Mac processor out of a packed Mac app, before it is
+ * signed. The Intel app is packaged on Apple silicon from an install with both processors' native
+ * packages (.github/actions/package), so each of them arrives beside its counterpart and the app
+ * keeps only its own processor's. One without a counterpart stops packaging, since the app would
+ * start without its native code.
+ */
+const dropOtherMacProcessor = (context: AfterPackContext) => {
+  if (context.electronPlatformName !== "darwin") return;
+  const own = Arch[context.arch];
+  const other = own === "x64" ? "arm64" : own === "arm64" ? "x64" : undefined;
+  if (other === undefined) return;
+  const suffix = `-darwin-${other}`;
+  const dropped: string[] = [];
+  const visit = (modules: string) => {
+    if (!existsSync(modules)) return;
+    for (const entry of readdirSync(modules, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const names = entry.name.startsWith("@")
+        ? readdirSync(join(modules, entry.name), { withFileTypes: true })
+            .filter((scoped) => scoped.isDirectory())
+            .map((scoped) => `${entry.name}/${scoped.name}`)
+        : [entry.name];
+      for (const name of names) {
+        if (!name.endsWith(suffix)) {
+          visit(join(modules, name, "node_modules"));
+          continue;
+        }
+        const counterpart = `${name.slice(0, -suffix.length)}-darwin-${own}`;
+        if (!existsSync(join(modules, counterpart))) {
+          throw new Error(`The ${own} Mac app has ${name} without ${counterpart} to take its place.`);
+        }
+        rmSync(join(modules, name), { recursive: true });
+        dropped.push(name);
+      }
+    }
+  };
+  const app = `${context.packager.appInfo.productFilename}.app`;
+  visit(join(context.appOutDir, app, "Contents", "Resources", "app", "node_modules"));
+  if (dropped.length > 0) console.log(`  • left out the ${other} Mac packages ${dropped.join(", ")}`);
+};
 
 /** Wrap Electron's original Chromium notices in a self-contained HTML reader before signing. */
 const compressChromiumNotices = async (context: AfterPackContext) => {
@@ -106,6 +152,7 @@ export default {
   extraMetadata: {
     name: "cerium",
     productName: "Cerium",
+    chromiumLocales: english ? "english" : "full",
     // On Linux, Electron names the window (its Wayland app id and X11 class) and the launcher badge's
     // desktop entry after this; the AppImage's entry takes the same name (`syncDesktopName`).
     desktopName: "cerium.desktop",
@@ -113,6 +160,7 @@ export default {
     homepage: "https://cerium.nonlooped.xyz",
     ...(version === undefined ? {} : { version }),
   },
+  ...(english ? { electronLanguages: ["en"] } : {}),
   // The icon and installer artwork, drawn by scripts/build-icons.mjs.
   directories: { output: "out", buildResources: "build" },
   // The backend's npm packages come along as @cerium/backend's dependencies. Its own code is bundled
@@ -126,6 +174,9 @@ export default {
   // never imports: the Sentry CLI and a native JavaScript parser.
   files: [
     "dist/**",
+    // The packaged backend imports both packages as ESM from Electron's Node runtime.
+    "!**/node_modules/@cursor/sdk/dist/{cjs,bundled}/**",
+    "!**/node_modules/drizzle-orm/**/*.cjs",
     "package.json",
     // The tray's icon (background.ts), and the window's on Linux (main.ts); the menu bar's on macOS.
     "build/icon.ico",
@@ -137,9 +188,6 @@ export default {
     "!node_modules/@anthropic-ai/claude-agent-sdk-*/**",
     "!node_modules/**/*.{ts,cts,mts,tsx,map}",
     "!node_modules/{@sentry/bundler-plugins,sentry,oxc-parser,@oxc-parser}/**",
-    // The packaged backend imports both packages as ESM from Electron's Node runtime.
-    "!**/node_modules/@cursor/sdk/dist/{cjs,bundled}/**",
-    "!**/node_modules/drizzle-orm/**/*.cjs",
   ],
   // main.ts loads the UI from ../../ui/dist beside dist/, which is resources/ui/dist once packaged.
   // Cerium's own Apache-2.0 license goes along, as the license asks of every copy distributed, and so
@@ -163,7 +211,7 @@ export default {
   // Its name carries the processor: the x64 and Arm64 installers share one latest.yml
   // (scripts/merge-update-files.ts), from which electron-updater picks the file naming its own.
   nsis: {
-    artifactName: "Cerium-Setup-${version}-${arch}.${ext}",
+    artifactName: artifact("Cerium-Setup-${version}-${arch}.${ext}"),
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     installerIcon: "build/icon.ico",
@@ -188,13 +236,13 @@ export default {
     description: "Runs Claude Code, Codex, Cursor and OpenCode side by side.",
     maintainer: "CeriumHQ",
   },
-  appImage: { artifactName: "Cerium-${version}-${arch}.${ext}" },
+  appImage: { artifactName: artifact("Cerium-${version}-${arch}.${ext}") },
   // Named the way each system's own packages are: cerium_1.2.0_amd64.deb, cerium-1.2.0.x86_64.rpm,
   // which the relay's download links name too (apps/relay/scripts/layout.ts). Their dependencies are
   // electron-builder's own, with the sound and GPU buffer libraries Electron also links against,
   // which a minimal install lacks.
   deb: {
-    artifactName: "cerium_${version}_${arch}.${ext}",
+    artifactName: artifact("cerium_${version}_${arch}.${ext}"),
     packageCategory: "devel",
     ...(fastPacking ? { compression: "gz" } : {}),
     depends: [
@@ -206,7 +254,7 @@ export default {
   // id under /usr/lib/.build-id, where two such apps would claim the same link and refuse to install
   // side by side.
   rpm: {
-    artifactName: "cerium-${version}.${arch}.${ext}",
+    artifactName: artifact("cerium-${version}.${arch}.${ext}"),
     fpm: ["--rpm-rpmbuild-define=_build_id_links none"],
     ...(fastPacking ? { compression: "gzip" } : {}),
     depends: [
@@ -222,7 +270,7 @@ export default {
     target: ["dmg", "zip"],
     icon: "build/icon-mac.png",
     category: "public.app-category.developer-tools",
-    artifactName: "Cerium-${version}-${arch}-mac.${ext}",
+    artifactName: artifact("Cerium-${version}-${arch}-mac.${ext}"),
     // With a certificate electron-builder finds the identity in it; without, "-" signs ad hoc.
     ...(developerId ? {} : { identity: "-" }),
     // Notarizing needs the hardened runtime, which an ad hoc signature can't have without its
@@ -235,8 +283,19 @@ export default {
         "Cerium listens while you dictate a message. The audio never leaves this Mac.",
     },
   },
-  dmg: { artifactName: "Cerium-${version}-${arch}.${ext}" },
+  dmg: { artifactName: artifact("Cerium-${version}-${arch}.${ext}") },
   afterPack: async (context: AfterPackContext) => {
+    const fallback =
+      context.electronPlatformName === "darwin"
+        ? join(
+            context.packager.getMacOsElectronFrameworkResourcesDir(context.appOutDir),
+            "en.lproj",
+            "locale.pak",
+          )
+        : join(context.appOutDir, "locales", "en-US.pak");
+    const file = statSync(fallback, { throwIfNoEntry: false });
+    if (!file?.isFile() || file.size === 0)
+      throw new Error(`Chromium's fallback locale is missing: ${fallback}`);
     dropOtherMacProcessor(context);
     await compressChromiumNotices(context);
   },

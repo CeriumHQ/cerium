@@ -32,6 +32,7 @@ jobs:
       publish: ${{ steps.plan.outputs.publish }}
       version: ${{ steps.plan.outputs.version }}
       commit: ${{ steps.plan.outputs.commit }}
+      locales: ${{ steps.locales.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +45,17 @@ jobs:
         run: node scripts/release.ts stable --version="$VERSION"
         env:
           VERSION: ${{ inputs.version }}
+      # Stable builds a tested nightly commit, which can predate the compact installer.
+      - id: locales
+        name: Choose the locale variants supported by the release commit
+        env:
+          COMMIT: ${{ steps.plan.outputs.commit }}
+        run: |
+          if [ -n "$COMMIT" ] && git cat-file -e "$COMMIT:apps/desktop/src/chromiumLocales.ts"; then
+            echo 'matrix=["full","english"]'
+          else
+            echo 'matrix=["full"]'
+          fi >> "$GITHUB_OUTPUT"
 
   # The web app and every package build side by side, each processor's packages on its own runner,
   # packed smallest (.github/actions/web, .github/actions/package).
@@ -64,15 +76,16 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
 
   package-linux:
-    name: Package (Linux ${{ matrix.arch }})
+    name: Package (Linux ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
     strategy:
       matrix:
-        include:
+        locales: ${{ fromJSON(needs.plan.outputs.locales) }}
+        target:
           - { arch: x64, runner: ubuntu-latest }
           - { arch: Arm64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,18 +97,20 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
+          chromium-locales: ${{ matrix.locales }}
           sentry-dsn: ${{ vars.SENTRY_DSN }}
 
   package-windows:
-    name: Package (Windows ${{ matrix.arch }})
+    name: Package (Windows ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
     strategy:
       matrix:
-        include:
+        locales: ${{ fromJSON(needs.plan.outputs.locales) }}
+        target:
           - { arch: x64, runner: windows-latest }
           - { arch: Arm64, runner: windows-11-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,24 +122,26 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
           compression: maximum
+          chromium-locales: ${{ matrix.locales }}
           sentry-dsn: ${{ vars.SENTRY_DSN }}
 
   # Packaged on the runners the nightlies use (.github/workflows/ci.yml): both on the Apple silicon
   # runner the repository's MAC_RUNNER variable names, else each on its own processor's. Signed with
   # the repository's Developer ID and notarized when it has them, else signed ad hoc.
   package-macos:
-    name: Package (macOS ${{ matrix.arch }})
+    name: Package (macOS ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.publish == 'true' }}
     strategy:
       matrix:
-        include:
+        locales: ${{ fromJSON(needs.plan.outputs.locales) }}
+        target:
           - arch: Arm64
             runner: ${{ vars.MAC_RUNNER || 'macos-15' }}
           - arch: x64
             runner: ${{ vars.MAC_RUNNER || 'macos-15-intel' }}
             cross: ${{ vars.MAC_RUNNER && 'x64' || '' }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -133,12 +150,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
-          cpu: ${{ matrix.cross && '*' || '' }}
+          cpu: ${{ matrix.target.cross && '*' || '' }}
       - uses: ./.github/actions/package
         with:
           version: ${{ needs.plan.outputs.version }}
-          arch: ${{ matrix.cross }}
+          arch: ${{ matrix.target.cross }}
           compression: maximum
+          chromium-locales: ${{ matrix.locales }}
           sentry-dsn: ${{ vars.SENTRY_DSN }}
           mac-certificate: ${{ secrets.MAC_CERTIFICATE }}
           mac-certificate-password: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}

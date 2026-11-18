@@ -158,6 +158,13 @@ Download the [latest stable release](https://github.com/CeriumHQ/cerium/releases
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
   needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
 
+For a smaller download and installation, pick the corresponding `-english` installer from the
+release assets. It includes only the English Chromium resources. The standard installers include
+all of Chromium's languages and can replace a compact installation without changing its data.
+In-app updates use the compact installer when the release includes it.
+To switch locale variants of the same version on Linux, use `sudo apt install --reinstall ./<file>.deb`
+or `sudo dnf reinstall ./<file>.rpm`. For an AppImage, replace the old file in place.
+
 Stable releases are tested and come out when something worth shipping has landed. Cerium also
 publishes **nightly** builds of every change as it lands, marked as pre-releases on the
 [Releases](https://github.com/CeriumHQ/cerium/releases) page. They are for trying things early and can

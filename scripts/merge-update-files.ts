@@ -14,6 +14,8 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { isEnglishArtifact } from "../apps/desktop/src/chromiumLocales.ts";
+
 /** An update file's lines, with its `files:` list's lines apart from the rest. */
 const split = (text: string) => {
   const lines = text.replace(/\r\n/g, "\n").trimEnd().split("\n");
@@ -41,13 +43,20 @@ export const mergeUpdateFiles = (texts: ReadonlyArray<string>): string => {
   const versions = new Set(parsed.map((file) => file.version));
   if (versions.size > 1)
     throw new Error(`The update files name different versions: ${[...versions].join(", ")}`);
+  const full = parsed.filter((file) => !isEnglishArtifact(urlOf(file.entries[0] ?? [""])));
+  const candidates = full.length > 0 ? full : parsed;
   const primary =
-    parsed.find((file) => file.after.some((line) => /^path: .*(x64|x86_64|amd64)/.test(line))) ?? parsed[0]!;
+    candidates.find((file) => file.after.some((line) => /^path: .*(x64|x86_64|amd64)/.test(line))) ??
+    candidates[0]!;
   const entries = new Map<string, ReadonlyArray<string>>();
   for (const file of [primary, ...parsed.filter((file) => file !== primary)]) {
     for (const entry of file.entries) if (!entries.has(urlOf(entry))) entries.set(urlOf(entry), entry);
   }
-  return `${[...primary.before, ...[...entries.values()].flat(), ...primary.after].join("\n")}\n`;
+  // Older updaters choose the first matching installer for their architecture.
+  const ordered = [...entries].sort(
+    ([first], [second]) => Number(isEnglishArtifact(first)) - Number(isEnglishArtifact(second)),
+  );
+  return `${[...primary.before, ...ordered.flatMap(([, entry]) => entry), ...primary.after].join("\n")}\n`;
 };
 
 const isUpdateFile = (name: string) => /^(latest|nightly)(-[a-z0-9-]+)?\.yml$/.test(name);

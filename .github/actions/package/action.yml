@@ -27,6 +27,10 @@ inputs:
       Rosetta. Empty packages for the runner's own.
     required: false
     default: ""
+  chromium-locales:
+    description: Ship all Chromium locale packs, or only English for a smaller installer.
+    required: false
+    default: full
   release:
     description: >-
       The tag of the draft release a push's nightly is gathered in (.github/workflows/ci.yml), to
@@ -170,6 +174,7 @@ runs:
         node scripts/merge-update-files.ts "$RUNNER_TEMP/linux" apps/desktop/out
       env:
         CERIUM_VERSION: ${{ inputs.version }}
+        CERIUM_CHROMIUM_LOCALES: ${{ inputs.chromium-locales }}
         COMPRESSION: ${{ inputs.compression }}
         ARCH: ${{ inputs.arch }}
         MAC_CERTIFICATE: ${{ inputs.mac-certificate }}
@@ -198,6 +203,12 @@ runs:
       shell: bash
       run: |
         out=apps/desktop/out
+        prefix=Cerium
+        export CERIUM_SMOKE_LOCALE=fr
+        if [ "$CHROMIUM_LOCALES" = english ]; then
+          prefix=Cerium-english
+          CERIUM_SMOKE_LOCALE=en-US
+        fi
         if [ -n "$RELEASE" ]; then
           shopt -s nullglob
           packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap})
@@ -217,8 +228,17 @@ runs:
           }
         }
         if [ "$RUNNER_OS" = Windows ]; then
-          if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
-          smoke installer "$out/$unpacked/Cerium.exe"
+          installers=("$out"/*.exe)
+          export CERIUM_SMOKE_INSTALLER
+          CERIUM_SMOKE_INSTALLER="$(cygpath -aw "${installers[0]}")"
+          powershell.exe -NoProfile -NonInteractive -Command '
+            $ErrorActionPreference = "Stop"
+            $directory = Join-Path $env:RUNNER_TEMP "cerium-installed"
+            $installer = Start-Process -FilePath $env:CERIUM_SMOKE_INSTALLER -Wait -PassThru `
+              -ArgumentList "/S", "/currentuser", "/D=$directory"
+            exit $installer.ExitCode
+          '
+          smoke installer "$(cygpath -u "$RUNNER_TEMP")/cerium-installed/Cerium.exe" --lang=fr
         elif [ "$RUNNER_OS" = macOS ]; then
           # An Intel app packaged on Apple silicon starts through Rosetta, installed when the runner
           # lacks it.
@@ -227,12 +247,13 @@ runs:
           fi
           # The app as the disk image holds it, mounted read-only as a user's Mac would.
           mount="$RUNNER_TEMP/cerium-dmg"
-          hdiutil attach "$out"/Cerium-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
+          hdiutil attach "$out"/"$prefix"-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
           codesign --verify --deep --strict "$mount/Cerium.app"
-          smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
+          smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium" --lang=fr
           hdiutil detach "$mount" > /dev/null
         else
-          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
+          export LANGUAGE=fr
+          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (
@@ -242,17 +263,17 @@ runs:
               echo "::error::The Fedora container didn't start."
               exit 1
             fi
-            docker exec fedora bash -euo pipefail -c '
+            docker exec -e CERIUM_SMOKE_LOCALE fedora bash -euo pipefail -c '
                 dnf install -y -q /desktop/out/cerium-*.rpm
                 useradd -m user
-                su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+                su user -c "LANGUAGE=fr xvfb-run -a cerium --smoke-test=/smoke-test"' || {
               status=$?
               cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
               exit "$status"
             }
           ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
           rpm=$!
-          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
+          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/"$prefix"-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
           if wait "$rpm"; then
             echo "::group::The .rpm in Fedora" && cat "$RUNNER_TEMP/rpm-smoke-test.log" && echo "::endgroup::"
@@ -269,6 +290,7 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         ARCH: ${{ inputs.arch }}
+        CHROMIUM_LOCALES: ${{ inputs.chromium-locales }}
         RELEASE: ${{ inputs.release }}
         UPLOAD_TOKEN: ${{ inputs.github-token }}
 
@@ -276,7 +298,7 @@ runs:
       if: failure()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         path: |
           ${{ runner.temp }}/smoke-test/*/smoke-test.log
           ${{ runner.temp }}/smoke-test/*/logs
@@ -288,7 +310,7 @@ runs:
     - if: inputs.release == ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         compression-level: 0
         path: |
           apps/desktop/out/*.exe
@@ -309,7 +331,7 @@ runs:
     - if: inputs.release != ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         path: |
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
