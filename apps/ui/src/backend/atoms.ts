@@ -1,7 +1,8 @@
 import {
   applyOverviewUpdate,
+  affectsThreadState,
+  isArtifactCandidate,
   isStreamDelta,
-  HISTORY_STATE_TAGS,
   ModelInfo,
   OFFERED_PROVIDERS,
   type AccountDrafts,
@@ -20,6 +21,8 @@ import {
   type ThreadId,
   type ThreadNotification,
   type ThreadOverview,
+  type CloudThreadStateView,
+  type ThreadStateView,
 } from "@cerium/protocol";
 import { SCOPED_EVENTS_RPC_VERSION } from "@cerium/rpc";
 import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
@@ -426,35 +429,39 @@ export const cloudHistoryAtom = Atom.family((key: string) => {
     .pipe(Atom.setIdleTTL("5 minutes"));
 });
 
-const stateTags: ReadonlySet<EventPayload["_tag"]> = new Set(HISTORY_STATE_TAGS);
-/** Cloud side panels retain whole-thread state, independently of the transcript's loaded suffix. */
-export const cloudEventsAtom = Atom.family((key: string) =>
-  LocalBackend.runtime
-    .atom(() =>
-      LocalBackend.use((client) =>
-        Effect.gen(function* () {
-          const split = key.indexOf(":");
-          const machine = key.slice(0, split) as DeviceId;
-          const threadId = key.slice(split + 1) as ThreadId;
-          const log = new ThreadLog();
-          let before: number | undefined;
-          for (;;) {
-            const page = yield* client("CloudThreadHistory", {
-              machine,
-              threadId,
-              ...(before === undefined ? {} : { before }),
-            });
-            log.add(page.events.filter((event) => stateTags.has(event.payload._tag)));
-            if (!page.more || page.before === undefined) break;
-            before = page.before;
-            yield* Effect.yieldNow;
-          }
-          return log.state().settled;
-        }),
-      ),
-    )
-    .pipe(Atom.setIdleTTL("5 minutes")),
-);
+/** Cloud side panels read their projection. Older relays return ordinary history pages. */
+const cloudSideEvents = (state: CloudThreadStateView) =>
+  Atom.family((key: string) =>
+    LocalBackend.runtime
+      .atom(() =>
+        LocalBackend.use((client) =>
+          Effect.gen(function* () {
+            const split = key.indexOf(":");
+            const machine = key.slice(0, split) as DeviceId;
+            const threadId = key.slice(split + 1) as ThreadId;
+            const log = new ThreadLog();
+            let before: number | undefined;
+            for (;;) {
+              const page = yield* client("CloudThreadHistory", {
+                machine,
+                threadId,
+                state,
+                ...(before === undefined ? {} : { before }),
+              });
+              log.add(page.events.filter((event) => relevantTo(state, event)));
+              if (!page.more || page.before === undefined) break;
+              before = page.before;
+              yield* Effect.yieldNow;
+            }
+            return log.state().settled;
+          }),
+        ),
+      )
+      .pipe(Atom.setIdleTTL("5 minutes")),
+  );
+
+export const cloudEventsAtom = cloudSideEvents("main");
+export const cloudFileChangesAtom = cloudSideEvents("files");
 
 /** Read only on an explicit find/jump: every message, in bounded pages, with no tool output. */
 export const readSearchHistory = Atom.family((key: string) =>
@@ -705,71 +712,102 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
 );
 
 const sameEvents = (a: ReadonlyArray<AgentEvent>, b: ReadonlyArray<AgentEvent>) =>
-  a.length === b.length && a.every((event, index) => event === b[index]);
+  a === b || (a.length === b.length && a.every((event, index) => Equal.equals(event, b[index])));
 
-/**
- * A thread's events but streamed text, for what the window works out around the conversation (its
- * agents, artifacts and changed files), none of which streamed text changes. It changes only when
- * another event arrives, so the window around the transcript doesn't render again for every
- * streamed word, which took 60 ms in a window listing 140 threads.
- */
-export const settledEventsAtom = Atom.family((threadId: ThreadId) =>
-  Backend.runtime
-    .atom((get) => {
-      const log = new ThreadLog();
-      const machine = get.once(machineAtom);
-      let after = 0;
-      const read = Backend.use((client) =>
-        Effect.gen(function* () {
-          const account = AsyncResult.getOrElse(get.registry.get(accountAtom), () => undefined);
-          const version =
-            machine === undefined
-              ? Infinity
-              : account?._tag === "SignedIn"
-                ? (account.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0)
-                : 0;
-          if (version < 47) {
-            log.add(
-              (yield* client("ThreadEvents", { threadId, withoutImages: true })).filter((event) =>
-                stateTags.has(event.payload._tag),
-              ),
-            );
-            return;
-          }
-          for (;;) {
-            const page = yield* client("ThreadHistory", { threadId, page: { after, state: true } });
-            log.add(page.events);
-            after = page.after;
-            if (!page.more) break;
-            yield* Effect.yieldNow;
-          }
-        }),
+const relevantTo = (view: ThreadStateView, event: AgentEvent) => {
+  switch (view) {
+    case "artifacts":
+      return isArtifactCandidate(event);
+    case "files":
+      return event.payload._tag === "FileChanged";
+    case "run":
+      return (
+        event.payload._tag === "TurnCompleted" ||
+        event.payload._tag === "TurnFilesChanged" ||
+        event.payload._tag === "TurnFilesReverted"
       );
-      return Stream.unwrap(
-        Effect.map(subscribeLive(get), (live) =>
-          Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
-            Stream.filter(
-              (each) =>
-                each._tag === "Subscribed" ||
-                (each.event.threadId === threadId && stateTags.has(each.event.payload._tag)),
-            ),
-            Stream.chunks,
-            Stream.mapEffect((batch) =>
-              Effect.gen(function* () {
-                if (batch.some((each) => each._tag === "Subscribed")) yield* read;
-                log.add(batch.flatMap((each) => (each._tag === "Event" ? [each.event] : [])));
-                return log.state().settled;
-              }),
+    case "main":
+      return affectsThreadState(event);
+  }
+};
+
+/** Read side-panel state when its inputs change or the live connection reconnects. */
+const threadSideEvents = (view: ThreadStateView) =>
+  Atom.family((threadId: ThreadId) =>
+    Backend.runtime
+      .atom((get) => {
+        const log = new ThreadLog();
+        const machine = get.once(machineAtom);
+        const appendOnly = view === "files" || view === "artifacts";
+        let legacy = false;
+        let after = 0;
+        const read = Backend.use((client) =>
+          Effect.gen(function* () {
+            const account = AsyncResult.getOrElse(get.registry.get(accountAtom), () => undefined);
+            const version =
+              machine === undefined
+                ? Infinity
+                : account?._tag === "SignedIn"
+                  ? (account.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0)
+                  : 0;
+            legacy = version < 50;
+            if (!legacy) return yield* client("ThreadState", { threadId, view });
+
+            // Older machines still send the state inputs from their history.
+            if (version < 47) {
+              log.add(
+                (yield* client("ThreadEvents", { threadId, withoutImages: true })).filter((event) =>
+                  relevantTo(view, event),
+                ),
+              );
+            } else {
+              for (;;) {
+                const page = yield* client("ThreadHistory", { threadId, page: { after, state: true } });
+                log.add(page.events.filter((event) => relevantTo(view, event)));
+                after = page.after;
+                if (!page.more) break;
+                yield* Effect.yieldNow;
+              }
+            }
+            return log.state().settled;
+          }),
+        );
+        return Stream.unwrap(
+          Effect.map(subscribeLive(get), (live) =>
+            Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+              Stream.filter(
+                (each) =>
+                  each._tag === "Subscribed" ||
+                  (each.event.threadId === threadId && relevantTo(view, each.event)),
+              ),
+              Stream.chunks,
+              Stream.mapEffect((batch) =>
+                Effect.gen(function* () {
+                  const reconnect = batch.some((each) => each._tag === "Subscribed");
+                  if (reconnect || (!legacy && !appendOnly)) {
+                    const state = yield* read;
+                    if (!legacy) {
+                      if (!appendOnly) return state;
+                      log.add(state);
+                    }
+                  }
+                  log.add(batch.flatMap((each) => (each._tag === "Event" ? [each.event] : [])));
+                  return log.state().settled;
+                }),
+              ),
             ),
           ),
-        ),
-      ).pipe(resubscribe);
-    })
-    .pipe(Atom.withEquality(sameRead(Object.is)), Atom.setIdleTTL(CLOSED_THREAD_TTL)),
-);
+        ).pipe(resubscribe);
+      })
+      .pipe(Atom.withEquality(sameRead(sameEvents)), Atom.setIdleTTL(CLOSED_THREAD_TTL)),
+  );
+
+const mainEventsAtom = threadSideEvents("main");
+export const artifactEventsAtom = threadSideEvents("artifacts");
+export const runEventsAtom = threadSideEvents("run");
 
 /**
- * What a thread's agents' summaries (`toAgentSummaries`) and its artifacts read of its events: its
+ * What a thread's agents' summaries (`toAgentSummaries`) read of its events: its
  * messages, usage, todo lists, models, failures and requests of the user. Tool calls, most of a
  * working thread's events, change none of it.
  */
@@ -793,8 +831,6 @@ const SUMMARY_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
   "QuestionResolved",
 ]);
 
-const FILE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set(["FileChanged"]);
-
 const QUEUE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
   "MessageQueued",
   "MessageHeld",
@@ -807,20 +843,20 @@ const QUEUE_TAGS: ReadonlySet<EventPayload["_tag"]> = new Set([
 /** A thread's events of the kinds in `tags`, changing only when one of them arrives. */
 const eventsOfKinds = (threadId: ThreadId, tags: ReadonlySet<EventPayload["_tag"]>) =>
   Atom.make((get) =>
-    AsyncResult.map(get(settledEventsAtom(threadId)), (events) =>
+    AsyncResult.map(get(mainEventsAtom(threadId)), (events) =>
       events.filter((event) => tags.has(event.payload._tag)),
     ),
   ).pipe(Atom.withEquality(sameRead(sameEvents)));
 
 /**
- * A thread's events its agents' summaries and artifacts are worked out from. The window reads these
+ * A thread's events its agents' summaries are worked out from. The window reads these
  * rather than every event: rendering it again took tens of milliseconds, and an agent at work makes
  * several events a second, most of them tool calls that change nothing it shows.
  */
 export const summaryEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, SUMMARY_TAGS));
 
 /** The files a thread's agents changed, as they report them, for the files panel. */
-export const fileChangesAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, FILE_TAGS));
+export const fileChangesAtom = threadSideEvents("files");
 
 /** The events a lead's queued messages are worked out from, for the ones waiting in the message box. */
 export const queueEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, QUEUE_TAGS));

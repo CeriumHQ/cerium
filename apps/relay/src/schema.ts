@@ -44,6 +44,8 @@ export const threads = sqliteTable(
     /** JSON `ThreadOverview`. */
     overview: text("overview").notNull(),
     events: integer("events").notNull().default(0),
+    /** Which append count the side-panel projection covers. Null for older copies. */
+    stateEvents: integer("state_events"),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [primaryKey({ columns: [table.machine, table.thread] })],
@@ -59,6 +61,31 @@ export const eventBatches = sqliteTable(
     events: text("events").notNull(),
   },
   (table) => [primaryKey({ columns: [table.machine, table.thread, table.start] })],
+);
+
+/** The compact checkpoint, split so even large pending requests fit SQLite's row limit. */
+export const stateChunks = sqliteTable(
+  "thread_state_chunks",
+  {
+    machine: text("machine").notNull(),
+    thread: text("thread").notNull(),
+    part: integer("part").notNull(),
+    json: text("json").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.machine, table.thread, table.part] })],
+);
+
+/** Only artifact candidates and file changes, kept apart from the regular uploads. */
+export const stateBatches = sqliteTable(
+  "thread_state_batches",
+  {
+    machine: text("machine").notNull(),
+    thread: text("thread").notNull(),
+    view: text("view").$type<"artifacts" | "files">().notNull(),
+    start: integer("start").notNull(),
+    events: text("events").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.machine, table.thread, table.view, table.start] })],
 );
 
 /** When each thread was last seen on any device. */

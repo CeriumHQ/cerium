@@ -82,6 +82,11 @@ export const events = sqliteTable(
     // Reads of one kind of event (open questions and saved attachments at startup, usage for the
     // spend report) find them here instead of reading every event.
     index("events_tag_at").on(table.tag, table.at),
+    index("events_thread_artifact")
+      .on(table.threadId)
+      .where(
+        sql`${table.tag} = 'MessageCompleted' AND instr(json_extract(${table.payload}, '$.text'), 'artifact') > 0`,
+      ),
     // A tool's image, read on its own as the transcript scrolls to it, is found by its call here
     // instead of by searching the text of every tool result in its thread, screenshots and all.
     index("events_tool_call")
@@ -124,6 +129,14 @@ export const eventOrder = sqliteTable(
     index("event_order_resume").on(table.threadId, table.position),
   ],
 );
+
+/** Disposable side-panel projection, updated in the same transaction as its canonical inputs. */
+export const threadStates = sqliteTable("thread_states", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  checkpoint: text("checkpoint", { mode: "json" }).notNull(),
+});
 
 /** The user's settings the backend applies, one JSON value per key. */
 export const settings = sqliteTable("settings", {

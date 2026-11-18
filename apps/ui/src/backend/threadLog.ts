@@ -1,8 +1,12 @@
-import { isStreamDelta, type AgentEvent, type AgentId, type HistoryCursor } from "@cerium/protocol";
+import {
+  compareHistory as byTime,
+  isStreamDelta,
+  type AgentEvent,
+  type AgentId,
+  type HistoryCursor,
+} from "@cerium/protocol";
 
-/** A total display order, shared with the store's history cursor. */
-export const byTime = (a: HistoryCursor, b: HistoryCursor) =>
-  a.at - b.at || a.sequence - b.sequence || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+export { byTime };
 
 /** Late imports below an incomplete suffix wait for their older page, preserving fold context. */
 export const inHistoryWindow = (event: AgentEvent, before: HistoryCursor | undefined, more: boolean) =>

@@ -69,6 +69,60 @@ const projectionIds = (filename: string) => {
 };
 
 describe("Store", () => {
+  it.effect(
+    "opens durable side state and repairs it after a late or older writer without changing history",
+    () => {
+      const filename = join(mkdtempSync(join(tmpdir(), "cerium-state-")), "events.db");
+      return Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const artifact = event(1, "an artifact");
+        const latest = event(3);
+        const file: AgentEvent = {
+          ...event(4),
+          payload: { _tag: "FileChanged", path: "index.ts", change: "created" },
+        };
+        yield* store.appendEvents([artifact, latest, file]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "main"), [latest]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "artifacts"), [artifact]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "files"), [file]);
+
+        const late: AgentEvent = {
+          ...event(2),
+          payload: { _tag: "UsageReported", inputTokens: 5, outputTokens: 1 },
+        };
+        yield* store.appendEvents([late]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "main"), [late, latest]);
+        // An older writer only knows the canonical table. The new reader repairs its checkpoint.
+        const old = event(5);
+        const db = new DatabaseSync(filename);
+        db.prepare(
+          "INSERT INTO events (id, thread_id, agent_id, sequence, at, tag, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ).run(
+          old.id,
+          old.threadId,
+          old.agentId,
+          old.sequence,
+          old.at,
+          old.payload._tag,
+          JSON.stringify(old.payload),
+        );
+        db.close();
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "main"), [late, old]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "main"), [late, old]);
+        assert.deepStrictEqual((yield* store.historyPage(thread.id, {})).events, [
+          artifact,
+          late,
+          latest,
+          file,
+          old,
+        ]);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), [artifact, late, latest, file, old]);
+      }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+    },
+  );
+
   it.effect("pages search text without reading screenshot or tool payloads", () =>
     withStore(
       Effect.gen(function* () {

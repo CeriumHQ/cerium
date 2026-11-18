@@ -1,5 +1,6 @@
 import {
   HistoryRequest,
+  CloudThreadStateView,
   ClaimLinkRequest,
   ConfirmLinkRequest,
   CreateLinkRequest,
@@ -122,6 +123,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       return refuse(404, "That thread isn't in your account.");
     const query = new URL(request.url).searchParams;
     const before = query.get("before");
+    const state = param(query.get("state"), CloudThreadStateView);
     const page = query.has("page")
       ? param({ ...(before === null ? {} : { after: Number(before) }) }, HistoryRequest)
       : undefined;
@@ -130,7 +132,11 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       credential,
       machine,
       threadId,
-      page === undefined ? undefined : { ...(page.after === undefined ? {} : { before: page.after }) },
+      state !== undefined && before === null
+        ? { state }
+        : page === undefined
+          ? undefined
+          : { ...(page.after === undefined ? {} : { before: page.after }) },
     );
     return typeof events === "string"
       ? new Response(events, {

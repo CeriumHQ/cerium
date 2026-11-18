@@ -229,6 +229,7 @@ export const Handlers = MachineRpcs.toLayer(
         }).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       WatchThreadOverviews: () => orchestrator.watchThreadOverviews,
+      ThreadState: ({ threadId, view }) => store.threadState(threadId, view).pipe(Effect.mapError(refuse)),
       ThreadHistory: ({ threadId, page }) =>
         orchestrator.threadHistory(threadId, page).pipe(Effect.mapError(refuse)),
       ThreadMessagePage: ({ agentId, before }) =>

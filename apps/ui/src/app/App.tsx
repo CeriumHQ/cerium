@@ -65,7 +65,9 @@ import {
 import {
   accountAtom,
   accountThreadsAtom,
+  artifactEventsAtom,
   cloudEventsAtom,
+  cloudFileChangesAtom,
   compactAgent,
   stopBackgroundTask,
   askSideQuestion,
@@ -776,11 +778,13 @@ function Workspace() {
     ? summaryEventsAtom(selected.thread.id)
     : cloudEvents;
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
-  const fileEventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
-    ? filesOpen
+  const fileEventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = !filesOpen
+    ? noEvents
+    : selected
       ? fileChangesAtom(selected.thread.id)
-      : noEvents
-    : cloudEvents;
+      : cloudSelected
+        ? cloudFileChangesAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
+        : noEvents;
   const fileEvents = AsyncResult.getOrElse(useAtomValue(fileEventsAtom), (): ReadonlyArray<AgentEvent> => []);
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
@@ -1309,7 +1313,14 @@ function Workspace() {
     );
   // The artifacts the open thread's lead drew, and its project's, which its machine lists when it can.
   const viewedLead = viewed ? leadOf(viewed.agents) : undefined;
-  const viewedArtifacts = viewedLead ? threadArtifacts(events, viewedLead.id) : [];
+  const artifactsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
+    ? artifactEventsAtom(selected.thread.id)
+    : cloudEvents;
+  const artifactEvents = AsyncResult.getOrElse(
+    useAtomValue(artifactsAtom),
+    (): ReadonlyArray<AgentEvent> => [],
+  );
+  const viewedArtifacts = viewedLead ? threadArtifacts(artifactEvents, viewedLead.id) : [];
   const artifactsProject =
     selected && (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ARTIFACTS_VERSION)
       ? (selected.thread.worktree?.project ?? selected.thread.cwd)

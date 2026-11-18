@@ -20,6 +20,8 @@ import {
   HistoryRequest,
   HistoryPage,
   CloudHistoryPage,
+  CloudThreadStateView,
+  ThreadStateView,
   LenientArray,
   LiveEventDelivery,
   LiveUiEvent,
@@ -219,6 +221,12 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("ThreadHistory", {
     payload: { threadId: ThreadId, page: HistoryRequest },
     success: HistoryPage,
+    error: CeriumError,
+  }),
+  /** The state shown alongside the transcript. Since RPC_VERSION 50. */
+  Rpc.make("ThreadState", {
+    payload: { threadId: ThreadId, view: ThreadStateView },
+    success: UiEvents,
     error: CeriumError,
   }),
   /** Search text and rewind markers, paged without tool payloads. Since RPC_VERSION 45. */
@@ -832,7 +840,12 @@ export const DeviceRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   Rpc.make("CloudThreadHistory", {
-    payload: { machine: DeviceId, threadId: ThreadId, before: Schema.optionalKey(Schema.Int) },
+    payload: {
+      machine: DeviceId,
+      threadId: ThreadId,
+      before: Schema.optionalKey(Schema.Int),
+      state: Schema.optionalKey(CloudThreadStateView),
+    },
     success: CloudHistoryPage,
     error: CeriumError,
   }),
