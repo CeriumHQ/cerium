@@ -882,7 +882,7 @@ void app.whenReady().then(() => {
   }
   // Links open Cerium: this computer's own installed app takes them, never a development build that
   // would claim them from it. An installed command follows the app if an update moved it.
-  if (app.isPackaged) {
+  if (app.isPackaged && smokeTest === undefined) {
     app.setAsDefaultProtocolClient(SCHEME);
     void refreshCli().catch(() => undefined);
   }
