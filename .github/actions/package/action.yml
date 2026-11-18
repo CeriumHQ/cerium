@@ -234,7 +234,11 @@ runs:
           smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
           hdiutil detach "$mount" > /dev/null
         else
-          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
+          # A runner image's APT index can still point at a dependency the mirror has replaced.
+          deb=("$GITHUB_WORKSPACE/$out"/cerium_*.deb)
+          sudo apt-get install -y "${deb[@]}" || {
+            sudo apt-get update -q && sudo apt-get install -y "${deb[@]}"
+          }
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (
