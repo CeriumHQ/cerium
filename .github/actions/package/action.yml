@@ -115,14 +115,14 @@ runs:
           ~/Library/Caches/electron-builder
         key: electron-builder-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
-    # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild, which the x64
-    # image already has.
-    - name: Install rpmbuild
+    # Both architectures install the .deb during the smoke test. The image's package lists can
+    # refer to superseded Ubuntu packages even when rpmbuild is already installed.
+    - name: Refresh Ubuntu package lists and ensure rpmbuild is installed
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        command -v rpmbuild > /dev/null ||
-          { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm; }
+        sudo apt-get -o Acquire::Retries=3 update -q
+        command -v rpmbuild > /dev/null || sudo apt-get install -y -q --no-install-recommends rpm
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
