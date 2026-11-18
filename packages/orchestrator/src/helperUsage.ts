@@ -7,7 +7,7 @@ export interface HelperReading {
   readonly agentId: AgentId;
   readonly provider: ProviderId;
   readonly model: string;
-  readonly purpose: "title" | "summary" | "sideQuestion";
+  readonly purpose: "title" | "summary" | "sideQuestion" | "followup";
   readonly callId: string;
   readonly usage?: CompletionUsage;
 }

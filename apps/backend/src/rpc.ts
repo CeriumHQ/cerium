@@ -349,6 +349,8 @@ export const Handlers = MachineRpcs.toLayer(
       CompactAgent: ({ agentId }) => orchestrator.compactAgent(agentId).pipe(Effect.mapError(refuse)),
       StopBackgroundTask: ({ agentId, taskId }) =>
         orchestrator.stopBackgroundTask(agentId, taskId).pipe(Effect.mapError(refuse)),
+      SuggestFollowup: ({ threadId, agentId, afterSeq }) =>
+        orchestrator.suggestFollowup(threadId, agentId, afterSeq).pipe(Effect.mapError(refuse)),
       AskSideQuestion: ({ agentId, question, earlier }) =>
         orchestrator.askSideQuestion(agentId, question, earlier ?? []).pipe(Effect.mapError(refuse)),
       WithdrawMessage: ({ agentId, messageId }) =>

@@ -242,11 +242,16 @@ export class Store extends Context.Service<
     readonly syncedEventChanges: Effect.Effect<PubSub.Subscription<ThreadId>, never, Scope.Scope>;
     /**
      * An agent's events in order, those after `afterSequence` only when given, and only those of the
-     * kinds in `tags` when given: a history's tool output (screenshots and all) is most of it.
+     * kinds in `tags` when given. `latest` keeps the newest matches in chronological order. Tool output
+     * (screenshots and all) makes up most of a history.
      */
     listEvents(
       agentId: AgentId,
-      options?: { readonly afterSequence?: number; readonly tags?: ReadonlyArray<EventPayload["_tag"]> },
+      options?: {
+        readonly afterSequence?: number;
+        readonly latest?: number;
+        readonly tags?: ReadonlyArray<EventPayload["_tag"]>;
+      },
     ): Effect.Effect<ReadonlyArray<AgentEvent>, StoreError>;
     /** The highest stored sequence for an agent, so a restarted agent continues after it. */
     lastSequence(agentId: AgentId): Effect.Effect<Option.Option<number>, StoreError>;
@@ -863,8 +868,13 @@ export class Store extends Context.Service<
                     options?.tags === undefined ? undefined : inArray(events.tag, [...options.tags]),
                   ),
                 )
-                .orderBy(asc(events.sequence)),
-            ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+                .orderBy(options?.latest === undefined ? asc(events.sequence) : desc(events.sequence))
+                .limit(options?.latest ?? -1),
+            ).pipe(
+              Effect.flatMap((rows) =>
+                Effect.forEach(options?.latest === undefined ? rows : rows.reverse(), decodeEvent),
+              ),
+            ),
           lastSequence: (agentId) =>
             query(
               "Could not read the last sequence",

@@ -90,6 +90,7 @@ import {
   type Exchange,
   type TurnFacts,
 } from "./effort.ts";
+import { makeSuggestFollowup } from "./followup.ts";
 import { HelperUsage } from "./helperUsage.ts";
 import { MessageDelivery, type MessageOptions } from "./delivery.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
@@ -627,6 +628,11 @@ export class Orchestrator extends Context.Service<
       question: string,
       earlier: ReadonlyArray<SideExchange>,
     ): Effect.Effect<string, OrchestratorError>;
+    suggestFollowup(
+      threadId: ThreadId,
+      agentId: AgentId,
+      afterSeq: number,
+    ): Effect.Effect<string | null, OrchestratorError>;
     /**
      * Takes back one of the user's messages waiting for a lead, so no turn delivers it. False when the
      * agent has already taken it.
@@ -857,6 +863,7 @@ export class Orchestrator extends Context.Service<
       });
       const titles = yield* ThreadTitles;
       const sideQuestions = yield* SideQuestions;
+      const suggestFollowup = yield* makeSuggestFollowup;
       const condenser = yield* Condenser;
       const helperUsage = yield* HelperUsage;
       const worktrees = yield* Worktrees;
@@ -4367,6 +4374,7 @@ export class Orchestrator extends Context.Service<
             );
         }),
 
+        suggestFollowup,
         askSideQuestion: Effect.fn("Orchestrator.askSideQuestion")(function* (
           agentId: AgentId,
           question: string,

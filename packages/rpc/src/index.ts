@@ -30,6 +30,7 @@ import {
   ModelInfo,
   ModelSpeed,
   NotificationKind,
+  NonNegativeInt,
   ProjectInfo,
   PushSubscriptionInfo,
   LimitPolicy,
@@ -106,7 +107,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 50;
+export const RPC_VERSION = 51;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
@@ -449,6 +450,12 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("WithdrawMessage", {
     payload: { agentId: AgentId, messageId: Schema.NonEmptyString },
     success: Schema.Boolean,
+    error: CeriumError,
+  }),
+  /** One optional draft for the open composer after its lead finishes. Since RPC_VERSION 51. */
+  Rpc.make("SuggestFollowup", {
+    payload: { threadId: ThreadId, agentId: AgentId, afterSeq: NonNegativeInt },
+    success: Schema.NullOr(Schema.String),
     error: CeriumError,
   }),
   Rpc.make("StopAgent", { payload: { agentId: AgentId }, error: CeriumError }),

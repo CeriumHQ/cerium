@@ -213,12 +213,12 @@ export const QuestionResolved = Schema.TaggedStruct("QuestionResolved", {
   answers: Schema.optionalKey(Schema.Array(QuestionAnswer)),
 });
 
-/** An attempt to title, summarize or answer aside, even when the SDK cannot report its tokens. */
+/** A helper completion, even when the SDK cannot report its tokens. */
 export const HelperCallStarted = Schema.TaggedStruct("HelperCallStarted", {
   callId: Schema.NonEmptyString,
   provider: ProviderId,
   model: Schema.String,
-  purpose: Schema.Literals(["title", "summary", "sideQuestion"]),
+  purpose: Schema.Literals(["title", "summary", "sideQuestion", "followup"]),
 });
 
 /** Usage for one completed turn. `inputTokens` excludes cache reads, which are `cachedInputTokens`. */
@@ -227,7 +227,7 @@ export const UsageReported = Schema.TaggedStruct("UsageReported", {
   unreported: Schema.optionalKey(Schema.Boolean),
   provider: Schema.optionalKey(ProviderId),
   model: Schema.optionalKey(Schema.String),
-  purpose: Schema.optionalKey(Schema.Literals(["title", "summary", "sideQuestion"])),
+  purpose: Schema.optionalKey(Schema.Literals(["title", "summary", "sideQuestion", "followup"])),
   cause: Schema.optionalKey(
     Schema.Literals([
       "user",
@@ -239,6 +239,7 @@ export const UsageReported = Schema.TaggedStruct("UsageReported", {
       "title",
       "summary",
       "sideQuestion",
+      "followup",
     ]),
   ),
   turnId: Schema.optionalKey(Schema.String),
