@@ -1,7 +1,6 @@
 import { Account } from "@cerium/account";
 import { Orchestrator } from "@cerium/orchestrator";
 import {
-  isStreamDelta,
   MAX_SYNC_BATCH_BYTES,
   UiEvent,
   withoutImages,
@@ -17,9 +16,9 @@ import { Clock, Deferred, Effect, Layer, PubSub, Queue, Schema, Stream } from "e
 // batches from where the cloud's copy ends. The account's threads as the relay tells them, and reading
 // other machines', are `CloudThreads` in @cerium/account.
 
-/** How often overviews are compared even without new events: renames and archives make none. */
-const SWEEP_EVERY = "15 seconds";
-/** How long after an event the next upload waits, so a busy turn goes up in a few batches. */
+/** How often to retry pending work after a failed read, send or acknowledgement. */
+const RETRY_EVERY = "15 seconds";
+/** How long a round waits to collect changes, so a busy turn goes up in a few batches. */
 const SETTLE_FOR = "1 second";
 /** How long the relay gets to accept a batch before the upload stops until the next round. */
 const ACCEPT_WITHIN = "20 seconds";
@@ -81,6 +80,17 @@ export const batches = (events: ReadonlyArray<UiEvent>): Array<Array<UiEvent>> =
   return out;
 };
 
+interface SyncConnection {
+  /** The relay's counts, including zero for an overview this connection has sent. */
+  readonly cursors: Map<ThreadId, number>;
+  readonly accepted: Map<ThreadId, Deferred.Deferred<number>>;
+  /** Only acknowledged batches advance these anchors. */
+  readonly positions: Map<ThreadId, { readonly count: number; readonly after: string | undefined }>;
+  readonly overviews: Set<ThreadId>;
+  readonly uploads: Set<ThreadId>;
+  reconcile: boolean;
+}
+
 /**
  * Keeps this machine's threads' cloud copy current while it's signed in. Requires `Account`,
  * `Orchestrator` and `Store`.
@@ -92,142 +102,225 @@ export const CloudCopy = Layer.effectDiscard(
     const store = yield* Store;
     const kick = yield* Queue.sliding<void>(1);
 
-    /** How many events of each of this machine's threads the cloud has; none until it says. */
-    let cursors: Map<string, number> | undefined;
-    /** The overview last sent of each thread, as JSON, to send only what changed. */
-    const sent = new Map<string, string>();
-    const accepted = new Map<string, Deferred.Deferred<number>>();
-    /** Only acknowledged pages advance these anchors; a reconnect translates fresh relay counts. */
-    const positions = new Map<string, { readonly count: number; readonly after: string | undefined }>();
-
-    const overviews = orchestrator.threadOverviews;
+    let connection: SyncConnection | undefined;
+    let local: Map<ThreadId, ThreadOverview> | undefined;
+    const eventChanges = yield* store.syncedEventChanges;
 
     /**
      * Sends a thread's events from where the cloud's copy ends, a batch at a time, starting none past
-     * `deadline`. Resolves whether it stopped for the deadline with events left to send.
+     * `deadline`. A deadline continues in the next round, while errors wait for a retry.
      */
     const upload = Effect.fn("CloudCopy.upload")(function* (
+      active: SyncConnection,
       threadId: ThreadId,
       from: number,
       deadline: number,
-      connection: ReadonlyMap<string, number>,
     ) {
+      if (connection !== active) return "done";
+      if ((yield* Clock.currentTimeMillis) >= deadline) return "continue";
       let start = from;
-      let position = positions.get(threadId);
+      let position = active.positions.get(threadId);
       if (position?.count !== from) {
         position = { count: from, after: yield* store.syncedEventCursor(threadId, from) };
-        positions.set(threadId, position);
+        active.positions.set(threadId, position);
       }
       while (true) {
-        if (cursors !== connection) return false;
-        if ((yield* Clock.currentTimeMillis) >= deadline) return true;
+        if (connection !== active) return "done";
+        if ((yield* Clock.currentTimeMillis) >= deadline) return "continue";
         const page: ReadonlyArray<AgentEvent> = yield* store.listSyncedEventsAfter(
           threadId,
           position.after,
           PAGE,
         );
         for (const batch of batches(page.map(cloudEvent))) {
-          if (cursors !== connection) return false;
-          if ((yield* Clock.currentTimeMillis) >= deadline) return true;
+          if (connection !== active) return "done";
+          if ((yield* Clock.currentTimeMillis) >= deadline) return "continue";
           const answer = yield* Deferred.make<number>();
-          accepted.set(threadId, answer);
-          yield* account.send({ _tag: "SyncEvents", threadId, start, events: batch });
-          const count = yield* Deferred.await(answer).pipe(
-            Effect.timeoutOrElse({ duration: ACCEPT_WITHIN, orElse: () => Effect.succeed(-1) }),
-          );
-          if (accepted.get(threadId) === answer) accepted.delete(threadId);
-          if (cursors !== connection) return false;
+          active.accepted.set(threadId, answer);
+          const count = yield* account
+            .send({ _tag: "SyncEvents", threadId, start, events: batch })
+            .pipe(
+              Effect.andThen(Deferred.await(answer)),
+              Effect.timeoutOrElse({ duration: ACCEPT_WITHIN, orElse: () => Effect.succeed(-1) }),
+              Effect.ensuring(Effect.sync(() => active.accepted.delete(threadId))),
+            );
+          if (connection !== active) return "done";
           // No answer, or the relay has fewer than it was sent (a gap): try again next round.
           // A larger count can be a retry the relay already stored; resolve its exact anchor next time.
           if (count !== start + batch.length) {
-            positions.delete(threadId);
-            return false;
+            active.positions.delete(threadId);
+            return "retry";
           }
           start = count;
           position = { count, after: batch.at(-1)!.id };
-          positions.set(threadId, position);
+          active.positions.set(threadId, position);
         }
         // A page short of full was the last; asking again would only read an empty one.
-        if (page.length < PAGE) return false;
+        if (page.length < PAGE) return "done";
       }
     });
 
-    /** One round: changed overviews, threads gone from here, and events the cloud doesn't have. */
-    const round = Effect.gen(function* () {
-      const known = cursors;
-      if (known === undefined) return;
-      const local = yield* overviews;
-      const changed = local.flatMap((overview) => {
-        const json = JSON.stringify(overview);
-        return sent.get(overview.thread.id) === json ? [] : [{ overview, json }];
-      });
-      for (let index = 0; index < changed.length; index += 50) {
-        yield* account.send({
-          _tag: "SyncThreads",
-          threads: changed.slice(index, index + 50).map(({ overview }) => overview),
-        });
+    const syncOverviews = Effect.fn("CloudCopy.syncOverviews")(function* (
+      active: SyncConnection,
+      snapshot: ReadonlyMap<ThreadId, ThreadOverview>,
+    ) {
+      const dirty = [...active.overviews];
+      active.overviews.clear();
+      const changed: ThreadOverview[] = [];
+      const gone: ThreadId[] = [];
+      for (const id of dirty) {
+        const overview = snapshot.get(id);
+        if (overview !== undefined) changed.push(overview);
+        else if (active.cursors.has(id)) gone.push(id);
       }
-      for (const { overview, json } of changed) sent.set(overview.thread.id, json);
-
-      const here = new Set(local.map((overview) => overview.thread.id as string));
-      const gone = [...new Set([...known.keys(), ...sent.keys()])].filter(
-        (id) => !here.has(id),
-      ) as Array<ThreadId>;
-      if (gone.length > 0) {
+      yield* Effect.gen(function* () {
+        for (let index = 0; index < changed.length; index += 50) {
+          if (connection !== active) return;
+          const threads = changed.slice(index, index + 50);
+          yield* account.send({ _tag: "SyncThreads", threads });
+          for (const { thread } of threads) {
+            if (!active.cursors.has(thread.id)) active.cursors.set(thread.id, 0);
+          }
+        }
+        if (gone.length === 0 || connection !== active) return;
         yield* account.send({ _tag: "SyncRemoved", threadIds: gone });
         for (const id of gone) {
-          known.delete(id);
-          sent.delete(id);
-          positions.delete(id);
+          active.cursors.delete(id);
+          active.positions.delete(id);
         }
+      }).pipe(
+        Effect.onError(() =>
+          Effect.sync(() => {
+            for (const id of dirty) active.overviews.add(id);
+          }),
+        ),
+      );
+    });
+
+    const round = Effect.gen(function* () {
+      const active = connection;
+      const snapshot = local;
+      if (active === undefined || snapshot === undefined) return;
+      if (active.reconcile) {
+        const counts = yield* store.countSyncedEvents;
+        if (connection !== active) return;
+        for (const id of snapshot.keys()) {
+          active.overviews.add(id);
+          if ((counts.get(id) ?? 0) > (active.cursors.get(id) ?? 0)) active.uploads.add(id);
+        }
+        for (const id of active.cursors.keys()) {
+          if (!snapshot.has(id)) active.overviews.add(id);
+        }
+        active.reconcile = false;
       }
 
-      const counts = yield* store.countSyncedEvents;
-      const behind = local
-        .filter((overview) => (counts.get(overview.thread.id) ?? 0) > (known.get(overview.thread.id) ?? 0))
-        .toSorted((a, b) => lastActive(b) - lastActive(a));
+      if (active.overviews.size > 0) yield* syncOverviews(active, snapshot);
+      if (connection !== active || active.uploads.size === 0) return;
+      const behind: ThreadOverview[] = [];
+      for (const id of active.uploads) {
+        const overview = snapshot.get(id);
+        if (overview === undefined) active.uploads.delete(id);
+        // A thread added during the overview send must wait for its first overview to go up.
+        else if (active.cursors.has(id)) {
+          active.uploads.delete(id);
+          behind.push(overview);
+        }
+      }
+      behind.sort((a, b) => lastActive(b) - lastActive(a));
       const deadline = (yield* Clock.currentTimeMillis) + ROUND_BUDGET;
       const cut = yield* Effect.forEach(
         behind,
-        ({ thread }) => upload(thread.id, known.get(thread.id) ?? 0, deadline, known),
+        ({ thread: { id } }) =>
+          Effect.gen(function* () {
+            const result = yield* upload(active, id, active.cursors.get(id) ?? 0, deadline).pipe(
+              Effect.orElseSucceed(() => "retry" as const),
+            );
+            if (result !== "done" && snapshot.has(id)) active.uploads.add(id);
+            return result === "continue";
+          }),
         { concurrency: UPLOADS },
       );
       // What the budget left goes up in the next round, after whatever happens meanwhile.
       if (cut.some(Boolean)) yield* Queue.offer(kick, undefined);
     }).pipe(Effect.ignore);
 
-    // What the relay says about uploads: where the cloud's copy ends, and what it took.
+    // Each connection starts with the relay's current counts, discarding the old upload anchors.
+    const setConnection = (next: SyncConnection | undefined) =>
+      Effect.gen(function* () {
+        const previous = connection;
+        connection = next;
+        if (previous !== undefined) {
+          for (const answer of previous.accepted.values()) yield* Deferred.succeed(answer, -1);
+        }
+      });
+    const relayEvents = yield* account.relayEvents;
     yield* Effect.gen(function* () {
-      const events = yield* account.relayEvents;
       while (true) {
-        const event = yield* PubSub.take(events);
+        const event = yield* PubSub.take(relayEvents);
         if (event._tag === "SyncCursors") {
-          for (const answer of accepted.values()) yield* Deferred.succeed(answer, -1);
-          accepted.clear();
-          positions.clear();
-          cursors = new Map(Object.entries(event.threads));
-          sent.clear();
+          yield* setConnection({
+            cursors: new Map(Object.entries(event.threads) as Array<[ThreadId, number]>),
+            accepted: new Map(),
+            positions: new Map(),
+            overviews: new Set(),
+            uploads: new Set(),
+            reconcile: true,
+          });
           yield* Queue.offer(kick, undefined);
         } else if (event._tag === "SyncAccepted") {
-          cursors?.set(event.threadId, event.count);
-          const answer = accepted.get(event.threadId);
+          connection?.cursors.set(event.threadId, event.count);
+          const answer = connection?.accepted.get(event.threadId);
           if (answer !== undefined) yield* Deferred.succeed(answer, event.count);
         } else if (event._tag === "RelayLost") {
-          cursors = undefined;
-          positions.clear();
-          for (const answer of accepted.values()) yield* Deferred.succeed(answer, -1);
-          accepted.clear();
+          yield* setConnection(undefined);
         }
       }
-    }).pipe(Effect.scoped, Effect.forkScoped);
+    }).pipe(Effect.forkScoped);
 
-    // New events (not streamed text) start a round soon; a sweep catches renames and archives.
-    yield* orchestrator.events.pipe(
-      Stream.filter((event) => !isStreamDelta(event.payload._tag)),
-      Stream.runForEach(() => Queue.offer(kick, undefined)),
+    yield* orchestrator.watchThreadOverviews.pipe(
+      Stream.runForEach((update) =>
+        Effect.gen(function* () {
+          const active = connection;
+          if (update._tag === "Reset") {
+            local = new Map(update.threads.map((overview) => [overview.thread.id, overview]));
+          } else if (local !== undefined) {
+            // The patch also lists upserted IDs under `removed` for clients that skip unknown rows.
+            const removed = new Set(update.removed);
+            for (const overview of update.threads) {
+              const id = overview.thread.id;
+              removed.delete(id);
+              if (!local.has(id)) active?.uploads.add(id);
+              local.set(id, overview);
+              active?.overviews.add(id);
+            }
+            for (const id of removed) {
+              local.delete(id);
+              active?.overviews.add(id);
+              active?.uploads.delete(id);
+            }
+          }
+          if (active !== undefined) yield* Queue.offer(kick, undefined);
+        }),
+      ),
       Effect.forkScoped,
     );
-    yield* Queue.offer(kick, undefined).pipe(Effect.delay(SWEEP_EVERY), Effect.forever, Effect.forkScoped);
+    yield* Stream.fromSubscription(eventChanges).pipe(
+      Stream.runForEach((id) =>
+        Effect.gen(function* () {
+          if (connection === undefined || !local?.has(id)) return;
+          connection.uploads.add(id);
+          yield* Queue.offer(kick, undefined);
+        }),
+      ),
+      Effect.forkScoped,
+    );
+    yield* Effect.suspend(() => {
+      const active = connection;
+      return active !== undefined &&
+        (active.reconcile || active.overviews.size > 0 || active.uploads.size > 0)
+        ? Queue.offer(kick, undefined)
+        : Effect.void;
+    }).pipe(Effect.delay(RETRY_EVERY), Effect.forever, Effect.forkScoped);
     yield* Queue.take(kick).pipe(
       Effect.andThen(Effect.sleep(SETTLE_FOR)),
       Effect.andThen(round),

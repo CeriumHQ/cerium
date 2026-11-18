@@ -4,6 +4,7 @@ import {
   AgentInfo,
   ThreadInfo,
   HISTORY_STATE_TAGS,
+  isStreamDelta,
   withImagesRemoved,
   withoutImages,
   type AgentId,
@@ -229,6 +230,8 @@ export class Store extends Context.Service<
     readonly overviewChanges: Effect.Effect<PubSub.Subscription<void>, never, Scope.Scope>;
     /** Appends atomically: either every event is stored or none is. */
     appendEvents(batch: ReadonlyArray<AgentEvent>): Effect.Effect<void, StoreError>;
+    /** Threads whose committed append added events for the cloud copy. Subscribe before reconciling. */
+    readonly syncedEventChanges: Effect.Effect<PubSub.Subscription<ThreadId>, never, Scope.Scope>;
     /**
      * An agent's events in order, those after `afterSequence` only when given, and only those of the
      * kinds in `tags` when given: a history's tool output (screenshots and all) is most of it.
@@ -413,6 +416,7 @@ export class Store extends Context.Service<
         // read again after almost every event, for each window, the cloud copy and whether anything
         // works, and decoding each row was most of the time they took.
         const overviewChanges = yield* PubSub.sliding<void>(1);
+        const syncedEventChanges = yield* PubSub.unbounded<ThreadId>();
         const notifyOverviews = PubSub.publish(overviewChanges, undefined).pipe(Effect.asVoid);
         const allThreads = rememberedRows(
           query("Could not list threads", db.select().from(threads).orderBy(asc(threads.createdAt))).pipe(
@@ -672,32 +676,46 @@ export class Store extends Context.Service<
             ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeAgent))),
           listAllAgents: allAgents.read,
           overviewChanges: PubSub.subscribe(overviewChanges),
+          syncedEventChanges: PubSub.subscribe(syncedEventChanges),
           appendEvents: (batch) =>
             batch.length === 0
               ? Effect.void
-              : query(
-                  "Could not append events",
-                  db.transaction((tx) =>
-                    Effect.forEach(
-                      batch,
-                      (event) =>
-                        Effect.gen(function* () {
-                          yield* tx.insert(events).values({
-                            id: event.id,
-                            threadId: event.threadId,
-                            agentId: event.agentId,
-                            sequence: event.sequence,
-                            at: event.at,
-                            tag: event.payload._tag,
-                            payload: event.payload,
-                            // The harness's own payload stays out: nothing reads it back, and it was
-                            // twice the size of the rest of the database.
-                          });
-                          const compact = withoutImages(event);
-                          if (compact !== event) yield* tx.insert(uiEvents).values(compact);
-                        }),
-                      { discard: true },
+              : Effect.uninterruptibleMask((restore) =>
+                  query(
+                    "Could not append events",
+                    db.transaction((tx) =>
+                      restore(
+                        Effect.forEach(
+                          batch,
+                          (event) =>
+                            Effect.gen(function* () {
+                              yield* tx.insert(events).values({
+                                id: event.id,
+                                threadId: event.threadId,
+                                agentId: event.agentId,
+                                sequence: event.sequence,
+                                at: event.at,
+                                tag: event.payload._tag,
+                                payload: event.payload,
+                                // The harness's own payload stays out: nothing reads it back, and it was
+                                // twice the size of the rest of the database.
+                              });
+                              const compact = withoutImages(event);
+                              if (compact !== event) yield* tx.insert(uiEvents).values(compact);
+                            }),
+                          { discard: true },
+                        ),
+                      ),
                     ),
+                  ).pipe(
+                    // Notify after the commit, even if the writer is interrupted while committing.
+                    Effect.tap(() => {
+                      const changed = new Set<ThreadId>();
+                      for (const event of batch) {
+                        if (!isStreamDelta(event.payload._tag)) changed.add(event.threadId);
+                      }
+                      return PubSub.publishAll(syncedEventChanges, changed);
+                    }),
                   ),
                 ),
           listEvents: (agentId, options) =>

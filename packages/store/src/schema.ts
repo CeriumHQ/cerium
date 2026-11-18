@@ -76,7 +76,7 @@ export const events = sqliteTable(
     index("events_thread_at").on(table.threadId, table.at),
     // SQLite appends rowid to this index: cloud upload pages traverse a thread in stored order.
     index("events_thread").on(table.threadId),
-    // Counting each thread's events the cloud copy keeps, every round of it, reads only this index;
+    // Counting each thread's events when the cloud copy connects reads only this index;
     // without it, the count read every event's row (a tenth of a second on a 1.7 GB store).
     index("events_thread_tag").on(table.threadId, table.tag),
     // Reads of one kind of event (open questions and saved attachments at startup, usage for the
