@@ -38,6 +38,7 @@ jobs:
     outputs:
       package: ${{ steps.changes.outputs.package }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
+      mac-tests: ${{ steps.changes.outputs.mac-tests }}
       windows: ${{ steps.changes.outputs.windows }}
       publish: ${{ steps.plan.outputs.publish }}
       version: ${{ steps.plan.outputs.version }}
@@ -63,6 +64,7 @@ jobs:
         run: |
           package=true
           everywhere=true
+          mac_tests=true
           # On a PR compare its branch with the merge base. A push replaces the previous tree,
           # including on force-push. List both sides of renames and keep the full matrix on diff errors.
           range="$BASE..$HEAD"
@@ -77,8 +79,13 @@ jobs:
             # Only narrow a PR matrix for known platform-independent web changes and prose.
             # A lockfile can change shared native dependencies even alongside a web manifest.
             web='^apps/(ui|site|relay)/'
-            if [ "$GITHUB_EVENT_NAME" = pull_request ] && ! grep -qvE "$docs|$web|^CHANGELOG\.md$" <<<"$changed"; then
-              everywhere=false
+            if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+              portable="$docs|$web|^CHANGELOG\.md$"
+              # Backend TypeScript still gets the Windows package smoke check. Run the full Mac
+              # suite as well since these sources can drive platform-specific shells and paths.
+              runtime='^(apps/backend|packages)/(.*/)?(src|test)/.*\.tsx?$'
+              if ! grep -qvE "$portable|$runtime" <<<"$changed"; then everywhere=false; fi
+              if ! grep -qvE "$portable" <<<"$changed"; then mac_tests=false; fi
             fi
           fi
           if [ "$everywhere" = true ]; then
@@ -89,6 +96,7 @@ jobs:
           {
             echo "package=$package"
             echo "everywhere=$everywhere"
+            echo "mac-tests=$mac_tests"
             echo "windows=$windows"
           } >> "$GITHUB_OUTPUT"
         env:
@@ -197,13 +205,13 @@ jobs:
           retention-days: 7
 
   # macOS: its own shells, case-insensitive disk and processes, on the standard Apple silicon runner,
-  # wherever the Mac apps are packaged.
+  # for packaging and runtime changes.
   # It doesn't hold back the nightly yet: the packaged Mac app's smoke test does
   # (.github/actions/package), until this has a record of passing.
   test-macos:
     name: Test (macOS)
     needs: plan
-    if: ${{ needs.plan.outputs.everywhere == 'true' }}
+    if: ${{ needs.plan.outputs.mac-tests == 'true' }}
     runs-on: macos-15
     timeout-minutes: 20
     steps:
