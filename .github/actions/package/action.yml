@@ -10,6 +10,10 @@ description: >-
   release `release` names, with their update file as the `update-files-<OS>-<arch>` artifact.
 
 inputs:
+  upload-artifact:
+    description: Keep the build for a downstream job or a manual download.
+    required: false
+    default: "true"
   version:
     description: The version the package carries, from scripts/release.ts.
     required: true
@@ -24,7 +28,7 @@ inputs:
     description: >-
       The tag of the draft release a push's nightly is gathered in (.github/workflows/ci.yml), to
       upload the packages to while the smoke test runs, so publishing only adds the update files the
-      runners share and makes the release public. Empty uploads them as an artifact instead.
+      runners share and makes the release public. When empty, upload-artifact controls whether the packages are kept.
     required: false
     default: ""
   github-token:
@@ -190,13 +194,24 @@ runs:
       shell: bash
       run: |
         out=apps/desktop/out
+        # Verify the distributable files even on a PR, where only the unpacked Windows app starts
+        # and no upload checks the installer. A missing pattern fails the step.
+        shopt -s failglob
+        case "$RUNNER_OS" in
+          Windows) packages=("$out"/*.exe{,.blockmap}) ;;
+          macOS) packages=("$out"/*.dmg "$out"/*-mac.zip{,.blockmap}) ;;
+          Linux) packages=("$out"/*.{AppImage,deb,rpm}) ;;
+        esac
+        channel=latest
+        if [[ "$VERSION" == *-nightly.* ]]; then channel=nightly; fi
+        for file in "${packages[@]}" "$out/$channel"*.yml; do
+          [ -s "$file" ] || { echo "::error::Empty package output: $file"; exit 1; }
+        done
+        shopt -u failglob
         if [ -n "$RELEASE" ]; then
-          shopt -s nullglob
-          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap})
           GH_TOKEN="$UPLOAD_TOKEN" gh release upload "$RELEASE" "${packages[@]}" --clobber \
             > "$RUNNER_TEMP/upload.log" 2>&1 &
           upload=$!
-          shopt -u nullglob
         fi
         unset UPLOAD_TOKEN
         smoke() {
@@ -271,7 +286,7 @@ runs:
 
     # Stored as they are: the packages are compressed already, and zipping them again slowed the Intel
     # Mac's upload to a third of Linux's.
-    - if: inputs.release == ''
+    - if: inputs.release == '' && inputs.upload-artifact == 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: package-${{ runner.os }}-${{ runner.arch }}

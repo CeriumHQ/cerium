@@ -246,6 +246,7 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/web
         with:
+          upload-artifact: ${{ github.event_name == 'workflow_dispatch' || needs.plan.outputs.release != '' }}
           version: ${{ needs.plan.outputs.version }}
 
   # Every change that reaches main is packaged and started on every platform, on each processor's
@@ -277,6 +278,7 @@ jobs:
           filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
+          upload-artifact: ${{ github.event_name == 'workflow_dispatch' }}
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
@@ -305,6 +307,7 @@ jobs:
           filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
+          upload-artifact: ${{ github.event_name == 'workflow_dispatch' }}
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
@@ -336,6 +339,7 @@ jobs:
           filter: "!@cerium/relay !@cerium/site"
       - uses: ./.github/actions/package
         with:
+          upload-artifact: ${{ github.event_name == 'workflow_dispatch' }}
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}

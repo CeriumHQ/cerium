@@ -5,6 +5,10 @@ description: >-
   and uploads all three as the `web` artifact for the publish job (.github/actions/deploy-relay).
 
 inputs:
+  upload-artifact:
+    description: Keep the build for a downstream job or a manual download.
+    required: false
+    default: "true"
   version:
     description: The version being released, from scripts/release.ts.
     required: true
@@ -34,7 +38,8 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
 
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+    - if: inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: web
         path: |
