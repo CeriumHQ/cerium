@@ -360,34 +360,47 @@ export class Store extends Context.Service<
         const decodeAgent = decode(AgentInfo, "Stored agent is invalid");
         const decodeEvent = decode(AgentEvent, "Stored event is invalid");
 
-        /** Only this page's missing compact rows are read; each write transaction holds at most eight. */
+        /** Read ordinary payloads and existing projections together, deferring unprojected tool results. */
         const compactEvents = Effect.fn("Store.compactEvents")(function* (ids: ReadonlyArray<string>) {
           if (ids.length === 0) return [];
-          const compact = yield* db
-            .select()
-            .from(uiEvents)
-            .where(inArray(uiEvents.id, [...ids]));
-          const found = new Map(
-            (yield* Effect.forEach(compact, decodeEvent)).map((event) => [event.id as string, event]),
-          );
-          const missing = ids.filter((id) => !found.has(id));
+          const rows = yield* db
+            .select({
+              ...eventColumns,
+              payload:
+                sql`coalesce(${uiEvents.payload}, case when ${events.tag} <> 'ToolCallCompleted' then ${events.payload} end)`.mapWith(
+                  events.payload,
+                ),
+            })
+            .from(events)
+            .leftJoin(uiEvents, eq(uiEvents.id, events.id))
+            .where(inArray(events.id, [...ids]));
+          const found = new Map<string, AgentEvent>();
+          const missing: string[] = [];
+          for (const row of rows) {
+            if (row.payload === null) missing.push(row.id);
+            else found.set(row.id, yield* decodeEvent(row));
+          }
           for (let offset = 0; offset < missing.length; offset += SLIM_STEP) {
-            const rows = yield* db
-              .select(eventColumns)
-              .from(events)
-              .where(inArray(events.id, missing.slice(offset, offset + SLIM_STEP)));
-            const decoded = yield* Effect.forEach(rows, decodeEvent);
-            yield* db.transaction((tx) =>
-              Effect.forEach(
-                decoded,
-                (event) => {
-                  const { raw: _raw, ...lean } = withoutImages(event);
-                  found.set(event.id, lean);
-                  return tx.insert(uiEvents).values(lean).onConflictDoNothing();
-                },
-                { discard: true },
-              ),
+            const compact = yield* db.transaction((tx) =>
+              Effect.gen(function* () {
+                // Read and fill together so slimming cannot remove an image between the two.
+                const rows = yield* tx
+                  .select(eventColumns)
+                  .from(events)
+                  .where(inArray(events.id, missing.slice(offset, offset + SLIM_STEP)));
+                const decoded = yield* Effect.forEach(rows, decodeEvent);
+                const projections: AgentEvent[] = [];
+                const compact = decoded.map((event) => {
+                  const lean = withoutImages(event);
+                  if (lean !== event) projections.push(lean);
+                  return lean;
+                });
+                if (projections.length > 0)
+                  yield* tx.insert(uiEvents).values(projections).onConflictDoNothing();
+                return compact;
+              }),
             );
+            for (const event of compact) found.set(event.id, event);
             yield* Effect.yieldNow;
           }
           return ids.flatMap((id) => {
@@ -491,10 +504,11 @@ export class Store extends Context.Service<
                         if (payload === undefined) return;
                         const output = withImagesRemoved(payload.output);
                         if (output === payload.output) return;
-                        // No image is left to leave out, so the compact view holds the same payload.
-                        const slim = { ...payload, output };
-                        yield* tx.update(events).set({ payload: slim }).where(eq(events.id, eventId));
-                        yield* tx.update(uiEvents).set({ payload: slim }).where(eq(uiEvents.id, eventId));
+                        yield* tx
+                          .update(events)
+                          .set({ payload: { ...payload, output } })
+                          .where(eq(events.id, eventId));
+                        yield* tx.delete(uiEvents).where(eq(uiEvents.id, eventId));
                       }),
                     { discard: true },
                   ),
@@ -679,8 +693,8 @@ export class Store extends Context.Service<
                             // The harness's own payload stays out: nothing reads it back, and it was
                             // twice the size of the rest of the database.
                           });
-                          const { raw: _raw, ...compact } = withoutImages(event);
-                          yield* tx.insert(uiEvents).values(compact);
+                          const compact = withoutImages(event);
+                          if (compact !== event) yield* tx.insert(uiEvents).values(compact);
                         }),
                       { discard: true },
                     ),

@@ -90,8 +90,7 @@ export const events = sqliteTable(
   ],
 );
 
-/** The user's settings the backend applies, one JSON value per key. */
-/** Compact UI history, separate from canonical rows holding images and provider diagnostics. */
+/** UI history projections for tool results whose canonical payload holds large images. */
 export const uiEvents = sqliteTable(
   "ui_events",
   {
@@ -126,6 +125,7 @@ export const eventOrder = sqliteTable(
   ],
 );
 
+/** The user's settings the backend applies, one JSON value per key. */
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value", { mode: "json" }).notNull(),

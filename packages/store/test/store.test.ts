@@ -1,5 +1,6 @@
 import {
   REMOVED_IMAGE,
+  withoutImages,
   type AgentEvent,
   type EventPayload,
   type AgentId,
@@ -10,8 +11,8 @@ import {
 } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Option } from "effect";
-import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { cpSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 
@@ -51,6 +52,21 @@ const event = (sequence: number, text = `message ${sequence}`): AgentEvent => ({
   at: 10 + sequence,
   payload: { _tag: "MessageCompleted", messageId: `m${sequence}`, text },
 });
+
+const toolResult = (sequence: number, output: unknown): AgentEvent => ({
+  ...event(sequence),
+  payload: { _tag: "ToolCallCompleted", callId: `call-${sequence}`, output, isError: false },
+});
+
+const image = (data: string) => ({ type: "image", mimeType: "image/png", data });
+
+const projectionIds = (filename: string) => {
+  using db = new DatabaseSync(filename);
+  return db
+    .prepare("SELECT id FROM ui_events ORDER BY sequence")
+    .all()
+    .map((row) => row["id"]);
+};
 
 describe("Store", () => {
   it.effect("pages search text without reading screenshot or tool payloads", () =>
@@ -176,37 +192,79 @@ describe("Store", () => {
       ),
   );
 
-  it.effect("fills only the requested compact page and persists its progress across reopen", () => {
-    const filename = join(mkdtempSync(join(tmpdir(), "cerium-page-")), "events.db");
-    return Effect.gen(function* () {
+  it.effect("upgrades a dense profile and fills only the requested image projections across reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cerium-page-"));
+    const filename = join(directory, "events.db");
+    const legacyMigrations = join(directory, "migrations");
+    cpSync(migrationsFolder, legacyMigrations, {
+      recursive: true,
+      filter: (source) =>
+        dirname(source) !== migrationsFolder || basename(source) <= "20261030040000_message_search_owner",
+    });
+    const history = [
+      event(0),
+      toolResult(1, { content: [image("a".repeat(20_000))] }),
+      event(2),
+      toolResult(3, { content: [{ type: "text", text: "tool output" }] }),
+      event(4),
+      toolResult(5, { content: [image("b".repeat(20_000)), image("small")] }),
+      toolResult(6, { content: [image("small")] }),
+      toolResult(7, { content: [image(REMOVED_IMAGE)] }),
+    ];
+    const expected = history.map(withoutImages);
+    const seed = Effect.gen(function* () {
       const store = yield* Store;
       yield* store.createThread(thread);
       yield* store.createAgent(lead);
-      yield* store.appendEvents(Array.from({ length: 40 }, (_, n) => event(n)));
-      const db = new DatabaseSync(filename);
-      db.exec("DELETE FROM ui_events");
-      const page = yield* store.historyPage(thread.id, { limit: 5 });
-      assert.lengthOf(page.events, 5);
-      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 5);
-      yield* store.historyPage(thread.id, { limit: 5 });
-      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 5);
-      yield* store.historyPage(thread.id, { before: page.before!, limit: 5 });
-      assert.deepStrictEqual(db.prepare("SELECT count(*) AS n FROM ui_events").get()?.n, 10);
-      db.close();
-    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
+      yield* store.appendEvents(history);
+      assert.deepStrictEqual(projectionIds(filename), ["evt_1", "evt_5"]);
+      using db = new DatabaseSync(filename);
+      db.exec(`INSERT OR IGNORE INTO ui_events (id, thread_id, agent_id, sequence, at, payload)
+        SELECT id, thread_id, agent_id, sequence, at, payload FROM events`);
+    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder: legacyMigrations })));
+    const open = Store.layer({ filename, migrationsFolder });
+    return Effect.gen(function* () {
+      yield* seed;
+      assert.lengthOf(projectionIds(filename), history.length);
+      const latest = yield* Effect.gen(function* () {
+        const store = yield* Store;
+        assert.deepStrictEqual(projectionIds(filename), []);
+        const page = yield* store.historyPage(thread.id, { limit: 4 });
+        assert.deepStrictEqual(page.events, expected.slice(4));
+        assert.isTrue(page.more);
+        assert.deepStrictEqual(projectionIds(filename), ["evt_5"]);
+        return page;
+      }).pipe(Effect.provide(open));
+      yield* Effect.gen(function* () {
+        const store = yield* Store;
+        assert.deepStrictEqual(projectionIds(filename), ["evt_5"]);
+        assert.deepStrictEqual(yield* store.historyPage(thread.id, { limit: 4 }), latest);
+        assert.deepStrictEqual(projectionIds(filename), ["evt_5"]);
+        const previous = yield* store.historyPage(thread.id, { before: latest.before!, limit: 4 });
+        assert.deepStrictEqual(previous.events, expected.slice(0, 4));
+        assert.isFalse(previous.more);
+        assert.deepStrictEqual(projectionIds(filename), ["evt_1", "evt_5"]);
+        assert.deepStrictEqual(yield* store.listThreadEvents(thread.id), history);
+      }).pipe(Effect.provide(open));
+    });
   });
-  it.effect("backfills compact history for old events once and keeps it idempotent", () => {
+  it.effect("lazily fills sparse projections for whole-thread history", () => {
     const filename = join(mkdtempSync(join(tmpdir(), "cerium-compact-")), "events.db");
     return Effect.gen(function* () {
       const store = yield* Store;
       yield* store.createThread(thread);
       yield* store.createAgent(lead);
-      yield* store.appendEvents([event(0)]);
-      const db = new DatabaseSync(filename);
-      db.exec("DELETE FROM ui_events");
-      db.close();
-      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), [event(0)]);
-      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), [event(0)]);
+      const history = [event(0), toolResult(1, image("a".repeat(20_000)))];
+      yield* store.appendEvents(history);
+      {
+        using db = new DatabaseSync(filename);
+        db.exec("DELETE FROM ui_events");
+      }
+      const expected = history.map(withoutImages);
+      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), expected);
+      assert.deepStrictEqual(projectionIds(filename), ["evt_1"]);
+      assert.deepStrictEqual(yield* store.listThreadEvents(thread.id, { withoutImages: true }), expected);
+      assert.deepStrictEqual(projectionIds(filename), ["evt_1"]);
     }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder })));
   });
   it.effect("keeps image-free UI history while preserving the original tool image, and deletes both", () =>
@@ -289,11 +347,13 @@ describe("Store", () => {
       assert.strictEqual(yield* store.slimThreads(11), 0, "not quiet since then");
       assert.strictEqual(yield* store.slimThreads(100), 1);
       assert.strictEqual(raws(), 0);
+      assert.deepStrictEqual(projectionIds(filename), []);
       const [message, tool] = yield* store.listThreadEvents(thread.id);
       assert.deepStrictEqual(message, event(0));
       assert.deepStrictEqual(tool?.payload, removed("one"));
       const [, compact] = yield* store.listThreadEvents(thread.id, { withoutImages: true });
       assert.deepStrictEqual(compact?.payload, removed("one"));
+      assert.deepStrictEqual(projectionIds(filename), []);
       assert.strictEqual(yield* store.slimThreads(100), 0, "already slim");
 
       yield* store.appendEvents([shot(2, "two")]);
