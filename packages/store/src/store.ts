@@ -780,7 +780,8 @@ export class Store extends Context.Service<
                           }
                           for (const [threadId, { checkpoint, events }] of stateInputs) {
                             // Older databases and late imports rebuild once, on the first state read.
-                            if (checkpoint === undefined || !canAdvanceThreadState(checkpoint, events)) continue;
+                            if (checkpoint === undefined || !canAdvanceThreadState(checkpoint, events))
+                              continue;
                             yield* tx.insert(threadStates).values({
                               threadId,
                               checkpoint: advanceThreadState(checkpoint, events),
