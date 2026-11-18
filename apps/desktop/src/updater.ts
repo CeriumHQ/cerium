@@ -244,7 +244,10 @@ export const startUpdater = (host: UpdaterHost) => {
           if (result?.isUpdateAvailable !== true) return set({ kind: "current", checkedAt: Date.now() });
           // electron-updater keeps this UpdateInfo for downloadUpdate(). Keep its integrity checks
           // and replace each file only with the same target and architecture from the same release.
-          if (english) result.updateInfo.files = localeUpdateFiles(result.updateInfo.files);
+          if (english) {
+            const files = result.updateInfo.files;
+            files.splice(0, files.length, ...localeUpdateFiles(files));
+          }
           macRelease = result.updateInfo;
           set({ kind: "available", version: result.updateInfo.version });
           if (autoDownload && !manual) void download("background");

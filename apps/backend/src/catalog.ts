@@ -129,7 +129,7 @@ export class OfferedModels extends Context.Service<
           delete harness.listing;
           harness.models = [];
           // Move current waiters to the replacement. An older lookup can finish, but can't publish.
-          if (previous !== undefined) Deferred.doneUnsafe(previous.done, Effect.void);
+          if (previous !== undefined) Deferred.doneUnsafe(previous.done, Effect.succeed(undefined));
           yield* ensureListing(harness);
         }).pipe(Effect.uninterruptible);
 
