@@ -1,6 +1,6 @@
 import { createContext, useContext, type CSSProperties } from "react";
 
-import { useHighlight, type Line } from "./highlight.ts";
+import { useHighlightRange, useHighlightSource, type HighlightSource, type Line } from "./highlight.ts";
 import type { Piece } from "./model.ts";
 import { VisibleChunk } from "./VisibleChunk.tsx";
 
@@ -85,7 +85,7 @@ export function LineText({ text, tokens }: { text: string; tokens: Line | undefi
  * long lines to the width instead of scrolling sideways.
  */
 export function CodeView({ text, path, wrap }: { text: string; path: string; wrap: boolean }) {
-  const highlighted = useHighlight(text, path);
+  const source = useHighlightSource(text, path);
   const lines = text.split("\n");
   // A file's final newline isn't a line of its own.
   if (lines.length > 1 && lines.at(-1) === "") lines.pop();
@@ -95,30 +95,56 @@ export function CodeView({ text, path, wrap }: { text: string; path: string; wra
     <div className="scroll-thin h-full overflow-auto py-3 font-mono text-meta leading-[1.6] select-text">
       <div className={wrap ? "min-w-0" : "w-max min-w-full"}>
         {chunks.map((first) => {
-          const shown = lines.slice(first, first + CHUNK);
+          const end = Math.min(first + CHUNK, lines.length);
           return (
-            <VisibleChunk key={first} height={shown.length * LINE_HEIGHT}>
-              {() =>
-                shown.map((line, index) => (
-                  <div
-                    key={first + index}
-                    className={`flex pr-6 hover:bg-surface-hover ${wrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
-                  >
-                    <LineNumber
-                      line={first + index + 1}
-                      style={{ width: gutter }}
-                      className="shrink-0 pr-4 pl-3 text-right text-fg-disabled tabular-nums select-none"
-                    />
-                    <span className={`min-w-0 text-fg-primary ${wrap ? "break-all" : ""}`}>
-                      <LineText text={line.replace(/\r$/, "")} tokens={highlighted?.[first + index]} />
-                    </span>
-                  </div>
-                ))
-              }
+            <VisibleChunk key={first} height={(end - first) * LINE_HEIGHT}>
+              {(visible) => (
+                <CodeChunk
+                  source={source}
+                  first={first}
+                  lines={lines.slice(first, end)}
+                  gutter={gutter}
+                  wrap={wrap}
+                  visible={visible}
+                />
+              )}
             </VisibleChunk>
           );
         })}
       </div>
     </div>
   );
+}
+
+function CodeChunk({
+  source,
+  first,
+  lines,
+  gutter,
+  wrap,
+  visible,
+}: {
+  source: HighlightSource | undefined;
+  first: number;
+  lines: ReadonlyArray<string>;
+  gutter: string;
+  wrap: boolean;
+  visible: boolean;
+}) {
+  const highlighted = useHighlightRange(source, first, first + lines.length, visible);
+  return lines.map((line, index) => (
+    <div
+      key={first + index}
+      className={`flex pr-6 hover:bg-surface-hover ${wrap ? "whitespace-pre-wrap" : "whitespace-pre"}`}
+    >
+      <LineNumber
+        line={first + index + 1}
+        style={{ width: gutter }}
+        className="shrink-0 pr-4 pl-3 text-right text-fg-disabled tabular-nums select-none"
+      />
+      <span className={`min-w-0 text-fg-primary ${wrap ? "break-all" : ""}`}>
+        <LineText text={line.replace(/\r$/, "")} tokens={highlighted?.[index]} />
+      </span>
+    </div>
+  ));
 }

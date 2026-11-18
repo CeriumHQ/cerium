@@ -9,7 +9,7 @@ import { lineRange } from "../composer/draft.ts";
 import { useCoarsePointer } from "../composer/pointer.ts";
 import { CHUNK, LINE_HEIGHT, LineNumber, Run } from "./CodeView.tsx";
 import { VisibleChunk } from "./VisibleChunk.tsx";
-import { useHighlight } from "./highlight.ts";
+import { useHighlightRange, useHighlightSource, type HighlightSource, type Line } from "./highlight.ts";
 import {
   changedWords,
   numberHunks,
@@ -277,8 +277,8 @@ const rangesOf = (lines: ReadonlyArray<NumberedLine>, budget: { left: number }) 
 };
 
 /**
- * The hunks numbered, the words that changed in each hunk's lines, and each side highlighted. A hook
- * of its own so the React Compiler keeps them from one render to the next: worked out in the
+ * The hunks numbered, the words that changed in each hunk's lines, and the two highlighting sources.
+ * A hook of its own so the React Compiler keeps them from one render to the next: worked out in the
  * component, which reads them after the highlighting hooks, they were worked out again on every
  * render, word-by-word comparisons and all.
  */
@@ -286,9 +286,53 @@ function useNumbered(hunks: ReadonlyArray<DiffHunk>, path: string) {
   const numbered = numberHunks(hunks);
   const budget = { left: 2_000_000 };
   const ranges = numbered.hunks.map((hunk) => rangesOf(hunk.lines, budget));
-  const oldTokens = useHighlight(numbered.oldText, path);
-  const newTokens = useHighlight(numbered.newText, path);
-  return { hunks: numbered.hunks, ranges, oldTokens, newTokens };
+  const oldSource = useHighlightSource(numbered.oldText, path);
+  const newSource = useHighlightSource(numbered.newText, path);
+  return { hunks: numbered.hunks, ranges, oldSource, newSource };
+}
+
+function useSide(
+  source: HighlightSource | undefined,
+  rows: ReadonlyArray<NumberedLine | undefined>,
+  side: "oldIndex" | "newIndex",
+  visible: boolean,
+) {
+  let first: number | undefined;
+  let end = 0;
+  for (const row of rows) {
+    const index = row?.[side];
+    if (index === undefined) continue;
+    first ??= index;
+    end = index + 1;
+  }
+  const start = first ?? 0;
+  const highlighted = useHighlightRange(source, start, end, visible);
+  return (line: NumberedLine | undefined) => {
+    const index = line?.[side];
+    return index === undefined ? undefined : highlighted?.[index - start];
+  };
+}
+
+function DiffChunk({
+  oldSource,
+  newSource,
+  oldRows,
+  newRows,
+  visible,
+  children,
+}: {
+  oldSource: HighlightSource | undefined;
+  newSource: HighlightSource | undefined;
+  oldRows: ReadonlyArray<NumberedLine | undefined>;
+  newRows: ReadonlyArray<NumberedLine | undefined>;
+  visible: boolean;
+  children: (
+    tokensOf: (line: NumberedLine | undefined, side: "old" | "new") => Line | undefined,
+  ) => ReactNode;
+}) {
+  const oldTokens = useSide(oldSource, oldRows, "oldIndex", visible);
+  const newTokens = useSide(newSource, newRows, "newIndex", visible);
+  return children((line, side) => (side === "old" ? oldTokens(line) : newTokens(line)));
 }
 
 /** One side's line: its number, its marker, and its text with the changed words picked out. */
@@ -401,7 +445,7 @@ export function DiffView({
     setRun(undefined);
   }
   const numbered = useNumbered(hunks, path);
-  const { ranges, oldTokens, newTokens } = numbered;
+  const { ranges, oldSource, newSource } = numbered;
 
   /** The run's lines, in the order the diff shows them, as the comment will carry them. */
   const markedLines = (ids: ReadonlySet<string>) =>
@@ -495,16 +539,6 @@ export function DiffView({
   }, [run]);
   const root = useRef<HTMLDivElement>(null);
 
-  const tokensOf = (line: NumberedLine | undefined, side: "old" | "new") => {
-    if (line === undefined) return undefined;
-    return side === "old"
-      ? line.oldIndex === undefined
-        ? undefined
-        : oldTokens?.[line.oldIndex]
-      : line.newIndex === undefined
-        ? undefined
-        : newTokens?.[line.newIndex];
-  };
   const last = hunks.at(-1);
   const widest = last === undefined ? 1 : Math.max(last.oldStart, last.newStart) + last.lines.length;
   const gutter = `calc(${String(widest).length}ch + 1rem)`;
@@ -533,97 +567,119 @@ export function DiffView({
               {layout === "unified"
                 ? chunksOf(hunk.lines).map(({ first, rows }) => (
                     <VisibleChunk key={first} height={rows.length * LINE_HEIGHT}>
-                      {() =>
-                        rows.map((line, offset) => {
-                          const index = first + offset;
-                          return (
-                            <Fragment key={index}>
-                              <div
-                                className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
-                              >
-                                {plusOf(hunkIndex, index)}
-                                {pickOf(hunkIndex, index, line)}
-                                <span style={{ width: gutter }} className={number} aria-hidden="true">
-                                  {line.old}
-                                </span>
-                                <Cell
-                                  line={line}
-                                  number={line.new}
-                                  ranges={changed.get(index) ?? []}
-                                  tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
-                                  gutter={gutter}
-                                  wrap={!scroll}
-                                />
-                              </div>
-                              {after?.(line)}
-                              {commenting?.under?.(line)}
-                              {boxOf(hunkIndex, index)}
-                            </Fragment>
-                          );
-                        })
-                      }
+                      {(visible) => (
+                        <DiffChunk
+                          oldSource={oldSource}
+                          newSource={newSource}
+                          oldRows={rows.filter((line) => line.kind === "removed")}
+                          newRows={rows}
+                          visible={visible}
+                        >
+                          {(tokensOf) =>
+                            rows.map((line, offset) => {
+                              const index = first + offset;
+                              return (
+                                <Fragment key={index}>
+                                  <div
+                                    className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
+                                  >
+                                    {plusOf(hunkIndex, index)}
+                                    {pickOf(hunkIndex, index, line)}
+                                    <span style={{ width: gutter }} className={number} aria-hidden="true">
+                                      {line.old}
+                                    </span>
+                                    <Cell
+                                      line={line}
+                                      number={line.new}
+                                      ranges={changed.get(index) ?? []}
+                                      tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
+                                      gutter={gutter}
+                                      wrap={!scroll}
+                                    />
+                                  </div>
+                                  {after?.(line)}
+                                  {commenting?.under?.(line)}
+                                  {boxOf(hunkIndex, index)}
+                                </Fragment>
+                              );
+                            })
+                          }
+                        </DiffChunk>
+                      )}
                     </VisibleChunk>
                   ))
                 : chunksOf(splitRows(hunk.lines)).map(({ first, rows }) => (
                     <VisibleChunk key={first} height={rows.length * LINE_HEIGHT}>
-                      {() =>
-                        rows.map((row, offset) => (
-                          <Fragment key={first + offset}>
-                            <div className="grid grid-cols-2 divide-x divide-line-subtle">
-                              <div
-                                className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
-                              >
-                                <Cell
-                                  line={row.left}
-                                  number={row.left?.old}
-                                  ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
-                                  tokens={tokensOf(row.left, "old")}
-                                  gutter={gutter}
-                                  wrap
-                                  mark={row.left ? plusOf(hunkIndex, indexOf.get(row.left)!) : undefined}
-                                  pick={
-                                    row.left ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left) : undefined
-                                  }
-                                />
-                              </div>
-                              <div
-                                className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
-                              >
-                                <Cell
-                                  wrap
-                                  line={row.right}
-                                  number={row.right?.new}
-                                  ranges={
-                                    row.right && row.right.kind !== "context"
-                                      ? (changed.get(indexOf.get(row.right)!) ?? [])
-                                      : []
-                                  }
-                                  tokens={tokensOf(row.right, "new")}
-                                  gutter={gutter}
-                                  mark={
-                                    row.right && row.right.kind !== "context"
-                                      ? plusOf(hunkIndex, indexOf.get(row.right)!)
-                                      : undefined
-                                  }
-                                  pick={
-                                    row.right
-                                      ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
-                                      : undefined
-                                  }
-                                />
-                              </div>
-                            </div>
-                            {row.left ? after?.(row.left) : null}
-                            {row.right && row.right !== row.left ? after?.(row.right) : null}
-                            {row.left ? commenting?.under?.(row.left) : null}
-                            {row.right && row.right !== row.left ? commenting?.under?.(row.right) : null}
-                            {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
-                            {row.right && row.right !== row.left
-                              ? boxOf(hunkIndex, indexOf.get(row.right)!)
-                              : null}
-                          </Fragment>
-                        ))
-                      }
+                      {(visible) => (
+                        <DiffChunk
+                          oldSource={oldSource}
+                          newSource={newSource}
+                          oldRows={rows.map((row) => row.left)}
+                          newRows={rows.map((row) => row.right)}
+                          visible={visible}
+                        >
+                          {(tokensOf) =>
+                            rows.map((row, offset) => (
+                              <Fragment key={first + offset}>
+                                <div className="grid grid-cols-2 divide-x divide-line-subtle">
+                                  <div
+                                    className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
+                                  >
+                                    <Cell
+                                      line={row.left}
+                                      number={row.left?.old}
+                                      ranges={row.left ? (changed.get(indexOf.get(row.left)!) ?? []) : []}
+                                      tokens={tokensOf(row.left, "old")}
+                                      gutter={gutter}
+                                      wrap
+                                      mark={row.left ? plusOf(hunkIndex, indexOf.get(row.left)!) : undefined}
+                                      pick={
+                                        row.left
+                                          ? pickOf(hunkIndex, indexOf.get(row.left)!, row.left)
+                                          : undefined
+                                      }
+                                    />
+                                  </div>
+                                  <div
+                                    className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
+                                  >
+                                    <Cell
+                                      wrap
+                                      line={row.right}
+                                      number={row.right?.new}
+                                      ranges={
+                                        row.right && row.right.kind !== "context"
+                                          ? (changed.get(indexOf.get(row.right)!) ?? [])
+                                          : []
+                                      }
+                                      tokens={tokensOf(row.right, "new")}
+                                      gutter={gutter}
+                                      mark={
+                                        row.right && row.right.kind !== "context"
+                                          ? plusOf(hunkIndex, indexOf.get(row.right)!)
+                                          : undefined
+                                      }
+                                      pick={
+                                        row.right
+                                          ? pickOf(hunkIndex, indexOf.get(row.right)!, row.right)
+                                          : undefined
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                                {row.left ? after?.(row.left) : null}
+                                {row.right && row.right !== row.left ? after?.(row.right) : null}
+                                {row.left ? commenting?.under?.(row.left) : null}
+                                {row.right && row.right !== row.left ? commenting?.under?.(row.right) : null}
+                                {row.left ? boxOf(hunkIndex, indexOf.get(row.left)!) : null}
+                                {row.right && row.right !== row.left
+                                  ? boxOf(hunkIndex, indexOf.get(row.right)!)
+                                  : null}
+                              </Fragment>
+                            ))
+                          }
+                        </DiffChunk>
+                      )}
                     </VisibleChunk>
                   ))}
             </Fragment>
