@@ -268,6 +268,8 @@ runs:
           hdiutil detach "$mount" > /dev/null
         else
           export LANGUAGE=fr
+          # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
+          sudo apt-get update -q
           sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
