@@ -134,6 +134,50 @@ export const parseRepository = (
   };
 };
 
+/** The leading headers of `git status --porcelain=v2 -z --branch`, with the full HEAD object ID. */
+export const parseStatusBranch = (output: string) => {
+  let branch: string | undefined;
+  let head: string | undefined;
+  let detached = false;
+  let upstream: string | undefined;
+  let counts: { ahead: number; behind: number } | undefined;
+  let start = 0;
+  while (output.startsWith("# ", start)) {
+    const end = output.indexOf("\0", start);
+    if (end === -1) break;
+    const header = output.slice(start + 2, end);
+    if (header.startsWith("branch.oid ")) {
+      const oid = header.slice("branch.oid ".length);
+      if (/^[0-9a-f]{7,}$/i.test(oid)) head = oid;
+    } else if (header.startsWith("branch.head ")) {
+      const name = header.slice("branch.head ".length);
+      if (name === "(detached)") detached = true;
+      else branch = name;
+    } else if (header.startsWith("branch.upstream ")) {
+      upstream = header.slice("branch.upstream ".length);
+    } else if (header.startsWith("branch.ab ")) {
+      const match = /^\+(\d+) -(\d+)$/.exec(header.slice("branch.ab ".length));
+      if (match) counts = { ahead: Number(match[1]), behind: Number(match[2]) };
+    }
+    start = end + 1;
+  }
+  return {
+    head,
+    branch,
+    detached,
+    upstream:
+      upstream === undefined
+        ? undefined
+        : {
+            name: upstream,
+            ahead: counts?.ahead ?? 0,
+            behind: counts?.behind ?? 0,
+            gone: counts === undefined,
+          },
+    entries: output.slice(start),
+  };
+};
+
 // ---------------------------------------------------------------------------------------------
 
 export class Git extends Context.Service<

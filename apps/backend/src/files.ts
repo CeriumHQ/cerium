@@ -340,10 +340,13 @@ export const gitFolderChange = (
   relative: string,
   folder: { readonly own: boolean; readonly common: boolean },
 ): Change | undefined => {
-  const [first] = segmentsOf(relative);
+  const [first, second] = segmentsOf(relative);
   if (first === undefined) return undefined;
   if (folder.own && first === "index") return { git: true, refs: false };
   if (folder.own && HEAD_FILES.test(first)) return { git: true, refs: true };
+  if (folder.own && first === "config.worktree") return { git: true, refs: true };
+  if (folder.common && first === "config") return { git: true, refs: true };
+  if (folder.common && first === "info" && second === "exclude") return { git: true, refs: false };
   if (folder.common && (first === "refs" || first === "packed-refs")) return { git: true, refs: true };
   return undefined;
 };
@@ -372,8 +375,10 @@ export const watchedChange = (relative: string): Change | undefined => {
  * git's objects instead of dropping their floods after they arrive. Whatever `watchedChange` drops,
  * it drops everything below too, but for git's own folder, whose insides say what git did.
  */
-export const watchSkips = (relative: string): boolean =>
-  segmentsOf(relative).join("/") !== ".git" && watchedChange(relative) === undefined;
+export const watchSkips = (relative: string): boolean => {
+  const name = segmentsOf(relative).join("/");
+  return name !== ".git" && name !== ".git/info" && watchedChange(relative) === undefined;
+};
 
 /**
  * `watchSkips` for one of git's own folders watched on its own. `gitFolderChange` reads only a path's
@@ -382,7 +387,9 @@ export const watchSkips = (relative: string): boolean =>
 export const gitFolderSkips = (
   relative: string,
   folder: { readonly own: boolean; readonly common: boolean },
-): boolean => gitFolderChange(relative, folder) === undefined;
+): boolean =>
+  !(folder.common && segmentsOf(relative).join("/") === "info") &&
+  gitFolderChange(relative, folder) === undefined;
 
 // ---------------------------------------------------------------------------------------------
 

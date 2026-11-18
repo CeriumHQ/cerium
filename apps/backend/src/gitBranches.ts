@@ -18,7 +18,7 @@ import {
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { Git } from "./git.ts";
+import { Git, parseStatusBranch } from "./git.ts";
 
 // What Source control's header does to a folder's repository: which branch is checked out and how it
 // stands against its upstream, switching and managing branches, syncing with the remote, the stash,
@@ -197,34 +197,12 @@ const afterSpaces = (field: string, skip: number): string => {
 };
 
 export const parseGitStatus = (output: string): ParsedStatus => {
-  const fields = output.split("\0");
-  let branch: string | undefined;
-  let commit: string | undefined;
-  let detached = false;
-  let upstreamName: string | undefined;
-  let counts: { ahead: number; behind: number } | undefined;
+  const { branch, head, detached, upstream, entries } = parseStatusBranch(output);
+  const fields = entries.split("\0");
   let changes = 0;
   const unmerged: Array<{ xy: string; path: string }> = [];
   for (let index = 0; index < fields.length; index++) {
     const field = fields[index]!;
-    if (field === "") continue;
-    if (field.startsWith("# ")) {
-      const header = field.slice(2);
-      if (header.startsWith("branch.oid ")) {
-        const oid = header.slice("branch.oid ".length);
-        if (/^[0-9a-f]{7,}$/i.test(oid)) commit = oid.slice(0, 7);
-      } else if (header.startsWith("branch.head ")) {
-        const head = header.slice("branch.head ".length);
-        if (head === "(detached)") detached = true;
-        else branch = head;
-      } else if (header.startsWith("branch.upstream ")) {
-        upstreamName = header.slice("branch.upstream ".length);
-      } else if (header.startsWith("branch.ab ")) {
-        const match = /^\+(\d+) -(\d+)$/.exec(header.slice("branch.ab ".length));
-        if (match) counts = { ahead: Number(match[1]), behind: Number(match[2]) };
-      }
-      continue;
-    }
     const kind = field[0];
     if (kind === "1") changes++;
     else if (kind === "2") {
@@ -239,18 +217,9 @@ export const parseGitStatus = (output: string): ParsedStatus => {
   }
   return {
     ...(branch === undefined ? {} : { branch }),
-    ...(commit === undefined ? {} : { commit }),
+    ...(head === undefined ? {} : { commit: head.slice(0, 7) }),
     detached,
-    ...(upstreamName === undefined
-      ? {}
-      : {
-          upstream: {
-            name: upstreamName,
-            ahead: counts?.ahead ?? 0,
-            behind: counts?.behind ?? 0,
-            gone: counts === undefined,
-          },
-        }),
+    ...(upstream === undefined ? {} : { upstream }),
     changes,
     unmerged,
   };

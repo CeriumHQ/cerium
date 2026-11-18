@@ -213,8 +213,8 @@ export const Handlers = MachineRpcs.toLayer(
     });
 
     return MachineRpcs.of({
-      SourceControl: ({ threadId, command }) =>
-        sourceControl.run(threadId, command).pipe(Effect.mapError(refuse)),
+      SourceControl: ({ threadId, command, refreshCheckout }) =>
+        sourceControl.run(threadId, command, refreshCheckout).pipe(Effect.mapError(refuse)),
       RelatedWorkThreads: ({ url }) => sourceControl.related(url).pipe(Effect.mapError(refuse)),
       ListCheckouts: ({ root }) =>
         Effect.gen(function* () {

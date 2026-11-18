@@ -2864,6 +2864,7 @@ function Workspace() {
               <WorkspaceStatus
                 key={workspaceThread.id}
                 threadId={workspaceThread.id as ThreadId}
+                checkoutFolder={workspaceThread.worktree?.root ?? workspaceThread.cwd ?? ""}
                 projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
                 onOpenSourceControl={() => {
                   if (!gitOpen) toggleGit();

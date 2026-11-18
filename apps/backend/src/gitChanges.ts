@@ -13,7 +13,7 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
 import type { Drafts } from "./drafts.ts";
 import { DIFF_BYTES, DIFF_CONTEXT, fileDiffOf, parseDiff, pathSegments } from "./files.ts";
-import { explainGit, Git, gitComplaint, GitError, gitFailure } from "./git.ts";
+import { explainGit, Git, gitComplaint, GitError, gitFailure, parseStatusBranch } from "./git.ts";
 
 // What the Source control panel's Changes shows of a repository and does to it: what's staged and
 // what isn't, staging, unstaging and discarding files or lines, and committing. Git does the work, as
@@ -301,6 +301,18 @@ export class GitChanges extends Context.Service<
   {
     /** What's staged, what isn't and what's conflicted in the repository `root` is in. */
     status(root: string): Effect.Effect<GitStatus, GitError>;
+    /** The file status and branch headers from one read at the repository's top. */
+    checkoutStatus(top: string): Effect.Effect<
+      {
+        readonly branch: string | undefined;
+        readonly head: string | undefined;
+        readonly upstream: ReturnType<typeof parseStatusBranch>["upstream"];
+        readonly staged: number;
+        readonly unstaged: number;
+        readonly conflicted: number;
+      },
+      GitError
+    >;
     /** One side of a changed file's diff; `path` and `from` are from the repository's top. */
     diff(
       root: string,
@@ -357,32 +369,48 @@ export class GitChanges extends Context.Service<
             : Effect.succeed(spec!),
         );
 
-      const status = Effect.fn("GitChanges.status")(function* (root: string) {
-        const repository = yield* git.repository(root);
-        if (repository === undefined)
-          return { repository: false, staged: [], unstaged: [], conflicted: [] } satisfies GitStatus;
+      const readStatus = Effect.fn("GitChanges.readStatus")(function* (top: string, withBranch: boolean) {
         const result = yield* git.run(
-          repository.top,
-          ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+          top,
+          ["status", "--porcelain=v2", "-z", "--untracked-files=all", ...(withBranch ? ["--branch"] : [])],
           { look: true },
         );
         if (result.code !== 0 && !result.truncated)
           return yield* gitFailure(result, "Git couldn't say what changed.");
-        const { text, more } = leadingFields(result.stdout, MAX_STATUS_FIELDS);
+        const { entries, ...branch } = parseStatusBranch(result.stdout);
+        const { text, more } = leadingFields(entries, MAX_STATUS_FIELDS);
         const { staged, unstaged, conflicted } = parseStatusV2(text);
         const total = staged.length + unstaged.length + conflicted.length;
         const keep = (list: Array<GitFileChange>, room: number) => list.slice(0, Math.max(0, room));
         const keptConflicted = keep(conflicted, MAX_CHANGES);
         const keptStaged = keep(staged, MAX_CHANGES - keptConflicted.length);
         const keptUnstaged = keep(unstaged, MAX_CHANGES - keptConflicted.length - keptStaged.length);
-        return {
+        const status = {
           repository: true,
-          top: repository.top,
+          top,
           staged: keptStaged,
           unstaged: keptUnstaged,
           conflicted: keptConflicted,
           ...(result.truncated || more || total > MAX_CHANGES ? { truncated: true as const } : {}),
         } satisfies GitStatus;
+        return { status, branch };
+      });
+      const status = Effect.fn("GitChanges.status")(function* (root: string) {
+        const repository = yield* git.repository(root);
+        if (repository === undefined)
+          return { repository: false, staged: [], unstaged: [], conflicted: [] } satisfies GitStatus;
+        return (yield* readStatus(repository.top, false)).status;
+      });
+      const checkoutStatus = Effect.fn("GitChanges.checkoutStatus")(function* (top: string) {
+        const { status, branch } = yield* readStatus(top, true);
+        return {
+          branch: branch.branch,
+          head: branch.head,
+          upstream: branch.upstream,
+          staged: status.staged.length,
+          unstaged: status.unstaged.length,
+          conflicted: status.conflicted.length,
+        };
       });
 
       const diffArgs = (path: string, side: GitSide, context: number, from?: string) =>
@@ -626,7 +654,17 @@ export class GitChanges extends Context.Service<
         return yield* gitFailure(result, "Git couldn't read the last commit.");
       });
 
-      return GitChanges.of({ status, diff, stage, unstage, discard, applyLines, commit, lastMessage });
+      return GitChanges.of({
+        status,
+        checkoutStatus,
+        diff,
+        stage,
+        unstage,
+        discard,
+        applyLines,
+        commit,
+        lastMessage,
+      });
     }),
   );
 }

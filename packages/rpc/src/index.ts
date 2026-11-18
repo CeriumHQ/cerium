@@ -193,7 +193,12 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  */
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("SourceControl", {
-    payload: { threadId: ThreadId, command: SourceControlCommand },
+    payload: {
+      threadId: ThreadId,
+      command: SourceControlCommand,
+      /** A GitHub refresh can reuse the checkout status until a file change or foreground read. */
+      refreshCheckout: Schema.optionalKey(Schema.Boolean),
+    },
     success: SourceControlResult,
     error: CeriumError,
   }),
