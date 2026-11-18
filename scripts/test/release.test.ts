@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -181,4 +181,35 @@ describe("planning a nightly", () => {
       rmSync(repo, { recursive: true, force: true });
     }
   });
+});
+
+it("keeps a stable tag on its existing commit when an earlier nightly is selected", () => {
+  const repo = mkdtempSync(join(tmpdir(), "cerium-stable-tag-"));
+  try {
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args], {
+        cwd: repo,
+        encoding: "utf8",
+      });
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "feat: first release");
+    git("tag", "v0.1.0-nightly.n000001");
+    git("commit", "-q", "--allow-empty", "-m", "fix: later build");
+    git("tag", "v0.1.0");
+
+    const outputs = join(repo, "outputs");
+    const message = execFileSync(
+      process.execPath,
+      [join(import.meta.dirname, "..", "release.ts"), "stable"],
+      {
+        cwd: repo,
+        env: { ...process.env, GITHUB_OUTPUT: outputs },
+        encoding: "utf8",
+      },
+    );
+    expect(message).toContain("v0.1.0 already points to another commit");
+    expect(readFileSync(outputs, "utf8")).toContain("publish=false");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });

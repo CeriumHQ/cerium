@@ -1,0 +1,109 @@
+name: Prepare stable candidate
+
+on:
+  schedule:
+    - cron: "7 0 * * *" # 70 minutes before the stable schedule
+
+# Ad hoc packages can be reused. The preparation workflow receives only a signing-presence boolean.
+
+permissions:
+  contents: read
+
+# Preparation and cleanup serialize independently of the scheduled and manual stable releases.
+concurrency:
+  group: stable-candidate
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    name: Plan candidate
+    if: ${{ github.ref == 'refs/heads/main' && !github.event.repository.private && !github.event.repository.fork && github.run_attempt == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      draft: ${{ steps.draft.outputs.draft }}
+      release-id: ${{ steps.draft.outputs.release-id }}
+      commit: ${{ steps.plan.outputs.commit }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Prune expired candidate drafts
+        continue-on-error: true
+        run: node scripts/stable-candidate.ts prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: plan
+        run: node scripts/release.ts stable
+      - id: draft
+        name: Start a private draft after the nightly and two quiet hours
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        run: node scripts/stable-candidate.ts prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNING_CONFIGURED: ${{ secrets.MAC_CERTIFICATE != '' || secrets.MAC_CERTIFICATE_PASSWORD != '' ||
+            secrets.APPLE_API_KEY != '' || secrets.APPLE_API_KEY_ID != '' || secrets.APPLE_API_ISSUER != '' }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
+          VERSION: ${{ steps.plan.outputs.version }}
+
+  build:
+    name: Build candidate
+    needs: plan
+    if: ${{ needs.plan.outputs.draft != '' && github.run_attempt == '1' }}
+    uses: ./.github/workflows/stable-build.yml
+    permissions:
+      contents: write
+    with:
+      commit: ${{ needs.plan.outputs.commit }}
+      version: ${{ needs.plan.outputs.version }}
+      candidate: ${{ needs.plan.outputs.draft }}
+
+  seal:
+    # Stable matches this successful job against its own version and commit before opening a draft.
+    name: Seal candidate ${{ needs.plan.outputs.version }} from ${{ needs.plan.outputs.commit }}
+    needs: [plan, build]
+    if: ${{ github.run_attempt == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      digest: ${{ steps.seal.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: seal
+        run: node scripts/stable-candidate.ts seal
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.plan.outputs.release-id }}
+          CANDIDATE: ${{ needs.plan.outputs.draft }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          VERSION: ${{ needs.plan.outputs.version }}
+
+  attest:
+    # The successful job name binds the manifest to this Actions attempt independently of GitHub
+    # Release metadata. Only its digest goes into the public workflow record.
+    name: Manifest ${{ needs.plan.outputs.release-id }} ${{ needs.seal.outputs.digest }}
+    needs: [plan, seal]
+    if: ${{ needs.seal.outputs.digest != '' && github.run_attempt == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - run: "true"

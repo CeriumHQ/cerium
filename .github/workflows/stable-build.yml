@@ -1,0 +1,101 @@
+name: Build stable release
+
+on:
+  workflow_call:
+    inputs:
+      commit:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      candidate:
+        description: The private candidate draft to receive the outputs, if preparing ahead of release.
+        type: string
+    secrets:
+      MAC_CERTIFICATE:
+        required: false
+      MAC_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_API_KEY:
+        required: false
+      APPLE_API_KEY_ID:
+        required: false
+      APPLE_API_ISSUER:
+        required: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  web:
+    name: Build the web app
+    if: ${{ inputs.candidate == '' || github.run_attempt == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/web
+        env:
+          CERIUM_STABLE_CANDIDATE: ${{ inputs.candidate != '' }}
+        with:
+          version: ${{ inputs.version }}
+      - name: Store the candidate web build
+        if: ${{ inputs.candidate != '' }}
+        run: node scripts/stable-candidate.ts upload-web
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate }}
+          VERSION: ${{ inputs.version }}
+
+  package:
+    name: Package (${{ matrix.target.platform }} ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
+    if: ${{ inputs.candidate == '' || github.run_attempt == '1' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        locales: [full, english]
+        target:
+          - { platform: Linux, arch: x64, runner: ubuntu-latest, timeout: 25 }
+          - { platform: Linux, arch: Arm64, runner: ubuntu-24.04-arm, timeout: 25 }
+          - { platform: Windows, arch: x64, runner: windows-latest, timeout: 30 }
+          - { platform: Windows, arch: Arm64, runner: windows-11-arm, timeout: 30 }
+          - { platform: macOS, arch: Arm64, runner: macos-15, timeout: 40 }
+          - { platform: macOS, arch: x64, runner: macos-15-intel, timeout: 40 }
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: ${{ matrix.target.timeout }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          filter: "!@cerium/relay !@cerium/site"
+      - uses: ./.github/actions/package
+        env:
+          CERIUM_STABLE_CANDIDATE: ${{ inputs.candidate != '' }}
+        with:
+          version: ${{ inputs.version }}
+          compression: maximum
+          chromium-locales: ${{ matrix.locales }}
+          sentry-dsn: ${{ vars.SENTRY_DSN }}
+          mac-certificate: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE || '' }}
+          mac-certificate-password: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          apple-api-key: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY || '' }}
+          apple-api-key-id: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY_ID || '' }}
+          apple-api-issuer: ${{ runner.os == 'macOS' && secrets.APPLE_API_ISSUER || '' }}
+      - name: Store the smoke-tested candidate packages
+        if: ${{ inputs.candidate != '' }}
+        run: node scripts/stable-candidate.ts upload-package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate }}
+          VERSION: ${{ inputs.version }}
+          CHROMIUM_LOCALES: ${{ matrix.locales }}
+          SENTRY_DSN: ${{ vars.SENTRY_DSN }}

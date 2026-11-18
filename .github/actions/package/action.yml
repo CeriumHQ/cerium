@@ -93,6 +93,11 @@ runs:
         # The newest Fedora release, the one most of its users run.
         FEDORA: fedora:latest
 
+    - id: react-compiler-cache
+      uses: ./.github/actions/react-compiler-cache
+      with:
+        mode: desktop
+
     - name: Build
       shell: bash
       run: |
@@ -105,9 +110,11 @@ runs:
         CERIUM_VERSION: ${{ inputs.version }}
         CERIUM_SENTRY_DSN: ${{ inputs.sentry-dsn }}
         CERIUM_OPTIONAL_DICTATION: "1"
+        CERIUM_REACT_COMPILER_CACHE: ${{ steps.react-compiler-cache.outputs.file }}
 
     # electron-builder downloads Electron, NSIS, the AppImage tools, fpm and the rest into these folders.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - if: env.CERIUM_STABLE_CANDIDATE != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           ~/AppData/Local/electron/Cache
@@ -118,14 +125,14 @@ runs:
           ~/Library/Caches/electron-builder
         key: electron-builder-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
-    # fpm, which electron-builder brings, builds the .rpm with the system's rpmbuild, which the x64
-    # image already has.
-    - name: Install rpmbuild
+    # Both architectures install the .deb during the smoke test. The image's package lists can
+    # refer to superseded Ubuntu packages even when rpmbuild is already installed.
+    - name: Refresh Ubuntu package lists and ensure rpmbuild is installed
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        command -v rpmbuild > /dev/null ||
-          { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends rpm; }
+        sudo apt-get -o Acquire::Retries=3 update -q
+        command -v rpmbuild > /dev/null || sudo apt-get install -y -q --no-install-recommends rpm
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
     # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
@@ -265,7 +272,21 @@ runs:
           hdiutil attach "$out"/"$prefix"-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
           codesign --verify --deep --strict "$mount/Cerium.app"
           smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium" --lang=fr
-          hdiutil detach "$mount" > /dev/null
+          echo "Detaching the smoke test disk image."
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            const detach = (flags) =>
+              execFileSync("hdiutil", ["detach", ...flags, process.argv[1]], {
+                timeout: 30_000,
+                killSignal: "SIGKILL",
+                stdio: "inherit",
+              });
+            try {
+              detach([]);
+            } catch {
+              detach(["-force"]);
+            }
+          ' "$mount"
         else
           export LANGUAGE=fr
           # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
@@ -312,7 +333,7 @@ runs:
         UPLOAD_TOKEN: ${{ inputs.github-token }}
 
     - name: Keep the smoke test's logs
-      if: failure()
+      if: failure() && env.CERIUM_STABLE_CANDIDATE != 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
@@ -324,7 +345,7 @@ runs:
 
     # Stored as they are: the packages are compressed already, and zipping them again slowed the Intel
     # Mac's upload to a third of Linux's.
-    - if: inputs.release == ''
+    - if: env.CERIUM_STABLE_CANDIDATE != 'true' && inputs.release == ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
@@ -346,7 +367,7 @@ runs:
 
     # The update file publishing merges with the other processor's, the one file a draft release's
     # runners share.
-    - if: inputs.release != ''
+    - if: env.CERIUM_STABLE_CANDIDATE != 'true' && inputs.release != ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}

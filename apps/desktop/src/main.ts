@@ -941,7 +941,10 @@ void app.whenReady().then(() => {
         if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
         return backend.connection();
       },
-      stop: async () => backend?.stop(),
+      stop: () => {
+        backendActivity.abort();
+        return stopBackend();
+      },
     });
   }
   if (startHidden) {

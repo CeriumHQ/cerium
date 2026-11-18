@@ -74,7 +74,12 @@ export const runSmokeTest = (options: {
         backendLog === undefined ? "The backend wrote no log." : `The backend's log ends:\n${backendLog}`,
       );
     }
+    const stopDeadline = setTimeout(() => {
+      report("The smoke test's backend did not stop within 15 seconds.");
+      app.exit(1);
+    }, 15_000);
     await options.stop().catch(() => undefined);
+    clearTimeout(stopDeadline);
     app.exit(passed ? 0 : 1);
   };
   const check = () => {

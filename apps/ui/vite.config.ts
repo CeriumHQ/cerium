@@ -1,12 +1,12 @@
-import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
-import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { artifactHostPage } from "@cerium/artifacts";
 import { defaultClientConditions, defineConfig, transformWithOxc, type Plugin } from "vite-plus";
+import { reactCompiler } from "./scripts/reactCompiler.ts";
 
 /** Written by `bun run dev:backend`: where the development backend listens and its launch token. */
 const connectionFile = fileURLToPath(new URL("../../.cerium-dev/connection.json", import.meta.url));
@@ -228,7 +228,7 @@ export default defineConfig(async ({ command, mode }) => {
     worker: { plugins: () => (web ? [withoutSpeech()] : optionalSpeech ? [optionalSpeechWorker()] : []) },
     plugins: [
       react(),
-      babel({ presets: [reactCompilerPreset()] }),
+      await reactCompiler(command === "build" ? process.env["CERIUM_REACT_COMPILER_CACHE"] : undefined, mode),
       tailwindcss(),
       artifactHost(),
       web ? webClient(version) : devBackendConnection(),

@@ -1,7 +1,7 @@
 import { Checkpoints } from "@cerium/orchestrator";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Context, Effect, Fiber, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, Fiber, FileSystem, Layer, Path, Schedule } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { createHash } from "node:crypto";
@@ -192,10 +192,19 @@ describe("Checkpoints", () => {
         ),
         Checkpoints,
       );
-      // The OS reports changes a moment after they happen.
-      const settle = Effect.sleep("300 millis");
-      const first = yield* checkpoints.save(folder, { reuse: true });
-      yield* settle;
+      // FSEvents can report setup writes and deletions after the watcher starts. A deleted file
+      // has no timestamp, so the watcher correctly invalidates the snapshot in that case.
+      yield* write("fixture-scratch", "setup");
+      yield* fs.remove(path.join(folder, "fixture-scratch"));
+      const reuse = checkpoints.save(folder, { reuse: true });
+      const first = yield* reuse;
+      const quietSave = Effect.gen(function* () {
+        yield* Effect.sleep("300 millis");
+        const before = runs;
+        assert.strictEqual(yield* reuse, first);
+        return runs === before;
+      });
+      yield* quietSave.pipe(Effect.repeat({ until: (quiet) => quiet }), Effect.timeout("5 seconds"));
       const ran = runs;
       assert.strictEqual(yield* checkpoints.save(folder, { reuse: true }), first);
       assert.strictEqual(runs, ran);
@@ -203,17 +212,20 @@ describe("Checkpoints", () => {
       // What snapshots leave out doesn't count as a change.
       yield* write("node_modules/dep/index.js", "upgraded\n");
       yield* write(".git/scratch", "git's own\n");
-      yield* settle;
-      assert.strictEqual(yield* checkpoints.save(folder, { reuse: true }), first);
+      yield* Effect.sleep("300 millis");
+      assert.strictEqual(yield* reuse, first);
       assert.strictEqual(runs, ran);
 
+      const changedSince = (previous: string) =>
+        reuse.pipe(
+          Effect.repeat({ until: (tree) => tree !== previous, schedule: Schedule.spaced("25 millis") }),
+          Effect.timeout("5 seconds"),
+        );
       yield* write("src/a.ts", "changed\n");
-      yield* settle;
-      const second = yield* checkpoints.save(folder, { reuse: true });
+      const second = yield* changedSince(first);
       assert.notStrictEqual(second, first);
       yield* fs.remove(path.join(folder, "src/b.ts"));
-      yield* settle;
-      const third = yield* checkpoints.save(folder, { reuse: true });
+      const third = yield* changedSince(second);
       assert.notStrictEqual(third, second);
       // A save that doesn't ask to reuse always reads the folder.
       const before = runs;
