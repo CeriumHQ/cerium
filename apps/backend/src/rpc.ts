@@ -46,6 +46,7 @@ import { homedir } from "node:os";
 import { Automations, type AutomationError } from "./automations.ts";
 import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
+import { watchComputerUse } from "./computerUse.ts";
 import { continuations } from "./continuation.ts";
 import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
@@ -155,6 +156,7 @@ export const Handlers = MachineRpcs.toLayer(
     const releases = yield* Releases;
     const effortRouter = yield* EffortRouter;
     const computer = yield* Computer;
+    const computerUse = yield* watchComputerUse(computer, settings);
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
     const pushes = yield* Pushes;
@@ -615,22 +617,7 @@ export const Handlers = MachineRpcs.toLayer(
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
       RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
-      WatchComputerUse: () =>
-        Stream.unwrap(computer.checkPermission.pipe(Effect.as(computer.changes))).pipe(
-          // macOS asks for the permission in System Settings, outside Cerium: look again while it's missing.
-          Stream.merge(
-            Stream.tick("3 seconds").pipe(
-              Stream.mapEffect(() =>
-                computer.status.pipe(
-                  Effect.flatMap((now) =>
-                    now.permission === "needed" ? computer.checkPermission : Effect.void,
-                  ),
-                ),
-              ),
-              Stream.drain,
-            ),
-          ),
-        ),
+      WatchComputerUse: () => computerUse,
       InstallComputerUse: () =>
         computer.install.pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       OpenComputerPermissions: () =>

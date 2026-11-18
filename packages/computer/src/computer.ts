@@ -6,6 +6,7 @@ import {
   Effect,
   FileSystem,
   Layer,
+  Option,
   Path,
   Schedule,
   Schema,
@@ -221,7 +222,11 @@ export class Computer extends Context.Service<
           new ComputerError({ reason, message });
 
         /** Runs agent-desktop with `args` and returns what it printed and how it exited. */
-        const spawn = (program: string, args: ReadonlyArray<string>) =>
+        const spawn = (
+          program: string,
+          args: ReadonlyArray<string>,
+          killOptions?: ChildProcess.KillOptions,
+        ) =>
           Effect.scoped(
             Effect.gen(function* () {
               const handle = yield* spawner.spawn(
@@ -229,6 +234,7 @@ export class Computer extends Context.Service<
                   env: { AGENT_DESKTOP_HOME: options.stateDirectory },
                   extendEnv: true,
                   stdin: "ignore",
+                  ...killOptions,
                 }),
               );
               const [stdout, stderr] = yield* Effect.all(
@@ -377,22 +383,33 @@ export class Computer extends Context.Service<
           installLock.withPermits(1),
         );
 
-        const checkPermission = Effect.gen(function* () {
-          if ((yield* SubscriptionRef.get(status)).tool.state !== "ready" || executable === undefined) return;
-          const { stdout } = yield* spawn(executable, ["permissions"]);
+        // Setup and polling can ask at the same time. Share the short probe and rate-limit retries.
+        const probePermission = yield* Effect.gen(function* () {
+          if (executable === undefined) return;
+          const { stdout } = yield* spawn(executable, ["permissions"], { forceKillAfter: "1 second" }).pipe(
+            Effect.timeout("3 seconds"),
+          );
           const data = parseEnvelope(stdout)?.data as
             | Readonly<Record<string, { readonly state?: unknown } | undefined>>
             | undefined;
-          if (data === undefined) return;
+          if (typeof data !== "object" || data === null) return;
           const needed = ["accessibility", "screen_recording"].some((key) => data[key]?.state === "denied");
           const granted = data["accessibility"]?.state === "granted";
           const permission = needed ? "needed" : granted ? "granted" : undefined;
-          yield* SubscriptionRef.update(status, (current): ComputerUseStatus =>
-            permission === undefined
-              ? { tool: current.tool, sessions: current.sessions }
-              : { ...current, permission },
+          yield* SubscriptionRef.updateSome(status, (current) =>
+            current.tool.state !== "ready" || current.permission === permission
+              ? Option.none()
+              : Option.some(
+                  permission === undefined
+                    ? { tool: current.tool, sessions: current.sessions }
+                    : { ...current, permission },
+                ),
           );
-        }).pipe(Effect.ignore);
+        }).pipe(Effect.ignore, Effect.cachedWithTTL("3 seconds"));
+
+        const checkPermission = SubscriptionRef.get(status).pipe(
+          Effect.flatMap((current) => (current.tool.state === "ready" ? probePermission : Effect.void)),
+        );
 
         /** The installed executable, installing it first when it isn't there yet. */
         const ready: Effect.Effect<string, ComputerError> = Effect.gen(function* () {
