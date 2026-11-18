@@ -6,10 +6,11 @@ import { createHash } from "node:crypto";
 import { appendFileSync, closeSync, createReadStream, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { englishArtifact } from "../apps/desktop/src/chromiumLocales.ts";
 import { mergeUpdateFiles } from "./merge-update-files.ts";
 
 const PREFIX = "cerium-stable-candidate-";
-const MARKER = "cerium stable candidate v1";
+const MARKER = "cerium stable candidate v2";
 const BOT = "github-actions[bot]";
 const DEPLOY_ARCHIVE = "candidate-deploy.tar.gz";
 const CANDIDATE_WORKFLOW = ".github/workflows/stable-candidate.yml";
@@ -114,10 +115,13 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const manifestDigest = (body: string) => createHash("sha256").update(body).digest("hex");
 
 const platforms = ["Linux-X64", "Linux-ARM64", "Windows-X64", "Windows-ARM64", "macOS-X64", "macOS-ARM64"];
-const recordName = (platform: string) => `candidate-${platform}.json`;
+const localeVariants = ["full", "english"] as const;
+type LocaleVariant = (typeof localeVariants)[number];
+const builds = platforms.flatMap((platform) => localeVariants.map((locale) => ({ platform, locale })));
+const recordName = (build: string) => `candidate-${build}.json`;
 const webTar = () => `cerium-web-${version()}.tar.gz`;
 
-function packageNames(platform: string) {
+function fullPackageNames(platform: string) {
   const arm = platform.endsWith("-ARM64");
   const arch = arm ? "arm64" : "x64";
   const label = `Cerium-${version()}`;
@@ -139,6 +143,13 @@ function packageNames(platform: string) {
   };
 }
 
+function packageNames(platform: string, locale: LocaleVariant) {
+  const { files, update } = fullPackageNames(platform);
+  if (locale === "english") return { files: files.map(englishArtifact), update };
+  if (platform === "Windows-X64") files.push(`cerium-dictation-${version()}.wasm`);
+  return { files, update };
+}
+
 function config() {
   return manifestDigest(JSON.stringify([MARKER, "ad hoc", env("SENTRY_DSN")]));
 }
@@ -151,8 +162,8 @@ function adHoc() {
 
 const publicNames = () =>
   new Set([
-    ...platforms.flatMap((platform) => {
-      const { files, update } = packageNames(platform);
+    ...builds.flatMap(({ platform, locale }) => {
+      const { files, update } = packageNames(platform, locale);
       return [...files, update];
     }),
     webTar(),
@@ -392,7 +403,9 @@ function find() {
 async function uploadPackage() {
   const platform = `${env("RUNNER_OS")}-${env("RUNNER_ARCH")}`;
   requireCandidate(platforms.includes(platform), "Unexpected candidate runner.");
-  const { files, update } = packageNames(platform);
+  const locale = env("CHROMIUM_LOCALES");
+  requireCandidate(locale === "full" || locale === "english", "Unexpected candidate Chromium locales.");
+  const { files, update } = packageNames(platform, locale);
   const out = "apps/desktop/out";
   const record: PackageRecord = {
     files: await Promise.all(files.map((name) => digest(join(out, name), name))),
@@ -403,7 +416,7 @@ async function uploadPackage() {
     record.update.split(/\r?\n/).includes(`version: ${version()}`),
     "The package update file names another version.",
   );
-  const recordFile = temp(recordName(platform));
+  const recordFile = temp(recordName(`${platform}-${locale}`));
   writeFileSync(recordFile, JSON.stringify(record));
   upload([...files.map((file) => join(out, file)), recordFile]);
 }
@@ -422,12 +435,13 @@ async function seal() {
   const id = Number(env("RELEASE_ID"));
   const release = getRelease(id);
   const draft = exactDraft(release);
-  const recordPlatforms = [...platforms, "web"];
+  const recordBuilds = builds.map(({ platform, locale }) => `${platform}-${locale}`);
+  const recordKeys = [...recordBuilds, "web"];
   const initialNames = new Set([
-    ...platforms.flatMap((platform) => packageNames(platform).files),
+    ...builds.flatMap(({ platform, locale }) => packageNames(platform, locale).files),
     webTar(),
     DEPLOY_ARCHIVE,
-    ...recordPlatforms.map(recordName),
+    ...recordKeys.map(recordName),
   ]);
   const initial = new Map(assets(release, initialNames).map((asset) => [asset.name, asset]));
   const readRecord = async <T>(platform: string): Promise<T> => {
@@ -444,15 +458,15 @@ async function seal() {
       ),
       "An uploaded asset does not match the builder's digest.",
     );
-  const records = await Promise.all(platforms.map((platform) => readRecord<PackageRecord>(platform)));
+  const records = await Promise.all(recordBuilds.map((key) => readRecord<PackageRecord>(key)));
   const configuration = records[0]!.config;
   requireCandidate(
     /^[a-f0-9]{64}$/.test(configuration) && records.every((record) => record.config === configuration),
     "The candidate packages were built with different settings.",
   );
   const updates = new Map<string, string[]>();
-  for (const [index, platform] of platforms.entries()) {
-    const { files, update } = packageNames(platform);
+  for (const [index, { platform, locale }] of builds.entries()) {
+    const { files, update } = packageNames(platform, locale);
     const record = records[index]!;
     checkFiles(record.files, files);
     const texts = updates.get(update) ?? [];
@@ -468,8 +482,8 @@ async function seal() {
     merged.set(name, await digest(path, name));
   }
   upload([...updates.keys()].map(temp));
-  for (const platform of recordPlatforms)
-    api(`${repo()}/releases/assets/${initial.get(recordName(platform))!.id}`, "DELETE");
+  for (const key of recordKeys)
+    api(`${repo()}/releases/assets/${initial.get(recordName(key))!.id}`, "DELETE");
 
   const sealed = getRelease(id);
   exactDraft(sealed);

@@ -55,6 +55,8 @@ export const runSmokeTest = (options: {
     appendFileSync(join(options.folder, "smoke-test.log"), `${line}\n`);
   };
   const seconds = () => `${((Date.now() - started) / 1000).toFixed(1)} s`;
+  const locale = app.getLocale();
+  const expectedLocale = process.env["CERIUM_SMOKE_LOCALE"];
 
   let finished = false;
   let listening: string | undefined;
@@ -72,12 +74,20 @@ export const runSmokeTest = (options: {
         backendLog === undefined ? "The backend wrote no log." : `The backend's log ends:\n${backendLog}`,
       );
     }
+    const stopDeadline = setTimeout(() => {
+      report("The smoke test's backend did not stop within 15 seconds.");
+      app.exit(1);
+    }, 15_000);
     await options.stop().catch(() => undefined);
+    clearTimeout(stopDeadline);
     app.exit(passed ? 0 : 1);
   };
   const check = () => {
     if (listening !== undefined && painted) {
-      void finish(true, `the backend listens on ${listening} and the UI painted its launch screen.`);
+      void finish(
+        true,
+        `the backend listens on ${listening} and the UI painted its launch screen (Chromium locale ${locale}).`,
+      );
     }
   };
 
@@ -88,6 +98,11 @@ export const runSmokeTest = (options: {
     ];
     void finish(false, `${missing.join(", and ")} within ${DEADLINE_MS / 1000} s.`);
   }, DEADLINE_MS);
+
+  if (expectedLocale !== undefined && locale !== expectedLocale) {
+    void finish(false, `Chromium selected ${locale}; expected ${expectedLocale}.`);
+    return;
+  }
 
   const { webContents } = options.window;
   ipcMain.on("cerium:window-ready", (event: IpcMainEvent) => {

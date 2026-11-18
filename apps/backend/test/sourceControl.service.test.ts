@@ -7,7 +7,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Context, Effect, FileSystem, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { Git } from "../src/git.ts";
-import { GitBranches } from "../src/gitBranches.ts";
 import { GitChanges } from "../src/gitChanges.ts";
 import { GitHub } from "../src/github.ts";
 import { SourceControl } from "../src/sourceControl.ts";
@@ -33,6 +32,7 @@ const fixture = Effect.gen(function* () {
   yield* command(["config", "user.email", "test@example.invalid"]);
   yield* command(["-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "initial"]);
   const id = "thr_source" as ThreadId;
+  const otherId = "thr_other" as ThreadId;
   const agentId = "agt_source" as AgentId;
   const thread: ThreadInfo = {
     id,
@@ -54,6 +54,14 @@ const fixture = Effect.gen(function* () {
     updatedAt: 0,
   };
   const notices: Array<string> = [];
+  const gitReads: Array<ReadonlyArray<string>> = [];
+  const observedGit = Layer.succeed(Git, {
+    ...git,
+    run: (cwd, args, options) => {
+      gitReads.push(args);
+      return git.run(cwd, args, options);
+    },
+  });
   let pull = {
     url: "https://github.com/example/repo/pull/1",
     title: "Test change",
@@ -83,7 +91,8 @@ const fixture = Effect.gen(function* () {
         }),
     } as unknown as Orchestrator["Service"]),
     Layer.succeed(Store, {
-      getThread: () => Effect.succeedSome(thread),
+      getThread: (threadId: ThreadId) =>
+        Effect.succeedSome(threadId === otherId ? { ...thread, id: otherId, cwd: `${root}/nested` } : thread),
       listEvents: () => Effect.succeed([]),
     } as unknown as Store["Service"]),
     Layer.succeed(GitHub, {
@@ -102,8 +111,8 @@ const fixture = Effect.gen(function* () {
     } as unknown as ProjectScripts["Service"]),
     Worktrees.unavailable,
     Checkpoints.unavailable,
-    GitBranches.layer,
-    GitChanges.layer,
+    GitChanges.layer.pipe(Layer.provide(observedGit)),
+    observedGit,
   );
   const layer = SourceControl.layer({ file: `${root}/state/links.json` }).pipe(Layer.provide(layers));
   const context = yield* Layer.build(layer);
@@ -114,8 +123,10 @@ const fixture = Effect.gen(function* () {
     thread,
     lead,
     id,
+    otherId,
     agentId,
     notices,
+    gitReads,
     control: Context.get(context, SourceControl),
     layer,
     setAvailable: () => {
@@ -130,6 +141,82 @@ const fixture = Effect.gen(function* () {
 const Base = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("source control workspace service", () => {
+  it.effect("shares checkout reads across thread folders and invalidates them on refresh", () =>
+    Effect.gen(function* () {
+      const { control, id, otherId, fs, root, command, gitReads } = yield* fixture;
+      yield* fs.makeDirectory(`${root}/nested`);
+      const head = yield* command(["rev-parse", "HEAD"]);
+
+      const initial = yield* control.run(id, { action: "status" });
+      assert.strictEqual(initial.snapshot?.head, head);
+      assert.strictEqual(initial.snapshot?.baseCommit, head);
+      assert.strictEqual(initial.snapshot?.unstaged, 0);
+      assert.deepStrictEqual(
+        gitReads.map(([command]) => command),
+        ["status"],
+      );
+
+      yield* fs.writeFileString(`${root}/nested/new.txt`, "New work\n");
+      const cached = yield* control.run(otherId, { action: "status" }, false);
+      assert.strictEqual(cached.snapshot?.root, initial.snapshot?.root);
+      assert.strictEqual(cached.snapshot?.unstaged, 0);
+      assert.lengthOf(gitReads, 1);
+
+      const refreshed = yield* control.run(otherId, { action: "status" });
+      assert.strictEqual(refreshed.snapshot?.unstaged, 1);
+      assert.strictEqual((yield* control.run(id, { action: "status" }, false)).snapshot?.unstaged, 1);
+      assert.deepStrictEqual(
+        gitReads.map(([command]) => command),
+        ["status", "status"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(Base)),
+  );
+
+  it.effect("discovers and refreshes GitHub pull requests while reusing local Git status", () =>
+    Effect.gen(function* () {
+      const { control, id, gitReads, setAvailable, setPull } = yield* fixture;
+      assert.deepStrictEqual((yield* control.run(id, { action: "status" })).snapshot?.pulls, []);
+      setAvailable();
+      yield* TestClock.adjust("2 minutes");
+      const discovered = yield* control.run(id, { action: "status" }, false);
+      assert.strictEqual(discovered.snapshot?.pulls[0]?.state, "OPEN");
+      setPull("MERGED");
+      yield* TestClock.adjust("30 seconds");
+      const refreshed = yield* control.run(id, { action: "status" }, false);
+      assert.strictEqual(refreshed.snapshot?.pulls[0]?.state, "MERGED");
+      assert.deepStrictEqual(
+        gitReads.map(([command]) => command),
+        ["status"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(Base)),
+  );
+
+  it.effect("reads divergence and resolves the upstream commit only when it differs from HEAD", () =>
+    Effect.gen(function* () {
+      const { control, id, command, gitReads } = yield* fixture;
+      const head = yield* command(["rev-parse", "HEAD"]);
+      yield* command(["branch", "base"]);
+      yield* command(["branch", "--set-upstream-to=base", "main"]);
+      const current = yield* control.run(id, { action: "status" });
+      assert.strictEqual(current.snapshot?.baseRef, "base");
+      assert.strictEqual(current.snapshot?.baseCommit, head);
+      assert.deepStrictEqual(
+        gitReads.map(([command]) => command),
+        ["status"],
+      );
+
+      yield* command(["-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "next"]);
+      const ahead = yield* control.run(id, { action: "status" });
+      assert.strictEqual(ahead.snapshot?.ahead, 1);
+      assert.strictEqual(ahead.snapshot?.behind, 0);
+      assert.strictEqual(ahead.snapshot?.baseCommit, head);
+      assert.deepStrictEqual(
+        gitReads.map(([command]) => command),
+        ["status", "status", "rev-parse"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(Base)),
+  );
+
   it.effect("retains managed workspace inventory when the last conversation moves away", () =>
     Effect.gen(function* () {
       const { control, id, root, command, thread, layer } = yield* fixture;

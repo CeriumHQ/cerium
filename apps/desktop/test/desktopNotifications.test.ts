@@ -1,7 +1,7 @@
 import { NOTIFICATION_KINDS, type ThreadId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { handling } from "../src/desktop/model.ts";
+import { handling } from "../src/notificationPolicy.ts";
 
 const finished = { threadId: "thr_1" as ThreadId, kind: "finished" as const };
 

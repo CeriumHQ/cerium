@@ -17,8 +17,11 @@ import {
 } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import {
+  Cache,
+  Clock,
   Context,
   Effect,
+  Exit,
   FiberMap,
   FileSystem,
   Layer,
@@ -30,7 +33,6 @@ import {
 } from "effect";
 import { Git } from "./git.ts";
 import { GitChanges } from "./gitChanges.ts";
-import { GitBranches } from "./gitBranches.ts";
 import { GitHub } from "./github.ts";
 import { checkoutId } from "./worktree.ts";
 import { parseCheckouts, sameCheckout, insideCheckout } from "./checkouts.ts";
@@ -92,6 +94,7 @@ export class SourceControl extends Context.Service<
     readonly run: (
       threadId: ThreadId,
       command: SourceControlCommand,
+      refreshCheckout?: boolean,
     ) => Effect.Effect<SourceControlResult, OrchestratorError>;
     readonly agent: (
       agentId: AgentId,
@@ -112,7 +115,6 @@ export class SourceControl extends Context.Service<
         const path = yield* Path.Path;
         const git = yield* Git;
         const changes = yield* GitChanges;
-        const branches = yield* GitBranches;
         const github = yield* GitHub;
         const store = yield* Store;
         const orchestrator = yield* Orchestrator;
@@ -130,7 +132,7 @@ export class SourceControl extends Context.Service<
               worktree: { ...thread.worktree, id: checkoutId(thread.worktree.root), managed: true },
             });
         }
-        const discovered = new Map<ThreadId, number>();
+        const discovered = new Map<ThreadId, { root: string; branch: string; at: number }>();
         const refreshedLinks = new Map<string, number>();
         yield* Stream.runForEach(scripts.ended, (event) =>
           Effect.sync(() => {
@@ -196,6 +198,36 @@ export class SourceControl extends Context.Service<
           if (thread?.cwd === undefined) return yield* fail("Choose a work thread with a repository first.");
           return { ...thread, cwd: thread.cwd };
         });
+        // GitHub refreshes can reuse these across threads. File changes and foreground reads replace
+        // the checkout entry, including any base refs resolved from that reading.
+        const roots = yield* Cache.makeWith(
+          (folder: string) => git.requireRepository(folder).pipe(Effect.map((repository) => repository.top)),
+          { capacity: 64, timeToLive: (exit) => (Exit.isSuccess(exit) ? "Infinity" : 0) },
+        );
+        const checkouts = yield* Cache.makeWith(
+          (root: string) =>
+            Effect.gen(function* () {
+              const status = yield* changes.checkoutStatus(root);
+              const bases = yield* Cache.makeWith(
+                (ref: string) =>
+                  git
+                    .run(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], {
+                      look: true,
+                    })
+                    .pipe(Effect.map((result) => (result.code === 0 ? result.stdout.trim() : ""))),
+                { capacity: 16, timeToLive: (exit) => (Exit.isSuccess(exit) ? "Infinity" : 0) },
+              );
+              return { status, bases };
+            }),
+          { capacity: 64, timeToLive: (exit) => (Exit.isSuccess(exit) ? "Infinity" : 0) },
+        );
+        const rootOf = (thread: { cwd: string; worktree?: ThreadWorktree }, refresh: boolean) => {
+          if (thread.worktree) return Effect.succeed(thread.worktree.root);
+          const folder = path.resolve(thread.cwd);
+          return (refresh ? Cache.refresh(roots, folder) : Cache.get(roots, folder)).pipe(
+            Effect.mapError(refuse),
+          );
+        };
         const pullRead = Effect.fn("SourceControl.pullRead")(function* (
           root: string,
           url: string,
@@ -285,25 +317,34 @@ export class SourceControl extends Context.Service<
           };
         });
         const snapshot = Effect.fn("SourceControl.snapshot")(function* (
-          threadId: ThreadId,
+          thread: Effect.Success<ReturnType<typeof threadOf>>,
+          root: string,
+          refresh: boolean,
         ): Effect.fn.Return<SourceControlSnapshot, OrchestratorError> {
-          const thread = yield* threadOf(threadId).pipe(Effect.mapError(refuse));
-          const root =
-            thread.worktree?.root ??
-            (yield* readGit(thread.cwd, ["rev-parse", "--show-toplevel"]).pipe(Effect.mapError(refuse)));
-          const [status, state, all] = yield* Effect.all(
-            [changes.status(root), branches.state(root), orchestrator.listThreads],
-            { concurrency: 3 },
-          ).pipe(Effect.mapError(refuse));
-          const head = yield* readGit(root, ["rev-parse", "HEAD"]).pipe(Effect.mapError(refuse));
-          const baseRef = thread.worktree?.base ?? state.upstream?.name ?? state.branch ?? head;
-          const baseNow = yield* git
-            .run(root, ["rev-parse", "--verify", `${baseRef}^{commit}`], { look: true })
-            .pipe(Effect.mapError(refuse));
-          const baseCommit = thread.worktree?.baseCommit ?? baseNow.stdout.trim();
+          const threadId = thread.id;
+          const checkout = thread.worktree ? yield* realFolder(root) : root;
+          if (refresh) yield* Cache.invalidate(checkouts, checkout);
+          const { status, bases } = yield* Cache.get(checkouts, checkout).pipe(Effect.mapError(refuse));
+          const head = status.head ?? "";
+          const branch = status.branch ?? "Detached HEAD";
+          const baseRef = thread.worktree?.base ?? status.upstream?.name ?? status.branch ?? head;
+          const atUpstream =
+            status.upstream?.name === baseRef &&
+            !status.upstream.gone &&
+            status.upstream.ahead === 0 &&
+            status.upstream.behind === 0;
+          const baseNow =
+            baseRef === status.branch || baseRef === head || atUpstream
+              ? head
+              : yield* Cache.get(bases, baseRef).pipe(Effect.mapError(refuse));
+          const baseCommit = thread.worktree?.baseCommit ?? baseNow;
+          const all = yield* orchestrator.listThreads;
           const setup = yield* scripts.status(threadId, "setup", 0);
-          if (Date.now() - (discovered.get(threadId) ?? 0) > 120000) {
-            discovered.set(threadId, Date.now());
+          const now = yield* Clock.currentTimeMillis;
+          const last = discovered.get(threadId);
+          if (last?.root !== root || last.branch !== branch || now - last.at >= 120_000) {
+            const attempt = { root, branch, at: now };
+            discovered.set(threadId, attempt);
             yield* Effect.gen(function* () {
               const url =
                 thread.worktree?.pullRequestUrl ??
@@ -312,6 +353,7 @@ export class SourceControl extends Context.Service<
                 )(yield* github.gh(root, ["pr", "view", "--json", "url"]))).url;
               if (links.some((link) => link.threadId === threadId && link.url === url)) return;
               const read = yield* pullRead(root, url);
+              refreshedLinks.set(`${checkoutId(root)}:${read.value.url}`, now);
               yield* lock.withPermits(1)(
                 Effect.gen(function* () {
                   if (links.some((link) => link.threadId === threadId && link.url === read.value.url)) return;
@@ -326,14 +368,22 @@ export class SourceControl extends Context.Service<
                   yield* save;
                 }),
               );
-            }).pipe(Effect.ignore);
+            }).pipe(
+              Effect.ignore,
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  if (discovered.get(threadId) === attempt) discovered.delete(threadId);
+                }),
+              ),
+            );
           }
           for (const link of links.filter(
             (link) => !link.unlinked && (link.threadId === threadId || sameCheckout(link.root, root)),
           )) {
             const key = `${checkoutId(root)}:${link.url}`;
-            if (Date.now() - (refreshedLinks.get(key) ?? 0) < 30000) continue;
-            refreshedLinks.set(key, Date.now());
+            const lastRefresh = refreshedLinks.get(key);
+            if (lastRefresh !== undefined && now - lastRefresh < 30_000) continue;
+            refreshedLinks.set(key, now);
             yield* Effect.gen(function* () {
               const current = yield* pullRead(root, link.url, link.kind === "issue");
               yield* lock.withPermits(1)(
@@ -346,7 +396,14 @@ export class SourceControl extends Context.Service<
                   yield* save;
                 }),
               );
-            }).pipe(Effect.ignore);
+            }).pipe(
+              Effect.ignore,
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  if (refreshedLinks.get(key) === now) refreshedLinks.delete(key);
+                }),
+              ),
+            );
           }
           const relevant = links.filter(
             (link) => !link.unlinked && (link.threadId === threadId || sameCheckout(link.root, root)),
@@ -375,20 +432,20 @@ export class SourceControl extends Context.Service<
           return {
             id: thread.worktree?.id ?? checkoutId(root),
             root,
-            branch: state.branch ?? "Detached HEAD",
+            branch,
             head,
             baseRef,
             baseCommit,
-            staged: status.staged.length,
-            unstaged: status.unstaged.length,
-            conflicted: status.conflicted.length,
-            ahead: state.upstream?.ahead ?? 0,
-            behind: state.upstream?.behind ?? 0,
-            nextAction: status.conflicted.length
+            staged: status.staged,
+            unstaged: status.unstaged,
+            conflicted: status.conflicted,
+            ahead: status.upstream?.ahead ?? 0,
+            behind: status.upstream?.behind ?? 0,
+            nextAction: status.conflicted
               ? "Resolve conflicts"
-              : status.staged.length || status.unstaged.length
+              : status.staged || status.unstaged
                 ? "Review and commit"
-                : (state.upstream?.ahead ?? 0) > 0
+                : (status.upstream?.ahead ?? 0) > 0
                   ? "Push commits"
                   : pulls.some((pull) => pull.state === "OPEN")
                     ? "Review pull request"
@@ -408,7 +465,7 @@ export class SourceControl extends Context.Service<
             ...(thread.worktree?.dependsOnThreadId
               ? { dependsOnThreadId: thread.worktree.dependsOnThreadId }
               : {}),
-            baseMoved: baseNow.code === 0 && baseCommit !== "" && baseNow.stdout.trim() !== baseCommit,
+            baseMoved: baseNow !== "" && baseCommit !== "" && baseNow !== baseCommit,
           };
         });
         const monitor = (root: string, url: string) =>
@@ -490,6 +547,7 @@ export class SourceControl extends Context.Service<
         const run = Effect.fn("SourceControl.run")(function* (
           threadId: ThreadId,
           command: SourceControlCommand,
+          refreshCheckout = true,
         ) {
           const thread = yield* threadOf(threadId).pipe(Effect.mapError(refuse));
           yield* lock.withPermits(1)(
@@ -500,8 +558,7 @@ export class SourceControl extends Context.Service<
           const root =
             command.action === "move"
               ? (thread.worktree?.project ?? thread.cwd)
-              : (thread.worktree?.root ??
-                (yield* readGit(thread.cwd, ["rev-parse", "--show-toplevel"]).pipe(Effect.mapError(refuse))));
+              : yield* rootOf(thread, command.action !== "status" || refreshCheckout);
           if (command.action === "list") {
             const output = yield* readGit(root, ["worktree", "list", "--porcelain", "-z"]);
             // Git lists each checkout with its symbolic links resolved (a Mac's /var is /private/var),
@@ -572,7 +629,7 @@ export class SourceControl extends Context.Service<
                 .pipe(Effect.mapError(refuse));
             }
             return {
-              snapshot: yield* snapshot(threadId),
+              snapshot: yield* snapshot(thread, root, refreshCheckout),
               note:
                 command.action === "watch"
                   ? "Watching this PR. End your turn; changes arrive as notices."
@@ -601,21 +658,21 @@ export class SourceControl extends Context.Service<
             };
           }
           if (command.action === "diff") {
-            const revision = yield* readGit(root, ["rev-parse", "HEAD"]);
+            const branch =
+              command.scope === "branch" && !thread.worktree
+                ? yield* changes.checkoutStatus(root)
+                : undefined;
+            const revision = branch?.head ?? (yield* readGit(root, ["rev-parse", "HEAD"]));
             if (
               command.scope === "uncommitted" ||
               command.scope === "branch" ||
               command.scope === undefined
             ) {
+              const ref = thread.worktree?.base ?? branch?.upstream?.name;
               const base =
-                command.scope === "branch"
-                  ? yield* readGit(root, [
-                      "rev-parse",
-                      "--verify",
-                      "--end-of-options",
-                      `${(yield* snapshot(threadId)).baseRef}^{commit}`,
-                    ])
-                  : "HEAD";
+                command.scope === "branch" && ref !== undefined && ref !== revision
+                  ? yield* readGit(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`])
+                  : revision;
               const diff = yield* readGit(root, [
                 "diff",
                 "--no-ext-diff",
@@ -702,6 +759,7 @@ export class SourceControl extends Context.Service<
             if (held.unmerged)
               return yield* fail("This branch still has work beyond its base. Integrate it before cleanup.");
             yield* worktrees.remove(threadId, worktree, { keepBranch: true }).pipe(Effect.mapError(refuse));
+            yield* Cache.invalidate(checkouts, realTarget);
             yield* lock.withPermits(1)(
               Effect.gen(function* () {
                 inventory.delete(worktree.id!);
@@ -757,12 +815,13 @@ export class SourceControl extends Context.Service<
             preparing.set(threadId, "Preparing destination…");
             yield* orchestrator.moveThread(threadId, choice);
             preparing.set(threadId, "Ready");
+            const moved = yield* threadOf(threadId);
             return {
-              snapshot: yield* snapshot(threadId),
+              snapshot: yield* snapshot(moved, yield* rootOf(moved, true), true),
               note: "Conversation moved. Local edits remain in the source checkout; the new session receives its conversation history.",
             };
           }
-          return { snapshot: yield* snapshot(threadId), note: "Live workspace state." };
+          return { snapshot: yield* snapshot(thread, root, refreshCheckout), note: "Live workspace state." };
         }, Effect.mapError(refuse));
         for (const link of links.filter((link) => link.watching)) yield* startMonitor(link.root, link.url);
         return SourceControl.of({

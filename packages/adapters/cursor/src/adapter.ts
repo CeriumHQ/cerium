@@ -1,5 +1,5 @@
 import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
-import { Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
+import { Cache, Context, Effect, Exit, FileSystem, Layer, Path, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
 import { completeWithCursor } from "./complete.ts";
@@ -26,10 +26,12 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
       >();
       // Probing, listing and starting all read the account's model list; one request serves them for a
-      // while. Failures are not kept, so logging in takes effect on the next call.
-      const catalog = yield* fetchModelCatalog.pipe(
-        Effect.cachedWithTTL((exit) => (Exit.isSuccess(exit) ? "10 minutes" : 0)),
-      );
+      // while. Sign-in drops the earlier account's list, including a request that's still running.
+      const catalogs = yield* Cache.makeWith(() => fetchModelCatalog, {
+        capacity: 1,
+        timeToLive: (exit) => (Exit.isSuccess(exit) ? "10 minutes" : 0),
+      });
+      const catalog = Cache.get(catalogs, "models");
       const probe = makeCursorProbe(catalog).pipe(Effect.provide(platform));
 
       /** Succeeds once the SDK is usable and can authenticate. */
@@ -59,7 +61,11 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         provider: "cursor",
         manifest: cursorManifest,
         probe,
-        login: cursorLogin,
+        login: cursorLogin.pipe(
+          Stream.tap((step) =>
+            step._tag === "SignedIn" ? Cache.invalidate(catalogs, "models") : Effect.void,
+          ),
+        ),
         listModels: ready.pipe(
           Effect.andThen(catalog),
           Effect.map((models) => models.map(toModelInfo)),

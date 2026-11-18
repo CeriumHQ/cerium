@@ -208,6 +208,8 @@ export interface OrchestratorSettings {
   readonly batchWindow: Duration.Duration;
   /** Idle hosts beyond the warm pool are closed after this grace period, then resumed on demand. */
   readonly idleSessionTTL: Duration.Duration;
+  /** Maximum age of a warm host before it closes the next time it can safely be retired. */
+  readonly warmSessionMaxAge: Duration.Duration;
   readonly warmSessions: number;
   /** New agent requests per originating thread until the user speaks again. Replies/unblocks are exempt. */
   readonly automaticWakeLimit: number;
@@ -241,6 +243,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
     Layer.succeed(OrchestratorConfig, {
       batchWindow: Duration.seconds(2),
       idleSessionTTL: Duration.minutes(5),
+      warmSessionMaxAge: Duration.minutes(30),
       warmSessions: 4,
       automaticWakeLimit: 12,
       // Placeholder until tuned from real usage.

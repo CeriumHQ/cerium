@@ -4,7 +4,7 @@ import type { ThreadId } from "@cerium/protocol";
 import { Archive } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 
-import { settledEventsAtom } from "../../backend/atoms.ts";
+import { runEventsAtom } from "../../backend/atoms.ts";
 import { modelLabel } from "../../backend/view.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -107,10 +107,7 @@ function Status({ thread }: { thread: ThreadSummary }) {
 
 /** A thread's outcome: the lines it changed and how long it took, once it's done. */
 function Outcome({ thread }: { thread: ThreadSummary }) {
-  const events = AsyncResult.getOrElse(
-    useAtomValue(settledEventsAtom(thread.id as ThreadId)),
-    () => undefined,
-  );
+  const events = AsyncResult.getOrElse(useAtomValue(runEventsAtom(thread.id as ThreadId)), () => undefined);
   const stats =
     events === undefined || thread.lead === undefined
       ? undefined

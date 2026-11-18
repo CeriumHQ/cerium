@@ -141,9 +141,12 @@ describe("watching", () => {
     const common = { own: false, common: true };
     expect(gitFolderChange("index", own)).toEqual({ git: true, refs: false });
     expect(gitFolderChange("HEAD", own)).toEqual({ git: true, refs: true });
+    expect(gitFolderChange("config.worktree", own)).toEqual({ git: true, refs: true });
     expect(gitFolderChange("rebase-merge\\done", own)).toEqual({ git: true, refs: true });
     expect(gitFolderChange("refs/heads/main", own)).toBeUndefined();
     expect(gitFolderChange("refs/heads/main", common)).toEqual({ git: true, refs: true });
+    expect(gitFolderChange("config", common)).toEqual({ git: true, refs: true });
+    expect(gitFolderChange("info\\exclude", common)).toEqual({ git: true, refs: false });
     // The main work tree's index and HEAD, and other worktrees', are none of this one's business.
     expect(gitFolderChange("index", common)).toBeUndefined();
     expect(gitFolderChange("worktrees/other/index", common)).toBeUndefined();
@@ -162,6 +165,8 @@ describe("watching", () => {
     // Git's folder is walked for the index, HEAD and the refs, and nothing else.
     expect(watchSkips(".git")).toBe(false);
     expect(watchSkips(".git/index")).toBe(false);
+    expect(watchSkips(".git/info")).toBe(false);
+    expect(watchSkips(".git/info/exclude")).toBe(false);
     expect(watchSkips(".git/refs")).toBe(false);
     expect(watchSkips(".git/refs/heads/main")).toBe(false);
     expect(watchSkips(".git/rebase-merge")).toBe(false);
@@ -643,8 +648,13 @@ describe("Files", () => {
             (watcher) => Effect.sync(() => watcher.close()),
           ),
         );
+        const expected = new Set(["src/app.ts", ".git/refs/heads/main"]);
         const watching = yield* reported.pipe(
-          Stream.takeUntil((name) => name === ".git/refs/heads/main"),
+          // macOS may deliver the ref and working-tree events in either order.
+          Stream.takeUntil((name) => {
+            expected.delete(name);
+            return expected.size === 0;
+          }),
           Stream.runCollect,
           Effect.forkScoped,
         );

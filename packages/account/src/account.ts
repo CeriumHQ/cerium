@@ -19,6 +19,7 @@ import {
   type AssistantNotice,
   type ChannelId,
   type ConnectedAssistant,
+  type CloudThreadStateView,
   type ClaimLinkRequest,
   type CreateLinkRequest,
   type Credential,
@@ -235,7 +236,7 @@ export class Account extends Context.Service<
     readThread(
       machine: DeviceId,
       threadId: ThreadId,
-      page?: { readonly before?: number },
+      page?: { readonly before?: number; readonly state?: CloudThreadStateView },
     ): Effect.Effect<unknown, AccountError>;
     /**
      * A channel this device opens to a machine, for as long as the scope lasts. A desktop both opens
@@ -771,14 +772,16 @@ export class Account extends Context.Service<
           readThread: (machine, threadId, page) =>
             Effect.gen(function* () {
               const credential = yield* signedIn;
-              const response = yield* send(
-                withCredential(
-                  HttpClientRequest.get(
-                    `${relay}/api/sync/${machine}/${threadId}${page === undefined ? "" : `?page=1${page.before === undefined ? "" : `&before=${page.before}`}`}`,
-                  ),
-                  credential,
-                ),
-              );
+              const query = new URLSearchParams();
+              if (page !== undefined) {
+                query.set("page", "1");
+                if (page.before !== undefined) query.set("before", String(page.before));
+                if (page.state !== undefined) query.set("state", page.state);
+              }
+              const request = HttpClientRequest.get(`${relay}/api/sync/${machine}/${threadId}`, {
+                urlParams: query,
+              });
+              const response = yield* send(withCredential(request, credential));
               return yield* response.json.pipe(
                 Effect.mapError(
                   () => new AccountError({ message: "Cerium's cloud sent a thread Cerium can't read." }),

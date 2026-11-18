@@ -10,6 +10,7 @@ import {
   type DeviceId,
   type ReadEntry,
   type ThreadId,
+  type CloudThreadStateView,
 } from "@cerium/protocol";
 import { Context, Effect, Layer, Option, PubSub, Schema, Stream, SubscriptionRef } from "effect";
 
@@ -119,6 +120,7 @@ export class CloudThreads extends Context.Service<
       machine: DeviceId,
       threadId: ThreadId,
       before?: number,
+      state?: CloudThreadStateView,
     ): Effect.Effect<CloudHistoryPage, AccountError>;
     /** Tells the account's other devices these threads were seen here. */
     markRead(entries: ReadonlyArray<ReadEntry>): Effect.Effect<void, AccountError>;
@@ -185,8 +187,18 @@ export class CloudThreads extends Context.Service<
                 : new AccountError({ message: "Cerium's cloud sent a thread Cerium can't read." }),
             ),
           ),
-        cloudHistory: (machine, threadId, before) =>
-          account.readThread(machine, threadId, before === undefined ? {} : { before }).pipe(
+        cloudHistory: (machine, threadId, before, state) => {
+          const historyPage = () =>
+            account.readThread(machine, threadId, before === undefined ? {} : { before });
+          // If the relay can't finish upgrading a large old copy, bounded transcript pages still work.
+          // Continuations are always transcript pages when the first answer indicated there are more.
+          const read =
+            state === undefined || before !== undefined
+              ? historyPage()
+              : account
+                  .readThread(machine, threadId, { state })
+                  .pipe(Effect.catchIf((error) => (error.status ?? 0) >= 500, historyPage));
+          return read.pipe(
             // A relay not upgraded yet returns its legacy array, still validated by the usual schema.
             Effect.flatMap((value) =>
               Array.isArray(value)
@@ -196,7 +208,8 @@ export class CloudThreads extends Context.Service<
             Effect.mapError(
               () => new AccountError({ message: "Cerium's cloud sent a history page Cerium can't read." }),
             ),
-          ),
+          );
+        },
         markRead: (entries) =>
           entries.length === 0 ? Effect.void : account.send({ _tag: "MarkRead", entries }),
         accountDrafts: SubscriptionRef.changes(drafts),

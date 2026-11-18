@@ -158,6 +158,13 @@ Download the [latest stable release](https://github.com/CeriumHQ/cerium/releases
 - **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
   needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
 
+For a smaller download and installation, pick the corresponding `-english` installer from the
+release assets. It includes only the English Chromium resources. The standard installers include
+all of Chromium's languages and can replace a compact installation without changing its data.
+In-app updates use the compact installer when the release includes it.
+To switch locale variants of the same version on Linux, use `sudo apt install --reinstall ./<file>.deb`
+or `sudo dnf reinstall ./<file>.rpm`. For an AppImage, replace the old file in place.
+
 Stable releases are tested and come out when something worth shipping has landed. Cerium also
 publishes **nightly** builds of every change as it lands, marked as pre-releases on the
 [Releases](https://github.com/CeriumHQ/cerium/releases) page. They are for trying things early and can
@@ -197,8 +204,10 @@ anonymous crash report, which you can turn off.
 - **Updates.** The app checks this repository's GitHub Releases at launch and every six hours, and
   downloads an update only when you ask. Settings → Harnesses looks up each harness's newest version
   on npm or GitHub to tell you when one is out.
-- **Dictation.** The speech model you pick downloads from Hugging Face on first use, and your voice is
-  transcribed on your machine.
+- **Dictation.** The first use downloads the desktop build's speech runtime from GitHub Releases
+  and your chosen model from Hugging Face. If the release asset has been removed, the app can fetch
+  the same pinned runtime from the npm CDN Unpkg. The runtime and model are cached on your machine,
+  where your voice is transcribed.
 - **Artifacts.** Pages an agent draws can load scripts over HTTPS, such as the chart libraries
   Cerium suggests from `cdn.jsdelivr.net`, so viewing one may fetch from that CDN.
 

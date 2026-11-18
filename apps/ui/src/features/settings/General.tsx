@@ -60,6 +60,7 @@ export function GeneralSettings() {
   const openWelcome = useAtomSet(welcomeOpenAtom);
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), () => undefined);
   const local = useAtomValue(machineAtom) === undefined;
+  const openChromiumNotices = shellBridge()?.openChromiumNotices;
   // Closing the window keeps a signed-in Cerium in the tray, which a start at login opens to.
   const startup = account?._tag === "SignedIn" && shellBridge()?.startAtLogin !== undefined;
   return (
@@ -108,7 +109,32 @@ export function GeneralSettings() {
         </SettingsSection>
       ) : null}
       <CrashReportsSection />
+      {openChromiumNotices ? <ChromiumNoticesSection open={openChromiumNotices} /> : null}
     </SettingsPage>
+  );
+}
+
+function ChromiumNoticesSection({ open }: { readonly open: () => Promise<void> }) {
+  const [error, setError] = useState(false);
+  return (
+    <SettingsSection title="About">
+      <SettingsList>
+        <SettingsRow
+          label="Chromium third-party notices"
+          error={error ? "Couldn't open the bundled notices." : undefined}
+          control={() => (
+            <RowButton
+              onClick={() => {
+                setError(false);
+                void open().catch(() => setError(true));
+              }}
+            >
+              View notices
+            </RowButton>
+          )}
+        />
+      </SettingsList>
+    </SettingsSection>
   );
 }
 
@@ -448,7 +474,7 @@ export function DictationSettings() {
   return (
     <SettingsPage
       title="Dictation"
-      description="OpenAI's Whisper turns speech into text on this computer. Its model downloads once, the first time you dictate."
+      description="OpenAI's Whisper turns speech into text on this computer. The runtime and your chosen model download when you first need them."
     >
       <SettingsList>
         <SettingsRow

@@ -1,3 +1,4 @@
+import { NOTIFICATION_KINDS, type NotificationKind } from "@cerium/protocol";
 import {
   app,
   BrowserWindow,
@@ -14,22 +15,19 @@ import {
   type Rectangle,
 } from "electron";
 import { existsSync } from "node:fs";
-import { isAbsolute, join, normalize } from "node:path";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 
-import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
-import { startBackend } from "./backend.ts";
+import { backgroundMode, HIDDEN_FLAG, setStartAtLogin, startAtLogin } from "./background.ts";
+import { startBackend, type BackendConnection } from "./backend.ts";
+import { watchBackendActivity } from "./backendActivity.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
 import { desktopTheme } from "./desktopTheme.ts";
+import { serveDictationRuntime } from "./dictationProtocol.ts";
 import { cliState, installCli, refreshCli, removeCli } from "./cli.ts";
 import { listEditors, openInEditor } from "./editors.ts";
 import { launchArguments, parseLaunch, SCHEME, threadOfLink, type LaunchRequest } from "./launch.ts";
-import {
-  isBadgeRequest,
-  isNotificationRequest,
-  nameAppForNotifications,
-  nativeNotifications,
-} from "./notifications.ts";
+import { nameAppForNotifications, nativeNotifications } from "./notifications.ts";
 import { openHtml } from "./openHtml.ts";
 import { openPath } from "./openPath.ts";
 import { previews } from "./preview.ts";
@@ -45,7 +43,7 @@ import {
 } from "./shellPath.ts";
 import { prepareSmokeTest, runSmokeTest } from "./smokeTest.ts";
 import { forwardTextMenus, runTextCommand } from "./textMenu.ts";
-import { isThreadId, isThreadMode, threadWindows, type ThreadMode } from "./threadWindows.ts";
+import { isThreadId, isThreadMode, onScreen, threadWindows, type ThreadMode } from "./threadWindows.ts";
 import { buildChannel, isUpdateChannel, startUpdater } from "./updater.ts";
 import { restoreNativeFrame } from "./windowFrame.ts";
 
@@ -56,6 +54,9 @@ import { restoreNativeFrame } from "./windowFrame.ts";
 
 /** `--smoke-test` checks a packaged build runs, on a user-data folder of its own (smokeTest.ts). */
 const smokeTest = prepareSmokeTest();
+
+const uiDirectory = join(import.meta.dirname, "..", "..", "ui", "dist");
+if (app.isPackaged) serveDictationRuntime(uiDirectory);
 
 // One Cerium at a time: launching it again shows the one that's running, which may be in the tray.
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -106,6 +107,19 @@ const startHidden =
 /** How long a hidden start waits to hear whether it's signed in before showing the window anyway. */
 const HIDDEN_START_TIMEOUT_MS = 15_000;
 
+const showMainWindow = () => {
+  if (quitting) return;
+  const window = mainWindow;
+  if (window === undefined) {
+    if (hibernatedWindow !== undefined) createWindow(hibernatedWindow);
+    return;
+  }
+  if (window === revealingWindow) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+};
+
 const background = backgroundMode({
   // Linux trays take a PNG. The menu bar takes a template image, a black mark macOS tints to the bar,
   // and finds its @2x beside it.
@@ -116,6 +130,7 @@ const background = backgroundMode({
     windows ? "icon.ico" : mac ? "trayTemplate.png" : "icon.png",
   ),
   window: () => mainWindow,
+  show: showMainWindow,
 });
 
 /** Where the threads open in windows of their own are remembered, so they come back next start. */
@@ -126,7 +141,7 @@ let threads: ReturnType<typeof threadWindows> | undefined;
 
 const notifications = nativeNotifications({
   window: () => mainWindow,
-  show: background.show,
+  open: (threadId) => launch(threadId === undefined ? undefined : { kind: "thread", id: threadId }),
   threadWindow: (threadId) => threads?.windowOf(threadId),
 });
 
@@ -175,9 +190,8 @@ type MenuCommand = "open-settings" | "new-thread";
 
 /** Brings the main window forward, from the menu bar too, and has its page run `command`. */
 const runMenuCommand = (command: MenuCommand) => {
-  background.show();
-  const contents = mainWindow?.webContents;
-  if (contents !== undefined && !contents.isDestroyed()) contents.send("cerium:menu-command", command);
+  showMainWindow();
+  sendWhenListening({ kind: "menu", command });
 };
 
 /**
@@ -351,7 +365,6 @@ const appWindow = ({
       if (window.isFullScreen()) sendFullScreen();
     });
   }
-  notifications.watch(window);
   forwardTextMenus(window.webContents);
   return window;
 };
@@ -361,7 +374,7 @@ const loadPage = (window: BrowserWindow, thread?: { threadId: string; mode: Thre
   // Not `thread`, which a tapped notification's address uses (apps/ui/src/web/push.ts).
   const query = thread ? { window: thread.threadId, mode: thread.mode } : undefined;
   if (devUrl === undefined) {
-    const page = join(import.meta.dirname, "..", "..", "ui", "dist", "index.html");
+    const page = join(uiDirectory, "index.html");
     void window.loadFile(page, query ? { query } : {});
   } else {
     const url = new URL(devUrl);
@@ -372,16 +385,95 @@ const loadPage = (window: BrowserWindow, thread?: { threadId: string; mode: Thre
 
 /** Cerium is quitting, which closes every window: a thread's own comes back next start. */
 let quitting = false;
+const backendActivity = new AbortController();
 app.on("before-quit", () => {
   quitting = true;
+  clearTimeout(hibernateTimer);
+  backendActivity.abort();
   threads?.quit();
+  browserPreviews.closeAll();
 });
 
-const createWindow = () => {
+/** A tray window stays warm for quick returns before releasing its renderer. */
+const HIBERNATE_AFTER_MS = 5 * 60_000;
+const HIBERNATE_RETRY_MS = 30_000;
+interface HibernatedWindow {
+  readonly bounds: Rectangle;
+  readonly maximized: boolean;
+  readonly fullScreen: boolean;
+}
+let hibernateTimer: ReturnType<typeof setTimeout> | undefined;
+let hibernatedWindow: HibernatedWindow | undefined;
+let revealingWindow: BrowserWindow | undefined;
+let rendererBusy = false;
+let restoredThreadWindows = false;
+
+const scheduleHibernation = (window: BrowserWindow, delay = HIBERNATE_AFTER_MS) => {
+  clearTimeout(hibernateTimer);
+  if (
+    smokeTest !== undefined ||
+    quitting ||
+    !background.signedIn() ||
+    window.isDestroyed() ||
+    window.isVisible() ||
+    window.isMinimized()
+  )
+    return;
+
+  hibernateTimer = setTimeout(() => {
+    if (
+      quitting ||
+      sessionEnding ||
+      !background.signedIn() ||
+      window !== mainWindow ||
+      window.isVisible() ||
+      window.isMinimized()
+    )
+      return;
+    const contents = window.webContents;
+    if (rendererBusy || contents.isDevToolsOpened() || contents.isCurrentlyAudible() || !launchListening) {
+      scheduleHibernation(window, HIBERNATE_RETRY_MS);
+      return;
+    }
+    hibernatedWindow = {
+      bounds: window.getNormalBounds(),
+      maximized: window.isMaximized(),
+      fullScreen: window.isFullScreen(),
+    };
+    launchListening = false;
+    notifications.view(undefined);
+    mainWindow = undefined;
+    browserPreviews.syncPlacement();
+    window.destroy();
+  }, delay);
+};
+
+const createWindow = (restored?: HibernatedWindow) => {
+  const bounds = restored?.bounds;
   const window = appWindow({
-    size: { width: 1280, height: 820 },
-    appear: startHidden ? "hidden" : "front",
+    size:
+      bounds !== undefined &&
+      onScreen(
+        bounds,
+        screen.getAllDisplays().map((display) => display.workArea),
+      )
+        ? bounds
+        : { width: 1280, height: 820 },
+    appear: restored === undefined && startHidden ? "hidden" : "front",
   });
+  mainWindow = window;
+  if (restored !== undefined) revealingWindow = window;
+  hibernatedWindow = undefined;
+  window.on("hide", () => {
+    browserPreviews.syncPlacement();
+    scheduleHibernation(window);
+  });
+  window.on("show", () => {
+    clearTimeout(hibernateTimer);
+    browserPreviews.syncPlacement();
+    notifications.syncBadge();
+  });
+  notifications.watch(window);
   window.setMinimumSize(960, 600);
   window.on("close", (event) => {
     if (background.interceptClose()) event.preventDefault();
@@ -390,7 +482,8 @@ const createWindow = () => {
     sessionEnding = true;
   });
   window.on("closed", () => {
-    browserPreviews.closeAll();
+    if (window !== mainWindow) return; // Hibernation already released this window.
+    clearTimeout(hibernateTimer);
     mainWindow = undefined;
     // The threads' own windows go with the main one, and come back with it next start.
     if (!quitting) app.quit();
@@ -400,12 +493,21 @@ const createWindow = () => {
   window.webContents.on("did-start-loading", () => {
     browserPreviews.unplaceAll();
     launchListening = false;
+    rendererBusy = false;
+    notifications.view(undefined);
   });
   // The threads left in windows of their own last time come back once the main window shows, which
   // a start at login holds back until it's asked for.
-  window.once("show", () => threads?.restore());
+  window.once("show", () => {
+    revealingWindow = undefined;
+    if (restored?.maximized) window.maximize();
+    if (restored?.fullScreen) window.setFullScreen(true);
+    if (!restoredThreadWindows) {
+      restoredThreadWindows = true;
+      threads?.restore();
+    }
+  });
   loadPage(window);
-  mainWindow = window;
 };
 
 /** A thread's own window: smaller than the main one, never so narrow that it turns phone-like. */
@@ -425,6 +527,7 @@ const createThreadWindow = ({
     appear: restored ? "behind" : "front",
   });
   window.setMinimumSize(800, 480);
+  notifications.watch(window, threadId);
   loadPage(window, { threadId, mode });
   return window;
 };
@@ -438,18 +541,16 @@ ipcMain.on("cerium:open-thread-window", (event, threadId: unknown, mode: unknown
   threads?.open(threadId, mode);
 });
 
-/**
- * Whether this machine is signed in and agents are working, which decide whether closing the window
- * hides it to the tray and whether the PC may sleep. A hidden start shows the window once it hears
- * the machine isn't signed in, since nothing would keep it reachable.
- */
-let heardPresence = false;
-ipcMain.on("cerium:presence", (event, presence: unknown) => {
-  // The main window speaks for the app; a thread's own window would only say it again.
-  if (!fromMainWindow(event) || !isPresence(presence)) return;
-  background.update(presence);
-  if (startHidden && !heardPresence && !presence.signedIn) background.show();
-  heardPresence = true;
+/** Keep the main window's tab state across hibernation, in memory for this app launch only. */
+const tabState = new Map<string, string>();
+ipcMain.on("cerium:remember-tab-state", (event, key: unknown, value: unknown) => {
+  if (fromMainWindow(event) && typeof key === "string" && typeof value === "string") tabState.set(key, value);
+});
+ipcMain.on("cerium:tab-state", (event, key: unknown) => {
+  event.returnValue = fromMainWindow(event) && typeof key === "string" ? (tabState.get(key) ?? null) : null;
+});
+ipcMain.on("cerium:renderer-busy", (event, busy: unknown) => {
+  if (fromMainWindow(event) && typeof busy === "boolean") rendererBusy = busy;
 });
 
 /** Whether Cerium starts when the user signs in to the computer; only the installed app can. */
@@ -463,13 +564,27 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
  * the page takes it once it has said it listens (`cerium:launch-ready`), and until then, or while it
  * reloads, it waits here. A thread open in a window of its own is brought forward instead.
  */
-const pendingLaunches: LaunchRequest[] = [];
+type WindowRequest =
+  | LaunchRequest
+  | { readonly kind: "menu"; readonly command: MenuCommand }
+  | { readonly kind: "preview"; readonly id: string };
+const pendingLaunches: WindowRequest[] = [];
 let launchListening = false;
 
 const deliverLaunches = () => {
   const target = mainWindow?.webContents;
   if (!launchListening || target === undefined || target.isDestroyed()) return;
   for (const request of pendingLaunches.splice(0)) target.send("cerium:launch", request);
+};
+
+const sendWhenListening = (request: WindowRequest) => {
+  if (
+    request.kind === "preview" &&
+    pendingLaunches.some((each) => each.kind === "preview" && each.id === request.id)
+  )
+    return;
+  pendingLaunches.push(request);
+  deliverLaunches();
 };
 
 const launch = (request: LaunchRequest | undefined) => {
@@ -483,10 +598,8 @@ const launch = (request: LaunchRequest | undefined) => {
       return;
     }
   }
-  background.show();
-  if (request === undefined) return;
-  pendingLaunches.push(request);
-  deliverLaunches();
+  showMainWindow();
+  if (request !== undefined) sendWhenListening(request);
 };
 
 /** A second start's command line or link, handed to the instance that is running. */
@@ -506,18 +619,29 @@ ipcMain.on("cerium:launch-ready", (event) => {
   deliverLaunches();
 });
 // Clicking the dock icon brings back a window hidden to the menu bar.
-app.on("activate", () => background.show());
+app.on("activate", showMainWindow);
 
-/** A toast about a thread, and the count of threads waiting over the taskbar icon (notifications.ts). */
-ipcMain.on("cerium:notify", (event, request: unknown) => {
-  // The main window hears every thread's news, so a thread's own window would only repeat it.
-  if (!fromMainWindow(event) || !isNotificationRequest(request)) return;
-  // The user is looking at the thread, in its own window.
-  if (threads?.windowOf(request.threadId)?.isFocused() === true) return;
-  notifications.notify(request);
+ipcMain.on("cerium:notification-preferences", (event, value: unknown) => {
+  if (!fromMainWindow(event) || typeof value !== "object" || value === null) return;
+  const { kinds, silent, badge } = value as Record<string, unknown>;
+  if (!Array.isArray(kinds) || typeof silent !== "boolean" || typeof badge !== "boolean") return;
+  notifications.configure({
+    kinds: kinds.filter((kind): kind is NotificationKind => NOTIFICATION_KINDS.includes(kind)),
+    silent,
+    badge,
+  });
 });
-ipcMain.on("cerium:set-badge", (event, request: unknown) => {
-  if (fromMainWindow(event) && isBadgeRequest(request)) notifications.setBadge(request);
+ipcMain.on("cerium:notification-viewing", (event, threadId: unknown) => {
+  if (fromMainWindow(event)) notifications.view(isThreadId(threadId) ? threadId : undefined);
+});
+ipcMain.on("cerium:test-notification", (event, silent: unknown) => {
+  if (fromMainWindow(event) && typeof silent === "boolean") notifications.test(silent);
+});
+ipcMain.on("cerium:notification-badge-icons", (event, icons: unknown) => {
+  if (process.platform !== "win32" || !fromMainWindow(event) || !Array.isArray(icons) || icons.length !== 10)
+    return;
+  if (icons.every((icon) => typeof icon === "string" && icon.startsWith("data:image/png;base64,")))
+    notifications.setBadgeIcons(icons);
 });
 
 /** Updating Cerium: the chosen channel, what it offers, and downloading and installing it. */
@@ -558,6 +682,15 @@ ipcMain.on("cerium:report-crash", (event, report: unknown) => {
 /** The folder with the backend's and the updater's logs, in the file manager. */
 ipcMain.handle("cerium:open-logs", async () => {
   await shell.openPath(app.getPath("logs"));
+});
+
+/** Open the packaged reader, or Electron's original notices when running from source. */
+ipcMain.handle("cerium:open-chromium-notices", async () => {
+  const folder = app.isPackaged
+    ? process.resourcesPath
+    : join(dirname(process.execPath), mac ? "../../.." : ".");
+  const error = await shell.openPath(join(folder, "LICENSES.chromium.html"));
+  if (error) throw new Error(error);
 });
 
 /** The folder a work thread runs in, chosen with the native dialog. */
@@ -714,11 +847,27 @@ const launchBackend = async () => {
   });
 };
 
+const activityConnection = async (): Promise<BackendConnection> => {
+  if (devUrl !== undefined) {
+    const response = await fetch(new URL("/__cerium/connection", devUrl), {
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.ok) return (await response.json()) as BackendConnection;
+  } else {
+    await backendStarting;
+    if (backend !== undefined) return backend.connection();
+  }
+  throw new Error("Cerium's local backend isn't listening yet.");
+};
+
+let heardPresence = false;
 void app.whenReady().then(() => {
   if (devUrl === undefined) {
     backendStarting = launchBackend();
     void backendStarting.then(() =>
       backend?.onFailure((failure) => {
+        if (failure !== undefined) background.setWorking(false);
         for (const window of BrowserWindow.getAllWindows())
           window.webContents.send("cerium:backend-failure", failure);
       }),
@@ -733,7 +882,7 @@ void app.whenReady().then(() => {
   }
   // Links open Cerium: this computer's own installed app takes them, never a development build that
   // would claim them from it. An installed command follows the app if an update moved it.
-  if (app.isPackaged) {
+  if (app.isPackaged && smokeTest === undefined) {
     app.setAsDefaultProtocolClient(SCHEME);
     void refreshCli().catch(() => undefined);
   }
@@ -757,6 +906,29 @@ void app.whenReady().then(() => {
     screens: () => screen.getAllDisplays().map((display) => display.workArea),
   });
   createWindow();
+  watchBackendActivity({
+    signal: backendActivity.signal,
+    connection: activityConnection,
+    signedIn: (signedIn) => {
+      const wasSignedIn = background.signedIn();
+      background.setSignedIn(signedIn);
+      if (signedIn && !wasSignedIn && mainWindow !== undefined) scheduleHibernation(mainWindow);
+      if (!signedIn) {
+        clearTimeout(hibernateTimer);
+        if ((startHidden && !heardPresence) || (wasSignedIn && !mainWindow?.isVisible())) showMainWindow();
+      }
+      heardPresence = true;
+    },
+    working: background.setWorking,
+    notify: notifications.notify,
+    previews: browserPreviews.updateThreads,
+    browser: async ({ threadId, command }) => {
+      const outcome = await browserPreviews.answer(threadId, command);
+      if (command._tag === "Open" && outcome._tag === "Done")
+        sendWhenListening({ kind: "preview", id: threadId });
+      return outcome;
+    },
+  });
   // The command or link that started this instance asks for something too.
   const asked = parseLaunch(launchArguments(process.argv, app.isPackaged), process.cwd());
   if (asked !== undefined) launch(asked);
@@ -769,17 +941,22 @@ void app.whenReady().then(() => {
         if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
         return backend.connection();
       },
-      stop: async () => backend?.stop(),
+      stop: () => {
+        backendActivity.abort();
+        return stopBackend();
+      },
     });
   }
   if (startHidden) {
     setTimeout(() => {
-      if (!heardPresence) background.show();
+      if (!heardPresence) showMainWindow();
     }, HIDDEN_START_TIMEOUT_MS);
   }
 });
 
-app.on("window-all-closed", () => app.quit());
+app.on("window-all-closed", () => {
+  if (hibernatedWindow === undefined && !quitting) app.quit();
+});
 
 // Quitting waits for the backend to shut down, so it closes its harness sessions and database. On
 // Windows and for ad hoc Mac builds, the downloaded update's installer starts then (updater.ts),

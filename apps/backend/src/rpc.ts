@@ -17,13 +17,13 @@ import {
   type TeardownFailure,
 } from "@cerium/orchestrator";
 import {
-  isStreamDelta,
   LEAD_ROLE,
   REMOVED_IMAGE,
   toolOutputImages,
   withoutImages,
   type AgentEvent,
   type HarnessStatus,
+  type LiveEventDelivery,
   type ProviderId,
   type SkillInfo,
 } from "@cerium/protocol";
@@ -46,6 +46,7 @@ import { homedir } from "node:os";
 import { Automations, type AutomationError } from "./automations.ts";
 import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
+import { watchComputerUse } from "./computerUse.ts";
 import { continuations } from "./continuation.ts";
 import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
@@ -155,6 +156,7 @@ export const Handlers = MachineRpcs.toLayer(
     const releases = yield* Releases;
     const effortRouter = yield* EffortRouter;
     const computer = yield* Computer;
+    const computerUse = yield* watchComputerUse(computer, settings);
     const offered = yield* OfferedModels;
     const imports = yield* SessionImports;
     const pushes = yield* Pushes;
@@ -164,6 +166,7 @@ export const Handlers = MachineRpcs.toLayer(
     const continued = continuations(store, yield* Git, github);
     const checkoutGit = yield* Git;
     const sourceControl = yield* SourceControl;
+    const runSync = Effect.runSyncWith(yield* Effect.context<never>());
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -173,7 +176,7 @@ export const Handlers = MachineRpcs.toLayer(
       const source = adapter.manifest.releases;
       return Effect.all(
         [
-          adapter.probe,
+          adapter.probe.pipe(Effect.tap((status) => offered.observe(status))),
           source === undefined ? Effect.succeedNone : releases.latest({ npm: source.npmPackage }),
         ],
         { concurrency: 2 },
@@ -210,8 +213,8 @@ export const Handlers = MachineRpcs.toLayer(
     });
 
     return MachineRpcs.of({
-      SourceControl: ({ threadId, command }) =>
-        sourceControl.run(threadId, command).pipe(Effect.mapError(refuse)),
+      SourceControl: ({ threadId, command, refreshCheckout }) =>
+        sourceControl.run(threadId, command, refreshCheckout).pipe(Effect.mapError(refuse)),
       RelatedWorkThreads: ({ url }) => sourceControl.related(url).pipe(Effect.mapError(refuse)),
       ListCheckouts: ({ root }) =>
         Effect.gen(function* () {
@@ -226,6 +229,7 @@ export const Handlers = MachineRpcs.toLayer(
         }).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       ListThreads: () => orchestrator.threadOverviews.pipe(Effect.mapError(refuse)),
       WatchThreadOverviews: () => orchestrator.watchThreadOverviews,
+      ThreadState: ({ threadId, view }) => store.threadState(threadId, view).pipe(Effect.mapError(refuse)),
       ThreadHistory: ({ threadId, page }) =>
         orchestrator.threadHistory(threadId, page).pipe(Effect.mapError(refuse)),
       ThreadMessagePage: ({ agentId, before }) =>
@@ -250,6 +254,9 @@ export const Handlers = MachineRpcs.toLayer(
           }),
         ),
       WatchEvents: () => orchestrator.events.pipe(Stream.map(withoutImages)),
+      WatchActivity: () => orchestrator.watchActivity.pipe(Stream.map(leanDelivery)),
+      WatchThreadEvents: ({ threadId }) =>
+        orchestrator.watchThreadEvents(threadId).pipe(Stream.map(leanDelivery)),
       ListPastSessions: () => imports.list.pipe(Effect.mapError(refuse)),
       // The folders of the work threads that come in to the inbox join the projects the composer offers.
       ImportSessions: ({ sessions, access, archiveBefore }) =>
@@ -398,19 +405,7 @@ export const Handlers = MachineRpcs.toLayer(
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(described(adapter)), {
           concurrency: "unbounded",
-        }).pipe(
-          Effect.map((statuses) => statuses.flatMap(Option.toArray)),
-          // A harness found signed in that offered no models, signed in since, joins the catalog.
-          Effect.tap((statuses) =>
-            offered.relistEmpty(
-              statuses.flatMap((status) =>
-                status._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn"
-                  ? [status.provider]
-                  : [],
-              ),
-            ),
-          ),
-        ),
+        }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
       // Viewers before `RPC_VERSION` 20 read a tested range, which no version falls outside.
       HarnessManifests: () =>
         Effect.succeed(
@@ -436,7 +431,10 @@ export const Handlers = MachineRpcs.toLayer(
               () => new CeriumError({ message: `${provider} has no sign-in Cerium can start.` }),
             ),
           ),
-        ).pipe(Stream.mapError((error) => new CeriumError({ message: error.message }))),
+        ).pipe(
+          Stream.tap((step) => (step._tag === "SignedIn" ? offered.invalidate(provider) : Effect.void)),
+          Stream.mapError((error) => new CeriumError({ message: error.message })),
+        ),
       RunHarnessCommand: ({ provider, action, size }) =>
         Effect.gen(function* () {
           const adapter = adapters.get(provider);
@@ -468,16 +466,12 @@ export const Handlers = MachineRpcs.toLayer(
               `${provider}:${action}`,
               commandChoice(process.platform, status.executablePath, command),
               size,
+              () => runSync(offered.invalidate(provider)),
             )
             .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
         }),
       ListModels: ({ provider }) =>
-        Effect.fromNullishOr(adapters.get(provider)).pipe(
-          Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),
-          Effect.flatMap((adapter) => adapter.listModels),
-          Effect.tap((models) => offered.offer(provider, models)),
-          Effect.mapError((error) => new CeriumError({ message: error.message })),
-        ),
+        offered.list(provider).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       SearchWorkspace: ({ cwd, query }) =>
         workspace.search(cwd, query, SEARCH_LIMIT).pipe(Effect.mapError(refuse)),
       ListSkills: ({ provider, cwd }) => Cache.get(skills, `${provider}:${cwd ?? homedir()}`),
@@ -627,22 +621,7 @@ export const Handlers = MachineRpcs.toLayer(
       UpdateSettings: (patch) => settings.update(patch).pipe(Effect.mapError(refuse)),
       EffortRouterStatus: () => effortRouter.status.pipe(Effect.mapError(refuseDecision)),
       RemoveEffortRouterKey: () => effortRouter.remove.pipe(Effect.mapError(refuseDecision)),
-      WatchComputerUse: () =>
-        Stream.unwrap(computer.checkPermission.pipe(Effect.as(computer.changes))).pipe(
-          // macOS asks for the permission in System Settings, outside Cerium: look again while it's missing.
-          Stream.merge(
-            Stream.tick("3 seconds").pipe(
-              Stream.mapEffect(() =>
-                computer.status.pipe(
-                  Effect.flatMap((now) =>
-                    now.permission === "needed" ? computer.checkPermission : Effect.void,
-                  ),
-                ),
-              ),
-              Stream.drain,
-            ),
-          ),
-        ),
+      WatchComputerUse: () => computerUse,
       InstallComputerUse: () =>
         computer.install.pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       OpenComputerPermissions: () =>
@@ -699,6 +678,11 @@ export const Handlers = MachineRpcs.toLayer(
   }),
 );
 
+const leanDelivery = (delivery: LiveEventDelivery): LiveEventDelivery =>
+  delivery._tag === "Event" && delivery.event !== undefined
+    ? { _tag: "Event", event: withoutImages(delivery.event) }
+    : delivery;
+
 /** Whether this machine's agents are working, re-checked after every event but streamed text. */
 const working = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator;
@@ -710,10 +694,7 @@ const working = Effect.gen(function* () {
     ),
     Effect.orElseSucceed(() => false),
   );
-  return Stream.concat(
-    Stream.succeed(undefined),
-    orchestrator.events.pipe(Stream.filter((event) => !isStreamDelta(event.payload._tag))),
-  ).pipe(
+  return orchestrator.watchActivity.pipe(
     Stream.mapEffect(() => busy),
     Stream.changes,
   );
@@ -733,7 +714,7 @@ const DeviceHandlers = deviceHandlers({
     const router = yield* EffortRouter;
     return (key: string) => router.save(key).pipe(Effect.mapError(refuseDecision));
   }),
-  // The desktop window hosts the browser its threads' agents drive through the bus.
+  // The desktop shell hosts the browser its threads' agents drive through the bus.
   browser: Effect.service(BrowserHost),
 });
 

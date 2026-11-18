@@ -1,3 +1,4 @@
+import type { NotificationKind } from "@cerium/protocol";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 // Sandboxed preload: the UI talks to the backend over its own RPC connection, so the bridge only
@@ -7,14 +8,13 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // and caption buttons in, and the scale it is drawn at. It hands the page the desktop's accent and
 // wallpaper colours for the Desktop theme. The page says when its launch screen has painted, which shows the window. It also tells the page where a pasted file lives and shows a file in
 // the file manager, opens it in its own app or in an editor at a line, none of which a page can do itself. Right-clicks no page menu claimed come
-// through here for the page's text menu, whose commands the shell runs. The page reports whether the
-// machine is signed in and working, which keep it in the tray and awake, and turns start at login on
-// or off. Updates come through here too: the shell checks, downloads and installs them. The page
-// asks for native notifications and the taskbar badge, and hears which thread a clicked toast opens.
+// through here for the page's text menu, whose commands the shell runs. The page supplies its
+// session state and notification preferences so the shell can use them while the window hibernates.
+// Start at login and updates also go through the shell.
 // The main window opens a thread in a window of its own, and hears what the `cerium` command and links ask
 // for; the command is installed from Settings.
 // Dictation opens Windows' or macOS's microphone privacy settings when they block it. The Preview
-// pane's pages are the shell's; the page says where its pane is and passes on the agents' calls.
+// pane's pages are the shell's; the page says where its pane is.
 contextBridge.exposeInMainWorld("cerium", {
   shell: "electron",
   platform: process.platform,
@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.invoke("cerium:set-crash-reports", enabled),
   reportCrash: (report: unknown): void => ipcRenderer.send("cerium:report-crash", report),
   openLogs: (): Promise<void> => ipcRenderer.invoke("cerium:open-logs"),
+  openChromiumNotices: (): Promise<void> => ipcRenderer.invoke("cerium:open-chromium-notices"),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
   // Empty for a file that only exists in memory, such as a pasted screenshot.
   pathForFile: (file: File): string | undefined => webUtils.getPathForFile(file) || undefined,
@@ -77,8 +78,10 @@ contextBridge.exposeInMainWorld("cerium", {
     return () => ipcRenderer.off("cerium:text-menu", forward);
   },
   runTextCommand: (command: unknown): Promise<void> => ipcRenderer.invoke("cerium:text-command", command),
-  setPresence: (presence: { signedIn: boolean; working: boolean }): void =>
-    ipcRenderer.send("cerium:presence", presence),
+  tabState: (key: string): string | undefined => ipcRenderer.sendSync("cerium:tab-state", key) ?? undefined,
+  rememberTabState: (key: string, value: string): void =>
+    ipcRenderer.send("cerium:remember-tab-state", key, value),
+  setRendererBusy: (busy: boolean): void => ipcRenderer.send("cerium:renderer-busy", busy),
   startAtLogin: (): Promise<{ available: boolean; enabled: boolean }> =>
     ipcRenderer.invoke("cerium:start-at-login"),
   setStartAtLogin: (enabled: boolean): Promise<{ available: boolean; enabled: boolean }> =>
@@ -95,40 +98,25 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.on("cerium:updates", forward);
     return () => ipcRenderer.off("cerium:updates", forward);
   },
-  notify: (request: {
-    threadId: string;
-    title: string;
-    body: string;
+  notificationPreferences: (preferences: {
+    kinds: ReadonlyArray<NotificationKind>;
     silent: boolean;
-    attention: boolean;
-  }): void => ipcRenderer.send("cerium:notify", request),
-  setBadge: (badge: { count: number; icon?: string }): void => ipcRenderer.send("cerium:set-badge", badge),
+    badge: boolean;
+  }): void => ipcRenderer.send("cerium:notification-preferences", preferences),
+  notificationViewing: (threadId: string | undefined): void =>
+    ipcRenderer.send("cerium:notification-viewing", threadId),
+  testNotification: (silent: boolean): void => ipcRenderer.send("cerium:test-notification", silent),
+  notificationBadgeIcons: (icons: ReadonlyArray<string>): void =>
+    ipcRenderer.send("cerium:notification-badge-icons", icons),
   openThreadWindow: (threadId: string, mode: "work" | "chat"): void =>
     ipcRenderer.send("cerium:open-thread-window", threadId, mode),
-  onOpenThread: (listener: (threadId: string) => void): (() => void) => {
-    const forward = (_event: unknown, threadId: unknown) => {
-      if (typeof threadId === "string") listener(threadId);
-    };
-    ipcRenderer.on("cerium:open-thread", forward);
-    return () => ipcRenderer.off("cerium:open-thread", forward);
-  },
-  onMenuCommand: (listener: (command: "open-settings" | "new-thread") => void): (() => void) => {
-    const forward = (_event: unknown, command: unknown) => {
-      if (command === "open-settings" || command === "new-thread") listener(command);
-    };
-    ipcRenderer.on("cerium:menu-command", forward);
-    return () => ipcRenderer.off("cerium:menu-command", forward);
-  },
   onFullScreenChange: (listener: (fullScreen: boolean) => void): (() => void) => {
     const forward = (_event: unknown, fullScreen: unknown) => listener(fullScreen === true);
     ipcRenderer.on("cerium:full-screen", forward);
     return () => ipcRenderer.off("cerium:full-screen", forward);
   },
-  // The Preview pane's pages, which the shell lays over the window where the pane says, and the
-  // agents' calls on them, which the page hands on from its backend.
+  // The Preview pane's pages, which the shell lays over the window where the pane says.
   preview: {
-    run: (threadId: string, command: unknown): Promise<unknown> =>
-      ipcRenderer.invoke("cerium:preview-run", threadId, command),
     place: (threadId: string, bounds: { x: number; y: number; width: number; height: number } | null): void =>
       ipcRenderer.send("cerium:preview-place", threadId, bounds),
     navigate: (threadId: string, input: string): Promise<boolean> =>
@@ -137,8 +125,6 @@ contextBridge.exposeInMainWorld("cerium", {
       ipcRenderer.send("cerium:preview-go", threadId, go),
     close: (threadId: string): void => ipcRenderer.send("cerium:preview-close", threadId),
     retire: (threadId: string): void => ipcRenderer.send("cerium:preview-retire", threadId),
-    threads: (threads: ReadonlyArray<{ id: string; active: boolean; retired: boolean }>): void =>
-      ipcRenderer.send("cerium:preview-threads", threads),
     still: (threadId: string): Promise<string | undefined> =>
       ipcRenderer.invoke("cerium:preview-still", threadId),
     states: (): Promise<unknown> => ipcRenderer.invoke("cerium:preview-states"),

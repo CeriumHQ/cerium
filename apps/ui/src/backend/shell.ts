@@ -1,3 +1,5 @@
+import type { NotificationKind } from "@cerium/protocol";
+
 import { drivenMachine } from "./machine.ts";
 
 /** Where the UI reaches the backend. */
@@ -47,6 +49,8 @@ export interface ShellBridge {
   readonly restartBackend?: () => Promise<void>;
   /** Opens the folder of Cerium's logs in the system's file manager. */
   readonly openLogs?: () => Promise<void>;
+  /** Opens the Chromium notices bundled with this desktop app. */
+  readonly openChromiumNotices?: () => Promise<void>;
   /** Whether this build sends anonymous crash reports, and whether the user lets it (`CrashReportsState`). */
   readonly crashReports?: () => Promise<CrashReportsState>;
   readonly setCrashReports?: (enabled: boolean) => Promise<CrashReportsState>;
@@ -67,8 +71,8 @@ export interface ShellBridge {
   readonly installCli?: () => Promise<CliState>;
   readonly removeCli?: () => Promise<CliState>;
   /**
-   * Calls back with what the `cerium` command or a `cerium://` link asked for, among them what asked
-   * before the page listened; returns how to stop.
+   * Calls back with requests from the shell, including a command or link, a clicked notification,
+   * a native menu action or an agent opening a preview. Returns how to stop.
    */
   readonly onLaunch?: (listener: (request: unknown) => void) => () => void;
   /** The code editors installed on this computer; `fresh` looks again instead of using the last look. */
@@ -110,11 +114,11 @@ export interface ShellBridge {
   readonly onTextMenu?: (listener: (request: TextMenuRequest) => void) => () => void;
   /** Runs a text menu command on the last right-click, in the focused field or frame. */
   readonly runTextCommand?: (command: TextCommand) => Promise<void>;
-  /**
-   * Whether this machine is signed in to a Cerium account and whether agents are working: signed in,
-   * closing the window hides it to the tray, and working too, the PC is kept awake.
-   */
-  readonly setPresence?: (presence: { signedIn: boolean; working: boolean }) => void;
+  /** The main window's tab storage, kept in the shell while the window hibernates. */
+  readonly tabState?: (key: string) => string | undefined;
+  readonly rememberTabState?: (key: string, value: string) => void;
+  /** Holds off hibernation while the renderer has unfinished work of its own. */
+  readonly setRendererBusy?: (busy: boolean) => void;
   /**
    * Whether Cerium starts when the user signs in to the computer; only the installed app can: on
    * Linux the AppImage or the .deb or .rpm package.
@@ -137,20 +141,16 @@ export interface ShellBridge {
   readonly installUpdate?: (anyway?: boolean) => Promise<InstallResult>;
   /** Calls back whenever what the updater knows changes; returns how to stop. */
   readonly onUpdatesChange?: (listener: (updates: Updates) => void) => () => void;
-  /**
-   * Shows a native notification about a thread, with the system's sound unless `silent`; `attention`
-   * also flashes the taskbar button until the window is focused.
-   */
-  readonly notify?: (request: NativeNotification) => void;
-  /** The number over the taskbar icon, drawn in `icon` (a PNG data URL); 0 clears it. */
-  readonly setBadge?: (badge: { count: number; icon?: string }) => void;
-  /** Calls back with the thread of each clicked notification; returns how to stop. */
-  readonly onOpenThread?: (listener: (threadId: string) => void) => () => void;
-  /**
-   * Calls back with what the Mac's menu bar or Dock menu asks of the main window: Settings…, New
-   * Thread; returns how to stop.
-   */
-  readonly onMenuCommand?: (listener: (command: "open-settings" | "new-thread") => void) => () => void;
+  readonly notificationPreferences?: (preferences: {
+    kinds: ReadonlyArray<NotificationKind>;
+    silent: boolean;
+    badge: boolean;
+  }) => void;
+  /** Which local thread the main window shows, so the shell can suppress its toast when focused. */
+  readonly notificationViewing?: (threadId: string | undefined) => void;
+  readonly testNotification?: (silent: boolean) => void;
+  /** PNG data URLs for the Windows badge, drawn by the UI in its theme. */
+  readonly notificationBadgeIcons?: (icons: ReadonlyArray<string>) => void;
   /**
    * Calls back whenever the window enters or leaves macOS's full screen, which hides the traffic
    * lights; returns how to stop.
@@ -212,8 +212,6 @@ export interface PreviewBounds {
 
 /** Each thread's preview page, kept by the shell; the pane says where to lay it and drives it. */
 export interface PreviewBridge {
-  /** Runs an agent's browser call on the thread's page, opening one if it has none. */
-  readonly run: (threadId: string, command: unknown) => Promise<unknown>;
   /** Lays the page over `bounds`, or takes it away (`null`), opening one first if it has none. */
   readonly place: (threadId: string, bounds: PreviewBounds | null) => void;
   /** Opens what the user typed; resolves false for an address the preview won't open. */
@@ -223,23 +221,12 @@ export interface PreviewBridge {
   readonly close: (threadId: string) => void;
   /** Releases a successfully archived page after any browser call still in flight finishes. */
   readonly retire?: (threadId: string) => void;
-  /** The local threads owning pages, including archives/deletions made by another client. */
-  readonly threads?: (threads: ReadonlyArray<{ id: string; active: boolean; retired: boolean }>) => void;
   /** What the page shows now, as a PNG data URL. */
   readonly still: (threadId: string) => Promise<string | undefined>;
   /** Every page open now. */
   readonly states: () => Promise<unknown>;
   readonly onState: (listener: (state: unknown) => void) => () => void;
   readonly onClosed: (listener: (threadId: string) => void) => () => void;
-}
-
-/** Mirrors the shell's `NotificationRequest` in apps/desktop/src/notifications.ts. */
-export interface NativeNotification {
-  readonly threadId: string;
-  readonly title: string;
-  readonly body: string;
-  readonly silent: boolean;
-  readonly attention: boolean;
 }
 
 export interface StartAtLogin {

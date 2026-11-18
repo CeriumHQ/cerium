@@ -15,6 +15,7 @@ import {
   type ConfirmLinkRequest,
   type ConnectedAssistants,
   type ConnectionId,
+  type CloudThreadStateView,
   type Credential,
   type DeviceDraft,
   type DeviceId,
@@ -77,6 +78,7 @@ import {
   appendBatch,
   cloudHistorySlice,
 } from "./sync.ts";
+import { CloudThreadState } from "./threadState.ts";
 import { routeFrame, type Live } from "./tunnel.ts";
 import { pushTopic, sendPush } from "./webPush.ts";
 
@@ -367,6 +369,7 @@ export class Account extends DurableObject<Env> {
     const machine = eq(tables.threads.machine, target.id);
     const gone = this.db.select({ thread: tables.threads.thread }).from(tables.threads).where(machine).all();
     this.db.delete(tables.eventBatches).where(eq(tables.eventBatches.machine, target.id)).run();
+    this.deleteThreadState(target.id);
     this.db.delete(tables.threads).where(machine).run();
     if (gone.length > 0) {
       this.toDevices({
@@ -402,11 +405,19 @@ export class Account extends DurableObject<Env> {
     credential: Credential,
     machine: DeviceId,
     threadId: ThreadId,
-    page?: { readonly before?: number },
+    page?: { readonly before?: number; readonly state?: CloudThreadStateView },
   ): Promise<Outcome | string> {
     const reader = this.row(credential.deviceId);
     if (reader === undefined || !(await this.verify(reader, credential))) {
       return refused(401, "This device isn't signed in to the account.");
+    }
+    if (page?.state !== undefined) {
+      const state = new CloudThreadState(this.db, machine, threadId);
+      const view = page.state;
+      return JSON.stringify({
+        events: this.ctx.storage.transactionSync(() => state.read(view)),
+        more: false,
+      });
     }
     if (page !== undefined) {
       // Read one immutable upload (at most 900 kB), never all batches of a thread. The cursor is
@@ -469,6 +480,7 @@ export class Account extends DurableObject<Env> {
         if (sender.kind !== "desktop" || message.threadIds.length === 0) return;
         for (const threadId of message.threadIds) {
           this.db.delete(tables.eventBatches).where(this.batchesOf(machine, threadId)).run();
+          this.deleteThreadState(machine, threadId);
           this.db.delete(tables.threads).where(this.threadOf(machine, threadId)).run();
         }
         return this.toDevices(
@@ -484,7 +496,7 @@ export class Account extends DurableObject<Env> {
         if (sender.kind !== "desktop") return;
         const thread = this.threadOf(machine, message.threadId);
         const stored = this.db
-          .select({ events: tables.threads.events })
+          .select({ events: tables.threads.events, stateEvents: tables.threads.stateEvents })
           .from(tables.threads)
           .where(thread)
           .get();
@@ -493,17 +505,24 @@ export class Account extends DurableObject<Env> {
           return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count: 0 });
         const { keep, count } = appendBatch(stored.events, message.start, message.events);
         if (keep.length > 0) {
-          const events = JSON.stringify(keep);
-          const { eventBatches } = tables;
-          this.db
-            .insert(eventBatches)
-            .values({ machine, thread: message.threadId, start: stored.events, events })
-            .onConflictDoUpdate({
-              target: [eventBatches.machine, eventBatches.thread, eventBatches.start],
-              set: { events },
-            })
-            .run();
-          this.db.update(tables.threads).set({ events: count }).where(thread).run();
+          this.ctx.storage.transactionSync(() => {
+            const events = JSON.stringify(keep);
+            const { eventBatches } = tables;
+            this.db
+              .insert(eventBatches)
+              .values({ machine, thread: message.threadId, start: stored.events, events })
+              .onConflictDoUpdate({
+                target: [eventBatches.machine, eventBatches.thread, eventBatches.start],
+                set: { events },
+              })
+              .run();
+            const stateEvents = new CloudThreadState(this.db, machine, message.threadId).append(
+              stored.events,
+              stored.stateEvents,
+              keep,
+            );
+            this.db.update(tables.threads).set({ events: count, stateEvents }).where(thread).run();
+          });
         }
         return send(socket, { _tag: "SyncAccepted", threadId: message.threadId, count });
       }
@@ -784,6 +803,28 @@ export class Account extends DurableObject<Env> {
 
   private threadOf(machine: string, threadId: string) {
     return and(eq(tables.threads.machine, machine), eq(tables.threads.thread, threadId));
+  }
+
+  private deleteThreadState(machine: string, thread?: string) {
+    const { stateBatches, stateChunks } = tables;
+    this.db
+      .delete(stateBatches)
+      .where(
+        and(
+          eq(stateBatches.machine, machine),
+          thread === undefined ? undefined : eq(stateBatches.thread, thread),
+        ),
+      )
+      .run();
+    this.db
+      .delete(stateChunks)
+      .where(
+        and(
+          eq(stateChunks.machine, machine),
+          thread === undefined ? undefined : eq(stateChunks.thread, thread),
+        ),
+      )
+      .run();
   }
 
   private batchesOf(machine: string, threadId: string) {

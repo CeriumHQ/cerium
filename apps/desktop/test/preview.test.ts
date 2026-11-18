@@ -124,6 +124,7 @@ const setup = () => {
   const owner = {
     webContents: contents,
     isDestroyed: () => false,
+    isVisible: () => true,
     contentView: { addChildView() {}, removeChildView() {} },
   } as unknown as BrowserWindow;
   const pages = previews(() => owner);
@@ -141,11 +142,10 @@ afterEach(() => {
 
 describe("preview page lifetime", () => {
   it("closes excess hidden pages while keeping the running agent's oldest page", async () => {
-    const { pages, fire, call, states } = setup();
+    const { pages, call, states } = setup();
     for (let i = 0; i < 8; i++) await call("navigate", `thr_${i}`, `http://localhost/page/${i}`);
     expect(states()).toHaveLength(8);
-    fire(
-      "threads",
+    pages.updateThreads(
       Array.from({ length: 8 }, (_, i) => ({ id: `thr_${i}`, active: i === 0, retired: false })),
     );
     expect(states()).toHaveLength(5);
@@ -156,14 +156,14 @@ describe("preview page lifetime", () => {
 
   it("waits for an in-flight call before closing a newly archived page", async () => {
     const { pages, fire, call, states } = setup();
-    fire("threads", [{ id: "thr_active", active: true, retired: false }]);
+    pages.updateThreads([{ id: "thr_active", active: true, retired: false }]);
     await call("navigate", "thr_active", "http://localhost/active");
     let finish!: (value: { text: string }) => void;
     fake.run = () =>
       new Promise((resolve) => {
         finish = resolve;
       });
-    const pending = call("run", "thr_active", { _tag: "Read" });
+    const pending = pages.answer("thr_active", { _tag: "Read", text: true });
     // Attaching the debugger and page takes a few promise continuations.
     for (let i = 0; i < 10 && finish === undefined; i++) await Promise.resolve();
     fire("retire", "thr_active");
@@ -177,32 +177,32 @@ describe("preview page lifetime", () => {
 
   it("restores an evicted page's navigation and permits reopening an archived page", async () => {
     const { pages, fire, call, states } = setup();
-    fire("threads", [{ id: "thr_old", active: false, retired: false }]);
+    pages.updateThreads([{ id: "thr_old", active: false, retired: false }]);
     await call("navigate", "thr_old", "http://localhost/first");
     await call("navigate", "thr_old", "http://localhost/second");
     await vi.advanceTimersByTimeAsync(5 * 60_000 + 30_000);
     expect(states()).toHaveLength(0);
     fire("place", "thr_old", { x: 0, y: 0, width: 640, height: 480 });
     expect(states()[0]).toMatchObject({ url: "http://localhost/second", canGoBack: true });
-    fire("threads", [{ id: "thr_old", active: false, retired: true }]);
+    pages.updateThreads([{ id: "thr_old", active: false, retired: true }]);
     expect(states()).toHaveLength(0);
     fire("place", "thr_old", { x: 0, y: 0, width: 640, height: 480 });
-    fire("threads", [{ id: "thr_old", active: false, retired: true }]);
+    pages.updateThreads([{ id: "thr_old", active: false, retired: true }]);
     expect(states()).toHaveLength(1);
     pages.closeAll();
   });
 
   it("lets only the current page's calls release it after an explicit close and reopen", async () => {
     const { pages, fire, call, states } = setup();
-    fire("threads", [{ id: "thr_reopened", active: true, retired: false }]);
+    pages.updateThreads([{ id: "thr_reopened", active: true, retired: false }]);
     const finishes: Array<(value: { text: string }) => void> = [];
     fake.run = () => new Promise((resolve) => finishes.push(resolve));
     await call("navigate", "thr_reopened", "http://localhost/old");
-    const oldCall = call("run", "thr_reopened", { _tag: "Read" });
+    const oldCall = pages.answer("thr_reopened", { _tag: "Read", text: true });
     for (let i = 0; i < 10 && finishes.length < 1; i++) await Promise.resolve();
     fire("close", "thr_reopened");
     await call("navigate", "thr_reopened", "http://localhost/new");
-    const newCall = call("run", "thr_reopened", { _tag: "Read" });
+    const newCall = pages.answer("thr_reopened", { _tag: "Read", text: true });
     for (let i = 0; i < 10 && finishes.length < 2; i++) await Promise.resolve();
     fire("retire", "thr_reopened");
     finishes[0]!({ text: "old completed" });

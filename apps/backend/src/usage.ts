@@ -199,7 +199,7 @@ export class SubscriptionUsage extends Context.Service<
     Effect.gen(function* () {
       const adapters = yield* Adapters;
       const orchestrator = yield* Orchestrator;
-      return SubscriptionUsage.of(yield* makeSubscriptionUsage(adapters, orchestrator.events));
+      return SubscriptionUsage.of(yield* makeSubscriptionUsage(adapters, orchestrator.activity));
     }),
   );
 }

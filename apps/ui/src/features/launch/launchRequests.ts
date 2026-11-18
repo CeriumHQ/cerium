@@ -2,16 +2,18 @@ import { useEffect, useEffectEvent } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
 
-// What the `cerium` command and `cerium://` links ask the running app for, as the shell passes it on
+// What the shell asks the running app to open, including commands, links, notifications and previews
 // (apps/desktop/src/launch.ts). The shell hands over each request once, to the first listener the page
 // has; the listeners that want one kind or another register as their components mount, so a request
 // nobody wants yet waits here until one does.
 
-/** Mirrors the shell's `LaunchRequest`. */
+/** Mirrors the shell's `WindowRequest`. */
 export type LaunchRequest =
   | { readonly kind: "thread"; readonly id: string }
   | { readonly kind: "folder"; readonly folder: string }
-  | { readonly kind: "prompt"; readonly folder: string; readonly text: string };
+  | { readonly kind: "prompt"; readonly folder: string; readonly text: string }
+  | { readonly kind: "menu"; readonly command: "open-settings" | "new-thread" }
+  | { readonly kind: "preview"; readonly id: string };
 
 /** A listener says whether it took the request. */
 type Listener = (request: LaunchRequest) => boolean;
@@ -25,11 +27,14 @@ const isRequest = (value: unknown): value is LaunchRequest => {
   const request = value as Record<string, unknown>;
   switch (request["kind"]) {
     case "thread":
+    case "preview":
       return typeof request["id"] === "string";
     case "folder":
       return typeof request["folder"] === "string";
     case "prompt":
       return typeof request["folder"] === "string" && typeof request["text"] === "string";
+    case "menu":
+      return request["command"] === "open-settings" || request["command"] === "new-thread";
     default:
       return false;
   }

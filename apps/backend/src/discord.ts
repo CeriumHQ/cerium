@@ -178,7 +178,7 @@ export const discordPresence = (
         Stream.runForEach(() => poke),
         Effect.forkScoped,
       );
-      yield* orchestrator.events.pipe(
+      yield* orchestrator.activity.pipe(
         Stream.filter((event) => changesActivity.has(event.payload._tag)),
         Stream.runForEach(() => poke),
         Effect.forkScoped,

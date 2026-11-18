@@ -14,6 +14,26 @@ export const ComputerLive = Computer.layer({
   stateDirectory: join(homedir(), ".cerium", "agent-desktop"),
 });
 
+/** Streams session changes immediately and shares permission polling among connected viewers. */
+export const watchComputerUse = (computer: Computer["Service"], settings: UserSettings["Service"]) =>
+  Effect.gen(function* () {
+    const checks = yield* computer.changes.pipe(
+      Stream.zipLatestWith(
+        settings.changes,
+        (status, current) =>
+          current.computerUse.enabled && status.tool.state === "ready" && status.permission === "needed",
+      ),
+      Stream.changes,
+      Stream.switchMap((needed) =>
+        needed
+          ? Stream.tick("3 seconds").pipe(Stream.mapEffect(() => computer.checkPermission))
+          : Stream.empty,
+      ),
+      Stream.share({ capacity: 1 }),
+    );
+    return computer.changes.pipe(Stream.drainFork(checks));
+  });
+
 /**
  * Installs agent-desktop as soon as computer use is on, so the first call doesn't wait on it; ends
  * every agent's use the moment it's turned off; and lets a thread the user stopped use the computer
@@ -30,7 +50,7 @@ export const computerUseFollowsUser = Layer.effectDiscard(
       Stream.runForEach((enabled) => (enabled ? computer.install.pipe(Effect.ignore) : computer.endAll)),
       Effect.forkScoped,
     );
-    yield* orchestrator.events.pipe(
+    yield* orchestrator.activity.pipe(
       Stream.filter(
         ({ payload }) =>
           payload._tag === "MessageQueued" ||
@@ -39,7 +59,7 @@ export const computerUseFollowsUser = Layer.effectDiscard(
       Stream.runForEach((event) => computer.resume(event.threadId)),
       Effect.forkScoped,
     );
-    yield* orchestrator.events.pipe(
+    yield* orchestrator.activity.pipe(
       Stream.filter(({ payload }) => payload._tag === "TurnCompleted"),
       Stream.runForEach((event) => computer.release(event.agentId)),
       Effect.forkScoped,

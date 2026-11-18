@@ -215,7 +215,7 @@ describe("the presence", () => {
       changes: SubscriptionRef.changes(settings),
     } as never);
     const orchestrator = Layer.succeed(Orchestrator, {
-      events: Stream.fromQueue(events),
+      activity: Stream.fromQueue(events),
       threadOverviews: Effect.succeed([overview(thread("a", "C:/code/cerium"), [agent("l", "running")])]),
     } as never);
     yield* Layer.build(

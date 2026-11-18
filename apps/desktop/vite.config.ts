@@ -11,7 +11,10 @@ export default defineConfig({
       entry: { main: "src/main.ts" },
       format: "esm",
       platform: "node",
-      deps: { neverBundle: ["electron", "koffi", "electron-updater", /^@sentry\//] },
+      deps: {
+        neverBundle: ["electron", "koffi", "electron-updater", /^@sentry\//],
+        alwaysBundle: [/^@cerium\//],
+      },
       define: { __CERIUM_SENTRY_DSN__: JSON.stringify(process.env["CERIUM_SENTRY_DSN"] ?? "") },
       dts: false,
     },

@@ -3,10 +3,9 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 
 // The browser a thread's agents drive and its user watches in the Preview pane. The desktop shell
-// holds each thread's page; the backend's bus tools reach it through the desktop window's own
-// connection: the window hosts the browser (`HostBrowser`), takes each call the agents make, has the
-// shell run it, and answers (`AnswerBrowser`). A device with no shell, a browser or a phone, hosts
-// none, and the agents are told so. Mirrors `BrowserCommand` in @cerium/browser.
+// holds each thread's page, hosts the browser (`HostBrowser`), and answers calls (`AnswerBrowser`)
+// even while its main window hibernates. A device with no shell hosts none, and the agents are
+// told so. Mirrors `BrowserCommand` in @cerium/browser.
 
 /** Where an action lands: visible text or an accessible name, a CSS selector, or a point. */
 export const BrowserTarget = Schema.Struct({

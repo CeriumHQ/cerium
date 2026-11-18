@@ -4,8 +4,13 @@ Cerium is licensed under the Apache License 2.0 (`LICENSE`). It bundles the font
 below, each under its own license, which takes precedence over Cerium's for that work.
 
 The npm packages the backend runs ship inside the app (under `resources/app/node_modules`), each with
-its own license file, and Electron's and Chromium's licenses ship with it as `LICENSE.electron.txt`
-and `LICENSES.chromium.html`.
+its own license file. Electron's license ships as `LICENSE.electron.txt`.
+
+To read Chromium's full notices offline, open **Settings → General → About → View notices** in
+Cerium. You can also open `LICENSES.chromium.html` beside this file in a browser. Both files are in
+`Cerium.app/Contents/Resources` on macOS and in the app's `resources` folder on Windows and Linux.
+The HTML reader contains a losslessly compressed copy of the notices from Electron. **Download original
+HTML** saves the full upstream file byte-for-byte.
 
 ## Fonts
 
@@ -33,6 +38,11 @@ Shipped in the app, the web client and the website as web fonts, under the SIL O
 
 The harnesses' logos, Apple's, Windows' and Tux identify those products and remain trademarks of
 their owners. Cerium is not affiliated with or endorsed by them.
+
+## Dictation runtime
+
+The desktop app uses ONNX Runtime Web, including its downloadable WebAssembly binary. Copyright (c)
+Microsoft Corporation. All rights reserved. MIT License (below).
 
 ## The website's scripts
 

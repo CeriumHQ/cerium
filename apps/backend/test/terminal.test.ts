@@ -693,7 +693,11 @@ describe("Terminals.run", () => {
       Effect.gen(function* () {
         const terminals = yield* Terminals;
         const program = { file: "/bin/claude", args: ["auth", "login"], name: "claude" };
-        const first = yield* terminals.run("claude:login", program, size);
+        let successes = 0;
+        const onSuccess = () => {
+          successes++;
+        };
+        const first = yield* terminals.run("claude:login", program, size, onSuccess);
         const [puppet] = spawned;
         assert.strictEqual(puppet?.options.file, "/bin/claude");
         assert.deepStrictEqual(puppet?.options.args, ["auth", "login"]);
@@ -706,11 +710,21 @@ describe("Terminals.run", () => {
         yield* settle;
         assert.include(text(seen), "Opening the browser");
 
-        const second = yield* terminals.run("claude:login", program, size);
+        const second = yield* terminals.run("claude:login", program, size, onSuccess);
         assert.notStrictEqual(second.id, first.id);
         assert.isTrue(puppet?.killed);
         const restarted = yield* terminals.restart(second.id, size).pipe(Effect.flip);
         assert.strictEqual(restarted.message, "That command has ended. Run it again instead.");
+        spawned[1]?.end(1);
+        assert.strictEqual(successes, 0);
+
+        const third = yield* terminals.run("claude:login", program, size, onSuccess);
+        spawned[2]?.end(0);
+        assert.strictEqual(successes, 1);
+        assert.deepStrictEqual(
+          Array.from(yield* Stream.runCollect(terminals.attach(third.id, size))).at(-1),
+          { _tag: "Exit", code: 0 },
+        );
       }),
     );
   });

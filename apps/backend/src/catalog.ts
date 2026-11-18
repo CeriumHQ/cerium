@@ -1,15 +1,19 @@
+import { HarnessFailure, HarnessUnavailable, type HarnessAdapter } from "@cerium/harness";
 import { Adapters, Catalog, UserSettings, type CatalogEntry } from "@cerium/orchestrator";
-import { rosterMembers, type ModelInfo, type ProviderId, type RosterMember } from "@cerium/protocol";
-import { Context, Deferred, Duration, Effect, Layer, Scope } from "effect";
+import {
+  rosterMembers,
+  type HarnessStatus,
+  type ModelInfo,
+  type ProviderId,
+  type RosterMember,
+} from "@cerium/protocol";
+import { Clock, Context, Deferred, Duration, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
 /** How long each harness may take to list its models. */
 const LIST_TIMEOUT = "20 seconds";
 
-/**
- * How long a harness that offered no models waits before a read of the catalog asks it again, in case
- * it was signed in outside Cerium meanwhile.
- */
-const RELIST_AFTER = Duration.minutes(1);
+/** How long to reuse a completed listing, including an empty list or an unavailable harness. */
+const FRESH_FOR_MS = Duration.toMillis(Duration.minutes(1));
 
 /**
  * The roster's models as leads know them: by id, or `provider/id` where two harnesses list the same id,
@@ -27,22 +31,33 @@ export const catalogEntries = (members: ReadonlyArray<RosterMember>): ReadonlyAr
     priority,
   }));
 
-/**
- * What every harness offers, kept current: listed as the backend starts, from whatever the UI reads of
- * a harness since, and again for a harness that offered nothing once it's signed in.
- */
+type ModelList = ReadonlyArray<ModelInfo>;
+type ListingResult = Exit.Exit<ModelList, HarnessUnavailable | HarnessFailure>;
+
+interface Listing {
+  readonly done: Deferred.Deferred<ListingResult | undefined>;
+  expiresAt: number;
+}
+
+interface HarnessModels {
+  readonly adapter: HarnessAdapter;
+  models: ModelList;
+  listing?: Listing;
+  status?: string;
+}
+
+/** One listing per harness, shared by startup, the catalog, and the UI. */
 export class OfferedModels extends Context.Service<
   OfferedModels,
   {
-    /** Every harness's models, in the adapters' order; waits for the listing the backend starts with. */
-    readonly all: Effect.Effect<ReadonlyArray<ModelInfo>>;
-    /** Takes a harness's fresh list, such as the one the UI just read. */
-    offer(provider: ProviderId, models: ReadonlyArray<ModelInfo>): Effect.Effect<void>;
-    /**
-     * Lists again, in the background, the harnesses that offered nothing: those of `ready` at once (they
-     * were just found signed in), any other only once `RELIST_AFTER` has passed since its last try.
-     */
-    relistEmpty(ready?: ReadonlyArray<ProviderId>): Effect.Effect<void>;
+    /** Waits for startup discovery. Later reads return the last lists and refresh expired ones in the background. */
+    readonly all: Effect.Effect<ModelList>;
+    /** Returns the fresh list for one harness, waiting for a listing if necessary. */
+    list(provider: ProviderId): Effect.Effect<ModelList, HarnessUnavailable | HarnessFailure>;
+    /** Drops models from before a sign-in or update and starts a new listing. */
+    invalidate(provider: ProviderId): Effect.Effect<void>;
+    /** Refreshes models when a probe sees a different install or sign-in state. */
+    observe(status: HarnessStatus): Effect.Effect<void>;
   }
 >()("cerium/backend/OfferedModels") {
   static readonly layer = Layer.effect(
@@ -50,61 +65,139 @@ export class OfferedModels extends Context.Service<
     Effect.gen(function* () {
       const adapters = yield* Adapters;
       const scope = yield* Scope.Scope;
-      const offered = new Map<ProviderId, ReadonlyArray<ModelInfo>>();
-      const triedAt = new Map<ProviderId, number>();
-      const listing = new Set<ProviderId>();
-      const started = yield* Deferred.make<void>();
+      const harnesses = new Map<ProviderId, HarnessModels>(
+        [...adapters].map(([provider, adapter]) => [provider, { adapter, models: [] }]),
+      );
+      const ordered = [...harnesses.values()];
 
-      const all = Effect.sync(() => [...adapters.keys()].flatMap((provider) => offered.get(provider) ?? []));
+      const ensureListing = (harness: HarnessModels) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          if (harness.listing !== undefined && now < harness.listing.expiresAt) return harness.listing;
 
-      const list = (provider: ProviderId) =>
-        Effect.suspend(() => {
-          const adapter = adapters.get(provider);
-          if (adapter === undefined || listing.has(provider)) return Effect.void;
-          listing.add(provider);
-          triedAt.set(provider, Date.now());
-          return adapter.listModels.pipe(
-            Effect.timeout(LIST_TIMEOUT),
-            Effect.orElseSucceed((): ReadonlyArray<ModelInfo> => []),
-            Effect.map((models) => void offered.set(provider, models)),
-            Effect.ensuring(Effect.sync(() => listing.delete(provider))),
+          const { adapter } = harness;
+          const listing: Listing = { done: Deferred.makeUnsafe(), expiresAt: Infinity };
+          harness.listing = listing;
+          const discover = adapter.listModels.pipe(
+            Effect.timeoutOrElse({
+              duration: LIST_TIMEOUT,
+              orElse: () =>
+                new HarnessFailure({
+                  provider: adapter.provider,
+                  message: `Timed out listing ${adapter.provider} models.`,
+                  cause: LIST_TIMEOUT,
+                }),
+            }),
+            Effect.catchDefect(
+              (cause) =>
+                new HarnessFailure({
+                  provider: adapter.provider,
+                  message: `Couldn't list ${adapter.provider} models.`,
+                  cause,
+                }),
+            ),
           );
+          // The backend owns the lookup, so canceling a viewer's request leaves it available to others.
+          yield* Effect.forkIn(
+            Effect.gen(function* () {
+              const result = yield* Effect.exit(discover);
+              const finishedAt = yield* Clock.currentTimeMillis;
+              if (harness.listing === listing) {
+                harness.models = Exit.isSuccess(result) ? result.value : [];
+                listing.expiresAt = finishedAt + FRESH_FOR_MS;
+                Deferred.doneUnsafe(listing.done, Effect.succeed(result));
+              }
+            }),
+            scope,
+            { uninterruptible: false },
+          );
+          return listing;
+        }).pipe(Effect.uninterruptible);
+
+      const read = (harness: HarnessModels) =>
+        Effect.gen(function* () {
+          for (;;) {
+            const listing = yield* ensureListing(harness);
+            const result = yield* Deferred.await(listing.done);
+            if (result !== undefined && harness.listing === listing) return yield* result;
+          }
         });
 
-      yield* Effect.forEach([...adapters.keys()], list, { concurrency: "unbounded", discard: true }).pipe(
-        Effect.ensuring(Deferred.succeed(started, undefined)),
-        Effect.forkIn(scope),
-      );
+      const invalidate = (harness: HarnessModels) =>
+        Effect.gen(function* () {
+          const previous = harness.listing;
+          delete harness.listing;
+          harness.models = [];
+          // Move current waiters to the replacement. An older lookup can finish, but can't publish.
+          if (previous !== undefined) Deferred.doneUnsafe(previous.done, Effect.succeed(undefined));
+          yield* ensureListing(harness);
+        }).pipe(Effect.uninterruptible);
+
+      const startup = yield* Effect.forEach(ordered, (harness) => Effect.ignore(read(harness)), {
+        concurrency: "unbounded",
+        discard: true,
+      }).pipe(Effect.forkIn(scope));
 
       return OfferedModels.of({
-        all: Deferred.await(started).pipe(Effect.andThen(all)),
-        offer: (provider, models) => Effect.sync(() => void offered.set(provider, models)),
-        relistEmpty: (ready = []) =>
+        all: Effect.gen(function* () {
+          yield* Fiber.join(startup);
+          yield* Effect.forEach(ordered, ensureListing, { discard: true });
+          return ordered.flatMap((harness) => harness.models);
+        }),
+        list: (provider) => {
+          const harness = harnesses.get(provider);
+          return harness === undefined
+            ? new HarnessUnavailable({
+                provider,
+                reason: "notInstalled",
+                message: `No ${provider} adapter is installed.`,
+              })
+            : read(harness);
+        },
+        invalidate: (provider) => {
+          const harness = harnesses.get(provider);
+          if (harness === undefined) return Effect.void;
+          // The next status check establishes the new baseline after a command or browser sign-in.
+          return Effect.sync(() => {
+            delete harness.status;
+          }).pipe(Effect.andThen(invalidate(harness)), Effect.uninterruptible);
+        },
+        observe: (status) =>
           Effect.suspend(() => {
-            if (!Deferred.isDoneUnsafe(started)) return Effect.void;
-            const now = Date.now();
-            const due = [...adapters.keys()].filter(
-              (provider) =>
-                (offered.get(provider)?.length ?? 0) === 0 &&
-                (ready.includes(provider) ||
-                  now - (triedAt.get(provider) ?? 0) >= Duration.toMillis(RELIST_AFTER)),
-            );
-            return due.length === 0
-              ? Effect.void
-              : Effect.forEach(due, list, { concurrency: "unbounded", discard: true }).pipe(
-                  Effect.forkIn(scope),
-                  Effect.asVoid,
-                );
-          }),
+            const harness = harnesses.get(status.provider);
+            if (harness === undefined) return Effect.void;
+            const auth = status._tag === "HarnessInstalled" ? status.auth : undefined;
+            const signedIn = auth?._tag === "LoggedIn";
+            const observed =
+              status._tag === "HarnessMissing"
+                ? status._tag
+                : JSON.stringify([
+                    status.executablePath,
+                    status.version,
+                    status.auth._tag,
+                    signedIn ? auth.method : undefined,
+                    signedIn ? auth.plan : undefined,
+                  ]);
+            const previous = harness.status;
+            harness.status = observed;
+            // A status check can also spot a sign-in that finished during an earlier listing.
+            const hasModels = harness.models.length > 0;
+            const differsFromListing =
+              harness.listing !== undefined &&
+              harness.listing.expiresAt !== Infinity &&
+              signedIn !== hasModels;
+            return differsFromListing || (previous !== undefined && previous !== observed)
+              ? invalidate(harness)
+              : Effect.void;
+          }).pipe(Effect.uninterruptible),
       });
     }),
   );
 }
 
 /**
- * The catalog leads spawn from without asking: the roster (Settings → Roster) applied to what the
- * harnesses offer now, read afresh each time, so a roster change or a harness signed in reaches the
- * next spawn.
+ * The catalog leads spawn from without asking: each read applies the current roster (Settings → Roster)
+ * to the latest model lists.
  */
 export const CatalogLive = Layer.effect(
   Catalog,
@@ -114,7 +207,6 @@ export const CatalogLive = Layer.effect(
     return Catalog.of({
       entries: Effect.gen(function* () {
         const models = yield* offered.all;
-        yield* offered.relistEmpty();
         const { roster } = yield* settings.get;
         return catalogEntries(rosterMembers(roster, models));
       }),

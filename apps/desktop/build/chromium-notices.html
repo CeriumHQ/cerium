@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Chromium third-party notices</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        margin: 0;
+        font:
+          1rem / 1.5 system-ui,
+          sans-serif;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.25rem 1.5rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid GrayText;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.125rem;
+      }
+      p {
+        margin: 1rem;
+      }
+      iframe {
+        flex: 1;
+        width: 100%;
+        border: 0;
+      }
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Chromium third-party notices</h1>
+      <a id="download" download="LICENSES.chromium.html" hidden>Download original HTML</a>
+    </header>
+    <noscript><p>Enable JavaScript to decompress and read the bundled notices.</p></noscript>
+    <p id="status" role="status" hidden>Decompressing notices…</p>
+    <iframe id="notices" title="Full Chromium notices" sandbox hidden></iframe>
+    <script id="compressed" type="application/octet-stream">
+      <!-- CHROMIUM_NOTICES -->
+    </script>
+    <script>
+      async function showNotices() {
+        const status = document.getElementById("status");
+        const download = document.getElementById("download");
+        status.hidden = false;
+        const payload = document.getElementById("compressed");
+        const encoded = atob(payload.textContent);
+        payload.remove();
+        const bytes = Uint8Array.from(encoded, (character) => character.charCodeAt(0));
+        const archive = new Blob([bytes], { type: "application/gzip" });
+        try {
+          const stream = archive.stream().pipeThrough(new DecompressionStream("gzip"));
+          const response = new Response(stream, { headers: { "Content-Type": "text/html" } });
+          const url = URL.createObjectURL(await response.blob());
+          download.href = url;
+          const notices = document.getElementById("notices");
+          notices.src = url;
+          notices.hidden = false;
+          status.hidden = true;
+        } catch {
+          status.textContent =
+            "This browser could not decompress the notices. Download and extract the gzip file to read them.";
+          download.href = URL.createObjectURL(archive);
+          download.download = "LICENSES.chromium.html.gz";
+          download.textContent = "Download gzip file";
+        }
+        download.hidden = false;
+      }
+      void showNotices().catch(() => {
+        document.getElementById("status").textContent = "The bundled notices could not be read.";
+      });
+    </script>
+  </body>
+</html>

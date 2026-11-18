@@ -8,7 +8,7 @@ import {
   type AutomaticSpeechRecognitionPipeline,
   type ProgressInfo,
 } from "@huggingface/transformers";
-// The ONNX runtime's WebAssembly ships with the app rather than loading from a CDN.
+// Release builds replace the binary URL with Electron's local runtime cache endpoint.
 import runtimeScript from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
 import runtimeBinary from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 
@@ -16,15 +16,33 @@ import { speechModel, type SpeechModelId } from "./model.ts";
 import type { SpeechRequest, SpeechResponse } from "./speech.ts";
 
 env.allowLocalModels = false;
-const onnx = env.backends.onnx;
-if (onnx.wasm) {
-  onnx.wasm.wasmPaths = {
+const wasm = env.backends.onnx.wasm;
+const optionalRuntime = runtimeBinary.startsWith("cerium-dictation:");
+if (wasm) {
+  wasm.wasmPaths = {
     mjs: new URL(runtimeScript, self.location.href).href,
-    wasm: new URL(runtimeBinary, self.location.href).href,
+    ...(optionalRuntime ? {} : { wasm: new URL(runtimeBinary, self.location.href).href }),
   };
 }
 
 const post = (response: SpeechResponse) => self.postMessage(response);
+
+class RuntimeDownloadError extends Error {}
+
+/** Fetch before initializing ONNX so a failed download can be retried in the same worker. */
+const prepareRuntime = async (model: SpeechModelId) => {
+  if (!optionalRuntime || !wasm || wasm.wasmBinary !== undefined) return;
+  post({ kind: "runtime", model, loading: true });
+  try {
+    const response = await fetch(runtimeBinary);
+    if (!response.ok) throw new Error(`Speech runtime request returned HTTP ${response.status}.`);
+    wasm.wasmBinary = new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    throw new RuntimeDownloadError(String(error));
+  } finally {
+    post({ kind: "runtime", model, loading: false });
+  }
+};
 
 /** WebGPU when the machine has an adapter for it; it runs Whisper several times faster. */
 const pickDevice = async (): Promise<{ device: "webgpu" | "wasm"; halfFloats: boolean }> => {
@@ -49,6 +67,7 @@ const load = (id: SpeechModelId) => {
   let shown = 0;
   const pipe = (async () => {
     await previous?.then((each) => each.dispose()).catch(() => undefined);
+    await prepareRuntime(id);
     const { device, halfFloats } = await pickDevice();
     const created = await pipeline("automatic-speech-recognition", model.repo, {
       device,
@@ -83,13 +102,16 @@ const isDownloadError = (error: unknown) =>
   error instanceof TypeError ||
   (error instanceof Error && /fetch|network|download|load/i.test(error.message));
 
+const problemFor = (error: unknown) =>
+  error instanceof RuntimeDownloadError ? "runtime" : isDownloadError(error) ? "download" : "failed";
+
 self.addEventListener("message", (event: MessageEvent<SpeechRequest>) => {
   const request = event.data;
   if (request.kind === "prepare") {
     load(request.model).catch((error: unknown) =>
       post({
         kind: "failed",
-        problem: isDownloadError(error) ? "download" : "failed",
+        problem: problemFor(error),
         message: String(error),
       }),
     );
@@ -110,7 +132,7 @@ self.addEventListener("message", (event: MessageEvent<SpeechRequest>) => {
       post({
         kind: "failed",
         id: request.id,
-        problem: isDownloadError(error) ? "download" : "failed",
+        problem: problemFor(error),
         message: error instanceof Error ? error.message : String(error),
       }),
     );

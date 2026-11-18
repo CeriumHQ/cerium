@@ -23,6 +23,13 @@ export const UiEvents = LenientArray(UiEvent);
 /** A live event, read as `undefined` when it's of a kind this version doesn't know. */
 export const LiveUiEvent = Skippable(UiEvent);
 
+/** The server confirms the live subscription before a reader starts its history catch-up. */
+export const LiveEventDelivery = Schema.Union([
+  Schema.TaggedStruct("Subscribed", {}),
+  Schema.TaggedStruct("Event", { event: LiveUiEvent }),
+]);
+export type LiveEventDelivery = typeof LiveEventDelivery.Type;
+
 /** What the inbox needs about one thread. */
 export const ThreadOverview = Schema.Struct({
   thread: ThreadInfo,

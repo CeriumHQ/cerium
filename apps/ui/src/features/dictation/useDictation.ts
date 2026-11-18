@@ -2,6 +2,7 @@ import { useAtom, useAtomValue } from "@effect/atom-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
+import { holdRenderer } from "../../desktop/hibernation.ts";
 import { microphoneProblem, cleanTranscript, hasSound, pieceEnd, type DictationProblem } from "./model.ts";
 import { openMicrophone, type Microphone } from "./microphone.ts";
 import { dictationLanguageAtom, dictationModelAtom, downloadedModelsAtom } from "./preferences.ts";
@@ -20,6 +21,7 @@ export interface Dictation {
   readonly state: DictationState;
   /** How much of the speech model has downloaded, while it does on first use. */
   readonly download: number | undefined;
+  readonly preparingRuntime: boolean;
   /** How loud the user is, 0 to 1, read each frame by the meter. */
   readonly level: () => number;
   /** Starts listening, or stops and writes out the rest. */
@@ -52,6 +54,7 @@ const blockedOr = async (problem: DictationProblem): Promise<DictationProblem> =
 export function useDictation(onText: (text: string) => void): Dictation {
   const [state, setState] = useState<DictationState>({ phase: "idle" });
   const [download, setDownload] = useState<number>();
+  const [preparingRuntime, setPreparingRuntime] = useState(false);
   const model = useAtomValue(dictationModelAtom);
   const language = useAtomValue(dictationLanguageAtom);
   const [downloaded, setDownloaded] = useAtom(downloadedModelsAtom);
@@ -103,8 +106,6 @@ export function useDictation(onText: (text: string) => void): Dictation {
     setState({ phase: "starting" });
     heard.current = new Float32Array(0);
     wrote.current = false;
-    // The model loads while the user talks; the first time, that's its download.
-    prepareSpeech(model);
     try {
       // macOS asks the user the first time, before Chromium opens the device; a refusal fails below.
       await shellBridge()
@@ -118,6 +119,8 @@ export function useDictation(onText: (text: string) => void): Dictation {
       }
       microphone.current = opened;
       setState({ phase: "recording", since: Date.now() });
+      // Start the runtime and model while the user talks, after the microphone is available.
+      prepareSpeech(model);
     } catch (error) {
       const problem = await blockedOr(microphoneProblem(error));
       if (own === session.current) fail(problem);
@@ -162,6 +165,8 @@ export function useDictation(onText: (text: string) => void): Dictation {
     heard.current = heard.current.slice(end);
   });
   const recording = state.phase === "recording";
+  const busy = recording || state.phase === "starting" || state.phase === "finishing";
+  useEffect(() => (busy ? holdRenderer() : undefined), [busy]);
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(check, CHECK_MS);
@@ -175,9 +180,11 @@ export function useDictation(onText: (text: string) => void): Dictation {
   useEffect(
     () =>
       onSpeech((response) => {
-        if (response.kind === "progress" && response.model === model) progress(response.share, false);
+        if (response.kind === "runtime" && response.model === model) setPreparingRuntime(response.loading);
+        else if (response.kind === "progress" && response.model === model) progress(response.share, false);
         else if (response.kind === "ready" && response.model === model) progress(undefined, true);
         else if (response.kind === "failed" && response.id === undefined) {
+          setPreparingRuntime(false);
           progress(undefined, false);
           if (microphone.current !== undefined) fail(response.problem);
         }
@@ -208,6 +215,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
     state,
     // A model already downloaded loads from the cache, which isn't worth a progress bar.
     download: downloaded.includes(model) ? undefined : download,
+    preparingRuntime,
     level: () => microphone.current?.level() ?? 0,
     toggle: () => {
       if (state.phase === "recording") stop();

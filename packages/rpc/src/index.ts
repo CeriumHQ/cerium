@@ -20,7 +20,10 @@ import {
   HistoryRequest,
   HistoryPage,
   CloudHistoryPage,
+  CloudThreadStateView,
+  ThreadStateView,
   LenientArray,
+  LiveEventDelivery,
   LiveUiEvent,
   LoginProgress,
   Mention,
@@ -103,7 +106,8 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 49;
+export const RPC_VERSION = 50;
+export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -191,7 +195,12 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  */
 export const MachineRpcs = RpcGroup.make(
   Rpc.make("SourceControl", {
-    payload: { threadId: ThreadId, command: SourceControlCommand },
+    payload: {
+      threadId: ThreadId,
+      command: SourceControlCommand,
+      /** A GitHub refresh can reuse the checkout status until a file change or foreground read. */
+      refreshCheckout: Schema.optionalKey(Schema.Boolean),
+    },
     success: SourceControlResult,
     error: CeriumError,
   }),
@@ -212,6 +221,12 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("ThreadHistory", {
     payload: { threadId: ThreadId, page: HistoryRequest },
     success: HistoryPage,
+    error: CeriumError,
+  }),
+  /** The state shown alongside the transcript. Since RPC_VERSION 50. */
+  Rpc.make("ThreadState", {
+    payload: { threadId: ThreadId, view: ThreadStateView },
+    success: UiEvents,
     error: CeriumError,
   }),
   /** Search text and rewind markers, paged without tool payloads. Since RPC_VERSION 45. */
@@ -249,6 +264,14 @@ export const MachineRpcs = RpcGroup.make(
    * doesn't know arrives as `undefined`.
    */
   Rpc.make("WatchEvents", { success: LiveUiEvent, stream: true }),
+  /** All threads' live activity, without text deltas. Since RPC_VERSION 50. */
+  Rpc.make("WatchActivity", { success: LiveEventDelivery, stream: true }),
+  /** One thread's live events, including text deltas. Since RPC_VERSION 50. */
+  Rpc.make("WatchThreadEvents", {
+    payload: { threadId: ThreadId },
+    success: LiveEventDelivery,
+    stream: true,
+  }),
   Rpc.make("CreateThread", {
     payload: CreateThreadPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
@@ -817,7 +840,12 @@ export const DeviceRpcs = RpcGroup.make(
     error: CeriumError,
   }),
   Rpc.make("CloudThreadHistory", {
-    payload: { machine: DeviceId, threadId: ThreadId, before: Schema.optionalKey(Schema.Int) },
+    payload: {
+      machine: DeviceId,
+      threadId: ThreadId,
+      before: Schema.optionalKey(Schema.Int),
+      state: Schema.optionalKey(CloudThreadStateView),
+    },
     success: CloudHistoryPage,
     error: CeriumError,
   }),

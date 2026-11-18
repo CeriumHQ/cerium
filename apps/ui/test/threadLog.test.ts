@@ -69,6 +69,19 @@ describe("ThreadLog", () => {
     ]);
   });
 
+  it("fills the gap after reconnect and deduplicates queued text by offset", () => {
+    const log = new ThreadLog();
+    const delta = (sequence: number, text: string, offset: number) =>
+      event(sequence, { _tag: "MessageDelta", messageId: "m", text, offset });
+    log.add([delta(0, "Hel", 0), delta(2, "!", 5)]);
+    expect(buildTranscript(log.snapshot())).toMatchObject([{ text: "Hel", streaming: true }]);
+
+    const catchUp = { ...delta(0, "Hello!", 0), id: "a:0:6" as EventId };
+    expect(log.add([catchUp])).toBe(true);
+    expect(log.add([delta(2, "!", 5)])).toBe(false);
+    expect(buildTranscript(log.snapshot())).toMatchObject([{ text: "Hello!", streaming: true }]);
+  });
+
   it("hands each reader a copy it can keep", () => {
     const log = new ThreadLog();
     log.add([event(0, { _tag: "AgentStateChanged", state: "idle" })]);

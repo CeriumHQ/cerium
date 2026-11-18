@@ -8,6 +8,7 @@ description: >-
   was packaged with --smoke-test (apps/desktop/src/smokeTest.ts), on Linux once installed from the
   .deb as well, and uploads the packages as the `package-<OS>-<arch>` artifact, or to the draft
   release `release` names, with their update file as the `update-files-<OS>-<arch>` artifact.
+  Windows x64 also uploads the version's shared dictation runtime.
 
 inputs:
   version:
@@ -15,10 +16,9 @@ inputs:
     required: true
   compression:
     description: >-
-      `maximum` packs the installer smallest, for a stable release. `fast` packs it in about half the
-      time and a tenth larger, still with LZMA2, and the .deb and .rpm with gzip instead of xz
-      (apps/desktop/electron-builder.ts), so each installs and updates the same way: for nightlies and
-      for runs that only check the packaging.
+      `maximum` uses release compression for stable releases and published nightlies. `fast` uses a
+      lower LZMA2 level and packs the .deb and .rpm with gzip (apps/desktop/electron-builder.ts), so
+      runs that only check the packaging finish sooner.
     required: true
   arch:
     description: >-
@@ -28,6 +28,10 @@ inputs:
       Rosetta. Empty packages for the runner's own.
     required: false
     default: ""
+  chromium-locales:
+    description: Ship all Chromium locale packs, or only English for a smaller installer.
+    required: false
+    default: full
   release:
     description: >-
       The tag of the draft release a push's nightly is gathered in (.github/workflows/ci.yml), to
@@ -96,10 +100,16 @@ runs:
 
     - name: Build
       shell: bash
-      run: bun run build:desktop
+      run: |
+        bun run build:desktop
+        if compgen -G 'apps/ui/dist/assets/ort-wasm-*.wasm' > /dev/null; then
+          echo "::error::ONNX WebAssembly was bundled into the desktop UI."
+          exit 1
+        fi
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         CERIUM_SENTRY_DSN: ${{ inputs.sentry-dsn }}
+        CERIUM_OPTIONAL_DICTATION: "1"
         CERIUM_REACT_COMPILER_CACHE: ${{ steps.react-compiler-cache.outputs.file }}
 
     # electron-builder downloads Electron, NSIS, the AppImage tools, fpm and the rest into these folders.
@@ -178,6 +188,7 @@ runs:
         node scripts/merge-update-files.ts "$RUNNER_TEMP/linux" apps/desktop/out
       env:
         CERIUM_VERSION: ${{ inputs.version }}
+        CERIUM_CHROMIUM_LOCALES: ${{ inputs.chromium-locales }}
         COMPRESSION: ${{ inputs.compression }}
         ARCH: ${{ inputs.arch }}
         MAC_CERTIFICATE: ${{ inputs.mac-certificate }}
@@ -206,9 +217,23 @@ runs:
       shell: bash
       run: |
         out=apps/desktop/out
+        prefix=Cerium
+        export CERIUM_SMOKE_LOCALE=fr
+        if [ "$CHROMIUM_LOCALES" = english ]; then
+          prefix=Cerium-english
+          CERIUM_SMOKE_LOCALE=en-US
+        fi
+        # The WebAssembly is identical across platforms. Publish it from one runner, which also
+        # runs when a pull request only packages for Windows x64.
+        runtime=()
+        if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = X64 ] && [ "$CHROMIUM_LOCALES" = full ]; then
+          asset="cerium-dictation-$VERSION.wasm"
+          cp "apps/ui/dist/$asset" "$out/$asset"
+          runtime=("$out/$asset")
+        fi
         if [ -n "$RELEASE" ]; then
           shopt -s nullglob
-          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap})
+          packages=("$out"/*.{exe,exe.blockmap,AppImage,deb,rpm,dmg} "$out"/*-mac.zip{,.blockmap} "${runtime[@]}")
           GH_TOKEN="$UPLOAD_TOKEN" gh release upload "$RELEASE" "${packages[@]}" --clobber \
             > "$RUNNER_TEMP/upload.log" 2>&1 &
           upload=$!
@@ -225,8 +250,17 @@ runs:
           }
         }
         if [ "$RUNNER_OS" = Windows ]; then
-          if [ "$RUNNER_ARCH" = ARM64 ]; then unpacked=win-arm64-unpacked; else unpacked=win-unpacked; fi
-          smoke installer "$out/$unpacked/Cerium.exe"
+          installers=("$out"/*.exe)
+          export CERIUM_SMOKE_INSTALLER
+          CERIUM_SMOKE_INSTALLER="$(cygpath -aw "${installers[0]}")"
+          powershell.exe -NoProfile -NonInteractive -Command '
+            $ErrorActionPreference = "Stop"
+            $directory = Join-Path $env:RUNNER_TEMP "cerium-installed"
+            $installer = Start-Process -FilePath $env:CERIUM_SMOKE_INSTALLER -Wait -PassThru `
+              -ArgumentList "/S", "/currentuser", "/D=$directory"
+            exit $installer.ExitCode
+          '
+          smoke installer "$(cygpath -u "$RUNNER_TEMP")/cerium-installed/Cerium.exe" --lang=fr
         elif [ "$RUNNER_OS" = macOS ]; then
           # An Intel app packaged on Apple silicon starts through Rosetta, installed when the runner
           # lacks it.
@@ -235,12 +269,29 @@ runs:
           fi
           # The app as the disk image holds it, mounted read-only as a user's Mac would.
           mount="$RUNNER_TEMP/cerium-dmg"
-          hdiutil attach "$out"/Cerium-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
+          hdiutil attach "$out"/"$prefix"-"$VERSION"-*.dmg -nobrowse -readonly -mountpoint "$mount" > /dev/null
           codesign --verify --deep --strict "$mount/Cerium.app"
-          smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium"
-          hdiutil detach "$mount" > /dev/null
+          smoke dmg "$mount/Cerium.app/Contents/MacOS/Cerium" --lang=fr
+          echo "Detaching the smoke test disk image."
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            const detach = (flags) =>
+              execFileSync("hdiutil", ["detach", ...flags, process.argv[1]], {
+                timeout: 30_000,
+                killSignal: "SIGKILL",
+                stdio: "inherit",
+              });
+            try {
+              detach([]);
+            } catch {
+              detach(["-force"]);
+            }
+          ' "$mount"
         else
-          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium_*.deb
+          export LANGUAGE=fr
+          # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
+          sudo apt-get update -q
+          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           (
@@ -250,17 +301,17 @@ runs:
               echo "::error::The Fedora container didn't start."
               exit 1
             fi
-            docker exec fedora bash -euo pipefail -c '
+            docker exec -e CERIUM_SMOKE_LOCALE fedora bash -euo pipefail -c '
                 dnf install -y -q /desktop/out/cerium-*.rpm
                 useradd -m user
-                su user -c "xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+                su user -c "LANGUAGE=fr xvfb-run -a cerium --smoke-test=/smoke-test"' || {
               status=$?
               cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
               exit "$status"
             }
           ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
           rpm=$!
-          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/Cerium-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
+          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/"$prefix"-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
           if wait "$rpm"; then
             echo "::group::The .rpm in Fedora" && cat "$RUNNER_TEMP/rpm-smoke-test.log" && echo "::endgroup::"
@@ -277,6 +328,7 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         ARCH: ${{ inputs.arch }}
+        CHROMIUM_LOCALES: ${{ inputs.chromium-locales }}
         RELEASE: ${{ inputs.release }}
         UPLOAD_TOKEN: ${{ inputs.github-token }}
 
@@ -284,7 +336,7 @@ runs:
       if: failure() && env.CERIUM_STABLE_CANDIDATE != 'true'
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: smoke-test-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         path: |
           ${{ runner.temp }}/smoke-test/*/smoke-test.log
           ${{ runner.temp }}/smoke-test/*/logs
@@ -296,7 +348,7 @@ runs:
     - if: env.CERIUM_STABLE_CANDIDATE != 'true' && inputs.release == ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: package-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         compression-level: 0
         path: |
           apps/desktop/out/*.exe
@@ -307,6 +359,7 @@ runs:
           apps/desktop/out/*.dmg
           apps/desktop/out/*-mac.zip
           apps/desktop/out/*-mac.zip.blockmap
+          apps/desktop/out/cerium-dictation-*.wasm
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml
         if-no-files-found: error
@@ -317,7 +370,7 @@ runs:
     - if: env.CERIUM_STABLE_CANDIDATE != 'true' && inputs.release != ''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}
+        name: update-files-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ inputs.chromium-locales }}
         path: |
           apps/desktop/out/latest*.yml
           apps/desktop/out/nightly*.yml

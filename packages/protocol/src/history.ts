@@ -1,10 +1,10 @@
 import { Schema } from "effect";
+import type { EventPayload } from "./events.ts";
 
 import { UiEvents } from "./sync.ts";
 import { EventId } from "./ids.ts";
 
-/** Whole-thread side panels need these events even when the transcript has only its latest page. */
-export const HISTORY_STATE_TAGS = [
+export const THREAD_STATE_TAGS = [
   "MessageCompleted",
   "UsageReported",
   "ContextReported",
@@ -22,14 +22,19 @@ export const HISTORY_STATE_TAGS = [
   "SpawnApprovalResolved",
   "QuestionAsked",
   "QuestionResolved",
-  "FileChanged",
-  "TurnFilesChanged",
-  "TurnFilesReverted",
   "MessageQueued",
-  "MessageHeld",
   "TurnInput",
   "TurnCompleted",
   "MessageWithdrawn",
+] as const satisfies ReadonlyArray<EventPayload["_tag"]>;
+
+/** State inputs returned to clients using the legacy filtered history API. */
+export const HISTORY_STATE_TAGS = [
+  ...THREAD_STATE_TAGS,
+  "FileChanged",
+  "TurnFilesChanged",
+  "TurnFilesReverted",
+  "MessageHeld",
 ] as const;
 
 /** Display order is total across agents, including events imported with identical times/sequences. */

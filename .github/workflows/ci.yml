@@ -286,16 +286,17 @@ jobs:
   # Cloudflare's runtime, about a hundred megabytes per platform. A push's packages upload straight to
   # its nightly's draft release (plan, above), which takes the write permission.
   package-linux:
-    name: Package (Linux ${{ matrix.arch }})
+    name: Package (Linux ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
+        locales: [full, english]
+        target:
           - { arch: x64, runner: ubuntu-latest }
           - { arch: Arm64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 25
     permissions:
       contents: write
@@ -311,19 +312,21 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: fast
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
   package-windows:
-    name: Package (Windows ${{ matrix.arch }})
+    name: Package (Windows ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.windows) }}
-    runs-on: ${{ matrix.runner }}
+        locales: ${{ fromJSON(needs.plan.outputs.everywhere == 'true' && '["full","english"]' || '["full"]') }}
+        target: ${{ fromJSON(needs.plan.outputs.windows) }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 30
     permissions:
       contents: write
@@ -339,24 +342,26 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: fast
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
   # Both Mac apps are built and smoke-tested on their own processor's standard hosted runner.
   package-macos:
-    name: Package (macOS ${{ matrix.arch }})
+    name: Package (macOS ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
+        locales: [full, english]
+        target:
           - arch: Arm64
             runner: macos-15
           - arch: x64
             runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 30
     permissions:
       contents: write
@@ -372,7 +377,8 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: fast
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
           mac-certificate: ${{ secrets.MAC_CERTIFICATE }}

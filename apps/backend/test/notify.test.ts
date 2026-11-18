@@ -113,7 +113,7 @@ describe("the notifier", () => {
       const state = { agents: [agent("lead", "idle")], awaiting: false };
       let sequence = 0;
       const orchestrator = Layer.succeed(Orchestrator, {
-        events: Stream.fromQueue(events),
+        activity: Stream.fromQueue(events),
         listAgents: () => Effect.succeed(state.agents),
         awaitingApproval: () => state.awaiting,
         listThreads: Effect.succeed([thread]),

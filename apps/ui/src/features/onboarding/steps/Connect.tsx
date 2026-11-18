@@ -5,7 +5,7 @@ import { AsyncResult } from "effect/reactivity";
 import { ArrowUpRight, Check, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { harnessesAtom, modelsAtom } from "../../../backend/atoms.ts";
+import { harnessesAtom } from "../../../backend/atoms.ts";
 import { ProviderLogo } from "../../../components/ProviderLogo.tsx";
 import { accountLabel } from "../../settings/harnessModel.ts";
 import { harnessName, installUrl, useHarnessFlows } from "../../settings/Harnesses.tsx";
@@ -22,12 +22,7 @@ type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 export function Connect({ number, titleId }: StepProps) {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
-  const refreshModels = useAtomRefresh(modelsAtom);
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> | undefined => undefined);
-  const check = () => {
-    refreshHarnesses();
-    refreshModels();
-  };
 
   return (
     <div className="grid h-full grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-center gap-[clamp(24px,6vw,120px)] px-(--welcome-gutter) pb-[2vh]">
@@ -40,7 +35,7 @@ export function Connect({ number, titleId }: StepProps) {
         />
         <Reveal order={3} className="mt-[clamp(22px,4vh,40px)]">
           <Button
-            onClick={check}
+            onClick={refreshHarnesses}
             disabled={result.waiting}
             className="flex h-8 items-center gap-1.5 rounded-full border border-line-subtle px-3.5 text-meta text-fg-secondary transition-colors hover:border-line-strong hover:text-fg-primary disabled:text-fg-tertiary"
           >
@@ -56,7 +51,7 @@ export function Connect({ number, titleId }: StepProps) {
               provider={provider}
               status={statuses?.find((status) => status.provider === provider)}
               unknown={statuses === undefined}
-              onChanged={check}
+              onChanged={refreshHarnesses}
             />
           </Reveal>
         ))}

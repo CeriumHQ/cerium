@@ -33,6 +33,7 @@ import {
   type LeadHandedOff,
   type LimitPolicy,
   type LimitReached,
+  type LiveEventDelivery,
   type Mention,
   type ModelInfo,
   type ProviderId,
@@ -66,7 +67,6 @@ import {
   Layer,
   Option,
   Path,
-  PubSub,
   Queue,
   Result,
   Schema,
@@ -93,6 +93,7 @@ import {
 import { HelperUsage } from "./helperUsage.ts";
 import { MessageDelivery, type MessageOptions } from "./delivery.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
+import { makeEventFeeds } from "./eventFeeds.ts";
 import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
 import { makeOverviewWatch } from "./overviewWatch.ts";
 import {
@@ -281,8 +282,12 @@ interface Runtime {
   readonly sessionPermit: Semaphore.Semaphore;
   sleeping: boolean;
   touchedAt: number;
+  /** Set once per host start, independent of later use. */
+  sessionExpiresAt: number | undefined;
   wakeSession: Effect.Effect<void>;
   readonly inbox: Queue.Queue<InputItem>;
+  /** The turn loop took input from the inbox and is still gathering its batch. */
+  preparingTurn: boolean;
   readonly scope: Scope.Closeable;
   sequence: number;
   /** Completed when the current turn's `TurnCompleted` arrives (or the session ends). */
@@ -699,8 +704,12 @@ export class Orchestrator extends Context.Service<
     /** Every thread with its agents and whether it waits on the user, oldest first, read at once. */
     readonly threadOverviews: Effect.Effect<ReadonlyArray<ThreadOverview>, OrchestratorError>;
     readonly watchThreadOverviews: Stream.Stream<ThreadOverviewUpdate>;
-    /** Live events from every agent; subscribers see events published after they subscribe. */
+    /** Legacy live events from every agent, including streamed text. */
     readonly events: Stream.Stream<AgentEvent>;
+    /** Live events from every agent, without streamed text. */
+    readonly activity: Stream.Stream<AgentEvent>;
+    readonly watchActivity: Stream.Stream<LiveEventDelivery>;
+    watchThreadEvents(threadId: ThreadId): Stream.Stream<LiveEventDelivery>;
 
     // Bus-facing operations: `callerId` is the agent invoking the tool.
     /** Waits for the catalog while the backend is still learning it from the harnesses. */
@@ -918,7 +927,7 @@ export class Orchestrator extends Context.Service<
       const advisorPermit = yield* Semaphore.make(1);
       /** Each live reviewer's review, settled with its final message once its turn ends. */
       const reviews = new Map<AgentId, Deferred.Deferred<string, OrchestratorError>>();
-      const feed = yield* PubSub.unbounded<AgentEvent>();
+      const feeds = yield* makeEventFeeds;
       const overviewDirty = yield* Queue.sliding<void>(1);
       const metadataChanges = yield* store.overviewChanges;
       yield* Stream.fromSubscription(metadataChanges).pipe(
@@ -1094,7 +1103,7 @@ export class Orchestrator extends Context.Service<
           });
           noteWork(info.id, event.at, payload);
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
-          yield* PubSub.publish(feed, event);
+          yield* feeds.publish(event);
           switch (payload._tag) {
             case "PermissionRequested":
             case "PermissionResolved":
@@ -1162,7 +1171,7 @@ export class Orchestrator extends Context.Service<
           if (target === undefined || target.ended) {
             return yield* Effect.logWarning(`Dropped ${item._tag} for ${agentId}: agent is not running`);
           }
-          target.touchedAt = Date.now();
+          target.touchedAt = yield* Clock.currentTimeMillis;
           yield* Queue.offer(target.inbox, item);
         });
 
@@ -2234,6 +2243,7 @@ export class Orchestrator extends Context.Service<
           // A lead paused at its harness's limit takes nothing until the pause is lifted.
           if (rt.pause !== undefined) yield* Deferred.await(rt.pause);
           const first = yield* Queue.take(rt.inbox);
+          rt.preparingTurn = true;
           // An advisor answers one question a turn, each to the agent that asked it; a reviewer reviews
           // the one diff it was started with.
           const advisor = isHelper(rt.info);
@@ -2246,7 +2256,7 @@ export class Orchestrator extends Context.Service<
           if (rt.ended) return yield* Effect.interrupt;
 
           yield* setState(rt, "queued");
-          rt.touchedAt = Date.now();
+          rt.preparingTurn = false;
           yield* rt.wakeSession;
           // A session that never started took nothing: what the user sent waits for the next start.
           // The effort router decides meanwhile, so a starting session doesn't wait on it as well, and
@@ -2279,8 +2289,8 @@ export class Orchestrator extends Context.Service<
             }),
           );
           if (rt.ended) return yield* Effect.interrupt;
+          rt.touchedAt = yield* Clock.currentTimeMillis;
           yield* setState(rt, "idle");
-          rt.touchedAt = Date.now();
           const halted = rt.halted;
           rt.halted = false;
 
@@ -2364,7 +2374,10 @@ export class Orchestrator extends Context.Service<
             }
           }
         }).pipe(
-          Effect.catchCause((cause) => Effect.logError(`Agent ${rt.info.id} turn failed`, cause)),
+          Effect.catchCause((cause) => {
+            rt.preparingTurn = false;
+            return Effect.logError(`Agent ${rt.info.id} turn failed`, cause);
+          }),
           Effect.forever,
         );
 
@@ -2428,9 +2441,11 @@ export class Orchestrator extends Context.Service<
             sessionScope: undefined,
             sessionPermit: yield* Semaphore.make(1),
             sleeping: false,
-            touchedAt: Date.now(),
+            touchedAt: yield* Clock.currentTimeMillis,
+            sessionExpiresAt: undefined,
             wakeSession: Effect.void,
             inbox: yield* Queue.unbounded<InputItem>(),
+            preparingTurn: false,
             scope,
             sequence: Option.match(last, { onNone: () => 0, onSome: (sequence) => sequence + 1 }),
             turn: undefined,
@@ -2542,6 +2557,8 @@ export class Orchestrator extends Context.Service<
                     (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
                   ),
                 );
+              rt.sessionExpiresAt =
+                (yield* Clock.currentTimeMillis) + Duration.toMillis(config.warmSessionMaxAge);
               rt.session = session;
               yield* Effect.forkIn(consumeEvents(rt, session), sessionScope);
               yield* Deferred.succeed(rt.started, session);
@@ -2552,6 +2569,7 @@ export class Orchestrator extends Context.Service<
                     Effect.sync(() => {
                       rt.sessionScope = undefined;
                       rt.session = undefined;
+                      rt.sessionExpiresAt = undefined;
                     }),
                   ),
                 ),
@@ -2560,7 +2578,7 @@ export class Orchestrator extends Context.Service<
           });
           rt.wakeSession = rt.sessionPermit.withPermits(1)(
             Effect.gen(function* () {
-              rt.touchedAt = Date.now();
+              rt.touchedAt = yield* Clock.currentTimeMillis;
               if (!rt.sleeping || rt.ended) return;
               rt.sleeping = false;
               rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
@@ -3666,45 +3684,73 @@ export class Orchestrator extends Context.Service<
       const childrenOf = (leadId: AgentId) =>
         [...runtimes.values()].filter((candidate) => candidate.info.parentId === leadId);
 
-      // Keep four recently used idle hosts warm. Only the session scope closes: the inbox and
-      // turn loop remain reachable, so a delayed child report or message wakes the same agent.
+      const idleTTL = Duration.toMillis(config.idleSessionTTL);
+      const isIdleHost = (rt: Runtime) =>
+        !rt.ended &&
+        !rt.sleeping &&
+        rt.info.state === "idle" &&
+        rt.sessionExpiresAt !== undefined &&
+        Deferred.isDoneUnsafe(rt.started) &&
+        rt.info.providerSessionId !== undefined &&
+        adapters.get(rt.info.provider)?.manifest.session.resume === true;
+      const hostIsDue = (rt: Runtime, warm: boolean, now: number) =>
+        (rt.sessionExpiresAt !== undefined && now >= rt.sessionExpiresAt) ||
+        (!warm && now - rt.touchedAt >= idleTTL);
+
+      // Keep the latest idle hosts warm until their own deadlines. Only the session scope closes:
+      // the inbox and turn loop remain reachable, so a delayed report or message wakes the agent.
       yield* Effect.gen(function* () {
-        const idle = [...runtimes.values()]
-          .filter((rt) => !rt.ended && !rt.sleeping && rt.info.state === "idle")
-          .sort((a, b) => b.touchedAt - a.touchedAt);
-        for (const rt of idle.slice(config.warmSessions)) {
-          yield* rt.sessionPermit.withPermits(1)(
+        const idle = [...runtimes.values()].filter(isIdleHost).sort((a, b) => b.touchedAt - a.touchedAt);
+        const checkedAt = yield* Clock.currentTimeMillis;
+        for (const [index, rt] of idle.entries()) {
+          const warm = index < config.warmSessions;
+          if (!hostIsDue(rt, warm, checkedAt)) continue;
+          yield* rt.sessionPermit.withPermitsIfAvailable(1)(
             Effect.gen(function* () {
-              if (
-                rt.ended ||
-                rt.sleeping ||
-                rt.info.state !== "idle" ||
-                rt.turn !== undefined ||
-                Date.now() - rt.touchedAt < Duration.toMillis(config.idleSessionTTL) ||
-                Queue.sizeUnsafe(rt.inbox) > 0 ||
-                rt.info.providerSessionId === undefined ||
-                !adapters.get(rt.info.provider)?.manifest.session.resume ||
-                waitsOnUser(rt.info.threadId) ||
-                working(rt.info.threadId) ||
-                rt.openCalls.size > 0 ||
-                // Closing the session would end the work it runs in the background.
-                rt.background > 0
-              )
-                return;
-              const sessionScope = rt.sessionScope;
-              if (!sessionScope) return;
-              rt.sleeping = true;
-              yield* Scope.close(sessionScope, Exit.void);
-              rt.session = undefined;
-              rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
-              rt.sessionScope = undefined;
-              rt.storedRaw = undefined;
+              const now = yield* Clock.currentTimeMillis;
+              // A compaction may already hold the turn permit before it changes the agent's state.
+              const scope = yield* rt.turnPermit.withPermitsIfAvailable(1)(
+                Effect.sync(() => {
+                  const sessionScope = rt.sessionScope;
+                  if (
+                    sessionScope === undefined ||
+                    !isIdleHost(rt) ||
+                    !hostIsDue(rt, warm, now) ||
+                    rt.turn !== undefined ||
+                    rt.preparingTurn ||
+                    Queue.sizeUnsafe(rt.inbox) > 0 ||
+                    waitsOnUser(rt.info.threadId) ||
+                    working(rt.info.threadId) ||
+                    rt.openCalls.size > 0 ||
+                    // Closing the session would end the work it runs in the background.
+                    rt.background > 0
+                  )
+                    return;
+                  rt.sleeping = true;
+                  return sessionScope;
+                }),
+              );
+              const sessionScope = Option.getOrUndefined(scope);
+              if (sessionScope === undefined) return;
+              yield* Scope.close(sessionScope, Exit.void).pipe(
+                Effect.ensuring(
+                  Effect.gen(function* () {
+                    rt.session = undefined;
+                    rt.started = yield* Deferred.make<AgentSession, OrchestratorError>();
+                    rt.sessionScope = undefined;
+                    rt.sessionExpiresAt = undefined;
+                    rt.storedRaw = undefined;
+                  }),
+                ),
+              );
             }),
           );
         }
       }).pipe(
         Effect.catchCause((cause) => Effect.logWarning("Couldn't retire idle sessions", cause)),
-        Effect.delay(Math.max(10, Math.min(60_000, Duration.toMillis(config.idleSessionTTL) / 5))),
+        Effect.delay(
+          Math.max(10, Math.min(60_000, idleTTL / 5, Duration.toMillis(config.warmSessionMaxAge) / 5)),
+        ),
         Effect.forever,
         Effect.forkScoped,
       );
@@ -4273,27 +4319,29 @@ export class Orchestrator extends Context.Service<
         compactAgent: Effect.fn("Orchestrator.compactAgent")(function* (agentId: AgentId) {
           const rt = yield* runtime(agentId);
           if (rt.ended) return yield* notFound(`Agent ${agentId} is not running.`);
-          const session = yield* sessionOf(rt);
-          const compact = session.compact;
-          if (compact === undefined || adapters.get(rt.info.provider)?.manifest.compact !== true) {
-            return yield* new OrchestratorError({
-              reason: "invalid",
-              message: `${rt.info.provider} can't compact a conversation when asked.`,
-            });
-          }
           const working = new OrchestratorError({
             reason: "invalid",
             message: "The agent is working: compact its conversation once its turn ends.",
           });
-          if (rt.turn !== undefined || rt.info.state === "running" || rt.info.state === "queued") {
-            return yield* working;
-          }
-          // Held before this returns, so a message sent right after waits for the compaction.
+          // Reserved before waking the host so it can't be retired before the compaction starts.
           if (!(yield* rt.turnPermit.takeIfAvailable(1))) return yield* working;
-          yield* Effect.forkIn(
-            compactTurn(rt, compact).pipe(Effect.ensuring(rt.turnPermit.release(1))),
-            rt.scope,
-          );
+          yield* Effect.gen(function* () {
+            const session = yield* sessionOf(rt);
+            const compact = session.compact;
+            if (compact === undefined || adapters.get(rt.info.provider)?.manifest.compact !== true) {
+              return yield* new OrchestratorError({
+                reason: "invalid",
+                message: `${rt.info.provider} can't compact a conversation when asked.`,
+              });
+            }
+            if (rt.turn !== undefined || rt.info.state === "running" || rt.info.state === "queued") {
+              return yield* working;
+            }
+            yield* Effect.forkIn(
+              compactTurn(rt, compact).pipe(Effect.ensuring(rt.turnPermit.release(1))),
+              rt.scope,
+            );
+          }).pipe(Effect.onError(() => rt.turnPermit.release(1)));
         }),
 
         stopBackgroundTask: Effect.fn("Orchestrator.stopBackgroundTask")(function* (
@@ -4683,7 +4731,10 @@ export class Orchestrator extends Context.Service<
         threadOverviews: readOverviews,
         watchThreadOverviews,
 
-        events: Stream.fromPubSub(feed),
+        events: feeds.events,
+        activity: feeds.activity,
+        watchActivity: feeds.watchActivity,
+        watchThreadEvents: feeds.watchThread,
 
         catalog: catalog.entries,
 

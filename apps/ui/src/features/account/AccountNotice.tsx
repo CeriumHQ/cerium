@@ -3,19 +3,7 @@ import { useAtomSet } from "@effect/atom-react";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 
 import { reportPresence } from "../../backend/atoms.ts";
-import { shellBridge } from "../../backend/shell.ts";
 import { Notice } from "../../app/Notice.tsx";
-
-/**
- * Tells the shell whether this machine is signed in and agents are working, which keep it in the
- * tray when its window closes and the PC awake.
- */
-export function useShellPresence(account: AccountState, working: boolean) {
-  const signedIn = account._tag === "SignedIn";
-  useEffect(() => {
-    shellBridge()?.setPresence?.({ signedIn, working });
-  }, [signedIn, working]);
-}
 
 const onVisibility = (change: () => void) => {
   document.addEventListener("visibilitychange", change);

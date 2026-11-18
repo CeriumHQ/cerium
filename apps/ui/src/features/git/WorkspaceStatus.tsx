@@ -3,7 +3,7 @@ import { Popover } from "@base-ui/react/popover";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { CheckoutInfo, SourceControlCommand, SourceControlSnapshot, ThreadId } from "@cerium/protocol";
-import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
   ArrowDown,
@@ -27,9 +27,10 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
-import { sourceControl, workspaceAtom } from "../../backend/sourceControl.ts";
+import { watchAtom } from "../../backend/explorer.ts";
+import { refreshWorkspace, sourceControl, workspaceAtom } from "../../backend/sourceControl.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
@@ -73,18 +74,21 @@ const DIFF_LINES = 1500;
 
 export function WorkspaceStatus({
   threadId,
+  checkoutFolder,
   projectRoot,
   onOpenSourceControl,
   onOpenThread,
 }: {
   readonly threadId: ThreadId;
+  readonly checkoutFolder: string;
   /** The project's folder, whose checkouts a thread can move to. */
   readonly projectRoot: string;
   readonly onOpenSourceControl: () => void;
   readonly onOpenThread: (threadId: string) => void;
 }) {
+  const registry = useContext(RegistryContext);
   const result = useAtomValue(workspaceAtom(threadId));
-  const refresh = useAtomRefresh(workspaceAtom(threadId));
+  const refresh = () => refreshWorkspace(registry, threadId);
   const run = useAtomSet(sourceControl, { mode: "promise" });
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("overview");
@@ -95,19 +99,67 @@ export function WorkspaceStatus({
   const [diff, setDiff] = useState<{ readonly text: string; readonly revision: string }>();
   const [removing, setRemoving] = useState<string>();
   const state = AsyncResult.getOrElse(result, () => undefined)?.snapshot;
+  const root = state?.root;
+  const previousFolder = useRef(checkoutFolder);
 
-  // The checkout changes under the thread as its agents work: read it again now and then, more often while it's open.
+  // The same watcher supplies the explorer and source control panel when they're open.
+  const refreshLocal = useEffectEvent(refresh);
   useEffect(() => {
-    const timer = setInterval(refresh, open ? 10_000 : 30_000);
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = (delay: number) => {
+      if (pending !== undefined || document.visibilityState !== "visible") return;
+      pending = setTimeout(() => {
+        pending = undefined;
+        if (document.visibilityState === "visible") refreshLocal();
+      }, delay);
+    };
+    // Skip the last batch if another panel already has the watcher open.
+    let subscribed = false;
+    const stop =
+      root === undefined
+        ? undefined
+        : registry.subscribe(
+            watchAtom(root),
+            (batch) => {
+              if (subscribed && AsyncResult.isSuccess(batch) && (batch.value.status || batch.value.overflow))
+                scheduleRefresh(750);
+            },
+            { immediate: true },
+          );
+    subscribed = true;
+    const foreground = () => scheduleRefresh(100);
+    window.addEventListener("focus", foreground);
+    document.addEventListener("visibilitychange", foreground);
+    return () => {
+      clearTimeout(pending);
+      stop?.();
+      window.removeEventListener("focus", foreground);
+      document.removeEventListener("visibilitychange", foreground);
+    };
+  }, [registry, root]);
+
+  useEffect(() => {
+    if (checkoutFolder === previousFolder.current) return;
+    previousFolder.current = checkoutFolder;
+    refreshLocal();
+  }, [checkoutFolder]);
+
+  // GitHub can change while the checkout is idle. Keep discovery and check updates on their own cadence.
+  const refreshGitHub = useEffectEvent(() => {
+    if (state && !AsyncResult.isWaiting(result) && document.visibilityState === "visible")
+      refreshWorkspace(registry, threadId, false);
+  });
+  useEffect(() => {
+    const timer = setInterval(() => refreshGitHub(), 30_000);
     return () => clearInterval(timer);
-  }, [open, refresh]);
+  }, []);
 
   const execute = async (command: SourceControlCommand) => {
     if (busy) return false;
     setBusy(true);
     setNote(undefined);
     try {
-      const answer = await run({ payload: { threadId, command } });
+      const answer = await run({ payload: { threadId, command, refreshCheckout: false } });
       // A read shows its answer in place; only a change says how it went.
       if (answer.note && command.action !== "diff" && command.action !== "list")
         setNote({ text: answer.note, error: false });
@@ -117,7 +169,7 @@ export function WorkspaceStatus({
           current?.filter((checkout) => !samePath(checkout.path, command.targetPath ?? "")),
         );
       if (answer.diff !== undefined) setDiff({ text: answer.diff, revision: answer.revision ?? "" });
-      refresh();
+      if (command.action !== "diff" && command.action !== "list") refreshWorkspace(registry, threadId, false);
       return true;
     } catch (error) {
       setNote({ text: error instanceof Error ? error.message : String(error), error: true });
@@ -144,8 +196,7 @@ export function WorkspaceStatus({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (next) refresh();
-          else {
+          if (!next) {
             setView("overview");
             setNote(undefined);
           }

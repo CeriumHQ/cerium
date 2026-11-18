@@ -65,7 +65,9 @@ import {
 import {
   accountAtom,
   accountThreadsAtom,
+  artifactEventsAtom,
   cloudEventsAtom,
+  cloudFileChangesAtom,
   compactAgent,
   stopBackgroundTask,
   askSideQuestion,
@@ -77,7 +79,6 @@ import {
   harnessesAtom,
   importedThreadsAtom,
   interruptAgent,
-  localWorkingAtom,
   manifestsAtom,
   markThreadsRead,
   previewRestore,
@@ -103,7 +104,6 @@ import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
 import { saveProject, worktreeChanges } from "../backend/projects.ts";
-import { shellBridge } from "../backend/shell.ts";
 import {
   noProjectScripts,
   projectScriptsAtom,
@@ -113,11 +113,7 @@ import {
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { TooltipProvider } from "../components/ui/Tooltip.tsx";
-import {
-  UnreachableNotice,
-  useAccountPresence,
-  useShellPresence,
-} from "../features/account/AccountNotice.tsx";
+import { UnreachableNotice, useAccountPresence } from "../features/account/AccountNotice.tsx";
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
 import { presenceLabel, reachOf } from "../features/account/model.ts";
 import { type AgentActions } from "../features/agents/AgentMenu.tsx";
@@ -182,7 +178,6 @@ import { nameGitHubTab } from "../features/github/tabs.ts";
 import { IssueViewer } from "../features/issues/IssueViewer.tsx";
 import { IssuesTab } from "../features/issues/IssuesTab.tsx";
 import { ISSUES_VERSION } from "../features/issues/model.ts";
-import { BrowserHost } from "../features/preview/BrowserHost.tsx";
 import {
   previewBridge,
   previewStates,
@@ -719,14 +714,6 @@ function Workspace() {
           const summary = summaries.find((each) => each.id === threadId && each.elsewhere === undefined);
           if (summary) threadWindow(summary.id, summary.mode);
         };
-  // The shell keeps this computer awake for its own agents, whichever machine the window shows.
-  const localWorking = AsyncResult.getOrElse(useAtomValue(localWorkingAtom), () => undefined);
-  useShellPresence(
-    account,
-    driven === undefined
-      ? summaries.some((summary) => summary.status === "running")
-      : (localWorking ?? false),
-  );
   const drivenDevice =
     driven === undefined || account._tag !== "SignedIn"
       ? undefined
@@ -776,11 +763,13 @@ function Workspace() {
     ? summaryEventsAtom(selected.thread.id)
     : cloudEvents;
   const events = AsyncResult.getOrElse(useAtomValue(eventsAtom), (): ReadonlyArray<AgentEvent> => []);
-  const fileEventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
-    ? filesOpen
+  const fileEventsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = !filesOpen
+    ? noEvents
+    : selected
       ? fileChangesAtom(selected.thread.id)
-      : noEvents
-    : cloudEvents;
+      : cloudSelected
+        ? cloudFileChangesAtom(`${cloudSelected.machine}:${cloudSelected.overview.thread.id}`)
+        : noEvents;
   const fileEvents = AsyncResult.getOrElse(useAtomValue(fileEventsAtom), (): ReadonlyArray<AgentEvent> => []);
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
   const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
@@ -864,8 +853,7 @@ function Workspace() {
   const threadShown = viewed !== undefined && !settingsOpen && (!compact || pane === "main");
   // Nobody is told about the thread this window shows, unless settings or the narrow
   // window's inbox cover it. The account hears it from the main window alone, whose word a thread's
-  // own window would otherwise take turns with; the shell likewise takes the main window's presence
-  // and notifications only.
+  // own window would otherwise take turns with.
   useAccountPresence(
     solo ? { _tag: "SignedOut" } : account,
     viewed && threadShown && drivenId !== undefined
@@ -877,6 +865,7 @@ function Workspace() {
   );
   // This computer's own notifications, about any of its threads but the one shown here.
   useDesktopNotifications(
+    !solo,
     viewed && threadShown && (cloudSelected ? cloudSelected.machine === thisComputer : driven === undefined)
       ? viewed.thread.id
       : undefined,
@@ -1272,7 +1261,7 @@ function Workspace() {
   // its message box (apps/desktop/src/launch.ts). They are this computer's folders, so a window driving
   // another machine leaves them.
   useLaunchRequests((request) => {
-    if (request.kind === "thread") return false;
+    if (request.kind !== "folder" && request.kind !== "prompt") return false;
     if (driven === undefined) {
       startThreadFrom({ folder: request.folder, text: request.kind === "prompt" ? request.text : "" });
     }
@@ -1309,7 +1298,14 @@ function Workspace() {
     );
   // The artifacts the open thread's lead drew, and its project's, which its machine lists when it can.
   const viewedLead = viewed ? leadOf(viewed.agents) : undefined;
-  const viewedArtifacts = viewedLead ? threadArtifacts(events, viewedLead.id) : [];
+  const artifactsAtom: Atom.Atom<AsyncResult.AsyncResult<ReadonlyArray<AgentEvent>, unknown>> = selected
+    ? artifactEventsAtom(selected.thread.id)
+    : cloudEvents;
+  const artifactEvents = AsyncResult.getOrElse(
+    useAtomValue(artifactsAtom),
+    (): ReadonlyArray<AgentEvent> => [],
+  );
+  const viewedArtifacts = viewedLead ? threadArtifacts(artifactEvents, viewedLead.id) : [];
   const artifactsProject =
     selected && (drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ARTIFACTS_VERSION)
       ? (selected.thread.worktree?.project ?? selected.thread.cwd)
@@ -1390,15 +1386,15 @@ function Workspace() {
     setSettingsOpen(true);
   };
   // The Mac's menu bar and Dock menu: Settings… opens settings; New Thread leaves them for a new thread.
-  const onMenuCommand = useEffectEvent((command: "open-settings" | "new-thread") => {
-    if (command === "open-settings") {
-      openSettings();
-      return;
+  useLaunchRequests((request) => {
+    if (request.kind !== "menu") return false;
+    if (request.command === "open-settings") openSettings();
+    else {
+      setSettingsOpen(false);
+      newThread();
     }
-    setSettingsOpen(false);
-    newThread();
+    return true;
   });
-  useEffect(() => shellBridge()?.onMenuCommand?.((command) => onMenuCommand(command)), []);
   // Back from settings or the welcome, the cursor returns to the message box; a phone's keyboard stays down.
   const welcoming = useAtomValue(welcomeShownAtom);
   useEffect(() => {
@@ -1514,7 +1510,11 @@ function Workspace() {
     return () => setLocalOpener(undefined);
   }, [linksOpen]);
   /** An agent opened a page: its thread's preview shows, there or whenever the thread next does. */
-  const agentOpened = (threadId: string) => previewDocks.show(threadId);
+  useLaunchRequests((request) => {
+    if (request.kind !== "preview") return false;
+    previewDocks.show(request.id);
+    return true;
+  });
 
   /**
    * What the command palette (Ctrl K) runs besides opening a thread. To offer a new action, add an entry
@@ -2864,6 +2864,7 @@ function Workspace() {
               <WorkspaceStatus
                 key={workspaceThread.id}
                 threadId={workspaceThread.id as ThreadId}
+                checkoutFolder={workspaceThread.worktree?.root ?? workspaceThread.cwd ?? ""}
                 projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
                 onOpenSourceControl={() => {
                   if (!gitOpen) toggleGit();
@@ -2912,11 +2913,10 @@ function Workspace() {
           />
         </div>
       )}
-      {/* The main window keeps the account's syncs and hosts the agents' browser. */}
+      {/* The main window keeps the account's drafts and tasks in sync. */}
       {solo ? null : (
         <>
           <DraftSync signedIn={account._tag === "SignedIn"} here={WEB ? undefined : thisComputer} />
-          {previewBridge() === undefined ? null : <BrowserHost onOpened={agentOpened} />}
           <TaskSync signedIn={account._tag === "SignedIn"} />
         </>
       )}

@@ -111,6 +111,7 @@ interface Entry {
   readonly project: string | undefined;
   /** What a command's terminal runs, such as "claude:login": running it again replaces this one. */
   readonly command: string | undefined;
+  readonly onSuccess: (() => void) | undefined;
   readonly shell: ShellChoice;
   readonly cwd: string;
   /** The `CERIUM_*` variables of its thread (`ThreadEnv`), set on every shell it starts. */
@@ -203,11 +204,13 @@ export class Terminals extends Context.Service<
     /**
      * Runs one program in the home folder, in a terminal of no thread, replacing the one that ran the
      * same `command` before. Its viewer attaches, writes and closes it by its id, like any terminal.
+     * `onSuccess` runs before viewers see a successful exit.
      */
     run(
       command: string,
       program: ShellChoice,
       size: TerminalSize,
+      onSuccess?: () => void,
     ): Effect.Effect<CommandTerminal, TerminalError>;
     /** The terminal's screen as it is now, then its output as it comes, until the shell ends. */
     attach(id: TerminalId, size: TerminalSize): Stream.Stream<TerminalOutput, TerminalError>;
@@ -333,6 +336,7 @@ export class Terminals extends Context.Service<
           entry.pty = undefined;
           entry.exitCode = code;
           entry.endedAt = ++entry.seq;
+          if (code === 0) entry.onSuccess?.();
           send(entry, { _tag: "Ended", seq: entry.endedAt, code });
           publishList();
         };
@@ -431,12 +435,13 @@ export class Terminals extends Context.Service<
           readonly threadId?: ThreadId;
           readonly project?: string;
           readonly command?: string;
+          readonly onSuccess?: (() => void) | undefined;
           readonly script?: string;
           readonly shell: ShellChoice;
           readonly cwd: string;
           readonly size: TerminalSize;
         }) {
-          const { threadId, project, command, script, shell, cwd, size } = fields;
+          const { threadId, project, command, onSuccess, script, shell, cwd, size } = fields;
           const threadEnv = threadId === undefined ? {} : yield* threads.of(threadId);
           if (entries.size >= MAX_TERMINALS) {
             return yield* new TerminalError({
@@ -456,6 +461,7 @@ export class Terminals extends Context.Service<
             threadId,
             project,
             command,
+            onSuccess,
             script,
             shell,
             cwd,
@@ -540,10 +546,11 @@ export class Terminals extends Context.Service<
           command: string,
           program: ShellChoice,
           size: TerminalSize,
+          onSuccess?: () => void,
         ) {
           const earlier = [...entries.values()].filter((entry) => entry.command === command);
           yield* Effect.forEach(earlier, dispose, { discard: true });
-          const entry = yield* create({ command, shell: program, cwd: homedir(), size });
+          const entry = yield* create({ command, shell: program, cwd: homedir(), size, onSuccess });
           return {
             id: entry.id,
             ...(entry.windowsBuild === undefined ? {} : { windowsBuild: entry.windowsBuild }),

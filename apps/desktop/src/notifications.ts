@@ -1,52 +1,12 @@
+import {
+  NOTIFICATION_KINDS,
+  notificationBody,
+  type NotificationKind,
+  type ThreadNotification,
+} from "@cerium/protocol";
 import { app, nativeImage, Notification, type BrowserWindow } from "electron";
 
-// Native notifications. The UI decides when one is worth showing (the user isn't looking at the
-// window) and how many threads wait on the user since they last looked; the shell shows the toast,
-// with the system's own sound unless the user turned it off, flashes the taskbar button when a thread
-// needs them (on Linux, marks the window urgent; on macOS, bounces the Dock icon once), and draws the
-// count over the taskbar icon, on macOS as the Dock icon's badge, or on Linux hands it to launchers
-// that show one (KDE's, Ubuntu's dock).
-
-/** What the UI asks to show; a click on it opens `threadId`. */
-export interface NotificationRequest {
-  readonly threadId: string;
-  readonly title: string;
-  readonly body: string;
-  readonly silent: boolean;
-  /** Flash the taskbar button until the window is focused. */
-  readonly attention: boolean;
-}
-
-export const isNotificationRequest = (value: unknown): value is NotificationRequest => {
-  if (typeof value !== "object" || value === null) return false;
-  const request = value as Record<string, unknown>;
-  return (
-    typeof request["threadId"] === "string" &&
-    typeof request["title"] === "string" &&
-    typeof request["body"] === "string" &&
-    typeof request["silent"] === "boolean" &&
-    typeof request["attention"] === "boolean"
-  );
-};
-
-/** The taskbar badge: how many threads, and the icon the UI drew for that number. */
-export interface BadgeRequest {
-  readonly count: number;
-  /** A `data:image/png;base64,` URL; absent with a count of 0. */
-  readonly icon?: string;
-}
-
-export const isBadgeRequest = (value: unknown): value is BadgeRequest => {
-  if (typeof value !== "object" || value === null) return false;
-  const request = value as Record<string, unknown>;
-  return (
-    typeof request["count"] === "number" &&
-    Number.isInteger(request["count"]) &&
-    request["count"] >= 0 &&
-    (request["icon"] === undefined ||
-      (typeof request["icon"] === "string" && request["icon"].startsWith("data:image/png;base64,")))
-  );
-};
+import { handling } from "./notificationPolicy.ts";
 
 /**
  * Names the app to Windows, which shows toasts only for an app it knows: the installer's shortcut
@@ -62,62 +22,87 @@ const MAX_SHOWING = 50;
 
 export const nativeNotifications = (options: {
   readonly window: () => BrowserWindow | undefined;
-  /** Brings the window back, from the tray too. */
-  readonly show: () => void;
-  /** The thread's own window, when it has one: a click on its toast brings that forward instead. */
-  readonly threadWindow?: (threadId: string) => BrowserWindow | undefined;
+  readonly open: (threadId: string | undefined) => void;
+  readonly threadWindow: (threadId: string) => BrowserWindow | undefined;
 }) => {
   // Kept until dismissed: a toast whose object is collected no longer reports its click. macOS and
   // Linux don't always say when one expires, so only the latest are kept.
   const showing = new Set<Notification>();
+  const waiting = new Set<string>();
+  let kinds: ReadonlyArray<NotificationKind> = NOTIFICATION_KINDS;
+  let silent = false;
+  let badge = true;
+  let viewing: string | undefined;
+  let icons: ReadonlyArray<Electron.NativeImage> = [];
 
-  const notify = (request: NotificationRequest) => {
-    if (!Notification.isSupported()) return;
-    const toast = new Notification({
-      title: request.title,
-      body: request.body,
-      silent: request.silent,
-    });
+  const syncBadge = () => {
+    const count = badge && kinds.length > 0 ? waiting.size : 0;
+    if (process.platform === "win32") {
+      options
+        .window()
+        ?.setOverlayIcon(
+          icons[Math.min(count, 10) - 1] ?? null,
+          count === 1 ? "1 thread waiting" : `${count} threads waiting`,
+        );
+    } else {
+      app.setBadgeCount(count);
+    }
+  };
+
+  const read = (threadId: string | undefined) => {
+    if (threadId !== undefined && waiting.delete(threadId)) syncBadge();
+  };
+
+  const showToast = (title: string, body: string, quiet: boolean, threadId?: string) => {
+    if (!Notification.isSupported()) return false;
+    const toast = new Notification({ title, body, silent: quiet });
     showing.add(toast);
     if (showing.size > MAX_SHOWING) showing.delete(showing.values().next().value!);
     const forget = () => showing.delete(toast);
     toast.on("click", () => {
       forget();
-      const own = options.threadWindow?.(request.threadId);
-      if (own !== undefined) {
-        if (own.isMinimized()) own.restore();
-        own.show();
-        own.focus();
-        return;
-      }
-      options.show();
-      options.window()?.webContents.send("cerium:open-thread", request.threadId);
+      options.open(threadId);
     });
     toast.on("close", forget);
     toast.on("failed", forget);
     toast.show();
-    const window = options.window();
-    if (request.attention && window !== undefined && !window.isFocused()) window.flashFrame(true);
+    return true;
   };
 
-  const setBadge = (request: BadgeRequest) => {
+  const notify = (notification: ThreadNotification) => {
+    const { threadId, kind, title, detail } = notification;
+    if (threadId !== undefined && options.threadWindow(threadId)?.isFocused() === true) return;
     const window = options.window();
-    if (process.platform === "win32") {
-      if (window === undefined) return;
-      const icon = request.count > 0 && request.icon !== undefined ? request.icon : undefined;
-      window.setOverlayIcon(
-        icon === undefined ? null : nativeImage.createFromDataURL(icon),
-        request.count === 1 ? "1 thread waiting" : `${request.count} threads waiting`,
-      );
-    } else {
-      app.setBadgeCount(request.count);
+    const action = handling(notification, kinds, { atWindow: window?.isFocused() === true, viewing });
+    if (action === "ignore") return;
+    if (threadId !== undefined && !waiting.has(threadId)) {
+      waiting.add(threadId);
+      syncBadge();
     }
+    if (action !== "show" || !showToast(title, notificationBody(kind, detail), silent, threadId)) return;
+    if (kind === "needsYou" && window !== undefined && !window.isFocused()) window.flashFrame(true);
   };
 
   return {
     notify,
-    setBadge,
-    /** Stops flashing once the user comes back. */
-    watch: (window: BrowserWindow) => window.on("focus", () => window.flashFrame(false)),
+    test: (quiet: boolean) => showToast("Cerium", "Notifications are on for this computer.", quiet),
+    configure: (preferences: { kinds: ReadonlyArray<NotificationKind>; silent: boolean; badge: boolean }) => {
+      ({ kinds, silent, badge } = preferences);
+      syncBadge();
+    },
+    view: (threadId: string | undefined) => {
+      viewing = threadId;
+      if (options.window()?.isFocused() === true) read(viewing);
+    },
+    setBadgeIcons: (values: ReadonlyArray<string>) => {
+      icons = values.map((value) => nativeImage.createFromDataURL(value));
+      syncBadge();
+    },
+    syncBadge,
+    watch: (window: BrowserWindow, threadId?: string) =>
+      window.on("focus", () => {
+        window.flashFrame(false);
+        read(threadId ?? viewing);
+      }),
   };
 };
