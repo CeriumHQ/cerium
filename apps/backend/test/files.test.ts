@@ -648,8 +648,13 @@ describe("Files", () => {
             (watcher) => Effect.sync(() => watcher.close()),
           ),
         );
+        const expected = new Set(["src/app.ts", ".git/refs/heads/main"]);
         const watching = yield* reported.pipe(
-          Stream.takeUntil((name) => name === ".git/refs/heads/main"),
+          // macOS may deliver the ref and working-tree events in either order.
+          Stream.takeUntil((name) => {
+            expected.delete(name);
+            return expected.size === 0;
+          }),
           Stream.runCollect,
           Effect.forkScoped,
         );
