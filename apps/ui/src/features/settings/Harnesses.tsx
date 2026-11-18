@@ -6,7 +6,7 @@ import { AsyncResult } from "effect/reactivity";
 import { Check, ChevronDown, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
-import { harnessesAtom, loginAtom, modelsAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, loginAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
@@ -38,15 +38,12 @@ type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 export function HarnessSettings() {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
-  const refreshModels = useAtomRefresh(modelsAtom);
   const machine = useAtomValue(machineAtom)?.name;
   const [checkedAt, setCheckedAt] = useState<number>();
   const checking = result.waiting;
-  // A harness just signed in or updated may offer different models too.
   const check = () => {
     setCheckedAt(Date.now());
     refreshHarnesses();
-    refreshModels();
   };
   const statuses = AsyncResult.getOrElse(result, (): ReadonlyArray<HarnessStatus> | undefined => undefined);
   const failed = AsyncResult.isFailure(result);

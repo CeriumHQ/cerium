@@ -192,7 +192,10 @@ export const threadsAtom = Backend.runtime
 
 export const harnessesAtom = Backend.runtime.atom((get) => {
   get(connectionEpochAtom);
-  return Backend.use((client) => client("HarnessStatuses", undefined));
+  return Backend.use((client) => client("HarnessStatuses", undefined)).pipe(
+    // The status check may have discovered an external sign-in or update and invalidated its list.
+    Effect.tap(() => Effect.sync(() => get.refresh(modelsAtom))),
+  );
 });
 
 /** What each harness can do. A machine too old to say fails it, and offers nothing that needs it. */

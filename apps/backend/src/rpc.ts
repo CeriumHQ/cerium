@@ -164,6 +164,7 @@ export const Handlers = MachineRpcs.toLayer(
     const continued = continuations(store, yield* Git, github);
     const checkoutGit = yield* Git;
     const sourceControl = yield* SourceControl;
+    const runSync = Effect.runSyncWith(yield* Effect.context<never>());
 
     /**
      * A harness's status as Settings shows it: with its newest release when that's newer, the command
@@ -173,7 +174,7 @@ export const Handlers = MachineRpcs.toLayer(
       const source = adapter.manifest.releases;
       return Effect.all(
         [
-          adapter.probe,
+          adapter.probe.pipe(Effect.tap((status) => offered.observe(status))),
           source === undefined ? Effect.succeedNone : releases.latest({ npm: source.npmPackage }),
         ],
         { concurrency: 2 },
@@ -398,19 +399,7 @@ export const Handlers = MachineRpcs.toLayer(
       HarnessStatuses: () =>
         Effect.forEach([...adapters.values()], (adapter) => Effect.option(described(adapter)), {
           concurrency: "unbounded",
-        }).pipe(
-          Effect.map((statuses) => statuses.flatMap(Option.toArray)),
-          // A harness found signed in that offered no models, signed in since, joins the catalog.
-          Effect.tap((statuses) =>
-            offered.relistEmpty(
-              statuses.flatMap((status) =>
-                status._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn"
-                  ? [status.provider]
-                  : [],
-              ),
-            ),
-          ),
-        ),
+        }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
       // Viewers before `RPC_VERSION` 20 read a tested range, which no version falls outside.
       HarnessManifests: () =>
         Effect.succeed(
@@ -436,7 +425,10 @@ export const Handlers = MachineRpcs.toLayer(
               () => new CeriumError({ message: `${provider} has no sign-in Cerium can start.` }),
             ),
           ),
-        ).pipe(Stream.mapError((error) => new CeriumError({ message: error.message }))),
+        ).pipe(
+          Stream.tap((step) => (step._tag === "SignedIn" ? offered.invalidate(provider) : Effect.void)),
+          Stream.mapError((error) => new CeriumError({ message: error.message })),
+        ),
       RunHarnessCommand: ({ provider, action, size }) =>
         Effect.gen(function* () {
           const adapter = adapters.get(provider);
@@ -468,16 +460,12 @@ export const Handlers = MachineRpcs.toLayer(
               `${provider}:${action}`,
               commandChoice(process.platform, status.executablePath, command),
               size,
+              () => runSync(offered.invalidate(provider)),
             )
             .pipe(Effect.mapError((error) => new CeriumError({ message: error.message })));
         }),
       ListModels: ({ provider }) =>
-        Effect.fromNullishOr(adapters.get(provider)).pipe(
-          Effect.mapError(() => new CeriumError({ message: `No ${provider} adapter is installed.` })),
-          Effect.flatMap((adapter) => adapter.listModels),
-          Effect.tap((models) => offered.offer(provider, models)),
-          Effect.mapError((error) => new CeriumError({ message: error.message })),
-        ),
+        offered.list(provider).pipe(Effect.mapError((error) => new CeriumError({ message: error.message }))),
       SearchWorkspace: ({ cwd, query }) =>
         workspace.search(cwd, query, SEARCH_LIMIT).pipe(Effect.mapError(refuse)),
       ListSkills: ({ provider, cwd }) => Cache.get(skills, `${provider}:${cwd ?? homedir()}`),

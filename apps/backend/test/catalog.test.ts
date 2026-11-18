@@ -1,3 +1,4 @@
+import { HarnessUnavailable, type HarnessAdapter } from "@cerium/harness";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import { Adapters, Catalog, UserSettings } from "@cerium/orchestrator";
 import {
@@ -9,7 +10,8 @@ import {
   type Settings,
 } from "@cerium/protocol";
 import { assert, describe, expect, it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import { CatalogLive, catalogEntries, OfferedModels } from "../src/catalog.ts";
 
@@ -44,20 +46,26 @@ describe("catalogEntries", () => {
   });
 });
 
-/** Claude offers its models; Codex offers none until `signIn`, as a logged-out harness. */
-const harnesses = () => {
-  const state = { codexSignedIn: false, codexListings: 0 };
+const codexUnavailable = new HarnessUnavailable({
+  provider: "codex",
+  reason: "loggedOut",
+  message: "Sign in to Codex.",
+});
+
+const codexStatus = {
+  _tag: "HarnessInstalled",
+  provider: "codex",
+  executablePath: "/codex",
+  version: "1",
+} as const;
+
+/** Claude offers its models. The test controls when Codex answers and what it offers. */
+const harnesses = (listModels: HarnessAdapter["listModels"]) => {
   const claude = {
     ...makeFakeAdapter("claude").adapter,
     listModels: Effect.succeed([model("claude", "opus"), model("claude", "haiku"), model("claude", "fable")]),
   };
-  const codex = {
-    ...makeFakeAdapter("codex").adapter,
-    listModels: Effect.suspend(() => {
-      state.codexListings++;
-      return state.codexSignedIn ? Effect.succeed([model("codex", "gpt-6-luna")]) : Effect.die("logged out");
-    }),
-  };
+  const codex = { ...makeFakeAdapter("codex").adapter, listModels };
   const settings = { current: defaultSettings as Settings };
   const layer = CatalogLive.pipe(
     Layer.provideMerge(OfferedModels.layer),
@@ -73,7 +81,7 @@ const harnesses = () => {
       ),
     ),
   );
-  return { state, settings, layer };
+  return { settings, layer };
 };
 
 const aliases = Effect.gen(function* () {
@@ -81,45 +89,130 @@ const aliases = Effect.gen(function* () {
   return entries.map((entry) => entry.alias);
 });
 
-/** Waits for the background listing to land. */
-const eventually = <A, R>(read: Effect.Effect<A, never, R>, done: (value: A) => boolean) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      const value = yield* read;
-      if (done(value)) return value;
-      yield* Effect.sleep("10 millis");
-    }
-    return yield* read;
-  });
-
 describe("CatalogLive", () => {
-  it.live("offers each signed-in harness's starting picks, and a harness once it signs in", () => {
-    const { state, layer } = harnesses();
+  it.effect("shares startup discovery with concurrent model requests and survives a canceled viewer", () => {
+    const started = Deferred.makeUnsafe<void>();
+    const answer = Deferred.makeUnsafe<ReadonlyArray<ModelInfo>>();
+    let calls = 0;
+    const { layer } = harnesses(
+      Effect.sync(() => calls++).pipe(
+        Effect.andThen(Deferred.succeed(started, undefined)),
+        Effect.andThen(Deferred.await(answer)),
+      ),
+    );
     return Effect.gen(function* () {
-      assert.deepStrictEqual(yield* aliases, ["opus", "haiku"]);
-      state.codexSignedIn = true;
-      yield* (yield* OfferedModels).relistEmpty(["codex"]);
-      assert.deepStrictEqual(yield* eventually(aliases, (each) => each.length === 3), [
-        "opus",
-        "haiku",
-        "gpt-6-luna",
+      const offered = yield* OfferedModels;
+      yield* Deferred.await(started);
+      const [first, second] = yield* Effect.all([
+        Effect.forkChild(offered.list("codex"), { startImmediately: true }),
+        Effect.forkChild(offered.list("codex"), { startImmediately: true }),
       ]);
+      yield* Fiber.interrupt(first);
+      const models = [model("codex", "gpt-6-luna")];
+      yield* Deferred.succeed(answer, models);
+      assert.deepStrictEqual(yield* Fiber.join(second), models);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      assert.deepStrictEqual(yield* offered.list("codex"), models);
+      assert.strictEqual(calls, 1);
     }).pipe(Effect.provide(layer));
   });
 
-  it.live("doesn't ask a harness that offered nothing again on every read", () => {
-    const { state, layer } = harnesses();
+  it.effect("reuses unavailable results and invalidates them when a probe finds a sign-in", () => {
+    let calls = 0;
+    let signedIn = false;
+    const models = [model("codex", "gpt-6-luna")];
+    const { layer } = harnesses(
+      Effect.suspend(() => {
+        calls++;
+        return signedIn ? Effect.succeed(models) : Effect.fail(codexUnavailable);
+      }),
+    );
     return Effect.gen(function* () {
-      yield* aliases;
-      yield* aliases;
-      yield* Effect.sleep("20 millis");
-      assert.strictEqual(state.codexListings, 1);
+      const offered = yield* OfferedModels;
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku"]);
+      assert.strictEqual(yield* Effect.flip(offered.list("codex")), codexUnavailable);
+      assert.strictEqual(calls, 1);
+      signedIn = true;
+      yield* offered.observe({ ...codexStatus, auth: { _tag: "LoggedIn" } });
+      assert.deepStrictEqual(yield* offered.list("codex"), models);
+      yield* offered.observe({ ...codexStatus, auth: { _tag: "LoggedIn" } });
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      assert.strictEqual(calls, 2);
     }).pipe(Effect.provide(layer));
   });
 
-  it.live("follows the roster as it's changed, and takes the UI's fresh listing", () => {
-    const { settings, layer } = harnesses();
+  it.effect("reloads expired lists in the background and shares the refreshed result with the UI", () => {
+    let calls = 0;
+    const updated = Deferred.makeUnsafe<ReadonlyArray<ModelInfo>>();
+    const original = [model("codex", "gpt-6-luna")];
+    const { layer } = harnesses(
+      Effect.suspend(() => (++calls === 1 ? Effect.succeed(original) : Deferred.await(updated))),
+    );
     return Effect.gen(function* () {
+      const offered = yield* OfferedModels;
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      yield* TestClock.adjust("59 seconds");
+      assert.deepStrictEqual(yield* offered.list("codex"), original);
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      const fresh = yield* Effect.forkChild(offered.list("codex"), { startImmediately: true });
+      const models = [model("codex", "gpt-6-sol")];
+      yield* Deferred.succeed(updated, models);
+      assert.deepStrictEqual(yield* Fiber.join(fresh), models);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-sol"]);
+      assert.strictEqual(calls, 2);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("bounds a stalled startup listing and tries it again after expiry", () => {
+    let calls = 0;
+    const models = [model("codex", "gpt-6-luna")];
+    const { layer } = harnesses(
+      Effect.suspend(() => (++calls === 1 ? Effect.never : Effect.succeed(models))),
+    );
+    return Effect.gen(function* () {
+      const offered = yield* OfferedModels;
+      const viewer = yield* Effect.forkChild(Effect.flip(offered.list("codex")), { startImmediately: true });
+      yield* TestClock.adjust("20 seconds");
+      assert.match((yield* Fiber.join(viewer)).message, /timed out/i);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku"]);
+      yield* TestClock.adjust("1 minute");
+      assert.deepStrictEqual(yield* offered.list("codex"), models);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      assert.strictEqual(calls, 2);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("moves pending startup and UI reads to the new listing after sign-in", () => {
+    const beforeSignIn = Deferred.makeUnsafe<ReadonlyArray<ModelInfo>>();
+    const started = Deferred.makeUnsafe<void>();
+    const models = [model("codex", "gpt-6-luna")];
+    let calls = 0;
+    const { layer } = harnesses(
+      Effect.suspend(() => {
+        if (++calls !== 1) return Effect.succeed(models);
+        return Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(beforeSignIn)));
+      }),
+    );
+    return Effect.gen(function* () {
+      const offered = yield* OfferedModels;
+      yield* Deferred.await(started);
+      const viewer = yield* Effect.forkChild(offered.list("codex"), { startImmediately: true });
+      yield* offered.invalidate("codex");
+      assert.deepStrictEqual(yield* Fiber.join(viewer), models);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      yield* Deferred.succeed(beforeSignIn, [model("codex", "old-account")]);
+      yield* TestClock.adjust(0);
+      assert.deepStrictEqual(yield* offered.list("codex"), models);
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-luna"]);
+      assert.strictEqual(calls, 2);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("follows the roster as it's changed and keeps the full offered model list", () => {
+    const { settings, layer } = harnesses(Effect.succeed([model("codex", "gpt-6-sol")]));
+    return Effect.gen(function* () {
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-sol"]);
       settings.current = {
         ...defaultSettings,
         roster: withHarnessRoster(defaultSettings.roster, "claude", [
@@ -129,9 +222,8 @@ describe("CatalogLive", () => {
       const catalog = yield* Catalog;
       assert.deepStrictEqual(yield* catalog.entries, [
         { alias: "fable", provider: "claude", model: "fable", description: "Architecture", priority: 1 },
+        { alias: "gpt-6-sol", provider: "codex", model: "gpt-6-sol", description: "GPT-6-SOL", priority: 1 },
       ]);
-      yield* (yield* OfferedModels).offer("codex", [model("codex", "gpt-6-sol")]);
-      assert.deepStrictEqual(yield* aliases, ["fable", "gpt-6-sol"]);
       // Every model offered stays known to the quick models, on the roster or not.
       assert.deepStrictEqual(
         (yield* catalog.models!).map((each) => each.id),
