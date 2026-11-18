@@ -13,6 +13,7 @@ import {
   type DeviceId,
   type EventPayload,
   type HistoryCursor,
+  type LiveEventDelivery,
   type PastSession,
   type ProviderId,
   type TaskEntry,
@@ -20,13 +21,14 @@ import {
   type ThreadNotification,
   type ThreadOverview,
 } from "@cerium/protocol";
+import { SCOPED_EVENTS_RPC_VERSION } from "@cerium/rpc";
 import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { remember, stored } from "../lib/storage.ts";
 import { Backend, BackendUnreachable, connectionAtom, connectionEpochAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
-import { inHistoryWindow, ThreadLog } from "./threadLog.ts";
+import { byTime, inHistoryWindow, ThreadLog } from "./threadLog.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
 const resubscribe = Stream.retry(Schedule.spaced("1 second"));
@@ -35,6 +37,8 @@ const resubscribe = Stream.retry(Schedule.spaced("1 second"));
 type Live = { readonly _tag: "Event"; readonly event: AgentEvent } | { readonly _tag: "Subscribed" };
 
 const subscribed: Live = { _tag: "Subscribed" };
+const isKnownDelivery = (delivery: LiveEventDelivery): delivery is Live =>
+  delivery._tag === "Subscribed" || delivery.event !== undefined;
 
 /**
  * How many events the live subscription holds before the socket waits for the window to take them.
@@ -44,18 +48,26 @@ const subscribed: Live = { _tag: "Subscribed" };
 const LIVE_BUFFER = 4096;
 
 /**
- * The driven machine's live events, streamed text included, on one subscription the whole window
- * shares; events of kinds this version doesn't know are skipped. It subscribes again when the
- * connection comes back, and marks each subscription once its request is on its way: what happened
- * while the connection was down never arrives, so readers read again what they hold. A line that's
- * coming back is subscribed to again at once, since the request waits for it.
+ * The driven machine's activity on one subscription the whole window shares. Older machines send
+ * text on this feed too. Readers catch up when the server confirms each subscription, or when a
+ * legacy request is on its way. A line that's coming back is subscribed to again at once.
  */
 const liveFeedAtom = Backend.runtime
-  .atom(({ registry }) =>
-    Effect.gen(function* () {
+  .atom((get) => {
+    const scoped = get(scopedEventsSupportedAtom);
+    return Effect.gen(function* () {
       const feed = yield* PubSub.unbounded<Live>();
       const subscribe = Effect.gen(function* () {
         const client = yield* Backend;
+        if (scoped) {
+          const events = yield* client("WatchActivity", undefined, {
+            asQueue: true,
+            streamBufferSize: LIVE_BUFFER,
+          });
+          return yield* Stream.fromQueue(events).pipe(
+            Stream.runForEachArray((batch) => PubSub.publishAll(feed, batch.filter(isKnownDelivery))),
+          );
+        }
         const events = yield* client("WatchEvents", undefined, {
           asQueue: true,
           streamBufferSize: LIVE_BUFFER,
@@ -76,15 +88,15 @@ const liveFeedAtom = Backend.runtime
         Effect.ignoreCause,
         Effect.andThen(
           Effect.suspend(() =>
-            registry.get(connectionAtom) === "reconnecting" ? Effect.void : Effect.sleep("1 second"),
+            get.registry.get(connectionAtom) === "reconnecting" ? Effect.void : Effect.sleep("1 second"),
           ),
         ),
         Effect.forever,
         Effect.forkScoped,
       );
       return feed;
-    }),
-  )
+    });
+  })
   .pipe(Atom.keepAlive);
 
 /** A reader's own subscription to the live feed, open while its stream runs. */
@@ -107,16 +119,17 @@ const sameRead =
 /** The least time between two reads of the thread list, in milliseconds. */
 const LIST_SPACING = 250;
 
-/** Account presence changes do not restart the list unless the driven backend's capability changes. */
-const overviewWatchSupportedAtom = Atom.make((get) => {
+/** Local UI and backend ship together. Remote capabilities come from the account's device roster. */
+const drivenRpcVersionAtom = Atom.make((get) => {
   const machine = get(machineAtom);
-  if (machine === undefined) return true;
+  if (machine === undefined) return Infinity;
   const state = AsyncResult.getOrElse(get(accountAtom), () => undefined);
-  return (
-    state?._tag === "SignedIn" &&
-    (state.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0) >= 46
-  );
+  return state?._tag === "SignedIn"
+    ? (state.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0)
+    : 0;
 });
+const overviewWatchSupportedAtom = Atom.make((get) => get(drivenRpcVersionAtom) >= 46);
+const scopedEventsSupportedAtom = Atom.make((get) => get(drivenRpcVersionAtom) >= SCOPED_EVENTS_RPC_VERSION);
 
 /** Ticks whenever something other than streamed text happens; lists re-fetch on it. */
 export const activityAtom = Backend.runtime.atom((get) =>
@@ -537,10 +550,39 @@ export const effortRouterStatusAtom = Backend.runtime.atom((get) => {
   return Backend.use((client) => client("EffortRouterStatus", undefined));
 });
 
-/** How long a thread's events are kept after it closes, so going back to it shows it at once. */
+/** Keep a recently closed thread's history without leaving its transcript subscribed. */
 const CLOSED_THREAD_TTL = "5 minutes";
+const threadHistoryCache = Atom.family((_key: string) =>
+  Atom.make(() => ({
+    log: new ThreadLog(),
+    after: undefined as number | undefined,
+    before: undefined as HistoryCursor | undefined,
+    more: true,
+    loaded: false,
+  })).pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
+);
 const olderThreadAtom = Atom.family((_id: ThreadId) => Atom.make(0));
 const historyTargetAtom = Atom.family((_id: ThreadId) => Atom.make<HistoryCursor | undefined>(undefined));
+
+const threadLive = (get: Atom.AtomContext, threadId: ThreadId, scoped: boolean) =>
+  scoped
+    ? Stream.unwrap(
+        Backend.use((client) =>
+          Effect.succeed(client("WatchThreadEvents", { threadId }, { streamBufferSize: LIVE_BUFFER })),
+        ),
+      ).pipe(
+        Stream.filter(isKnownDelivery),
+        // Keep draining the socket while history catches up on the same connection.
+        Stream.bufferArray({ capacity: "unbounded" }),
+        Stream.repeat(Schedule.spaced("1 second")),
+      )
+    : Stream.unwrap(
+        Effect.map(subscribeLive(get), (live) =>
+          Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
+            Stream.filter((each) => each._tag === "Subscribed" || each.event.threadId === threadId),
+          ),
+        ),
+      );
 
 /**
  * A thread's events: its history merged with live events, streamed text included. History is read
@@ -549,117 +591,117 @@ const historyTargetAtom = Atom.family((_id: ThreadId) => Atom.make<HistoryCursor
  * fast reply in a long thread from outrunning the window.
  */
 export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
-  Backend.runtime
-    .atom((get) => {
-      const log = new ThreadLog();
-      let after: number | undefined;
-      let before: HistoryCursor | undefined;
-      let more = true;
-      let pageRevision = 0;
-      let loadError: string | undefined;
-      const machine = get.once(machineAtom);
-      const loadOlder = () =>
-        get.set(olderThreadAtom(threadId), get.registry.get(olderThreadAtom(threadId)) + 1);
-      const loadThrough = (cursor: HistoryCursor) => get.set(historyTargetAtom(threadId), { ...cursor });
-      const paged = () => {
-        if (machine === undefined) return true;
-        const state = AsyncResult.getOrElse(get.registry.get(accountAtom), () => undefined);
-        return (
-          state?._tag === "SignedIn" &&
-          (state.devices.find((device) => device.id === machine.id)?.rpcVersion ?? 0) >= 45
-        );
-      };
-      const history = (older: boolean) =>
-        Backend.use((client) =>
-          Effect.gen(function* () {
-            if (!paged()) {
-              log.add(yield* client("ThreadEvents", { threadId, withoutImages: true, streamed: true }));
-              more = false;
-              return;
+  Backend.runtime.atom((get) => {
+    const machine = get(machineAtom);
+    const scoped = get(scopedEventsSupportedAtom);
+    const cache = get(threadHistoryCache(machineKey(threadId, machine)));
+    const { log } = cache;
+    let pageRevision = 0;
+    let loadError: string | undefined;
+    const loadOlder = () =>
+      get.set(olderThreadAtom(threadId), get.registry.get(olderThreadAtom(threadId)) + 1);
+    const loadThrough = (cursor: HistoryCursor) => get.set(historyTargetAtom(threadId), { ...cursor });
+    const state = () => ({
+      ...log.state(),
+      more: cache.more,
+      loadOlder,
+      loadThrough,
+      pageRevision,
+      loadError,
+    });
+    const history = (older: boolean) =>
+      Backend.use((client) =>
+        Effect.gen(function* () {
+          const version = get.registry.get(drivenRpcVersionAtom);
+          if (version < 45) {
+            log.add(yield* client("ThreadEvents", { threadId, withoutImages: true, streamed: true }));
+            cache.more = false;
+            return;
+          }
+          if (older && (!cache.more || cache.before === undefined)) return;
+          // Subscribe first, then read. Live events queue while every missed durable page is taken.
+          // Only durable reads advance after: a live event may still be waiting to be persisted.
+          do {
+            const initial = cache.after === undefined;
+            const page = yield* client("ThreadHistory", {
+              threadId,
+              page: older ? { before: cache.before! } : initial ? {} : { after: cache.after! },
+            });
+            log.add(
+              older || initial
+                ? page.events
+                : page.events.filter((event) => inHistoryWindow(event, cache.before, cache.more)),
+            );
+            if (older || initial) {
+              cache.before = page.before;
+              cache.more = page.more;
             }
-            if (older && (!more || before === undefined)) return;
-            // Subscribe first, then read. Live events queue while every missed durable page is taken.
-            // Only durable reads advance after: a live event may still be waiting to be persisted.
-            do {
-              const initial = after === undefined;
-              const page = yield* client("ThreadHistory", {
-                threadId,
-                page: older ? { before: before! } : after === undefined ? {} : { after },
-              });
-              log.add(
-                older || initial
-                  ? page.events
-                  : page.events.filter((event) => inHistoryWindow(event, before, more)),
-              );
-              if (older || after === undefined) {
-                before = page.before;
-                more = page.more;
-              }
-              if (!older) after = page.after;
-              if (older || initial || !page.more) break;
-            } while (true);
-          }),
-        ).pipe(Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }), Effect.option);
-      return Stream.unwrap(
-        Effect.map(subscribeLive(get), (live) =>
-          Stream.concat(Stream.succeed(subscribed), Stream.fromSubscription(live)).pipe(
-            Stream.filter((each) => each._tag === "Subscribed" || each.event.threadId === threadId),
-            Stream.merge(
-              get
-                .stream(olderThreadAtom(threadId), { withoutInitialValue: true })
-                .pipe(Stream.map(() => ({ _tag: "Older" as const }))),
-            ),
-            Stream.merge(
-              get.stream(historyTargetAtom(threadId), { withoutInitialValue: true }).pipe(
-                Stream.filter((cursor) => cursor !== undefined),
-                Stream.map((cursor) => ({ _tag: "Through" as const, cursor })),
-              ),
-            ),
-            Stream.chunks,
-            Stream.mapEffect((batch) =>
-              Effect.gen(function* () {
-                // History can contain a completion of a queued live delta: complete first, then dedupe live.
-                let changed = false;
-                if (batch.some((each) => each._tag === "Subscribed"))
-                  changed = Option.isSome(yield* history(false));
-                const target = batch.findLast((each) => each._tag === "Through");
-                const needsTarget = () =>
-                  target?._tag === "Through" &&
-                  !log.hasEvent(target.cursor.id) &&
-                  more &&
-                  before !== undefined &&
-                  (target.cursor.at < before.at ||
-                    (target.cursor.at === before.at &&
-                      (target.cursor.sequence < before.sequence ||
-                        (target.cursor.sequence === before.sequence && target.cursor.id < before.id))));
-                if (batch.some((each) => each._tag === "Older") || needsTarget()) {
-                  const read = yield* history(true);
-                  pageRevision++;
-                  loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
-                  changed = true;
-                  // Keep the loaded suffix contiguous: each request is bounded and lets queued live
-                  // events through before the next page. Never fold disconnected navigation pages.
-                  if (Option.isSome(read) && needsTarget() && target?._tag === "Through")
-                    loadThrough(target.cursor);
-                }
-                changed =
-                  log.add(
-                    batch.flatMap((each) =>
-                      each._tag === "Event" && inHistoryWindow(each.event, before, more) ? [each.event] : [],
-                    ),
-                  ) || changed;
-                return changed
-                  ? Option.some({ ...log.state(), more, loadOlder, loadThrough, pageRevision, loadError })
-                  : Option.none();
-              }),
-            ),
-            Stream.filter(Option.isSome),
-            Stream.map((read) => read.value),
+            if (!older) cache.after = page.after;
+            if (older || initial || !page.more) break;
+          } while (true);
+        }),
+      );
+    return Stream.concat(
+      cache.loaded ? Stream.succeed(state()) : Stream.empty,
+      threadLive(get, threadId, scoped).pipe(
+        Stream.merge(
+          get
+            .stream(olderThreadAtom(threadId), { withoutInitialValue: true })
+            .pipe(Stream.map(() => ({ _tag: "Older" as const }))),
+        ),
+        Stream.merge(
+          get.stream(historyTargetAtom(threadId), { withoutInitialValue: true }).pipe(
+            Stream.filter((cursor) => cursor !== undefined),
+            Stream.map((cursor) => ({ _tag: "Through" as const, cursor })),
           ),
         ),
-      );
-    })
-    .pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
+        Stream.chunks,
+        Stream.mapEffect((batch) =>
+          Effect.gen(function* () {
+            // History can contain a completion of a queued live delta: complete first, then dedupe live.
+            let changed = false;
+            if (batch.some((each) => each._tag === "Subscribed")) {
+              yield* history(false);
+              cache.loaded = true;
+              changed = true;
+            }
+            const target = batch.findLast((each) => each._tag === "Through");
+            const needsTarget = () =>
+              target?._tag === "Through" &&
+              !log.hasEvent(target.cursor.id) &&
+              cache.more &&
+              cache.before !== undefined &&
+              byTime(target.cursor, cache.before) < 0;
+            if (batch.some((each) => each._tag === "Older") || needsTarget()) {
+              const read = yield* history(true).pipe(
+                Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
+                Effect.option,
+              );
+              pageRevision++;
+              loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
+              changed = true;
+              // Keep the loaded suffix contiguous: each request is bounded and lets queued live
+              // events through before the next page. Never fold disconnected navigation pages.
+              if (Option.isSome(read) && needsTarget() && target?._tag === "Through")
+                loadThrough(target.cursor);
+            }
+            changed =
+              log.add(
+                batch.flatMap((each) =>
+                  each._tag === "Event" && inHistoryWindow(each.event, cache.before, cache.more)
+                    ? [each.event]
+                    : [],
+                ),
+              ) || changed;
+            return changed ? Option.some(state()) : Option.none();
+          }),
+        ),
+        Stream.filter(Option.isSome),
+        Stream.map((read) => read.value),
+        resubscribe,
+      ),
+    );
+  }),
 );
 
 const sameEvents = (a: ReadonlyArray<AgentEvent>, b: ReadonlyArray<AgentEvent>) =>

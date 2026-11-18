@@ -17,13 +17,13 @@ import {
   type TeardownFailure,
 } from "@cerium/orchestrator";
 import {
-  isStreamDelta,
   LEAD_ROLE,
   REMOVED_IMAGE,
   toolOutputImages,
   withoutImages,
   type AgentEvent,
   type HarnessStatus,
+  type LiveEventDelivery,
   type ProviderId,
   type SkillInfo,
 } from "@cerium/protocol";
@@ -253,6 +253,9 @@ export const Handlers = MachineRpcs.toLayer(
           }),
         ),
       WatchEvents: () => orchestrator.events.pipe(Stream.map(withoutImages)),
+      WatchActivity: () => orchestrator.watchActivity.pipe(Stream.map(leanDelivery)),
+      WatchThreadEvents: ({ threadId }) =>
+        orchestrator.watchThreadEvents(threadId).pipe(Stream.map(leanDelivery)),
       ListPastSessions: () => imports.list.pipe(Effect.mapError(refuse)),
       // The folders of the work threads that come in to the inbox join the projects the composer offers.
       ImportSessions: ({ sessions, access, archiveBefore }) =>
@@ -674,6 +677,11 @@ export const Handlers = MachineRpcs.toLayer(
   }),
 );
 
+const leanDelivery = (delivery: LiveEventDelivery): LiveEventDelivery =>
+  delivery._tag === "Event" && delivery.event !== undefined
+    ? { _tag: "Event", event: withoutImages(delivery.event) }
+    : delivery;
+
 /** Whether this machine's agents are working, re-checked after every event but streamed text. */
 const working = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator;
@@ -685,10 +693,7 @@ const working = Effect.gen(function* () {
     ),
     Effect.orElseSucceed(() => false),
   );
-  return Stream.concat(
-    Stream.succeed(undefined),
-    orchestrator.events.pipe(Stream.filter((event) => !isStreamDelta(event.payload._tag))),
-  ).pipe(
+  return orchestrator.watchActivity.pipe(
     Stream.mapEffect(() => busy),
     Stream.changes,
   );

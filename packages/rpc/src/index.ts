@@ -21,6 +21,7 @@ import {
   HistoryPage,
   CloudHistoryPage,
   LenientArray,
+  LiveEventDelivery,
   LiveUiEvent,
   LoginProgress,
   Mention,
@@ -103,7 +104,8 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 49;
+export const RPC_VERSION = 50;
+export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
@@ -249,6 +251,14 @@ export const MachineRpcs = RpcGroup.make(
    * doesn't know arrives as `undefined`.
    */
   Rpc.make("WatchEvents", { success: LiveUiEvent, stream: true }),
+  /** All threads' live activity, without text deltas. Since RPC_VERSION 50. */
+  Rpc.make("WatchActivity", { success: LiveEventDelivery, stream: true }),
+  /** One thread's live events, including text deltas. Since RPC_VERSION 50. */
+  Rpc.make("WatchThreadEvents", {
+    payload: { threadId: ThreadId },
+    success: LiveEventDelivery,
+    stream: true,
+  }),
   Rpc.make("CreateThread", {
     payload: CreateThreadPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),

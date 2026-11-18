@@ -1,7 +1,12 @@
+import type { AdapterEvent } from "@cerium/harness";
+import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect, Queue, Stream } from "effect";
 
+import { Orchestrator, UserSettings } from "../src/index.ts";
 import { StreamedText } from "../src/streamed.ts";
+import { recordEvents, testLayer } from "./fakes.ts";
 
 const event = (sequence: number, payload: EventPayload, agentId = "a"): AgentEvent => ({
   id: `${agentId}:${sequence}` as EventId,
@@ -66,4 +71,69 @@ describe("streamed text", () => {
     streamed.note(event(5, { _tag: "AgentStateChanged", state: "stopped" }, "b"));
     assert.deepStrictEqual(streamed.soFar("t" as ThreadId), []);
   });
+
+  it.live("recovers durable events and the active text after a subscription is reopened", () =>
+    Effect.gen(function* () {
+      const updates = yield* Queue.unbounded<AdapterEvent>();
+      const fake = makeFakeAdapter("claude");
+      const adapter = {
+        ...fake.adapter,
+        startSession: (options: Parameters<typeof fake.adapter.startSession>[0]) =>
+          fake.adapter.startSession(options).pipe(
+            Effect.map((session) => ({
+              ...session,
+              send: () => Effect.void,
+              events: Stream.merge(session.events, Stream.fromQueue(updates)),
+            })),
+          ),
+      };
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        yield* (yield* UserSettings).update({ titles: { enabled: false } });
+        const { waitFor } = yield* recordEvents;
+        const { thread, lead } = yield* orchestrator.createThread({
+          title: "Reconnect",
+          mode: "chat",
+          lead: { provider: "claude", model: "opus", access: "readOnly" },
+        });
+        const watch = orchestrator.watchThreadEvents(thread.id);
+        assert.deepStrictEqual(yield* watch.pipe(Stream.take(1), Stream.runCollect), [
+          { _tag: "Subscribed" },
+        ]);
+        const before = yield* orchestrator.threadHistory(thread.id, {});
+        yield* orchestrator.sendUserMessage(lead.id, "hello");
+        yield* waitFor((events) => events.find(({ payload }) => payload._tag === "TurnInput"));
+        yield* Queue.offerAll(updates, [{ payload: delta("Hel") }, { payload: delta("lo") }]);
+        yield* waitFor((events) =>
+          events.find(({ payload }) => payload._tag === "MessageDelta" && payload.offset === 3),
+        );
+
+        const resume = yield* Stream.toPull(watch);
+        assert.deepStrictEqual(yield* resume, [{ _tag: "Subscribed" }]);
+        const catchUp = yield* orchestrator.threadHistory(thread.id, { after: before.after });
+        assert.isAbove(catchUp.after, before.after);
+        assert.isTrue(catchUp.events.some(({ payload }) => payload._tag === "TurnInput"));
+        assert.deepStrictEqual(
+          catchUp.events
+            .filter(({ payload }) => payload._tag === "MessageDelta")
+            .map(({ payload }) => payload),
+          [{ _tag: "MessageDelta", messageId: "m", text: "Hello", offset: 0 }],
+        );
+        yield* Queue.offer(updates, { payload: delta("!") });
+        assert.deepStrictEqual(
+          (yield* resume).map((delivery) =>
+            delivery._tag === "Event" ? delivery.event?.payload : undefined,
+          ),
+          [{ _tag: "MessageDelta", messageId: "m", text: "!", offset: 5 }],
+        );
+        yield* Queue.offerAll(updates, [
+          { payload: { _tag: "MessageCompleted", messageId: "m", text: "Hello!" } },
+          { payload: { _tag: "TurnCompleted", stopReason: "completed" } },
+        ]);
+        yield* waitFor((events) =>
+          events.find(({ payload }) => payload._tag === "AgentStateChanged" && payload.state === "idle"),
+        );
+      }).pipe(Effect.provide(testLayer([adapter])));
+    }).pipe(Effect.scoped),
+  );
 });

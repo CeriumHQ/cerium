@@ -50,7 +50,7 @@ export const computerUseFollowsUser = Layer.effectDiscard(
       Stream.runForEach((enabled) => (enabled ? computer.install.pipe(Effect.ignore) : computer.endAll)),
       Effect.forkScoped,
     );
-    yield* orchestrator.events.pipe(
+    yield* orchestrator.activity.pipe(
       Stream.filter(
         ({ payload }) =>
           payload._tag === "MessageQueued" ||
@@ -59,7 +59,7 @@ export const computerUseFollowsUser = Layer.effectDiscard(
       Stream.runForEach((event) => computer.resume(event.threadId)),
       Effect.forkScoped,
     );
-    yield* orchestrator.events.pipe(
+    yield* orchestrator.activity.pipe(
       Stream.filter(({ payload }) => payload._tag === "TurnCompleted"),
       Stream.runForEach((event) => computer.release(event.agentId)),
       Effect.forkScoped,

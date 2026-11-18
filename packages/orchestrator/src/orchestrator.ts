@@ -33,6 +33,7 @@ import {
   type LeadHandedOff,
   type LimitPolicy,
   type LimitReached,
+  type LiveEventDelivery,
   type Mention,
   type ModelInfo,
   type ProviderId,
@@ -66,7 +67,6 @@ import {
   Layer,
   Option,
   Path,
-  PubSub,
   Queue,
   Result,
   Schema,
@@ -93,6 +93,7 @@ import {
 import { HelperUsage } from "./helperUsage.ts";
 import { MessageDelivery, type MessageOptions } from "./delivery.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
+import { makeEventFeeds } from "./eventFeeds.ts";
 import { Condenser, handoffBrief, olderTurns, pendingHandoff } from "./handoff.ts";
 import { makeOverviewWatch } from "./overviewWatch.ts";
 import {
@@ -703,8 +704,12 @@ export class Orchestrator extends Context.Service<
     /** Every thread with its agents and whether it waits on the user, oldest first, read at once. */
     readonly threadOverviews: Effect.Effect<ReadonlyArray<ThreadOverview>, OrchestratorError>;
     readonly watchThreadOverviews: Stream.Stream<ThreadOverviewUpdate>;
-    /** Live events from every agent; subscribers see events published after they subscribe. */
+    /** Legacy live events from every agent, including streamed text. */
     readonly events: Stream.Stream<AgentEvent>;
+    /** Live events from every agent, without streamed text. */
+    readonly activity: Stream.Stream<AgentEvent>;
+    readonly watchActivity: Stream.Stream<LiveEventDelivery>;
+    watchThreadEvents(threadId: ThreadId): Stream.Stream<LiveEventDelivery>;
 
     // Bus-facing operations: `callerId` is the agent invoking the tool.
     /** Waits for the catalog while the backend is still learning it from the harnesses. */
@@ -922,7 +927,7 @@ export class Orchestrator extends Context.Service<
       const advisorPermit = yield* Semaphore.make(1);
       /** Each live reviewer's review, settled with its final message once its turn ends. */
       const reviews = new Map<AgentId, Deferred.Deferred<string, OrchestratorError>>();
-      const feed = yield* PubSub.unbounded<AgentEvent>();
+      const feeds = yield* makeEventFeeds;
       const overviewDirty = yield* Queue.sliding<void>(1);
       const metadataChanges = yield* store.overviewChanges;
       yield* Stream.fromSubscription(metadataChanges).pipe(
@@ -1098,7 +1103,7 @@ export class Orchestrator extends Context.Service<
           });
           noteWork(info.id, event.at, payload);
           if (!isEphemeral(payload)) yield* store.appendEvents([event]).pipe(Effect.mapError(unavailable));
-          yield* PubSub.publish(feed, event);
+          yield* feeds.publish(event);
           switch (payload._tag) {
             case "PermissionRequested":
             case "PermissionResolved":
@@ -4726,7 +4731,10 @@ export class Orchestrator extends Context.Service<
         threadOverviews: readOverviews,
         watchThreadOverviews,
 
-        events: Stream.fromPubSub(feed),
+        events: feeds.events,
+        activity: feeds.activity,
+        watchActivity: feeds.watchActivity,
+        watchThreadEvents: feeds.watchThread,
 
         catalog: catalog.entries,
 

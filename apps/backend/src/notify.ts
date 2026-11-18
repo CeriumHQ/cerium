@@ -146,7 +146,7 @@ const startNotifier = (
         yield* FiberMap.run(settling, threadId, tell(threadId).pipe(Effect.delay(SETTLE_FOR)));
       });
 
-    yield* orchestrator.events.pipe(
+    yield* orchestrator.activity.pipe(
       Stream.runForEach(({ threadId, agentId, payload }) => {
         switch (payload._tag) {
           case "TurnInput":
