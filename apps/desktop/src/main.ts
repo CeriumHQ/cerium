@@ -14,7 +14,7 @@ import {
   type Rectangle,
 } from "electron";
 import { existsSync } from "node:fs";
-import { isAbsolute, join, normalize } from "node:path";
+import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import { backgroundMode, HIDDEN_FLAG, isPresence, setStartAtLogin, startAtLogin } from "./background.ts";
 import { startBackend } from "./backend.ts";
@@ -558,6 +558,15 @@ ipcMain.on("cerium:report-crash", (event, report: unknown) => {
 /** The folder with the backend's and the updater's logs, in the file manager. */
 ipcMain.handle("cerium:open-logs", async () => {
   await shell.openPath(app.getPath("logs"));
+});
+
+/** Open the packaged reader, or Electron's original notices when running from source. */
+ipcMain.handle("cerium:open-chromium-notices", async () => {
+  const folder = app.isPackaged
+    ? process.resourcesPath
+    : join(dirname(process.execPath), mac ? "../../.." : ".");
+  const error = await shell.openPath(join(folder, "LICENSES.chromium.html"));
+  if (error) throw new Error(error);
 });
 
 /** The folder a work thread runs in, chosen with the native dialog. */

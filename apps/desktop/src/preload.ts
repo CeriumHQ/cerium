@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.invoke("cerium:set-crash-reports", enabled),
   reportCrash: (report: unknown): void => ipcRenderer.send("cerium:report-crash", report),
   openLogs: (): Promise<void> => ipcRenderer.invoke("cerium:open-logs"),
+  openChromiumNotices: (): Promise<void> => ipcRenderer.invoke("cerium:open-chromium-notices"),
   pickFolder: (): Promise<string | undefined> => ipcRenderer.invoke("cerium:pick-folder"),
   // Empty for a file that only exists in memory, such as a pasted screenshot.
   pathForFile: (file: File): string | undefined => webUtils.getPathForFile(file) || undefined,

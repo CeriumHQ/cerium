@@ -47,6 +47,8 @@ export interface ShellBridge {
   readonly restartBackend?: () => Promise<void>;
   /** Opens the folder of Cerium's logs in the system's file manager. */
   readonly openLogs?: () => Promise<void>;
+  /** Opens the Chromium notices bundled with this desktop app. */
+  readonly openChromiumNotices?: () => Promise<void>;
   /** Whether this build sends anonymous crash reports, and whether the user lets it (`CrashReportsState`). */
   readonly crashReports?: () => Promise<CrashReportsState>;
   readonly setCrashReports?: (enabled: boolean) => Promise<CrashReportsState>;

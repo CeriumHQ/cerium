@@ -8,6 +8,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Desktop packages store Chromium's notices in a losslessly compressed HTML file. Open the full notices offline from Settings → General → About or from the app's resources folder, and download the original HTML from the reader.
 - A response's work (its tool calls, thoughts and what the agent said along the way) folds under one Working line ahead of its final message. It stays open while the agent works, showing a running clock, and folds once the turn ends, keeping a section you opened or closed that way; agents it started, pushes, questions, approvals waiting on you and turn errors stay in view below it. The copy button under a response copies only that final message.
 - Failed tool calls no longer show in red: a run's line stops counting them, and their rows, icons and output look like any other call's, since the agent deals with its own failures.
 

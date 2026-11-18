@@ -1,5 +1,8 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import { Arch, type AfterPackContext, type Configuration } from "electron-builder";
 
 // Packages the desktop shell and its backend for the platform and processor it runs on: an unsigned
@@ -29,6 +32,27 @@ const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
  * somewhat larger, and installed the same way.
  */
 const fastPacking = process.env["ELECTRON_BUILDER_COMPRESSION_LEVEL"] !== undefined;
+
+/** Wrap Electron's original Chromium notices in a self-contained HTML reader before signing. */
+const compressChromiumNotices = async (context: AfterPackContext) => {
+  const name = "LICENSES.chromium.html";
+  const resources = context.packager.getResourcesDir(context.appOutDir);
+  // electron-builder moves the original into the Mac bundle and leaves it beside the executable elsewhere.
+  const source = join(context.electronPlatformName === "darwin" ? resources : context.appOutDir, name);
+  const [notices, reader] = await Promise.all([
+    readFile(source),
+    readFile(join(import.meta.dirname, "build", "chromium-notices.html"), "utf8"),
+  ]);
+  if (notices.length === 0) throw new Error(`Chromium notices are empty: ${source}`);
+  const marker = "<!-- CHROMIUM_NOTICES -->";
+  if (!reader.includes(marker)) throw new Error("The Chromium notices reader is missing its payload marker.");
+  const compressed = await promisify(gzip)(notices, { level: 9 });
+  const destination = join(resources, name);
+  const temporary = `${destination}.tmp`;
+  await writeFile(temporary, reader.replace(marker, compressed.toString("base64")));
+  await rename(temporary, destination);
+  if (source !== destination) await rm(source);
+};
 
 /**
  * Takes the npm packages built for the other Mac processor out of a packed Mac app, before it is
@@ -212,7 +236,10 @@ export default {
     },
   },
   dmg: { artifactName: "Cerium-${version}-${arch}.${ext}" },
-  afterPack: dropOtherMacProcessor,
+  afterPack: async (context: AfterPackContext) => {
+    dropOtherMacProcessor(context);
+    await compressChromiumNotices(context);
+  },
   // The update feed (src/updater.ts). Packaging never uploads (`--publish never`); it writes the
   // channel's update file beside the installer, latest.yml or nightly.yml (latest-linux.yml or
   // nightly-linux.yml beside the Linux packages, latest-linux-arm64.yml beside Arm64's,

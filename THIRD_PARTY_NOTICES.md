@@ -4,8 +4,13 @@ Cerium is licensed under the Apache License 2.0 (`LICENSE`). It bundles the font
 below, each under its own license, which takes precedence over Cerium's for that work.
 
 The npm packages the backend runs ship inside the app (under `resources/app/node_modules`), each with
-its own license file, and Electron's and Chromium's licenses ship with it as `LICENSE.electron.txt`
-and `LICENSES.chromium.html`.
+its own license file. Electron's license ships as `LICENSE.electron.txt`.
+
+To read Chromium's full notices offline, open **Settings → General → About → View notices** in
+Cerium. You can also open `LICENSES.chromium.html` beside this file in a browser. Both files are in
+`Cerium.app/Contents/Resources` on macOS and in the app's `resources` folder on Windows and Linux.
+The HTML reader contains a losslessly compressed copy of the notices from Electron. **Download original
+HTML** saves the full upstream file byte-for-byte.
 
 ## Fonts
 

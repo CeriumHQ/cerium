@@ -150,6 +150,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["general", "Slim old threads"],
     ["general", "Send crash reports"],
     ["general", "Welcome tour"],
+    ["general", "Chromium third-party notices"],
     ["appearance", "Theme"],
     ["appearance", "Light or dark mode"],
     ["appearance", "Conversation text size"],
